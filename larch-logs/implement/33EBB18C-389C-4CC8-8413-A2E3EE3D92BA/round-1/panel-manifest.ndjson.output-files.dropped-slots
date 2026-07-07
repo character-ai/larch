@@ -1,0 +1,1 @@
+testing	codex	collector-failure	STATUS=FAILED ❌ codex agent: exec_command policy rejection detected, killing ❌ codex agent: FAILED (exit code 1, output 0 bytes) 

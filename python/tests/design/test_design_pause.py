@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false
 """Tests for /design pause save/load port."""
 
 from __future__ import annotations
@@ -9,10 +10,14 @@ import os
 import subprocess
 import stat
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from larch.design import design_pause
 from larch.design import design_log_publish_flow
 from larch.design import design_summary
+
+if TYPE_CHECKING:
+    import pytest
 
 # Marker delimiters mirror design_pause._PAUSE_START / _PAUSE_END (a stable wire format). Using
 # literals here keeps the test from reaching into private module members; a delimiter mismatch
@@ -105,7 +110,9 @@ class _FakeGit:
         self.delete_called = False
         self.fetched = False
 
-    def run(self, cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def run(
+        self, cmd: list[str], *_args: object, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         def cp(rc: int = 0, out: str = "") -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(cmd, rc, stdout=out, stderr="")
 
@@ -129,59 +136,110 @@ class _FakeGit:
         return cp(0)
 
 
-def _patch_load(monkeypatch: object, body: str, fake: _FakeGit, *, resolve_repo: str = "owner/repo") -> None:
-    monkeypatch.setattr(design_pause.gh, "resolve_repo", lambda *_a, **_k: resolve_repo)  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_a, **_k: body)  # type: ignore[attr-defined]
+def _patch_load(
+    monkeypatch: pytest.MonkeyPatch,
+    body: str,
+    fake: _FakeGit,
+    *,
+    resolve_repo: str = "owner/repo",
+) -> None:
+    def fake_resolve_repo(*_args: object, **_kwargs: object) -> str:
+        return resolve_repo
+
+    def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
+        return body
+
+    monkeypatch.setattr(design_pause.gh, "resolve_repo", fake_resolve_repo)  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_pause.subprocess, "run", fake.run)  # type: ignore[attr-defined]
 
 
-def _restore_blobs(run_id: str, *, issue_number: object, manifest_run: str) -> tuple[list[str], dict[str, str]]:
+def _restore_blobs(
+    run_id: str,
+    *,
+    issue_number: object,
+    manifest_run: str,
+    step: str = "3",
+    completed_paths: list[str] | None = None,
+) -> tuple[list[str], dict[str, str]]:
     base = f"larch-logs/design/{run_id}/"
     files = [base + "manifest.json", base + "run-params.json", base + "pause-state.txt"]
     blobs = {
-        base + "manifest.json": json.dumps({"issue_number": issue_number, "run_id": manifest_run}),
+        base + "manifest.json": json.dumps(
+            {"issue_number": issue_number, "run_id": manifest_run}
+        ),
         base + "run-params.json": "{}",
-        base + "pause-state.txt": "STEP=3\n",
+        base + "pause-state.txt": f"STEP={step}\n",
     }
+    for completed_path in completed_paths or []:
+        files.append(base + completed_path)
+        blobs[base + completed_path] = ""
     return files, blobs
 
 
 def test_pause_save_rejects_invalid_issue(tmp_path: Path, capsys: object) -> None:
-    rc = design_pause.pause_save_main(["--design-tmpdir", str(tmp_path), "--issue", "bad"])
+    rc = design_pause.pause_save_main(
+        ["--design-tmpdir", str(tmp_path), "--issue", "bad"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "PAUSE_OK=false" in out
     assert "ERROR=invalid-issue" in out
 
 
-def test_pause_load_no_pause_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
-    monkeypatch.setattr(design_pause.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "plain body")  # type: ignore[attr-defined]
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path), "--issue", "10", "--repo", "owner/repo"])
+def test_pause_load_no_pause_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    def fake_resolve_repo(*_args: object, **_kwargs: object) -> str:
+        return "owner/repo"
+
+    def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
+        return "plain body"
+
+    monkeypatch.setattr(design_pause.gh, "resolve_repo", fake_resolve_repo)  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path), "--issue", "10", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "LOAD_OK=false" in out
     assert "ERROR=no-pause-marker" in out
 
 
-def test_pause_save_writes_marker_on_publish_success(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_save_writes_marker_on_publish_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")
-    _ = (design / "source-env.sh").write_text("export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8")
-    monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "issue body\n")  # type: ignore[attr-defined]
+    _ = (design / "source-env.sh").write_text(
+        "export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8"
+    )
+
+    def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
+        return "issue body\n"
+
+    monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
 
     calls: list[list[str]] = []
-    def fake_run(cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+
+    def fake_run(
+        cmd: list[str], *_args: object, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         calls.append(cmd)
         if "log-publish" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, stdout="PUBLISH_OK=true\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="PUBLISH_OK=true\n", stderr=""
+            )
         if "named-block" in cmd:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
-    rc = design_pause.pause_save_main(["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_save_main(
+        ["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     publish_call = next(cmd for cmd in calls if "log-publish" in cmd)
@@ -192,7 +250,7 @@ def test_pause_save_writes_marker_on_publish_success(tmp_path: Path, monkeypatch
 
 def test_pause_save_uses_real_log_publish_path(
     tmp_path: Path,
-    monkeypatch: object,
+    monkeypatch: pytest.MonkeyPatch,
     capsys: object,
 ) -> None:
     repo = _operator_repo_with_remote(tmp_path)
@@ -200,7 +258,9 @@ def test_pause_save_uses_real_log_publish_path(
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")
-    _ = (design / "source-env.sh").write_text("export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8")
+    _ = (design / "source-env.sh").write_text(
+        "export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8"
+    )
     _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
     bin_dir = tmp_path / "bin"
     _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
@@ -212,12 +272,16 @@ def test_pause_save_uses_real_log_publish_path(
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         if args[:2] == ("tracking-issue", "upsert-summary"):
             upsert_calls.append(list(args))
-            return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                ["cli.py", *args], 0, stdout="", stderr=""
+            )
         return original_run_cli(*args)
 
     def fake_render_main(argv: list[str]) -> int:
         design_tmpdir = Path(argv[argv.index("--design-tmpdir") + 1])
-        session_id = argv[argv.index("--session-id") + 1] if "--session-id" in argv else "RUN1"
+        session_id = (
+            argv[argv.index("--session-id") + 1] if "--session-id" in argv else "RUN1"
+        )
         outcome = argv[argv.index("--outcome") + 1]
         _ = (design_tmpdir / "final-summary.md").write_text(
             f"## /design run {session_id}: {outcome}\n\n"
@@ -227,7 +291,9 @@ def test_pause_save_uses_real_log_publish_path(
         )
         return 0
 
-    def fake_run(cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        cmd: list[str], *_args: object, **_kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
         if len(cmd) >= 4 and cmd[2:4] == ["design", "log-publish"]:
             out = io.StringIO()
             err = io.StringIO()
@@ -237,19 +303,41 @@ def test_pause_save_uses_real_log_publish_path(
                     rc = design_log_publish_flow.log_publish_main(cmd[4:])
                 finally:
                     subprocess.run = fake_run  # type: ignore[assignment]
-            return subprocess.CompletedProcess(cmd, rc, stdout=out.getvalue(), stderr=err.getvalue())
+            return subprocess.CompletedProcess(
+                cmd, rc, stdout=out.getvalue(), stderr=err.getvalue()
+            )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")  # type: ignore[attr-defined]
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "issue body\n")  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)  # type: ignore[attr-defined]
+
+    def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
+        return "issue body\n"
+
+    def fake_capture_design_transcript(**_kwargs: object) -> bool:
+        return True
+
+    def fake_spawn_detached_admin_merge(**_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        design_log_publish_flow.design_publish,
+        "_capture_design_transcript",
+        fake_capture_design_transcript,
+    )  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        design_log_publish_flow,
+        "_spawn_detached_admin_merge",
+        fake_spawn_detached_admin_merge,
+    )  # type: ignore[attr-defined]
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)  # type: ignore[attr-defined]
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
 
-    rc = design_pause.pause_save_main(["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_save_main(
+        ["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
 
     assert rc == 0
@@ -257,14 +345,20 @@ def test_pause_save_uses_real_log_publish_path(
     assert not upsert_calls
     assert (design / ".design-log-publish-metadata.env").is_file()
     blob = subprocess.run(
-        ["git", "show", "larch-logs/design-RUN1:larch-logs/design/RUN1/final-summary.md"],
+        [
+            "git",
+            "show",
+            "larch-logs/design-RUN1:larch-logs/design/RUN1/final-summary.md",
+        ],
         cwd=tmp_path / "origin.git",
         capture_output=True,
         text=True,
         check=False,
     )
     assert blob.returncode == 0, blob.stderr
-    summary_body = blob.stdout or (design / "final-summary.md").read_text(encoding="utf-8")
+    summary_body = blob.stdout or (design / "final-summary.md").read_text(
+        encoding="utf-8"
+    )
     assert "## /design run" in summary_body
     assert "<!-- larch:run-summary v=1 -->" in summary_body
     assert "## /design run RUN1: paused" in summary_body
@@ -272,52 +366,89 @@ def test_pause_save_uses_real_log_publish_path(
 
 def test_pause_save_rejects_non_allowlisted_tmpdir(capsys: object) -> None:
     # Guard 6: pause-save routes --design-tmpdir through the session-tmpdir allowlist validator.
-    rc = design_pause.pause_save_main(["--design-tmpdir", "/nonexistent-larch-allowlist-test", "--issue", "9"])
+    rc = design_pause.pause_save_main(
+        ["--design-tmpdir", "/nonexistent-larch-allowlist-test", "--issue", "9"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "PAUSE_OK=false" in out
     assert "ERROR=tmpdir-not-allowed" in out
 
 
-def test_pause_save_redacts_pause_state(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_save_redacts_pause_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 7: the local pause-state.txt payload is written through redact secrets.
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
-    _ = (design / "source-env.sh").write_text("export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8")
-    monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_a, **_k: "issue body\n")  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_pause.redact, "redact_secrets_only", lambda _t: "REDACTED-STATE\n")  # type: ignore[attr-defined]
+    _ = (design / "source-env.sh").write_text(
+        "export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8"
+    )
 
-    def fake_run(cmd: list[str], *_a: object, **_k: object) -> subprocess.CompletedProcess[str]:
+    def fake_issue_view_body(*_args: object, **_kwargs: object) -> str:
+        return "issue body\n"
+
+    def fake_redact_secrets_only(_text: str) -> str:
+        return "REDACTED-STATE\n"
+
+    monkeypatch.setattr(design_pause.gh, "issue_view_body", fake_issue_view_body)  # type: ignore[attr-defined]
+    monkeypatch.setattr(
+        design_pause.redact, "redact_secrets_only", fake_redact_secrets_only
+    )  # type: ignore[attr-defined]
+
+    def fake_run(
+        cmd: list[str], *_a: object, **_k: object
+    ) -> subprocess.CompletedProcess[str]:
         if "log-publish" in cmd:
-            return subprocess.CompletedProcess(cmd, 0, stdout="PUBLISH_OK=true\n", stderr="")
+            return subprocess.CompletedProcess(
+                cmd, 0, stdout="PUBLISH_OK=true\n", stderr=""
+            )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
-    rc = design_pause.pause_save_main(["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_save_main(
+        ["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "PAUSE_OK=true" in out
-    assert (design / "pause-state.txt").read_text(encoding="utf-8") == "REDACTED-STATE\n"
+    assert (design / "pause-state.txt").read_text(
+        encoding="utf-8"
+    ) == "REDACTED-STATE\n"
 
 
-def test_pause_load_repo_mismatch_clears_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_repo_mismatch_clears_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 3a: a marker bound to a different repo fails closed and the stale marker is cleared.
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="other/repo")
     fake = _FakeGit()
     _patch_load(monkeypatch, body, fake)
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "ERROR=repo-mismatch" in out
     assert fake.delete_called
 
 
-def test_pause_load_invalid_recovery_branch_clears_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_invalid_recovery_branch_clears_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 2: only the exact publisher branch name is accepted; anything else fails before fetch.
-    body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo", recovery_branch="evil-branch")
+    body = _pause_marker_body(
+        run_id="RUN1",
+        issue="9",
+        step="3",
+        repo="owner/repo",
+        recovery_branch="evil-branch",
+    )
     fake = _FakeGit()
     _patch_load(monkeypatch, body, fake)
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "ERROR=invalid-recovery-branch" in out
@@ -325,53 +456,73 @@ def test_pause_load_invalid_recovery_branch_clears_marker(tmp_path: Path, monkey
     assert not fake.fetched
 
 
-def test_pause_load_rev_parse_pin_failure_keeps_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_rev_parse_pin_failure_keeps_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 1: when the ref cannot be pinned to a commit SHA, fail closed but keep the marker (retryable).
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
     fake = _FakeGit(verify_rc=1)
     _patch_load(monkeypatch, body, fake)
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "ERROR=snapshot-not-found" in out
     assert not fake.delete_called
 
 
-def test_pause_load_unsafe_restored_path_keeps_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_unsafe_restored_path_keeps_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 4: an enumerated path that escapes the snapshot subtree is rejected before any write.
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
     fake = _FakeGit(files=["larch-logs/design/RUN1/../escape.txt"])
     _patch_load(monkeypatch, body, fake)
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "ERROR=unsafe-restored-path" in out
     assert not fake.delete_called
 
 
-def test_pause_load_manifest_mismatch_clears_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_manifest_mismatch_clears_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 3b: the restored manifest must bind to the same issue/run as the marker.
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
     files, blobs = _restore_blobs("RUN1", issue_number=999, manifest_run="RUN1")
     fake = _FakeGit(files=files, blobs=blobs)
     _patch_load(monkeypatch, body, fake)
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "ERROR=manifest-mismatch" in out
     assert fake.delete_called
 
 
-def test_pause_load_success_deletes_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_success_deletes_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 5 + guard 1/2 happy path: valid recovery branch, pinned SHA, full restore, marker deleted.
     body = _pause_marker_body(
-        run_id="RUN1", issue="9", step="3", repo="owner/repo", recovery_branch="larch-logs/design-RUN1"
+        run_id="RUN1",
+        issue="9",
+        step="3",
+        repo="owner/repo",
+        recovery_branch="larch-logs/design-RUN1",
     )
     files, blobs = _restore_blobs("RUN1", issue_number=9, manifest_run="RUN1")
     fake = _FakeGit(files=files, blobs=blobs)
     _patch_load(monkeypatch, body, fake)
     dest = tmp_path / "d"
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(dest), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(dest), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "LOAD_OK=true" in out
@@ -381,13 +532,17 @@ def test_pause_load_success_deletes_marker(tmp_path: Path, monkeypatch: object, 
     assert (dest / "manifest.json").is_file()
 
 
-def test_pause_load_success_marker_delete_failure_warns(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_success_marker_delete_failure_warns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 5: a post-success marker deletion failure is non-fatal (LOAD_OK stays true, WARN surfaced).
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
     files, blobs = _restore_blobs("RUN1", issue_number=9, manifest_run="RUN1")
     fake = _FakeGit(files=files, blobs=blobs, delete_rc=1)
     _patch_load(monkeypatch, body, fake)
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "LOAD_OK=true" in out
@@ -395,7 +550,9 @@ def test_pause_load_success_marker_delete_failure_warns(tmp_path: Path, monkeypa
     assert "WARN=marker-delete-failed" in out
 
 
-def test_pause_load_tolerates_manifest_without_issue_number(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_tolerates_manifest_without_issue_number(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     # Guard 3b tolerance: a restored manifest missing issue_number must not fail closed (null/absent
     # folds to absent, not a spurious "None" mismatch).
     body = _pause_marker_body(run_id="RUN1", issue="9", step="3", repo="owner/repo")
@@ -408,7 +565,9 @@ def test_pause_load_tolerates_manifest_without_issue_number(tmp_path: Path, monk
     }
     fake = _FakeGit(files=files, blobs=blobs)
     _patch_load(monkeypatch, body, fake)
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
     assert "LOAD_OK=true" in out
@@ -421,7 +580,10 @@ def test_determine_step_after_step3b_finalize_resumes_step4(tmp_path: Path) -> N
     for step in ("step-3", "step-3.5", "step-3b"):
         _ = (completed / step).write_text("", encoding="utf-8")
 
-    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "4"  # pyright: ignore[reportPrivateUsage]
+    assert (
+        design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd())
+        == "4"
+    )  # pyright: ignore[reportPrivateUsage]
 
 
 def test_determine_step_after_step4_resumes_gate_c_not_diagram(tmp_path: Path) -> None:
@@ -458,10 +620,16 @@ def test_determine_step_routes_step5b_to_step5b5_then_step5c(tmp_path: Path) -> 
     completed.mkdir(parents=True)
     _ = (completed / "step-5b").write_text("", encoding="utf-8")
 
-    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "5b.5"  # pyright: ignore[reportPrivateUsage]
+    assert (
+        design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd())
+        == "5b.5"
+    )  # pyright: ignore[reportPrivateUsage]
 
     _ = (completed / "step-5b.5").write_text("", encoding="utf-8")
-    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "5c"  # pyright: ignore[reportPrivateUsage]
+    assert (
+        design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd())
+        == "5c"
+    )  # pyright: ignore[reportPrivateUsage]
 
 
 def test_determine_step_returns_5b_when_step5b5_without_step5b(tmp_path: Path) -> None:
@@ -470,16 +638,23 @@ def test_determine_step_returns_5b_when_step5b5_without_step5b(tmp_path: Path) -
     completed.mkdir(parents=True)
     _ = (completed / "step-5b.5").write_text("", encoding="utf-8")
 
-    assert design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd()) == "5b"  # pyright: ignore[reportPrivateUsage]
+    assert (
+        design_pause._determine_step(design_tmpdir=design, plugin_root=Path.cwd())
+        == "5b"
+    )  # pyright: ignore[reportPrivateUsage]
 
 
-def test_pause_load_accepts_step4b_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_accepts_step4b_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     body = _pause_marker_body(run_id="RUN1", issue="9", step="4b", repo="owner/repo")
     files, blobs = _restore_blobs("RUN1", issue_number="9", manifest_run="RUN1")
     fake = _FakeGit(files=files, blobs=blobs)
     _patch_load(monkeypatch, body, fake)
 
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
 
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
@@ -487,13 +662,17 @@ def test_pause_load_accepts_step4b_marker(tmp_path: Path, monkeypatch: object, c
     assert "STEP=4b" in out
 
 
-def test_pause_load_accepts_step5b_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_accepts_step5b_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     body = _pause_marker_body(run_id="RUN1", issue="9", step="5b", repo="owner/repo")
     files, blobs = _restore_blobs("RUN1", issue_number="9", manifest_run="RUN1")
     fake = _FakeGit(files=files, blobs=blobs)
     _patch_load(monkeypatch, body, fake)
 
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
 
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
@@ -501,7 +680,50 @@ def test_pause_load_accepts_step5b_marker(tmp_path: Path, monkeypatch: object, c
     assert "STEP=5b" in out
 
 
-def test_pause_load_downgrades_legacy_step5c_to_step5b5(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_restores_step5c_provenance_sentinels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    body = _pause_marker_body(run_id="RUN1", issue="9", step="5c", repo="owner/repo")
+    completed_paths = [
+        ".completed/step-3",
+        ".completed/step-5b",
+        ".completed/step-5b.5",
+    ]
+    files, blobs = _restore_blobs(
+        "RUN1",
+        issue_number=9,
+        manifest_run="RUN1",
+        step="5c",
+        completed_paths=completed_paths,
+    )
+    step3_result = "larch-logs/design/RUN1/.step3-review-result.env"
+    files.append(step3_result)
+    blobs[step3_result] = "STEP3_REVIEW_LOOP_STATUS=complete\n"
+    fake = _FakeGit(files=files, blobs=blobs)
+    _patch_load(monkeypatch, body, fake)
+
+    dest = tmp_path / "d"
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(dest), "--issue", "9", "--repo", "owner/repo"]
+    )
+
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "LOAD_OK=true" in out
+    assert "STEP=5c" in out
+    assert (dest / ".completed" / "step-3").is_file()
+    assert (dest / ".completed" / "step-5b").is_file()
+    assert (dest / ".completed" / "step-5b.5").is_file()
+    assert (dest / ".step3-review-result.env").read_text(encoding="utf-8") == (
+        "STEP3_REVIEW_LOOP_STATUS=complete\n"
+    )
+
+
+def test_pause_load_downgrades_legacy_step5c_to_step5b5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     body = _pause_marker_body(run_id="RUN1", issue="9", step="5c", repo="owner/repo")
     base = "larch-logs/design/RUN1/"
     files = [
@@ -520,7 +742,9 @@ def test_pause_load_downgrades_legacy_step5c_to_step5b5(tmp_path: Path, monkeypa
     _patch_load(monkeypatch, body, fake)
 
     dest = tmp_path / "d"
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(dest), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(dest), "--issue", "9", "--repo", "owner/repo"]
+    )
 
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
@@ -529,13 +753,17 @@ def test_pause_load_downgrades_legacy_step5c_to_step5b5(tmp_path: Path, monkeypa
     assert (dest / ".completed" / "step-5b").is_file()
 
 
-def test_pause_load_accepts_step5b5_marker(tmp_path: Path, monkeypatch: object, capsys: object) -> None:
+def test_pause_load_accepts_step5b5_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
     body = _pause_marker_body(run_id="RUN1", issue="9", step="5b.5", repo="owner/repo")
     files, blobs = _restore_blobs("RUN1", issue_number="9", manifest_run="RUN1")
     fake = _FakeGit(files=files, blobs=blobs)
     _patch_load(monkeypatch, body, fake)
 
-    rc = design_pause.pause_load_main(["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"])
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(tmp_path / "d"), "--issue", "9", "--repo", "owner/repo"]
+    )
 
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0

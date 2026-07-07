@@ -1101,19 +1101,13 @@
     "file": "larch/design/decompose.py",
     "code": "C901",
     "qualified_symbol": "prepare_partition_issues",
-    "metric": 19
+    "metric": 13
   },
   {
     "file": "larch/design/decompose.py",
     "code": "PLR0912",
     "qualified_symbol": "aggregate_partition",
     "metric": 13
-  },
-  {
-    "file": "larch/design/decompose.py",
-    "code": "PLR0912",
-    "qualified_symbol": "prepare_partition_issues",
-    "metric": 18
   },
   {
     "file": "larch/design/decompose.py",
@@ -1126,12 +1120,6 @@
     "code": "PLR0913",
     "qualified_symbol": "dispatch_panel",
     "metric": 8
-  },
-  {
-    "file": "larch/design/decompose.py",
-    "code": "PLR0915",
-    "qualified_symbol": "prepare_partition_issues",
-    "metric": 60
   },
   {
     "file": "larch/design/design_core.py",
@@ -1155,7 +1143,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "C901",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 14
+    "metric": 16
   },
   {
     "file": "larch/design/design_log_publish_flow.py",
@@ -1185,7 +1173,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0912",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 14
+    "metric": 17
   },
   {
     "file": "larch/design/design_log_publish_flow.py",
@@ -1197,7 +1185,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0915",
     "qualified_symbol": "_publish_design_logs",
-    "metric": 57
+    "metric": 64
   },
   {
     "file": "larch/design/design_log_publish_flow.py",
@@ -1383,7 +1371,7 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0915",
     "qualified_symbol": "publish_core",
-    "metric": 154
+    "metric": 152
   },
   {
     "file": "larch/design/design_router.py",
@@ -1857,7 +1845,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "C901",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 25
+    "metric": 23
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1875,7 +1863,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "C901",
     "qualified_symbol": "parse_optional_metadata",
-    "metric": 20
+    "metric": 11
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1929,13 +1917,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0912",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 27
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "parse_optional_metadata",
-    "metric": 20
+    "metric": 25
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1971,13 +1953,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0915",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 123
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "parse_optional_metadata",
-    "metric": 54
+    "metric": 119
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -5596,12 +5572,6 @@
     "code": "PLR0912",
     "qualified_symbol": "step5",
     "metric": 34
-  },
-  {
-    "file": "larch/review/review_and_fix.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_emit_step5_envelope",
-    "metric": 9
   },
   {
     "file": "larch/review/review_and_fix.py",

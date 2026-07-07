@@ -1,0 +1,101 @@
+## Goal
+Implement issue #6548: [IMPLEMENTING] [BUG] /design pause snapshot omits .completed/, Step 5c provenance false-refusal.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Fix the snapshot, not the Step 5c guard.
+
+`design publish` is correct to require `.completed/step-3` when review provenance says `complete` or `cap-hit`. The bug is that pause snapshots drop the sentinel evidence. Preserve `.completed/` for `design log-publish --reason pause` only. Keep normal final design logs unchanged.
+
+Do not synthesize sentinels during resume. Restoring the real snapshot keeps downstream provenance honest and avoids teaching `pause-load` a second copy of step ordering.
+
+## Files to modify/create
+
+### UPDATED: python/larch/design/design_log_publish_flow.py
+
+- Add a reason-aware path for pause snapshots:
+  - Thread an `include_completed: bool` (or equivalent) through `log_publish_main` into `_publish_design_logs` and the top-level copy loop.
+  - Set it true only when `--reason pause`.
+  - Keep `_PUBLISH_EXCLUDE_DIRS` excluding `.completed` by default; bypass that exclusion only at the top-level copy loop when `include_completed` is true. Nested `.completed` handling stays directory-scoped via `_publish_excluded`.
+- Update nearby comments so they state:
+  - final logs still drop `.completed/`;
+  - pause snapshots retain `.completed/` because resume needs provenance sentinels.
+- Keep the existing redaction and symlink behavior for copied sentinel files.
+- Do not change `design_publish.review_provenance` or `_TERMINAL_STATUSES_REQUIRING_SENTINEL`.
+
+### UPDATED: python/tests/design/test_design_log_publish_flow.py
+
+- Keep the existing final-publish test that proves `.completed/` is excluded from normal logs.
+- Add or extend a pause-publish test:
+  - create `.completed/step-3` and at least one later sentinel;
+  - run `design log-publish --reason pause --outcome paused`;
+  - assert the committed tree contains `larch-logs/design/<RUN_ID>/.completed/step-3`.
+- If the helper `_run_publish` stays useful, add optional `reason` and `outcome` parameters instead of duplicating a long subprocess call.
+
+### UPDATED: python/tests/design/test_design_pause.py
+
+- Parameterize `_restore_blobs` so callers can pass `step` (default `"3"` for existing tests) and optional `completed_paths` (list of snapshot-relative paths under `larch-logs/design/<run_id>/`, e.g. `.completed/step-3`).
+- Add a `pause-load` restore test that matches the broken Step 5c resume path:
+  - build the snapshot with `pause-state.txt` containing `STEP=5c` and a marker body with `step="5c"`;
+  - include snapshot blobs for `.completed/step-3`, `.completed/step-5b`, `.completed/step-5b.5`, and `.step3-review-result.env` carrying `STEP3_REVIEW_LOOP_STATUS=complete` (mirrors issue #6527);
+  - run `pause_load_main` against the fake git harness;
+  - assert `LOAD_OK=true`, `STEP=5c` in stdout (not downgraded), and the restored tmpdir contains `.completed/step-3` (and the other copied sentinels).
+- Keep the legacy `step=5c` downgrade test for snapshots that have only `.completed/step-5b`.
+
+### UPDATED: SECURITY.md
+
+- Update the design-log publish artifact description.
+- Say `.completed/` remains excluded from normal final design logs, but pause snapshots retain step sentinels for resume provenance.
+- Keep the public-boundary and redaction warnings intact.
+
+## Edge cases
+
+- A paused run before Step 3 may have no `.completed/step-3`; publish should still succeed and restore whatever sentinels exist.
+- A legacy pause snapshot with no `.completed/` should still load as it does today. Do not fail old snapshots just because sentinels are absent.
+- A `step=5c` marker with `.completed/step-5b` but no `.completed/step-5b.5` must still downgrade to `5b.5`.
+- Normal final `design log-publish` should not start committing `.completed/`.
+
+## Failure modes when non-trivial
+
+- If the include flag is applied globally, final design logs may expand their artifact surface.
+- If `.completed/` is copied without the existing redaction/symlink path, log publishing may bypass established public-boundary safeguards.
+- If tests only cover `pause-load` with `STEP=3`, the Step 5c provenance false-refusal path stays unverified.
+- If tests only cover `log-publish`, extraction of hidden directories may regress later.
+
+## Testing strategy
+
+Run targeted tests first:
+
+```bash
+cd python && pytest tests/design/test_design_log_publish_flow.py tests/design/test_design_pause.py
+```
+
+Then run the requested Python checks:
+
+make py-lint
+make py-test
+
+No docs-only shortcut applies because runtime publish behavior changes.
+
+## Acceptance
+
+Run targeted tests first:
+
+```bash
+cd python && pytest tests/design/test_design_log_publish_flow.py tests/design/test_design_pause.py
+```
+
+Then run the requested Python checks:
+
+make py-lint
+make py-test
+
+No docs-only shortcut applies because runtime publish behavior changes.
+
+diff_lines: 110
+
+## Test plan
+(no test plan section in plan-file)

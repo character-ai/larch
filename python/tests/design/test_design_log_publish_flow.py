@@ -55,7 +55,14 @@ def _operator_repo_with_remote(tmp_path: Path) -> Path:
     return repo
 
 
-def _run_publish(repo: Path, design: Path, bin_dir: Path) -> subprocess.CompletedProcess[str]:
+def _run_publish(
+    repo: Path,
+    design: Path,
+    bin_dir: Path,
+    *,
+    reason: str = "final",
+    outcome: str = "approved",
+) -> subprocess.CompletedProcess[str]:
     real_cli = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
@@ -74,8 +81,10 @@ def _run_publish(repo: Path, design: Path, bin_dir: Path) -> subprocess.Complete
             RUN_ID,
             "--issue",
             "33",
+            "--reason",
+            reason,
             "--outcome",
-            "approved",
+            outcome,
         ],
         cwd=repo,
         capture_output=True,
@@ -94,7 +103,21 @@ def test_log_publish_dry_run_success(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     result = subprocess.run(
-        [sys.executable, str(cli_py), "design", "log-publish", "--design-tmpdir", str(design), "--run-id", "RUN1", "--issue", "12", "--outcome", "approved", "--dry-run"],
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "log-publish",
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            "RUN1",
+            "--issue",
+            "12",
+            "--outcome",
+            "approved",
+            "--dry-run",
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -106,8 +129,9 @@ def test_log_publish_dry_run_success(tmp_path: Path) -> None:
     assert "<!-- larch:run-summary v=1 -->" in summary
 
 
-
-def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_log_publish_captures_transcript_before_publish(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     design = tmp_path / "design"
     design.mkdir()
     plugin_root = tmp_path / "plugin"
@@ -136,18 +160,32 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
 
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
-    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", fake_render)
+    monkeypatch.setattr(
+        design_log_publish_flow.design_publish,
+        "_capture_design_transcript",
+        fake_capture,
+    )
+    monkeypatch.setattr(
+        design_log_publish_flow, "_render_final_summary_before_copy", fake_render
+    )
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
-    rc = design_log_publish_flow.log_publish_main([
-        "--design-tmpdir", str(design),
-        "--run-id", RUN_ID,
-        "--issue", "33",
-        "--repo", "o/r",
-        "--reason", "final",
-        "--outcome", "approved",
-    ])
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--repo",
+            "o/r",
+            "--reason",
+            "final",
+            "--outcome",
+            "approved",
+        ]
+    )
 
     assert rc == 0
     assert order == ["capture", "render", "publish"]
@@ -163,7 +201,9 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
     }
 
 
-def test_log_publish_capture_failure_skips_publish(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_log_publish_capture_failure_skips_publish(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     design = tmp_path / "design"
     design.mkdir()
     published = False
@@ -177,19 +217,34 @@ def test_log_publish_capture_failure_skips_publish(monkeypatch: pytest.MonkeyPat
         published = True
         return (True, "77", "https://github.com/o/r/pull/77", "", "0")
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(
+        design_log_publish_flow.design_publish,
+        "_capture_design_transcript",
+        fake_capture,
+    )
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
-    rc = design_log_publish_flow.log_publish_main([
-        "--design-tmpdir", str(design), "--run-id", RUN_ID, "--issue", "33", "--outcome", "approved"
-    ])
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
 
     assert rc == 0
     assert not published
     assert "PUBLISH_OK=false" in capsys.readouterr().out
 
 
-def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_log_publish_capture_skip_still_publishes_pause(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     design = tmp_path / "design"
     design.mkdir()
     reasons: list[str] = []
@@ -204,24 +259,40 @@ def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.Monk
         return True
 
     def fake_publish(**kwargs: object) -> tuple[bool, str, str, str, str]:
-        reasons.append(str(kwargs["run_id"]))
+        request = kwargs["request"]
+        assert isinstance(request, design_log_publish_flow._PublishDesignLogsRequest)
+        reasons.append(request.run_id)
         return (True, "", "", "", "0")
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
-    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", fake_render)
+    monkeypatch.setattr(
+        design_log_publish_flow.design_publish,
+        "_capture_design_transcript",
+        fake_capture,
+    )
+    monkeypatch.setattr(
+        design_log_publish_flow, "_render_final_summary_before_copy", fake_render
+    )
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
-    rc = design_log_publish_flow.log_publish_main([
-        "--design-tmpdir", str(design),
-        "--run-id", RUN_ID,
-        "--issue", "33",
-        "--reason", "pause",
-        "--outcome", "paused",
-    ])
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--reason",
+            "pause",
+            "--outcome",
+            "paused",
+        ]
+    )
 
     assert rc == 0
     assert reasons == ["paused", RUN_ID]
     assert "PUBLISH_OK=true" in capsys.readouterr().out
+
 
 def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     # The design run tree is committed to a dedicated branch and PR'd; the
@@ -242,14 +313,32 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     # the operator to rotate; a clean run reports zero (#4782).
     assert "SECRET_SCRUB_VIOLATIONS=0" in result.stdout
     # The operator working tree is never polluted, so the next /implement passes preflight.
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=False)
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert status.stdout.strip() == "", status.stdout
     # The clean-success path deletes the local branch (it lives on the remote).
-    branches = subprocess.run(["git", "branch", "--list", LOG_BRANCH], cwd=repo, capture_output=True, text=True, check=False)
+    branches = subprocess.run(
+        ["git", "branch", "--list", LOG_BRANCH],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert branches.stdout.strip() == ""
     # The pushed branch carries the redacted design run tree.
     origin = tmp_path / "origin.git"
-    ls = subprocess.run(["git", "ls-tree", "-r", "--name-only", LOG_BRANCH], cwd=origin, capture_output=True, text=True, check=False)
+    ls = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
     assert f"larch-logs/design/{RUN_ID}/final-summary.md" in ls.stdout, ls.stdout
     assert f"larch-logs/design/{RUN_ID}/manifest.json" in ls.stdout, ls.stdout
@@ -293,7 +382,9 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         if args[:2] == ("tracking-issue", "upsert-summary"):
             upsert_calls.append(list(args))
-            return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                ["cli.py", *args], 0, stdout="", stderr=""
+            )
         return original_run_cli(*args)
 
     def fake_capture(**_kwargs: object) -> bool:
@@ -303,25 +394,35 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
         return
 
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
-    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn)
-    monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
+    monkeypatch.setattr(
+        design_log_publish_flow.design_publish,
+        "_capture_design_transcript",
+        fake_capture,
+    )
+    monkeypatch.setattr(
+        design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn
+    )
+    monkeypatch.setattr(
+        design_summary, "render_final_summary_for_request", capture_render
+    )
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
 
-    rc = design_log_publish_flow.log_publish_main([
-        "--design-tmpdir",
-        str(design),
-        "--run-id",
-        RUN_ID,
-        "--issue",
-        "33",
-        "--repo",
-        "o/r",
-        "--reason",
-        "final",
-        "--outcome",
-        "approved",
-    ])
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--repo",
+            "o/r",
+            "--reason",
+            "final",
+            "--outcome",
+            "approved",
+        ]
+    )
 
     assert rc == 0
     assert captured["request"].upsert_summary_comment is False
@@ -368,7 +469,9 @@ def test_log_publish_removes_stale_final_summary_when_render_fails(
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         if args[:2] == ("tracking-issue", "upsert-summary"):
             upsert_calls.append(list(args))
-            return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(
+                ["cli.py", *args], 0, stdout="", stderr=""
+            )
         return original_run_cli(*args)
 
     def fake_capture(**_kwargs: object) -> bool:
@@ -378,26 +481,36 @@ def test_log_publish_removes_stale_final_summary_when_render_fails(
         return
 
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
-    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn)
-    monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
+    monkeypatch.setattr(
+        design_log_publish_flow.design_publish,
+        "_capture_design_transcript",
+        fake_capture,
+    )
+    monkeypatch.setattr(
+        design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn
+    )
+    monkeypatch.setattr(
+        design_summary, "render_final_summary_for_request", capture_render
+    )
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
 
-    rc = design_log_publish_flow.log_publish_main([
-        "--design-tmpdir",
-        str(design),
-        "--run-id",
-        RUN_ID,
-        "--issue",
-        "33",
-        "--repo",
-        "o/r",
-        "--reason",
-        "final",
-        "--outcome",
-        "approved",
-    ])
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--repo",
+            "o/r",
+            "--reason",
+            "final",
+            "--outcome",
+            "approved",
+        ]
+    )
 
     assert rc == 0
     assert captured["request"].upsert_summary_comment is False
@@ -449,7 +562,9 @@ def test_log_publish_reports_and_commits_scrubbed_secret(tmp_path: Path) -> None
     assert "<REDACTED-TOKEN>" in blob.stdout
 
 
-def test_log_publish_pr_failure_keeps_tree_clean_and_emits_recovery(tmp_path: Path) -> None:
+def test_log_publish_pr_failure_keeps_tree_clean_and_emits_recovery(
+    tmp_path: Path,
+) -> None:
     # If the PR cannot be opened, the operator tree still stays clean and the
     # pushed branch is surfaced as a recovery branch (PUBLISH_OK=false).
     repo = _operator_repo_with_remote(tmp_path)
@@ -463,14 +578,28 @@ def test_log_publish_pr_failure_keeps_tree_clean_and_emits_recovery(tmp_path: Pa
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=false" in result.stdout
     assert f"RECOVERY_BRANCH={LOG_BRANCH}" in result.stdout
-    status = subprocess.run(["git", "status", "--porcelain"], cwd=repo, capture_output=True, text=True, check=False)
+    status = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert status.stdout.strip() == "", status.stdout
     origin = tmp_path / "origin.git"
-    ls = subprocess.run(["git", "ls-tree", "-r", "--name-only", LOG_BRANCH], cwd=origin, capture_output=True, text=True, check=False)
+    ls = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
 
 
-def test_spawn_detached_admin_merge_routes_to_ship_design_log(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_detached_admin_merge_routes_to_ship_design_log(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Bug #4524: GitHub-native --auto can never satisfy the active "Code review"
     # ruleset's required-review gate for an unreviewed automated PR, so log PRs
     # never merge. The fix routes the log PR through the existing ship design-log
@@ -484,10 +613,19 @@ def test_spawn_detached_admin_merge_routes_to_ship_design_log(monkeypatch: pytes
         return object()
 
     monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge(cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo")
+    design_log_publish_flow._spawn_detached_admin_merge(
+        cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo"
+    )
 
     assert captured_argv == [
-        sys.executable, "/p/python/cli.py", "ship", "design-log", "--pr-number", "77", "--repo", "o/r",
+        sys.executable,
+        "/p/python/cli.py",
+        "ship",
+        "design-log",
+        "--pr-number",
+        "77",
+        "--repo",
+        "o/r",
     ]
     assert "--auto" not in captured_argv
     assert captured_kwargs["start_new_session"] is True
@@ -497,7 +635,9 @@ def test_spawn_detached_admin_merge_routes_to_ship_design_log(monkeypatch: pytes
     assert captured_kwargs["stderr"] == subprocess.DEVNULL
 
 
-def test_spawn_detached_admin_merge_omits_repo_when_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_detached_admin_merge_omits_repo_when_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured_argv: list[str] = []
 
     def fake_popen(argv: list[str], **_kwargs: object) -> object:
@@ -505,9 +645,18 @@ def test_spawn_detached_admin_merge_omits_repo_when_empty(monkeypatch: pytest.Mo
         return object()
 
     monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", fake_popen)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge(cli="/p/python/cli.py", pr_number="77", repo="", repo_root="/repo")
+    design_log_publish_flow._spawn_detached_admin_merge(
+        cli="/p/python/cli.py", pr_number="77", repo="", repo_root="/repo"
+    )
 
-    assert captured_argv == [sys.executable, "/p/python/cli.py", "ship", "design-log", "--pr-number", "77"]
+    assert captured_argv == [
+        sys.executable,
+        "/p/python/cli.py",
+        "ship",
+        "design-log",
+        "--pr-number",
+        "77",
+    ]
     assert "--repo" not in captured_argv
 
 
@@ -545,7 +694,9 @@ def test_publish_excluded_predicate() -> None:
         is_dir=False,
         top_level=True,
     )
-    assert design_log_publish_flow._publish_excluded("panel-prompt-sizes.tsv", is_dir=False, top_level=True)
+    assert design_log_publish_flow._publish_excluded(
+        "panel-prompt-sizes.tsv", is_dir=False, top_level=True
+    )
     kept = [
         "plan.txt",
         "composed-plan.diff",
@@ -576,6 +727,66 @@ def test_publish_excluded_predicate() -> None:
     assert not design_log_publish_flow._publish_excluded("plan-review", is_dir=True)
     assert not design_log_publish_flow._publish_excluded("breadcrumbs", is_dir=True)
     assert not design_log_publish_flow._publish_excluded("plan-autofix", is_dir=False)
+
+
+def test_pause_log_publish_retains_completed_sentinels(tmp_path: Path) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
+    completed = design / ".completed"
+    completed.mkdir()
+    _ = (completed / "step-3").write_text("", encoding="utf-8")
+    _ = (completed / "step-5b").write_text("", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+
+    result = _run_publish(repo, design, bin_dir, reason="pause", outcome="paused")
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=true" in result.stdout, result.stderr
+    origin = tmp_path / "origin.git"
+    tree = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert f"larch-logs/design/{RUN_ID}/.completed/step-3" in tree, tree
+    assert f"larch-logs/design/{RUN_ID}/.completed/step-5b" in tree, tree
+
+
+def test_final_log_publish_clears_preexisting_completed_sentinels(
+    tmp_path: Path,
+) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    stale_completed = repo / "larch-logs" / "design" / RUN_ID / ".completed"
+    stale_completed.mkdir(parents=True)
+    _ = (stale_completed / "step-3-terminal").write_text("", encoding="utf-8")
+    _git("add", f"larch-logs/design/{RUN_ID}/.completed/step-3-terminal", cwd=repo)
+    _git("commit", "-q", "-m", "stale completed sentinel", cwd=repo)
+
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+
+    result = _run_publish(repo, design, bin_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=true" in result.stdout, result.stderr
+    origin = tmp_path / "origin.git"
+    tree = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert f"larch-logs/design/{RUN_ID}/artifact.txt" in tree, tree
+    assert f"larch-logs/design/{RUN_ID}/.completed/step-3-terminal" not in tree, tree
 
 
 def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
@@ -616,10 +827,18 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     pr_round.mkdir(parents=True)
     _ = (pr_round / "findings.md").write_text("NF", encoding="utf-8")
     _ = (pr_round / "codex-vote-output.txt").write_text("VOTE", encoding="utf-8")
-    _ = (pr_round / "panel-prompt-sizes.tsv").write_text("site\tslot\n", encoding="utf-8")
-    _ = (pr_round / "codex-vote-output.txt.events.jsonl").write_text("{}", encoding="utf-8")
-    _ = (pr_round / "findings-ledger.tsv").write_text("round\tfinding_id\n", encoding="utf-8")
-    _ = (pr_round / "security-oos-observations.md").write_text("nested private\n", encoding="utf-8")
+    _ = (pr_round / "panel-prompt-sizes.tsv").write_text(
+        "site\tslot\n", encoding="utf-8"
+    )
+    _ = (pr_round / "codex-vote-output.txt.events.jsonl").write_text(
+        "{}", encoding="utf-8"
+    )
+    _ = (pr_round / "findings-ledger.tsv").write_text(
+        "round\tfinding_id\n", encoding="utf-8"
+    )
+    _ = (pr_round / "security-oos-observations.md").write_text(
+        "nested private\n", encoding="utf-8"
+    )
     # Whole-subtree drops.
     autofix = design / "plan-autofix"
     autofix.mkdir()
@@ -637,7 +856,10 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     origin = tmp_path / "origin.git"
     ls = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin, capture_output=True, text=True, check=False,
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     tree = ls.stdout
     base = f"larch-logs/design/{RUN_ID}"
@@ -660,7 +882,10 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
 def test_scrub_violations_parses_last_numeric() -> None:
     # Mirrors the retired design-publish.sh parse: last occurrence wins, and a
     # missing or non-numeric value defaults to "0" (#4782).
-    assert design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=3\n") == "3"
+    assert (
+        design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=3\n")
+        == "3"
+    )
     assert (
         design_log_publish_flow._scrub_violations(
             "SECRET_SCRUB_VIOLATIONS=1\nSECRET_SCRUB_VIOLATIONS=5\n"
@@ -668,8 +893,14 @@ def test_scrub_violations_parses_last_numeric() -> None:
         == "5"
     )
     assert design_log_publish_flow._scrub_violations("no marker here\n") == "0"
-    assert design_log_publish_flow._scrub_violations("SECRET_SCRUB_VIOLATIONS=oops\n") == "0"
-    assert design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=0\n") == "0"
+    assert (
+        design_log_publish_flow._scrub_violations("SECRET_SCRUB_VIOLATIONS=oops\n")
+        == "0"
+    )
+    assert (
+        design_log_publish_flow._scrub_violations("<sha>\nSECRET_SCRUB_VIOLATIONS=0\n")
+        == "0"
+    )
 
 
 def test_copy_tree_redacted_fail_closed_on_residual(
@@ -687,13 +918,21 @@ def test_copy_tree_redacted_fail_closed_on_residual(
     def _never_scrubs(text: str) -> tuple[str, dict[str, int]]:
         return text, {"cursor-api-key": 1}
 
-    monkeypatch.setattr(design_log_publish_flow.redact, "scrub_log_secrets", _never_scrubs)
-    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="secret survived"):
-        _ = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=dest)
+    monkeypatch.setattr(
+        design_log_publish_flow.redact, "scrub_log_secrets", _never_scrubs
+    )
+    with pytest.raises(
+        design_log_publish_flow.SecretScrubFailure, match="secret survived"
+    ):
+        _ = design_log_publish_flow._copy_tree_redacted(
+            plugin_root=plugin_root, source=source, dest=dest
+        )
     assert not dest.exists()
 
 
-def test_copy_tree_redacted_redact_tmpdir_failure_is_secret_scrub_failure(tmp_path: Path) -> None:
+def test_copy_tree_redacted_redact_tmpdir_failure_is_secret_scrub_failure(
+    tmp_path: Path,
+) -> None:
     plugin_root = tmp_path / "plugin"
     cli = plugin_root / "python" / "cli.py"
     cli.parent.mkdir(parents=True)
@@ -701,8 +940,12 @@ def test_copy_tree_redacted_redact_tmpdir_failure_is_secret_scrub_failure(tmp_pa
     source = tmp_path / "source.txt"
     _ = source.write_text("plain\n", encoding="utf-8")
 
-    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="redact tmpdir-paths"):
-        _ = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt")
+    with pytest.raises(
+        design_log_publish_flow.SecretScrubFailure, match="redact tmpdir-paths"
+    ):
+        _ = design_log_publish_flow._copy_tree_redacted(
+            plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt"
+        )
 
 
 def test_copy_tree_redacted_scrubber_exception_is_secret_scrub_failure(
@@ -717,24 +960,34 @@ def test_copy_tree_redacted_scrubber_exception_is_secret_scrub_failure(
         raise RuntimeError("scrubber unavailable")
 
     monkeypatch.setattr(design_log_publish_flow.redact, "scrub_log_secrets", _boom)
-    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="secret scrubber failed"):
-        _ = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt")
+    with pytest.raises(
+        design_log_publish_flow.SecretScrubFailure, match="secret scrubber failed"
+    ):
+        _ = design_log_publish_flow._copy_tree_redacted(
+            plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt"
+        )
 
 
-def test_copy_tree_redacted_symlink_skip_is_not_secret_scrub_failure(tmp_path: Path) -> None:
+def test_copy_tree_redacted_symlink_skip_is_not_secret_scrub_failure(
+    tmp_path: Path,
+) -> None:
     plugin_root = Path(__file__).resolve().parents[3]
     target = tmp_path / "target.txt"
     _ = target.write_text("plain\n", encoding="utf-8")
     source = tmp_path / "source-link.txt"
     source.symlink_to(target)
 
-    ok, count = design_log_publish_flow._copy_tree_redacted(plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt")
+    ok, count = design_log_publish_flow._copy_tree_redacted(
+        plugin_root=plugin_root, source=source, dest=tmp_path / "dest.txt"
+    )
 
     assert not ok
     assert count == 0
 
 
-def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(tmp_path: Path) -> None:
+def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(
+    tmp_path: Path,
+) -> None:
     plugin_root = Path(__file__).resolve().parents[3]
     source = tmp_path / "source.txt"
     raw = "token=xoxb-1234567890abcdef"
@@ -787,10 +1040,14 @@ def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
     _ = (design / "artifact.txt").write_text("plain\n", encoding="utf-8")
     calls: list[list[str]] = []
 
-    def _completed(argv: list[str], returncode: int, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
+    def _completed(
+        argv: list[str], returncode: int, stdout: str = "", stderr: str = ""
+    ) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, returncode, stdout, stderr)
 
-    def _fake_run(argv: list[str], *, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+    def _fake_run(
+        argv: list[str], *, cwd: str | None = None
+    ) -> subprocess.CompletedProcess[str]:
         del cwd
         calls.append(argv)
         if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
@@ -802,7 +1059,12 @@ def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
         if argv[:3] == ["git", "rev-parse", "HEAD"]:
             return _completed(argv, 0, "base\n")
         if len(argv) >= 4 and argv[2:4] == ["run-log", "commit"]:
-            return _completed(argv, 1, "", "secret survived scrubbing in larch-logs/design/RUN1/a.txt\n")
+            return _completed(
+                argv,
+                1,
+                "",
+                "secret survived scrubbing in larch-logs/design/RUN1/a.txt\n",
+            )
         return _completed(argv, 0)
 
     def _copy_ok(*_args: object, **_kwargs: object) -> tuple[bool, int]:
@@ -811,13 +1073,17 @@ def test_publish_design_logs_classifies_run_log_commit_scrub_failure(
     monkeypatch.setattr(design_log_publish_flow, "_run", _fake_run)
     monkeypatch.setattr(design_log_publish_flow, "_copy_tree_redacted", _copy_ok)
 
-    with pytest.raises(design_log_publish_flow.SecretScrubFailure, match="run-log commit"):
+    with pytest.raises(
+        design_log_publish_flow.SecretScrubFailure, match="run-log commit"
+    ):
         _ = design_log_publish_flow._publish_design_logs(
-            plugin_root=tmp_path,
-            design_tmpdir=design,
-            run_id="RUN1",
-            issue="12",
-            repo="",
+            request=design_log_publish_flow._PublishDesignLogsRequest(
+                plugin_root=tmp_path,
+                design_tmpdir=design,
+                run_id="RUN1",
+                issue="12",
+                repo="",
+            )
         )
 
     assert any(len(call) >= 4 and call[2:4] == ["run-log", "commit"] for call in calls)
@@ -827,17 +1093,34 @@ def test_publish_excluded_github_redundant_top_level_only() -> None:
     # GitHub-redundant snapshots duplicate the issue body / larch:diagrams comment
     # and are dropped at the top level only, so a curated subtree copy (e.g.
     # plan-review/round-N/panel-manifest.ndjson) is never collaterally dropped (#4782).
-    redundant = ["issue-body.txt", "issue.json", "architecture-diagram.md", "architecture-diagram.candidate.md", "architecture-diagram.skipped", "architecture-diagram-generation.failure.log", "architecture-diagram-sanitizer.failure.log", "panel-manifest.ndjson"]
+    redundant = [
+        "issue-body.txt",
+        "issue.json",
+        "architecture-diagram.md",
+        "architecture-diagram.candidate.md",
+        "architecture-diagram.skipped",
+        "architecture-diagram-generation.failure.log",
+        "architecture-diagram-sanitizer.failure.log",
+        "panel-manifest.ndjson",
+    ]
     for name in redundant:
-        assert design_log_publish_flow._publish_excluded(name, is_dir=False, top_level=True), name
+        assert design_log_publish_flow._publish_excluded(
+            name, is_dir=False, top_level=True
+        ), name
         assert not design_log_publish_flow._publish_excluded(name, is_dir=False), name
     # Universal carriers stay excluded at every depth regardless of top_level.
     carrier = "codex-primary-plan-arch-output.txt.events.jsonl"
-    assert design_log_publish_flow._publish_excluded(carrier, is_dir=False, top_level=False)
-    assert design_log_publish_flow._publish_excluded(carrier, is_dir=False, top_level=True)
+    assert design_log_publish_flow._publish_excluded(
+        carrier, is_dir=False, top_level=False
+    )
+    assert design_log_publish_flow._publish_excluded(
+        carrier, is_dir=False, top_level=True
+    )
 
 
-def test_log_publish_drops_github_redundant_top_level_keeps_subtree(tmp_path: Path) -> None:
+def test_log_publish_drops_github_redundant_top_level_keeps_subtree(
+    tmp_path: Path,
+) -> None:
     # GitHub-redundant snapshots (issue body, issue.json, the architecture diagram
     # already upserted to larch:diagrams, the top-level panel manifest) are dropped
     # at the top level, while the curated plan-review/round-N/ copies of the same
@@ -846,13 +1129,26 @@ def test_log_publish_drops_github_redundant_top_level_keeps_subtree(tmp_path: Pa
     design = tmp_path / "design"
     design.mkdir()
     _ = (design / "plan.txt").write_text("PLAN", encoding="utf-8")
-    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "architecture-diagram.candidate.md", "architecture-diagram.skipped", "architecture-diagram-generation.failure.log", "architecture-diagram-sanitizer.failure.log", "panel-manifest.ndjson"):
+    for name in (
+        "issue-body.txt",
+        "issue.json",
+        "architecture-diagram.md",
+        "architecture-diagram.candidate.md",
+        "architecture-diagram.skipped",
+        "architecture-diagram-generation.failure.log",
+        "architecture-diagram-sanitizer.failure.log",
+        "panel-manifest.ndjson",
+    ):
         _ = (design / name).write_text("REDUNDANT", encoding="utf-8")
     pr_round = design / "plan-review" / "round-1"
     pr_round.mkdir(parents=True)
-    _ = (pr_round / "panel-manifest.ndjson").write_text('{"tool":"codex"}', encoding="utf-8")
+    _ = (pr_round / "panel-manifest.ndjson").write_text(
+        '{"tool":"codex"}', encoding="utf-8"
+    )
     _ = (pr_round / "architecture-diagram.md").write_text("CURATED", encoding="utf-8")
-    _ = (pr_round / "architecture-diagram.candidate.md").write_text("CURATED CANDIDATE", encoding="utf-8")
+    _ = (pr_round / "architecture-diagram.candidate.md").write_text(
+        "CURATED CANDIDATE", encoding="utf-8"
+    )
 
     bin_dir = tmp_path / "bin"
     _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
@@ -863,11 +1159,23 @@ def test_log_publish_drops_github_redundant_top_level_keeps_subtree(tmp_path: Pa
     origin = tmp_path / "origin.git"
     ls = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
-        cwd=origin, capture_output=True, text=True, check=False,
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     tree = ls.stdout
     base = f"larch-logs/design/{RUN_ID}"
-    for name in ("issue-body.txt", "issue.json", "architecture-diagram.md", "architecture-diagram.candidate.md", "architecture-diagram.skipped", "architecture-diagram-generation.failure.log", "architecture-diagram-sanitizer.failure.log", "panel-manifest.ndjson"):
+    for name in (
+        "issue-body.txt",
+        "issue.json",
+        "architecture-diagram.md",
+        "architecture-diagram.candidate.md",
+        "architecture-diagram.skipped",
+        "architecture-diagram-generation.failure.log",
+        "architecture-diagram-sanitizer.failure.log",
+        "panel-manifest.ndjson",
+    ):
         assert f"{base}/{name}" not in tree, f"expected top-level drop: {name}\n{tree}"
     assert f"{base}/plan-review/round-1/panel-manifest.ndjson" in tree, tree
     assert f"{base}/plan-review/round-1/architecture-diagram.md" in tree, tree
@@ -905,11 +1213,15 @@ def test_log_publish_excludes_bounded_diagram_failure_sidecars(tmp_path: Path) -
     assert f"{base}/design-step-5b.5-diagram-failure.bounded.log" not in tree, tree
 
 
-def test_spawn_detached_admin_merge_swallows_launch_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_spawn_detached_admin_merge_swallows_launch_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # Best-effort: a launch failure must not raise (the log PR stays open for a
     # manual/CI merge and the working tree is already clean).
     def boom(_argv: list[str], **_kwargs: object) -> object:
         raise OSError("no exec")
 
     monkeypatch.setattr(design_log_publish_flow.subprocess, "Popen", boom)  # type: ignore[arg-type]
-    design_log_publish_flow._spawn_detached_admin_merge(cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo")
+    design_log_publish_flow._spawn_detached_admin_merge(
+        cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo"
+    )

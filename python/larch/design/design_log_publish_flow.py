@@ -10,8 +10,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from pathlib import Path
 from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 from larch.core import redact
 from larch.design import design_publish
@@ -28,6 +29,16 @@ class SecretScrubFailure(RuntimeError):
     """Raised when a publish path cannot prove secret scrubbing succeeded."""
 
 
+@dataclass(frozen=True)
+class _PublishDesignLogsRequest:
+    plugin_root: Path
+    design_tmpdir: Path
+    run_id: str
+    issue: str
+    repo: str
+    include_completed: bool = False
+
+
 def _emit(*, k: str, v: str) -> None:
     print(f"{k}={v}")
 
@@ -40,7 +51,9 @@ def _validate_slug(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+", value))
 
 
-def _persist_metadata(*, design_tmpdir: Path, pr_number: str, pr_url: str, recovery_branch: str) -> None:
+def _persist_metadata(
+    *, design_tmpdir: Path, pr_number: str, pr_url: str, recovery_branch: str
+) -> None:
     with contextlib.suppress(OSError):
         _ = (design_tmpdir / ".design-log-publish-metadata.env").write_text(
             f"DESIGN_LOG_PR_NUMBER={pr_number}\nDESIGN_LOG_PR_URL={pr_url}\nDESIGN_LOG_RECOVERY_BRANCH={recovery_branch}\n",
@@ -110,23 +123,29 @@ _PUBLISH_EXCLUDE_GLOBS = (
 # diagnostic sidecar (both documented in SECURITY.md), and the pre-redaction
 # duplicate of composed-plan.md (the publish redacts on copy, so the `.redacted`
 # twin adds nothing).
-_PUBLISH_EXCLUDE_NAMES = frozenset({
-    "plan-review-collector.stderr",
-    "plan-review-slots.ndjson.output-files.dropped-slots",
-    "composed-plan.redacted.md",
-    "findings-ledger.tsv",
-    "claude-source.env",
-    "source-env.sh",
-    "security-oos-observations.md",
-})
+_PUBLISH_EXCLUDE_NAMES = frozenset(
+    {
+        "plan-review-collector.stderr",
+        "plan-review-slots.ndjson.output-files.dropped-slots",
+        "composed-plan.redacted.md",
+        "findings-ledger.tsv",
+        "claude-source.env",
+        "source-env.sh",
+        "security-oos-observations.md",
+    }
+)
 
 # Whole subtrees of raw transcripts (plan-autofix drafts) or internal step
-# sentinels (.completed) that carry no committed-log value.
-_PUBLISH_EXCLUDE_DIRS = frozenset({
-    "plan-autofix",
-    ".completed",
-    "larch-logs",
-})
+# sentinels (.completed) that carry no final committed-log value. Pause
+# snapshots bypass the top-level .completed exclusion so resume can restore real
+# provenance sentinels; nested .completed directories remain excluded.
+_PUBLISH_EXCLUDE_DIRS = frozenset(
+    {
+        "plan-autofix",
+        ".completed",
+        "larch-logs",
+    }
+)
 
 # GitHub-redundant snapshots: top-level duplicates of content already on GitHub.
 # issue-body.txt / issue.json snapshot the issue body; architecture-diagram*.md,
@@ -137,17 +156,19 @@ _PUBLISH_EXCLUDE_DIRS = frozenset({
 # LEVEL ONLY: panel-manifest.ndjson is a curated file under plan-review/round-N/,
 # so a blanket basename rule would wrongly drop the kept subtree copies. Restores
 # the pre-#3681 bash filter (Phase 3d / #3721 / #3929).
-_PUBLISH_EXCLUDE_TOPLEVEL_NAMES = frozenset({
-    "issue-body.txt",
-    "issue.json",
-    "architecture-diagram.md",
-    "architecture-diagram.candidate.md",
-    "architecture-diagram.skipped",
-    "architecture-diagram-generation.failure.log",
-    "architecture-diagram-sanitizer.failure.log",
-    "panel-manifest.ndjson",
-    "panel-prompt-sizes.tsv",
-})
+_PUBLISH_EXCLUDE_TOPLEVEL_NAMES = frozenset(
+    {
+        "issue-body.txt",
+        "issue.json",
+        "architecture-diagram.md",
+        "architecture-diagram.candidate.md",
+        "architecture-diagram.skipped",
+        "architecture-diagram-generation.failure.log",
+        "architecture-diagram-sanitizer.failure.log",
+        "panel-manifest.ndjson",
+        "panel-prompt-sizes.tsv",
+    }
+)
 
 
 def _publish_excluded(name: str, *, is_dir: bool, top_level: bool = False) -> bool:
@@ -173,13 +194,20 @@ def _publish_excluded(name: str, *, is_dir: bool, top_level: bool = False) -> bo
     return any(fnmatch.fnmatchcase(name, glob) for glob in _PUBLISH_EXCLUDE_GLOBS)
 
 
-def _copy_tree_redacted(*, plugin_root: Path, source: Path, dest: Path) -> tuple[bool, int]:
+def _copy_tree_redacted(
+    *, plugin_root: Path, source: Path, dest: Path
+) -> tuple[bool, int]:
     if source.is_symlink():
         return False, 0
     if source.is_file():
         dest.parent.mkdir(parents=True, exist_ok=True)
         red = subprocess.run(
-            [sys.executable, str(plugin_root / "python" / "cli.py"), "redact", "tmpdir-paths"],
+            [
+                sys.executable,
+                str(plugin_root / "python" / "cli.py"),
+                "redact",
+                "tmpdir-paths",
+            ],
             input=source.read_text(encoding="utf-8", errors="replace"),
             text=True,
             capture_output=True,
@@ -197,7 +225,9 @@ def _copy_tree_redacted(*, plugin_root: Path, source: Path, dest: Path) -> tuple
             try:
                 _, residual = redact.scrub_log_secrets(scrubbed)
             except Exception as exc:
-                raise SecretScrubFailure(f"secret scrubber failed for {source}") from exc
+                raise SecretScrubFailure(
+                    f"secret scrubber failed for {source}"
+                ) from exc
             if residual:
                 print(
                     f"design log-publish: secret survived scrubbing in {source}",
@@ -215,7 +245,9 @@ def _copy_tree_redacted(*, plugin_root: Path, source: Path, dest: Path) -> tuple
                 continue
             if _publish_excluded(child.name, is_dir=child.is_dir()):
                 continue
-            ok, count = _copy_tree_redacted(plugin_root=plugin_root, source=child, dest=dest / child.name)
+            ok, count = _copy_tree_redacted(
+                plugin_root=plugin_root, source=child, dest=dest / child.name
+            )
             if not ok:
                 return False, total
             total += count
@@ -223,19 +255,25 @@ def _copy_tree_redacted(*, plugin_root: Path, source: Path, dest: Path) -> tuple
     return True, 0
 
 
-def _run(argv: list[str], *, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
+def _run(
+    argv: list[str], *, cwd: str | None = None
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, check=False)
 
 
 def _default_base_ref(repo_root: str) -> str:
-    head = _run(["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_root)
+    head = _run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"], cwd=repo_root
+    )
     target = head.stdout.strip()
     if head.returncode == 0 and target.startswith("origin/"):
         return target.split("/", 1)[1]
     return "main"
 
 
-def _spawn_detached_admin_merge(*, cli: str, pr_number: str, repo: str, repo_root: str) -> None:
+def _spawn_detached_admin_merge(
+    *, cli: str, pr_number: str, repo: str, repo_root: str
+) -> None:
     """Launch the design-log admin-merge waiter as a detached background process.
 
     Routes the automated log PR through the existing ``ship design-log`` path
@@ -292,12 +330,9 @@ def _design_log_worktree_parent(design_tmpdir: Path) -> Path:
     wt_scratch.mkdir(parents=True, exist_ok=True)
     return Path(tempfile.mkdtemp(prefix="larch-design-log-", dir=wt_scratch))
 
+
 def _publish_design_logs(
-    *, plugin_root: Path,
-    design_tmpdir: Path,
-    run_id: str,
-    issue: str,
-    repo: str,
+    *, request: _PublishDesignLogsRequest
 ) -> tuple[bool, str, str, str, str]:
     """Commit the design run tree on a dedicated branch via a disposable worktree, push it, and open a PR.
 
@@ -305,74 +340,144 @@ def _publish_design_logs(
     working tree is never touched: every write lands inside the worktree, so the
     next ``/implement`` preflight stays clean even if this fails (issue #4395).
     ``recovery_branch`` is set only when a commit exists but could not be turned
-    into a PR, so the operator can finish it manually.
+    into a PR, so the operator can finish it manually. Final design logs drop
+    ``.completed/`` sentinels; pause snapshots retain the top-level sentinel
+    directory so resume can restore provenance evidence without synthesizing it.
     """
     top = _run(["git", "rev-parse", "--show-toplevel"])
     repo_root = top.stdout.strip()
     if top.returncode != 0 or not repo_root:
         return (False, "", "", "", "0")
-    branch = f"larch-logs/design-{run_id}"
-    cli = str(plugin_root / "python" / "cli.py")
-    repo_args = ["--repo", repo] if repo else []
-    wt_parent = _design_log_worktree_parent(design_tmpdir)
+    branch = f"larch-logs/design-{request.run_id}"
+    cli = str(request.plugin_root / "python" / "cli.py")
+    repo_args = ["--repo", request.repo] if request.repo else []
+    wt_parent = _design_log_worktree_parent(request.design_tmpdir)
     worktree = wt_parent / "wt"
     branch_created = False
     keep_branch_for_recovery = False
     try:
-        add = _run(["git", "worktree", "add", "-b", branch, str(worktree), "HEAD"], cwd=repo_root)
+        add = _run(
+            ["git", "worktree", "add", "-b", branch, str(worktree), "HEAD"],
+            cwd=repo_root,
+        )
         if add.returncode != 0:
-            print(f"design log-publish: worktree add failed: {add.stderr.strip()}", file=sys.stderr)
+            print(
+                f"design log-publish: worktree add failed: {add.stderr.strip()}",
+                file=sys.stderr,
+            )
             return (False, "", "", "", "0")
         branch_created = True
         wt_log_root = worktree / "larch-logs"
-        run_dest = wt_log_root / "design" / run_id
+        run_dest = wt_log_root / "design" / request.run_id
         run_dest.mkdir(parents=True, exist_ok=True)
         init = _run(
-            [sys.executable, cli, "run-log", "init", "--log-root", str(wt_log_root),
-             "--skill", "design", "--run-id", run_id, "--issue", issue],
+            [
+                sys.executable,
+                cli,
+                "run-log",
+                "init",
+                "--log-root",
+                str(wt_log_root),
+                "--skill",
+                "design",
+                "--run-id",
+                request.run_id,
+                "--issue",
+                request.issue,
+            ],
         )
         if init.returncode != 0:
             return (False, "", "", "", "0")
+        if not request.include_completed:
+            completed = run_dest / ".completed"
+            if completed.is_symlink() or completed.is_file():
+                with contextlib.suppress(FileNotFoundError, OSError):
+                    completed.unlink()
+            else:
+                shutil.rmtree(completed, ignore_errors=True)
         pre_scrub_violations = 0
-        for child in design_tmpdir.iterdir():
+        for child in request.design_tmpdir.iterdir():
             if child.name == ".design-log-publish-metadata.env":
                 continue
-            if _publish_excluded(child.name, is_dir=child.is_dir(), top_level=True):
+            if _publish_excluded(
+                child.name, is_dir=child.is_dir(), top_level=True
+            ) and not (
+                request.include_completed
+                and child.name == ".completed"
+                and child.is_dir()
+            ):
                 continue
-            ok, scrub_count = _copy_tree_redacted(plugin_root=plugin_root, source=child, dest=run_dest / child.name)
+            ok, scrub_count = _copy_tree_redacted(
+                plugin_root=request.plugin_root,
+                source=child,
+                dest=run_dest / child.name,
+            )
             if not ok:
                 return (False, "", "", "", "0")
             pre_scrub_violations += scrub_count
         base_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
         commit = _run(
-            [sys.executable, cli, "run-log", "commit", "--log-root", str(wt_log_root),
-             "--skill", "design", "--run-id", run_id, "--pre-scrub-violations", str(pre_scrub_violations)],
+            [
+                sys.executable,
+                cli,
+                "run-log",
+                "commit",
+                "--log-root",
+                str(wt_log_root),
+                "--skill",
+                "design",
+                "--run-id",
+                request.run_id,
+                "--pre-scrub-violations",
+                str(pre_scrub_violations),
+            ],
             cwd=str(worktree),
         )
         head_sha = _run(["git", "rev-parse", "HEAD"], cwd=str(worktree)).stdout.strip()
         if commit.returncode != 0 or not head_sha or head_sha == base_sha:
             if commit.returncode != 0 and _run_log_commit_scrub_failed(commit):
                 raise SecretScrubFailure("run-log commit scrub failure")
-            print(f"design log-publish: run-log commit produced no commit: {commit.stderr.strip()}", file=sys.stderr)
+            print(
+                f"design log-publish: run-log commit produced no commit: {commit.stderr.strip()}",
+                file=sys.stderr,
+            )
             return (False, "", "", "", "0")
         scrub_violations = _scrub_violations(commit.stdout)
         push = _run(["git", "push", "-u", "origin", branch], cwd=str(worktree))
         if push.returncode != 0:
-            print(f"design log-publish: push failed; local branch {branch} kept for recovery: {push.stderr.strip()}", file=sys.stderr)
+            print(
+                f"design log-publish: push failed; local branch {branch} kept for recovery: {push.stderr.strip()}",
+                file=sys.stderr,
+            )
             keep_branch_for_recovery = True
             return (False, "", "", branch, scrub_violations)
         body_file = wt_parent / "pr-body.txt"
         _ = body_file.write_text(
-            f"Automated design log directory for run {run_id}. Merged once required CI checks pass.\n",
+            f"Automated design log directory for run {request.run_id}. Merged once required CI checks pass.\n",
             encoding="utf-8",
         )
         pr = _run(
-            ["gh", "pr", "create", "--head", branch, "--base", _default_base_ref(repo_root),
-             "--title", f"chore(larch-logs): design run {run_id}", "--body-file", str(body_file), *repo_args],
+            [
+                "gh",
+                "pr",
+                "create",
+                "--head",
+                branch,
+                "--base",
+                _default_base_ref(repo_root),
+                "--title",
+                f"chore(larch-logs): design run {request.run_id}",
+                "--body-file",
+                str(body_file),
+                *repo_args,
+            ],
             cwd=repo_root,
         )
         if pr.returncode != 0:
-            print(f"design log-publish: gh pr create failed; pushed branch {branch} kept for recovery: {pr.stderr.strip()}", file=sys.stderr)
+            print(
+                f"design log-publish: gh pr create failed; pushed branch {branch} kept for recovery: {pr.stderr.strip()}",
+                file=sys.stderr,
+            )
             return (False, "", "", branch, scrub_violations)
         pr_url = pr.stdout.strip().splitlines()[-1] if pr.stdout.strip() else ""
         match: re.Match[str] | None = _PR_URL_RE.search(pr_url)
@@ -388,7 +493,9 @@ def _publish_design_logs(
         # leaves the PR open for manual/CI merge and the working tree is already
         # clean either way.
         if pr_number:
-            _spawn_detached_admin_merge(cli=cli, pr_number=pr_number, repo=repo, repo_root=repo_root)
+            _spawn_detached_admin_merge(
+                cli=cli, pr_number=pr_number, repo=request.repo, repo_root=repo_root
+            )
         return (True, pr_number, pr_url, "", scrub_violations)
     finally:
         _ = _run(["git", "worktree", "remove", "--force", str(worktree)], cwd=repo_root)
@@ -423,14 +530,22 @@ def _render_final_summary_before_copy(
             session_id=run_id,
             repo=repo,
             upsert_summary_comment=False,
-            stdout_log_path=design_tmpdir / f"render-final-summary.{outcome}.pre-publish.stdout.log",
+            stdout_log_path=design_tmpdir
+            / f"render-final-summary.{outcome}.pre-publish.stdout.log",
         )
     )
 
 
 def log_publish_main(argv: Sequence[str]) -> int:
     args = list(argv)
-    parsed = {"--design-tmpdir": "", "--run-id": "", "--issue": "", "--repo": "", "--reason": "final", "--outcome": ""}
+    parsed = {
+        "--design-tmpdir": "",
+        "--run-id": "",
+        "--issue": "",
+        "--repo": "",
+        "--reason": "final",
+        "--outcome": "",
+    }
     dry_run = False
     i = 0
     while i < len(args):
@@ -483,7 +598,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
                 _emit(k="PR_NUMBER", v="")
                 _emit(k="PR_URL", v="")
                 return 0
-        repo_root = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False).stdout.strip()  # noqa: S607
+        repo_root = _run(["git", "rev-parse", "--show-toplevel"]).stdout.strip()
         if not repo_root:
             _emit(k="PUBLISH_OK", v="false")
             _emit(k="PR_NUMBER", v="")
@@ -496,14 +611,21 @@ def log_publish_main(argv: Sequence[str]) -> int:
             repo=parsed["--repo"],
             run_id=parsed["--run-id"],
         ):
-            print("design log-publish: final-summary render failed; continuing without stale summary", file=sys.stderr)
-        _persist_metadata(design_tmpdir=design_tmpdir, pr_number="", pr_url="", recovery_branch="")
+            print(
+                "design log-publish: final-summary render failed; continuing without stale summary",
+                file=sys.stderr,
+            )
+        _persist_metadata(
+            design_tmpdir=design_tmpdir, pr_number="", pr_url="", recovery_branch=""
+        )
         _emit(k="PUBLISH_OK", v="true")
         _emit(k="PR_NUMBER", v="")
         _emit(k="PR_URL", v="")
         return 0
 
-    plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
+    plugin_root = Path(
+        os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3])
+    )
     capture_ctx = design_publish._TranscriptCaptureContext(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
         design_tmpdir=design_tmpdir,
         plugin_root=plugin_root,
@@ -526,15 +648,23 @@ def log_publish_main(argv: Sequence[str]) -> int:
         repo=parsed["--repo"],
         run_id=parsed["--run-id"],
     ):
-        print("design log-publish: final-summary render failed; continuing without stale summary", file=sys.stderr)
+        print(
+            "design log-publish: final-summary render failed; continuing without stale summary",
+            file=sys.stderr,
+        )
 
     try:
-        publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = _publish_design_logs(
-            plugin_root=plugin_root,
-            design_tmpdir=design_tmpdir,
-            run_id=parsed["--run-id"],
-            issue=parsed["--issue"],
-            repo=parsed["--repo"],
+        publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = (
+            _publish_design_logs(
+                request=_PublishDesignLogsRequest(
+                    plugin_root=plugin_root,
+                    design_tmpdir=design_tmpdir,
+                    run_id=parsed["--run-id"],
+                    issue=parsed["--issue"],
+                    repo=parsed["--repo"],
+                    include_completed=parsed["--reason"] == "pause",
+                )
+            )
         )
     except SecretScrubFailure as exc:
         print(f"design log-publish: secret scrub failed: {exc}", file=sys.stderr)
@@ -543,7 +673,12 @@ def log_publish_main(argv: Sequence[str]) -> int:
         _emit(k="PR_URL", v="")
         _emit(k="SECRET_SCRUB_VIOLATIONS", v="0")
         return 1
-    _persist_metadata(design_tmpdir=design_tmpdir, pr_number=pr_number, pr_url=pr_url, recovery_branch=recovery_branch)
+    _persist_metadata(
+        design_tmpdir=design_tmpdir,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        recovery_branch=recovery_branch,
+    )
     _emit(k="PUBLISH_OK", v="true" if publish_ok else "false")
     _emit(k="PR_NUMBER", v=pr_number)
     _emit(k="PR_URL", v=pr_url)
