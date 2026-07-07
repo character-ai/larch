@@ -1,0 +1,79 @@
+Reviewing the plan against the codebase: I'll trace panel dispatch, slot manifests, tier filtering, and related tests/docs.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/review/review_dispatch_panel.py:299-307	_append_static_specialist_rows never copies per-slot cursor_model into panel-manifest NDJSON	The plan adds cursor_model to SlotDefault and teaches agent_waterfall to honor it, but the dispatch writer only emits slot/tool/output/agent/(model_role). Waterfall would still launch the new lane with resolve_model_args/LARCH_CURSOR_MODEL (composer-2.5), defeating the auto pin and resolved_model=auto attribution	In _append_static_specialist_rows, when slot.cursor_model is set on a Cursor row, include cursor_model in the manifest dict (alongside explicit resolved_model=auto for plan-fidelity-auto)
+1	in_scope	major	correctness	python/larch/agents/collect_results.py:584-621	Collector retry relaunch omits per-slot Cursor model override	launch-review writes OUTER meta without any Cursor model field; collect_results rebuilds retry argv with only --tool/--prompt-file/--model-role. A transient failure on plan-fidelity-auto would retry as composer-2.5, breaking the auto lane contract and cost/A-B telemetry	Extend _review_append_outer_meta to persist the resolved Cursor model (e.g. OUTER_LAUNCHER_CURSOR_MODEL=auto); teach collect_results review retry to forward --cursor-model when present; add a focused collect_results or launch-review retry test
+1	out_of_scope	minor	code-quality	skills/review/SKILL.md:49	/review skill prose still describes TRIVIAL as pure Codex singles with Cursor-only fallback	After the lane lands, Step 2 breadcrumb text will contradict runtime panel shape even though Python dispatch is authoritative	Add a ### MAY_UPDATE: skills/review/SKILL.md bullet mirroring docs/review-agents.md Note A (additive Cursor/auto plan-fidelity on all tiers)
+
+## Numbered findings
+
+**1. [correctness]** `python/larch/review/review_dispatch_panel.py:299-307`
+
+The plan wires `cursor_model` through `SlotDefault`, `agent_waterfall`, and `agent launch-review`, but the manifest writer that feeds waterfall omits it today:
+
+```299:307:python/larch/review/review_dispatch_panel.py
+        _append_manifest_row(
+            manifest=manifest,
+            row={
+                "slot": slot.slot,
+                "tool": slot.tool,
+                "output": str(review_tmpdir / slot.output),
+                "agent": str(_PLUGIN_ROOT / slot.agent),
+                **({"model_role": codex_role} if slot.tool == "codex" else {}),
+            }
+        )
+```
+
+Without emitting `cursor_model` here, the new lane cannot receive `--cursor-model auto` at launch. Setting `resolved_model=auto` alone does not change argv construction in `_launch_slot` (`python/larch/agents/agent_waterfall.py:534-556`).
+
+**Suggested revision:** Add an explicit plan step under `### UPDATED: python/larch/review/review_dispatch_panel.py` to copy `slot.cursor_model` into manifest rows for Cursor slots (and keep explicit `resolved_model="auto"` for the plan-fidelity-auto row).
+
+---
+
+**2. [correctness]** `python/larch/agents/collect_results.py:584-621`, `python/larch/agents/_review_launcher.py:425-448`
+
+Collector retry rebuilds `agent launch-review` without any Cursor model override:
+
+```584:621:python/larch/agents/collect_results.py
+    if launcher_kind == "review":
+        ...
+        args = [
+            sys.executable,
+            str(PY_CLI),
+            "agent",
+            "launch-review",
+            "--tool",
+            meta.tool,
+            ...
+        ]
+        if meta.tool == "codex" and meta.outer_launcher_model_role:
+            ...
+            args.extend(["--model-role", meta.outer_launcher_model_role])
+```
+
+`_review_append_outer_meta` persists `OUTER_LAUNCHER_MODEL_ROLE` for Codex but no Cursor model (`python/larch/agents/_review_launcher.py:425-448`). The plan’s failure-mode note covers `LARCH_CURSOR_MODEL` on first launch, not collector retry.
+
+**Suggested revision:** Add `### UPDATED: python/larch/agents/collect_results.py` and extend the `_review_launcher.py` plan bullet to persist and replay `--cursor-model` on outer retries.
+
+---
+
+**3. [OUT_OF_SCOPE] [code-quality]** `skills/review/SKILL.md:49`
+
+Runtime `/review` skill text still says TRIVIAL is Codex singles with Cursor-only fallback. Public docs are in the plan (`README.md`, `docs/skills.md`, `docs/review-agents.md`), but the skill file operators invoke is not. Behavior is Python-owned; this is doc drift only.
+
+---
+
+## What already aligns
+
+Inspected paths and tests support the plan’s core shape when the two gaps above are closed:
+
+- **TRIVIAL gating:** `python/larch/review/review_dispatch_panel.py:285-293` is the Codex-singleton filter the plan correctly special-cases; `python/tests/review/test_review_pipeline.py:4575-4603` (`test_dispatch_panel_trivial_tier_emits_codex_singles_only`) will need the additive Cursor row assertion the plan already lists.
+- **Additive, not replacement:** `python/larch/core/config.py:360-377` builds six correctness/edge/testing cursor+codex pairs; the new slot is a separate registry row, so composer-2.5 specialists stay intact on MODERATE/HARD.
+- **Cursor unavailable:** existing `slot.tool == "cursor" and not cursor_slots_available` drop at `review_dispatch_panel.py:292-293` matches `--no-fallback` behavior in the plan.
+- **Tally attribution:** `python/larch/review/review_tally.py:290-298` already maps `plan-fidelity` → `architecture`; the plan’s `review_tally.py` update for `plan-fidelity-auto` matches basename parsing at `review_tally.py:323-326`.
+- **Static coverage:** `python/larch/review/review_core_body.py:183-189` derives expected slugs from manifest agent rows, so `plan-fidelity-auto` is covered without expanding `STATIC_REVIEWERS` in `review_pipeline_shared.py:25` (plan’s manifest-derived OR is sufficient).
+- **Pruning / degraded retry:** prune ledger keys on `tool:slot` (`review_prune.py:31-32`); carry-forward matches output basenames (`review_dispatch_panel.py:414-425`, tests at `test_review_pipeline.py:3392-3598`).
+- **Codex per-slot precedent:** `test_agent_waterfall.py:1534-1578` (`test_dispatch_waterfall_slot_model_role_overrides_global_for_codex`) is the right pattern for a new `cursor_model` waterfall test the plan requests.
+- **Cost rates for auto:** `python/larch/core/config.py:603` and `python/larch/report/report_tokens_cost.py:56-307` already know `CURSOR_AUTO_MODEL`.
+- **Design boundary:** plan correctly excludes `/design` plan-review (`python/larch/review/plan_review_panel.py`); voters stay on `codex-plan-fidelity` / `cursor-plan-fidelity` (`python/larch/review/voting.py:56`).
+
+**Tests/docs the plan already targets:** `python/tests/core/test_external_role_defaults.py`, `python/tests/review/test_review_pipeline.py`, `python/tests/agents/test_external_dispatch.py`, `python/tests/agents/test_launch_review.py`, `skills/shared/topology.tsv`, `docs/topology.md`.

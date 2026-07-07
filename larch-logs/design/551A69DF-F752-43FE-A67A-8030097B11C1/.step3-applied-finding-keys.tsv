@@ -1,0 +1,7 @@
+1	the new reviewer-plan-fidelity lane can be launched without plan context on description-mode and diff shapes that currently bypass the plan embed, so the review will misfire on missing-plan rather than checking plan fidelity.
+1	static review-manifest rows do not persist per-slot cursor_model, so agent_waterfall cannot forward the override and the new cursor/auto lane falls back to the global cursor model/composer telemetry instead of staying pinned to auto.
+1	retry metadata/replay drops the resolved cursor model, so a failed cursor row relaunches with the default composer model and changes both cost classification and a/b telemetry.
+1	even if the manifest carries a per-slot override, _launch_slot still drops it when building argv, so cursor tools continue to resolve through the global model path instead of the slot's override.
+1	the static focus-area classifier knows plan-fidelity but not the new plan-fidelity-auto slug, so filenames for the new lane can fall through to the wrong scoreboard/classification bucket.
+2	the plan-fidelity reviewer can be launched with a readable plan file but without embedded `<implementation_plan>` context on docs-only, test-only, or generated-only diffs, causing it to misfire with missing-plan findings instead of performing the intended plan-fidelity review.
+2	the new slotdefault for the review panel appears to reference `cursor_auto_model` before that constant is defined in `python/larch/core/config.py`, which would raise during import and block review/implement commands from loading config.

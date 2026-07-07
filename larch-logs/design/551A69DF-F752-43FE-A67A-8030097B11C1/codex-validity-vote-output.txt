@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- config.py defines CURSOR_AUTO_MODEL after ROLE_DEFAULTS, but nothing references it before assignment.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- resolved_model can already be the single contract; dropping cursor_model is a simplification, not required for feature completeness.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier Step 5 prose OOS concern, so it should stay out-of-scope.
