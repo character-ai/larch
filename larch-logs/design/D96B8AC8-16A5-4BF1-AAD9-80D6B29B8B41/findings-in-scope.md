@@ -1,0 +1,13 @@
+### FINDING_1: Pin ambient REPO for Test 1
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: Test 1 can pass or fail for the wrong reason because it assumes `resolve_repo()` runs even when `os.environ.REPO` is already populated. That leaves the ambient repo state unpinned and can mask the stale-route-state path the test is meant to cover.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In Test 1 add monkeypatch.delenv("REPO", raising=False) or monkeypatch.setenv("REPO", "") before step0_route_main, matching the empty-REPO precondition in the plan's failure-modes section and the ambient-REPO isolation pattern used elsewhere (e.g. test_plan_quality.py).
+
+### FINDING_2: Stub proc.run on the resume path in Test 2
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: major
+- **Concern**: Test 2 can stop being isolated if the resume path reaches `_refresh_resume_source_env()` and invokes the real `session write-design-env` command. That introduces host-environment side effects and can fail before the ISSUE_NUMBER recovery is actually exercised.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add the same `design_step0.proc.run` monkeypatch used by the nearby resume tests, and keep the fake route result on the resume path.

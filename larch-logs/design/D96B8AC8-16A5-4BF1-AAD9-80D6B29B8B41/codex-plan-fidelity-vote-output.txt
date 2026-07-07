@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- test-only isolation improvement; the feature itself is still verifiable without this extra pin
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stubbing the local write-design-env call would be cleaner, but the feature does not depend on it and this is not a required fix
