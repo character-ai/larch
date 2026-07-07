@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from larch.implement import ship_state
@@ -26,7 +28,7 @@ def _ctx(*, tmpdir: str, state_file: str):
     ).with_(pr_number=7, pr_url="https://example.test/pr/7")
 
 
-def test_write_ship_state_preserves_emergency_repair_fields(tmp_path) -> None:
+def test_write_ship_state_preserves_emergency_repair_fields(tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     ship_state._write_ship_state(  # pyright: ignore[reportPrivateUsage]
         _ctx(tmpdir=str(tmp_path), state_file=str(state_file)),
@@ -51,7 +53,7 @@ def test_write_ship_state_preserves_emergency_repair_fields(tmp_path) -> None:
     assert "MAIN_HEALTH_HEAD_SHA=abc123\n" in state
 
 
-def test_patch_ship_state_rejects_unknown_key(tmp_path) -> None:
+def test_patch_ship_state_rejects_unknown_key(tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text("PHASE=emergency-repair\nBRANCH_NAME=feat\n", encoding="utf-8")
 

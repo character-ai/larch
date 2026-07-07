@@ -5,19 +5,22 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from larch.core import config
+from larch.core.proc import CommandResult
+from larch.errors import ShipError
 from larch.git import git
 from larch.git import push
-from larch.errors import ShipError
-from larch.core.proc import CommandResult
-from larch.core.run_context import RunContext
+from larch.git import rebase
+from larch.implement import phantom
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner as _RecordingRunner, make_run_context
-from larch.implement import phantom
-from larch.git import rebase
 
 
 @dataclass
@@ -120,7 +123,7 @@ def test_push_branch_refuses_forbidden_original_branch(monkeypatch: pytest.Monke
     )
 
     with pytest.raises(ShipError, match="forbidden original branch"):
-        push.push_branch(runner=runner, ctx=_ctx(), sleeper=lambda _s: None)
+        _ = push.push_branch(runner=runner, ctx=_ctx(), sleeper=lambda _s: None)
 
 
 def test_push_backs_off_when_stderr_unchanged() -> None:

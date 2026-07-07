@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 import pytest
 
 from larch.core import config
@@ -4667,6 +4667,7 @@ def test_premerge_main_health_gate_uses_commit_scoped_head_sha(
         query = kwargs.get("query")
         if query is None:
             query = _args[1]
+        query = cast(ship.main_health.MainHealthQuery, query)
         observed["head_sha"] = query.head_sha or ""
         return ship.main_health.MainHealthStatus(status="pass", head_sha=query.head_sha or "", detail="ok")
 

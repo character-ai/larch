@@ -99,7 +99,7 @@ def test_add_refuses_forbidden_original_branch(monkeypatch: pytest.MonkeyPatch, 
     )
 
     with pytest.raises(ShipError, match="forbidden original branch"):
-        git.add(runner, "file.txt")
+        _ = git.add(runner, "file.txt")
 
 
 def test_add_refuses_forbidden_original_branch_via_implement_tmpdir(
@@ -126,7 +126,7 @@ def test_add_refuses_forbidden_original_branch_via_implement_tmpdir(
     )
 
     with pytest.raises(ShipError, match="forbidden original branch"):
-        git.add(runner, "file.txt")
+        _ = git.add(runner, "file.txt")
 
 
 def test_log_subjects() -> None:

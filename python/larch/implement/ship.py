@@ -650,15 +650,15 @@ def _merged_pr_commit_sha(*, runner: Runner, working: RunContext, cwd: str) -> s
     if result.returncode != 0 or not result.stdout.strip():
         return ""
     try:
-        loaded = json.loads(result.stdout)
+        loaded: object = json.loads(result.stdout)
     except json.JSONDecodeError:
         return ""
     if not isinstance(loaded, dict):
         return ""
-    merge_commit = loaded.get("mergeCommit")
+    merge_commit = cast("dict[str, object]", loaded).get("mergeCommit")
     if not isinstance(merge_commit, dict):
         return ""
-    oid = merge_commit.get("oid")
+    oid = cast("dict[str, object]", merge_commit).get("oid")
     return str(oid).strip() if isinstance(oid, str) else ""
 
 
@@ -1753,7 +1753,7 @@ def run_ship(
         return result
     finally:
         if prior_state_file is None:
-            os.environ.pop("SHIP_PR_STATE_FILE", None)
+            _ = os.environ.pop("SHIP_PR_STATE_FILE", None)
         else:
             os.environ["SHIP_PR_STATE_FILE"] = prior_state_file
 
