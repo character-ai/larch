@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 from collections.abc import Generator
@@ -123,6 +124,20 @@ _HIGH_RE = re.compile(
     r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
 )
 _OOS_HEADING_RE = re.compile(r"^### FINDING_[0-9]+:.*\[(?:OUT_OF_SCOPE|OOS)\]")
+_STEP5_REVIEW_RESULT_ENV = ".step5-review-result.env"
+
+
+@dataclass(frozen=True)
+class _Step5Envelope:
+    status: str
+    stall_tracking: bool
+    stall_reason: str
+    rounds_completed: int
+    final_round: int
+    final_irf: str
+    coder_status: str
+    files_hint: str
+    effective_cap: int
 
 
 # --- commit-fixes helpers (used by commit_fixes CLI entry point) ---
@@ -261,28 +276,105 @@ def _step5_post_round_gates(*,
     return "complete", "", False
 
 
-def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str, rounds_completed: int, final_round: int, final_irf: str, coder_status: str, files_hint: str, effective_cap: int) -> None:
-    _emit_kv(key="STEP5_REVIEW_STATUS", value=status)
-    _emit_kv(key="STALL_TRACKING", value=stall_tracking)
-    _emit_kv(key="STALL_REASON", value=stall_reason)
-    _emit_kv(key="ROUNDS_COMPLETED", value=rounds_completed)
-    _emit_kv(key="FINAL_ROUND_NUM", value=final_round)
-    _emit_kv(key="FINAL_REVIEW_AND_FIX_STATUS", value=final_irf)
-    _emit_kv(key="CODER_STATUS", value=coder_status)
-    _emit_kv(key="FILES_CHANGED_HINT", value=files_hint)
-    _emit_kv(key="EFFECTIVE_ROUND_CAP", value=effective_cap)
+def _stringify_step5_env_value(*, value: str | int | bool) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _step5_result_env_path() -> Path:
+    raw_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        raise OSError("IMPLEMENT_TMPDIR required for step 5 result env")
+    tmpdir = Path(raw_tmpdir)
+    if tmpdir.is_symlink():
+        raise OSError(f"refusing symlink implement tmpdir for step 5 result env: {tmpdir}")
+    if not tmpdir.is_dir():
+        raise OSError(f"step 5 result env implement tmpdir is not a directory: {tmpdir}")
+    return tmpdir / _STEP5_REVIEW_RESULT_ENV
+
+
+def _step5_difficulty_rows() -> list[tuple[str, str | int | bool]]:
+    rows: list[tuple[str, str | int | bool]] = []
     record = Path(os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")) / difficulty.DIFFICULTY_RECORD_BASENAME
-    if record.is_file():
-        try:
-            data = json.loads(record.read_text(encoding="utf-8", errors="replace"))
-        except (OSError, json.JSONDecodeError):
-            data = {}
-        if isinstance(data, dict):
-            record_data = cast("dict[str, object]", data)
-            if record_data.get("panel_tier"):
-                _emit_kv(key="PANEL_TIER", value=record_data.get("panel_tier"))
-            if record_data.get("audit_upgrade") is not None:
-                _emit_kv(key="AUDIT_UPGRADE", value=str(record_data.get("audit_upgrade")).lower() == "true" or record_data.get("audit_upgrade") is True)
+    if not record.is_file():
+        return rows
+    try:
+        data = json.loads(record.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return rows
+    if not isinstance(data, dict):
+        return rows
+    record_data = cast("dict[str, object]", data)
+    if record_data.get("panel_tier"):
+        rows.append(("PANEL_TIER", str(record_data.get("panel_tier"))))
+    if record_data.get("audit_upgrade") is not None:
+        audit_upgrade = str(record_data.get("audit_upgrade")).lower() == "true" or record_data.get("audit_upgrade") is True
+        rows.append(("AUDIT_UPGRADE", audit_upgrade))
+    return rows
+
+
+def _step5_envelope_rows(envelope: _Step5Envelope) -> list[tuple[str, str | int | bool]]:
+    rows: list[tuple[str, str | int | bool]] = [
+        ("STEP5_REVIEW_STATUS", envelope.status),
+        ("STALL_TRACKING", envelope.stall_tracking),
+        ("STALL_REASON", envelope.stall_reason),
+        ("ROUNDS_COMPLETED", envelope.rounds_completed),
+        ("FINAL_ROUND_NUM", envelope.final_round),
+        ("FINAL_REVIEW_AND_FIX_STATUS", envelope.final_irf),
+        ("CODER_STATUS", envelope.coder_status),
+        ("FILES_CHANGED_HINT", envelope.files_hint),
+        ("EFFECTIVE_ROUND_CAP", envelope.effective_cap),
+    ]
+    rows.extend(_step5_difficulty_rows())
+    return rows
+
+
+def _write_step5_result_env(rows: list[tuple[str, str | int | bool]]) -> None:
+    result_env = _step5_result_env_path()
+    safe_rows: list[tuple[str, str]] = []
+    for key, value in rows:
+        text = _stringify_step5_env_value(value=value)
+        if "\n" in text or "\r" in text:
+            text = text.replace("\r", " ").replace("\n", " ")
+        safe_rows.append((key, text))
+    larch_io.atomic_write(
+        path=result_env,
+        text=larch_io.format_kvs(safe_rows),
+        mode=0o600,
+        nofollow=True,
+    )
+
+
+def _step5_result_env_rows_from_text(text: str) -> list[tuple[str, str | int | bool]]:
+    parsed = _parse_env_lines(text)
+    rows: list[tuple[str, str | int | bool]] = [
+        (key, parsed[key])
+        for key in (
+            "STEP5_REVIEW_STATUS",
+            "STALL_TRACKING",
+            "STALL_REASON",
+            "ROUNDS_COMPLETED",
+            "FINAL_ROUND_NUM",
+            "FINAL_REVIEW_AND_FIX_STATUS",
+            "CODER_STATUS",
+            "FILES_CHANGED_HINT",
+            "EFFECTIVE_ROUND_CAP",
+        )
+        if key in parsed
+    ]
+    rows.extend(_step5_difficulty_rows())
+    return rows
+
+
+def _emit_step5_envelope(envelope: _Step5Envelope, *, extra_rows: list[tuple[str, str | int | bool]] | None = None, persist: bool = True) -> None:
+    rows = _step5_envelope_rows(envelope)
+    if extra_rows:
+        rows.extend(extra_rows)
+    if persist:
+        _write_step5_result_env(rows)
+    for key, value in rows:
+        _emit_kv(key=key, value=value)
 
 
 def _build_step5_parser() -> argparse.ArgumentParser:
@@ -458,7 +550,8 @@ def _tmpdir_local_file(*, tmpdir: Path, file_path: Path) -> bool:
     return True
 
 
-def _record_escalation_if_needed(*, implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path) -> None:
+def _record_escalation_if_needed(*, implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path) -> list[tuple[str, str | int | bool]]:
+    rows: list[tuple[str, str | int | bool]] = []
     if review_status == "coder-main-agent-required":
         cmd = [
             sys.executable, str(_plugin_root() / "python" / "cli.py"), "stall-recovery", "record-escalation",
@@ -474,30 +567,43 @@ def _record_escalation_if_needed(*, implement_tmpdir: Path, review_status: str, 
             cmd += ["--failure-detail-log", str(stderr_path)]
         result = _run(cmd)
         if result.returncode == 0:
-            return
-        if result.stderr:
-            _err(result.stderr.rstrip())
-        _append_record_escalation_tool_failure(implement_tmpdir=implement_tmpdir, reason=f"helper-exit-{result.returncode}")
-        _emit_kv(key="STEP5_REVIEW_LEDGER_READY", value="true")
-        _emit_kv(key="STEP5_REVIEW_LEDGER_SITE", value="step5")
-        _emit_kv(key="STEP5_REVIEW_LEDGER_TRIGGER", value="coder-main-agent-required")
+            rows.extend([
+                ("STEP5_REVIEW_LEDGER_READY", "true"),
+                ("STEP5_REVIEW_LEDGER_SITE", "step5"),
+                ("STEP5_REVIEW_LEDGER_TRIGGER", "coder-main-agent-required"),
+            ])
+        else:
+            if result.stderr:
+                _err(result.stderr.rstrip())
+            _append_record_escalation_tool_failure(implement_tmpdir=implement_tmpdir, reason=f"helper-exit-{result.returncode}")
+            rows.extend([
+                ("STEP5_REVIEW_LEDGER_READY", "true"),
+                ("STEP5_REVIEW_LEDGER_SITE", "step5"),
+                ("STEP5_REVIEW_LEDGER_TRIGGER", "coder-main-agent-required"),
+            ])
     elif review_status == "main-agent-vote-required":
-        _emit_kv(key="STEP5_REVIEW_LEDGER_READY", value="true")
-        _emit_kv(key="STEP5_REVIEW_LEDGER_SITE", value="step5-mav")
-        _emit_kv(key="STEP5_REVIEW_LEDGER_TRIGGER", value="main-agent-vote-required")
+        rows.extend([
+            ("STEP5_REVIEW_LEDGER_READY", "true"),
+            ("STEP5_REVIEW_LEDGER_SITE", "step5-mav"),
+            ("STEP5_REVIEW_LEDGER_TRIGGER", "main-agent-vote-required"),
+        ])
     else:
-        return
-    _emit_kv(key="STEP5_REVIEW_LEDGER_STEP", value="5")
-    _emit_kv(key="STEP5_REVIEW_LEDGER_PHASE", value="review")
-    _emit_kv(key="STEP5_REVIEW_LEDGER_DISPATCHER", value="run-step5-review")
-    _emit_kv(key="STEP5_REVIEW_LEDGER_EXIT_CODE", value=review_rc)
+        return rows
+    rows.extend([
+        ("STEP5_REVIEW_LEDGER_STEP", "5"),
+        ("STEP5_REVIEW_LEDGER_PHASE", "review"),
+        ("STEP5_REVIEW_LEDGER_DISPATCHER", "run-step5-review"),
+        ("STEP5_REVIEW_LEDGER_EXIT_CODE", review_rc),
+    ])
     if stderr_path.is_file() and stderr_path.stat().st_size:
-        _emit_kv(key="STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG", value=str(stderr_path))
+        rows.append(("STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG", str(stderr_path)))
+    return rows
 
 
-def _record_handoff_escalation_and_restage(*, implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path, run_id: str) -> None:
-    _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=review_status, review_rc=review_rc, stderr_path=stderr_path)
+def _record_handoff_escalation_and_restage(*, implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path, run_id: str) -> list[tuple[str, str | int | bool]]:
+    rows = _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=review_status, review_rc=review_rc, stderr_path=stderr_path)
     _restage_difficulty_batch_fail_open(implement_tmpdir=implement_tmpdir, run_id=run_id)
+    return rows
 
 
 def _record_step5_round_timing(
@@ -626,7 +732,7 @@ def _finish_step5_terminal_success(*,
         rounds_completed=rounds_completed,
         result=result,
     )
-    _emit_step5_envelope(
+    _emit_step5_envelope(_Step5Envelope(
         status="cap-hit" if terminal_status == "cap-hit" else "complete",
         stall_tracking=False,
         stall_reason="",
@@ -636,7 +742,7 @@ def _finish_step5_terminal_success(*,
         coder_status=result.coder.status,
         files_hint=result.coder.commit_sha,
         effective_cap=int(str(args.round_cap)),
-    )
+    ))
     return 0
 
 
@@ -705,7 +811,7 @@ def _step5_orphan_timeout_elapsed(*, implement_tmpdir: Path, timeout_s: float | 
 
 
 def _emit_step5_orphan_timeout(*, rounds_completed: int, final_round: int, effective_cap: int) -> int:
-    _emit_step5_envelope(
+    _emit_step5_envelope(_Step5Envelope(
         status="stall",
         stall_tracking=True,
         stall_reason="orphan-timeout",
@@ -715,7 +821,7 @@ def _emit_step5_orphan_timeout(*, rounds_completed: int, final_round: int, effec
         coder_status="",
         files_hint="",
         effective_cap=effective_cap,
-    )
+    ))
     return 2
 
 
@@ -729,18 +835,39 @@ def normalize_status(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code)
     implement_tmpdir = Path(args.implement_tmpdir)
+    if implement_tmpdir.is_dir() and not implement_tmpdir.is_symlink():
+        os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
     stdout_file = Path(args.stdout_file)
     if stdout_file.is_symlink() or not stdout_file.is_file():
-        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+        _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=True, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2), persist=False)
         return 2
     try:
         text = stdout_file.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="unreadable-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+        _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=True, stall_reason="unreadable-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2), persist=False)
         return 2
     has_envelope = any(line.startswith("STEP5_REVIEW_STATUS=") and line.partition("=")[2] for line in text.splitlines())
     if has_envelope:
-        _step5_write_terminal_sentinel(implement_tmpdir=implement_tmpdir)
+        terminal = implement_tmpdir / ".completed" / "step-5-terminal"
+        with contextlib.suppress(FileNotFoundError):
+            terminal.unlink()
+        try:
+            _write_step5_result_env(_step5_result_env_rows_from_text(text))
+            _step5_write_terminal_sentinel(implement_tmpdir=implement_tmpdir)
+        except OSError as exc:
+            _err(f"review-and-fix normalize-status: {exc}")
+            _emit_step5_envelope(_Step5Envelope(
+                status="stall",
+                stall_tracking=True,
+                stall_reason="internal-error",
+                rounds_completed=0,
+                final_round=0,
+                final_irf="unknown",
+                coder_status="",
+                files_hint="",
+                effective_cap=2,
+            ), persist=False)
+            return 2
         sys.stdout.write(text)
         if text and not text.endswith("\n"):
             sys.stdout.write("\n")
@@ -750,7 +877,7 @@ def normalize_status(argv: list[str] | None = None) -> int:
             loop_rc = 0
         return loop_rc
     _ = implement_tmpdir
-    _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-step5-envelope", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+    _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=True, stall_reason="missing-step5-envelope", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2), persist=False)
     return 2
 
 
@@ -771,6 +898,7 @@ def step5(argv: list[str] | None = None) -> int:
         return 2
     loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
     default_cap = _positive_int(value=str(args.round_cap), label="--round-cap") if str(args.round_cap).isdigit() else 2
+    os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(Path(args.implement_tmpdir).resolve())
     progress_done: Path | None = None
     if loop_mode and args.implement_tmpdir:
         progress_done = Path(args.implement_tmpdir).resolve() / "progress" / "done"
@@ -784,11 +912,10 @@ def step5(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             _err(f"review-and-fix step5: {exc}")
             if loop_mode:
-                _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="preflight-failed", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap)
+                _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=False, stall_reason="preflight-failed", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap))
             return 2
-        os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
-        os.environ["CODEX_BINARY_FOUND"] = args.codex_available
-        os.environ["CURSOR_BINARY_FOUND"] = args.cursor_available
+        os.environ[config.ENV_CODEX_BINARY_FOUND] = args.codex_available
+        os.environ[config.ENV_CURSOR_BINARY_FOUND] = args.cursor_available
         os.environ.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
         os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_TOKEN_SESSION_ID", default=args.run_id)
         os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_CLAUDE_SOURCE_FILE", default=os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))
@@ -824,14 +951,14 @@ def step5(argv: list[str] | None = None) -> int:
             prior_env = implement_tmpdir / f"round-{prior_round}" / "review-and-fix.env"
             if starting_round > round_cap and prior_env.is_file():
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=0, result=None)
-                _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=0, final_round=prior_round, final_irf="complete", coder_status="", files_hint="", effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=0, final_round=prior_round, final_irf="complete", coder_status="", files_hint="", effective_cap=round_cap))
                 return 0
             if not _step5_probe_prior_round_env(implement_tmpdir=implement_tmpdir, prior_round=prior_round):
                 _err(
                     f"IMPLEMENT_TMPDIR={implement_tmpdir} STARTING_ROUND={starting_round} "
                     f"expected_env_path={prior_env} base_cap={round_cap}"
                 )
-                _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="starting-round-invalid", rounds_completed=0, final_round=starting_round, final_irf="unknown", coder_status="", files_hint="", effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=False, stall_reason="starting-round-invalid", rounds_completed=0, final_round=starting_round, final_irf="unknown", coder_status="", files_hint="", effective_cap=round_cap))
                 return 2
         rounds_completed = 0
         last: RoundResult | None = None
@@ -847,7 +974,7 @@ def step5(argv: list[str] | None = None) -> int:
                 coder_status = last.coder.status if last else ""
                 files_hint = last.coder.commit_sha if last else ""
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=last)
-                _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=prior, final_irf=final_irf, coder_status=coder_status, files_hint=files_hint, effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=prior, final_irf=final_irf, coder_status=coder_status, files_hint=files_hint, effective_cap=round_cap))
                 return 0
             args.round_num = str(round_num)
             start_s = int(time.time())
@@ -859,8 +986,18 @@ def step5(argv: list[str] | None = None) -> int:
             rounds_completed = round_num
             if result.status in {"main-agent-vote-required", "coder-main-agent-required"}:
                 _persist_round_start(implement_tmpdir=implement_tmpdir, round_num=round_num, start_s=start_s)
-                _emit_step5_envelope(status=result.status, stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
-                _record_handoff_escalation_and_restage(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path, run_id=args.run_id)
+                handoff_rows = _record_handoff_escalation_and_restage(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path, run_id=args.run_id)
+                _emit_step5_envelope(_Step5Envelope(
+                    status=result.status,
+                    stall_tracking=False,
+                    stall_reason="",
+                    rounds_completed=rounds_completed,
+                    final_round=round_num,
+                    final_irf=result.status,
+                    coder_status=result.coder.status,
+                    files_hint=result.coder.commit_sha,
+                    effective_cap=round_cap,
+                ), extra_rows=handoff_rows)
                 return 0
             if result.status == "self-review-required":
                 _record_step5_round_timing_before_gates(
@@ -870,7 +1007,7 @@ def step5(argv: list[str] | None = None) -> int:
                     result=result,
                 )
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
-                _emit_step5_envelope(
+                _emit_step5_envelope(_Step5Envelope(
                     status="self-review-required",
                     stall_tracking=False,
                     stall_reason="",
@@ -880,7 +1017,7 @@ def step5(argv: list[str] | None = None) -> int:
                     coder_status=result.coder.status,
                     files_hint=result.coder.commit_sha,
                     effective_cap=round_cap,
-                )
+                ))
                 return 0
             _record_step5_round_timing_before_gates(
                 implement_tmpdir=implement_tmpdir,
@@ -959,14 +1096,24 @@ def step5(argv: list[str] | None = None) -> int:
                 stall_reason = f"round-failed-{result.status}"
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
             if terminal_status == "stall":
-                _emit_step5_envelope(status="stall", stall_tracking=stall_tracking, stall_reason=stall_reason, rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=stall_tracking, stall_reason=stall_reason, rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap))
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
                 return result.rc or 2
             return _finish_step5_terminal_success(terminal_status=terminal_status, args=args, implement_tmpdir=implement_tmpdir, rounds_completed=rounds_completed, result=result)
     except Exception as exc:
         _err(f"review-and-fix step5: {exc}")
         if loop_mode:
-            _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="internal-error", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap)
+            _emit_step5_envelope(_Step5Envelope(
+                status="stall",
+                stall_tracking=False,
+                stall_reason="internal-error",
+                rounds_completed=0,
+                final_round=0,
+                final_irf="unknown",
+                coder_status="",
+                files_hint="",
+                effective_cap=default_cap,
+            ), persist=not isinstance(exc, OSError))
         return 2
     finally:
         if progress_done is not None:

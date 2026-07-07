@@ -260,6 +260,58 @@ def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
     assert not any(line.startswith("REVIEW_AND_FIX_STATUS=") for line in out.splitlines())
 
 
+@MARK_LOOP_TIMING
+def test_step5_loop_writes_mergeable_completion_kvs(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_core(argv: list[str]) -> int:
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 0
+
+    monkeypatch.setattr(review_and_fix.review_pipeline, "review_core", fake_core)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+
+    result_lines = (impl / ".step5-review-result.env").read_text(encoding="utf-8").splitlines()
+    result = dict(line.split("=", 1) for line in result_lines)
+
+    assert rc == 0
+    assert result["STEP5_REVIEW_STATUS"] == "complete"
+    assert result["STALL_TRACKING"] == "false"
+    assert result["STALL_REASON"] == ""
+    assert result["ROUNDS_COMPLETED"] == "1"
+    assert result["FINAL_ROUND_NUM"] == "1"
+    assert result["FINAL_REVIEW_AND_FIX_STATUS"] == "complete"
+    assert result["EFFECTIVE_ROUND_CAP"] == "2"
+    assert all("=" in line for line in result_lines)
+    assert not any(line.startswith(">") for line in result_lines)
+    assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
+
+
+@MARK_STEP5
+def test_step5_loop_preflight_failure_writes_result_env(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    (impl / "plan.txt").unlink()
+
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+
+    out = capsys.readouterr().out
+    result_env = impl / ".step5-review-result.env"
+    result = dict(line.split("=", 1) for line in result_env.read_text(encoding="utf-8").splitlines())
+    assert rc == 2
+    assert result["STEP5_REVIEW_STATUS"] == "stall"
+    assert result["STALL_TRACKING"] == "false"
+    assert result["STALL_REASON"] == "preflight-failed"
+    assert "STEP5_REVIEW_STATUS=stall" in out
+
+
 @MARK_DISPATCH
 def test_apply_findings_empty_file_contract(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
@@ -525,7 +577,10 @@ def test_step5_normalize_status_replays_envelope(tmp_path, capsys):
     stdout_file = tmp_path / "stdout.txt"
     stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
     rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "0"])
+    result_env = impl / ".step5-review-result.env"
     assert rc == 0
+    assert result_env.is_file()
+    assert "STEP5_REVIEW_STATUS=complete" in result_env.read_text(encoding="utf-8")
     assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
 
 
@@ -537,6 +592,31 @@ def test_step5_normalize_status_writes_terminal_sentinel_for_nonzero_loop_rc(tmp
     rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "7"])
     assert rc == 7
     assert (impl / ".completed" / "step-5-terminal").is_file()
+    assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
+
+
+@MARK_STEP5
+def test_step5_normalize_status_writes_result_env_before_terminal_sentinel(tmp_path, monkeypatch, capsys):
+    impl = _tmp_impl(tmp_path)
+    stdout_file = tmp_path / "stdout.txt"
+    stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def fake_write(rows):
+        calls.append("result-env")
+        assert any(key == "STEP5_REVIEW_STATUS" for key, _ in rows)
+
+    def fake_sentinel(*, implement_tmpdir):
+        calls.append("sentinel")
+        assert implement_tmpdir == impl
+
+    monkeypatch.setattr(review_and_fix, "_write_step5_result_env", fake_write)
+    monkeypatch.setattr(review_and_fix, "_step5_write_terminal_sentinel", fake_sentinel)
+
+    rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "0"])
+
+    assert rc == 0
+    assert calls == ["result-env", "sentinel"]
     assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
 
 
@@ -1346,9 +1426,12 @@ def test_record_escalation_failure_appends_tool_failure(tmp_path, monkeypatch):
         return Result()
 
     monkeypatch.setattr(review_and_fix, "_run", fail_helper)
-    review_and_fix._record_escalation_if_needed(implement_tmpdir=impl, review_status="coder-main-agent-required", review_rc=2, stderr_path=stderr_path)
+    rows = review_and_fix._record_escalation_if_needed(implement_tmpdir=impl, review_status="coder-main-agent-required", review_rc=2, stderr_path=stderr_path)
     text = (impl / "execution-issues.md").read_text(encoding="utf-8")
     assert "Tool Failure: record-escalation" in text
+    assert ("STEP5_REVIEW_LEDGER_READY", "true") in rows
+    assert ("STEP5_REVIEW_LEDGER_SITE", "step5") in rows
+    assert ("STEP5_REVIEW_LEDGER_TRIGGER", "coder-main-agent-required") in rows
 
 
 @MARK_WRITE_REJECTED
@@ -2749,9 +2832,9 @@ def test_step5_terminal_flushes_review_batches_with_counts(
         flush_calls.append(kwargs)
         return True
 
-    def fake_emit(**kwargs):
+    def fake_emit(envelope, **kwargs):
         events.append("envelope")
-        original_emit(**kwargs)
+        original_emit(envelope, **kwargs)
 
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status=round_status))
     if gate_status:
