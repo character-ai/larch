@@ -1,0 +1,1 @@
+Plan: replace Step 8 inline CI repair with one persistent Agent-tool fixer, add a redacted `ci distill-log` helper, split budgets to 20 fixer rounds plus 10 main-agent fallback attempts, remove the obsolete pre-#5182 agentic fixer path, and cover routing, bail artifacts, token/timing, docs, and tests.

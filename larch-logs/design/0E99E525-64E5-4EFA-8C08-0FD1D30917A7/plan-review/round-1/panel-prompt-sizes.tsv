@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	32358	8090	13565	3392	18793	4699		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	19093	4774	13277	3320	5816	1454		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	19108	4777	13292	3323	5816	1454		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	32371	8093	13578	3395	18793	4699		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	32373	8094	13580	3395	18793	4699		0	0
+design Step 3	phase1	1	dyn-cursor-plan-ci-fixer-orchestrator	plan-review	cursor	dyn-cursor-plan-ci-fixer-orchestrator.txt	32697	8175	13431	3358	19266	4817		0	0
+design Step 3	phase1	1	dyn-codex-plan-ci-fixer-orchestrator	plan-review	codex	dyn-codex-plan-ci-fixer-orchestrator.txt	19432	4858	13143	3286	6289	1573		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	19106	4777	13290	3323	5816	1454		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	32349	8088	13556	3389	18793	4699		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	19084	4771	13268	3317	5816	1454		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	42453	10614	4613	1154	37840	9460	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	17458	4365	9143	2286	8315	2079		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	17458	4365	9143	2286	8315	2079		0	0
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	17458	4365	9143	2286	8315	2079		0	0

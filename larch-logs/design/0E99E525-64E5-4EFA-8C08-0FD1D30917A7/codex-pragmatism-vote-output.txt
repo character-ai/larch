@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- real but out-of-scope; the new sub-agent loop does not need the preserved inline-only safeguards
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of the prior out-of-scope distill-log truncation concern
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- the plan already defines a coarse handoff file; the exact status/env schema is implementation detail
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- fallback behavior is already specified well enough; this is extra detail, not a blocker
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- failure-log distillation still needs some I/O, so this is old-path coupling rather than a required plan fix
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of prior OOS item 1
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of prior OOS item 3
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of prior OOS item 7

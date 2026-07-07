@@ -1,0 +1,3 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/plan-review/round-2/cursor-plan-arch-output.txt","vendor":"cursor","resolved_model":"composer-2.5","focus_area":"arch"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/plan-review/round-2/codex-primary-plan-arch-output.txt","vendor":"codex","resolved_model":"gpt-5.4-mini","model_role":"review","focus_area":"arch"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/plan-review/round-2/codex-primary-plan-innovation-output.txt","vendor":"codex","resolved_model":"gpt-5.4-mini","model_role":"review","focus_area":"innovation"}

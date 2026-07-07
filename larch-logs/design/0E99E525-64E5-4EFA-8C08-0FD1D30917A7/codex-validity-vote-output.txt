@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- existing plan already carries the ledger_ready escalation gate; the rest is extra preservation, not required for this feature.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- a richer handoff schema would help, but the feature already has a required artifact and shared attempt counter.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- this is added specificity around the fallback tail, not a correctness blocker for the new loop.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the immediate-handoff monitor path already skips this prefetch, so the concern is stale on the feature path.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier unreachable-prefetch OOS and not a new concrete blocker.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier static-allowlist OOS and not a new concrete blocker.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the timing allowlist already includes `claude-ci-fix`, so the claimed gap is speculative.

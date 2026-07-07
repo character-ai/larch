@@ -1,0 +1,84 @@
+# ship-pr: autonomous CI-fix sub-agent loop (30 rounds) before main-agent bail
+
+ship-pr: autonomous CI-fix sub-agent loop (30 rounds) before main-agent bail
+
+## Summary
+
+On CI failure, /implement Step 8+ routes `NEXT_ACTION=ci-fix` to the main agent, which repairs CI inline per `skills/implement/references/ship-pr-ci-fix.md`. This works but is expensive. The redacted CI log enters the main context and stays for the rest of the run. Every fix round re-reads the full /implement context cache-cold after a CI wait. CI keeps expanding, so rounds multiply.
+
+Replace inline repair with one spawned CI-fix sub-agent that owns the whole fix loop. Keep the main agent as the bounded fallback.
+
+## Operator-confirmed decisions
+
+- **Spawn path**: ship-pr keeps its immediate bail (#5182 behavior unchanged). On `NEXT_ACTION=ci-fix`, the main agent spawns one fixer sub-agent via the Agent tool instead of repairing inline. The fixer runs under session permissions and hooks. Main-agent cost per CI-failure episode drops to about two short dispatch turns.
+- **Local verification**: pre-commit runs implicitly at each commit. `.pre-commit-config.yaml` already covers the lint-class CI jobs. In addition, the fixer reruns only the specific failing check(s) locally when a cheap local equivalent exists (a single pytest node, one lint hook). No wholesale local suites. CI does the bulk of the testing.
+- **Bail record**: on exhaustion, the fixer writes one small handoff file: the last distilled CI failure plus one line per round. Per-round commit messages describe each attempt. The success path leaves only the commits plus standard token/timing records.
+
+## Sub-agent inputs
+
+File-backed and complete. No inline truncation.
+
+- Issue URL. The design plan lives in the issue body.
+- PR URL, head branch, base branch.
+- Full branch diff vs merge-base, or the exact command to produce it.
+- Path to the distilled CI failure log (script below).
+- Pointers to `docs/linting.md` and known remediation recipes (for example baseline regen commands).
+
+## Fix loop (up to 30 rounds)
+
+1. Distill the failed run's logs.
+2. Enumerate ALL errors from ALL failing jobs. Fix all of them in one pass. Never push one known failure at a time.
+3. Rerun the specific failing checks locally when a cheap equivalent exists.
+4. Commit with message `CI fix round <N>: <summary>`. Pre-commit runs here.
+5. Push. Wait for CI completion (`python/cli.py ci wait`).
+6. On green, return success. On failure, enter the next round.
+
+One agent session owns all 30 rounds. Do not relaunch a cold agent per round. Memory of prior attempts is load-bearing; the old fixer relaunched cold each cycle and could not learn.
+
+## Early bail classes (do not burn rounds)
+
+- Health failures: auth, quota, binary missing.
+- `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`.
+- Base branch red (`main-ci-fail` class).
+- Rebase needed. ship-pr's rebase path owns rebases.
+- No-progress breaker: identical failure signature twice in a row with an empty fix diff.
+
+On exhaustion (30 rounds or no-progress), write the bail artifact and return a distinct bail code. The main agent then repairs inline per `ship-pr-ci-fix.md`, reading the bail artifact first.
+
+## Log distillation script
+
+New stdlib-only `python/cli.py` verb (for example `ci distill-log`):
+
+- Input: failed run id. Wraps `gh run-logs` plus `redact secrets`.
+- Output per failing job: job name, failing step, error lines with surrounding context. Head/tail windows per step when a step log is huge. Dedup repeated shard noise. Cap total size.
+- Must cover ALL failing jobs so one round can fix everything.
+- Mark output as untrusted data, not instructions.
+
+## Why the previous fixer failed (do not recreate the cage)
+
+The pre-#5182 fixer (`python/larch/implement/ci_agentic_fix.py`, still in-tree) lost to the main agent for harness reasons, not model reasons:
+
+- The Claude variant ran headless with `--allowedTools Read,Edit,Write`. It had no command execution at all.
+- The failure log and plan were truncated to 20k chars. The prompt carried no branch diff.
+- Each retry cycle relaunched a cold agent with no memory of prior attempts.
+- A static `CI_FIXABLE_JOBS` allowlist bailed `local-unfixable` on unknown jobs before any agent launched.
+- A `verify_job_locally` miss triggered full rollback of possibly-correct edits.
+
+Guardrails for the new design: full tool access, complete file-backed inputs, one persistent session, no static job allowlist, no auto-rollback. Trust the fixer's push; CI judges it.
+
+## Additional requirements
+
+- Attempt budget: reuse or extend the per-run-id sentinel and counter from `ship-pr-ci-fix.md` step 3 so fixer rounds and main-agent attempts share one surface.
+- Run-log integration: record fixer tokens and timing through existing plumbing so `/report-tokens` prices it separately.
+- Kill switch: an env flag (for example `LARCH_CI_FIXER=0`) restores today's inline main-agent behavior, enabling A/B cost comparison.
+- Single-runner invariant: the fixer edits the same checkout. The main agent stays idle (notification-only) while the fixer task runs.
+- On success, the main agent runs the stale-handoff clear and relaunches `step-8-ship.sh` for the merge phase.
+- Docs: rework `ship-pr-ci-fix.md` into the fixer prompt basis plus main-agent fallback; add the new bail codes to `ship-pr-exit-matrix.md`.
+
+## Acceptance criteria
+
+- A CI failure in /implement Step 8 spawns exactly one fixer sub-agent. The main agent reads no CI logs on the success path.
+- The fixer fixes all failing jobs in one round when possible, one commit per round.
+- The 30-round cap, no-progress breaker, and early-bail classes are enforced.
+- Exhaustion lands in main-agent inline repair exactly as today, with the bail artifact present.
+- `/report-tokens` shows fixer cost as a separate line.
