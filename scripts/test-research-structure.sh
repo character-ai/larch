@@ -179,7 +179,57 @@ python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$RESEARCH_MD" "rese
 python3 "$REPO_ROOT/python/cli.py" lint p3119-fence-absence "$VALIDATION_MD" "validation-phase.md" || fail "(3119) validation-phase.md still has removed Family-B fence tokens"
 PASS=$((PASS + 3))
 
-# ---------- Check 10: Codex auth-wired launcher pins ----------
+# ---------- Check 10: bgjob lane transport pins ----------
+
+if grep -R -F -- 'run_in_background' "$REPO_ROOT/skills/research" >/dev/null; then
+  fail "[bgjob transport] skills/research must not retain run_in_background literals"
+else
+  PASS=$((PASS + 1))
+fi
+
+contains "$RESEARCH_MD" 'For Codex lanes, call `bgjob start` once per lane from foreground Bash with a unique `--step` slug.' '[bgjob transport] research-phase.md must require per-lane bgjob starts'
+contains "$RESEARCH_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \' '[bgjob transport] research-phase.md must invoke bgjob start'
+contains "$RESEARCH_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \' '[bgjob transport] research-phase.md must invoke bgjob wait'
+contains "$RESEARCH_MD" 'If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for the same slot with no intervening prose, reads, monitors, probes, sleeps, or other tools.' '[bgjob transport] research-phase.md must pin immediate repeated wait'
+contains "$RESEARCH_MD" 'continue the lane only when that result env contains `BGJOB_RC=0` and `STEP=research-<slot>`.' '[bgjob transport] research-phase.md must gate continuation on result env'
+
+for slug in research-arch research-edge research-ext research-sec; do
+  contains "$RESEARCH_MD" "--step $slug" "[bgjob transport] research-phase.md missing --step $slug"
+  contains "$RESEARCH_MD" "\$RESEARCH_TMPDIR/bgjob/$slug.result.env" "[bgjob transport] research-phase.md missing result env for $slug"
+  contains "$RESEARCH_MD" "\$RESEARCH_TMPDIR/.$slug-merge.env" "[bgjob transport] research-phase.md missing merge env for $slug"
+done
+
+contains "$VALIDATION_MD" 'Cursor and Codex use foreground `bgjob start` launches with unique per-lane step slugs.' '[bgjob transport] validation-phase.md must require external bgjob starts'
+contains "$VALIDATION_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \' '[bgjob transport] validation-phase.md must invoke bgjob start'
+contains "$VALIDATION_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \' '[bgjob transport] validation-phase.md must invoke bgjob wait'
+contains "$VALIDATION_MD" 'If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for that lane with no intervening prose, reads, monitors, probes, sleeps, or other tools.' '[bgjob transport] validation-phase.md must pin immediate repeated wait'
+contains "$VALIDATION_MD" 'continue the lane only when that result env contains `BGJOB_RC=0` and `STEP=validation-<tool>`.' '[bgjob transport] validation-phase.md must gate continuation on result env'
+contains "$VALIDATION_MD" '`validation-code`' '[bgjob transport] validation-phase.md must retain Code lane identity'
+
+for slug in validation-cursor validation-codex; do
+  contains "$VALIDATION_MD" "--step $slug" "[bgjob transport] validation-phase.md missing --step $slug"
+  contains "$VALIDATION_MD" "\$RESEARCH_TMPDIR/bgjob/$slug.result.env" "[bgjob transport] validation-phase.md missing result env for $slug"
+  contains "$VALIDATION_MD" "\$RESEARCH_TMPDIR/.$slug-merge.env" "[bgjob transport] validation-phase.md missing merge env for $slug"
+done
+
+tmp_paths=$(mktemp)
+{
+  printf '%s\n' \
+    '$RESEARCH_TMPDIR/bgjob/research-arch.result.env' \
+    '$RESEARCH_TMPDIR/bgjob/research-edge.result.env' \
+    '$RESEARCH_TMPDIR/bgjob/research-ext.result.env' \
+    '$RESEARCH_TMPDIR/bgjob/research-sec.result.env' \
+    '$RESEARCH_TMPDIR/bgjob/validation-cursor.result.env' \
+    '$RESEARCH_TMPDIR/bgjob/validation-codex.result.env'
+} > "$tmp_paths"
+if [[ "$(sort -u "$tmp_paths" | wc -l | tr -d ' ')" == "6" ]]; then
+  PASS=$((PASS + 1))
+else
+  fail "[bgjob collision] expected distinct result env paths for all bgjob lanes"
+fi
+rm -f "$tmp_paths"
+
+# ---------- Check 11: Codex auth-wired launcher pins ----------
 
 for stem in codex-research-arch-output.txt codex-research-edge-output.txt codex-research-ext-output.txt codex-research-sec-output.txt; do
   if grep -Fq "$stem" "$RESEARCH_MD"; then
@@ -192,14 +242,13 @@ done
 for pair in \
   "$RESEARCH_MD:codex-research-arch-output.txt" \
   "$VALIDATION_MD:codex-validation-output.txt" \
-  "$REPO_ROOT/skills/shared/voting-protocol.md:codex-vote-output.txt" \
 ; do
   file="${pair%%:*}"
   stem="${pair#*:}"
-  if grep -Fq "\${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" "$file"; then
+  if grep -Fq 'python3 "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py" agent launch-codex-exec' "$file"; then
     PASS=$((PASS + 1))
   else
-    fail "[codex launcher] $(basename "$file") must use \${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec"
+    fail "[codex launcher] $(basename "$file") must use python3 \${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec"
   fi
   if grep -Fq "$stem" "$file"; then
     PASS=$((PASS + 1))
@@ -208,7 +257,18 @@ for pair in \
   fi
 done
 
-# ---------- Check 11: Codex research telemetry wording ----------
+if grep -Fq "\${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" "$REPO_ROOT/skills/shared/voting-protocol.md"; then
+  PASS=$((PASS + 1))
+else
+  fail "[codex launcher] voting-protocol.md must keep documentary Codex dispatch token"
+fi
+if grep -Fq 'codex-vote-output.txt' "$REPO_ROOT/skills/shared/voting-protocol.md"; then
+  PASS=$((PASS + 1))
+else
+  fail "[codex launcher] voting-protocol.md must pin expected output stem 'codex-vote-output.txt'"
+fi
+
+# ---------- Check 12: Codex research telemetry wording ----------
 
 if grep -Fq 'Non-fallback Codex lanes receive best-effort usage records' "$RESEARCH_MD" \
   && grep -Fq "\${OUTPUT}.token-record" "$RESEARCH_MD"; then
@@ -223,7 +283,7 @@ else
   PASS=$((PASS + 1))
 fi
 
-# ---------- Check 12: Research/validation sidecar ingestion pins ----------
+# ---------- Check 13: Research/validation sidecar ingestion pins ----------
 
 for file in "$RESEARCH_MD" "$VALIDATION_MD"; do
   base=$(basename "$file")
@@ -250,7 +310,7 @@ contains "$VALIDATION_MD" '-retry.txt' '[validation sidecar] candidate expansion
 contains "$VALIDATION_MD" 'No non-substantive retry artifacts are created' '[validation sidecar] must document no non-substantive retry artifacts'
 contains "$VALIDATION_MD" 'Deduplicate candidate paths before ingestion.' '[validation sidecar] candidate expansion must dedupe paths'
 
-# ---------- Check 13: Python CLI call-site pins ----------
+# ---------- Check 14: Python CLI call-site pins ----------
 
 contains "$RESEARCH_MD" 'python/cli.py" research run-planner' '[python cli] research-phase.md must pin research run-planner in §1.1.b'
 contains "$RESEARCH_MD" 'python/cli.py research run-planner' '[python cli] research-phase.md must pin research run-planner in §1.1.c edit loop'
@@ -259,19 +319,19 @@ contains "$SKILL_MD" 'python/cli.py" research validate-citations' '[python cli] 
 contains "$RESEARCH_MD" 'python/cli.py" research banner' '[python cli] research-phase.md must pin research banner at Step 1.5'
 contains "$SKILL_MD" 'python/cli.py research render-findings-batch' '[python cli] SKILL.md must pin research render-findings-batch at Step 3'
 
-# ---------- Check 14: NOT_SUBSTANTIVE terminal behavior ----------
+# ---------- Check 15: NOT_SUBSTANTIVE terminal behavior ----------
 
 contains "$RESEARCH_MD" 'STATUS=NOT_SUBSTANTIVE' '[not-substantive] research-phase.md must pin terminal NOT_SUBSTANTIVE status'
 contains "$RESEARCH_MD" 'do not launch a Claude replacement' '[not-substantive] research-phase.md must block Claude replacement'
 contains "$RESEARCH_MD" 'do not pass the narrative file to synthesis' '[not-substantive] research-phase.md must exclude narrative output from synthesis'
 contains "$RESEARCH_MD" 'No non-substantive retry artifacts are created' '[not-substantive] research-phase.md must pin absent retry artifacts'
 
-# ---------- Check 15: synthesis gating and STATUS-gated input exclusion ----------
+# ---------- Check 16: synthesis gating and STATUS-gated input exclusion ----------
 
 contains "$RESEARCH_MD" "Do NOT emit a \`## Research Synthesis\` header" '[synthesis gating] research-phase.md must pin orchestrator-owned synthesis header'
 contains "$RESEARCH_MD" '[lane dropped: collector NOT_SUBSTANTIVE]' '[synthesis gating] research-phase.md must pin NOT_SUBSTANTIVE dropped-lane marker'
 
-# ---------- Check 16: read-only hook activation sentinel ----------
+# ---------- Check 17: read-only hook activation sentinel ----------
 
 contains "$SKILL_MD" 'command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh research"' '[activation] SKILL.md frontmatter must pass research token'
 contains "$SKILL_MD" 'RESEARCH_DENY_ACTIVE_SENTINEL="$RESEARCH_DENY_ACTIVE_DIR/research-$PPID"' '[activation] SKILL.md must create research-$PPID sentinel'

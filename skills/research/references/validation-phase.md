@@ -10,7 +10,7 @@
 
 **IMPORTANT: Findings validation runs 3 lanes: 1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor. When Codex or Cursor is unavailable, launch 1 Claude Code Reviewer subagent fallback in its place to preserve the 3-lane count. Never silently drop a lane.**
 
-Launch all 3 lanes in parallel in a single message. **Spawn order matters for parallelism** — launch the slowest first: Cursor (slowest), then Codex, then the always-on Claude Code Reviewer subagent (fastest). Each reviewer receives the research report and the original question. Each must **only report findings** — never edit files.
+Launch all 3 lanes in parallel in a single message. **Spawn order matters for parallelism**: start Cursor first, then Codex, then the always-on Claude Code Reviewer subagent. Cursor and Codex use foreground `bgjob start` launches with unique per-lane step slugs. The Claude Code lane keeps the Agent-tool path. Each reviewer receives the research report and the original question. Each must **only report findings**; never edit files.
 
 **Token telemetry (validation lanes)**: Every Claude Code Reviewer subagent invocation in this phase is a measurable Agent-tool call — including (a) the always-on `Code` lane, (b) any Cursor/Codex pre-launch fallback subagents, AND (c) any Cursor/Codex runtime-timeout replacement subagents. After each Agent-tool return, parse `total_tokens` from the `<usage>` block and write a per-lane sidecar via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase validation --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `Code`, `Cursor`, `Codex` — `Cursor` and `Codex` slot names are used for both pre-launch and runtime-timeout fallback subagents. See `${CLAUDE_PLUGIN_ROOT}/python/larch/report/tokens.py research lane docs`.
 
@@ -59,6 +59,16 @@ Do NOT modify files.
 LARCH_INSCOPE_END_a3f2b1
 ```
 
+Validation lane identity and bgjob mapping:
+
+| Lane | Step slug | Merge env | Result env | Output |
+|---|---|---|---|---|
+| `Code` | `validation-code` | Agent lane, no bgjob merge env | Agent lane, no bgjob result env | Agent response |
+| `Cursor` | `--step validation-cursor` | `$RESEARCH_TMPDIR/.validation-cursor-merge.env` | `$RESEARCH_TMPDIR/bgjob/validation-cursor.result.env` | `$RESEARCH_TMPDIR/cursor-validation-output.txt` |
+| `Codex` | `--step validation-codex` | `$RESEARCH_TMPDIR/.validation-codex-merge.env` | `$RESEARCH_TMPDIR/bgjob/validation-codex.result.env` | `$RESEARCH_TMPDIR/codex-validation-output.txt` |
+
+`validation-code` is the always-on Agent lane identity. It has no bgjob step because no external background process exists for that lane.
+
 ## Cursor Reviewer (if `cursor_binary_available`)
 
 Run Cursor **first** in the parallel message (it takes the longest). Render the prompt **in foreground** before the background launch:
@@ -74,9 +84,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
 
 **On non-zero exit**: capture and sanitize the failed render's stderr. Surgically rewrite the `VALIDATION_*` slice of `$RESEARCH_TMPDIR/lane-status.txt` BEFORE launching the fallback so an abort after spawn still leaves Step 3 attribution honest. Set `VALIDATION_CURSOR_STATUS=fallback_runtime_failed`. Then follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` — set `cursor_binary_available=false`, do NOT add `$RESEARCH_TMPDIR/cursor-validation-output.txt` to `COLLECT_ARGS`, and launch a Claude Code Reviewer subagent fallback. Attribute as `Cursor` (the slot identity is preserved).
 
-**On success**, launch in background:
+**On success**, write a file-backed launcher and start it with bgjob:
 
 ```bash
+cat > "$RESEARCH_TMPDIR/cursor-validation-launch.sh" <<'LARCH_CURSOR_VALIDATION_LAUNCH'
+#!/usr/bin/env bash
+set -euo pipefail
+
 # Cursor authenticates via the CURSOR_API_KEY environment variable (issue
 # #3375) — no `--api-key` argv element, so the key never reaches the cursor
 # command line, run-external-agent.sh `.meta` CMD_JSON, or `ps`. The call below
@@ -105,9 +119,21 @@ while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_AR
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent run-external-agent --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
   cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$PWD" \
     "$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent cursor-wrap-prompt "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
+LARCH_CURSOR_VALIDATION_LAUNCH
+chmod +x "$RESEARCH_TMPDIR/cursor-validation-launch.sh"
+
+VALIDATION_CURSOR_MERGE_ENV="$RESEARCH_TMPDIR/.validation-cursor-merge.env"
+: > "$VALIDATION_CURSOR_MERGE_ENV"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+  --step validation-cursor \
+  --tmpdir "$RESEARCH_TMPDIR" \
+  --budget-s 1860 \
+  --merge-result-env "$VALIDATION_CURSOR_MERGE_ENV" \
+  -- \
+  bash "$RESEARCH_TMPDIR/cursor-validation-launch.sh"
 ```
 
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=validation-cursor PGID=<n>`.
 
 > **Diagnostic note**: this lane uses `python3 python/cli.py agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not committed to run logs.
 
@@ -128,11 +154,19 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
 
 **On non-zero exit**: same handling as Cursor render-failure path. Set `VALIDATION_CODEX_STATUS=fallback_runtime_failed`, set `codex_binary_available=false`, omit the path from `COLLECT_ARGS`, launch a Claude Code Reviewer subagent fallback. Attribute as `Codex`.
 
-**On success**, launch in background:
+**On success**, start the Codex lane with bgjob:
 
 ```bash
 # launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
-"${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" \
+VALIDATION_CODEX_MERGE_ENV="$RESEARCH_TMPDIR/.validation-codex-merge.env"
+: > "$VALIDATION_CODEX_MERGE_ENV"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+  --step validation-codex \
+  --tmpdir "$RESEARCH_TMPDIR" \
+  --budget-s 1860 \
+  --merge-result-env "$VALIDATION_CODEX_MERGE_ENV" \
+  -- \
+  python3 "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py" agent launch-codex-exec \
   --output "$RESEARCH_TMPDIR/codex-validation-output.txt" \
   --timeout 1800 \
   --workdir "$PWD" \
@@ -141,7 +175,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render reviewer \
   --usage-label codex_research_validation
 ```
 
-Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=validation-codex PGID=<n>`.
 
 **Codex fallback** (if `codex_binary_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Codex`.
 
@@ -184,7 +218,18 @@ COLLECT_ARGS=()
 
 **Zero-externals branch**: If BOTH Cursor and Codex are unavailable (`COLLECT_ARGS` is empty), skip `python/cli.py agent collect-results` entirely and skip all external negotiation. The 3-lane invariant is preserved by 3 Claude streams (the always-on `Code` lane plus the `Cursor` and `Codex` fallback lanes). Merge ALL Claude findings (preserving per-lane attribution) and proceed to Finalize Validation.
 
-Otherwise, after processing Claude findings, invoke the script with only the launched paths. Pass `--substantive-validation --validation-mode`:
+Otherwise, after processing Claude findings, wait for each bgjob-launched external lane before collection:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
+  --step validation-<tool> \
+  --tmpdir "$RESEARCH_TMPDIR" \
+  --max-wait-s 270
+```
+
+`<tool>` is `cursor` or `codex`. Use tool timeout `330000`. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for that lane with no intervening prose, reads, monitors, probes, sleeps, or other tools. If stdout contains `BGJOB_STATUS=DEAD`, route that lane through the existing runtime fallback branch. If stdout contains `BGJOB_STATUS=DONE`, read `$RESEARCH_TMPDIR/bgjob/validation-<tool>.result.env`; continue the lane only when that result env contains `BGJOB_RC=0` and `STEP=validation-<tool>`. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or a missing required KV as that lane's existing launch-class failure branch.
+
+Then invoke the script with only the launched paths whose bgjob result passed the gate. Pass `--substantive-validation --validation-mode`:
 
 ```bash
 export RESEARCH_TMPDIR
