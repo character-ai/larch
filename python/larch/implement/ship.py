@@ -627,10 +627,39 @@ def _missing_main_health_sidecar_result(
 
 def _main_health_sidecar_bootstrapped(tmpdir: str) -> bool:
     base = Path(tmpdir)
-    return any(
-        (base / name).is_file()
-        for name in ("main-health.stdout", "main-health.stderr")
+    return (base / "preflight-tmpdir.env").is_file()
+
+
+def _resolve_premerge_main_health_sha(*, runner: Runner, repo_root: str, base_ref: str) -> str:
+    fetch = git.fetch(runner, "origin", base_ref, cwd=repo_root)
+    if fetch.returncode != 0:
+        return ""
+    return git.try_rev_parse(runner, f"origin/{base_ref}", cwd=repo_root) or ""
+
+
+def _merged_pr_commit_sha(*, runner: Runner, working: RunContext, cwd: str) -> str:
+    if working.pr_number is None:
+        return ""
+    result = gh.pr_view_field_read(
+        runner,
+        working.pr_number,
+        "mergeCommit",
+        repo=working.repo,
+        cwd=cwd,
     )
+    if result.returncode != 0 or not result.stdout.strip():
+        return ""
+    try:
+        loaded = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(loaded, dict):
+        return ""
+    merge_commit = loaded.get("mergeCommit")
+    if not isinstance(merge_commit, dict):
+        return ""
+    oid = merge_commit.get("oid")
+    return str(oid).strip() if isinstance(oid, str) else ""
 
 
 def _postmerge_main_health_gate(
@@ -657,26 +686,28 @@ def _postmerge_main_health_gate(
         fix_attempts=counters.fix_attempts,
         transient_retries=counters.transient_retries,
     )
-    fetch = git.fetch(runner, "origin", "main", cwd=cwd)
-    if fetch.returncode != 0:
-        detail = "post-merge push watch could not refresh origin/main"
-        _write_terminal_state(
-            ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
-            result=Outcome.STALLED,
-            step="postmerge-push-watch",
-            iteration=counters.iteration,
-            rebase_count=counters.rebase_count,
-            fix_attempts=counters.fix_attempts,
-            transient_retries=counters.transient_retries,
-        )
-        return ShipResult(
-            Outcome.STALLED,
-            pr_number=working.pr_number,
-            pr_url=working.pr_url,
-            merge_result=working.merge_result,
-            detail=detail,
-        )
-    merged_head = git.try_rev_parse(runner, "origin/main", cwd=cwd)
+    merged_head = _merged_pr_commit_sha(runner=runner, working=working, cwd=cwd)
+    if not merged_head:
+        fetch = git.fetch(runner, "origin", "main", cwd=cwd)
+        if fetch.returncode != 0:
+            detail = "post-merge push watch could not refresh origin/main"
+            _write_terminal_state(
+                ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
+                result=Outcome.STALLED,
+                step="postmerge-push-watch",
+                iteration=counters.iteration,
+                rebase_count=counters.rebase_count,
+                fix_attempts=counters.fix_attempts,
+                transient_retries=counters.transient_retries,
+            )
+            return ShipResult(
+                Outcome.STALLED,
+                pr_number=working.pr_number,
+                pr_url=working.pr_url,
+                merge_result=working.merge_result,
+                detail=detail,
+            )
+        merged_head = git.try_rev_parse(runner, "origin/main", cwd=cwd)
     if not merged_head:
         detail = "post-merge push watch could not resolve merged main HEAD"
         _write_terminal_state(
@@ -714,6 +745,7 @@ def _postmerge_main_health_gate(
     if health.status == "pass":
         return None
     if health.status == "fail":
+        repair_head = health.head_sha or merged_head
         _write_ship_state(
             working,
             phase="emergency-repair",
@@ -724,8 +756,12 @@ def _postmerge_main_health_gate(
             extra_fields={
                 "ORIGINAL_BRANCH_FORBIDDEN": "true",
                 "MAIN_REPAIR_RUN_ID": health.failed_run_id,
-                "MAIN_REPAIR_HEAD": health.head_sha or merged_head,
-                "MAIN_HEALTH_HEAD_SHA": health.head_sha or merged_head,
+                "MAIN_REPAIR_HEAD": repair_head,
+                "MAIN_HEALTH_HEAD_SHA": repair_head,
+                "MAIN_HEALTH_REPAIR_COMMITTED": "false",
+                "MAIN_HEALTH_REPAIR_FAILED_RUN_ID": health.failed_run_id,
+                "MAIN_HEALTH_REPAIR_BASE_SHA": repair_head,
+                "MAIN_HEALTH_REPAIR_HEAD": repair_head,
             },
         )
         return ShipResult(
@@ -736,6 +772,14 @@ def _postmerge_main_health_gate(
             pr_url=working.pr_url,
             merge_result=working.merge_result,
             detail=health.detail,
+            main_health_head_sha=repair_head,
+            main_health_repair_committed="false",
+            main_health_repair_failed_run_id=health.failed_run_id,
+            main_health_repair_base_sha=repair_head,
+            main_health_repair_head=repair_head,
+            original_branch_forbidden="true",
+            main_repair_run_id=health.failed_run_id,
+            main_repair_head=repair_head,
         )
     _write_terminal_state(
         ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
@@ -805,6 +849,28 @@ def _premerge_main_health_gate(
             step="main-ci",
             counters=counters,
         )
+    base_head = _resolve_premerge_main_health_sha(
+        runner=runner,
+        repo_root=repo_root,
+        base_ref=base_ref,
+    )
+    if not base_head:
+        detail = f"pre-merge main-health gate could not resolve origin/{base_ref} HEAD"
+        _write_terminal_state(
+            ctx=working.with_(stall_tracking=True, stall_step="main-ci"),
+            result=Outcome.STALLED,
+            step="main-ci",
+            iteration=counters.iteration,
+            rebase_count=counters.rebase_count,
+            fix_attempts=counters.fix_attempts,
+            transient_retries=counters.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=working.pr_number,
+            pr_url=working.pr_url,
+            detail=detail,
+        )
     health = main_health.read_main_health(
         runner,
         main_health.MainHealthQuery(
@@ -813,9 +879,10 @@ def _premerge_main_health_gate(
             workflow=config.MAIN_HEALTH_DEFAULT_WORKFLOW,
             limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
             cwd=repo_root,
+            head_sha=base_head,
         ),
     )
-    if health.status == "pending":
+    if health.status in {"pending", "error"}:
         waited = main_health.wait_main_health(
             runner,
             main_health.MainHealthWaitQuery(
@@ -825,6 +892,7 @@ def _premerge_main_health_gate(
                     workflow=config.MAIN_HEALTH_DEFAULT_WORKFLOW,
                     limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
                     cwd=repo_root,
+                    head_sha=base_head,
                 ),
                 timeout=config.MAIN_HEALTH_WAIT_TIMEOUT_SEC,
                 interval=config.MAIN_HEALTH_WAIT_POLL_INTERVAL_SEC,
@@ -860,6 +928,7 @@ def _premerge_main_health_gate(
             pr_number=working.pr_number,
             pr_url=working.pr_url,
             detail=health.detail,
+            main_health_head_sha=health.head_sha or base_head,
         )
     _write_terminal_state(
         ctx=working.with_(stall_tracking=True, stall_step="main-ci"),
@@ -877,6 +946,7 @@ def _premerge_main_health_gate(
         pr_number=working.pr_number,
         pr_url=working.pr_url,
         detail=health.detail or f"default-branch CI health is {health.status}",
+        main_health_head_sha=health.head_sha or base_head,
     )
 
 
@@ -1024,6 +1094,10 @@ def run_ship(
     runner: Runner = proc,
     cwd: str | None = None,
 ) -> ShipResult:
+    prior_state_file = os.environ.get("SHIP_PR_STATE_FILE")
+    state_file = ctx.state_file or (str(Path(ctx.tmpdir) / "ship-pr-state.sh") if ctx.tmpdir else "")
+    if state_file:
+        os.environ["SHIP_PR_STATE_FILE"] = state_file
     try:
         repo_root = cwd or str(Path.cwd())
         invalid = _invalid_context_result(ctx)
@@ -1677,6 +1751,11 @@ def run_ship(
             step = latest_ctx.stall_step or _slug_from_detail(result.detail)
             _write_terminal_state(ctx=latest_ctx.with_(stall_tracking=True, stall_step=step), result=Outcome.STALLED, step=step)
         return result
+    finally:
+        if prior_state_file is None:
+            os.environ.pop("SHIP_PR_STATE_FILE", None)
+        else:
+            os.environ["SHIP_PR_STATE_FILE"] = prior_state_file
 
 
 def build_parser() -> argparse.ArgumentParser:

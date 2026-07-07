@@ -102,6 +102,33 @@ def test_add_refuses_forbidden_original_branch(monkeypatch: pytest.MonkeyPatch, 
         git.add(runner, "file.txt")
 
 
+def test_add_refuses_forbidden_original_branch_via_implement_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "BRANCH_NAME=feat/x\nORIGINAL_BRANCH_FORBIDDEN=true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    runner = StubRunner(
+        {
+            ("git", "symbolic-ref", "--short", "HEAD"): CommandResult(
+                ("git", "symbolic-ref", "--short", "HEAD"),
+                0,
+                "feat/x\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+
+    with pytest.raises(ShipError, match="forbidden original branch"):
+        git.add(runner, "file.txt")
+
+
 def test_log_subjects() -> None:
     runner = StubRunner(
         {

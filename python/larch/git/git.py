@@ -60,6 +60,10 @@ class PathCommit:
 
 def assert_original_branch_write_allowed(*, branch: str) -> None:
     state_file = os.environ.get("SHIP_PR_STATE_FILE", "")
+    if not state_file:
+        implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+        if implement_tmpdir:
+            state_file = str(Path(implement_tmpdir) / "ship-pr-state.sh")
     if not state_file or not branch:
         return
     path = Path(state_file)
@@ -79,7 +83,7 @@ def assert_original_branch_write_allowed(*, branch: str) -> None:
 
 
 def _assert_branch_write_allowed(runner: Runner, *, cwd: str | None = None) -> None:
-    if not os.environ.get("SHIP_PR_STATE_FILE", ""):
+    if not os.environ.get("SHIP_PR_STATE_FILE", "") and not os.environ.get("IMPLEMENT_TMPDIR", ""):
         return
     branch = try_current_branch(runner, cwd=cwd)
     if branch:
