@@ -388,6 +388,13 @@ def _publish_design_logs(
         )
         if init.returncode != 0:
             return (False, "", "", "", "0")
+        if not request.include_completed:
+            completed = run_dest / ".completed"
+            if completed.is_symlink() or completed.is_file():
+                with contextlib.suppress(FileNotFoundError, OSError):
+                    completed.unlink()
+            else:
+                shutil.rmtree(completed, ignore_errors=True)
         pre_scrub_violations = 0
         for child in request.design_tmpdir.iterdir():
             if child.name == ".design-log-publish-metadata.env":

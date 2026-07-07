@@ -757,6 +757,38 @@ def test_pause_log_publish_retains_completed_sentinels(tmp_path: Path) -> None:
     assert f"larch-logs/design/{RUN_ID}/.completed/step-5b" in tree, tree
 
 
+def test_final_log_publish_clears_preexisting_completed_sentinels(
+    tmp_path: Path,
+) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    stale_completed = repo / "larch-logs" / "design" / RUN_ID / ".completed"
+    stale_completed.mkdir(parents=True)
+    _ = (stale_completed / "step-3-terminal").write_text("", encoding="utf-8")
+    _git("add", f"larch-logs/design/{RUN_ID}/.completed/step-3-terminal", cwd=repo)
+    _git("commit", "-q", "-m", "stale completed sentinel", cwd=repo)
+
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+
+    result = _run_publish(repo, design, bin_dir)
+
+    assert result.returncode == 0, result.stderr
+    assert "PUBLISH_OK=true" in result.stdout, result.stderr
+    origin = tmp_path / "origin.git"
+    tree = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert f"larch-logs/design/{RUN_ID}/artifact.txt" in tree, tree
+    assert f"larch-logs/design/{RUN_ID}/.completed/step-3-terminal" not in tree, tree
+
+
 def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     # The publish copies a curated set: raw Codex event streams, prompt/meta
     # sidecars, raw per-lane outputs, plan-autofix drafts, and .completed
