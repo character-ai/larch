@@ -1,14 +1,15 @@
-## /implement run 8313BC30-7B05-4A84-8A09-F12DCA813D25: shipping
+## /implement run 8313BC30-7B05-4A84-8A09-F12DCA813D25: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: DONE
 - **Duration**: 03:03:52
 - **Cost**: 💰 TOTAL ~$96.20: Claude $19.21, Codex-5.5 $50.88, Codex-mini $3.63, Cursor $20.07, Claude (subprocess) $2.41  |  Tokens: 162036k
 - **Issue**: #6505: https://github.com/character-ai/larch/issues/6505
+- **PR**: #6513: https://github.com/character-ai/larch/pull/6513
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/8 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +899/-461, larch-logs +1286/-0
 - **OOS filed**: 0
 - **Exec issues**: 4
 - **Warnings**: 1
@@ -102,7 +103,3 @@ codex/correctness  │███████████████████�
 6. codex/testing: 1
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
