@@ -41,6 +41,10 @@ if len(sys.argv) >= 3 and sys.argv[1] == "bgjob" and sys.argv[2] == "start":
     except FileNotFoundError:
         pass
     rc = subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.environ.get("FAKE_STEP3_EMPTY") == "1" and rc == 0:
+        # Emulate the daemon's invalid-result path so the stale-merge regression
+        # can assert the non-success routing branch.
+        rc = 1
     rows = [("BGJOB_RC", str(rc)), ("BGJOB_ELAPSED_S", "0"), ("STEP", step)]
     if os.path.isfile(merge_env) and not os.path.islink(merge_env):
         with open(merge_env, encoding="utf-8") as handle:

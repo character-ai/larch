@@ -82,6 +82,19 @@ def test_registry_rejects_escaped_result_path(tmp_path: Path, monkeypatch: pytes
     assert registry.read_entry(path) is None
 
 
+def test_result_env_path_rejects_symlinked_bgjob_dir(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "bgjob-outside"
+    outside.mkdir()
+    (tmp_path / "bgjob").symlink_to(outside)
+
+    try:
+        _ = model.result_env_path(tmpdir=tmp_path, step="demo-step")
+    except ValueError as exc:
+        assert "bgjob dir" in str(exc)
+    else:
+        raise AssertionError("result_env_path must reject symlinked bgjob dir")
+
+
 def test_default_run_id_depends_only_on_tmpdir(tmp_path: Path) -> None:
     left = model.default_run_id(tmpdir=tmp_path, clone_path=Path("/tmp/left"))
     right = model.default_run_id(tmpdir=tmp_path, clone_path=Path("/tmp/right"))

@@ -345,14 +345,16 @@ def _step3_normalize_read_result_env(tmpdir: Path) -> int:
             status = "missing"
             values = dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, "")
     bgjob_rc = values.get(BGJOB_RC_KEY, "")
-    route_kvs_present = bool(values.get("NEXT_ACTION") or values.get("STEP3_REVIEW_LOOP_STATUS") or values.get("LOOP_STATUS"))
-    if bgjob_rc != "0" or not route_kvs_present:
+    next_action = values.get("NEXT_ACTION", "")
+    route_kvs_present = bool(next_action or values.get("STEP3_REVIEW_LOOP_STATUS") or values.get("LOOP_STATUS"))
+    terminal_failure_route = next_action.startswith("final-summary:")
+    if (bgjob_rc not in {"", "0"} and not terminal_failure_route) or not route_kvs_present:
         values["NEXT_ACTION"] = ""
         _emit_kv(key="READ_RESULT_ENV_STATUS", value="invalid" if bgjob_rc and bgjob_rc != "0" else "missing")
         for key in _STEP3_READ_RESULT_ENV_KEYS:
             _emit_kv(key=key, value=values[key])
         return 1
-    if not values.get("NEXT_ACTION"):
+    if not next_action:
         values["NEXT_ACTION"] = _step3_next_action(
             status=values.get("STEP3_REVIEW_LOOP_STATUS", ""),
             loop_status=values.get("LOOP_STATUS", ""),
