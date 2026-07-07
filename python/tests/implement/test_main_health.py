@@ -40,6 +40,19 @@ def test_latest_matching_success_returns_pass() -> None:
     assert result.head_sha == "abc"
 
 
+def test_success_without_head_sha_returns_error() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _res('[{"databaseId":10,"status":"completed","conclusion":"success","headSha":"","event":"push"}]'),
+        ],
+    )
+
+    result = main_health.read_main_health(runner, _query())
+
+    assert result.status == "error"
+    assert "without a head SHA" in result.detail
+
+
 def test_latest_matching_failure_returns_fail_and_failed_run_id() -> None:
     runner = RecordingRunner(
         responses=[

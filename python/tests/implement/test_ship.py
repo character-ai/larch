@@ -4514,6 +4514,15 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
     _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=pass\n", encoding="utf-8")
     calls: list[str] = []
 
+    def fetch(*_args: object, **_kwargs: object) -> CommandResult:
+        calls.append("fetch")
+        return CommandResult(("git", "fetch", "origin", "main"), 0, "", "", 0.01)
+
+    def try_rev_parse(*args: object, **kwargs: object) -> str:
+        ref = str(args[1]) if len(args) > 1 else str(kwargs.get("ref", ""))
+        calls.append(ref)
+        return "abc123" if ref == "origin/main" else ""
+
     def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
         calls.append("watch")
         return ship.main_health.MainHealthWaitResult(
@@ -4530,6 +4539,8 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
         calls.append("postmerge")
         return ship.ShipResult(Outcome.OK, detail="done")
 
+    monkeypatch.setattr(ship.git, "fetch", fetch)
+    monkeypatch.setattr(ship.git, "try_rev_parse", try_rev_parse)
     monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
     monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
 
@@ -4544,7 +4555,41 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
     )
 
     assert result.outcome is Outcome.OK
-    assert calls == ["watch", "postmerge"]
+    assert calls == ["fetch", "origin/main", "watch", "postmerge"]
+
+
+def test_main_health_gates_fail_closed_when_sidecar_missing(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = (tmp_path / "main-health.stdout").write_text("probe\n", encoding="utf-8")
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.com/pr/5",
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    counters = ship.ShipReconciliationCounters(iteration=1, rebase_count=2, fix_attempts=3, transient_retries=4)
+
+    premerge = ship._premerge_main_health_gate(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        repo_root=str(tmp_path),
+        base_ref="main",
+        counters=counters,
+    )
+    postmerge = ship._postmerge_main_health_gate(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx.with_(pr_closed=True),
+        cwd=str(tmp_path),
+        counters=counters,
+    )
+
+    assert premerge is not None
+    assert premerge.outcome is Outcome.STALLED
+    assert "missing main-health.env" in premerge.detail
+    assert postmerge is not None
+    assert postmerge.outcome is Outcome.STALLED
+    assert "missing main-health.env" in postmerge.detail
 
 
 def test_postmerge_flush_only_when_pr_closed(
@@ -6653,6 +6698,50 @@ def test_guidelines_assessment_resume_without_pr_number_uses_pre_pr_compose(
     assert resume.pr_number is None
     assert resume.pr_url == ""
 
+
+
+def test_postmerge_repair_resume_preserves_repair_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=emergency-repair\nBRANCH_NAME=feat\nEMERGENCY_REPAIR_BRANCH=repair/feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nMERGE=true\nDRAFT=false\nMAIN_REPAIR_RUN_ID=44\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "repair/feat")
+
+    resume = ship_resume._resume_plan(
+        ctx=_ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert resume.start == "emergency-repair"
+    assert resume.branch_name == "repair/feat"
+    assert resume.pr_number == 7
+
+
+def test_postmerge_push_watch_resume_preserves_repair_branch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=postmerge-push-watch\nBRANCH_NAME=feat\nEMERGENCY_REPAIR_BRANCH=repair/feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nMERGE=true\nDRAFT=false\nMAIN_REPAIR_RUN_ID=44\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "repair/feat")
+
+    resume = ship_resume._resume_plan(
+        ctx=_ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert resume.start == "postmerge-push-watch"
+    assert resume.branch_name == "repair/feat"
+    assert resume.pr_number == 7
 
 
 def test_pin_and_load_guidelines_note_logs_redaction_failure(

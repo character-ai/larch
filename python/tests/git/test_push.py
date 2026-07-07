@@ -108,6 +108,21 @@ def test_push_branch_refuses_detached_head() -> None:
         _ = push.push_branch(runner=runner, ctx=_ctx(), sleeper=lambda _s: None)
 
 
+def test_push_branch_refuses_forbidden_original_branch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "BRANCH_NAME=feat/x\nORIGINAL_BRANCH_FORBIDDEN=true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHIP_PR_STATE_FILE", str(state_file))
+    runner = RecordingRunner(
+        responses=_push_git_responses(),
+    )
+
+    with pytest.raises(ShipError, match="forbidden original branch"):
+        push.push_branch(runner=runner, ctx=_ctx(), sleeper=lambda _s: None)
+
+
 def test_push_backs_off_when_stderr_unchanged() -> None:
     runner = RecordingRunner(
         responses=_push_git_responses(

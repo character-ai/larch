@@ -132,14 +132,28 @@ def _classify_runs(
     status = latest.status.lower()
     conclusion = (latest.conclusion or "").lower()
     matched_head_sha = latest.head_sha or (requested_head_sha or "")
+    result = MainHealthStatus(
+        status="error",
+        head_sha=matched_head_sha,
+        detail=_bounded_detail(
+            f"ambiguous run {latest.database_id} status={latest.status} conclusion={latest.conclusion or ''}",
+        ),
+    )
     if status in _PENDING_STATUSES or (status != "completed" and not conclusion):
-        return MainHealthStatus(
+        result = MainHealthStatus(
             status="pending",
             head_sha=matched_head_sha,
             detail=_bounded_detail(f"run {latest.database_id} is {latest.status}"),
         )
-    if status == "completed" and conclusion == "success":
-        if matched_head_sha:
+    elif status == "completed" and conclusion == "success":
+        if not matched_head_sha:
+            result = MainHealthStatus(
+                status="error",
+                detail=_bounded_detail(
+                    f"run {latest.database_id} completed successfully without a head SHA",
+                ),
+            )
+        else:
             flap = _same_sha_failure_flap(
                 runner,
                 matching[1:],
@@ -149,25 +163,19 @@ def _classify_runs(
             )
             if flap is not None:
                 return flap
-        return MainHealthStatus(
-            status="pass",
-            head_sha=matched_head_sha,
-            detail=_bounded_detail(f"run {latest.database_id} completed successfully"),
-        )
-    if status == "completed" and conclusion in _FAILURE_CONCLUSIONS:
-        return MainHealthStatus(
+            result = MainHealthStatus(
+                status="pass",
+                head_sha=matched_head_sha,
+                detail=_bounded_detail(f"run {latest.database_id} completed successfully"),
+            )
+    elif status == "completed" and conclusion in _FAILURE_CONCLUSIONS:
+        result = MainHealthStatus(
             status="fail",
             failed_run_id=str(latest.database_id),
             head_sha=matched_head_sha,
             detail=_failure_detail(latest, reason="default-branch push workflow failed"),
         )
-    return MainHealthStatus(
-        status="error",
-        head_sha=matched_head_sha,
-        detail=_bounded_detail(
-            f"ambiguous run {latest.database_id} status={latest.status} conclusion={latest.conclusion or ''}",
-        ),
-    )
+    return result
 
 
 def read_main_health(

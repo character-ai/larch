@@ -597,6 +597,42 @@ def _ship_postmerge_phase(
     )
 
 
+def _missing_main_health_sidecar_result(
+    *,
+    ctx: RunContext,
+    step: str,
+    counters: ShipReconciliationCounters,
+    failed_run_id: str = "",
+) -> ShipResult:
+    detail = "missing main-health.env; cannot verify default-branch CI health"
+    _write_terminal_state(
+        ctx=ctx.with_(stall_tracking=True, stall_step=step),
+        result=Outcome.STALLED,
+        step=step,
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
+        failed_run_id=failed_run_id,
+    )
+    return ShipResult(
+        Outcome.STALLED,
+        failed_run_id=failed_run_id,
+        pr_number=ctx.pr_number,
+        pr_url=ctx.pr_url,
+        merge_result=ctx.merge_result,
+        detail=detail,
+    )
+
+
+def _main_health_sidecar_bootstrapped(tmpdir: str) -> bool:
+    base = Path(tmpdir)
+    return any(
+        (base / name).is_file()
+        for name in ("main-health.stdout", "main-health.stderr")
+    )
+
+
 def _postmerge_main_health_gate(
     *,
     runner: Runner,
@@ -604,8 +640,15 @@ def _postmerge_main_health_gate(
     cwd: str,
     counters: ShipReconciliationCounters,
 ) -> ShipResult | None:
-    if not (Path(working.tmpdir) / "main-health.env").is_file():
-        return None
+    main_health_path = Path(working.tmpdir) / "main-health.env"
+    if not main_health_path.is_file():
+        if not _main_health_sidecar_bootstrapped(working.tmpdir):
+            return None
+        return _missing_main_health_sidecar_result(
+            ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
+            step="postmerge-push-watch",
+            counters=counters,
+        )
     _write_ship_state(
         working,
         phase="postmerge-push-watch",
@@ -614,7 +657,26 @@ def _postmerge_main_health_gate(
         fix_attempts=counters.fix_attempts,
         transient_retries=counters.transient_retries,
     )
-    merged_head = git.try_rev_parse(runner, "origin/main", cwd=cwd) or git.try_rev_parse(runner, "HEAD", cwd=cwd)
+    fetch = git.fetch(runner, "origin", "main", cwd=cwd)
+    if fetch.returncode != 0:
+        detail = "post-merge push watch could not refresh origin/main"
+        _write_terminal_state(
+            ctx=working.with_(stall_tracking=True, stall_step="postmerge-push-watch"),
+            result=Outcome.STALLED,
+            step="postmerge-push-watch",
+            iteration=counters.iteration,
+            rebase_count=counters.rebase_count,
+            fix_attempts=counters.fix_attempts,
+            transient_retries=counters.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=working.pr_number,
+            pr_url=working.pr_url,
+            merge_result=working.merge_result,
+            detail=detail,
+        )
+    merged_head = git.try_rev_parse(runner, "origin/main", cwd=cwd)
     if not merged_head:
         detail = "post-merge push watch could not resolve merged main HEAD"
         _write_terminal_state(
@@ -734,8 +796,15 @@ def _premerge_main_health_gate(
     base_ref: str,
     counters: ShipReconciliationCounters,
 ) -> ShipResult | None:
-    if not (Path(working.tmpdir) / "main-health.env").is_file():
-        return None
+    main_health_path = Path(working.tmpdir) / "main-health.env"
+    if not main_health_path.is_file():
+        if not _main_health_sidecar_bootstrapped(working.tmpdir):
+            return None
+        return _missing_main_health_sidecar_result(
+            ctx=working.with_(stall_tracking=True, stall_step="main-ci"),
+            step="main-ci",
+            counters=counters,
+        )
     health = main_health.read_main_health(
         runner,
         main_health.MainHealthQuery(
@@ -996,6 +1065,28 @@ def run_ship(
                 rebase_count=resume.rebase_count,
                 fix_attempts=resume.fix_attempts,
                 transient_retries=resume.transient_retries,
+            )
+        if resume.start == "postmerge-push-watch":
+            working = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
+            return _ship_postmerge_phase(
+                runner=runner,
+                working=working,
+                cwd=repo_root,
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
+        if resume.start == "emergency-repair":
+            working = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason=config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL,
+                failed_run_id=run_logs.read_state_kv(state_file=ctx.state_file, key="MAIN_REPAIR_RUN_ID"),
+                pr_number=working.pr_number,
+                pr_url=working.pr_url,
+                merge_result=working.merge_result,
+                detail=resume.detail or "post-merge emergency repair remains in progress",
             )
 
         if resume.start == "fresh":

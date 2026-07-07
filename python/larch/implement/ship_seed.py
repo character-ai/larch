@@ -97,6 +97,16 @@ def _seed_initial_state_fields(args: argparse.Namespace) -> dict[str, str]:
         "IMPLEMENT_TMPDIR": args.tmpdir or "",
         "CI_FIX_REBASE_PENDING": "false",
         "OOS_PENDING": "false",
+        "EMERGENCY_REPAIR_BRANCH": "",
+        "ORIGINAL_BRANCH_FORBIDDEN": "false",
+        "MAIN_REPAIR_RUN_ID": "",
+        "MAIN_REPAIR_HEAD": "",
+        "EMERGENCY_REPAIR_PR_NUMBER": "",
+        "MAIN_HEALTH_REPAIR_COMMITTED": "false",
+        "MAIN_HEALTH_REPAIR_FAILED_RUN_ID": "",
+        "MAIN_HEALTH_REPAIR_BASE_SHA": "",
+        "MAIN_HEALTH_REPAIR_HEAD": "",
+        "MAIN_HEALTH_HEAD_SHA": "",
     }
     return {key: fields[key] for key in INITIAL_SHIP_STATE_KEYS}
 

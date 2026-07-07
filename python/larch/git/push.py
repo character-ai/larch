@@ -69,6 +69,7 @@ def push_branch(
             f"RunContext.branch {ctx.branch!r}"
         )
         raise ShipError(msg)
+    git.assert_original_branch_write_allowed(branch=branch)
     remote = select_push_remote(_runner=runner, _ctx=ctx, cwd=cwd)
     for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
@@ -95,6 +96,7 @@ def push_current_branch(
     branch = git.try_current_branch(runner, cwd=cwd)
     if not branch:
         return PushResult(remote="origin", attempts=0, status="detached_head", exit_code=1)
+    git.assert_original_branch_write_allowed(branch=branch)
     stderr_blocks: list[str] = []
     last_exit = 0
     for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):

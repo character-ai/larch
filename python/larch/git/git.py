@@ -58,6 +58,34 @@ class PathCommit:
     subject: str
 
 
+def assert_original_branch_write_allowed(*, branch: str) -> None:
+    state_file = os.environ.get("SHIP_PR_STATE_FILE", "")
+    if not state_file or not branch:
+        return
+    path = Path(state_file)
+    if not path.is_file() or path.is_symlink():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return
+    values: dict[str, str] = {}
+    for line in lines:
+        key, sep, value = line.partition("=")
+        if sep:
+            values[key] = value
+    if values.get("ORIGINAL_BRANCH_FORBIDDEN", "").strip().lower() == "true" and values.get("BRANCH_NAME", "") == branch:
+        raise ShipError(f"refusing commit or push on forbidden original branch: {branch}")
+
+
+def _assert_branch_write_allowed(runner: Runner, *, cwd: str | None = None) -> None:
+    if not os.environ.get("SHIP_PR_STATE_FILE", ""):
+        return
+    branch = try_current_branch(runner, cwd=cwd)
+    if branch:
+        assert_original_branch_write_allowed(branch=branch)
+
+
 def _run(
     runner: Runner,
     argv: Sequence[str],
@@ -520,6 +548,7 @@ def commit(
     pathspec_file_nul: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
+    _assert_branch_write_allowed(runner, cwd=cwd)
     argv = ["git", "commit", "-m", message]
     if only:
         argv.append("--only")
@@ -544,6 +573,7 @@ def commit_with_trailer(
     cwd: str | None = None,
 ) -> CommandResult:
     """Commit via temp file + interpret-trailers for ``cli.py git commit``."""
+    _assert_branch_write_allowed(runner, cwd=cwd)
     trailer = config.GIT_COMMIT_CO_AUTHORED_BY_TRAILER
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -588,6 +618,7 @@ def commit_with_trailer(
 
 
 def add(runner: Runner, *paths: str, cwd: str | None = None) -> CommandResult:
+    _assert_branch_write_allowed(runner, cwd=cwd)
     argv = ["git", "add"]
     if paths:
         argv.extend(["--", *paths])
@@ -610,6 +641,7 @@ def add_pathspec_file(
     pathspec_file_nul: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
+    _assert_branch_write_allowed(runner, cwd=cwd)
     argv = ["git", "add", f"--pathspec-from-file={pathspec_from_file}"]
     if pathspec_file_nul:
         argv.append("--pathspec-file-nul")
