@@ -574,6 +574,7 @@ exclude = [
   "scripts/test-hook-clone-ownership-parity.sh",
   "scripts/test-hook-progress-report.sh",
   "scripts/test-hook-stop-fail-close.sh",
+  "scripts/test-hook-deny-run-in-background.sh",
   # not invokable directly) carrying the canonical plugin sparse install
   # allowlist for upgrade-larch run and SessionStart probes. Referenced via
   # source directives only, which agent-lint does not follow.
