@@ -914,8 +914,8 @@ def step5(argv: list[str] | None = None) -> int:
             if loop_mode:
                 _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=False, stall_reason="preflight-failed", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap))
             return 2
-        os.environ["CODEX_BINARY_FOUND"] = args.codex_available
-        os.environ["CURSOR_BINARY_FOUND"] = args.cursor_available
+        os.environ[config.ENV_CODEX_BINARY_FOUND] = args.codex_available
+        os.environ[config.ENV_CURSOR_BINARY_FOUND] = args.cursor_available
         os.environ.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
         os.environ["LARCH_TOKEN_SESSION_ID"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_TOKEN_SESSION_ID", default=args.run_id)
         os.environ["LARCH_CLAUDE_SOURCE_FILE"] = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_CLAUDE_SOURCE_FILE", default=os.environ.get("LARCH_CLAUDE_SOURCE_FILE", ""))
