@@ -304,11 +304,11 @@ def _bind_step0_route_issue_env(*, env: dict[str, str], design_tmpdir: Path, iss
         else:
             print("**⚠ Step 0b: POSITIONAL_KIND=issue requires numeric POSITIONAL_VALUE; aborting /design**", file=sys.stderr)
             return 1
-    if not env.get("ISSUE_NUMBER") or not env.get("REPO"):
-        _gap_fill_resume_route_state_values(env, design_tmpdir)
     if kind == "verbal" and not env.get("ISSUE_NUMBER"):
         print("**⚠ Step 0b: POSITIONAL_KIND=verbal requires ISSUE_NUMBER from /larch:issue before routing; aborting /design**", file=sys.stderr)
         return 1
+    if not env.get("ISSUE_NUMBER") or not env.get("REPO"):
+        _gap_fill_resume_route_state_values(env, design_tmpdir)
     if kind not in {"issue", "none", "verbal"}:
         print(f"**⚠ Step 0b: invalid POSITIONAL_KIND={kind or '<empty>'}; aborting /design**", file=sys.stderr)
         return 1

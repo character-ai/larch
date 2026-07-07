@@ -1390,6 +1390,28 @@ def test_step0_route_rejects_verbal_without_issue_number(tmp_path: Path, monkeyp
     assert "POSITIONAL_KIND=verbal requires ISSUE_NUMBER" in captured.err
 
 
+def test_step0_route_rejects_verbal_with_stale_route_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=verbal\nPOSITIONAL_VALUE=feature text\n", encoding="utf-8")
+    (design / ".design-step0-route-state.env").write_text("ISSUE_NUMBER=42\nREPO=owner/repo\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("route should not run for verbal positional state without an issue number")
+
+    def fake_read_json_issue(*_args: object, **_kwargs: object) -> tuple[str, str, str]:
+        raise AssertionError("issue lookup should not run for verbal positional state without an issue number")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0, "_read_json_issue", fake_read_json_issue)
+
+    rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    captured = capsys.readouterr()
+    assert rc == 1
+    assert "POSITIONAL_KIND=verbal requires ISSUE_NUMBER" in captured.err
+
+
 def test_step0_route_enables_brainstorm_from_prefix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
