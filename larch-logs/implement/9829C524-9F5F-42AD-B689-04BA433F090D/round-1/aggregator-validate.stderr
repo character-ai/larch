@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add accepted-plan-findings-audit.md to SKILL_KEEP["design"], update docs/run-log')
+warning: fix text for slot 'dyn-dyn-gatec-audit' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add accepted-plan-findings-audit.md to `SKILL_KEEP["design"]`, update the consum')
