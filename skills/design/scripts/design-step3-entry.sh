@@ -41,6 +41,11 @@ fi
 rm -f "$DESIGN_TMPDIR/.pause-save-complete"
 "$SCRIPT_DIR/design-step3-entry-state.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"
 [ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
+if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review snapshot-pre-review \
+  --design-tmpdir "$DESIGN_TMPDIR"; then
+  printf '%s\n' "**⚠ Step 3: failed to snapshot plan.txt before reviewer launch**" >&2
+  _step3_entry_panel_init_failed_exit snapshot-pre-review-failure
+fi
 _scope_anchor="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
 _had_issue_body=false
 _scope_body="$(mktemp "${TMPDIR:-/tmp}/larch-plan-review-scope.XXXXXX")" || {

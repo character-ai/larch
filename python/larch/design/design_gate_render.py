@@ -57,6 +57,7 @@ def _arg_parser() -> argparse.ArgumentParser:
     _ = parser.add_argument("--approve-requested", choices=tuple(sorted(_TRUE_FALSE)), default="false")
     _ = parser.add_argument("--design-tmpdir")
     _ = parser.add_argument("--panel-failed", choices=tuple(sorted(_TRUE_FALSE)), default="false")
+    _ = parser.add_argument("--accepted-audit-escalation", choices=tuple(sorted(_TRUE_FALSE)), default="false")
     return parser
 
 
@@ -135,12 +136,35 @@ def _review_count(design_tmpdir: str | None) -> tuple[int, str]:
     return int(raw, 10), ""
 
 
-def _gate_c_options(*, without_see_full_plan: bool, at_cap: bool, panel_failed: bool) -> tuple[GateOption, ...]:
+def _gate_c_approve_description(*, panel_failed: bool, accepted_audit_escalation: bool) -> str:
+    if accepted_audit_escalation and panel_failed:
+        return (
+            "Approve despite the main-agent accepted-findings audit's strong dissent "
+            "and acknowledge panel failure, then continue immediately to finalize."
+        )
+    if accepted_audit_escalation:
+        return (
+            "Approve despite the main-agent accepted-findings audit's strong dissent "
+            "and continue immediately to finalize."
+        )
+    return "Approve the current plan and continue immediately to finalize."
+
+
+def _gate_c_options(
+    *,
+    without_see_full_plan: bool,
+    at_cap: bool,
+    panel_failed: bool,
+    accepted_audit_escalation: bool,
+) -> tuple[GateOption, ...]:
     approve_label = _GATE_C_PANEL_FAILED_APPROVE_LABEL if panel_failed else _GATE_C_APPROVE_LABEL
     options = [
         GateOption(
             approve_label,
-            "Approve the current plan and continue immediately to finalize.",
+            _gate_c_approve_description(
+                panel_failed=panel_failed,
+                accepted_audit_escalation=accepted_audit_escalation,
+            ),
         )
     ]
     if not without_see_full_plan:
@@ -177,7 +201,13 @@ def _gate_c_question(*, at_cap: bool) -> str:
     return f"{base} {_GATE_C_OTHER_AFFORDANCE}"
 
 
-def _render_gate_c(*, design_tmpdir: str | None, without_see_full_plan: bool, panel_failed: bool) -> GateRender:
+def _render_gate_c(
+    *,
+    design_tmpdir: str | None,
+    without_see_full_plan: bool,
+    panel_failed: bool,
+    accepted_audit_escalation: bool,
+) -> GateRender:
     count, warning = _review_count(design_tmpdir)
     cap = effective_authorized_cap(Path(design_tmpdir)) if design_tmpdir else 2
     at_cap = count >= cap
@@ -192,6 +222,7 @@ def _render_gate_c(*, design_tmpdir: str | None, without_see_full_plan: bool, pa
             without_see_full_plan=without_see_full_plan,
             at_cap=at_cap,
             panel_failed=panel_failed,
+            accepted_audit_escalation=accepted_audit_escalation,
         ),
         extra=tuple(extra),
     )
@@ -234,6 +265,7 @@ def render_gate_main(argv: list[str] | None = None) -> int:
                 design_tmpdir=args.design_tmpdir,
                 without_see_full_plan=args.without_see_full_plan,
                 panel_failed=_bool_arg(args.panel_failed),
+                accepted_audit_escalation=_bool_arg(args.accepted_audit_escalation),
             )
     except ValueError as exc:
         parser.error(str(exc))

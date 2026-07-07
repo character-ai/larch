@@ -199,6 +199,7 @@ def test_keep_file_retains_design_token_ledger() -> None:
     assert keep(filename="manifest.json", skill="design")
     assert keep(filename="session-id", skill="design")
     assert keep(filename="architectural-guideline-assessment.md", skill="design")
+    assert keep(filename="accepted-plan-findings-audit.md", skill="design")
     assert not keep(filename="architectural-guideline-assessment.md", skill="implement")
     assert keep(filename="architectural-guideline-outcome.json", skill="implement")
     assert not keep(filename="architectural-guideline-outcome.json", skill="design")
@@ -224,6 +225,7 @@ def test_gc_run_logs_slim_preserves_design_guideline_assessment(tmp_path: Path) 
     _ = (run / "manifest.json").write_text('{"started_at":"2020-01-01T00:00:00Z"}\n', encoding="utf-8")
     _ = (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
     _ = (run / "architectural-guideline-assessment.md").write_text(assessment, encoding="utf-8")
+    _ = (run / "accepted-plan-findings-audit.md").write_text("Accepted plan-review audit: no concerns.\n", encoding="utf-8")
     _ = (run / "forensic.txt").write_text("x" * 10, encoding="utf-8")
     (run / "round-1").mkdir()
     _ = (run / "round-1" / "detail.txt").write_text("detail\n", encoding="utf-8")
@@ -232,6 +234,7 @@ def test_gc_run_logs_slim_preserves_design_guideline_assessment(tmp_path: Path) 
     _ = gc_run_logs._slim_dir(logs_root=logs_root, item=item)  # pyright: ignore[reportPrivateUsage]
 
     assert (run / "architectural-guideline-assessment.md").read_text(encoding="utf-8") == assessment
+    assert (run / "accepted-plan-findings-audit.md").read_text(encoding="utf-8") == "Accepted plan-review audit: no concerns.\n"
     assert not (run / "forensic.txt").exists()
     assert (run / "gc-slimmed").is_file()
 

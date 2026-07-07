@@ -17,6 +17,7 @@ larch-logs/
       manifest.json
       architectural-invariant-assessment.md
       architectural-guideline-assessment.md
+      accepted-plan-findings-audit.md
       (design session artifacts: files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, filtered to exclude raw per-lane transcripts and sidecars via `design_log_publish_flow._publish_excluded`, then trimmed and redacted per `python/design_log_publish_flow.py`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
       plan-review/
         round-<N>/
@@ -94,6 +95,14 @@ artifact before approval, so no stale copy is committed. The artifacts publish
 through the existing design-log copy, tmpdir redaction, and secret-scrub flow.
 It is auditable through `/fluff-analysis` guideline assessment coverage and
 `python/cli.py audit-runs scan-run --skill design`.
+
+### design accepted plan-review findings audit
+
+`larch-logs/design/<RUN_ID>/accepted-plan-findings-audit.md` is a top-level
+design artifact written from Gate C only. It records the main-agent audit of
+accepted plan-review findings and their application to the final plan. Clean
+runs contain a deterministic no-concerns note; mild or strong dissent records a
+compact assessment, not raw diffs.
 
 ### implement architectural invariant and guideline outcomes
 
@@ -624,7 +633,7 @@ By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-
 
 - Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
 - The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `architectural-invariant-outcome.json`, `architectural-guideline-outcome.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`, `checks-digest-sizes.tsv`.
-- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-invariant-assessment.md`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
+- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-invariant-assessment.md`, `architectural-guideline-assessment.md`, `accepted-plan-findings-audit.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
 - The consumer-core keep set for `/review` dirs includes `manifest.json`, `final-summary.md`, `difficulty-rating.json`, and `checks-digest-sizes.tsv`, so digest savings telemetry survives default slimming before enough samples accrue.
 - All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
 - A `gc-slimmed` marker file is written into each slimmed dir.
