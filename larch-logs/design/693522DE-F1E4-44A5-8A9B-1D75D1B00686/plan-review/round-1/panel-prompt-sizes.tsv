@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	16360	4090	13293	3324	3067	767		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	20464	5116	13566	3392	6898	1725		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	20477	5120	13579	3395	6898	1725		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	16336	4084	13269	3318	3067	767		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	20479	5120	13581	3396	6898	1725		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	20455	5114	13557	3390	6898	1725		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	16345	4087	13278	3320	3067	767		0	0
+design Step 3	phase1	1	dyn-cursor-plan-pause-resume-provenance	plan-review	cursor	dyn-cursor-plan-pause-resume-provenance.txt	20825	5207	13432	3358	7393	1849		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	16358	4090	13291	3323	3067	767		0	0
+design Step 3	phase1	1	dyn-codex-plan-pause-resume-provenance	plan-review	codex	dyn-codex-plan-pause-resume-provenance.txt	16706	4177	13144	3286	3562	891		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	10046	2512	4472	1118	5574	1394	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	12371	3093	9144	2286	3227	807		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	12371	3093	9144	2286	3227	807		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	12371	3093	9144	2286	3227	807		0	0

@@ -1,0 +1,13 @@
+### FINDING_1: Pause-load test does not cover the broken Step 5c resume path
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: major
+- **Concern**: The pause-load restore test reuses a helper that hardcodes `STEP=3`, so it can pass while the actual Step 5c resume flow still fails to restore or honor the pre-pause completion sentinels. That leaves the regression unverified on the path that matters.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Parameterize the helper or build the test snapshot with `STEP=5c` in `pause-state.txt` so the restore case matches the broken resume path.
+
+### FINDING_2: Final log publish can inherit stale `.completed/` sentinels
+- **Reviewer(s)**: Cursor-dyn-Pause Resume Provenance
+- **Severity**: major
+- **Concern**: Final `log-publish` can copy a worktree that already contains pause-era `.completed/` entries and then leave those inherited sentinels in `run_dest` when `include_completed=false`. That can commit stale completion state instead of reflecting the live tmpdir state, which breaks the intended final-log contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Pause Resume Provenance: When `include_completed` is false, remove `run_dest / ".completed"` after the copy loop (or before copy when `run_dest` already exists). Add a regression test: seed the worktree `run_dest` with `.completed/step-3`, run final `log-publish`, assert the committed tree has no `/.completed/` path.

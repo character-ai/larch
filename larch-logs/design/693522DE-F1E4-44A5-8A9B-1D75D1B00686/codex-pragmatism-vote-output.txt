@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan explicitly says legacy pause snapshots with no `.completed/` should still load as today, so backfilling old archives is not required for the stated fix; this is a real legacy-compatibility concern, but it is out of scope here.

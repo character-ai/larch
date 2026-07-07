@@ -1,0 +1,1 @@
+1	the pause-load restore test reuses a helper that hardcodes `step=3`, so it can pass while the actual step 5c resume flow still fails to restore or honor the pre-pause completion sentinels. that leaves the regression unverified on the path that matters.
