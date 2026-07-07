@@ -1,152 +1,16 @@
-"""Require background skill fences to have bg-wait marker coverage."""
+"""Reject unallowlisted skill prose that still requests run_in_background."""
 
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
 from larch.lint import lint_common
 from larch.lint.lint_common import LintError
 
-SCOPE_PATTERNS = [
-    "skills/design/**/*.md",
-    "skills/implement/**/*.md",
-    "skills/review/**/*.md",
-    "skills/review-and-fix/**/*.md",
-]
-# `skills/research/**` is intentionally omitted: /research launches parallel
-# lanes and waits through foreground collection, with no marker-reading
-# stall-recovery path.
-FENCE_OPEN_RE = re.compile(r"^( {0,3})(`{3,})(.*)$")
-BACKGROUND_RE = re.compile(r"run_in_background:\s*true")
-SEARCH_LINE_LIMIT = 12
-
-
-@dataclass(frozen=True)
-class Fence:
-    start_line: int
-    end_line: int
-    info: str
-    body: str
-
-
-@dataclass(frozen=True)
-class CommandMapping:
-    label: str
-    marker_step: str
-    required: tuple[str, ...]
-
-
-KNOWN_BACKGROUND_COMMANDS: tuple[CommandMapping, ...] = (
-    CommandMapping(
-        "design Step 3 review", "design-step3-review", ("design-step3-review.sh",)
-    ),
-    CommandMapping("design Step 5c publish", "design-step5c", ("design-step5c.sh",)),
-    CommandMapping(
-        "design final summary",
-        "design-step-final-summary",
-        ("design-step-final-summary.sh",),
-    ),
-    CommandMapping(
-        "design Step 4 tail", "design-step4-tail", ("design-step3b-tail.sh",)
-    ),
-    CommandMapping(
-        "design brainstorm external launch",
-        "design-step1d5-brainstorm",
-        (
-            "python/cli.py",
-            "agent",
-            "launch-review",
-            "--output",
-            "brainstorm-output.txt",
-            "--timing-task-kind",
-            "-brainstorm",
-        ),
-    ),
-    CommandMapping(
-        "implement Step 3 checks",
-        "implement-step3-checks",
-        ("python/cli.py", "implement", "checks-commit-route", "--checks-site", "step3"),
-    ),
-    CommandMapping(
-        "implement Step 5 self-review",
-        "implement-step5-self-review",
-        (
-            "python/cli.py",
-            "implement",
-            "checks-commit-route",
-            "--checks-site",
-            "step5-self-review",
-        ),
-    ),
-    CommandMapping(
-        "implement Step 5 review", "implement-step5-review", ("step-5-review.sh",)
-    ),
-    CommandMapping(
-        "implement Step 5 resume",
-        "implement-step5-resume",
-        ("python/cli.py", "implement", "checks-step5-resume"),
-    ),
-    CommandMapping(
-        "implement Step 6 checks", "implement-step6-checks", ("step-6-entry.sh",)
-    ),
-    CommandMapping(
-        "implement Step 7a",
-        "implement-step7a",
-        ("python/cli.py", "implement", "step-7a"),
-    ),
-    CommandMapping(
-        "implement Step 8 ship", "implement-step8-ship", ("step-8-ship.sh",)
-    ),
-)
-
-
-def _closing_fence_re(*, indent: str, marker_len: int) -> re.Pattern[str]:
-    return re.compile(rf"^{re.escape(indent)}`{{{marker_len},}}\s*$")
-
-
-def _parse_fences(lines: list[str]) -> list[Fence]:
-    fences: list[Fence] = []
-    index = 0
-    while index < len(lines):
-        opener = FENCE_OPEN_RE.match(lines[index])
-        if not opener:
-            index += 1
-            continue
-        indent, marker, info = opener.groups()
-        close_re = _closing_fence_re(indent=indent, marker_len=len(marker))
-        body: list[str] = []
-        cursor = index + 1
-        while cursor < len(lines):
-            if close_re.match(lines[cursor]):
-                fences.append(
-                    Fence(index + 1, cursor + 1, info.strip(), "\n".join(body))
-                )
-                index = cursor + 1
-                break
-            body.append(lines[cursor])
-            cursor += 1
-        else:
-            index += 1
-    return fences
-
-
-def _is_bash_fence(fence: Fence) -> bool:
-    info = fence.info.lower().strip()
-    return info.startswith(("bash", "sh", "shell"))
-
-
-def _normalize_command(command: str) -> str:
-    return re.sub(r"\s+", " ", command).strip()
-
-
-def _mapping_for(command: str) -> CommandMapping | None:
-    normalized = _normalize_command(command)
-    for mapping in KNOWN_BACKGROUND_COMMANDS:
-        if all(token in normalized for token in mapping.required):
-            return mapping
-    return None
+SCOPE_PATTERNS = ["skills/**/*.md"]
+BACKGROUND_RE = re.compile(r"run_in_background\s*:?\s*true")
+ALLOWLIST_PATH = Path(__file__).with_name("bg_wait_allowlist.txt")
 
 
 def _git_files(*, root: Path, patterns: list[str]) -> list[Path]:
@@ -165,6 +29,28 @@ def _git_files(*, root: Path, patterns: list[str]) -> list[Path]:
     return sorted(paths, key=lambda path: path.relative_to(root).as_posix())
 
 
+def _load_allowlist(root: Path) -> dict[str, str]:
+    path = root / "python/larch/lint/bg_wait_allowlist.txt"
+    if not path.is_file():
+        path = ALLOWLIST_PATH
+    rows: dict[str, str] = {}
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise LintError(f"lint-bg-wait-coverage: cannot read allowlist {path}: {exc}") from exc
+    for line_number, raw in enumerate(text.splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "\t" not in line:
+            raise LintError(f"lint-bg-wait-coverage: malformed allowlist row {path}:{line_number}")
+        rel, reason = line.split("\t", 1)
+        if not rel or not reason.strip():
+            raise LintError(f"lint-bg-wait-coverage: allowlist row needs path and reason {path}:{line_number}")
+        rows[rel] = reason.strip()
+    return rows
+
+
 def iter_files(root: Path) -> list[Path]:
     return [
         path
@@ -173,17 +59,8 @@ def iter_files(root: Path) -> list[Path]:
     ]
 
 
-def _nearest_launch_fence(*, directive_line: int, fences: list[Fence]) -> Fence | None:
-    candidates = [
-        fence
-        for fence in fences
-        if _is_bash_fence(fence)
-        and fence.start_line > directive_line
-        and fence.start_line - directive_line <= SEARCH_LINE_LIMIT
-    ]
-    if not candidates:
-        return None
-    return min(candidates, key=lambda fence: fence.start_line)
+def _is_historical_fixture(rel: str) -> bool:
+    return rel.startswith(("python/test_fixtures/", "larch-logs/")) or "/larch-logs/" in rel
 
 
 def lint_file(*, path: Path, root: Path) -> list[str]:
@@ -193,24 +70,21 @@ def lint_file(*, path: Path, root: Path) -> list[str]:
         raise LintError(f"lint-bg-wait-coverage: cannot decode {path}: {exc}") from exc
     except OSError as exc:
         raise LintError(f"lint-bg-wait-coverage: cannot read {path}: {exc}") from exc
-    lines = text.splitlines()
-    fences = _parse_fences(lines)
     rel = path.relative_to(root).as_posix()
+    if _is_historical_fixture(rel):
+        return []
+    allowlist = _load_allowlist(root)
+    if rel in allowlist:
+        return []
     violations: list[str] = []
-    for index, line in enumerate(lines, start=1):
+    for line_number, line in enumerate(text.splitlines(), start=1):
         if not BACKGROUND_RE.search(line):
             continue
         if "do NOT set" in line or "do not set" in line:
             continue
-        fence = _nearest_launch_fence(directive_line=index, fences=fences)
-        if fence is None:
-            continue
-        mapping = _mapping_for(fence.body)
-        if mapping is None:
-            command = _normalize_command(fence.body)
-            violations.append(
-                f"{rel}:{index}: run_in_background launch has no bg-wait marker mapping: {command}"
-            )
+        violations.append(
+            f"{rel}:{line_number}: run_in_background is forbidden outside python/larch/lint/bg_wait_allowlist.txt"
+        )
     return violations
 
 
@@ -218,7 +92,7 @@ def main(argv: list[str] | None = None) -> int:
     return lint_common.run_file_lint(
         argv,
         prog="lint-bg-wait-coverage",
-        description="Require background skill launches to map to known bg-wait markers.",
+        description="Reject unallowlisted run_in_background prose in skills markdown.",
         iter_files=iter_files,
         lint_file=lint_file,
     )

@@ -109,3 +109,7 @@ The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, an
 Runtime logic is Python-first. Residual Bash is the explicit manifest inventory consumed by `python3 python/cli.py residual-bash paths`.
 
 `python3 python/cli.py pr closes-issue` is the PR-body `Closes #N` recovery surface. Terminal shared Bash libraries and verified orphan includes are retired through `python/migrated-scripts.tsv`.
+
+## Bgjob runtime package
+
+`python/larch/bgjob/` contains the stdlib-only long-running job transport exposed as `python3 python/cli.py bgjob {start,wait,status,reap}`. It records identity-checked registry rows, redirects daemon logs under the session tmpdir, and writes atomic `KEY=value` result envs for foreground wait loops.

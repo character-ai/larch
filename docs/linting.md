@@ -413,3 +413,7 @@ Bash-targeting linters use the residual shell manifest instead of broad repo dis
 The residual manifest covers kept hooks, bash-targeting linters, thin wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, and residual harnesses. Terminal shared libraries, retired non-thin helpers, and verified-zero-consumer includes are absent.
 
 `lint-awk-multibyte-regex` keeps a separate tracked-`*.awk` discovery arm. Standalone awk helpers do not need manifest rows. CI shellcheck reads the same manifest surface. Test shard rebalance is deferred to `/rebalance-tests`.
+
+## Bgjob background-launch lint
+
+`python3 python/cli.py lint bg-wait-coverage` now rejects new `run_in_background: true` prose anywhere under `skills/**`. Retained legacy notification contracts must be listed in `python/larch/lint/bg_wait_allowlist.txt` with a reason, and that allowlist should shrink as bgjob migration follow-ups delete the old contracts.

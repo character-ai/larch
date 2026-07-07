@@ -437,3 +437,7 @@ The gate files at most one issue per run. It skips operator-action and `cancelle
 Escalation-success is allowed only for `approved` and `approved-partition`. Step 3 main-agent vote/apply and postplan-operator handoffs are escalation evidence. Step 3 panel degradation is non-terminal evidence. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel`.
 
 All generic reporting calls pin `--implement-tmpdir "$DESIGN_TMPDIR"`, and path confinement applies to `$DESIGN_TMPDIR`. Cross-repo filing runs under the operator's GitHub identity.
+
+## Optional dedicated-runner background-task clamp
+
+After a workflow has migrated to bgjob waits, operators running dedicated autonomous sessions may set `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` to make Claude background tasks unavailable at the product layer. This is optional and has tradeoffs: it also disables background subagents and Ctrl+B behavior in that session.
