@@ -705,11 +705,20 @@ if ci_fix_ref.is_file():
         'If `FAILED_RUN_ID` is empty',
         'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr checks',
         'route to `operator-bail` or post-driver `stall`',
-        'skip steps 3-12',
-        'including sentinel writes, `gh run-logs`, autonomous repair, commit, push, and ship re-entry',
+        'skip sentinel writes, `ci distill-log`, Agent dispatch, `gh run-logs`, autonomous repair, commit, push, and ship re-entry',
+        'LARCH_CI_FIXER=0',
         'main-agent-ci-fix-$FAILED_RUN_ID.attempted',
         'main-agent-ci-fix.count',
-        'gh run-logs',
+        'ci distill-log',
+        'fixer-spawned.sentinel',
+        'fixer-bail.md',
+        'fixer-status.env',
+        'fixer-rounds.tsv',
+        'fallback-attempts.count',
+        '20 rounds',
+        'attempts 1-10 may run',
+        'Do not Read `distilled-failure.md`',
+        'do not run `gh run-logs`',
         'python/cli.py" push branch',
         'python/cli.py checks run-relevant --site step8-main-agent-fix',
         'Fix CI failure (main-agent)',
@@ -721,8 +730,14 @@ if ci_fix_ref.is_file():
         're-invoke `step-8-ship.sh`',
     ]:
         require_text(ci_fix_text, needle, 'ship-pr-ci-fix.md CI-fix body')
-    for n in range(1, 13):
-        require_text(ci_fix_text, f'  {n}.', f'ship-pr-ci-fix.md numbered sub-step {n}')
+    for section in [
+        '## Kill switch: `LARCH_CI_FIXER=0`',
+        '## Default fixer path',
+        '## Fixer spawn and inputs',
+        '## Success handoff',
+        '## Bail handoff and post-bail fallback',
+    ]:
+        require_text(ci_fix_text, section, f'ship-pr-ci-fix.md section {section}')
     require_near('skills/implement/references/ship-pr-ci-fix.md', 'FAILED_RUN_ID', 'pr checks', 'ship-pr-ci-fix empty failed run id fallback', 600)
 else:
     checks.append('missing skills/implement/references/ship-pr-ci-fix.md')

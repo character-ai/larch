@@ -20,7 +20,6 @@ from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.git.gh import FailedJob
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
-from larch.core.run_context import RunContext
 from larch.report import run_log_flush
 from larch.report import run_logs
 from test_support import make_run_context
@@ -2342,18 +2341,7 @@ def test_run_ci_fix_non_pending_unfixable_fails_closed() -> None:
 
 
 def test_evaluate_failure_transient_rerun_only() -> None:
-    runner = RecordingRunner(
-        {
-            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
-                ("gh", "run", "view"),
-                stdout="fatal: unable to access https://github.com/o/r/\n",
-            ),
-            ("gh", "run", "rerun", "42", "--repo", "o/r", "--failed"): _cr(
-                ("gh", "run", "rerun"),
-                0,
-            ),
-        },
-    )
+    runner = RecordingRunner({})
     fix = ci_monitor.evaluate_failure(
         runner,
         run_id="42",
@@ -2363,8 +2351,8 @@ def test_evaluate_failure_transient_rerun_only() -> None:
         _fix_attempts=0,
         cwd=None,
     )
-    assert fix.status == "no-changes"
-    assert ("gh", "run", "rerun", "42", "--repo", "o/r", "--failed") in runner.calls
+    assert fix.status == config.NEEDS_USER_FIRST_FIXER_NON_HEALTH
+    assert ("gh", "run", "rerun", "42", "--repo", "o/r", "--failed") not in runner.calls
 
 
 def test_evaluate_failure_in_progress_defers_launch() -> None:
@@ -2375,30 +2363,7 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
         launch_count += 1
         return TierAttempt("cursor", 0, 0, LaunchFailure("none", ""))
 
-    runner = RecordingRunner(
-        {
-            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
-            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
-                ("gh", "run", "view"),
-                rc=3,
-                stderr="is still in progress; logs will be available",
-            ),
-            (
-                "gh",
-                "run",
-                "view",
-                "42",
-                "--repo",
-                "o/r",
-                "--json",
-                "jobs",
-            ): _cr(
-                ("gh", "run", "view"),
-                rc=1,
-                stderr="is still in progress; logs will be available",
-            ),
-        },
-    )
+    runner = RecordingRunner({})
     sleeps: list[float] = []
     # Fake clock: starts at 0, advances past the in-progress timeout on first sleep
     # so the wait loop exits after one poll without blocking for a real hour.
@@ -2424,11 +2389,8 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
         clock=fake_clock,
     )
     assert launch_count == 0
-    # The wait loop should have slept exactly once at the poll interval before timing out.
-    assert sleeps == [float(ci_monitor.config.CI_MONITOR_IN_PROGRESS_POLL_INTERVAL)]
-    assert fix.status == "ci-still-in-progress"
-    assert fix.detail is not None
-    assert "still in progress after" in fix.detail
+    assert sleeps == []
+    assert fix.status == config.NEEDS_USER_FIRST_FIXER_NON_HEALTH
 
 
 def test_wait_for_ci_ready_polls_until_ready() -> None:
@@ -3322,179 +3284,9 @@ def test_default_optional_json_classifier_remains_lenient_for_non_blocking_bucke
     assert ci_monitor._classify_checks_json(json.dumps([{"bucket": bucket}])) == ("pass", None)  # pyright: ignore[reportPrivateUsage]
 
 
-def test_agentic_fix_delegate_timeout_includes_verify_budget(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(config, "CI_AGENTIC_FIX_MAX_CYCLES", 3)
-    monkeypatch.setattr(config, "CI_WAIT_TIMEOUT_SEC", 100)
-    monkeypatch.setattr(config, "SUBPROCESS_DEFAULT_TIMEOUT_SEC", 10)
-
-    verify_slots = len(config.CI_FIXABLE_JOBS)
-    per_cycle = 100 + 10 + verify_slots * 10
-    assert ci_monitor._agentic_fix_delegate_timeout_sec() == 3 * per_cycle  # pyright: ignore[reportPrivateUsage]
-
-
-def _agentic_timeout_ctx(tmp_path: Path, run_id: str = "42") -> RunContext:
-    return make_run_context(
-        issue="",
-        run_id=run_id,
-        tmpdir=str(tmp_path),
-        merge=False,
-        manifest_path="",
-        tool_label="claude",
-        pr_number=1,
-    )
-
-
-def test_agentic_fix_timeout_ignores_stale_push_checkpoint(tmp_path: Path) -> None:
-    checkpoint_dir = tmp_path / "ci-agentic-fix"
-    checkpoint_dir.mkdir()
-    _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
-        "RUN_ID=old-run\n"
-        "DELTA_PATHS=fixed.py\n"
-        "CI_FIX_REBASE_PENDING=false\n"
-        "DETAIL=delegate-timeout-after-push\n",
-        encoding="utf-8",
-    )
-
-    class _Runner:
-        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
-            return _cr(("cli",), rc=config.EXIT_TIMEOUT)
-
-    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
-        _Runner(),
-        pr=1,
-        run_id="42",
-        repo="o/r",
-        plan_file=None,
-        cwd="/tmp/repo",
-        base_remote="origin",
-        base_ref="main",
-        ctx=_agentic_timeout_ctx(tmp_path),
-    )
-
-    assert fix.status == "fix-exhausted"
-    assert fix.detail == "ci-fix-exhausted: delegate-timeout"
-
-
-def test_agentic_fix_timeout_trusts_matching_push_checkpoint(tmp_path: Path) -> None:
-    checkpoint_dir = tmp_path / "ci-agentic-fix"
-    checkpoint_dir.mkdir()
-    _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
-        "RUN_ID=42\n"
-        "DELTA_PATHS=fixed.py,other.py\n"
-        "CI_FIX_REBASE_PENDING=true\n"
-        "DETAIL=delegate-timeout-after-push\n",
-        encoding="utf-8",
-    )
-
-    class _Runner:
-        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
-            return _cr(("cli",), rc=config.EXIT_TIMEOUT)
-
-    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
-        _Runner(),
-        pr=1,
-        run_id="42",
-        repo="o/r",
-        plan_file=None,
-        cwd="/tmp/repo",
-        base_remote="origin",
-        base_ref="main",
-        ctx=_agentic_timeout_ctx(tmp_path),
-    )
-
-    assert fix.status == "pushed"
-    assert fix.delta_paths == ("fixed.py", "other.py")
-    assert fix.ci_fix_rebase_pending is True
-
-
-def test_agentic_fix_timeout_treats_missing_checkpoint_run_id_as_stale(tmp_path: Path) -> None:
-    checkpoint_dir = tmp_path / "ci-agentic-fix"
-    checkpoint_dir.mkdir()
-    _ = (checkpoint_dir / "ci-agentic-push-checkpoint.latest").write_text(
-        "DELTA_PATHS=fixed.py\n"
-        "CI_FIX_REBASE_PENDING=false\n",
-        encoding="utf-8",
-    )
-
-    class _Runner:
-        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
-            return _cr(("cli",), rc=config.EXIT_TIMEOUT)
-
-    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
-        _Runner(),
-        pr=1,
-        run_id="42",
-        repo="o/r",
-        plan_file=None,
-        cwd="/tmp/repo",
-        base_remote="origin",
-        base_ref="main",
-        ctx=_agentic_timeout_ctx(tmp_path),
-    )
-
-    assert fix.status == "fix-exhausted"
-
-
-def test_agentic_fix_result_fix_attempted_local_unfixable_promotes_exhausted(tmp_path: Path) -> None:
-    detail_file = tmp_path / "exhausted.detail"
-    _ = detail_file.write_text(
-        "local-unfixable: gitleaks\nFAIL gitleaks\n",
-        encoding="utf-8",
-    )
-    kv = (
-        "STATUS=local-unfixable\n"
-        "DETAIL=gitleaks\n"
-        f"EXHAUSTED_DETAIL_FILE={detail_file}\n"
-        "FIX_ATTEMPTED=true\n"
-        "DELTA_PATHS=\n"
-        "CI_FIX_REBASE_PENDING=false\n"
-    )
-
-    class _Runner:
-        def run(self, *_args: object, **_kwargs: object) -> CommandResult:
-            return _cr(("cli",), stdout=kv)
-
-    fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
-        _Runner(),
-        pr=1,
-        run_id="42",
-        repo="o/r",
-        plan_file=None,
-        cwd="/tmp/repo",
-        base_remote="origin",
-        base_ref="main",
-        ctx=RunContext(
-            branch="feat",
-            issue="",
-            repo="o/r",
-            run_id="42",
-            tmpdir="/tmp/implement",
-            merge=False,
-            draft=False,
-            forked=False,
-            manifest_path="",
-            tool_label="claude",
-            no_admin_fallback=False,
-            repo_unavailable=False,
-            pr_number=1,
-        ),
-    )
-    assert fix.status == "fix-exhausted"
-    assert fix.detail is not None
-    assert "FAIL gitleaks" in fix.detail
-
-
 def test_evaluate_failure_pending_push_only_skips_agentic_delegate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    agentic_calls = {"n": 0}
-
-    def fake_agentic(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
-        agentic_calls["n"] += 1
-        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
-
     def fake_run_ci_fix(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
         return ci_monitor.FixResult(status="pushed", winning_tier="claude")
 
@@ -3504,7 +3296,6 @@ def test_evaluate_failure_pending_push_only_skips_agentic_delegate(
     def fake_read_failed_jobs(*_args: object, **_kwargs: object) -> tuple[list[FailedJob], str]:
         return [], "ready"
 
-    monkeypatch.setattr(ci_monitor, "_agentic_fix_result", fake_agentic)
     monkeypatch.setattr(ci_monitor, "run_ci_fix", fake_run_ci_fix)
     monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
     monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
@@ -3521,31 +3312,25 @@ def test_evaluate_failure_pending_push_only_skips_agentic_delegate(
         launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         ci_fix_rebase_pending=True,
     )
-    assert agentic_calls["n"] == 0
     assert fix.status == "pushed"
 
 
-def test_evaluate_failure_normal_path_uses_agentic_delegate_only(
+def test_evaluate_failure_normal_path_hands_off_without_logs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    agentic_calls = {"n": 0}
-    waterfall_calls = {"n": 0}
-
-    def fake_agentic(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
-        agentic_calls["n"] += 1
-        return ci_monitor.FixResult(status="pushed", winning_tier="claude")
+    calls = {"collect": 0, "run_ci_fix": 0}
 
     def fake_run_ci_fix(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
-        waterfall_calls["n"] += 1
+        calls["run_ci_fix"] += 1
         return ci_monitor.FixResult(status="waterfall-failed", detail="should-not-run")
 
     def fake_collect_failed_logs(
         *_args: object,
         **_kwargs: object,
     ) -> ci_monitor.LogCollectResult:
+        calls["collect"] += 1
         return ci_monitor.LogCollectResult(text="", state="ready")
 
-    monkeypatch.setattr(ci_monitor, "_agentic_fix_result", fake_agentic)
     monkeypatch.setattr(ci_monitor, "run_ci_fix", fake_run_ci_fix)
     monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
 
@@ -3559,25 +3344,10 @@ def test_evaluate_failure_normal_path_uses_agentic_delegate_only(
         transient_retries=0,
         _fix_attempts=0,
         cwd="/tmp/repo",
-        ctx=RunContext(
-            branch="feat",
-            issue="",
-            repo="o/r",
-            run_id="42",
-            tmpdir="/tmp/implement",
-            merge=False,
-            draft=False,
-            forked=False,
-            manifest_path="",
-            tool_label="claude",
-            no_admin_fallback=False,
-            repo_unavailable=False,
-            pr_number=1,
-        ),
     )
-    assert agentic_calls["n"] == 1
-    assert waterfall_calls["n"] == 0
-    assert fix.status == "pushed"
+    assert calls == {"collect": 0, "run_ci_fix": 0}
+    assert fix.status == config.NEEDS_USER_FIRST_FIXER_NON_HEALTH
+    assert fix.detail == "first-fixer-non-health"
 
 
 _PR_VIEW_KEY = (

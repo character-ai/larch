@@ -63,7 +63,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("checks", "lint-fix"): ("larch.implement.checks", "checks_lint_fix_main"),
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main"),
     ("checks", "contains-pins"): ("larch.implement.checks", "check_contains_pins_main"),
-    ("ci", "agentic-fix"): ("larch.implement.ci", "agentic_fix_main"),
+    ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main"),
     ("bootstrap", "invoke"): ("larch.state.bootstrap", "invoke_main"),
     ("bootstrap", "parse-routing"): ("larch.state.bootstrap", "parse_routing_main"),
     ("bootstrap", "resolve-non-interactive"): ("larch.state.bootstrap", "resolve_non_interactive_main"),

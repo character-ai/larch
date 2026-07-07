@@ -368,6 +368,29 @@ def test_full_json_splits_codex_buckets_by_model(tmp_path: Path) -> None:
     assert report["BUCKETS_codex"] == {"input": 1105, "cached_input": 2206, "output": 337, "total": 3648}
 
 
+def test_ci_fixer_mark_surfaces_as_distinct_step(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    _ = ledger.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"type": "mark", "step": "Step 8 - ship", "ts": "2026-06-25T00:00:00Z"},
+                {"type": "vendor", "vendor": "claude_sub", "input": 1, "output": 2, "total": 3, "raw": "claude_ci_fix", "ts": "2026-06-25T00:00:10Z"},
+                {"type": "mark", "step": "Step 8 - CI fixer", "ts": "2026-06-25T00:01:00Z"},
+                {"type": "vendor", "vendor": "claude_sub", "input": 10, "output": 20, "total": 30, "raw": "claude_ci_fix", "ts": "2026-06-25T00:01:10Z"},
+                {"type": "mark", "step": "Step 8 - ship resume", "ts": "2026-06-25T00:02:00Z"},
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = tokens.build_report_from_ledgers([ledger])
+
+    claude_sub_steps = report["claude_sub"]["per_step"]
+    ci_fixer = next(row for row in claude_sub_steps if row["step"] == "Step 8 - CI fixer")
+    assert ci_fixer["totals"]["total"] == 30
+
 
 def test_full_json_splits_claude_sub_buckets_by_model_and_raw_fallback(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.jsonl"

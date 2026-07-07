@@ -6,7 +6,6 @@ import json
 import math
 import os
 import re
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -19,7 +18,6 @@ from larch.core import config
 from larch.core import external_defaults
 from larch.git import gh
 from larch.git import git
-from larch import io as larch_io
 from larch.core import logging_util
 from larch.git import rebase
 from larch.core import redact
@@ -1125,43 +1123,6 @@ def _job_token(*, name: str, shard: str) -> str:
     return name
 
 
-def _diff_name_only(
-    runner: Runner,
-    *,
-    cached: bool = False,
-    cwd: str | None = None,
-) -> tuple[str, ...]:
-    argv = ["git", "diff", "--name-only"]
-    if cached:
-        argv.append("--cached")
-    result = runner.run(argv, cwd=cwd)
-    if result.returncode != 0:
-        return ()
-    return tuple(line for line in result.stdout.splitlines() if line)
-
-
-def _ls_untracked(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
-    result = runner.run(
-        ["git", "ls-files", "--others", "--exclude-standard"],
-        cwd=cwd,
-    )
-    if result.returncode != 0:
-        return ()
-    return tuple(line for line in result.stdout.splitlines() if line)
-
-
-def _capture_baseline(  # pyright: ignore[reportUnusedFunction]  # used by ci_agentic_fix
-    runner: Runner,
-    *,
-    cwd: str | None,
-) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
-    tracked = _diff_name_only(runner, cwd=cwd)
-    untracked = _ls_untracked(runner, cwd=cwd)
-    staged = _diff_name_only(runner, cached=True, cwd=cwd)
-    head = git.rev_parse(runner, "HEAD", cwd=cwd)
-    return tracked, untracked, staged, head
-
-
 def _implement_tmpdir() -> str | None:
     raw = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "").strip()
     return raw or None
@@ -1258,74 +1219,6 @@ def _resolve_plan_file(plan_file: str | None) -> str | None:
     if not path_abs.is_file():
         return None
     return str(path_abs)
-
-
-def _path_unsafe_for_rollback(path: str) -> bool:
-    return any(part == ".." for part in path.split("/"))
-
-
-def _is_submodule_gitlink(*, runner: Runner, path: str, cwd: str | None) -> bool:
-    result = runner.run(["git", "ls-files", "--stage", "--", path], cwd=cwd)
-    if result.returncode != 0:
-        return False
-    return any(line.startswith("160000 ") for line in result.stdout.splitlines())
-
-
-def _rollback_to_baseline(  # pyright: ignore[reportUnusedFunction]  # used by ci_agentic_fix
-    runner: Runner,
-    *,
-    baseline_tracked: tuple[str, ...],
-    baseline_untracked: tuple[str, ...],
-    baseline_staged: tuple[str, ...],
-    cwd: str | None,
-) -> None:
-    tracked_now = _diff_name_only(runner, cwd=cwd)
-    untracked_now = _ls_untracked(runner, cwd=cwd)
-    staged_now = _diff_name_only(runner, cached=True, cwd=cwd)
-    baseline_tracked_set = set(baseline_tracked)
-    baseline_untracked_set = set(baseline_untracked)
-    baseline_staged_set = set(baseline_staged)
-    for path in tracked_now:
-        if path in baseline_tracked_set:
-            continue
-        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner=runner, path=path, cwd=cwd):
-            continue
-        _ = runner.run(["git", "checkout", "--", path], cwd=cwd)
-    for path in untracked_now:
-        if path in baseline_untracked_set:
-            continue
-        if _path_unsafe_for_rollback(path):
-            continue
-        _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
-    for path in staged_now:
-        if path in baseline_staged_set:
-            continue
-        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner=runner, path=path, cwd=cwd):
-            continue
-        _ = runner.run(["git", "restore", "--staged", "--", path], cwd=cwd)
-        if path not in baseline_tracked_set and path not in baseline_untracked_set:
-            _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
-
-
-def _delta_paths(  # pyright: ignore[reportUnusedFunction]  # used by ci_agentic_fix
-    runner: Runner,
-    *,
-    baseline_tracked: tuple[str, ...],
-    baseline_untracked: tuple[str, ...],
-    cwd: str | None,
-) -> tuple[str, ...]:
-    tracked_now = _diff_name_only(runner, cwd=cwd)
-    untracked_now = _ls_untracked(runner, cwd=cwd)
-    baseline_tracked_set = set(baseline_tracked)
-    baseline_untracked_set = set(baseline_untracked)
-    delta: set[str] = set()
-    for path in tracked_now:
-        if path not in baseline_tracked_set:
-            delta.add(path)
-    for path in untracked_now:
-        if path not in baseline_untracked_set:
-            delta.add(path)
-    return tuple(sorted(delta))
 
 
 def _resolve_launcher_exit(
@@ -1660,159 +1553,6 @@ def _fix_exhausted_detail(
     return header
 
 
-def _agentic_output_dir(ctx: RunContext | None) -> str:
-    if ctx is not None and ctx.tmpdir:
-        path = Path(ctx.tmpdir) / "ci-agentic-fix"
-    else:
-        path = Path(tempfile.gettempdir()) / "ci-agentic-fix"
-    path.mkdir(parents=True, exist_ok=True)
-    return str(path)
-
-
-def _read_push_checkpoint_from_ctx(*, ctx: RunContext | None, expected_run_id: str = "") -> dict[str, str] | None:
-    path = Path(_agentic_output_dir(ctx)) / "ci-agentic-push-checkpoint.latest"
-    if not path.is_file():
-        return None
-    values: dict[str, str] = {}
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        key, sep, value = line.partition("=")
-        if sep and key:
-            values[key] = value.strip()
-    if expected_run_id:
-        checkpoint_run_id = values.get("RUN_ID", "")
-        if checkpoint_run_id != expected_run_id:
-            return None
-    return values
-
-
-def _parse_kv_output(text: str) -> dict[str, str]:
-    return larch_io.parse_kv(text, strip_value=True, skip_empty_key=True)
-
-
-def _agentic_fix_delegate_timeout_sec() -> float | None:
-    """Budget all delegate cycles, passive CI waits, and local verification."""
-    verify_slots = len(config.CI_FIXABLE_JOBS)
-    per_cycle = (
-        config.CI_WAIT_TIMEOUT_SEC
-        + config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
-        + verify_slots * config.SUBPROCESS_DEFAULT_TIMEOUT_SEC
-    )
-    return float(config.CI_AGENTIC_FIX_MAX_CYCLES * per_cycle)
-
-
-def _agentic_fix_result(
-    runner: Runner,
-    *,
-    pr: int,
-    run_id: str,
-    repo: str,
-    plan_file: str | None,
-    cwd: str | None,
-    base_remote: str,
-    base_ref: str,
-    ctx: RunContext | None,
-) -> FixResult:
-    if cwd is None:
-        return FixResult(status="waterfall-failed", detail="missing repo_root")
-    implement_tmpdir = ctx.tmpdir if ctx is not None and ctx.tmpdir else os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    if not implement_tmpdir:
-        return FixResult(status="waterfall-failed", detail="missing implement_tmpdir")
-    argv = [
-        sys.executable,
-        str(_REPO_ROOT / "python" / "cli.py"),
-        "ci",
-        "agentic-fix",
-        "--pr",
-        str(pr),
-        "--repo",
-        repo,
-        "--repo-root",
-        cwd,
-        "--run-id",
-        run_id,
-        "--base-remote",
-        base_remote,
-        "--base-ref",
-        base_ref,
-        "--output-dir",
-        _agentic_output_dir(ctx),
-        "--max-cycles",
-        str(config.CI_AGENTIC_FIX_MAX_CYCLES),
-        "--implement-tmpdir",
-        implement_tmpdir,
-    ]
-    if plan_file:
-        argv.extend(["--plan-file", plan_file])
-    if ctx is not None and ctx.state_file:
-        argv.extend(["--state-file", ctx.state_file])
-    if ctx is not None and ctx.no_logs_commit:
-        argv.append("--no-logs-commit")
-    result = runner.run(argv, cwd=cwd, timeout=_agentic_fix_delegate_timeout_sec())
-    if result.returncode == config.EXIT_TIMEOUT:
-        checkpoint = _read_push_checkpoint_from_ctx(ctx=ctx, expected_run_id=run_id)
-        if checkpoint is not None:
-            pending = checkpoint.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
-            delta_paths = tuple(
-                path for path in checkpoint.get("DELTA_PATHS", "").split(",") if path
-            )
-            detail = checkpoint.get("DETAIL", "") or "delegate-timeout-after-push"
-            if pending:
-                return FixResult(
-                    status="pushed",
-                    winning_tier="claude",
-                    delta_paths=delta_paths,
-                    detail=detail,
-                    ci_fix_rebase_pending=True,
-                )
-            return FixResult(
-                status="pushed",
-                winning_tier="claude",
-                delta_paths=delta_paths,
-                detail=detail,
-            )
-        return FixResult(
-            status="fix-exhausted",
-            detail="ci-fix-exhausted: delegate-timeout",
-        )
-    parsed = _parse_kv_output(result.stdout)
-    status = parsed.get("STATUS", "")
-    detail = parsed.get("DETAIL", "")
-    exhausted_detail_file = parsed.get("EXHAUSTED_DETAIL_FILE", "")
-    if status in {"ci-fix-exhausted", "local-unfixable"} and exhausted_detail_file:
-        detail_path = Path(exhausted_detail_file)
-        if detail_path.is_file():
-            detail = detail_path.read_text(encoding="utf-8", errors="replace").strip()
-    fix_attempted = parsed.get("FIX_ATTEMPTED", "").lower() == "true"
-    delta_paths = tuple(path for path in parsed.get("DELTA_PATHS", "").split(",") if path)
-    pending = parsed.get("CI_FIX_REBASE_PENDING", "").lower() == "true"
-    if status in {"passed", "pushed"}:
-        return FixResult(status="pushed", winning_tier="claude", delta_paths=delta_paths)
-    if status == "rebase-required":
-        return FixResult(
-            status="pushed",
-            winning_tier="claude",
-            delta_paths=delta_paths,
-            detail=detail,
-            ci_fix_rebase_pending=True,
-        )
-    if status == "local-unfixable":
-        if fix_attempted:
-            exhausted_detail = detail if detail.startswith("ci-fix-exhausted") else f"ci-fix-exhausted: {detail}"
-            return FixResult(status="fix-exhausted", detail=exhausted_detail)
-        prefixed = detail if detail.startswith("local-unfixable:") else f"local-unfixable: {detail}"
-        return FixResult(status="local-unfixable", detail=prefixed)
-    if status in {"first-fixer-non-health", config.NEEDS_USER_FLAKY_DEFECT_UNFIXED}:
-        return FixResult(status=status, detail=detail)
-    if status == "ci-fix-exhausted":
-        exhausted_detail = detail if detail.startswith("ci-fix-exhausted") else f"ci-fix-exhausted: {detail}"
-        return FixResult(status="fix-exhausted", detail=exhausted_detail)
-    if status == "waterfall-failed":
-        if detail == "head-changed" and fix_attempted:
-            return FixResult(status="fix-exhausted", detail=f"ci-fix-exhausted: {detail}")
-        return FixResult(status="waterfall-failed", detail=detail, ci_fix_rebase_pending=pending)
-    return FixResult(status="waterfall-failed", detail="malformed agentic-fix output")
-
-
 def evaluate_failure(
     runner: Runner,
     *,
@@ -1834,6 +1574,12 @@ def evaluate_failure(
     """Port of run_evaluate_failure outer loop."""
     if not run_id or not str(run_id).strip():
         return FixResult(status="waterfall-failed", detail="missing run_id")
+    if not ci_fix_rebase_pending:
+        _ = pr, plan_file, transient_retries, _fix_attempts, launch_fn, base_remote, base_ref, ctx
+        return FixResult(
+            status=config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+            detail="first-fixer-non-health",
+        )
 
     upfront_logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
     if upfront_logs.state == "in_progress":
@@ -1871,24 +1617,6 @@ def evaluate_failure(
             )
     if upfront_logs.state == "ready" and not blind_rerun_attempted:
         upfront_ready_stash = upfront_logs
-
-    if not ci_fix_rebase_pending:
-        if not _on_named_branch(runner, cwd=cwd):
-            return FixResult(
-                status="waterfall-failed",
-                detail="evaluate_failure: detached HEAD",
-            )
-        return _agentic_fix_result(
-            runner,
-            pr=pr,
-            run_id=run_id,
-            repo=repo,
-            plan_file=plan_file,
-            cwd=cwd,
-            base_remote=base_remote,
-            base_ref=base_ref,
-            ctx=ctx,
-        )
 
     last_classified: ClassifiedJobs | None = None
     last_logs: LogCollectResult | None = None

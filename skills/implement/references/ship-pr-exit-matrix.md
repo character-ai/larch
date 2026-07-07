@@ -51,6 +51,10 @@ The handoff env stores safe single-line values: `FAILED_RUN_ID`, `NEEDS_USER_REA
 
 Pre-driver `NEXT_ACTION=stall` stays separate: skip ship and go directly to Step 18. OOS-checkpoint `NEXT_ACTION=stall` is also separate: halt Step 8+ until the gap or bookkeeping failure is resolved.
 
+## Step 8 CI-fix internal handoff statuses
+
+`ship-pr-ci-fix.md` may record these internal CI-fixer statuses in `fixer-status.env` or `fixer-bail.md`: `ci-fixer-success`, `ci-fixer-health-bail`, `ci-fixer-exhausted`, `ci-fixer-no-progress`, `ci-fixer-rebase-needed`, and `ci-fixer-disabled`. These are Step 8 ci-fix handoff statuses for the prose-owned fixer/fallback flow; they are not new Python ship driver `NEXT_ACTION` tokens unless a future implementation explicitly wires them into `ship route-exit`.
+
 ## Initial state seeder contract
 
 `python/cli.py ship seed-initial-state` owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/test_ship.py` pins the ordered keys. `step-8-seed-initial.sh` is the sole shell argv wrapper. Inputs come from durable `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.

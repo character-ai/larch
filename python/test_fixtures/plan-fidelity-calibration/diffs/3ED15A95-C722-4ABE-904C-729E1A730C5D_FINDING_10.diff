@@ -908,7 +908,7 @@ index df7559848..0e896fa5c 100644
 +# external_defaults.tool_order(...) calls instead of this shared name.
 +FIXER_TIER_ORDER: Final[tuple[str, ...]] = ROLE_DEFAULTS["implement.ci_recovery_fixer"].order
  CLAUDE_CI_FIX_MODEL: Final = "claude-opus-4-8"
- CI_AGENTIC_FIX_MAX_CYCLES: Final = 20
+ CI_FIXER_AGENT_MAX_ROUNDS: Final = 20
  FIXER_ROLE: Final = "resolve-conflict"
  REBASE_MAX_ATTEMPTS: Final = 20
  SHIP_PR_RRR_RESUME_PHASE: Final = "ship-pr-rrr-phase14"
