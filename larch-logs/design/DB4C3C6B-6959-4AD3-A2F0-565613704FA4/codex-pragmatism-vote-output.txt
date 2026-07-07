@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The override path is already exercised by an existing size test, so pinning SOFT_ADVISORY on that path is a useful test improvement but not necessary for this feature to ship correctly.

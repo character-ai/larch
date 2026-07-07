@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the trusted override path is already covered by an existing test; adding a separate SOFT_ADVISORY assertion is a useful safeguard, but not necessary for this feature to ship correctly.

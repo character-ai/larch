@@ -1,0 +1,1 @@
+Harden `/design` plan-size checks so model-declared trailers cannot suppress hard triggers. Update the plan-quality gate, pin regressions for mechanical churn and #6524 meta, and revise the live wire-format docs.

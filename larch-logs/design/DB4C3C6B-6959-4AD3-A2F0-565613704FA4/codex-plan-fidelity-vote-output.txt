@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The missing override-specific soft-advisory test is real, but it is not necessary for the feature to ship correctly; existing coverage already exercises SOFT_ADVISORY on a size-triggered path, so this is Out-of-Scope.
