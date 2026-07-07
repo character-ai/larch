@@ -474,6 +474,75 @@ def test_distill_log_shard_dedupe_keeps_distinct_failures(
     assert "ERROR distinct shard failure" in digest
 
 
+def test_distill_log_keeps_distinct_jobs_with_same_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "impl" / "distilled-failure.md"
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path / "impl"))
+    monkeypatch.setattr(config, "CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT", 1)
+    _patch_failed_jobs(monkeypatch, names=("lint", "python-tests"))
+    _patch_failed_log(
+        monkeypatch,
+        stdout=(
+            "lint\tRun lint\tERROR shared failure\n"
+            "python-tests\tRun tests\tERROR shared failure\n"
+        ),
+    )
+
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == 0
+
+    digest = out.read_text(encoding="utf-8")
+    assert "## Job: lint" in digest
+    assert "## Job: python-tests" in digest
+    assert digest.count("Repeated failure block omitted") == 0
+
+
+def test_distill_log_placeholder_sections_cover_missing_failed_jobs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    out = tmp_path / "impl" / "distilled-failure.md"
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path / "impl"))
+    _patch_failed_jobs(monkeypatch, names=("lint", "python-tests", "docs"))
+    _patch_failed_log(
+        monkeypatch,
+        stdout="lint\tRun lint\tERROR lint failed\n",
+    )
+
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == 0
+
+    digest = out.read_text(encoding="utf-8")
+    assert digest.count("## Job:") == 3
+    assert "## Job: python-tests" in digest
+    assert "## Job: docs" in digest
+    assert "GitHub reported this failed job, but --log-failed emitted no lines for it." in digest
+    assert "FAILED_JOBS_COUNT=3" in capsys.readouterr().out
+
+
+def test_distill_log_redacts_before_truncation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "impl" / "distilled-failure.md"
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path / "impl"))
+    monkeypatch.setattr(config, "CI_FIXER_DISTILL_TOTAL_BYTES", 420)
+    _patch_failed_jobs(monkeypatch)
+    secret = "sk-test123456789012345678901234567890123456789012345678"
+    _patch_failed_log(
+        monkeypatch,
+        stdout=f"lint\tRun lint\tERROR before cap {secret} trailing context {'x' * 500}\n",
+    )
+
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == 0
+
+    digest = out.read_text(encoding="utf-8")
+    assert secret not in digest
+    assert "<REDACTED-TOKEN>" in digest
+    assert "digest truncated" in digest
+
+
 def test_distill_log_in_progress_and_health_failures_emit_distinct_statuses(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -486,7 +555,13 @@ def test_distill_log_in_progress_and_health_failures_emit_distinct_statuses(
     assert "STATUS=in_progress" in capsys.readouterr().out
 
     _patch_failed_log(monkeypatch, stdout="", rc=1, stderr="gh auth failed")
-    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == config.EXIT_INTERNAL_ERROR
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == config.EXIT_GH_RUN_LOGS_HEALTH_BAIL
     stdout = capsys.readouterr().out
     assert "STATUS=error" in stdout
-    assert "BAIL_CLASS=github-log-failure" in stdout
+    assert f"BAIL_CLASS={config.CI_FIXER_STATUS_HEALTH_BAIL}" in stdout
+
+    monkeypatch.setattr(ci.larch_io, "atomic_write", lambda *_a, **_k: (_ for _ in ()).throw(OSError("write failed")))
+    _patch_failed_log(monkeypatch, stdout="lint\tRun lint\tERROR\n")
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == config.EXIT_INTERNAL_ERROR
+    stdout = capsys.readouterr().out
+    assert "BAIL_CLASS=write-failure" in stdout

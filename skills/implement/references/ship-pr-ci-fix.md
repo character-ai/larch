@@ -20,7 +20,7 @@ Read `FAILED_RUN_ID` from `.ship-route-exit-handoff.env` and read `REPO` from sc
 
 When `LARCH_CI_FIXER=0`, skip fixer spawn entirely. Do not write `fixer-spawned.sentinel`, do not write the per-run `ci-fixer-$FAILED_RUN_ID/` handoff surface, and do not call the Agent tool. Restore the existing inline main-agent procedure with sentinel `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted` and counter `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count`: attempts 1-30 may run; the next arrival falls through to `ci-fix-exhausted` operator-bail.
 
-In the kill-switch path, the main agent may capture fresh CI logs with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gh run-logs --run-id "$FAILED_RUN_ID" --repo "$REPO" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt"`. Inspect the redacted CI log and optional detail file, enumerate every failing job/check revealed, and fix all actionable revealed failures before commit and push. Run relevant checks with `python/cli.py checks run-relevant --site step8-main-agent-fix --tmpdir "$IMPLEMENT_TMPDIR"`, stage edited files explicitly with `git add -- <paths>`, commit as `Fix CI failure (main-agent)`, run-log refresh, push with `python/cli.py" push branch`, then run the stale-handoff clear and re-invoke `step-8-ship.sh`.
+In the kill-switch path, the main agent may capture fresh CI logs with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gh run-logs --run-id "$FAILED_RUN_ID" --repo "$REPO" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt"`. Inspect the redacted CI log and optional detail file, enumerate every failing job/check revealed, and fix all actionable revealed failures before commit and push. Run relevant checks with `python/cli.py checks run-relevant --site step8-main-agent-fix --tmpdir "$IMPLEMENT_TMPDIR"`, stage edited files explicitly with `git add -- <paths>`, commit as `Fix CI failure (main-agent)`, run-log refresh, push with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch`, then run the stale-handoff clear and re-invoke `step-8-ship.sh`.
 
 Do not rerun architectural-guidelines Phase A and do not call guideline invalidate or pin helpers. After commit, log refresh, and push, the next `step-8-ship.sh` relaunch owns compose-time reassessment and will request `NEXT_ACTION=guidelines-assessment` when `HEAD` or the final diff changed.
 
@@ -39,7 +39,13 @@ Before any spawn, apply the no-spawn guard: if `fixer-spawned.sentinel` or `fixe
 
 1. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ci distill-log --run-id "$FAILED_RUN_ID" --repo "$REPO" --output "$IMPLEMENT_TMPDIR/ci-fixer-$FAILED_RUN_ID/distilled-failure.md"`.
 2. Parse stdout KVs only: `STATUS`, `OUTPUT`, `FAILED_JOBS_COUNT`, and `BAIL_CLASS`. Do not Read `distilled-failure.md` into main context on this path.
-3. On non-`STATUS=ok`, skip fixer spawn. Route health, fork, and repo-unavailable classes to operator-bail when applicable; otherwise enter the post-bail inline fallback with a tool-failure note.
+3. `BAIL_CLASS` routing:
+   - `BAIL_CLASS=in_progress`: the failed log is not ready yet; route to bounded wait or operator-bail, and do not count this as a fallback repair attempt.
+   - `BAIL_CLASS=ci-fixer-health-bail`: health failure; route to operator-bail.
+   - `BAIL_CLASS=github-log-failure`: generic log-read failure; enter the post-bail inline fallback with a tool-failure note.
+   - `BAIL_CLASS=write-failure`: digest write failure; enter the post-bail inline fallback with a tool-failure note.
+   - empty: proceed.
+   On non-`STATUS=ok`, skip fixer spawn. Route fork and repo-unavailable classes to operator-bail when applicable; otherwise enter the post-bail inline fallback with a tool-failure note.
 4. On success, write `fixer-spawned.sentinel` before Agent dispatch, then spawn exactly one Agent-tool fixer for this `FAILED_RUN_ID`.
 
 ## Fixer spawn and inputs

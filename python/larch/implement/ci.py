@@ -161,6 +161,11 @@ def status_main(argv: list[str]) -> int:
 
 _VALID_CI_STATUS = frozenset({"pass", "fail", "pending", "merged", "error"})
 _IN_PROGRESS_MSG = "is still in progress; logs will be available"
+_HEALTH_FAILURE_RE = re.compile(
+    r"(gh auth|auth failed|authentication failed|bad credentials|quota|usage[ _-]?limit|rate[ _-]?limit|"
+    r"command not found|binary missing|no such file or directory|permission denied)",
+    re.IGNORECASE,
+)
 
 
 def _decide_usage(message: str) -> int:
@@ -512,24 +517,41 @@ def _block_fingerprint(block: _StepBlock) -> str:
     return "\n".join(normalized)
 
 
+def _job_family(job: str) -> str:
+    match = re.match(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\((\d+)\)$", job)
+    if match is not None:
+        return match.group(1)
+    return job
+
+
 def _dedupe_blocks(blocks: Iterable[_StepBlock]) -> tuple[_StepBlock, ...]:
-    counts: dict[str, int] = {}
+    grouped: dict[tuple[str, str], list[_StepBlock]] = defaultdict(list)
+    for block in blocks:
+        fingerprint = _block_fingerprint(block)
+        if fingerprint:
+            grouped[(_job_family(block.job), fingerprint)].append(block)
+    emitted: set[tuple[str, str]] = set()
     out: list[_StepBlock] = []
     for block in blocks:
         fingerprint = _block_fingerprint(block)
         if not fingerprint:
             out.append(block)
             continue
-        seen = counts.get(fingerprint, 0)
-        counts[fingerprint] = seen + 1
-        if seen < config.CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT:
-            out.append(block)
-        elif seen == config.CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT:
+        key = (_job_family(block.job), fingerprint)
+        if key in emitted:
+            continue
+        emitted.add(key)
+        grouped_blocks = grouped[key]
+        limit = max(0, config.CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT)
+        out.extend(grouped_blocks[:limit])
+        if len(grouped_blocks) > limit:
+            job_names = ", ".join(dict.fromkeys(group.job for group in grouped_blocks if group.job))
+            anchor = grouped_blocks[min(limit, len(grouped_blocks) - 1)]
             out.append(
                 _StepBlock(
-                    job=block.job,
-                    step=block.step,
-                    lines=(f"Repeated failure block omitted after {seen} matching copies.",),
+                    job=anchor.job,
+                    step=anchor.step,
+                    lines=(f"Repeated failure block omitted after {limit} matching copies across jobs: {job_names}.",),
                 ),
             )
     return tuple(out)
@@ -618,6 +640,12 @@ def _distill_from_gh(args: _DistillArgs) -> int:
         _emit_kv(key="FAILED_JOBS_COUNT", value=0)
         _emit_kv(key="BAIL_CLASS", value="in_progress")
         return config.EXIT_GH_RUN_LOGS_IN_PROGRESS
+    if result.returncode != 0 and _HEALTH_FAILURE_RE.search(combined):
+        _emit_kv(key="STATUS", value="error")
+        _emit_kv(key="OUTPUT", value=str(args.output))
+        _emit_kv(key="FAILED_JOBS_COUNT", value=0)
+        _emit_kv(key="BAIL_CLASS", value=config.CI_FIXER_STATUS_HEALTH_BAIL)
+        return config.EXIT_GH_RUN_LOGS_HEALTH_BAIL
     if result.returncode != 0:
         _emit_kv(key="STATUS", value="error")
         _emit_kv(key="OUTPUT", value=str(args.output))
@@ -627,7 +655,12 @@ def _distill_from_gh(args: _DistillArgs) -> int:
 
     failed_jobs = _failed_job_names(args.run_id, args.repo)
     blocks = _add_missing_job_placeholders(_parse_log_blocks(result.stdout), failed_jobs)
-    digest = redact.redact(_render_digest(run_id=args.run_id, repo=args.repo, blocks=blocks, failed_jobs=failed_jobs))
+    digest = _render_digest(run_id=args.run_id, repo=args.repo, blocks=blocks, failed_jobs=failed_jobs)
+    digest = redact.redact(digest)
+    digest = _truncate_digest(digest)
+    checked_digest = redact.redact(digest)
+    if checked_digest != digest:
+        digest = checked_digest
     try:
         larch_io.atomic_write(args.output, digest, mode=0o600, nofollow=True)
     except OSError as exc:
