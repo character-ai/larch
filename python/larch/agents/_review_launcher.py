@@ -112,6 +112,7 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stderr-sink", default="")
     parser.add_argument("--site", default="review Step 2")
     parser.add_argument("--model-role", choices=("default", "review", "vote", "fix"), default="default")
+    parser.add_argument("--cursor-model", default=None)
     return parser
 
 
@@ -144,6 +145,16 @@ def _review_validate_args(args: argparse.Namespace) -> int:
     if args.token_budget_cap and not _is_positive_int(args.token_budget_cap):
         _err("agent launch-review: --token-budget-cap requires a positive integer")
         return 2
+    if args.cursor_model is not None:
+        if args.tool != "cursor":
+            _err("agent launch-review: --cursor-model is only valid with --tool cursor")
+            return 2
+        if not args.cursor_model.strip():
+            _err("agent launch-review: --cursor-model requires a non-empty value")
+            return 2
+        if _CTRL_RE.search(args.cursor_model):
+            _err("agent launch-review: --cursor-model must not contain control characters")
+            return 2
     if not args.site.strip() or args.site.startswith("--"):
         _err("agent launch-review: --site requires a non-empty, non-flag-like value")
         return 2
@@ -431,6 +442,7 @@ def _review_append_outer_meta(
     timing_task_kind: str = "",
     site: str = "review Step 2",
     model_role: str = "default",
+    cursor_model: str = "",
 ) -> None:
     lines = [
         "OUTER_LAUNCHER=agent launch-review",
@@ -445,6 +457,8 @@ def _review_append_outer_meta(
         lines.append(f"OUTER_LAUNCHER_TIMING_KIND={timing_task_kind}")
     if stderr_sink:
         lines.append(f"STDERR_SINK={stderr_sink}")
+    if cursor_model:
+        lines.append(f"OUTER_LAUNCHER_CURSOR_MODEL={cursor_model}")
     _append(path=meta, text="\n".join(lines) + "\n")
 
 
@@ -758,6 +772,7 @@ def _review_write_preflight_bundle(
             timing_task_kind=args.timing_task_kind or f"{tool}-review",
             site=getattr(args, "site", "review Step 2"),
             model_role=getattr(args, "model_role", "default"),
+            cursor_model=getattr(args, "cursor_model", "") or "",
         )
 
 
@@ -1102,7 +1117,8 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
     start = time.time()
     prompt_sidecar = _review_write_cursor_prompt_sidecar(output=output, original_prompt=original_prompt)
     try:
-        model_args = list(resolve_model_args("cursor", with_effort=True).argv)
+        cursor_model = getattr(args, "cursor_model", "") or ""
+        model_args = ["--model", cursor_model] if cursor_model else list(resolve_model_args("cursor", with_effort=True).argv)
     except ValueError as exc:
         _review_record_timing(vendor="cursor", task_kind=timing_kind, start_s=start, output=output, exit_code=1)
         _review_write_preflight_bundle(
@@ -1195,6 +1211,7 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
         timing_task_kind=timing_kind,
         site=site,
         model_role=getattr(args, "model_role", "default"),
+        cursor_model=getattr(args, "cursor_model", "") or "",
     )
     _review_run_test_trap_after_inner_done_if_enabled()
     resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")

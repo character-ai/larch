@@ -265,12 +265,17 @@ RCC_MAX_ITER_DEFAULT: Final = 3
 CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
+CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
+CURSOR_AUTO_MODEL: Final = "auto"
+
+
 @dataclass(frozen=True)
 class SlotDefault:
     slot: str
     tool: ToolName
     semantic_label: str = ""
     model_role: str = ""
+    cursor_model: str = ""
     agent: str = ""
     output: str = ""
     focus_area: str = ""
@@ -373,13 +378,22 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
                 for archetype in _CODE_REVIEW_ARCHETYPES
                 for tool in ("cursor", "codex")
             ),
+            SlotDefault(
+                slot="plan-fidelity-auto",
+                tool="cursor",
+                cursor_model=CURSOR_AUTO_MODEL,
+                agent="agents/reviewer-plan-fidelity.md",
+                output="cursor-specialist-plan-fidelity-auto-output.txt",
+                focus_area="architecture",
+                archetype="plan-fidelity-auto",
+            ),
             SlotDefault(slot="generalist", tool="codex", agent="agents/code-reviewer.md", output="codex-generalist-output.txt", focus_area="code-quality", weight=1, model_role="default", archetype="generic"),
         ),
         dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
         doc_phase="Code review panel",
         doc_role="Review code changes",
         doc_skills="/review, /implement Step 5",
-        doc_fallback="Cursor static rows emit when Cursor is available; Codex static rows emit when Codex is available; HARD rows can override the Codex model role per archetype, dynamic Codex rows use review, no generic Codex reviewer is emitted; reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
+        doc_fallback="Cursor static rows emit when Cursor is available, including the additive Cursor/auto plan-fidelity lane; Codex static rows emit when Codex is available; HARD rows can override the Codex model role per archetype, dynamic Codex rows use review, no generic Codex reviewer is emitted; reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
     ),
     "design.plan_review_panel": RoleDefault(
         role_id="design.plan_review_panel",
@@ -609,8 +623,6 @@ CODEX_DEFAULT_MODEL: Final = "gpt-5.5"
 CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.4-mini"
 CODEX_VOTE_MODEL_DEFAULT: Final = "gpt-5.4-mini"
 CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.4-mini"
-CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
-CURSOR_AUTO_MODEL: Final = "auto"
 # Teams plan per-token surcharge on all tokens (input, cache-read, output) for non-Auto
 # Cursor agent requests. Source: cursor.com/docs/account/teams/pricing — "Cursor Token
 # Rate $0.25/1M tokens" applies to pinned-model (composer-2.5) non-Auto requests.

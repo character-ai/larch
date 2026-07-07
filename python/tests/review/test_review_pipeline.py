@@ -2686,7 +2686,7 @@ def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Pat
         assert result.returncode == 0, result.stderr
         rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
         assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=6" in result.stdout
+        assert "STATIC_SLOT_COUNT=7" in result.stdout
 
 
 def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
@@ -2723,7 +2723,7 @@ def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp
         assert result.returncode == 0, result.stderr
         rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
         assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=3" in result.stdout
+        assert "STATIC_SLOT_COUNT=4" in result.stdout
 
 
 def _write_waterfall_noop(path: Path) -> None:
@@ -4596,11 +4596,21 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
 
     assert proc.returncode == 0
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
-    assert {row["tool"] for row in rows} == {"codex"}
-    assert all(row.get("model_role") == "review" for row in rows)
+    assert [(row["slot"], row["tool"]) for row in rows] == [
+        ("correctness", "codex"),
+        ("edge-cases", "codex"),
+        ("testing", "codex"),
+        ("plan-fidelity-auto", "cursor"),
+    ]
+    assert all(row.get("model_role") == "review" for row in rows if row["tool"] == "codex")
+    plan_row = next(row for row in rows if row["slot"] == "plan-fidelity-auto")
+    assert plan_row["cursor_model"] == "auto"
+    assert plan_row["resolved_model"] == "auto"
     assert "PANEL_SHAPE=singles" in proc.stdout
     assert "PANEL_TIER=TRIVIAL" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
+    assert "STATIC_SLOT_COUNT=4" in proc.stdout
+    assert "SLOT_COUNT=4" in proc.stdout
 
 
 def test_dispatch_panel_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -> None:
@@ -4636,8 +4646,46 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
         "edge-cases": config.CODEX_DEFAULT_MODEL,
         "testing": config.CODEX_REVIEW_MODEL_DEFAULT,
     }
+    plan_row = next(row for row in rows if row["slot"] == "plan-fidelity-auto")
+    assert plan_row["tool"] == "cursor"
+    assert plan_row["cursor_model"] == "auto"
+    assert plan_row["resolved_model"] == "auto"
     assert "PANEL_SHAPE=pairs" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
+    assert "STATIC_SLOT_COUNT=7" in proc.stdout
+    assert "SLOT_COUNT=7" in proc.stdout
+
+
+def test_dispatch_panel_codex_unavailable_keeps_cursor_auto_lane(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("plan", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_executable(waterfall, """#!/usr/bin/env bash
+set -euo pipefail
+printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n'
+""")
+    env = {**os.environ, "DISPATCH_WATERFALL": str(waterfall)}
+
+    proc = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--review-tmpdir", str(tmp_path / "review"),
+        "--codex-available", "false",
+        "--cursor-available", "true",
+        "--tier", "MODERATE",
+        "--dynamic-archetypes", "0",
+        "--plan-file", str(plan),
+        env=env,
+    )
+
+    assert proc.returncode == 0
+    rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
+    assert {row["tool"] for row in rows} == {"cursor"}
+    assert {row["slot"] for row in rows} == {"correctness", "edge-cases", "testing", "plan-fidelity-auto"}
+    plan_row = next(row for row in rows if row["slot"] == "plan-fidelity-auto")
+    assert plan_row["cursor_model"] == "auto"
+    assert plan_row["resolved_model"] == "auto"
+    assert "STATIC_SLOT_COUNT=4" in proc.stdout
 
 
 def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:

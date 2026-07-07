@@ -136,6 +136,7 @@ class RetryMeta:
     outer_launcher_sandbox: str = ""
     outer_launcher_with_effort: str = ""
     outer_launcher_model_role: str = ""
+    outer_launcher_cursor_model: str = ""
     outer_launcher_usage_label: str = ""
     outer_launcher_timing_kind: str = ""
     outer_launcher_add_dirs_json: str = ""
@@ -183,6 +184,10 @@ def _validate_positive_int(*, raw: str, flag: str) -> int | None:
     return value
 
 
+def _valid_cursor_model(value: str) -> bool:
+    return bool(value.strip()) and re.search(r"[\x00-\x1f\x7f]", value) is None
+
+
 def _parse_meta(meta_path: str | Path) -> RetryMeta:
     data: dict[str, str] = {}
     try:
@@ -209,6 +214,7 @@ def _parse_meta(meta_path: str | Path) -> RetryMeta:
         outer_launcher_sandbox=data.get("OUTER_LAUNCHER_SANDBOX", ""),
         outer_launcher_with_effort=data.get("OUTER_LAUNCHER_WITH_EFFORT", ""),
         outer_launcher_model_role=data.get("OUTER_LAUNCHER_MODEL_ROLE", "default"),
+        outer_launcher_cursor_model=data.get("OUTER_LAUNCHER_CURSOR_MODEL", ""),
         outer_launcher_usage_label=data.get("OUTER_LAUNCHER_USAGE_LABEL", ""),
         outer_launcher_timing_kind=data.get("OUTER_LAUNCHER_TIMING_KIND", ""),
         outer_launcher_add_dirs_json=data.get("OUTER_LAUNCHER_ADD_DIRS_JSON", ""),
@@ -615,6 +621,11 @@ def _launch_outer_retry(
                 _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_MODEL_ROLE invalid")
                 return False
             args.extend(["--model-role", meta.outer_launcher_model_role])
+        if meta.outer_launcher_cursor_model:
+            if meta.tool != "cursor" or not _valid_cursor_model(meta.outer_launcher_cursor_model):
+                _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_CURSOR_MODEL invalid")
+                return False
+            args.extend(["--cursor-model", meta.outer_launcher_cursor_model])
         if meta.outer_launcher_site:
             args.extend(["--site", meta.outer_launcher_site])
         if meta.stderr_sink:

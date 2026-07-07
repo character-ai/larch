@@ -357,7 +357,7 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "C901",
     "qualified_symbol": "_review_validate_args",
-    "metric": 12
+    "metric": 16
   },
   {
     "file": "larch/agents/_review_launcher.py",
@@ -375,13 +375,19 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0911",
     "qualified_symbol": "_review_validate_args",
-    "metric": 10
+    "metric": 13
   },
   {
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_launch_codex",
     "metric": 14
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_review_validate_args",
+    "metric": 16
   },
   {
     "file": "larch/agents/_review_launcher.py",
@@ -393,7 +399,7 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0913",
     "qualified_symbol": "_review_append_outer_meta",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/agents/_review_launcher.py",
@@ -423,7 +429,7 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_launch_cursor",
-    "metric": 57
+    "metric": 58
   },
   {
     "file": "larch/agents/_run_external.py",
@@ -519,13 +525,19 @@
     "file": "larch/agents/agent_waterfall.py",
     "code": "C901",
     "qualified_symbol": "_launch_slot",
-    "metric": 11
+    "metric": 12
   },
   {
     "file": "larch/agents/agent_waterfall.py",
     "code": "C901",
     "qualified_symbol": "_parse_args",
     "metric": 19
+  },
+  {
+    "file": "larch/agents/agent_waterfall.py",
+    "code": "C901",
+    "qualified_symbol": "_parse_slot_row",
+    "metric": 11
   },
   {
     "file": "larch/agents/agent_waterfall.py",
@@ -603,7 +615,7 @@
     "file": "larch/agents/collect_results.py",
     "code": "C901",
     "qualified_symbol": "_launch_outer_retry",
-    "metric": 23
+    "metric": 25
   },
   {
     "file": "larch/agents/collect_results.py",
@@ -633,7 +645,7 @@
     "file": "larch/agents/collect_results.py",
     "code": "PLR0911",
     "qualified_symbol": "_launch_outer_retry",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/agents/collect_results.py",
@@ -663,7 +675,7 @@
     "file": "larch/agents/collect_results.py",
     "code": "PLR0912",
     "qualified_symbol": "_launch_outer_retry",
-    "metric": 24
+    "metric": 26
   },
   {
     "file": "larch/agents/collect_results.py",
@@ -681,7 +693,7 @@
     "file": "larch/agents/collect_results.py",
     "code": "PLR0915",
     "qualified_symbol": "_launch_outer_retry",
-    "metric": 55
+    "metric": 59
   },
   {
     "file": "larch/agents/collect_results.py",
@@ -1449,7 +1461,7 @@
     "file": "larch/design/design_step0.py",
     "code": "C901",
     "qualified_symbol": "step0_route_main",
-    "metric": 22
+    "metric": 16
   },
   {
     "file": "larch/design/design_step0.py",
@@ -1461,7 +1473,7 @@
     "file": "larch/design/design_step0.py",
     "code": "PLR0911",
     "qualified_symbol": "step0_route_main",
-    "metric": 11
+    "metric": 8
   },
   {
     "file": "larch/design/design_step0.py",
@@ -1473,13 +1485,13 @@
     "file": "larch/design/design_step0.py",
     "code": "PLR0912",
     "qualified_symbol": "step0_route_main",
-    "metric": 24
+    "metric": 16
   },
   {
     "file": "larch/design/design_step0.py",
     "code": "PLR0915",
     "qualified_symbol": "step0_route_main",
-    "metric": 71
+    "metric": 57
   },
   {
     "file": "larch/design/design_step0_env.py",
@@ -5668,6 +5680,12 @@
     "code": "PLR0915",
     "qualified_symbol": "_review_core_body",
     "metric": 229
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "C901",
+    "qualified_symbol": "_append_static_specialist_rows",
+    "metric": 12
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
