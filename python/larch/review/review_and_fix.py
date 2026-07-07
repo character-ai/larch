@@ -367,20 +367,8 @@ def _step5_result_env_rows_from_text(text: str) -> list[tuple[str, str | int | b
     return rows
 
 
-def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str, rounds_completed: int, final_round: int, final_irf: str, coder_status: str, files_hint: str, effective_cap: int, extra_rows: list[tuple[str, str | int | bool]] | None = None, persist: bool = True) -> None:
-    rows = _step5_envelope_rows(
-        _Step5Envelope(
-            status=status,
-            stall_tracking=stall_tracking,
-            stall_reason=stall_reason,
-            rounds_completed=rounds_completed,
-            final_round=final_round,
-            final_irf=final_irf,
-            coder_status=coder_status,
-            files_hint=files_hint,
-            effective_cap=effective_cap,
-        )
-    )
+def _emit_step5_envelope(envelope: _Step5Envelope, *, extra_rows: list[tuple[str, str | int | bool]] | None = None, persist: bool = True) -> None:
+    rows = _step5_envelope_rows(envelope)
     if extra_rows:
         rows.extend(extra_rows)
     if persist:
@@ -744,7 +732,7 @@ def _finish_step5_terminal_success(*,
         rounds_completed=rounds_completed,
         result=result,
     )
-    _emit_step5_envelope(
+    _emit_step5_envelope(_Step5Envelope(
         status="cap-hit" if terminal_status == "cap-hit" else "complete",
         stall_tracking=False,
         stall_reason="",
@@ -754,7 +742,7 @@ def _finish_step5_terminal_success(*,
         coder_status=result.coder.status,
         files_hint=result.coder.commit_sha,
         effective_cap=int(str(args.round_cap)),
-    )
+    ))
     return 0
 
 
@@ -823,7 +811,7 @@ def _step5_orphan_timeout_elapsed(*, implement_tmpdir: Path, timeout_s: float | 
 
 
 def _emit_step5_orphan_timeout(*, rounds_completed: int, final_round: int, effective_cap: int) -> int:
-    _emit_step5_envelope(
+    _emit_step5_envelope(_Step5Envelope(
         status="stall",
         stall_tracking=True,
         stall_reason="orphan-timeout",
@@ -833,7 +821,7 @@ def _emit_step5_orphan_timeout(*, rounds_completed: int, final_round: int, effec
         coder_status="",
         files_hint="",
         effective_cap=effective_cap,
-    )
+    ))
     return 2
 
 
@@ -851,12 +839,12 @@ def normalize_status(argv: list[str] | None = None) -> int:
         os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
     stdout_file = Path(args.stdout_file)
     if stdout_file.is_symlink() or not stdout_file.is_file():
-        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2, persist=False)
+        _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=True, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2), persist=False)
         return 2
     try:
         text = stdout_file.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="unreadable-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2, persist=False)
+        _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=True, stall_reason="unreadable-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2), persist=False)
         return 2
     has_envelope = any(line.startswith("STEP5_REVIEW_STATUS=") and line.partition("=")[2] for line in text.splitlines())
     if has_envelope:
@@ -868,7 +856,7 @@ def normalize_status(argv: list[str] | None = None) -> int:
             _step5_write_terminal_sentinel(implement_tmpdir=implement_tmpdir)
         except OSError as exc:
             _err(f"review-and-fix normalize-status: {exc}")
-            _emit_step5_envelope(
+            _emit_step5_envelope(_Step5Envelope(
                 status="stall",
                 stall_tracking=True,
                 stall_reason="internal-error",
@@ -878,8 +866,7 @@ def normalize_status(argv: list[str] | None = None) -> int:
                 coder_status="",
                 files_hint="",
                 effective_cap=2,
-                persist=False,
-            )
+            ), persist=False)
             return 2
         sys.stdout.write(text)
         if text and not text.endswith("\n"):
@@ -890,7 +877,7 @@ def normalize_status(argv: list[str] | None = None) -> int:
             loop_rc = 0
         return loop_rc
     _ = implement_tmpdir
-    _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-step5-envelope", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2, persist=False)
+    _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=True, stall_reason="missing-step5-envelope", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2), persist=False)
     return 2
 
 
@@ -909,9 +896,9 @@ def step5(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         _err(f"review-and-fix step5: {exc}")
         return 2
-    os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(Path(args.implement_tmpdir).resolve())
     loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
     default_cap = _positive_int(value=str(args.round_cap), label="--round-cap") if str(args.round_cap).isdigit() else 2
+    os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(Path(args.implement_tmpdir).resolve())
     progress_done: Path | None = None
     if loop_mode and args.implement_tmpdir:
         progress_done = Path(args.implement_tmpdir).resolve() / "progress" / "done"
@@ -925,9 +912,8 @@ def step5(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             _err(f"review-and-fix step5: {exc}")
             if loop_mode:
-                _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="preflight-failed", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap)
+                _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=False, stall_reason="preflight-failed", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=default_cap))
             return 2
-        os.environ["IMPLEMENT_TMPDIR"] = str(implement_tmpdir)
         os.environ["CODEX_BINARY_FOUND"] = args.codex_available
         os.environ["CURSOR_BINARY_FOUND"] = args.cursor_available
         os.environ.setdefault("CLAUDE_PLUGIN_ROOT", str(_plugin_root()))
@@ -965,14 +951,14 @@ def step5(argv: list[str] | None = None) -> int:
             prior_env = implement_tmpdir / f"round-{prior_round}" / "review-and-fix.env"
             if starting_round > round_cap and prior_env.is_file():
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=0, result=None)
-                _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=0, final_round=prior_round, final_irf="complete", coder_status="", files_hint="", effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=0, final_round=prior_round, final_irf="complete", coder_status="", files_hint="", effective_cap=round_cap))
                 return 0
             if not _step5_probe_prior_round_env(implement_tmpdir=implement_tmpdir, prior_round=prior_round):
                 _err(
                     f"IMPLEMENT_TMPDIR={implement_tmpdir} STARTING_ROUND={starting_round} "
                     f"expected_env_path={prior_env} base_cap={round_cap}"
                 )
-                _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="starting-round-invalid", rounds_completed=0, final_round=starting_round, final_irf="unknown", coder_status="", files_hint="", effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=False, stall_reason="starting-round-invalid", rounds_completed=0, final_round=starting_round, final_irf="unknown", coder_status="", files_hint="", effective_cap=round_cap))
                 return 2
         rounds_completed = 0
         last: RoundResult | None = None
@@ -988,7 +974,7 @@ def step5(argv: list[str] | None = None) -> int:
                 coder_status = last.coder.status if last else ""
                 files_hint = last.coder.commit_sha if last else ""
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=last)
-                _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=prior, final_irf=final_irf, coder_status=coder_status, files_hint=files_hint, effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=prior, final_irf=final_irf, coder_status=coder_status, files_hint=files_hint, effective_cap=round_cap))
                 return 0
             args.round_num = str(round_num)
             start_s = int(time.time())
@@ -1001,7 +987,7 @@ def step5(argv: list[str] | None = None) -> int:
             if result.status in {"main-agent-vote-required", "coder-main-agent-required"}:
                 _persist_round_start(implement_tmpdir=implement_tmpdir, round_num=round_num, start_s=start_s)
                 handoff_rows = _record_handoff_escalation_and_restage(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path, run_id=args.run_id)
-                _emit_step5_envelope(
+                _emit_step5_envelope(_Step5Envelope(
                     status=result.status,
                     stall_tracking=False,
                     stall_reason="",
@@ -1011,8 +997,7 @@ def step5(argv: list[str] | None = None) -> int:
                     coder_status=result.coder.status,
                     files_hint=result.coder.commit_sha,
                     effective_cap=round_cap,
-                    extra_rows=handoff_rows,
-                )
+                ), extra_rows=handoff_rows)
                 return 0
             if result.status == "self-review-required":
                 _record_step5_round_timing_before_gates(
@@ -1022,7 +1007,7 @@ def step5(argv: list[str] | None = None) -> int:
                     result=result,
                 )
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
-                _emit_step5_envelope(
+                _emit_step5_envelope(_Step5Envelope(
                     status="self-review-required",
                     stall_tracking=False,
                     stall_reason="",
@@ -1032,7 +1017,7 @@ def step5(argv: list[str] | None = None) -> int:
                     coder_status=result.coder.status,
                     files_hint=result.coder.commit_sha,
                     effective_cap=round_cap,
-                )
+                ))
                 return 0
             _record_step5_round_timing_before_gates(
                 implement_tmpdir=implement_tmpdir,
@@ -1111,14 +1096,14 @@ def step5(argv: list[str] | None = None) -> int:
                 stall_reason = f"round-failed-{result.status}"
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
             if terminal_status == "stall":
-                _emit_step5_envelope(status="stall", stall_tracking=stall_tracking, stall_reason=stall_reason, rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
+                _emit_step5_envelope(_Step5Envelope(status="stall", stall_tracking=stall_tracking, stall_reason=stall_reason, rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap))
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
                 return result.rc or 2
             return _finish_step5_terminal_success(terminal_status=terminal_status, args=args, implement_tmpdir=implement_tmpdir, rounds_completed=rounds_completed, result=result)
     except Exception as exc:
         _err(f"review-and-fix step5: {exc}")
         if loop_mode:
-            _emit_step5_envelope(
+            _emit_step5_envelope(_Step5Envelope(
                 status="stall",
                 stall_tracking=False,
                 stall_reason="internal-error",
@@ -1128,8 +1113,7 @@ def step5(argv: list[str] | None = None) -> int:
                 coder_status="",
                 files_hint="",
                 effective_cap=default_cap,
-                persist=not isinstance(exc, OSError),
-            )
+            ), persist=not isinstance(exc, OSError))
         return 2
     finally:
         if progress_done is not None:

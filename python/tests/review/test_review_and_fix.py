@@ -2832,9 +2832,9 @@ def test_step5_terminal_flushes_review_batches_with_counts(
         flush_calls.append(kwargs)
         return True
 
-    def fake_emit(**kwargs):
+    def fake_emit(envelope, **kwargs):
         events.append("envelope")
-        original_emit(**kwargs)
+        original_emit(envelope, **kwargs)
 
     monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status=round_status))
     if gate_status:
