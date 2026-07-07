@@ -1617,6 +1617,90 @@ def test_step0_route_resume_rehydrates_source_env_from_ctx_env(tmp_path: Path, m
     assert "REPO=owner/repo" in captured.out
 
 
+def test_step0_route_explicit_issue_ignores_stale_route_state_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=77\n", encoding="utf-8")
+    (design / ".design-step0-route-state.env").write_text("ISSUE_NUMBER=42\nREPO=old/repo\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.delenv("REPO", raising=False)
+    route_commands: list[list[str]] = []
+    init_commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            route_commands.append(list(cmd))
+            assert cmd[cmd.index("--issue") + 1] == "77"
+            assert cmd[cmd.index("--repo") + 1] == "new/repo"
+            (design / ".design-route-result.env").write_text("ROUTE=proceed\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=proceed\n", "")
+        if cmd[2:4] == ["design", "init-runparams"]:
+            init_commands.append(list(cmd))
+            assert cmd[cmd.index("--issue") + 1] == "77"
+            assert cmd[cmd.index("--repo") + 1] == "new/repo"
+            _write_ok_init_result(design)
+            return subprocess.CompletedProcess(cmd, 0, "INIT_STATUS=ok\nRENAMED=false\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_read_json_issue(*, issue_number: str, repo: str) -> tuple[str, str, str]:
+        assert issue_number == "77"
+        assert repo == "new/repo"
+        return ("Title", "body", "false")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0, "_read_json_issue", fake_read_json_issue)
+    monkeypatch.setattr(design_step0, "resolve_repo", lambda: "new/repo")
+
+    assert design_lifecycle.step0_route_main(_step0_wrapper_args(env_path)) == 0
+    assert route_commands
+    assert init_commands
+    route_state = (design / ".design-step0-route-state.env").read_text(encoding="utf-8")
+    assert "ISSUE_NUMBER=77" in route_state
+    assert "REPO=new/repo" in route_state
+    assert "ISSUE_NUMBER=42" not in route_state
+    assert "REPO=old/repo" not in route_state
+
+
+def test_step0_route_resume_recovers_issue_number_with_ambient_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+    (design / ".design-step0-route-state.env").write_text("ISSUE_NUMBER=42\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.setenv("REPO", "ambient/repo")
+    route_commands: list[list[str]] = []
+    refresh_commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            route_commands.append(list(cmd))
+            assert cmd[cmd.index("--issue") + 1] == "42"
+            assert cmd[cmd.index("--repo") + 1] == "ambient/repo"
+            (design / ".design-route-result.env").write_text("ROUTE=resume@2a\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_proc_run(cmd: Sequence[str], **_kwargs: object) -> proc_module.CommandResult:
+        refresh_commands.append(list(cmd))
+        return proc_module.CommandResult(tuple(cmd), 0, "", "", 0.0)
+
+    def fake_read_json_issue(*, issue_number: str, repo: str) -> tuple[str, str, str]:
+        assert issue_number == "42"
+        assert repo == "ambient/repo"
+        return ("Title", "body", "false")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+    monkeypatch.setattr(design_step0, "_read_json_issue", fake_read_json_issue)
+
+    assert design_lifecycle.step0_route_main(_step0_wrapper_args(env_path)) == 0
+    assert route_commands
+    assert refresh_commands
+    route_state = (design / ".design-step0-route-state.env").read_text(encoding="utf-8")
+    assert "ISSUE_NUMBER=42" in route_state
+    assert "REPO=ambient/repo" in route_state
+
+
 def test_step0_route_proceed_init_failure_keeps_state_and_hides_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
