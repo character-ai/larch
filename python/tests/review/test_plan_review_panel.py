@@ -5,7 +5,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 import pytest
 
@@ -13,9 +13,6 @@ from larch.core import config
 from larch.report import tokens
 from larch.review import plan_review_panel
 from test_support import ROOT, run_cli
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _stdout_key_order(stdout: str) -> list[str]:
