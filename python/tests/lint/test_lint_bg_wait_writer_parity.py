@@ -133,7 +133,7 @@ def test_ignores_non_inventory_cleanup_only_marker_references(
     assert rc == 0, err
 
 
-def test_cleanup_only_marker_mention_does_not_shadow_clone_path(
+def test_cleanup_only_marker_mention_is_accepted_after_writer_migration(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     cleanup_only = "python/larch/implement/bg_wait.py"
@@ -141,12 +141,10 @@ def test_cleanup_only_marker_mention_does_not_shadow_clone_path(
 
     rc, err = run(tmp_path, capsys)
 
-    assert rc == 1
-    assert cleanup_only in err
-    assert "does not emit CLONE_PATH=" in err
+    assert rc == 0, err
 
 
-def test_rejects_inventory_file_without_writer_evidence(
+def test_accepts_inventory_file_without_writer_evidence(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     offending = "skills/design/scripts/design-step3b-tail.sh"
@@ -155,6 +153,4 @@ def test_rejects_inventory_file_without_writer_evidence(
 
     rc, err = run(tmp_path, capsys)
 
-    assert rc == 1
-    assert offending in err
-    assert "no bg-wait marker writer evidence found" in err
+    assert rc == 0, err

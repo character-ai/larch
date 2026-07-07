@@ -249,7 +249,7 @@ test-harnesses-2: test-design-step3-review test-hook-anti-read-poll test-file-fa
 
 test-harnesses-3: test-step-5-review test-design-step3-mav test-hook-bg-poll-guard test-hook-clone-ownership-parity test-prompt-template-invariants test-design-multi-round-integration test-hook-stop-fail-close test-hook-no-progress-guard test-design-structure test-voter-calibration test-research-structure test-cache-key-discipline test-plan-adequacy-audit test-implement-structure test-design-clarify test-alias-structure test-anti-halt test-bug-structure test-effort-prose
 
-test-harnesses-4: test-harness-shards-coverage test-step3-orchestrator-fence test-gate-b-apply-mode test-read-result-env test-sessionstart test-check-topology-rule-paths test-block-submodule test-lint-bash32 test-deny-edit-write test-pause-skill test-implement-timing-rehydration test-subskill-anchors test-research-angle-prompts test-brainstorm-prompts test-implement-cleanup-roundtrip test-hook-deny-run-in-background
+test-harnesses-4: test-harness-shards-coverage test-step3-orchestrator-fence test-gate-b-apply-mode test-read-result-env test-sessionstart test-check-topology-rule-paths test-block-submodule test-lint-bash32 test-deny-edit-write test-pause-skill test-implement-timing-rehydration test-subskill-anchors test-research-angle-prompts test-brainstorm-prompts test-implement-cleanup-roundtrip test-hook-deny-run-in-background test-bgjob
 
 test-harnesses-5: test-findings-classification test-step3-review-cap test-step-18 test-implement-review-token-propagation test-design-step3-entry test-sweep-design-logs test-cleanup-sessionstart test-external-tool-registry test-flush-vendor-failure-diagnostics test-review-structure test-implement-anti-polling-rule test-implement-fence-shape test-hook-progress-report test-implement-anti-halt test-step-8-oos-checkpoint test-implement-rebase-macro test-implement-positional-issue test-write-final-report
 
@@ -479,7 +479,7 @@ test-hook-clone-ownership-parity:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-hook-clone-ownership-parity.sh
 
 test-bgjob:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/bgjob -q
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-bgjob.sh
 
 test-classify-bump:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/release/test_version_bump.py -q

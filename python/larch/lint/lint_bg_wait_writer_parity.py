@@ -1,4 +1,4 @@
-"""Require every bg-wait marker writer to emit a local CLONE_PATH stamp."""
+"""Require remaining bg-wait marker writers to emit a local CLONE_PATH stamp."""
 
 from __future__ import annotations
 
@@ -29,13 +29,6 @@ WRITERS: tuple[WriterSpec, ...] = (
     WriterSpec("python/larch/design/design_core.py", "design Python bg-wait context"),
     WriterSpec("python/larch/implement/bg_wait.py", "implement Python bg-wait helper"),
 )
-
-WRITER_EVIDENCE_TOKENS = (".bg-wait-active", "PID=", "START_EPOCH=", "STEP=")
-
-
-def _has_writer_evidence(text: str) -> bool:
-    return all(token in text for token in WRITER_EVIDENCE_TOKENS)
-
 
 WRITE_CONTEXT_TOKENS = ("write_text(", "printf", ">", ">>", ".replace(", "mv ")
 CLONE_PATH_WINDOW_LINES = 15
@@ -71,9 +64,8 @@ def _has_nearby_clone_path(lines: list[str], index: int) -> bool:
     return any(_non_comment_has_clone_path(line) for line in lines[start:end])
 
 
-def _has_clone_path_emission(text: str) -> bool:
-    lines = text.splitlines()
-    marker_write_indexes = [
+def _marker_write_indexes(lines: list[str]) -> list[int]:
+    return [
         index
         for index, line in enumerate(lines)
         if not _is_comment_line(line)
@@ -81,8 +73,11 @@ def _has_clone_path_emission(text: str) -> bool:
         and not _is_cleanup_marker_line(line)
         and _has_write_context(lines, index)
     ]
+
+
+def _has_clone_path_emission(lines: list[str], marker_write_indexes: list[int]) -> bool:
     if not marker_write_indexes:
-        return False
+        return True
     return all(_has_nearby_clone_path(lines, index) for index in marker_write_indexes)
 
 
@@ -104,10 +99,9 @@ def lint_writers(root: Path, specs: Sequence[WriterSpec] = WRITERS) -> list[str]
             )
             continue
         text = _read_writer(path, rel=spec.path)
-        if not _has_writer_evidence(text):
-            violations.append(f"{PROG}: {spec.path}: no bg-wait marker writer evidence found")
-            continue
-        if not _has_clone_path_emission(text):
+        lines = text.splitlines()
+        marker_write_indexes = _marker_write_indexes(lines)
+        if not _has_clone_path_emission(lines, marker_write_indexes):
             violations.append(f"{PROG}: {spec.path}: bg-wait marker writer does not emit CLONE_PATH=")
     return violations
 

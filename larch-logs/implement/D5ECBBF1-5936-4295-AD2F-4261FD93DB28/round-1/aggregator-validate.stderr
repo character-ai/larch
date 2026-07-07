@@ -1,0 +1,3 @@
+warning: fix text for slot 'dyn-dyn-bgjob-proc' in FINDING_1 not traceable to scoped input (first 80 chars: 'Restore scripts/test-bgjob.sh and keep it in `test-harnesses-4`; do not leave Ma')
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_2 not traceable to scoped input (first 80 chars: 'Feed the hook the actual bgjob wait event shape, not just a prewritten result en')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add explicit bgjob wait allow matcher; test documented tmpdir variable forms')
