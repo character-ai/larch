@@ -39,7 +39,7 @@ if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 4.r') != 0:
     errors.append('4.r standalone launcher probe call must be folded into the Step 3 composite')
 if skill.count('larch-run.sh" python/cli.py push checkpoint-probe 7.r') != 0:
     errors.append('7.r standalone launcher probe call must be folded into the Step 6 composite')
-if skill.count('python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"') != 1:
+if skill.count('skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"') != 1:
     errors.append('Step 3 composite launcher must carry --rebase-checkpoint-4r and --forked-target')
 if skill.count('skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"') != 1:
     errors.append('Step 6 composite launcher must call step-6-entry.sh with --forked-target')

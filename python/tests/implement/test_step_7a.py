@@ -100,7 +100,7 @@ def test_step7a_bgjob_launch_rejects_symlinked_tmpdir_before_merge_env_setup(
     rc = step_7a.main(["--bgjob-launch", "true", "--implement-tmpdir", str(impl_tmpdir)])
 
     assert rc == 2
-    assert called == []
+    assert not called
     _ = capsys.readouterr()
 
 
