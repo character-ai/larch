@@ -367,6 +367,9 @@ def _check_publish_plan_size(*, design_tmpdir: Path, plugin_root: Path) -> tuple
 
 
 def _refresh_composed_plan_md(*, design_tmpdir: Path) -> None:
+    plan_txt = design_tmpdir / "plan.txt"
+    if not plan_txt.is_file() or plan_txt.stat().st_size == 0:
+        return
     composed_plan = design_tmpdir / "composed-plan.md"
     with contextlib.suppress(OSError):
         composed_plan.unlink()
