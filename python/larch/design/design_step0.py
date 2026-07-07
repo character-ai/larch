@@ -271,6 +271,50 @@ def _read_result_pairs(*, primary: Path, fallback: Path | None, allow: Iterable[
     return dict(pairs)
 
 
+def _recover_resume_route_state_values(env: Mapping[str, str], design_tmpdir: Path) -> dict[str, str]:
+    merged: dict[str, str] = {key: value for key in ROUTE_STATE_KEYS if (value := env.get(key, ""))}
+    try:
+        route_state = dict(phase_driver_read_result_env(path=design_tmpdir / ".design-step0-route-state.env", allow_keys=ROUTE_STATE_KEYS))
+    except OSError:
+        return merged
+    for key, value in route_state.items():
+        if value and not merged.get(key):
+            merged[key] = value
+    return merged
+
+
+def _gap_fill_resume_route_state_values(env: dict[str, str], design_tmpdir: Path) -> None:
+    recovered = _recover_resume_route_state_values(env, design_tmpdir)
+    for key, value in recovered.items():
+        if value and not env.get(key):
+            env[key] = value
+
+
+def _bind_step0_route_issue_env(*, env: dict[str, str], design_tmpdir: Path, issue_number_arg: str) -> int:
+    if issue_number_arg:
+        if re.match(r"^[0-9]+$", issue_number_arg):
+            env["ISSUE_NUMBER"] = issue_number_arg
+        else:
+            print("**⚠ Step 0b: --issue-number requires numeric value; aborting /design**", file=sys.stderr)
+            return 1
+    kind = env.get("POSITIONAL_KIND", "none") or "none"
+    if kind == "issue":
+        if re.match(r"^[0-9]+$", env.get("POSITIONAL_VALUE", "")):
+            env["ISSUE_NUMBER"] = env["POSITIONAL_VALUE"]
+        else:
+            print("**⚠ Step 0b: POSITIONAL_KIND=issue requires numeric POSITIONAL_VALUE; aborting /design**", file=sys.stderr)
+            return 1
+    if kind == "verbal" and not env.get("ISSUE_NUMBER"):
+        print("**⚠ Step 0b: POSITIONAL_KIND=verbal requires ISSUE_NUMBER from /larch:issue before routing; aborting /design**", file=sys.stderr)
+        return 1
+    if not env.get("ISSUE_NUMBER") or not env.get("REPO"):
+        _gap_fill_resume_route_state_values(env, design_tmpdir)
+    if kind not in {"issue", "none", "verbal"}:
+        print(f"**⚠ Step 0b: invalid POSITIONAL_KIND={kind or '<empty>'}; aborting /design**", file=sys.stderr)
+        return 1
+    return 0
+
+
 def _materialize_step0_feature_description(*, design_tmpdir: Path, env: Mapping[str, str], init_route: str) -> None:
     if init_route not in {"proceed", "already-planned"}:
         return
@@ -380,6 +424,43 @@ class Step0RouteFinishContext:
     claude_pid: str
 
 
+def _refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int:
+    recovered = _recover_resume_route_state_values(ctx.env, ctx.design_tmpdir)
+    session_id = ctx.env.get("SESSION_ID", "")
+    issue_number = recovered.get("ISSUE_NUMBER", "")
+    if not session_id:
+        print("**⚠ Step 0b: resume route missing SESSION_ID; aborting /design**", file=sys.stderr)
+        return 1
+    if not issue_number or not issue_number.isdigit():
+        print("**⚠ Step 0b: resume route could not recover numeric ISSUE_NUMBER; aborting /design**", file=sys.stderr)
+        return 1
+    command = _cli_cmd(
+        ctx.plugin_root,
+        "session",
+        "write-design-env",
+        "--output",
+        str(ctx.design_tmpdir / "source-env.sh"),
+        "--design-tmpdir",
+        str(ctx.design_tmpdir),
+        "--session-id",
+        session_id,
+        "--issue-number",
+        issue_number,
+        "--claude-pid",
+        ctx.claude_pid,
+    )
+    repo = recovered.get("REPO", "")
+    if repo:
+        command.extend(["--repo", repo])
+    result = proc.run(command, env={**os.environ, **ctx.env, "CLAUDE_PLUGIN_ROOT": str(ctx.plugin_root)})
+    if result.returncode == 0:
+        return 0
+    if result.stderr:
+        print(result.stderr, end="" if result.stderr.endswith("\n") else "\n", file=sys.stderr)
+    print(f"**⚠ Step 0b: session write-design-env failed during resume refresh (exit {result.returncode}); aborting /design**", file=sys.stderr)
+    return 1
+
+
 def _finish_step0_route(ctx: Step0RouteFinishContext) -> int:
     rows = [
         ("ROUTE", ctx.route),
@@ -408,6 +489,10 @@ def _finish_step0_route(ctx: Step0RouteFinishContext) -> int:
         _emit_step0_route_rows(route=ctx.route, resume_step=ctx.resume_step, route_env=ctx.route_env, env=ctx.env)
         _emit_step0_init_rows(init_result)
         return 0
+    if ctx.route.startswith("resume@"):
+        refresh_rc = _refresh_resume_source_env(ctx)
+        if refresh_rc != 0:
+            return refresh_rc
     _emit_step0_route_rows(route=ctx.route, resume_step=ctx.resume_step, route_env=ctx.route_env, env=ctx.env)
     return 0
 
@@ -420,26 +505,9 @@ def step0_route_main(argv: Sequence[str]) -> int:
     check_pause_and_exit(env=env, design_tmpdir=design_tmpdir)
     parsed = load_bash_quoted_env(path=design_tmpdir / ".design-step0-parsed.env", allow_keys=PARSED_ENV_KEYS)
     env.update(parsed)
-    if ns.issue_number:
-        if re.match(r"^[0-9]+$", ns.issue_number):
-            env["ISSUE_NUMBER"] = ns.issue_number
-        else:
-            print("**⚠ Step 0b: --issue-number requires numeric value; aborting /design**", file=sys.stderr)
-            return 1
-    kind = env.get("POSITIONAL_KIND", "none") or "none"
-    if kind == "issue":
-        if re.match(r"^[0-9]+$", env.get("POSITIONAL_VALUE", "")):
-            env["ISSUE_NUMBER"] = env["POSITIONAL_VALUE"]
-        else:
-            print("**⚠ Step 0b: POSITIONAL_KIND=issue requires numeric POSITIONAL_VALUE; aborting /design**", file=sys.stderr)
-            return 1
-    elif kind == "verbal":
-        if not env.get("ISSUE_NUMBER"):
-            print("**⚠ Step 0b: POSITIONAL_KIND=verbal requires ISSUE_NUMBER from /larch:issue before routing; aborting /design**", file=sys.stderr)
-            return 1
-    elif kind != "none":
-        print(f"**⚠ Step 0b: invalid POSITIONAL_KIND={kind or '<empty>'}; aborting /design**", file=sys.stderr)
-        return 1
+    bind_rc = _bind_step0_route_issue_env(env=env, design_tmpdir=design_tmpdir, issue_number_arg=ns.issue_number)
+    if bind_rc != 0:
+        return bind_rc
     if env.get("ISSUE_NUMBER"):
         if not env.get("REPO"):
             env["REPO"] = resolve_repo()

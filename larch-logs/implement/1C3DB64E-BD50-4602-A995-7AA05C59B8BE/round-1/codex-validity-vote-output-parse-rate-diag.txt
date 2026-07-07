@@ -1,0 +1,11 @@
+slot=0
+voter_tool=codex-validity
+judge_error_count=5
+total_findings=6
+total_ballot_items=6
+voter_file=<TMPDIR>/round-1/codex-validity-vote-output.txt
+voter_sha256=93d9038116aea313f00f55ac36710c0d72764d6cc832dabc502461c1ca90dc8e
+--- first 200 bytes of voter output ---
+OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALIT
