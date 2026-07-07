@@ -1621,6 +1621,7 @@ def test_publish_refuses_oversize_without_override(tmp_path: Path, capsys: pytes
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
     (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    (design / ".step3-review-result.env").write_text("STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
@@ -1637,8 +1638,10 @@ def test_publish_refuses_oversize_without_override(tmp_path: Path, capsys: pytes
         else:
             os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = old_size
     out = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert rc == 4
     assert "PUBLISH_REFUSE_REASON=oversize-no-override" in out
+    assert "PUBLISH_REFUSE_REASON=oversize-no-override" in result_env
 
 
 def test_publish_refuses_size_check_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1666,8 +1669,42 @@ def test_publish_refuses_size_check_failure(tmp_path: Path, capsys: pytest.Captu
         else:
             os.environ["FAKE_CLI_CHECK_SIZE_FAIL"] = old_fail
     out = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert rc == 4
     assert "PUBLISH_REFUSE_REASON=size-check-failed" in out
+    assert "PUBLISH_REFUSE_REASON=size-check-failed" in result_env
+
+
+def test_publish_refuses_review_provenance_records_reason(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    (design / ".step3-review-result.env").write_text("STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = "false"
+    try:
+        rc = design_publish.publish_core(["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"])
+    finally:
+        if old_root is None:
+            os.environ.pop("CLAUDE_PLUGIN_ROOT", None)
+        else:
+            os.environ["CLAUDE_PLUGIN_ROOT"] = old_root
+        if old_size is None:
+            os.environ.pop("FAKE_CLI_SIZE_TRIGGER_FIRED", None)
+        else:
+            os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = old_size
+    out = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "review provenance indicates complete without .completed/step-3" in out
+    assert "PUBLISH_REFUSE_REASON=review-provenance:complete without .completed/step-3" in result_env
 
 
 def test_splice_plan_provenance_preserves_oversize_override() -> None:
@@ -1680,6 +1717,39 @@ def test_splice_plan_provenance_preserves_oversize_override() -> None:
     )
 
     assert "review_status: complete\nrounds_completed: 2\noversize_override: operator\ndiff_lines: 1\n" in spliced
+
+
+def test_publish_refreshes_composed_plan_before_size_guard(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "plan.txt").write_text(
+        "## Plan\n\nBody.\n\n## Testing strategy\n\nRun tests.\n\ndifficulty: MODERATE\ndiff_lines: 12\n",
+        encoding="utf-8",
+    )
+    (design / "composed-plan.md").write_text("# stale\n", encoding="utf-8")
+    assert design_step5c.plan_quality.set_oversize_override_main(["--design-tmpdir", str(design)]) == 0
+    old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = "false"
+    try:
+        rc = design_publish.publish_core(["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"])
+    finally:
+        if old_root is None:
+            os.environ.pop("CLAUDE_PLUGIN_ROOT", None)
+        else:
+            os.environ["CLAUDE_PLUGIN_ROOT"] = old_root
+        if old_size is None:
+            os.environ.pop("FAKE_CLI_SIZE_TRIGGER_FIRED", None)
+        else:
+            os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = old_size
+    _ = capsys.readouterr()
+    assert rc == 0
+    assert "oversize_override: operator" in (design / "composed-plan.md").read_text(encoding="utf-8")
 
 
 def test_publish_result_env_write_failure_returns_3_with_stdout_rows(

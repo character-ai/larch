@@ -2007,7 +2007,8 @@ def test_check_plan_size_firm_heading_surface_triggers_and_override(tmp_path: Pa
         f"### UPDATED: `python/larch/pkg{i}/file.py`"
         for i in range(config.PLAN_SIZE_MAX_FIRM_HEADINGS + 1)
     )
-    (tmp_path / "plan.txt").write_text(f"## Files to modify\n\n{headings}\noversize_override: operator\ndiff_lines: 10\n", encoding="utf-8")
+    (tmp_path / "plan.txt").write_text(f"## Files to modify\n\n{headings}\ndiff_lines: 10\n", encoding="utf-8")
+    assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
 
     cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
     assert cp.returncode == 0, cp.stderr
@@ -2021,9 +2022,25 @@ def test_check_plan_size_firm_heading_surface_triggers_and_override(tmp_path: Pa
     assert out["PLAN_SIZE_STATUS"] == "ok"
 
 
+def test_check_plan_size_ignores_untrusted_oversize_override_trailer(tmp_path: Path) -> None:
+    headings = "\n".join(
+        f"### UPDATED: `python/larch/pkg{i}/file.py`"
+        for i in range(config.PLAN_SIZE_MAX_FIRM_HEADINGS + 1)
+    )
+    (tmp_path / "plan.txt").write_text(f"## Files to modify\n\n{headings}\noversize_override: operator\ndiff_lines: 10\n", encoding="utf-8")
+
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["SIZE_TRIGGER_FIRED"] == "true"
+    assert out["OVERSIZE_OVERRIDE"] == ""
+    assert out["PLAN_SIZE_STATUS"] == "ok"
+
+
 def test_set_oversize_override_insert_remove_and_idempotent(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("body\ndiff_added: 10\ndiff_lines: 20\n", encoding="utf-8")
+    authority = tmp_path / ".gate-b-oversize-override.sha256"
 
     assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
     assert plan.read_text(encoding="utf-8").splitlines() == [
@@ -2032,10 +2049,12 @@ def test_set_oversize_override_insert_remove_and_idempotent(tmp_path: Path) -> N
         "oversize_override: operator",
         "diff_lines: 20",
     ]
+    assert authority.is_file()
     assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
     assert plan.read_text(encoding="utf-8").count("oversize_override: operator") == 1
     assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path), "--remove"]) == 0
     assert "oversize_override" not in plan.read_text(encoding="utf-8")
+    assert not authority.exists()
 
 
 @pytest.mark.parametrize("env_value", ["0", "-1", "bad", ""])

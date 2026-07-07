@@ -54,8 +54,39 @@ def test_prepare_bad_dependency_and_cycle(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=cycle)
-    assert status == "cycle-detected"
-    assert "Piece 2→Piece 1" in witness
+    assert (status, witness) == ("ok", "")
+    deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
+    assert deps.splitlines() == ["1\t2"]
+
+
+def test_prepare_skips_cyclic_panel_dependency_but_keeps_serial_chain(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text(
+        "## Files to modify\n\n"
+        "### UPDATED: `python/larch/design/a.py`\n"
+        "### UPDATED: `python/larch/design/b.py`\n"
+        "### UPDATED: `python/larch/design/c.py`\n"
+        "\n## Testing strategy\n\n"
+        "- Cover python/larch/design/a.py behavior.\n"
+        "- Cover python/larch/design/b.py behavior.\n"
+        "- Cover python/larch/design/c.py behavior.\n"
+        "diff_lines: 10\n",
+        encoding="utf-8",
+    )
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: A\n- Scope: python/larch/design/a.py\n- Firm-headings: python/larch/design/a.py\n- Acceptance: cover a\n- Dependencies: none\n\n"
+        "### Piece 2: B\n- Scope: python/larch/design/b.py\n- Firm-headings: python/larch/design/b.py\n- Acceptance: cover b\n- Dependencies: blocked-by Piece 3\n\n"
+        "### Piece 3: C\n- Scope: python/larch/design/c.py\n- Firm-headings: python/larch/design/c.py\n- Acceptance: cover c\n- Dependencies: none\n",
+        encoding="utf-8",
+    )
+
+    status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="123")
+
+    assert (status, witness) == ("ok", "")
+    deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
+    assert deps.splitlines() == ["1\t2", "2\t3"]
 
 
 def test_prepare_derives_piece_metadata_and_serial_edges(tmp_path: Path) -> None:

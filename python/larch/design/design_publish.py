@@ -363,11 +363,20 @@ def _check_publish_plan_size(*, design_tmpdir: Path, plugin_root: Path) -> tuple
     return True, ""
 
 
+def _refresh_composed_plan_md(*, design_tmpdir: Path) -> None:
+    composed_plan = design_tmpdir / "composed-plan.md"
+    with contextlib.suppress(OSError):
+        composed_plan.unlink()
+    from larch.design import design_step5c
+
+    design_step5c._auto_compose_plan_md(design_tmpdir)  # pyright: ignore[reportPrivateUsage]
+
+
 def _publish_refusal_reason(*, design_tmpdir: Path, plugin_root: Path, blocked_reason: str) -> str:
-    if blocked_reason:
-        return f"review-provenance:{blocked_reason}"
     size_ok, size_refusal = _check_publish_plan_size(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
-    return "" if size_ok else f"plan-size:{size_refusal}"
+    if not size_ok:
+        return f"plan-size:{size_refusal}"
+    return f"review-provenance:{blocked_reason}" if blocked_reason else ""
 
 
 def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env: Path) -> None:
@@ -386,6 +395,7 @@ def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env
             " plan review did not complete; re-run /design**",
             flush=True,
         )
+        _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value=reason)
     kvs[1] = ("VALIDATE_STATUS", "defects-found")
     kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
     _emit_rows(kvs)
@@ -738,6 +748,7 @@ def publish_core(argv: Sequence[str]) -> int:
     ]
     if not (design_tmpdir / ".completed" / "step-5b").is_file():
         return 5
+    _refresh_composed_plan_md(design_tmpdir=design_tmpdir)
     composed_plan = design_tmpdir / "composed-plan.md"
     if not composed_plan.is_file() or composed_plan.stat().st_size == 0:
         kvs[1] = ("VALIDATE_STATUS", "defects-found")

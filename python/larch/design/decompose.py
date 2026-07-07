@@ -184,7 +184,11 @@ def _parent_plan_scope_data(design_tmpdir: Path) -> tuple[str, list[str]]:
     if not parent_plan.is_file() or parent_plan.is_symlink():
         return "", []
     parent_plan_text = parent_plan.read_text(encoding="utf-8", errors="replace")
-    return parent_plan_text, issue_wire.extract_scope_paths(plan_text=parent_plan_text, include_optional=False)
+    return parent_plan_text, issue_wire.extract_scope_paths(
+        plan_text=parent_plan_text,
+        use_fallback=False,
+        include_optional=False,
+    )
 
 
 def _piece_metadata(
@@ -276,8 +280,20 @@ def prepare_partition_issues(
         firm_heading_lines.append(firm)
         acceptance_lines.append(acceptance)
 
+    if parent_paths:
+        parent_firm_headings = list(dict.fromkeys(parent_paths))
+        child_firm_headings = list(dict.fromkeys(path for firm in firm_heading_lines for path in firm))
+        if set(parent_firm_headings) != set(child_firm_headings):
+            return "missing-piece-metadata", ""
+
     serial_edges = [(idx, idx + 1) for idx in range(len(pieces) - 1)]
-    edges = list(dict.fromkeys([*serial_edges, *panel_edges]))
+    edges = list(dict.fromkeys(serial_edges))
+    for edge in panel_edges:
+        if edge in edges:
+            continue
+        candidate = [*edges, edge]
+        if _acyclic(node_count=len(pieces), edges=candidate):
+            edges.append(edge)
     if not _acyclic(node_count=len(pieces), edges=edges):
         witness = "; ".join(f"Piece {pieces[a][0]}→Piece {pieces[b][0]}" for a, b in edges) or "(edges unavailable)"
         return "cycle-detected", witness

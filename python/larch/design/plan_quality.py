@@ -30,6 +30,7 @@ from larch.calibration import difficulty
 from larch.core.ctx import Ctx
 from larch.design import design_pause
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
+from larch.issue import issue_wire
 from larch.core.redact import redact_secrets_only
 from larch.git.repo_roots import consumer_repo_root
 from larch.issue.issue_wire import emit_untrusted_file_block
@@ -454,6 +455,7 @@ def _size_trigger_assessment(
     text: str,
     plan_lines: int,
     diff_lines: int,
+    oversize_override: str | None,
 ) -> tuple[int, int, list[str], bool, bool]:
     firm_headings = _firm_heading_count(text)
     surfaces = len(_plan_surfaces(text))
@@ -473,26 +475,12 @@ def _size_trigger_assessment(
         reasons.append("firm-headings")
     if surfaces > config.PLAN_SIZE_MAX_SURFACES:
         reasons.append("surfaces")
-    override_suppressed = bool(reasons) and meta.oversize_override == config.OVERSIZE_OVERRIDE_OPERATOR
+    override_suppressed = bool(reasons) and oversize_override == config.OVERSIZE_OVERRIDE_OPERATOR
     return firm_headings, surfaces, reasons, soft, override_suppressed
 
 
 def _firm_heading_paths(text: str) -> list[str]:
-    paths: list[str] = []
-    for line in text.splitlines():
-        match = re.match(r"^###\s+(NEW|UPDATED|REWRITTEN)\s*:\s*(.+)$", line)
-        if not match:
-            continue
-        tail = match.group(2)
-        backtick_match = re.search(r"`([^`]+)`", tail)
-        if backtick_match:
-            path = backtick_match.group(1).strip()
-        else:
-            parts = tail.split()
-            path = re.sub(r"\(.*$", "", parts[0]).strip() if parts else ""
-        if path:
-            paths.append(path)
-    return paths
+    return issue_wire.extract_scope_paths(plan_text=text, use_fallback=False, include_optional=False)
 
 
 def _firm_heading_count(text: str) -> int:
@@ -578,6 +566,25 @@ def _set_oversize_override_text(*, text: str, remove: bool) -> str:
     return "".join(lines)
 
 
+def _oversize_override_authority_path(*, design_tmpdir: Path) -> Path:
+    return design_tmpdir / ".gate-b-oversize-override.sha256"
+
+
+def _oversize_override_authority_token(*, text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _trusted_oversize_override(*, design_tmpdir: Path, plan_text: str) -> str | None:
+    path = _oversize_override_authority_path(design_tmpdir=design_tmpdir)
+    if not path.is_file() or path.is_symlink():
+        return None
+    try:
+        token = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    return config.OVERSIZE_OVERRIDE_OPERATOR if token == _oversize_override_authority_token(text=plan_text) else None
+
+
 def set_oversize_override_main(argv: list[str]) -> int:
     quiet_init(argv0="plan set-oversize-override")
     parser = argparse.ArgumentParser(prog="cli.py plan set-oversize-override")
@@ -596,6 +603,11 @@ def set_oversize_override_main(argv: list[str]) -> int:
         updated = _set_oversize_override_text(text=original, remove=bool(args.remove))
         if updated != original:
             _atomic_write(path=plan, text=updated)
+        authority_path = _oversize_override_authority_path(design_tmpdir=design_tmpdir)
+        if args.remove:
+            authority_path.unlink(missing_ok=True)
+        else:
+            _atomic_write(path=authority_path, text=_oversize_override_authority_token(text=updated) + "\n")
     except (OSError, ValueError) as exc:
         diagnostic(f"set-oversize-override: {exc}")
         return 2
@@ -633,6 +645,7 @@ def check_plan_size_main(argv: list[str]) -> int:
     if meta.mechanical_churn not in {"true", "false"}:
         emit_kv(key="PLAN_SIZE_STATUS", value="invalid-mechanical-churn")
         return 2
+    trusted_oversize_override = _trusted_oversize_override(design_tmpdir=design_tmpdir, plan_text=text)
     plan_lines = max(0, trailer_nr - 1 - meta.metadata_trailer_lines)
     multiple_text = ctx.str_value(key=config.ENV_LARCH_DESIGN_DRIFT_MULTIPLE, default="2")
     multiple = int(multiple_text) if multiple_text.isdigit() and int(multiple_text) > 0 else 2
@@ -716,6 +729,7 @@ def check_plan_size_main(argv: list[str]) -> int:
         text=text,
         plan_lines=plan_lines,
         diff_lines=diff_lines,
+        oversize_override=trusted_oversize_override,
     )
     emit_kv(key="DRIFT_TRIGGER_FIRED", value="true" if drift_trigger else "false")
     emit_kv(key="DRIFT_MULTIPLE", value=str(multiple))
@@ -732,7 +746,7 @@ def check_plan_size_main(argv: list[str]) -> int:
     emit_kv(key="MECHANICAL_CHURN", value=meta.mechanical_churn)
     emit_kv(key="FIRM_HEADINGS", value=str(firm_headings))
     emit_kv(key="SURFACES_TOUCHED", value=str(surfaces))
-    emit_kv(key="OVERSIZE_OVERRIDE", value=meta.oversize_override or "")
+    emit_kv(key="OVERSIZE_OVERRIDE", value=trusted_oversize_override or "")
     emit_kv(key="SOFT_ADVISORY", value="true" if soft or override_suppressed else "false")
     emit_kv(key="PLAN_SIZE_STATUS", value="ok")
     return 0
