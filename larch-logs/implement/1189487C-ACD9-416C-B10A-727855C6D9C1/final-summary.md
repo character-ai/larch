@@ -1,15 +1,15 @@
-## /implement run 1189487C-ACD9-416C-B10A-727855C6D9C1: stalled
+## /implement run 1189487C-ACD9-416C-B10A-727855C6D9C1: pr-created
 
-- **Outcome**: STALLED
+- **Outcome**: DONE
 - **Duration**: 01:44:13
-- **Cost**: 💰 TOTAL ~$51.34: Claude $3.05, Codex-5.5 $27.45, Codex-mini $4.97, Cursor $13.85, Claude (subprocess) $2.02  |  Tokens: 104087k
+- **Cost**: 💰 TOTAL ~$51.90: Claude $3.59, Codex-5.5 $27.45, Codex-mini $4.97, Cursor $13.85, Claude (subprocess) $2.04  |  Tokens: 105683k
 - **Issue**: #6535: https://github.com/character-ai/larch/issues/6535
 - **PR**: #6562: https://github.com/character-ai/larch/pull/6562
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/8 accepted
-- **Lines (PR diff)**: code +572/-183, larch-logs +1151/-0
+- **Lines (PR diff)**: code +572/-183, larch-logs +1147/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
