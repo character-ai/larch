@@ -1,14 +1,15 @@
-## /implement run BB072C2A-09B0-4DCA-8A8A-A2F026855EDE: shipping
+## /implement run BB072C2A-09B0-4DCA-8A8A-A2F026855EDE: stalled
 
-- **Outcome**: shipping
+- **Outcome**: STALLED
 - **Duration**: 00:47:07
 - **Cost**: 💰 TOTAL ~$17.27: Claude $1.31, Codex-5.5 $7.04, Codex-mini $2.58, Cursor $6.11, Claude (subprocess) $0.23  |  Tokens: 33049k
 - **Issue**: #6539: https://github.com/character-ai/larch/issues/6539
+- **PR**: #6555: https://github.com/character-ai/larch/pull/6555
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/14 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +164/-32, larch-logs +1164/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -83,7 +84,3 @@ codex/apply                        │                                          
 5. codex/correctness: 3
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
