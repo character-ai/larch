@@ -269,6 +269,70 @@ def test_gate_c_panel_failed_without_see_full_plan_relabels_approval() -> None:
     ]
 
 
+def test_gate_c_accepted_audit_escalation_updates_approval_description() -> None:
+    result = run_cli("design", "render-gate", "--gate", "C", "--accepted-audit-escalation", "true")
+    rows = kv(result.stdout)
+    assert result.returncode == 0, result.stderr
+    assert option_labels(rows) == [
+        "Approve final design",
+        "See full plan",
+        "Discuss further",
+        "Re-run review panel",
+    ]
+    assert option_descriptions(rows)[0] == (
+        "Approve despite the main-agent accepted-findings audit's strong dissent "
+        "and continue immediately to finalize."
+    )
+
+
+def test_gate_c_accepted_audit_escalation_works_with_panel_failed() -> None:
+    result = run_cli(
+        "design",
+        "render-gate",
+        "--gate",
+        "C",
+        "--accepted-audit-escalation",
+        "true",
+        "--panel-failed",
+        "true",
+    )
+    rows = kv(result.stdout)
+    assert result.returncode == 0, result.stderr
+    assert option_labels(rows)[0] == "Approve final design (acknowledge panel failure)"
+    assert option_descriptions(rows)[0] == (
+        "Approve despite the main-agent accepted-findings audit's strong dissent "
+        "and acknowledge panel failure, then continue immediately to finalize."
+    )
+
+
+def test_gate_c_accepted_audit_escalation_works_without_see_full_plan() -> None:
+    result = run_cli(
+        "design",
+        "render-gate",
+        "--gate",
+        "C",
+        "--accepted-audit-escalation",
+        "true",
+        "--without-see-full-plan",
+    )
+    rows = kv(result.stdout)
+    assert result.returncode == 0, result.stderr
+    assert option_labels(rows) == ["Approve final design", "Discuss further", "Re-run review panel"]
+    assert option_descriptions(rows)[0] == (
+        "Approve despite the main-agent accepted-findings audit's strong dissent "
+        "and continue immediately to finalize."
+    )
+
+
+def test_gate_c_accepted_audit_escalation_emits_no_crlf() -> None:
+    result = run_cli("design", "render-gate", "--gate", "C", "--accepted-audit-escalation", "true")
+    assert result.returncode == 0, result.stderr
+    for line in result.stdout.splitlines():
+        _key, value = line.split("=", 1)
+        assert "\n" not in value
+        assert "\r" not in value
+
+
 def test_gate_c_emits_review_round_cap_matching_round_cap() -> None:
     result = run_cli("design", "render-gate", "--gate", "C")
     rows = kv(result.stdout)

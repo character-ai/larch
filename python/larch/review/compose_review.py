@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from larch.core import logging_util
 from larch.core import redact
+from larch.review.plan_review_accepted_audit import filter_gate_b_skipped_files
 from larch.review import voting
 
 
@@ -329,22 +330,7 @@ def _parse_design_accepted(*, accepted: Path, design_dir: Path, ctx: _ParseConte
 
 
 def _filter_gate_b(*, accepted: Path, rejected: Path) -> str:
-    reason = "rejected by user during one-by-one review"
-    rejected_text = _read(rejected) if rejected.is_file() else ""
-    def normalize(block: str) -> str:
-        return "\n".join(line.rstrip() for line in block.strip().splitlines() if reason not in line).strip()
-
-    skipped = {
-        normalize(block)
-        for block in re.findall(r"(?ms)^### FINDING_[0-9A-Za-z_]+:.*?(?=^### |\Z)", rejected_text)
-        if reason in block
-    }
-    kept = []
-    for block in re.findall(r"(?ms)^### FINDING_[0-9A-Za-z_]+:.*?(?=^### |\Z)", _read(accepted)):
-        norm = normalize(block)
-        if norm not in skipped:
-            kept.append(block.strip())
-    return "\n\n".join(kept) + ("\n\n" if kept else "")
+    return filter_gate_b_skipped_files(accepted=accepted, rejected=rejected)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:

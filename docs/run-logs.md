@@ -17,6 +17,7 @@ larch-logs/
       manifest.json
       architectural-invariant-assessment.md
       architectural-guideline-assessment.md
+      accepted-plan-findings-audit.md
       (design session artifacts: files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, filtered to exclude raw per-lane transcripts and sidecars via `design_log_publish_flow._publish_excluded`, then trimmed and redacted per `python/design_log_publish_flow.py`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
       plan-review/
         round-<N>/
@@ -94,6 +95,14 @@ artifact before approval, so no stale copy is committed. The artifacts publish
 through the existing design-log copy, tmpdir redaction, and secret-scrub flow.
 It is auditable through `/fluff-analysis` guideline assessment coverage and
 `python/cli.py audit-runs scan-run --skill design`.
+
+### design accepted plan-review findings audit
+
+`larch-logs/design/<RUN_ID>/accepted-plan-findings-audit.md` is a top-level
+design artifact written from Gate C only. It records the main-agent audit of
+accepted plan-review findings and their application to the final plan. Clean
+runs contain a deterministic no-concerns note; mild or strong dissent records a
+compact assessment, not raw diffs.
 
 ### implement architectural invariant and guideline outcomes
 

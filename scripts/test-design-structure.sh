@@ -11,6 +11,7 @@ ORCH_NEVER_MD="$ROOT/skills/shared/orchestrator-never.md"
 BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
 DESIGN_OUTLINE_MD="$ROOT/skills/design/references/design-outline.md"
 APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
+PLAN_REVIEW_MD="$ROOT/skills/design/references/plan-review.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
 STEP2B5_RC_MD="$ROOT/skills/design/references/step2b5-rc-handling.md"
@@ -621,12 +622,30 @@ done
 contains "$APPROVAL_GATES_MD" 'Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design render-gate ...`.' 'approval-gates must document render-gate invocation'
 contains "$APPROVAL_GATES_MD" '**Shape 2: re-entry from Gate B(c) or Gate C(b) (post-plan)**: run `python/cli.py design render-gate --gate A`. Pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.' 'Gate A must delegate prompt copy to render-gate'
 contains "$APPROVAL_GATES_MD" 'Run `python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false`, print `AUTO_APPLY_MESSAGE`, then Execute `### Apply-all body` verbatim.' 'Gate B default must delegate auto-apply copy to render-gate'
-contains "$APPROVAL_GATES_MD" 'Run `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"` and pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.' 'Gate C must delegate prompt copy to render-gate'
+contains "$APPROVAL_GATES_MD" 'Run `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"` and pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.' 'Gate C must delegate prompt copy to render-gate with accepted audit escalation'
 contains "$APPROVAL_GATES_MD" 'approval-gates-explicit.md' 'approval-gates must still point explicit mode to approval-gates-explicit'
 not_contains "$APPROVAL_GATES_MD" 'All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?' 'approval-gates must not retain inline Gate A question text'
 not_contains "$APPROVAL_GATES_MD" 'Final design plan is ready. Approve, see the full plan, discuss further, or re-run the review panel against this plan?' 'approval-gates must not retain inline Gate C below-cap question text'
 contains "$CLI_PY" '("design", "render-gate"): ("larch.design.design_gate_render", "render_gate_main")' 'cli registry missing design render-gate'
 printf '%s' "$stdout_keys_block" | grep -Fq '("design", "render-gate")' || fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design render-gate"
+contains "$APPROVAL_GATES_MD" 'accepted-plan-findings-all.md` when present (cumulative acceptance context).' 'accepted audit must name cumulative accepted corpus in read list'
+contains "$APPROVAL_GATES_MD" 'accepted-plan-findings.md` when present (current-round Gate B apply set; not the end-state fidelity authority).' 'accepted audit must name current-round accepted corpus in read list'
+contains "$APPROVAL_GATES_MD" 'filtered cumulative `accepted-plan-findings-all.md` (the end-state applied set across all Step 3 rounds)' 'accepted audit must name filtered cumulative end-state fidelity source'
+contains "$APPROVAL_GATES_MD" 'plan-before-review.txt` when present.' 'accepted audit must read pre-review snapshot'
+contains "$APPROVAL_GATES_MD" 'discussion-round1.md` when present (explicit Round 1 refusals).' 'accepted audit must read Round 1 refusals'
+contains "$APPROVAL_GATES_MD" 'design-outline.md` when `.outline-approved` exists (approved non-goals).' 'accepted audit must read approved outline non-goals'
+contains "$APPROVAL_GATES_MD" 'bind `_accepted_corpus` to non-empty `$DESIGN_TMPDIR/accepted-plan-findings-all.md` when that file exists and has non-zero size; else to non-empty `$DESIGN_TMPDIR/accepted-plan-findings.md`; else treat as no cumulative accepted findings.' 'accepted audit must mirror compose_review corpus precedence'
+contains "$APPROVAL_GATES_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review filter-gate-b-skipped \' 'accepted audit must include filter-gate-b-skipped invocation'
+contains "$APPROVAL_GATES_MD" '--accepted "${_accepted_corpus}"' 'accepted audit filter invocation must pass selected corpus'
+contains "$APPROVAL_GATES_MD" 'On filter helper non-zero exit: print `**⚠ 4b: accepted-plan-findings skip-filter failed**`, append a bounded warning with `site=design Gate C Presentation` and `reason=filter-gate-b-skipped-failed`, and stop before persist, prompt, auto-approval, or Step 5.' 'accepted audit must fail closed on skip-filter failure'
+contains "$APPROVAL_GATES_MD" 'Auto-approve only after accepted-findings audit persistence succeeds and binds `strong_audit_dissent=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation.' 'accepted audit strong dissent must override skip-approve'
+contains "$APPROVAL_GATES_MD" 'Run the full audit on every Gate C Presentation, including `resume@4b`, pause recovery, re-entry after discussion, re-run review, or postplan fixes.' 'accepted audit must rerun on every Gate C Presentation'
+contains "$APPROVAL_GATES_MD" 'mild-disagree or strong-disagree prints a compact audit digest immediately before either Gate C `AskUserQuestion` or the `--skip-approve` auto-approval breadcrumb.' 'accepted audit must print mild digest before prompt or auto-approve'
+contains "$APPROVAL_GATES_MD" '--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"' 'Gate C render-gate example must include accepted audit escalation'
+contains "$ROOT/skills/design/scripts/design-step3-entry.sh" 'plan-review snapshot-pre-review' 'design-step3-entry must snapshot pre-review plan'
+contains "$CLI_PY" '("plan-review", "persist-accepted-audit"): ("larch.review.plan_review_accepted_audit", "persist_accepted_audit_main")' 'cli registry missing plan-review persist-accepted-audit'
+contains "$CLI_PY" '("plan-review", "filter-gate-b-skipped"): ("larch.review.plan_review_accepted_audit", "filter_gate_b_skipped_main")' 'cli registry missing plan-review filter-gate-b-skipped'
+contains "$PLAN_REVIEW_MD" 'plan-before-review.txt` is written once per Step 3 entry' 'plan-review reference must document pre-review snapshot'
 assert_followed_count_at_least "$APPROVAL_GATES_MD" '   1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'approval-gates must load settle dispatch immediately before Gate B branch directive'
 assert_followed_count_at_least "$DISCUSSION_ROUNDS_MD" '1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'discussion-rounds must use numbered settle dispatch steps 1-2'
 assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'SKILL Gate A guard must load settle dispatch immediately before branch directive'
