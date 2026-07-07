@@ -2,7 +2,7 @@
 
 - **Outcome**: shipping
 - **Duration**: 01:44:13
-- **Cost**: 💰 TOTAL ~$49.59: Claude $1.30, Codex-5.5 $27.45, Codex-mini $4.97, Cursor $13.85, Claude (subprocess) $2.02  |  Tokens: 99671k
+- **Cost**: 💰 TOTAL ~$50.29: Claude $2.00, Codex-5.5 $27.45, Codex-mini $4.97, Cursor $13.85, Claude (subprocess) $2.02  |  Tokens: 101076k
 - **Issue**: #6535: https://github.com/character-ai/larch/issues/6535
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -95,3 +95,7 @@ codex/apply              │                                   █████�
 6. dynamic/dyn-bgjob-contract: 4
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
