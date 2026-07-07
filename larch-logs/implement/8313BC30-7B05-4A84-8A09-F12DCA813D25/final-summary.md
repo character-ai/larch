@@ -2,7 +2,7 @@
 
 - **Outcome**: shipping
 - **Duration**: 03:03:52
-- **Cost**: 💰 TOTAL ~$91.68: Claude $14.71, Codex-5.5 $50.88, Codex-mini $3.63, Cursor $20.07, Claude (subprocess) $2.39  |  Tokens: 155926k
+- **Cost**: 💰 TOTAL ~$92.94: Claude $15.97, Codex-5.5 $50.88, Codex-mini $3.63, Cursor $20.07, Claude (subprocess) $2.39  |  Tokens: 157883k
 - **Issue**: #6505: https://github.com/character-ai/larch/issues/6505
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
