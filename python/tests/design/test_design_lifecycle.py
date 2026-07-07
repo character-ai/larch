@@ -10,11 +10,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 import pytest
 
@@ -1465,6 +1465,7 @@ def test_step0_route_non_proceed_routes_do_not_init(route: str, tmp_path: Path, 
     (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
     init_called = False
+    refresh_calls: list[list[str]] = []
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         nonlocal init_called
@@ -1475,7 +1476,12 @@ def test_step0_route_non_proceed_routes_do_not_init(route: str, tmp_path: Path, 
             init_called = True
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
+    def fake_proc_run(cmd: Sequence[str], **_kwargs: object) -> proc_module.CommandResult:
+        refresh_calls.append(list(cmd))
+        return proc_module.CommandResult(tuple(cmd), 0, "", "", 0.0)
+
     monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
     monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
@@ -1483,6 +1489,110 @@ def test_step0_route_non_proceed_routes_do_not_init(route: str, tmp_path: Path, 
     assert not init_called
     assert f"ROUTE={route}" in capsys.readouterr().out
     assert not (design / "feature-description.txt").exists()
+    if route.startswith("resume@"):
+        assert refresh_calls
+    else:
+        assert not refresh_calls
+
+
+def test_step0_route_resume_rehydrates_source_env_from_route_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+    (design / ".design-step0-route-state.env").write_text("ISSUE_NUMBER=42\nREPO=owner/repo\n", encoding="utf-8")
+    env_path = design / "source-env.sh"
+    env_path.write_text(
+        f"export DESIGN_TMPDIR={design.resolve()}\nexport SESSION_ID=run-1\nexport CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n",
+        encoding="utf-8",
+    )
+    route_commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            route_commands.append(list(cmd))
+            (design / ".design-route-result.env").write_text("ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> proc_module.CommandResult:
+        args = list(cmd)
+        env_value = kwargs.get("env")
+        with monkeypatch.context() as patch:
+            if isinstance(env_value, Mapping):
+                env_mapping = cast("Mapping[object, object]", env_value)
+                for key, value in env_mapping.items():
+                    patch.setenv(str(key), str(value))
+            rc = session_env.write_design_env_main(args[args.index("write-design-env") + 1 :])
+        return proc_module.CommandResult(tuple(args), rc, "", "", 0.0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
+
+    rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert route_commands
+    route_cmd = route_commands[0]
+    assert route_cmd[route_cmd.index("--issue") + 1] == "42"
+    assert route_cmd[route_cmd.index("--repo") + 1] == "owner/repo"
+    refreshed = env_path.read_text(encoding="utf-8")
+    assert "export ISSUE_NUMBER=42" in refreshed
+    assert "export REPO=owner/repo" in refreshed
+    assert "ISSUE_NUMBER=42" in captured.out
+    assert "REPO=owner/repo" in captured.out
+    assert "ROUTE=resume@2a" in captured.out
+
+
+def test_step0_route_resume_rehydrates_source_env_from_ctx_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    env_path = design / "source-env.sh"
+    env_path.write_text(
+        f"export DESIGN_TMPDIR={design.resolve()}\nexport SESSION_ID=run-1\nexport CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n",
+        encoding="utf-8",
+    )
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[2:4] == ["design", "route"]:
+            (design / ".design-route-result.env").write_text("ROUTE=resume@2a\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    def fake_proc_run(cmd: Sequence[str], **kwargs: object) -> proc_module.CommandResult:
+        args = list(cmd)
+        env_value = kwargs.get("env")
+        with monkeypatch.context() as patch:
+            if isinstance(env_value, Mapping):
+                env_mapping = cast("Mapping[object, object]", env_value)
+                for key, value in env_mapping.items():
+                    patch.setenv(str(key), str(value))
+            rc = session_env.write_design_env_main(args[args.index("write-design-env") + 1 :])
+        return proc_module.CommandResult(tuple(args), rc, "", "", 0.0)
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+    monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
+    monkeypatch.setattr(design_step0, "resolve_repo", lambda: "owner/repo")
+
+    rc = design_lifecycle.step0_route_main(_step0_wrapper_args(env_path))
+    captured = capsys.readouterr()
+    assert rc == 0
+    route_state = (design / ".design-step0-route-state.env").read_text(encoding="utf-8")
+    assert "ISSUE_NUMBER=42" in route_state
+    assert "REPO=owner/repo" in route_state
+    refreshed = env_path.read_text(encoding="utf-8")
+    assert "export ISSUE_NUMBER=42" in refreshed
+    assert "export REPO=owner/repo" in refreshed
+    assert "ISSUE_NUMBER=42" in captured.out
+    assert "REPO=owner/repo" in captured.out
 
 
 def test_step0_route_proceed_init_failure_keeps_state_and_hides_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1555,13 +1665,19 @@ def test_step0_route_emits_resume_step_kvs(tmp_path: Path, monkeypatch: pytest.M
     (design / "issue-body.txt").write_text("body\n", encoding="utf-8")
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", ISSUE_TITLE="Title", HAS_CLARIFY_LABEL="false", REPO="owner/repo")
     invoked: list[list[str]] = []
+    refresh_calls: list[list[str]] = []
 
     def fake_route(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         invoked.append(list(cmd))
         (design / ".design-route-result.env").write_text("ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, "ROUTE=resume@2a\nMARKER_CLEARED=step-2a\n", "")
 
+    def fake_proc_run(cmd: Sequence[str], **_kwargs: object) -> proc_module.CommandResult:
+        refresh_calls.append(list(cmd))
+        return proc_module.CommandResult(tuple(cmd), 0, "", "", 0.0)
+
     monkeypatch.setattr(subprocess, "run", fake_route)
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
     monkeypatch.setattr(design_step0, "_read_json_issue", _fake_read_json_issue_title)
 
     rc = design_lifecycle.step0_route_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
@@ -1570,6 +1686,7 @@ def test_step0_route_emits_resume_step_kvs(tmp_path: Path, monkeypatch: pytest.M
     assert "ROUTE=resume@2a" in captured.out
     assert "RESUME_STEP=2a" in captured.out
     assert "MARKER_CLEARED=step-2a" in captured.out
+    assert refresh_calls
     assert not any(cmd[2:4] == ["design", "step2a"] for cmd in invoked if len(cmd) >= 4)
 
 
