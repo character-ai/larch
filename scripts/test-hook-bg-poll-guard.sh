@@ -247,19 +247,21 @@ else
 fi
 
 rm -f "$D"/bg-poll-guard-task-output-read.*.count
+rm -f "$D/no-progress-task-output-clamped" "$D/no-progress-circuit-breaker-armed"
 write_marker $$ "$(date +%s)" 21600 implement-step3-checks
 EXPECTED_STEP="implement-step3-checks"
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
-assert_allow "$out" 'implement-step marker does not trigger task-output classification clamp'
+assert_allow "$out" 'implement-step task-output classification clamp allows first Read'
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
-assert_allow "$out" 'implement-step marker still allows repeated task-output Read through classification path'
+assert_allow "$out" 'implement-step task-output classification clamp allows second unchanged Read'
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
-assert_allow "$out" 'implement-step marker does not deny repeated task-output Read'
-if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null; then
-  pass 'implement-step marker does not write task-output Read clamp telemetry'
+assert_deny "$out" 'implement-step task-output classification clamp denies third unchanged Read' "$EXPECTED_STEP"
+if compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null && [ -f "$D/no-progress-task-output-clamped" ] && [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+  pass 'implement-step task-output classification clamp arms no-progress bridge'
 else
-  fail 'implement-step marker must not write task-output Read clamp telemetry'
+  fail 'implement-step task-output classification clamp must write telemetry and arm no-progress bridge'
 fi
+rm -f "$D"/bg-poll-guard-task-output-read.*.count "$D/no-progress-task-output-clamped" "$D/no-progress-circuit-breaker-armed"
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 EXPECTED_STEP="design-step3-review"
 

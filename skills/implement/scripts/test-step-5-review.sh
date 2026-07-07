@@ -105,6 +105,8 @@ STEP5_STUB_MODE=normal CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRA
 grep -Fq -- '--new-process-group' "$IMPL/argv.txt" || fail 'wrapper must pass --new-process-group'
 grep -Fq -- '--orphan-timeout-s' "$IMPL/argv.txt" || fail 'wrapper must pass --orphan-timeout-s'
 grep -Fq 'review-and-fix normalize-status' "$IMPL/calls.log" || fail 'wrapper must normalize captured stdout'
+! grep -Fq '/implement 5: code review' "$IMPL/stdout.log" || fail 'wrapper must not emit banner on stdout before review completion'
+grep -Fq '/implement 5: code review' "$IMPL/stderr.log" || fail 'wrapper must emit banner on stderr to avoid premature task-notification'
 pass 'Step 5 wrapper normal completion writes bg marker, argv, normalization, and terminal sentinel'
 
 IMPL="$D/detach"
