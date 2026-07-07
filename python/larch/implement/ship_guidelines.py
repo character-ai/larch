@@ -257,6 +257,9 @@ def _classify_invariant_ship_outcome(
         outcome = OUTCOME_CLEAN
         reason = REASON_INVARIANTS_INVALID
         assessment_kind = ""
+    elif reason == REASON_INVARIANTS_EMPTY:
+        outcome = OUTCOME_CLEAN
+        assessment_kind = "clean"
     elif result.note and assessment_kind == "clean":
         outcome = OUTCOME_CLEAN
         reason = reason or REASON_CLEAN_NOTE
