@@ -188,10 +188,6 @@ Collect and validate research outputs using the shared collection script. Build 
 
 ```
 COLLECT_ARGS=()
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-arch-output.txt")
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-edge-output.txt")
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-ext-output.txt")
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-sec-output.txt")
 ```
 
 **Zero-externals branch**: if `codex_binary_available=false` (all four lanes ran as Claude fallbacks), skip `python/cli.py agent collect-results` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
@@ -205,7 +201,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
   --max-wait-s 270
 ```
 
-Use tool timeout `330000`. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for the same slot with no intervening prose, reads, monitors, probes, sleeps, or other tools. If stdout contains `BGJOB_STATUS=DEAD`, route that lane through the existing runtime fallback branch. If stdout contains `BGJOB_STATUS=DONE`, read `$RESEARCH_TMPDIR/bgjob/research-<slot>.result.env`; continue the lane only when that result env contains `BGJOB_RC=0` and `STEP=research-<slot>`. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or a missing required KV as the lane's existing launch-class failure branch.
+Use tool timeout `330000`. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for the same slot with no intervening prose, reads, monitors, probes, sleeps, or other tools. If stdout contains `BGJOB_STATUS=DEAD`, route that lane through the existing runtime fallback branch. If stdout contains `BGJOB_STATUS=DONE`, treat the lane as passed when either the DONE stdout KV block or `$RESEARCH_TMPDIR/bgjob/research-<slot>.result.env` contains `BGJOB_RC=0` and `STEP=research-<slot>`. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or a missing required KV as the lane's existing launch-class failure branch. When a lane passes the gate, append its fixed slot output path to `COLLECT_ARGS`; failed lanes are excluded and routed through Runtime Timeout Fallback before collection.
 
 Otherwise invoke the collector with substantive validation:
 

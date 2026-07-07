@@ -124,6 +124,7 @@ chmod +x "$RESEARCH_TMPDIR/cursor-validation-launch.sh"
 
 VALIDATION_CURSOR_MERGE_ENV="$RESEARCH_TMPDIR/.validation-cursor-merge.env"
 : > "$VALIDATION_CURSOR_MERGE_ENV"
+export RESEARCH_TMPDIR CLAUDE_PLUGIN_ROOT
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
   --step validation-cursor \
   --tmpdir "$RESEARCH_TMPDIR" \
@@ -212,8 +213,6 @@ Build the argument list from only the externals that were actually launched:
 
 ```
 COLLECT_ARGS=()
-[[ "$cursor_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/cursor-validation-output.txt")
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-validation-output.txt")
 ```
 
 **Zero-externals branch**: If BOTH Cursor and Codex are unavailable (`COLLECT_ARGS` is empty), skip `python/cli.py agent collect-results` entirely and skip all external negotiation. The 3-lane invariant is preserved by 3 Claude streams (the always-on `Code` lane plus the `Cursor` and `Codex` fallback lanes). Merge ALL Claude findings (preserving per-lane attribution) and proceed to Finalize Validation.
@@ -227,7 +226,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
   --max-wait-s 270
 ```
 
-`<tool>` is `cursor` or `codex`. Use tool timeout `330000`. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for that lane with no intervening prose, reads, monitors, probes, sleeps, or other tools. If stdout contains `BGJOB_STATUS=DEAD`, route that lane through the existing runtime fallback branch. If stdout contains `BGJOB_STATUS=DONE`, read `$RESEARCH_TMPDIR/bgjob/validation-<tool>.result.env`; continue the lane only when that result env contains `BGJOB_RC=0` and `STEP=validation-<tool>`. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or a missing required KV as that lane's existing launch-class failure branch.
+`<tool>` is `cursor` or `codex`. Use tool timeout `330000`. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for that lane with no intervening prose, reads, monitors, probes, sleeps, or other tools. If stdout contains `BGJOB_STATUS=DEAD`, route that lane through the existing runtime fallback branch. If stdout contains `BGJOB_STATUS=DONE`, treat the lane as passed when either the DONE stdout KV block or `$RESEARCH_TMPDIR/bgjob/validation-<tool>.result.env` contains `BGJOB_RC=0` and `STEP=validation-<tool>`. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or a missing required KV as that lane's existing launch-class failure branch. When a lane passes the gate, append its output path to `COLLECT_ARGS`; failed lanes are excluded and routed through Runtime Timeout Fallback before collection.
 
 Then invoke the script with only the launched paths whose bgjob result passed the gate. Pass `--substantive-validation --validation-mode`:
 
