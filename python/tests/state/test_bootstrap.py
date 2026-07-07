@@ -354,7 +354,7 @@ def test_main_health_env_copied_from_preflight(tmp_path: Path) -> None:
     impl = tmp_path / "impl"
     preflight.mkdir()
     impl.mkdir()
-    (preflight / "main-health.env").write_text(
+    _ = (preflight / "main-health.env").write_text(
         "MAIN_CI_STATUS=fail\nMAIN_FAILED_RUN_ID=7\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=red main\n",
         encoding="utf-8",
     )
@@ -373,7 +373,7 @@ def test_main_health_env_copied_from_preflight(tmp_path: Path) -> None:
 def test_main_health_env_preserved_on_resume_without_preflight_refresh(tmp_path: Path) -> None:
     impl = tmp_path / "impl"
     impl.mkdir()
-    (impl / "main-health.env").write_text("MAIN_CI_STATUS=fail\n", encoding="utf-8")
+    _ = (impl / "main-health.env").write_text("MAIN_CI_STATUS=fail\n", encoding="utf-8")
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", resume_plan_tail=True),
         implement_tmpdir=str(impl),
