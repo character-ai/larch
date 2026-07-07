@@ -20,3 +20,11 @@
 === larch-quiet-ship.py-90516.log ===
 ship.py: pr-prep: postbump/Flush+Push
 === larch-quiet-ship.py-92096.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 14s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 27s
+ci_monitor: CI fail after 31s -> evaluate_failure
