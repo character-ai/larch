@@ -1,0 +1,5 @@
+warning: fix text for slot 'dyn-dyn-plan-size' in FINDING_5 not traceable to scoped input (first 80 chars: 'After any sanctioned plan.txt rewrite that preserves the oversize_override optio')
+warning: fix text for slot 'dyn-dyn-plan-size' in FINDING_7 not traceable to scoped input (first 80 chars: 'Track on companion issue per the feature non-goals.')
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_8 not traceable to scoped input (first 80 chars: 'Remove oversize_override from drafter grammar; only add it via plan set-oversize')
+warning: fix text for slot 'dyn-dyn-plan-size' in FINDING_11 not traceable to scoped input (first 80 chars: 'Build Gate B trailer snapshots from parse_optional_metadata / the same contiguou')
+warning: fix text for slot 'dyn-dyn-plan-size' in FINDING_15 not traceable to scoped input (first 80 chars: 'Require an explicit SIZE_TRIGGER_FIRED=false (treat absent or any other value as')

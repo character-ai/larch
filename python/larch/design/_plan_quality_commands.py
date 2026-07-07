@@ -25,7 +25,7 @@ from larch.git.repo_roots import consumer_repo_root
 from larch.state.session_env import validate_design_tmpdir
 
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
-OPTIONAL_KEYS = ("diff_added", "diff_deleted", "mechanical_churn")
+OPTIONAL_KEYS = ("diff_added", "diff_deleted", "mechanical_churn", "oversize_override")
 
 @dataclass(frozen=True)
 class PlanCommandRow:
@@ -57,6 +57,7 @@ class OptionalMetadata:
     diff_added: str | None
     diff_deleted: str | None
     mechanical_churn: str
+    oversize_override: str | None
     keys: tuple[str, ...]
     values: tuple[str, ...]
 

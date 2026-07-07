@@ -263,6 +263,31 @@ def test_optional_trailer_awk_has_key_parity(tmp_path: Path, name: str, plan_tex
     assert cp.returncode == want_rc
 
 
+def test_optional_metadata_preserves_oversize_override_trailer() -> None:
+    plan_text = (
+        "body\n"
+        "diff_added: 100\n"
+        "mechanical_churn: false\n"
+        "oversize_override: operator\n"
+        "diff_lines: 200\n"
+    )
+    meta = plan_quality.parse_optional_metadata(plan_text)
+
+    assert meta.oversize_override == "operator"
+    assert meta.metadata_trailer_lines == 3
+    assert "oversize_override" in meta.keys
+    assert "oversize_override=operator" in meta.values
+
+
+def test_optional_metadata_malformed_oversize_override_stops_block() -> None:
+    plan_text = "body\ndiff_added: 100\noversize_override: maybe\ndiff_lines: 200\n"
+
+    meta = plan_quality.parse_optional_metadata(plan_text)
+
+    assert meta.oversize_override is None
+    assert meta.metadata_trailer_lines == 0
+
+
 def test_check_plan_size_log_contract_and_mechanical_churn(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("line\n" * 4 + "diff_added: 2500\nmechanical_churn: true\ndiff_lines: 2500\n")
@@ -713,6 +738,43 @@ fi
     assert out["REVISE_TIER_4_STATUS"] == "ok"
     assert calls.read_text(encoding="utf-8").splitlines() == ["codex-output.txt", "claude-output.txt", "codex-output.txt"]
     assert "fallback fixed" in plan.read_text(encoding="utf-8")
+
+
+def test_revise_waterfall_refreshes_oversize_override_authority_on_success(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\noversize_override: operator\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+changed body
+oversize_override: operator
+diff_lines: 2
+PLAN
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok"
+    assert "changed body" in plan.read_text(encoding="utf-8")
+    size_cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    size_out = dict(line.split("=", 1) for line in size_cp.stdout.splitlines() if "=" in line)
+    assert size_cp.returncode == 0, size_cp.stdout
+    assert size_out["OVERSIZE_OVERRIDE"] == "operator"
 
 
 def test_revise_waterfall_attempts_cursor_first_when_present(tmp_path: Path) -> None:
@@ -1975,6 +2037,61 @@ def test_check_plan_size_hard_trigger_fires(tmp_path: Path) -> None:
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["SIZE_TRIGGER_FIRED"] == "true"
     assert "plan-body-lines" in out["TRIGGER_REASONS"]
+
+
+def test_check_plan_size_firm_heading_surface_triggers_and_override(tmp_path: Path) -> None:
+    headings = "\n".join(
+        f"### UPDATED: `python/larch/pkg{i}/file.py`"
+        for i in range(config.PLAN_SIZE_MAX_FIRM_HEADINGS + 1)
+    )
+    (tmp_path / "plan.txt").write_text(f"## Files to modify\n\n{headings}\ndiff_lines: 10\n", encoding="utf-8")
+    assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
+
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["SIZE_TRIGGER_FIRED"] == "false"
+    assert out["FIRM_HEADINGS"] == str(config.PLAN_SIZE_MAX_FIRM_HEADINGS + 1)
+    assert out["SURFACES_TOUCHED"] == str(config.PLAN_SIZE_MAX_FIRM_HEADINGS + 1)
+    assert out["OVERSIZE_OVERRIDE"] == "operator"
+    assert "firm-headings" in out["TRIGGER_REASONS"]
+    assert "surfaces" in out["TRIGGER_REASONS"]
+    assert out["PLAN_SIZE_STATUS"] == "ok"
+
+
+def test_check_plan_size_ignores_untrusted_oversize_override_trailer(tmp_path: Path) -> None:
+    headings = "\n".join(
+        f"### UPDATED: `python/larch/pkg{i}/file.py`"
+        for i in range(config.PLAN_SIZE_MAX_FIRM_HEADINGS + 1)
+    )
+    (tmp_path / "plan.txt").write_text(f"## Files to modify\n\n{headings}\noversize_override: operator\ndiff_lines: 10\n", encoding="utf-8")
+
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["SIZE_TRIGGER_FIRED"] == "true"
+    assert out["OVERSIZE_OVERRIDE"] == ""
+    assert out["PLAN_SIZE_STATUS"] == "ok"
+
+
+def test_set_oversize_override_insert_remove_and_idempotent(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("body\ndiff_added: 10\ndiff_lines: 20\n", encoding="utf-8")
+    authority = tmp_path / ".gate-b-oversize-override.sha256"
+
+    assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert plan.read_text(encoding="utf-8").splitlines() == [
+        "body",
+        "diff_added: 10",
+        "oversize_override: operator",
+        "diff_lines: 20",
+    ]
+    assert authority.is_file()
+    assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
+    assert plan.read_text(encoding="utf-8").count("oversize_override: operator") == 1
+    assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path), "--remove"]) == 0
+    assert "oversize_override" not in plan.read_text(encoding="utf-8")
+    assert not authority.exists()
 
 
 @pytest.mark.parametrize("env_value", ["0", "-1", "bad", ""])

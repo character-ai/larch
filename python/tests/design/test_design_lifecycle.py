@@ -3809,6 +3809,7 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
                     "VALIDATE_DEFECT_COUNT=2",
                     "VALIDATE_SKIPPED_COUNT=0",
                     "VALIDATE_UNSAFE_TOKEN_COUNT=1",
+                    "PUBLISH_REFUSE_REASON=validator-defects",
                     f"VALIDATE_LOG_FILE={design / 'validate.log'}",
                     f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}",
                     "",
@@ -3833,6 +3834,7 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     )
     assert rc == 0
     assert "STEP5C_STATUS=validator-defects" in contract
+    assert "PUBLISH_REFUSE_REASON=validator-defects" in contract
     assert "REPORT_GATE_SIDECARS_FILE=" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
     assert "PLAN_WRITE_OK=false" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
@@ -3911,7 +3913,7 @@ def test_step5c_auto_compose_falls_back_to_diff_lines_with_optional_trailers(tmp
     (design / "plan.txt").write_text("## Approach\n\nBody.\n", encoding="utf-8")
     (design / "diff-lines.txt").write_text("7\n", encoding="utf-8")
     (design / ".gate-b-optional-trailer-keys.values").write_text(
-        "diff_added=10\ndiff_deleted=3\nmechanical_churn=false\n",
+        "diff_added=10\ndiff_deleted=3\nmechanical_churn=false\noversize_override=operator\n",
         encoding="utf-8",
     )
     design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
@@ -3919,6 +3921,7 @@ def test_step5c_auto_compose_falls_back_to_diff_lines_with_optional_trailers(tmp
     assert "diff_added: 10" in composed
     assert "diff_deleted: 3" in composed
     assert "mechanical_churn: false" in composed
+    assert "oversize_override: operator" in composed
     assert "diff_lines: 7" in composed
 
 
@@ -3933,6 +3936,7 @@ def test_step5c_auto_compose_peels_orphan_optional_trailers(tmp_path: Path) -> N
     design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
     composed = (design / "composed-plan.md").read_text(encoding="utf-8")
     assert "diff_added: 10" in composed
+    assert "mechanical_churn: false" in composed
     assert "Body." in composed
     assert "diff_lines: 7" in composed
 
@@ -3941,7 +3945,10 @@ def test_step5c_auto_compose_preserves_optional_trailers(tmp_path: Path) -> None
     design = tmp_path / "design"
     design.mkdir()
     (design / "plan.txt").write_text(
-        "## Approach\n\nBody.\n\ndiff_added: 10\ndiff_deleted: 3\nmechanical_churn: false\ndiff_lines: 7\n",
+        (
+            "## Approach\n\nBody.\n\ndiff_added: 10\ndiff_deleted: 3\nmechanical_churn: false\n"
+            "oversize_override: operator\ndiff_lines: 7\n"
+        ),
         encoding="utf-8",
     )
     design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
@@ -3949,6 +3956,7 @@ def test_step5c_auto_compose_preserves_optional_trailers(tmp_path: Path) -> None
     assert "diff_added: 10" in composed
     assert "diff_deleted: 3" in composed
     assert "mechanical_churn: false" in composed
+    assert "oversize_override: operator" in composed
     assert "diff_lines: 7" in composed
 
 

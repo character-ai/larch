@@ -35,7 +35,7 @@ _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PLAN_DIFFICULTY_RE = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
 _PLAN_LEGACY_CONFIDENCE_RE = re.compile(r"^confidence: .+$")
 _PLAN_TRAILER_LINE_RE = re.compile(
-    r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|diff_lines: [0-9]+)$"
+    r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator|diff_lines: [0-9]+)$"
 )
 
 

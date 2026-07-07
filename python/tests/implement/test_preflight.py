@@ -286,6 +286,7 @@ def test_preflight_allows_footer_rounds_completed_despite_body_prose(
                 "Illustrative example: rounds_completed: 0\n\n"
                 "review_status: complete\n"
                 "rounds_completed: 2\n"
+                "oversize_override: operator\n"
                 "diff_lines: 12\n",
                 encoding="utf-8",
             )

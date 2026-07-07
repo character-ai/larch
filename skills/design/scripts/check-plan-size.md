@@ -24,6 +24,7 @@ Designers MAY append these lines in the **final contiguous metadata block** imme
 | `diff_added: <N>` | `^diff_added: [0-9]+$` |
 | `diff_deleted: <N>` | `^diff_deleted: [0-9]+$` |
 | `mechanical_churn: true\|false` | `^mechanical_churn: (true\|false)$`; numeric legacy values are normalized to `true` for resilience |
+| `oversize_override: operator` | `^oversize_override: operator$`; explicit override |
 
 Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surface: `python/cli.py plan optional-trailers`):
 
@@ -35,6 +36,7 @@ Parsing rules (implemented in `plan_quality.parse_optional_metadata`; CLI surfac
 - `mechanical_churn: false` is explicit no-downgrade; absent mechanical values normalize to `false`.
 - Only lowercase `true` and `false` should be emitted for `mechanical_churn` values. Numeric legacy values such as `mechanical_churn: 35` normalize to `true` so a drafter estimate does not stall the run. Other present values, for example `mechanical_churn: TRUE`, exit **2** with `PLAN_SIZE_STATUS=invalid-mechanical-churn` before size-gate calculations.
 - Threshold comparisons use decimal coercion on emitted `DIFF_ADDED` / `DIFF_LINES` values (e.g. `diff_added: 002001` trips at 2001).
+- Malformed `oversize_override:` values stop the optional block.
 
 ## Output contract (`emit_kv` on FD 3)
 
@@ -49,9 +51,13 @@ Emitted keys (exit **0** only):
 | `DIFF_ADDED` | Integer from `diff_added:` when present in the final metadata block; empty string when absent |
 | `DIFF_DELETED` | Integer from `diff_deleted:` when present; empty when absent (informational only — never a trigger) |
 | `MECHANICAL_CHURN` | `true` or `false` from the final metadata block |
-| `SOFT_ADVISORY` | `true` when `mechanical_churn: true` downgraded a diff-side hard trigger; `false` otherwise |
+| `FIRM_HEADINGS` | Count of firm `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` headings |
+| `SURFACES_TOUCHED` | Distinct plan surfaces derived from firm heading paths |
+| `OVERSIZE_OVERRIDE` | `operator` when the override trailer is present; empty otherwise |
+| `SOFT_ADVISORY` | `true` when `mechanical_churn: true` downgraded a diff-side hard trigger or an override suppressed a hard trigger; `false` otherwise |
 | `SIZE_TRIGGER_FIRED` | `true` or `false` |
-| `TRIGGER_REASONS` | Comma-separated tokens in **fixed priority order** `plan-body-lines`, then `diff-added` (new-style) or `diff-lines` (legacy). Empty string when no hard threshold crossing. When mechanical churn downgraded the diff trigger, no diff reason is added. |
+| `TRIGGER_REASONS` | Comma-separated tokens in fixed priority order: `plan-body-lines`, diff reason, `firm-headings`, `surfaces`. Empty when no hard crossing. |
+| `PLAN_SIZE_STATUS` | `ok` on successful parsing and evaluation |
 | `DRIFT_TRIGGER_FIRED` | `true` when the current plan-body line count or diff count exceeds the write-once baseline by more than `LARCH_DESIGN_DRIFT_MULTIPLE`; otherwise `false` |
 | `DRIFT_MULTIPLE` | Positive integer multiple used for drift comparison; invalid env values fall back to `2` |
 | `DRIFT_PLAN_RATIO`, `DRIFT_DIFF_RATIO` | Current-to-baseline ratios, with `inf` when a zero baseline grows above zero |
@@ -62,8 +68,11 @@ Emitted keys (exit **0** only):
 - Plan body: `PLAN_LINES > 800`.
 - Diff (new-style): `diff_added > 2000` when the `diff_added:` trailer is present in the final metadata block.
 - Diff (legacy fallback): `diff_lines > 1500` when `diff_added` is absent.
+- Firm heading count: `FIRM_HEADINGS > 25`, excluding `### MAY_UPDATE:`.
+- Surfaces: `SURFACES_TOUCHED > 4`; `python/larch/<pkg>/...` maps to `python/larch/<pkg>`, direct `python/larch` files to `python/larch`, others to their first segment.
 - Deletions never trip; `diff_deleted` is informational only.
 - `mechanical_churn: true` suppresses the diff hard trigger and sets `SOFT_ADVISORY=true` when a diff trigger would have fired; plan-body hard triggers are unaffected.
+- `oversize_override: operator` forces `SIZE_TRIGGER_FIRED=false` while keeping `TRIGGER_REASONS` visible.
 
 ## Drift baseline
 
@@ -75,7 +84,7 @@ If the baseline file is a symlink, missing either key, or contains a non-integer
 
 | rc | Meaning |
 |----|---------|
-| 0 | Valid plan; KV lines emitted as above |
+| 0 | Valid plan; KV lines emitted as above, including `PLAN_SIZE_STATUS=ok` |
 | 2 | Missing plan file → `PLAN_SIZE_STATUS=missing-plan`; or missing/malformed trailer → `PLAN_SIZE_STATUS=missing-diff-lines`; or invalid `mechanical_churn:` → `PLAN_SIZE_STATUS=invalid-mechanical-churn` |
 | 3 | Invocation / argv error (e.g. missing `--design-tmpdir`, unknown flag) — stderr only; **no** `PLAN_SIZE_STATUS` on the contract stream |
 
@@ -84,10 +93,10 @@ If the baseline file is a symlink, missing either key, or contains a non-integer
 - **Merged**: `design-postplan-emit.sh --with-plan-size` (initial Step 2b, Gate B, discussion-round2 / Gate A after-discussion).
 - **Retained**: `SKILL.md` Step 2b.5 procedure (Override-after-defects).
 
-**Site-aware retained hard prompts**: initial/discussion Step 2b.5 uses Split/Cancel only; Gate B, use Split/Override/Cancel.
+**Site-aware retained hard prompts**: initial/discussion Step 2b.5, Gate B, and retained Step 2b.5 all use Split/Override/Cancel. Override writes `oversize_override: operator` to `plan.txt` and deletes stale `composed-plan.md`.
 
 Merged mode treats rc 2/3 nonfatally in the driver; `python/plan_review.py` uses the same warn-and-continue contract and gates `partition_requested` handoff on plan-size rc=0.
 
 ## Edit in sync
 
-Update [`python/plan_quality.py`](../../../python/plan_quality.py), [`python/test_plan_quality.py`](../../../python/test_plan_quality.py), [`test-check-plan-size.md`](test-check-plan-size.md), `Makefile` (`test-check-plan-size` and `test-trailer-helpers`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `python/plan_review.py`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or optional-trailer contracts.
+Update config, `plan_quality.py`, publish/compose consumers, trailer scanners, tests, `docs/issue-anchored-plan.md`, this file, `flags.md`, and `SKILL.md` Step 2b / 2b.5 when changing thresholds or optional-trailer contracts.
