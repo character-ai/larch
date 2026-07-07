@@ -4,6 +4,8 @@
 
 **Contract**: Repair a merged-SHA push-to-main failure on a dedicated repair branch. This is not generic `ci-fix`.
 
+**When to load**: MANDATORY only on `NEXT_ACTION=postmerge-repair` from `ship route-exit`. Do not load for generic `ci-fix`, pre-PR repair, or any path that does not enter the post-merge emergency repair branch.
+
 Phases are `postmerge-push-watch` → `emergency-repair` → `repair-shipped` or `stalled`.
 
 - Write `post-merge-sentinel` only after the merged-SHA push workflow passes or emergency-repair ownership is durably recorded.

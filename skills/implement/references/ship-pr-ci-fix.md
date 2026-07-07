@@ -4,7 +4,7 @@
 **Contract**: Owns the main-agent CI-fix attempt guard, CI log capture, all revealed actionable repairs, checks, commit, refresh, push, and ship re-entry procedure.
 **When to load**: **MANDATORY: READ ENTIRE FILE** only on NEXT_ACTION=ci-fix after fork and repo-unavailable skips are ruled out, and after `ship pre-fix-rebase` has emitted `NEXT_ACTION=continue`. Load this before any autonomous repair step that may re-invoke `step-8-ship.sh`. Any autonomous repair path ending in ship re-invoke must run the foreground stale-handoff clear from SKILL.md Step 8+ immediately before the background launcher fence.
 
-This reference retains the Python driver non-zero routing contract for exit-3 CI handoffs. The `ci-fix` action covers `first-fixer-non-health`, `main-ci-fail`, `flaky-defect-unfixed`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable`. `ci-fix-exhausted` remains operator-bail. `FAILED_RUN_ID` may refer to a default-branch push run, not only a PR run.
+This reference retains the Python driver non-zero routing contract for exit-3 CI handoffs. The `ci-fix` action covers `first-fixer-non-health`, `main-ci-fail`, `flaky-defect-unfixed`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable`. `ci-fix-exhausted` remains operator-bail.
 
 Read `.ship-route-exit-handoff.env` with `larch_io.read_kvs` where applicable before the procedure. Precondition: Step 8+ already ran `python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"` and received `NEXT_ACTION=continue`; do not write sentinels, capture CI logs, edit, commit, or push before that gate. When `ledger_ready=true`, call `stall-recovery record-escalation` before edits.
 

@@ -35,11 +35,11 @@
     "skill_md_lines": 700
   },
   {
-    "closure_content_estimated_tokens": 40378,
-    "closure_estimated_tokens": 40491,
+    "closure_content_estimated_tokens": 40421,
+    "closure_estimated_tokens": 40535,
     "closure_lines": 1238,
-    "conditional_content_estimated_tokens": 26992,
-    "conditional_estimated_tokens": 27054,
+    "conditional_content_estimated_tokens": 26974,
+    "conditional_estimated_tokens": 27035,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -69,8 +69,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 30023,
-    "skill_md_estimated_tokens": 30098,
+    "skill_md_content_estimated_tokens": 30066,
+    "skill_md_estimated_tokens": 30142,
     "skill_md_lines": 785
   },
   {

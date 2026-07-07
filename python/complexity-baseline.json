@@ -2841,13 +2841,13 @@
     "file": "larch/implement/ship_resume.py",
     "code": "PLR0911",
     "qualified_symbol": "_resume_plan",
-    "metric": 24
+    "metric": 26
   },
   {
     "file": "larch/implement/ship_resume.py",
     "code": "PLR0912",
     "qualified_symbol": "_resume_plan",
-    "metric": 26
+    "metric": 29
   },
   {
     "file": "larch/implement/ship_resume.py",
@@ -2859,7 +2859,7 @@
     "file": "larch/implement/ship_resume.py",
     "code": "PLR0915",
     "qualified_symbol": "_resume_plan",
-    "metric": 58
+    "metric": 63
   },
   {
     "file": "larch/implement/ship_seed.py",
