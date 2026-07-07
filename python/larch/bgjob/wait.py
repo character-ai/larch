@@ -65,14 +65,12 @@ def wait_once(*, tmpdir: Path, step: str, max_wait_s: int, run_id: str | None = 
                 )
                 return 0
             daemon_live = registry.daemon_liveness(entry)
-            child_live = registry.child_liveness(entry)
-            if not daemon_live.live or not child_live.live:
+            if not daemon_live.live:
                 tail = _log_tail(entry.stderr_log)
-                diag = daemon_live.reason if not daemon_live.live else child_live.reason
                 _print_rows(
                     [
                         (config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_DEAD),
-                        ("BGJOB_DIAG", diag),
+                        ("BGJOB_DIAG", daemon_live.reason),
                         ("STDERR_TAIL", tail),
                     ]
                 )
@@ -80,6 +78,10 @@ def wait_once(*, tmpdir: Path, step: str, max_wait_s: int, run_id: str | None = 
             if time.monotonic() >= deadline:
                 _print_rows([(config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_WAIT), ("ELAPSED_S", str(max_wait_s))])
                 return 0
+            child_live = registry.child_liveness(entry)
+            if not child_live.live:
+                time.sleep(max(0.05, min(poll_interval_s, deadline - time.monotonic())))
+                continue
             time.sleep(max(0.05, min(poll_interval_s, deadline - time.monotonic())))
     except BgjobWaitTimeout:
         print("BGJOB_ERROR=hard-deadline")

@@ -14,6 +14,11 @@ emit_deny() {
   jq -cn --arg reason "$reason" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
 }
 
+emit_deny_no_jq() {
+  local reason="$1"
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+}
+
 canonical_dir() {
   [ -n "$1" ] || return 1
   [ -d "$1" ] || return 1
@@ -30,7 +35,7 @@ clone_paths_same() {
 
 if ! command -v jq >/dev/null 2>&1; then
   case "$INPUT" in
-    *run_in_background*) emit_deny 'run_in_background denied: jq unavailable to validate Bash payload'; exit 0 ;;
+    *run_in_background*) emit_deny_no_jq 'run_in_background denied: jq unavailable to validate Bash payload'; exit 0 ;;
     *) exit 0 ;;
   esac
 fi

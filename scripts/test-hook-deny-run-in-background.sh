@@ -21,4 +21,10 @@ EOF
 out=$(payload | "$HOOK")
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 
+mkdir -p "$TMP/no-jq/bin"
+ln -s /bin/cat "$TMP/no-jq/bin/cat"
+ln -s /bin/bash "$TMP/no-jq/bin/bash"
+out=$(payload | PATH="$TMP/no-jq/bin" "$HOOK")
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+
 echo 'PASS: hook-deny-run-in-background'

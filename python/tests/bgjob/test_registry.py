@@ -40,6 +40,7 @@ def test_registry_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
         stderr_log=tmp_path / "bgjob/demo-step.stderr.log",
         result_env=tmp_path / "bgjob/demo-step.result.env",
     )
+    entry.log_dir.mkdir(parents=True, exist_ok=True)
     path = registry.write_entry(entry)
     loaded = registry.read_entry(path)
     assert loaded is not None
@@ -55,6 +56,30 @@ def test_registry_ignores_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     link = root / "run-demo.env"
     _ = link.symlink_to(target)
     assert registry.read_entry(link) is None
+
+
+def test_registry_rejects_escaped_result_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    identity = _identity()
+    entry = model.RegistryEntry(
+        step="demo-step",
+        run_id="run-1",
+        tmpdir=tmp_path,
+        log_dir=tmp_path / "bgjob",
+        clone_path=Path.cwd().resolve(),
+        daemon=identity,
+        child=identity,
+        owner=None,
+        start_epoch=1,
+        budget_s=30,
+        stdout_log=tmp_path / "bgjob/demo-step.stdout.log",
+        stderr_log=tmp_path / "bgjob/demo-step.stderr.log",
+        result_env=tmp_path.parent / "escape.env",
+    )
+    entry.log_dir.mkdir(parents=True, exist_ok=True)
+    path = registry.write_entry(entry)
+
+    assert registry.read_entry(path) is None
 
 
 def test_default_run_id_depends_only_on_tmpdir(tmp_path: Path) -> None:

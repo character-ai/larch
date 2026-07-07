@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import stat
 import time
 from pathlib import Path
 
@@ -36,6 +37,23 @@ def _parse_identity(rows: dict[str, str], prefix: str) -> process_identity.Recor
         return None
 
 
+def _validated_path(path: Path, *, root: Path) -> Path | None:
+    if path.is_symlink():
+        return None
+    try:
+        resolved = path.resolve()
+    except OSError:
+        return None
+    try:
+        _ = resolved.relative_to(root.resolve())
+    except ValueError:
+        return None
+    with contextlib.suppress(OSError):
+        if path.exists() and not stat.S_ISREG(path.stat().st_mode):
+            return None
+    return resolved
+
+
 def write_entry(entry: model.RegistryEntry) -> Path:
     path = model.registry_path(run_id=entry.run_id, step=entry.step)
     rows: list[tuple[str, str]] = [
@@ -67,20 +85,41 @@ def read_entry(path: Path) -> model.RegistryEntry | None:
     if daemon is None or child is None:
         return None
     try:
+        tmpdir_raw = Path(rows["TMPDIR"])
+        if tmpdir_raw.is_symlink():
+            return None
+        tmpdir = tmpdir_raw.resolve()
+        if not tmpdir.is_dir():
+            return None
+        log_dir_raw = Path(rows["LOG_DIR"])
+        if log_dir_raw.is_symlink():
+            return None
+        log_dir = log_dir_raw.resolve()
+        if not log_dir.is_dir():
+            return None
+        try:
+            _ = log_dir.relative_to(tmpdir)
+        except ValueError:
+            return None
+        stdout_log = _validated_path(Path(rows["STDOUT_LOG"]), root=log_dir)
+        stderr_log = _validated_path(Path(rows["STDERR_LOG"]), root=log_dir)
+        result_env = _validated_path(Path(rows["RESULT_ENV"]), root=model.bgjob_dir(tmpdir))
+        if stdout_log is None or stderr_log is None or result_env is None:
+            return None
         return model.RegistryEntry(
             step=model.validate_slug(rows["STEP"], label="step"),
             run_id=model.validate_slug(rows["RUN_ID"], label="run-id"),
-            tmpdir=Path(rows["TMPDIR"]).resolve(),
-            log_dir=Path(rows["LOG_DIR"]).resolve(),
+            tmpdir=tmpdir,
+            log_dir=log_dir,
             clone_path=Path(rows.get("CLONE_PATH", ".")).resolve(),
             daemon=daemon,
             child=child,
             owner=_parse_identity(rows, "OWNER"),
             start_epoch=int(rows["START_EPOCH"]),
             budget_s=int(rows["BUDGET_S"]),
-            stdout_log=Path(rows["STDOUT_LOG"]).resolve(),
-            stderr_log=Path(rows["STDERR_LOG"]).resolve(),
-            result_env=Path(rows["RESULT_ENV"]).resolve(),
+            stdout_log=stdout_log,
+            stderr_log=stderr_log,
+            result_env=result_env,
         )
     except (KeyError, TypeError, ValueError, OSError):
         return None
