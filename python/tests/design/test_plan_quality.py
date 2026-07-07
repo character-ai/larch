@@ -288,16 +288,48 @@ def test_optional_metadata_malformed_oversize_override_stops_block() -> None:
     assert meta.metadata_trailer_lines == 0
 
 
-def test_check_plan_size_log_contract_and_mechanical_churn(tmp_path: Path) -> None:
+def test_check_plan_size_log_contract_and_mechanical_churn_stays_hard(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("line\n" * 4 + "diff_added: 2500\nmechanical_churn: true\ndiff_lines: 2500\n")
     cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["SIZE_TRIGGER_FIRED"] == "false"
+    assert out["SIZE_TRIGGER_FIRED"] == "true"
     assert out["SOFT_ADVISORY"] == "true"
     assert out["DIFF_ADDED"] == "2500"
+    assert "diff-added" in out["TRIGGER_REASONS"]
+    assert "diff-lines" in out["TRIGGER_REASONS"]
     assert (tmp_path / "drift-baseline.env").is_file()
+
+
+def test_check_plan_size_6524_meta_trips_oversize(tmp_path: Path) -> None:
+    headings = "\n".join(
+        f"### UPDATED: python/larch/design/file{i}.py"
+        for i in range(74)
+    )
+    plan = tmp_path / "plan.txt"
+    plan.write_text(
+        f"## Plan\n\n## Files to modify/create\n\n{headings}\n"
+        "diff_added: 1980\n"
+        "diff_deleted: 1350\n"
+        "mechanical_churn: true\n"
+        "diff_lines: 3330\n",
+        encoding="utf-8",
+    )
+
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+
+    assert out["SIZE_TRIGGER_FIRED"] == "true"
+    assert out["SOFT_ADVISORY"] == "true"
+    assert out["DIFF_ADDED"] == "1980"
+    assert out["DIFF_DELETED"] == "1350"
+    assert out["DIFF_LINES"] == "3330"
+    assert out["MECHANICAL_CHURN"] == "true"
+    assert out["FIRM_HEADINGS"] == "74"
+    assert out["TRIGGER_REASONS"]
+    assert "diff-lines" in out["TRIGGER_REASONS"]
 
 
 def test_validate_plan_emits_stable_log_in_design_tmpdir(tmp_path: Path) -> None:

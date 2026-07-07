@@ -85,13 +85,15 @@ Rules:
   `oversize_override: operator` records an explicit operator decision and is
   preserved through review rewrites, composition, bootstrap materialization, and
   `/implement` preflight scanning.
-- `/design` evaluates plan size on body lines, `diff_added` or `diff_lines`,
-  firm heading count, and distinct surfaces. Thresholds are strict: body lines
-  `> 800`, `diff_added > 2000` or fallback `diff_lines > 1500`, firm headings
-  `> 25`, and surfaces `> 4`. Step 5c re-checks the authoritative
+- `/design` evaluates plan size on body lines, `diff_added`, `diff_lines`, firm
+  heading count, and distinct surfaces. Thresholds are strict: body lines
+  `> 800`, independent OR-combined triggers for `diff_added > 2000` and
+  `diff_lines > 1500`, firm headings `> 25`, and surfaces `> 4`.
+  `mechanical_churn: true` may soften presentation through `SOFT_ADVISORY`, but
+  it does not suppress the hard trigger. Step 5c re-checks the authoritative
   `$DESIGN_TMPDIR/plan.txt` before publishing; when Override is chosen it writes
-  `oversize_override: operator`, deletes stale `composed-plan.md`, and lets
-  Step 5c recompose from `plan.txt`.
+  `oversize_override: operator` as an explicit trusted operator decision,
+  deletes stale `composed-plan.md`, and lets Step 5c recompose from `plan.txt`.
 - The `## Plan` and `## Acceptance` sub-sections are **conventional** — parsers
   do not enforce their presence or heading level.
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,
