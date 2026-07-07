@@ -1,6 +1,6 @@
-## /implement run 39B1D753-BEBA-4B46-81EC-7569845B626E: pr-created
+## /implement run 39B1D753-BEBA-4B46-81EC-7569845B626E: stalled
 
-- **Outcome**: DONE
+- **Outcome**: STALLED
 - **Duration**: 01:48:13
 - **Cost**: 💰 TOTAL ~$71.23: Claude $8.09, Codex-5.5 $44.25, Codex-mini $3.79, Cursor $14.59, Claude (subprocess) $0.51  |  Tokens: 142895k
 - **Issue**: #6506: https://github.com/character-ai/larch/issues/6506
@@ -9,7 +9,7 @@
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 11/14 accepted
-- **Lines (PR diff)**: code +2077/-122, larch-logs +1678/-0
+- **Lines (PR diff)**: code +2077/-122, larch-logs +1682/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -89,7 +89,3 @@ codex/apply              │                                ██████�
 7. cursor/testing: 5
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
