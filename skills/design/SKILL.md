@@ -689,3 +689,8 @@ Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not 
 <!-- compatibility grep note: `design-step2b-postplan.sh --site step2b --snapshot-original --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" --plugin-root "$CLAUDE_PLUGIN_ROOT"` maps to `python/cli.py design step2b-postplan --site step2b --snapshot-original`. -->
 <!-- lint references: skills/design/scripts/design-step3b-sanitize.md skills/design/scripts/design-step3b-sanitize.sh -->
 <!-- agent-lint references: scripts/check-plan-size.md, scripts/test-check-plan-size.md -->
+
+<!-- agent-lint references:
+- skills/design/scripts/test-step3-orchestrator-fence.md
+- skills/design/scripts/test-step3-orchestrator-fence.sh
+-->
