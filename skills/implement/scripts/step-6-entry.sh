@@ -53,14 +53,25 @@ step6_cleanup() {
     printf '' >"$IMPLEMENT_TMPDIR/.completed/step-6-terminal" 2>/dev/null || true
 }
 
+step6_merge_cleanup() {
+    if [ -n "${MERGE_RESULT_ENV_TMP:-}" ]; then
+        rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true
+    fi
+    step6_cleanup
+}
+
 rehydrate_plugin_root
 rehydrate_larch_triplet
 if [ "$BGJOB_CHILD" = "true" ]; then
     [ -n "$MERGE_RESULT_ENV" ] || { printf '%s
 ' 'step-6-entry.sh: --merge-result-env is required in child mode' >&2; exit 2; }
-    trap step6_cleanup EXIT
+    MERGE_RESULT_ENV_PARENT="${MERGE_RESULT_ENV%/*}"
+    [ -L "$MERGE_RESULT_ENV_PARENT" ] && { printf '%s
+' 'step-6-entry.sh: refusing symlinked merge-result-env parent' >&2; exit 2; }
+    MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
+    trap step6_merge_cleanup EXIT
     set +e
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry "${ORIGINAL_ARGS[@]}" | tee "$MERGE_RESULT_ENV"
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry "${ORIGINAL_ARGS[@]}" | tee "$MERGE_RESULT_ENV_TMP"
     pipe_status=("${PIPESTATUS[@]}")
     set -e
     rc=${pipe_status[0]}
@@ -68,13 +79,26 @@ if [ "$BGJOB_CHILD" = "true" ]; then
     if [ "$tee_rc" -ne 0 ]; then
         rc=$tee_rc
     fi
+    if [ -L "$MERGE_RESULT_ENV" ]; then
+        exit 2
+    fi
+    mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || rc=$?
     exit "$rc"
 fi
 
+if [ -L "$IMPLEMENT_TMPDIR/bgjob" ]; then
+    printf '%s
+' 'step-6-entry.sh: refusing symlinked bgjob directory' >&2
+    exit 2
+fi
 mkdir -p "$IMPLEMENT_TMPDIR/bgjob"
 STEP="implement-step6-checks"
 MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.merge.env"
-: >"$MERGE_RESULT_ENV"
+MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
+: >"$MERGE_RESULT_ENV_TMP"
+[ -L "$MERGE_RESULT_ENV" ] && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
+' 'step-6-entry.sh: refusing symlinked merge-result-env' >&2; exit 2; }
+mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; exit 2; }
 rm -f "$IMPLEMENT_TMPDIR/.completed/step-6-terminal" 2>/dev/null || true
 
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \

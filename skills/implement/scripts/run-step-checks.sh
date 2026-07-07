@@ -77,12 +77,23 @@ build_child_command() {
     fi
 }
 
+merge_result_cleanup() {
+    if [ -n "${MERGE_RESULT_ENV_TMP:-}" ]; then
+        rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true
+    fi
+}
+
 if [ "$BGJOB_CHILD" = "true" ]; then
     [ -n "$MERGE_RESULT_ENV" ] || { printf '%s
 ' 'run-step-checks.sh: --merge-result-env is required in child mode' >&2; exit 2; }
+    MERGE_RESULT_ENV_PARENT="${MERGE_RESULT_ENV%/*}"
+    [ -L "$MERGE_RESULT_ENV_PARENT" ] && { printf '%s
+' 'run-step-checks.sh: refusing symlinked merge-result-env parent' >&2; exit 2; }
+    MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
+    trap merge_result_cleanup EXIT
     build_child_command
     set +e
-    "${CHILD_CMD[@]}" | tee "$MERGE_RESULT_ENV"
+    "${CHILD_CMD[@]}" | tee "$MERGE_RESULT_ENV_TMP"
     pipe_status=("${PIPESTATUS[@]}")
     set -e
     rc=${pipe_status[0]}
@@ -90,6 +101,10 @@ if [ "$BGJOB_CHILD" = "true" ]; then
     if [ "$tee_rc" -ne 0 ]; then
         rc=$tee_rc
     fi
+    if [ -L "$MERGE_RESULT_ENV" ]; then
+        exit 2
+    fi
+    mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || rc=$?
     exit "$rc"
 fi
 
@@ -106,9 +121,18 @@ elif [ "$SITE" = "step6" ]; then
     SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal")
 fi
 
+if [ -L "$IMPLEMENT_TMPDIR/bgjob" ]; then
+    printf '%s
+' 'run-step-checks.sh: refusing symlinked bgjob directory' >&2
+    exit 2
+fi
 mkdir -p "$IMPLEMENT_TMPDIR/bgjob"
 MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.merge.env"
-: >"$MERGE_RESULT_ENV"
+MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
+: >"$MERGE_RESULT_ENV_TMP"
+[ -L "$MERGE_RESULT_ENV" ] && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
+' 'run-step-checks.sh: refusing symlinked merge-result-env' >&2; exit 2; }
+mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; exit 2; }
 CHILD_ARGS=(--bgjob-child --site "$SITE" --commit-site "$COMMIT_SITE" --forked-target "$FORKED_TARGET" --merge-result-env "$MERGE_RESULT_ENV")
 if [ "$REBASE_CHECKPOINT_4R" = "true" ]; then
     CHILD_ARGS+=(--rebase-checkpoint-4r)
