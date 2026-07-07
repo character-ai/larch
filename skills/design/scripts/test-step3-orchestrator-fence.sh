@@ -119,42 +119,33 @@ _write_step3_wrapper_inputs() {
 
 invoke_step3_review_wrapper() {
     local design_tmpdir="$1" result_env_body="$2" stdout_body="$3" review_rc="${4:-0}" starting_round="${5:-}"
-    local loop_stub session_env loop_stdout
+    local session_env _result_env _env_content
     session_env="$design_tmpdir/session-env.sh"
-    loop_stub="$design_tmpdir/plan-review-loop-stub.sh"
     _write_step3_wrapper_inputs "$design_tmpdir" "$starting_round"
-    mkdir -p "$design_tmpdir/.completed"
+    mkdir -p "$design_tmpdir/.completed" "$design_tmpdir/bgjob"
     printf 'export DESIGN_TMPDIR=%q\nexport CLAUDE_PLUGIN_ROOT=%q\nexport ISSUE_NUMBER=1\n' \
       "$design_tmpdir" "$REPO_ROOT" >"$session_env"
-    if [[ -n "$result_env_body" ]]; then
-        loop_stdout="$result_env_body"
-    else
-        loop_stdout="$stdout_body"
-    fi
-    cat >"$loop_stub" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "\$@" > "\${DESIGN_TMPDIR:?}/run-step3-argv.txt"
-cat <<'OUT'
-${loop_stdout}
-OUT
-exit ${review_rc}
-STUB
-    chmod +x "$loop_stub"
+    # Simulate bgjob daemon completion: update round count and write result env.
     if [[ -n "$starting_round" ]]; then
-      RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" \
-      CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-        "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
-        --session-env-path "$session_env" \
-        --claude-pid test \
-        --starting-round "$starting_round"
-    else
-      RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" \
-      CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-        "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
-        --session-env-path "$session_env" \
-        --claude-pid test
+        printf '%s\n' "$starting_round" >"$design_tmpdir/review-round-count.txt"
     fi
+    _result_env="$design_tmpdir/bgjob/design-step3-review.result.env"
+    if [[ -n "$result_env_body" ]]; then
+        _env_content="$result_env_body"
+    else
+        _env_content="$stdout_body"
+    fi
+    if [[ -n "$_env_content" ]]; then
+        printf '%s\nBGJOB_RC=%s\n' "$_env_content" "$review_rc" >"$_result_env"
+    else
+        printf 'BGJOB_RC=%s\n' "$review_rc" >"$_result_env"
+    fi
+    # Normalize via --read-result-env (same as post-DONE orchestrator step).
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+      "$REPO_ROOT/skills/design/scripts/design-step3-review.sh" \
+      --session-env-path "$session_env" \
+      --claude-pid test \
+      --read-result-env
 }
 
 echo "=== design-step3-review.sh wrapper sources result env ==="
@@ -162,8 +153,7 @@ D_WRAPPER="$TMP/wrapper-rc0"
 mkdir -p "$D_WRAPPER"
 _wrapper_out=$(invoke_step3_review_wrapper "$D_WRAPPER" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\nREVIEW_ROUND_COUNT=1\n' 'LOOP_STATUS=panel-failed' 0)
 if printf '%s\n' "$_wrapper_out" | grep -Fq 'LOOP_STATUS=complete' \
-  && printf '%s\n' "$_wrapper_out" | grep -Fq 'TALLY_PLAN_REVIEW_STATUS=ok' \
-  && printf '%s\n' "$_wrapper_out" | grep -Fq 'REVIEW_ROUND_COUNT=1'; then
+  && printf '%s\n' "$_wrapper_out" | grep -Fq 'BGJOB_RC=0'; then
     pass 'wrapper emits file-first handoff KVs'
 else
     fail "wrapper handoff missing expected KVs: $_wrapper_out"
