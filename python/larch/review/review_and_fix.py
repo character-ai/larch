@@ -346,6 +346,26 @@ def _write_step5_result_env(rows: list[tuple[str, str | int | bool]]) -> None:
     )
 
 
+def _step5_result_env_rows_from_text(text: str) -> list[tuple[str, str | int | bool]]:
+    parsed = _parse_env_lines(text)
+    rows: list[tuple[str, str | int | bool]] = []
+    for key in (
+        "STEP5_REVIEW_STATUS",
+        "STALL_TRACKING",
+        "STALL_REASON",
+        "ROUNDS_COMPLETED",
+        "FINAL_ROUND_NUM",
+        "FINAL_REVIEW_AND_FIX_STATUS",
+        "CODER_STATUS",
+        "FILES_CHANGED_HINT",
+        "EFFECTIVE_ROUND_CAP",
+    ):
+        if key in parsed:
+            rows.append((key, parsed[key]))
+    rows.extend(_step5_difficulty_rows())
+    return rows
+
+
 def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str, rounds_completed: int, final_round: int, final_irf: str, coder_status: str, files_hint: str, effective_cap: int) -> None:
     rows = _step5_envelope_rows(
         _Step5Envelope(
@@ -823,6 +843,7 @@ def normalize_status(argv: list[str] | None = None) -> int:
     has_envelope = any(line.startswith("STEP5_REVIEW_STATUS=") and line.partition("=")[2] for line in text.splitlines())
     if has_envelope:
         _step5_write_terminal_sentinel(implement_tmpdir=implement_tmpdir)
+        _write_step5_result_env(_step5_result_env_rows_from_text(text))
         sys.stdout.write(text)
         if text and not text.endswith("\n"):
             sys.stdout.write("\n")
@@ -851,6 +872,7 @@ def step5(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         _err(f"review-and-fix step5: {exc}")
         return 2
+    os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(Path(args.implement_tmpdir).resolve())
     loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
     default_cap = _positive_int(value=str(args.round_cap), label="--round-cap") if str(args.round_cap).isdigit() else 2
     progress_done: Path | None = None

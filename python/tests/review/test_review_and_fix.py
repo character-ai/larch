@@ -294,6 +294,24 @@ def test_step5_loop_writes_mergeable_completion_kvs(tmp_path, monkeypatch, capsy
     assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
 
 
+@MARK_STEP5
+def test_step5_loop_preflight_failure_writes_result_env(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    (impl / "plan.txt").unlink()
+
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+
+    out = capsys.readouterr().out
+    result_env = impl / ".step5-review-result.env"
+    result = dict(line.split("=", 1) for line in result_env.read_text(encoding="utf-8").splitlines())
+    assert rc == 2
+    assert result["STEP5_REVIEW_STATUS"] == "stall"
+    assert result["STALL_TRACKING"] == "false"
+    assert result["STALL_REASON"] == "preflight-failed"
+    assert "STEP5_REVIEW_STATUS=stall" in out
+
+
 @MARK_DISPATCH
 def test_apply_findings_empty_file_contract(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
@@ -559,7 +577,10 @@ def test_step5_normalize_status_replays_envelope(tmp_path, capsys):
     stdout_file = tmp_path / "stdout.txt"
     stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
     rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "0"])
+    result_env = impl / ".step5-review-result.env"
     assert rc == 0
+    assert result_env.is_file()
+    assert "STEP5_REVIEW_STATUS=complete" in result_env.read_text(encoding="utf-8")
     assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
 
 
