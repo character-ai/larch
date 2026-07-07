@@ -135,6 +135,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
 ```
 
 The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=validation-cursor PGID=<n>`.
+Do not call `bgjob wait` unless the launch printed that exact marker; if it did not, route directly to the lane's existing launch-class failure branch instead of waiting.
 
 > **Diagnostic note**: this lane uses `python3 python/cli.py agent run-external-agent` directly and has no `/implement`-style flush path for the `vendor-failure-diagnostics` larch-log batch. Validation-lane failure diagnostics (`*.failure-diag` carriers) stay in `$RESEARCH_TMPDIR` and are removed at `/research` cleanup; they are not committed to run logs.
 
@@ -177,6 +178,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
 ```
 
 The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=validation-codex PGID=<n>`.
+Do not call `bgjob wait` unless the launch printed that exact marker; if it did not, route directly to the lane's existing launch-class failure branch instead of waiting.
 
 **Codex fallback** (if `codex_binary_available` is false at lane-launch time): Launch 1 Claude Code Reviewer subagent via the Agent tool (`subagent_type: larch:code-reviewer`) using the unified Code Reviewer archetype with the research-validation variable bindings below. Attribute as `Codex`.
 
@@ -215,7 +217,7 @@ Build the argument list from only the externals that were actually launched:
 COLLECT_ARGS=()
 ```
 
-**Zero-externals branch**: If BOTH Cursor and Codex are unavailable (`COLLECT_ARGS` is empty), skip `python/cli.py agent collect-results` entirely and skip all external negotiation. The 3-lane invariant is preserved by 3 Claude streams (the always-on `Code` lane plus the `Cursor` and `Codex` fallback lanes). Merge ALL Claude findings (preserving per-lane attribution) and proceed to Finalize Validation.
+**Zero-externals branch**: If BOTH Cursor and Codex are unavailable (`cursor_binary_available=false` and `codex_binary_available=false`), skip `python/cli.py agent collect-results` entirely and skip all external negotiation. The 3-lane invariant is preserved by 3 Claude streams (the always-on `Code` lane plus the `Cursor` and `Codex` fallback lanes). Merge ALL Claude findings (preserving per-lane attribution) and proceed to Finalize Validation.
 
 Otherwise, after processing Claude findings, wait for each bgjob-launched external lane before collection:
 
@@ -227,6 +229,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
 ```
 
 `<tool>` is `cursor` or `codex`. Use tool timeout `330000`. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for that lane with no intervening prose, reads, monitors, probes, sleeps, or other tools. If stdout contains `BGJOB_STATUS=DEAD`, route that lane through the existing runtime fallback branch. If stdout contains `BGJOB_STATUS=DONE`, treat the lane as passed when either the DONE stdout KV block or `$RESEARCH_TMPDIR/bgjob/validation-<tool>.result.env` contains `BGJOB_RC=0` and `STEP=validation-<tool>`. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or a missing required KV as that lane's existing launch-class failure branch. When a lane passes the gate, append its output path to `COLLECT_ARGS`; failed lanes are excluded and routed through Runtime Timeout Fallback before collection.
+
+If `COLLECT_ARGS` is still empty after the wait-and-fallback handling above, skip `python/cli.py` agent collect-results entirely and proceed with the fallback-only completion path: merge all Claude findings that were actually launched and move directly to Finalize Validation.
 
 Then invoke the script with only the launched paths whose bgjob result passed the gate. Pass `--substantive-validation --validation-mode`:
 
@@ -272,7 +276,7 @@ Use `timeout: 1860000` on the foreground Bash tool call. The harness auto-backgr
    ```
 
    Keep append-record bound to `--tmpdir "$RESEARCH_TMPDIR"`. Keep active-ledger ingestion bound to `RESEARCH_TMPDIR`. The active-ledger command unsets inherited explicit ledger, session ID, implementation tmpdir, design tmpdir, and session-env variables so validation sidecars cannot write to a leaked parent ledger or slug. Absent sidecars are no-ops. Ingestion is independent of collector status. The zero-externals branch skips this block because `python/cli.py agent collect-results` is not invoked and no validation lane sidecars exist.
-3. **Runtime fallback replacement**: For launch-class failures (`TIMED_OUT`, `SENTINEL_TIMEOUT`, `EMPTY_OUTPUT`, `FAILED`, `CURSOR_EMPTY_RESPONSE`), follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` to flip the availability flag, then immediately launch the matching single Claude Code Reviewer subagent fallback and wait for it before negotiation. For `STATUS=NOT_SUBSTANTIVE`, do not launch a Claude replacement and do not feed the narrative file into validation merge. Record a dropped-lane marker such as `[lane dropped: collector NOT_SUBSTANTIVE]`, set the lane-status token to `fallback_runtime_failed` with sanitized `FAILURE_REASON`, and continue with remaining validation lanes.
+3. **Runtime fallback replacement**: For launch-class failures (`TIMED_OUT`, `SENTINEL_TIMEOUT`, `EMPTY_OUTPUT`, `FAILED`, `CURSOR_EMPTY_RESPONSE`), follow the **Runtime Timeout Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` to flip the availability flag, surgically rewrite the matching `VALIDATION_*` status/reason slice to the fallback token before any fallback launch, then immediately launch the matching single Claude Code Reviewer subagent fallback and wait for it before negotiation. For `STATUS=NOT_SUBSTANTIVE`, do not launch a Claude replacement and do not feed the narrative file into validation merge. Record a dropped-lane marker such as `[lane dropped: collector NOT_SUBSTANTIVE]`, set the lane-status token to `fallback_runtime_failed` with sanitized `FAILURE_REASON`, and continue with remaining validation lanes.
 4. Merge only `STATUS=OK` external reviewer findings, pre-launch Claude fallback findings, and launch-class runtime-fallback Claude findings into the always-on Claude lane findings.
 5. **Update lane-status.txt (VALIDATION_* slice only)**: surgically update only the `VALIDATION_*` slice — `RESEARCH_*` keys must be preserved verbatim. Map `STATUS != OK` to the lane-status token:
    - `STATUS=TIMED_OUT` or `SENTINEL_TIMEOUT` → token `fallback_runtime_timeout`, reason empty
