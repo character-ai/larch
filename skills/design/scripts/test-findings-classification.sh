@@ -194,17 +194,17 @@ assert_cell "$W2/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
 assert_all_rows_23_fields "$W2/out.tsv"
 
-echo "=== waterfall fallback preserves slot index and runtime tool ==="
+echo "=== bare --voter slots default to semantic labels ==="
 W2W="$TMPROOT/case2-waterfall"
 mkdir -p "$W2W"
 write_ballot "$W2W/ballot.md"
 cp "$CLAUDE" "$W2W/voter-1-claude.txt"
 cp "$CLAUDE" "$W2W/voter-2-claude-fallback.txt"
 cp "$CURSOR" "$W2W/voter-3-cursor.txt"
-"${TALLY[@]}" --ballot-file "$W2W/ballot.md" --design-tmpdir "$W2W/design" --findings-classification-out "$W2W/out.tsv" --voter "1:Claude:$W2W/voter-1-claude.txt" --voter "2:Claude:$W2W/voter-2-claude-fallback.txt" --voter "3:Cursor:$W2W/voter-3-cursor.txt" >/dev/null
-assert_cell "$W2W/out.tsv" FINDING_1 v1_tool Claude
-assert_cell "$W2W/out.tsv" FINDING_1 v2_tool Claude
-assert_cell "$W2W/out.tsv" FINDING_1 v3_tool Cursor
+"${TALLY[@]}" --ballot-file "$W2W/ballot.md" --design-tmpdir "$W2W/design" --findings-classification-out "$W2W/out.tsv" --voter "1:$W2W/voter-1-claude.txt" --voter "2:$W2W/voter-2-claude-fallback.txt" --voter "3:$W2W/voter-3-cursor.txt" >/dev/null
+assert_cell "$W2W/out.tsv" FINDING_1 v1_tool codex-validity
+assert_cell "$W2W/out.tsv" FINDING_1 v2_tool codex-plan-fidelity
+assert_cell "$W2W/out.tsv" FINDING_1 v3_tool codex-pragmatism
 assert_cell "$W2W/out.tsv" FINDING_1 v2_vote YES
 assert_cell "$W2W/out.tsv" FINDING_10 v2_vote NO
 assert_all_rows_23_fields "$W2W/out.tsv"
@@ -218,16 +218,17 @@ cp "$CLAUDE" "$W2E/codex-vote-output.txt"
 assert_cell "$W2E/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W2E/out.tsv" FINDING_1 v2_tool ""
 
-echo "=== legacy --voter-files keeps basename fallback ==="
+echo "=== semantic --voter-files keeps semantic basename labels ==="
 W2L="$TMPROOT/case2-legacy"
 mkdir -p "$W2L/design/plan-review"
 write_ballot "$W2L/ballot.md"
-cp "$CLAUDE" "$W2L/claude-vote-output-phase2.txt"
-cp "$CURSOR" "$W2L/cursor-vote-output-phase3.txt"
-"${TALLY[@]}" --ballot-file "$W2L/ballot.md" --design-tmpdir "$W2L/design" --findings-classification-out "$W2L/out.tsv" --voter-files "$W2L/claude-vote-output-phase2.txt" "$W2L/cursor-vote-output-phase3.txt" >/dev/null 2>"$W2L/legacy.err"
-assert_cell "$W2L/out.tsv" FINDING_1 v1_tool Claude
-assert_cell "$W2L/out.tsv" FINDING_1 v2_tool ""
-assert_cell "$W2L/out.tsv" FINDING_1 v3_tool Cursor
+cp "$CLAUDE" "$W2L/codex-validity-vote-output.txt"
+cp "$CURSOR" "$W2L/cursor-plan-fidelity-vote-output.txt"
+cp "$CLAUDE" "$W2L/codex-pragmatism-vote-output.txt"
+"${TALLY[@]}" --ballot-file "$W2L/ballot.md" --design-tmpdir "$W2L/design" --findings-classification-out "$W2L/out.tsv" --voter-files "$W2L/codex-validity-vote-output.txt" "$W2L/cursor-plan-fidelity-vote-output.txt" "$W2L/codex-pragmatism-vote-output.txt" >/dev/null 2>"$W2L/legacy.err"
+assert_cell "$W2L/out.tsv" FINDING_1 v1_tool codex-validity
+assert_cell "$W2L/out.tsv" FINDING_1 v2_tool cursor-plan-fidelity
+assert_cell "$W2L/out.tsv" FINDING_1 v3_tool codex-pragmatism
 grep -Fq 'deprecated: --voter-files; use --voter <SLOT>:<PATH>' "$W2L/legacy.err" || fail "legacy deprecation warning missing"
 
 echo "=== quiet-mode parser capture and partial-row TSV ==="

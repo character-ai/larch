@@ -347,6 +347,13 @@ def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -
         "pragmatic": "default",
         "requirements": "default",
     }
+    resolved_by_focus = {str(row["focus_area"]): str(row.get("resolved_model")) for row in codex_rows}
+    assert resolved_by_focus == {
+        "arch": config.CODEX_REVIEW_MODEL_DEFAULT,
+        "innovation": config.CODEX_REVIEW_MODEL_DEFAULT,
+        "pragmatic": config.CODEX_DEFAULT_MODEL,
+        "requirements": config.CODEX_DEFAULT_MODEL,
+    }
     assert len({str(row["focus_area"]) for row in codex_rows}) == len(codex_rows)
     assert _argval(waterfall_args, "--model-role") == "default"
 

@@ -637,7 +637,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
             return subprocess.CompletedProcess(
                 argv,
                 0,
-                f"DISPATCH_OK=true\nVOTER_1_PATH={design / 'vote.txt'}\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n",
+                f"DISPATCH_OK=true\nVOTER_1_PATH={design / 'codex-validity-vote-output.txt'}\nVOTER_1_TOOL=codex-validity\nVOTER_1_STATUS=launched\n",
                 "",
             )
         if argv[:2] == ["plan-review", "tally"]:
@@ -834,8 +834,8 @@ def _install_execute_round_fake(
                 argv,
                 0,
                 "DISPATCH_OK=true\n"
-                f"VOTER_1_PATH={design / 'claude-vote-output.txt'}\n"
-                "VOTER_1_TOOL=claude\n"
+                f"VOTER_1_PATH={design / 'codex-validity-vote-output.txt'}\n"
+                "VOTER_1_TOOL=codex-validity\n"
                 "VOTER_1_STATUS=launched\n",
                 "",
             )
@@ -1878,9 +1878,9 @@ def test_execute_round_degraded_usable_voter_dispatch(
     _ = plan_file.write_text("plan\n", encoding="utf-8")
     _ = feature_file.write_text("feature\n", encoding="utf-8")
     reviewer_file = design / "cursor-plan-arch-output.txt"
-    voter_1_path = design / "claude-vote-output.txt"
-    voter_2_path = design / "codex-vote-output.txt"
-    voter_3_path = design / "cursor-vote-output.txt"
+    voter_1_path = design / "codex-validity-vote-output.txt"
+    voter_2_path = design / "codex-plan-fidelity-vote-output.txt"
+    voter_3_path = design / "codex-pragmatism-vote-output.txt"
     tally_calls: list[list[str]] = []
 
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -1926,15 +1926,15 @@ def test_execute_round_degraded_usable_voter_dispatch(
                 "DISPATCH_OK=true\n"
                 "DEGRADED_PANEL=1\n"
                 f"VOTER_1_PATH={voter_1_path}\n"
-                "VOTER_1_TOOL=claude\n"
+                "VOTER_1_TOOL=codex-validity\n"
                 "VOTER_1_STATUS=failed\n"
                 "VOTER_1_PARSE_RATE_STATUS=SKIPPED\n"
                 f"VOTER_2_PATH={voter_2_path}\n"
-                "VOTER_2_TOOL=codex\n"
+                "VOTER_2_TOOL=codex-plan-fidelity\n"
                 "VOTER_2_STATUS=launched\n"
                 "VOTER_2_PARSE_RATE_STATUS=OK\n"
                 f"VOTER_3_PATH={voter_3_path}\n"
-                "VOTER_3_TOOL=cursor\n"
+                "VOTER_3_TOOL=codex-pragmatism\n"
                 "VOTER_3_STATUS=launched\n"
                 "VOTER_3_PARSE_RATE_STATUS=OK\n",
                 "",

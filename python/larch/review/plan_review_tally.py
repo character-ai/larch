@@ -49,6 +49,11 @@ _VALID_SLOTS = {
     "claude",
     "MainAgent",
 }
+_SEMANTIC_SLOT_TO_TOOL = {
+    "1": "codex-validity",
+    "2": "codex-plan-fidelity",
+    "3": "codex-pragmatism",
+}
 _BODY_SEVERITY_PREFIX = re.compile(r"^[\s-]*\*\*Severity\*\*:[ \t]*")
 _FULL_PANEL = 3
 LABEL_MAP_MIN_COLS = 2
@@ -200,13 +205,16 @@ class _Tally:
     def _infer_voter_slot(*, path: str, index: int) -> str:
         base = Path(path).name.lower()
         semantic_markers = (
-            ("1", ("codex-validity-vote-output", "cursor-validity-vote-output")),
-            ("2", ("codex-plan-fidelity-vote-output", "cursor-plan-fidelity-vote-output")),
-            ("3", ("codex-pragmatism-vote-output", "cursor-pragmatism-vote-output")),
+            ("codex-validity-vote-output", "codex-validity"),
+            ("cursor-validity-vote-output", "cursor-validity"),
+            ("codex-plan-fidelity-vote-output", "codex-plan-fidelity"),
+            ("cursor-plan-fidelity-vote-output", "cursor-plan-fidelity"),
+            ("codex-pragmatism-vote-output", "codex-pragmatism"),
+            ("cursor-pragmatism-vote-output", "cursor-pragmatism"),
         )
-        for slot, markers in semantic_markers:
-            if any(marker in base for marker in markers):
-                return slot
+        for marker, label in semantic_markers:
+            if marker in base:
+                return label
         if "claude" in base:
             return "Claude"
         if "codex" in base:
@@ -236,8 +244,12 @@ class _Tally:
     @staticmethod
     def _canonical_tool_for_slot(slot: str) -> str:
         return {
-            "Claude": "Claude", "Codex": "Codex", "Cursor": "Cursor",
-            "1": "Claude", "2": "Codex", "3": "Cursor",
+            "Claude": "Claude",
+            "Codex": "Codex",
+            "Cursor": "Cursor",
+            "1": _SEMANTIC_SLOT_TO_TOOL["1"],
+            "2": _SEMANTIC_SLOT_TO_TOOL["2"],
+            "3": _SEMANTIC_SLOT_TO_TOOL["3"],
         }.get(slot, slot)
 
     def _position_for_voter(self, *, tool: str, path: str) -> str:
