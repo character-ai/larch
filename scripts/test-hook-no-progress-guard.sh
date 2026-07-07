@@ -65,6 +65,24 @@ else
   fail "T1: Stop with no marker: out='$out' counter_exists=$(test -f "$D/no-progress-turns.count" && echo yes || echo no)"
 fi
 
+# --- T1b: bgjob wait state without a legacy marker does not count as no-progress ---
+mkdir -p "$D/bgjob"
+printf 'BGJOB_RC=0\nSTEP=implement-step3-checks\n' >"$D/bgjob/implement-step3-checks.result.env"
+out=$(run_hook "$(stop_event)")
+cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 0 ]; then
+  pass "T1b: bgjob result state without legacy marker → no counter"
+else
+  fail "T1b: bgjob result state should not count as no-progress: out='$out' cnt=$cnt"
+fi
+out=$(run_hook "$(prompt_event)")
+if [ -z "$out" ]; then
+  pass "T1b: bgjob result state without legacy marker → prompt allowed"
+else
+  fail "T1b: bgjob result state should not block prompt: out='$out'"
+fi
+rm -rf "$D/bgjob"
+
 # --- T2: Stop event with live marker → counter increments ---
 write_marker $$ "$(( $(date +%s) - 10 ))"
 out=$(run_hook "$(stop_event)")

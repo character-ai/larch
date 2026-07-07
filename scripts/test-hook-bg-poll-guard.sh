@@ -166,6 +166,14 @@ assert_deny "$out" 'live marker plus Read under DESIGN_TMPDIR denies' "$EXPECTED
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_deny "$out" 'live marker plus Bash ls DESIGN_TMPDIR denies' "$EXPECTED_STEP"
 
+bgjob_wait_cmd="python3 \"$REPO_ROOT/python/cli.py\" bgjob wait --step design-step3-review --tmpdir \"\$TMPDIR\" --max-wait-s 270"
+out=$(run_payload "$(payload_bash "$bgjob_wait_cmd" "$D")")
+assert_allow "$out" 'live legacy marker plus bgjob wait command allows'
+
+bgjob_wait_with_probe="$bgjob_wait_cmd && cat \"$D/.step3-review-result.env\""
+out=$(run_payload "$(payload_bash "$bgjob_wait_with_probe" "$D")")
+assert_deny "$out" 'live legacy marker plus bgjob wait with appended probe denies' "$EXPECTED_STEP"
+
 session_tmpdir_ls="ls \"\$SESSION_TMPDIR\""
 out=$(run_payload "$(payload_bash "$session_tmpdir_ls")")
 assert_deny "$out" 'live marker plus Bash ls SESSION_TMPDIR denies' "$EXPECTED_STEP"
