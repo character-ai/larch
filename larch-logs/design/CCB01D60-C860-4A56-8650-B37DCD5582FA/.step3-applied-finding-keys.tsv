@@ -1,0 +1,9 @@
+1	`design_step6.py` still treats `.bg-wait-active` as the only in-flight signal. once step 5c moves to bgjob and stops holding that marker, step 6 can see an active publish as idle and run cleanup before publish/final-summary finish.
+1	the abandoned-checks signal still comes from `.bg-wait-active`, so dead step 3 / step 5 self-review bgjobs no longer trigger the transient-infra retry path and stall recovery misclassifies killed checks legs.
+1	the inverted lint rule still does not cover the full intended `skills/` surface, especially research markdowns and seeded allowlist coverage, so `make lint` can diverge from the acceptance grep and leave `run_in_background` regressions uncaught.
+1	the new registry, result, and log paths interpolate untrusted names directly, so a crafted step/run-id or a symlinked tmpdir can escape the intended job root unless every derived path is validated and resolved safely.
+1	the new pretooluse deny hook can be bypassed if parse errors or payload-shape errors fall open, and the active-run test still needs an explicit identity rule so same-clone background launches are reliably blocked.
+2	the step 5 finalize contract still teaches abort/success handling to read `final_summary_path` from completed task-notification stdout, so the migrated step 5c path can miss the summary source and skip required final-summary emission.
+2	the shared bgjob wait contract treats `bgjob_status=done` as normal continuation without checking `bgjob_rc`, so timeout/orphaned results could be mistaken for successful completion instead of failure or stall routing.
+2	the loaded step 4 tail contract still describes the orchestrator backgrounding the fence and arming `.bg-wait-active`, so the skill surface remains stale even if the shell wrapper changes.
+2	`step-8-ship.md` still describes the old relaunch path, so the new bg-wait lint will flag the untouched contract doc and block acceptance.

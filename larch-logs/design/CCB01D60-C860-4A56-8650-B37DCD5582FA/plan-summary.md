@@ -1,0 +1,1 @@
+Replace larch's `run_in_background` waits with a Python `bgjob` daemon/wait system, migrate all long-running skill call sites to chunked foreground waits, add regression hooks and lints, and keep legacy sentinels during the transition.
