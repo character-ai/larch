@@ -1,0 +1,44 @@
+Reviewing the bgjob plan against existing process-identity and background-wait code in the repo.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/bgjob/cli.py	Registry filename omits required run-id disambiguator	The issue spec requires `~/.cache/larch/daemons/<run-id>-<step>.env`, but the plan’s `start`/`registry.py` sections never add a `--run-id` (or `LARCH_RUN_ID`) input or encode it in the registry path. Two concurrent runs that reuse the same `STEP` (research lanes, resume/re-entry, overlapping sessions) can overwrite one registry row and make `wait`/`reap` target the wrong PGID.	Add `--run-id` to `bgjob start` (default from `LARCH_RUN_ID` with the existing safe-run-id regex), name files `<run-id>-<step>.env`, and test concurrent same-step starts.
+1	in_scope	major	security	python/larch/core/process_identity.py:216-299	Plan reuses `terminate_validated_process_group` missing-leader kill path without PGID-ownership proof	When the recorded leader PID is gone, `_validated_missing_leader_members` only checks PGID membership plus `expected_signature` substring (`read_process_identity` at 226-230), then `killpg(recorded.pgid)` runs (285-299). After PGID reuse, unrelated processes in the recycled group can match a broad signature and receive SIGTERM/SIGKILL, breaking acceptance criterion 2.	Before any `reap`/budget kill via this path, require full leader identity match (`pid`+`pgid`+`start_time`+`command_signature`) or prove the PGID still owns the recorded daemon worker; on failure delete the registry entry only and emit a refusal log (mirror `dispatch_leg.py:337-348`).
+1	in_scope	major	architecture	python/larch/bgjob/daemon.py	Double-fork start lacks a registry-write handshake contract	The plan says `start` returns in <2s with `BGJOB_STATUS=STARTED` and writes an identity-checked registry entry, but does not say which process writes the row or when identity is captured. Writing from the parent before `setsid`/exec stabilizes risks recording the wrong PID/PGID/command (existing stable capture is `_read_stable_process_identity` in `dispatch_leg.py:119-125`).	Have the session-leader daemon write the registry after `setsid` and stable identity capture; block `start` stdout until the row exists (or fail closed), matching the active-leg publish pattern.
+1	in_scope	major	correctness	python/larch/bgjob/registry.py	`reap` fail-closed signaling contract is not pinned in implementation files	Acceptance criterion 2 requires removing a recycled-PID orphan without killing the new owner. The plan states the behavior in edge cases/acceptance text but `registry.py`/`cli.py` only say “cleans identity-verified stale jobs,” leaving room for a reap path that signals on partial matches.	Spell out in `reap`: run full `validate_process_identity` (pid, pgid, start_time, command) before any signal; on any mismatch unlink the registry row, log refusal, and never call `killpg`/`kill`.
+
+### 1. Registry key must include run-id (`python/larch/bgjob/cli.py`, proposed)
+The binding issue requires `~/.cache/larch/daemons/<run-id>-<step>.env`. The plan’s `registry.py` / `cli.py` sections describe registry storage but never wire `--run-id` or `LARCH_RUN_ID` into the filename. Same `STEP` names are reused across lanes and retries, so concurrent runs can clobber one registry entry and misroute `wait`/`reap`.
+
+### 2. Missing-leader kill path is not recycled-PGID-safe (`python/larch/core/process_identity.py:216-299`)
+Existing termination logic that bgjob is told to wrap already has a weak branch when the leader PID is absent:
+
+```216:234:python/larch/core/process_identity.py
+def _validated_missing_leader_members(
+    *,
+    recorded: RecordedProcessIdentity,
+    runner: proc.Runner,
+) -> tuple[int, ...] | None:
+    descendants = collect_process_group_members(pgid=recorded.pgid, runner=runner)
+    if not descendants:
+        return None
+    validated_members: list[int] = []
+    for child in descendants:
+        child_identity = read_process_identity(
+            pid=child,
+            runner=runner,
+            expected_signature=recorded.expected_signature,
+        )
+        if child_identity is None or child_identity.pgid != recorded.pgid:
+            return None
+        validated_members.append(child)
+    return tuple(validated_members)
+```
+
+That path never compares `start_time` or full `command_signature`, yet still reaches `os.killpg(recorded.pgid, …)` (lines 285-299). The plan’s edge-case line (“Recycled PID or PGID must never be killed”) does not require fixing or bypassing this branch. Extend identity checks or restrict `reap` to registry deletion unless full leader identity validates.
+
+### 3. Double-fork needs an explicit registry handshake (`python/larch/bgjob/daemon.py`, proposed)
+`dispatch_leg.py` already shows the safe pattern: capture stable identity with `_read_stable_process_identity(..., require_pgid_match=True)` before persisting (`114-125`). The plan does not say whether the foreground `start` parent or the post-`setsid` daemon writes the registry, or how `start` knows identity is stable before printing `BGJOB_STATUS=STARTED`. Without that contract, the first registry row can record the wrong process.
+
+### 4. `reap` must be spelled out as signal-only-on-full-match (`python/larch/bgjob/registry.py`, proposed)
+Acceptance criterion 2 is explicit, but implementation files only say “identity-verified stale jobs.” Pin: full four-field validation before any signal; mismatch → unlink registry + refusal log, no `killpg`. `kill_active_leg` already refuses on failed validation (`dispatch_leg.py:337-348`); `reap` should follow the same fail-closed rule.
+
+**Inspected:** `python/larch/core/process_identity.py`, `python/tests/core/test_process_identity.py`, `python/larch/implement/dispatch_leg.py`, `python/larch/implement/bg_wait.py`, `python/larch/io.py`, `python/larch/design/design_core.py`, `python/larch/state/session_env.py`, `scripts/hook-bg-poll-guard.sh`, `scripts/hook-no-progress-guard.sh`, `scripts/cleanup-sessionstart.sh`, `python/larch/review/plan_review.py` (orphan-timeout helper).

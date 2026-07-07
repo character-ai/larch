@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real doc drift, but this issue can ship without converting the Step 18 cleanup reference; issue 2 owns the legacy-marker teardown.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan already names `skills/implement/scripts/step-8-ship.md`; the alleged non-existent path is not present here.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior round's external-reviewers `run_in_background` issue.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior round's `/larch:status` wiring issue.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior round's consecutive-bash lint escape-hatch issue.
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

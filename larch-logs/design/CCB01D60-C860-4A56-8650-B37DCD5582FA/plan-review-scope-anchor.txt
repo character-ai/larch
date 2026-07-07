@@ -1,0 +1,134 @@
+Replace harness-notification background waits with larch-owned daemons plus chunked foreground waits (`bgjob start` / `bgjob wait`)
+
+## Problem
+
+Every long-running larch step (plan review, code review, checks, ship-pr, research lanes) is launched today via Bash `run_in_background: true` and waits on `<task-notification>` for completion. That primitive is undocumented, fires before process exit, re-fires on every turn-end, cannot be suppressed (upstream anthropics/claude-code#18544, closed not-planned), and cannot be intercepted by any hook (anthropics/claude-code#39027). We have shipped ~20 mitigation PRs since 2026-06-13 (#5240, #5478, #5511, #5610, #5635, #5638, #5639, #5684, #5780, #5781, #5927, #6268, #6309, #6448, #6478, #6493, #6508 …) and incidents still recur daily, because the defense layers can only reduce probability, quiet turns, and bound loops — never reach zero. Full analysis: consolidated upstream report anthropics/claude-code#74982.
+
+This issue removes the dependency on `run_in_background` and `<task-notification>` entirely. Issue 2 (filed separately, blocked on this one) deletes the obsolete defense stack.
+
+## Verified platform facts this design relies on (Claude Code 2.1.201, tested 2026-07-06)
+
+1. Foreground-to-background auto-conversion fires at the call's **effective timeout** (the `timeout` param, else 120s default), not at a fixed threshold: a 130s command with `timeout=300000` completed in the foreground; the same command with no param converted at 120s.
+2. A raised `BASH_MAX_TIMEOUT_MS` is honored at validation **and runtime**: a 630s command under `BASH_MAX_TIMEOUT_MS=700000` with `timeout=660000` completed in the foreground.
+3. With `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1`, `run_in_background` is removed from the tool schema (InputValidationError if passed) and timeout expiry is a clean SIGTERM kill (exit 143) instead of a conversion.
+4. Bare foreground `sleep N && …` is blocked pre-execution by the harness; wrapped helpers are not.
+
+## New machinery (normative behavior contracts; module layout may be refined by /design)
+
+New Python package, proposed `python/larch/bgjob/`, exposed as `python3 python/cli.py bgjob {start,wait,status,reap}`. Stdlib-only, per repo convention.
+
+### `bgjob start --step NAME --tmpdir DIR --budget-s N [--log-dir DIR] -- CMD [ARGS…]`
+
+Runs as a short foreground call (< 2s) from the step wrapper or orchestrator:
+
+- Double-fork + `setsid` the real command into its own session/process group. The daemon is never a child of the Bash tool process, so the harness has nothing to track, notify about, or auto-background.
+- Record in a registry entry (`~/.cache/larch/daemons/<run-id>-<step>.env`): PGID, PID **plus process start-time identity** (never bare PID — #6213 lesson: PID wraparound), START_EPOCH, BUDGET_S, TMPDIR, CLONE_PATH, owning-session identity.
+- Daemon stdout/stderr go to log files under `--log-dir` (default `$TMPDIR/bgjob/`). The daemon writes **nothing** to any harness-visible stream.
+- On child exit: write `$TMPDIR/bgjob/<step>.result.env` atomically (`tmp` + `mv`) containing `BGJOB_RC`, `BGJOB_ELAPSED_S`, and the step's existing KV result block; then remove the registry entry. During the transition the daemon also keeps writing the step's existing terminal sentinel (e.g. `.completed/step-5-terminal`) so downstream routing is untouched; sentinel retirement is issue 2's audit.
+- **Budget self-expiry (primary orphan containment)**: at `BUDGET_S`, kill own process group, write result with `BGJOB_RC=timeout`.
+- **Dead-man switch (secondary)**: every 60s verify the owning session is alive (PID + start-time identity match); if gone for a 120s grace window, kill own group and write `BGJOB_RC=orphaned`.
+- Print exactly one stdout line: `BGJOB_STATUS=STARTED STEP=<name> PGID=<n>`.
+
+### `bgjob wait --step NAME --tmpdir DIR --max-wait-s 270`
+
+Foreground call, invoked with Bash `timeout: 330000`:
+
+- Poll the result file every 1–2s. Return immediately with `BGJOB_STATUS=DONE` + the full result KV block when it exists.
+- Each poll cross-checks daemon liveness (PGID + identity): daemon gone with no result → return `BGJOB_STATUS=DEAD BGJOB_DIAG=…` immediately (include a redacted stderr-log tail), never hang.
+- At `--max-wait-s` (270s), return `BGJOB_STATUS=WAIT ELAPSED_S=<n>`.
+- Internal `SIGALRM` hard deadline at max-wait + 30s: a wedged wait can never outlive its own tool call. 270s < 300s prompt-cache TTL < 330s tool timeout < 600s harness cap — auto-backgrounding is structurally unreachable (fact 1 above).
+- Exit 0 for DONE/WAIT/DEAD (status is in stdout KV); exit 2 with `BGJOB_ERROR=…` only for internal invariant failures.
+
+### `bgjob status` / `bgjob reap`
+
+- `status`: list registry entries with liveness verdicts (for `/larch:status` and debugging).
+- `reap`: kill + clean identity-verified orphans past budget or with dead owners (tertiary containment). Wire into `scripts/cleanup-sessionstart.sh` and `/cleanup`.
+
+### Orchestrator contract (replaces the premature-notification recovery labyrinth)
+
+One shared doc, proposed `skills/shared/bgjob-wait.md`, referenced by all migrated call sites:
+
+> Launch the step with `bgjob start` (foreground). Print the step breadcrumb. Then call `bgjob wait --max-wait-s 270` with `timeout: 330000` in a loop: on `WAIT`, call it again with no other tool call, no Read, and no prose in between; on `DONE`, parse the printed KV block and continue the step; on `DEAD`, route to the step's existing failure handling. Never launch the step with `run_in_background`, never use Monitor or TaskOutput for it, and never sleep between waits.
+
+Optional cost refinement (decide in /design, not required for correctness): a cheap waiter-subagent mode where the orchestrator delegates the wait loop to a minimal foreground agent so chunk polls re-read a ~3k-token context instead of the orchestrator's full context. Direct-loop mode is the baseline and the fallback.
+
+### Enforcement (prevents regression to run_in_background)
+
+- New small PreToolUse hook (~80 lines, replaces nothing yet — issue 2 removes the old guards): deny any Bash call with `run_in_background: true` while a larch run is active in the owning clone. Unlike task-notifications, tool calls are reliably interceptable by hooks.
+- Repurpose `lint bg-wait-coverage` into its inverse: fail if `run_in_background` appears in `skills/` outside an explicit allowlist doc. (Old lint retirement is issue 2.)
+- Optional, documented for operators in `docs/configuration-and-permissions.md` (not forced by the plugin): `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` for dedicated autonomous runner sessions makes "no background task can exist" schema-level (fact 3). Must only be suggested once this migration is complete, and noting it also disables background subagents and Ctrl+B.
+
+## Migration inventory — every current spawn site switches to `bgjob start` + `bgjob wait`
+
+Launch-site wrappers keep their names; their body becomes: arm step preconditions → `exec` the real work under `bgjob start` → return. All banner/breadcrumb printing moves to the orchestrator turn or the daemon log; wrappers write zero bytes to harness-visible stdout (this permanently retires the #6508 Fix-1 class).
+
+/design:
+1. `skills/design/scripts/design-step3-review.sh` (STEP `design-step3-review`, Step 3 plan-review loop) + its SKILL.md fence and `skills/design/references/plan-review.md`.
+2. `skills/design/scripts/design-step3b-tail.sh` (STEP `design-step4-tail`, Step 4 debate tail).
+3. `python/larch/design/design_step5c.py` (STEP `design-step5c`).
+4. `python/larch/design/design_step6.py` / `design_core.py` (STEP `design-step-final-summary`).
+5. `skills/design/references/brainstorm.md` backgrounded fence (Step 1d), if still backgrounded at implementation time.
+
+/implement:
+6. `skills/implement/scripts/run-step-checks.sh` (STEPs `implement-step3-checks`, `implement-step6-checks`).
+7. `skills/implement/scripts/step-5-review.sh` (STEP `implement-step5-review`) — also fold the existing detach/reattach machinery (`.step5-wrapper-detached`, `.step5-reattach-active`, `write-loop-identity` / `await-loop-identity` / `teardown-loop-identity`) into the bgjob daemon+registry model instead of maintaining a parallel bespoke one; `implement-step5-resume` and `implement-step5-self-review` variants migrate with it (`skills/implement/references/self-review.md`).
+8. `skills/implement/scripts/step-6-entry.sh`.
+9. `python/larch/implement/step_7a.py` (STEP `implement-step7a`).
+10. `skills/implement/scripts/step-8-ship.sh` (STEP `implement-step8-ship`) + `step-8-ship.md`, `references/ship-pr-ci-fix.md`, `references/ship-pr-exit-matrix.md` (CI-wait legs), `references/conflict-resolution.md`, `references/stall-recovery.md` backgrounded fences.
+11. `python/larch/implement/dispatch_commit_route.py` marker writer.
+
+/review: whatever `/review --diff` backgrounds via `python/larch/review/review_and_fix.py` / `plan_review_loop.py` when invoked standalone (audit at implementation; same contract).
+
+/research: backgrounded lane fences in `skills/research/references/research-phase.md` and `validation-phase.md`.
+
+Each migrated site's SKILL.md/reference text replaces its bg-wait/notification instructions with one pointer to `skills/shared/bgjob-wait.md`.
+
+## Acceptance criteria
+
+1. `git grep -l "run_in_background" skills/` returns only the allowlist doc and historical run logs; the new lint enforces this in `make lint`.
+2. Orphan containment (addresses review criticism 1): harness test kills the owning session mid-run → daemon self-terminates within grace and writes `BGJOB_RC=orphaned`; a budget-expired daemon self-kills and writes `BGJOB_RC=timeout`; `bgjob reap` removes a synthetic orphan with a recycled PID **without** killing the PID's new owner (identity check, #6213 regression pin).
+3. Wait-cost bound (addresses review criticism 2): `bgjob wait` never blocks past `--max-wait-s + 30s` (SIGALRM pin); default chunk stays 270s.
+4. No harness-visible stdout before completion: harness test asserts a migrated wrapper's foreground output is exactly the one `BGJOB_STATUS=STARTED` line.
+5. `bgjob wait` returns `DEAD` within one poll interval after the daemon is killed externally (no indefinite WAIT loops).
+6. End-to-end: one full `/design` run and one full `/implement --merge` run on a MODERATE issue complete with zero `<task-notification>` entries in the session transcript, and the committed run log shows no notification-recovery turns.
+7. All new code is stdlib-only Python behind `python3 python/cli.py`, with pytest coverage under `python/tests/bgjob/`; `make py-lint py-test` and affected `test-harnesses` shards pass.
+8. Existing terminal sentinels are still written during transition (routing untouched); `docs/workflow-lifecycle.md` and `skills/design/references/sentinel-host-table.md` updated to describe the bgjob result-env as the completion source of truth.
+
+## Explicit non-goals (deferred to issue 2)
+
+Removal of: `scripts/hook-bg-poll-guard.sh`, `scripts/hook-no-progress-guard.sh`, the task-output half of `scripts/hook-anti-read-poll.sh`, their tests and Makefile/hooks.json wiring, `.bg-wait-active` + no-progress sidecar machinery, `python/larch/implement/bg_wait.py`, the two bg-wait lints, `skills/shared/design-background-wait.md`, `.claude/rules/wrapper-sentinel-before-stdout.md`, orchestrator-never items 3–5, and the AGENTS.md notification paragraphs. This issue must leave those functional (they are inert but harmless once nothing runs in background) so the two PRs stay independently revertable.
+
+## Relationship to existing issues
+
+- #6508: its two tactical fixes (banner to stderr; clamp case extension) may land first as stop-the-bleeding; this issue makes both permanent by construction and supersedes that fix class.
+- Upstream evidence and asks: anthropics/claude-code#74982.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Remove every larch dependency on Bash `run_in_background` and `<task-notification>` waits.
+- Ship stdlib-only `python3 python/cli.py bgjob {start,wait,status,reap}`: setsid daemons, identity-checked registry, atomic result envs, budget self-expiry, dead-man switch, reap.
+- Replace background waits with chunked foreground `bgjob wait` loops (270s chunks, `timeout: 330000`) per one shared contract doc.
+
+### Non-goals
+- No waiter-subagent wait mode, now or later (explicit user refusal). Direct-loop is the only wait topology.
+- No removal of the legacy defense stack (bg-poll hooks, bg-wait machinery, `design-background-wait.md`); issue 2 owns deletion.
+- No behavior change to step routing: existing terminal sentinels keep being written during transition.
+
+### Approach sketch
+- New package `python/larch/bgjob/` behind `python3 python/cli.py bgjob ...`; daemon is double-forked + `setsid`, never a child of the Bash tool; registry entries carry PID + start-time identity (never bare PID).
+- New `skills/shared/bgjob-wait.md` orchestrator contract; every migrated call site points at it.
+- Migrate all inventory spawn sites (5 /design, 6 /implement, /review audit, /research lanes) to `bgjob start` + looped `bgjob wait`; wrappers emit exactly one `BGJOB_STATUS=STARTED` stdout line.
+- New PreToolUse hook denies `run_in_background: true` while a larch run is active; repurpose `lint bg-wait-coverage` into its inverse allowlist lint.
+- Document optional `CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1` for dedicated runner sessions in `docs/configuration-and-permissions.md`.
+
+### Surfaces in scope
+- `python/larch/bgjob/` (new), `python/cli.py`, `python/tests/bgjob/` (new)
+- `skills/shared/bgjob-wait.md` (new); migrated fences and references in `skills/design/`, `skills/implement/`, `skills/research/`; `python/larch/review/` standalone audit
+- `python/larch/design/design_step5c.py`, `design_step6.py`/`design_core.py`, `python/larch/implement/step_7a.py`, `dispatch_commit_route.py`
+- `hooks/hooks.json` + new hook script, `python/larch/lint/lint_bg_wait_coverage.py`, `scripts/cleanup-sessionstart.sh`, `docs/workflow-lifecycle.md`, `docs/configuration-and-permissions.md`, `skills/design/references/sentinel-host-table.md`
+
+### Open questions
+- None.

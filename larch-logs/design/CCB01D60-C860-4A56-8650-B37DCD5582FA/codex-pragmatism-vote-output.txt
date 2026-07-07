@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the stale marker use is real, but issue 2 explicitly defers this recovery stack, so it is not necessary for this migration
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicates prior-round OOS_4 without materially new evidence
+FINDING_5: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=uncertain UNCERTAIN=true -- the plan already gives the research lanes stable slot names, so this collision concern is speculative and not clearly required
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the anchor already targets skills/implement/scripts/step-8-ship.sh; there is no missing Step 8 path
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the anchor explicitly wires bgjob status to /larch:status and debugging, so this is contradicted by the plan
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
