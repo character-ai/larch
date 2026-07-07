@@ -126,6 +126,7 @@ STEP5C_PUBLISH_RESULT_ALLOW_KEYS = (
     "PR_URL",
     "RECOVERY_BRANCH",
     "LOG_RECOVERY_BRANCH",
+    "PUBLISH_REFUSE_REASON",
 )
 
 
@@ -331,7 +332,7 @@ def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
 
 
 _AUTO_COMPOSE_OPTIONAL_TRAILER_RE = re.compile(
-    r"^(difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: \d+|diff_deleted: \d+|mechanical_churn: .+)$"
+    r"^(difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: \d+|diff_deleted: \d+|mechanical_churn: .+|oversize_override: operator)$"
 )
 
 
@@ -394,6 +395,8 @@ def _optional_trailer_lines_from_values_file(values_path: Path) -> list[str]:
             lines.append(f"diff_deleted: {value}\n")
         elif key == "mechanical_churn" and value in {"true", "false"}:
             lines.append(f"mechanical_churn: {value}\n")
+        elif key == "oversize_override" and value == config.OVERSIZE_OVERRIDE_OPERATOR:
+            lines.append(f"oversize_override: {value}\n")
     return lines
 
 
@@ -656,6 +659,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     ("VALIDATE_UNSAFE_TOKEN_COUNT", result_env.get("VALIDATE_UNSAFE_TOKEN_COUNT", "")),
                     ("VALIDATE_MISSING_SCRIPT_COUNT", result_env.get("VALIDATE_MISSING_SCRIPT_COUNT", "")),
                     ("VALIDATE_LOG_FILE", result_env.get("VALIDATE_LOG_FILE", "")),
+                    ("PUBLISH_REFUSE_REASON", result_env.get("PUBLISH_REFUSE_REASON", "")),
                     ("FINAL_SUMMARY_PATH", final_summary_path),
                     ("UPSERT_STATUS", result_env.get("UPSERT_STATUS", "")),
                     ("ARCHITECTURE_SOURCE", result_env.get("ARCHITECTURE_SOURCE", "")),

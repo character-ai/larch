@@ -138,6 +138,18 @@ def test_trailing_plan_metadata_lines_remains_contiguous_final_trailer_only() ->
     assert difficulty.trailing_plan_metadata_lines(text) == ("difficulty: MODERATE", "diff_lines: 9")
 
 
+def test_trailing_plan_metadata_lines_accepts_oversize_override() -> None:
+    text = "body\nreview_status: complete\nrounds_completed: 2\ndifficulty: MODERATE\noversize_override: operator\ndiff_lines: 9\n"
+
+    assert difficulty.trailing_plan_metadata_lines(text) == (
+        "review_status: complete",
+        "rounds_completed: 2",
+        "difficulty: MODERATE",
+        "oversize_override: operator",
+        "diff_lines: 9",
+    )
+
+
 def test_operator_override_beats_floors_and_audit_can_upgrade(tmp_path: Path) -> None:
     record = difficulty.build_record(
         rater="implement",

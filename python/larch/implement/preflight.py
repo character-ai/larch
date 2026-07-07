@@ -441,7 +441,7 @@ def _plan_review_meta_value(*, plan_path: Path, key: str) -> str:
     if diff_idx < 0:
         return ""
     start = diff_idx
-    allowed = ("review_status: ", "rounds_completed: ", "difficulty: ", "diff_added: ", "diff_deleted: ", "mechanical_churn: ")
+    allowed = ("review_status: ", "rounds_completed: ", "difficulty: ", "diff_added: ", "diff_deleted: ", "mechanical_churn: ", "oversize_override: ")
     for index in range(diff_idx - 1, -1, -1):
         line = lines[index]
         if line.startswith(allowed):

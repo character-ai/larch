@@ -36,7 +36,7 @@ Diagnostics:
 | `gate-b-validator-fail` | Read allowlisted validator keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env`, then execute **### Plan command validator failure (shared)** with site `design Step 3.5 / Gate B`. Fix-and-retry re-enters settle with `--round-num` when bound. |
 | `gate-a-validator-fail` | Execute **### Plan command validator failure (shared)** with site `design discussion-round2`. Fix-and-retry re-enters settle. |
 | `pause` | Stop at the delegated pause boundary. |
-| `gate-b-hard-size` | Run the existing Gate B hard plan-size prompt. Override uses `python/cli.py design step2b-postplan --write-completion-only` before continuing. |
+| `gate-b-hard-size` | Run the existing Gate B hard plan-size prompt. Override uses `python/cli.py plan set-oversize-override --design-tmpdir "$DESIGN_TMPDIR"`, deletes `$DESIGN_TMPDIR/composed-plan.md`, then runs `python/cli.py design step2b-postplan --write-completion-only` before continuing. |
 | `gate-a-hard-size` | **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before dispatch. Use the retained Step 2b.5 behavior. |
 | `gate-b-split` | Run Split-path only. Non-exiting Split returns use `python/cli.py design step2b-postplan --write-completion-only` before continuing. |
 | `gate-a-split` | Run Split-path per `decompose-panel.md`. |

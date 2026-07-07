@@ -113,7 +113,7 @@ Explicit-mode prompt details live in `skills/design/references/approval-gates-ex
 
 ### Apply-all body
 
-Before any Write, copy `$DESIGN_TMPDIR/plan.txt` to `$DESIGN_TMPDIR/plan-pre-apply-round-N.txt` for the bound Gate B round if the snapshot is absent. Then apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:`), then Execute `### Shared post-apply pipeline` verbatim.
+Before any Write, copy `$DESIGN_TMPDIR/plan.txt` to `$DESIGN_TMPDIR/plan-pre-apply-round-N.txt` for the bound Gate B round if absent. Then apply accepted in-scope findings, rewrite `plan.txt` preserving `diff_lines: <N>` and optional size/override trailers in the final metadata block, then Execute `### Shared post-apply pipeline` verbatim.
 
 ### One-by-one iteration prompt
 
@@ -125,7 +125,7 @@ Prompt-side Gate B owns the pre-apply snapshot and inline rewrite. The settle wr
 
 After the chosen findings have been applied to `plan.txt` (full accepted set or one-by-one subset), run the same launcher-owned post-apply sequence for both Gate B branches:
 
-1. **Optional trailer guard (direct rewrites)**: before any prompt-side `plan.txt` replacement or dedup rewrite, run `"${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` to snapshot strict optional trailer keys and values (`diff_added`, `diff_deleted`, `mechanical_churn`) from the final metadata block into `$DESIGN_TMPDIR/.gate-b-optional-trailer-keys` and `.gate-b-optional-trailer-keys.values`. An empty snapshot forbids new optional trailers on later validation.
+1. **Optional trailer guard (direct rewrites)**: before prompt-side `plan.txt` replacement or dedup rewrite, run `plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` to snapshot `diff_added`, `diff_deleted`, `mechanical_churn`, and `oversize_override`. An empty snapshot forbids later optional trailers.
 2. Re-read the revised `plan.txt` and remove semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once, not just byte-identical text).
 3. Preserve intentional repetition in distinct context sections (for example, a constraint in both Approach and Edge cases); remove only true redundancy within or across the same section.
 4. Rewrite `plan.txt` via the Write tool with duplicates removed.
@@ -140,7 +140,7 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 
 ### Gate B plan revision and Step 2b.5
 
-Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no `AskUserQuestion`. A hard trigger (plan body `> 800`, or `diff_added > 2000` when present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades only the diff trigger to `SOFT_ADVISORY`) fires Split / Override / Cancel when `SIZE_TRIGGER_FIRED=true`; `--partition` cannot auto-downgrade it. `DRIFT_TRIGGER_FIRED=true` records an advisory and exits `0` without prompting. Otherwise the merged fence writes `step-2b.5` and returns to script-internal continuation. Standalone Step 2b.5 is only for Override-after-defects and standalone recovery. Authoritative contract: `python/cli.py plan check-size`. If **Cancel** or **Split** exits the skill, preserve `$DESIGN_TMPDIR` for re-run.
+Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no prompt. Hard triggers are body `> 800`, firm headings `> 25`, surfaces `> 4`, or `diff_added > 2000` / fallback `diff_lines > 1500`; `mechanical_churn: true` softens only the diff trigger. `SIZE_TRIGGER_FIRED=true` fires Split / Override / Cancel; Override writes the oversize trailer, deletes `composed-plan.md`, and writes postplan completion. Drift is advisory. Standalone Step 2b.5 is only for Override-after-defects and recovery. Contract: `python/cli.py plan check-size`.
 
 ---
 

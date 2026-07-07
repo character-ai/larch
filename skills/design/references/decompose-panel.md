@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step **2b.5 Split-path** only: after a hard trigger or `--partition` / `-p`. This file is **not** loaded during routine Step 2b plan emission, Step 3 plan review, or Gate A/B/C flows unless Split-path runs.
 
-**Contract**: single normative source for **panel input selection**, **availability-gated external dispatch** (up to four archetypes × present vendors via `python/cli.py decompose panel-dispatch` → `python/cli.py agent dispatch-waterfall --no-fallback`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed manifest cap when both tools present -->
+**Contract**: single normative source for panel input, no-fallback dispatch (up to four archetypes × present vendors), 3-stage `AskUserQuestion`, aggregator delegation, firm-heading/acceptance metadata, cycle-checked `/larch:issue` filing, serial blocked-by edges, URL annotation, original close, and idempotency under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed manifest cap when both tools present -->
 
 **When to load**: immediately when Step 2b.5 enters **Split-path (decomposition panel)** in `skills/design/SKILL.md`: read this entire file before invoking any helper below.
 
@@ -147,6 +147,8 @@ When **all four** archetypes’ usable proposals recommend `no-split` in `## Rec
 
 Chosen partition Markdown path is denoted `<PARTITION_FILE>` below (vendor output copy, aggregator output, or operator forced split).
 
+Each `### Piece N:` body must include `- Scope:`, `- Firm-headings:`, `- Acceptance:`, and `- Dependencies:`. `prepare` may derive missing firm headings from parent firm headings when a path matches a piece scope exactly or as a child, and may derive acceptance from matching `## Testing strategy` bullets. If either field stays empty, it returns `missing-piece-metadata` and files nothing.
+
 ### 7a `prepare`
 
 ```bash
@@ -159,12 +161,13 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose prepare \
 Parse `DECOMPOSE_PARTITION_STATUS` from the quiet stream / helper stdout mirror:
 
 - `cycle-detected`: print `**⚠ chosen partition has a dependency cycle: …**` (list the Kahn/Tarjan witness from the helper log if available) and re-prompt (**Pick a different proposal** / **Cancel**). Do **not** auto-fix edges.
+- `missing-piece-metadata`: print `**⚠ chosen partition lacks firm-heading or acceptance metadata for at least one piece**` and re-prompt (**Pick a different proposal** / **Cancel**).
 - `ok`: continue.
 
 Batch artifacts:
 
-- `$DESIGN_TMPDIR/decompose/partition-input.txt`: `/larch:issue --input-file` body (generic `### <title>` items).
-- `$DESIGN_TMPDIR/decompose/partition-deps.tsv`: `--intra-batch-deps-file` rows (`<blocker-1based>\t<blocked-1based>`). **Never** pass `--no-dedup` alongside this file: mutual exclusion is enforced inside `/larch:issue`.
+- `$DESIGN_TMPDIR/decompose/partition-input.txt`: `/larch:issue --input-file` body with **Firm headings**, **Acceptance**, and a placeholder `larch:plan` requiring per-piece `/design`.
+- `$DESIGN_TMPDIR/decompose/partition-deps.tsv`: `--intra-batch-deps-file` rows (`<blocker-1based>\t<blocked-1based>`). The helper emits adjacent serial edges (`1→2`, `2→3`, …), then acyclic panel edges. **Never** pass `--no-dedup` with this file.
 
 ### 7b Invoke `/larch:issue`
 
@@ -215,4 +218,4 @@ On `gh` or redactor failure, the helper appends via `python/cli.py run-log appen
 
 ## 10) Operator follow-through
 
-Do **not** auto-chain `/design` on child issues. The operator runs `/design` independently on each filed piece after the partition lands.
+Do **not** auto-chain `/design` on child issues. The operator runs `/design` independently on each filed piece; scaffolds are not `[DESIGNED]`- or `/implement`-ready until Gate C approval.

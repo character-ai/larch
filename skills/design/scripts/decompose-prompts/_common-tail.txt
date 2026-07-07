@@ -24,6 +24,8 @@ split | no-split
 
 ### Piece 1: <short title>
 - Scope: <files / behaviors covered>
+- Firm-headings: <comma-separated parent plan heading paths covered by this piece>
+- Acceptance: <one or more implementable criteria for this piece>
 - Dependencies: none | blocked-by Piece N[, Piece M ...]
 - Diff_lines estimate: <integer>
 - Why independently mergeable: <one paragraph>

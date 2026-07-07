@@ -77,7 +77,7 @@ def _is_repo(value: str) -> bool:
 
 _PROVENANCE_META_KEYS = ("review_status", "rounds_completed", "difficulty")
 _OPTIONAL_TRAILER_RE = re.compile(
-    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
+    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator)$"
 )
 _TERMINAL_STATUSES_REQUIRING_SENTINEL = frozenset({"complete", "cap-hit"})
 _REASON_TOKEN_RE = re.compile(r"REASON_TOKEN=([^ \t);,]+)")
@@ -334,6 +334,62 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
         + "".join(optional_lines)
         + "".join(lines[diff_idx:])
     )
+
+
+def _check_publish_plan_size(*, design_tmpdir: Path, plugin_root: Path) -> tuple[bool, str]:
+    plan = design_tmpdir / "plan.txt"
+    # lint-subprocess-via-runner: ok publish tail probes the sibling CLI contract exactly.
+    check_size = subprocess.run(
+        [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "plan",
+            "check-size",
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--plan-file",
+            str(plan),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "LARCH_QUIET_DISABLE": "1"},
+    )
+    size_kv = _parse_kv((check_size.stdout or "") + "\n" + (check_size.stderr or ""))
+    if check_size.returncode != 0 or size_kv.get("PLAN_SIZE_STATUS", "") != "ok":
+        return False, "size-check-failed"
+    if size_kv.get("SIZE_TRIGGER_FIRED", "") == "true":
+        return False, "oversize-no-override"
+    return True, ""
+
+
+def _publish_refusal_reason(*, design_tmpdir: Path, plugin_root: Path, blocked_reason: str) -> str:
+    if blocked_reason:
+        return f"review-provenance:{blocked_reason}"
+    size_ok, size_refusal = _check_publish_plan_size(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
+    return "" if size_ok else f"plan-size:{size_refusal}"
+
+
+def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env: Path) -> None:
+    if reason.startswith("plan-size:"):
+        size_refusal = reason.removeprefix("plan-size:")
+        print(
+            f"**⚠ 5c: publish refused: plan-size guardrail returned {size_refusal};"
+            " decompose, override, or retry /design after repair**",
+            flush=True,
+        )
+        _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value=size_refusal)
+    else:
+        blocked_reason = reason.removeprefix("review-provenance:")
+        print(
+            f"**⚠ 5c: publish refused: review provenance indicates {blocked_reason};"
+            " plan review did not complete; re-run /design**",
+            flush=True,
+        )
+    kvs[1] = ("VALIDATE_STATUS", "defects-found")
+    kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
+    _emit_rows(kvs)
+    _ = _write_result_env(path=result_env, rows=kvs)
 
 
 
@@ -678,6 +734,7 @@ def publish_core(argv: Sequence[str]) -> int:
         ("VALIDATE_LOG_FILE", ""),
         ("FINAL_SUMMARY_PATH", str(final_summary_path)),
         ("DESIGNED_ADMISSION_READY", "false"),
+        ("PUBLISH_REFUSE_REASON", ""),
     ]
     if not (design_tmpdir / ".completed" / "step-5b").is_file():
         return 5
@@ -700,16 +757,13 @@ def publish_core(argv: Sequence[str]) -> int:
         blocked_reason = "rounds_completed=0"
     elif review_status in _TERMINAL_STATUSES_REQUIRING_SENTINEL and not step3_sentinel:
         blocked_reason = f"{review_status} without .completed/step-3"
-    if blocked_reason:
-        print(
-            f"**⚠ 5c: publish refused: review provenance indicates {blocked_reason};"
-            " plan review did not complete; re-run /design**",
-            flush=True,
-        )
-        kvs[1] = ("VALIDATE_STATUS", "defects-found")
-        kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
-        _emit_rows(kvs)
-        _ = _write_result_env(path=result_env, rows=kvs)
+    refusal_reason = _publish_refusal_reason(
+        design_tmpdir=design_tmpdir,
+        plugin_root=plugin_root,
+        blocked_reason=blocked_reason,
+    )
+    if refusal_reason:
+        _emit_publish_refusal(reason=refusal_reason, kvs=kvs, result_env=result_env)
         return 4
 
     if (design_tmpdir / ".pause-requested").is_file():

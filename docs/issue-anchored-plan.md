@@ -78,6 +78,20 @@ Rules:
   remains the final non-empty line. `/design` also syncs one `difficulty:<tier>`
   issue label. `/implement` Step 0 reads `difficulty:` as a logging prior, not
   as panel-routing input.
+- Plan-size metadata is a tolerant trailing schema. Optional `diff_added: <N>`,
+  `diff_deleted: <N>`, `mechanical_churn: true|false`, and
+  `oversize_override: operator` lines may appear in the final contiguous metadata
+  block above `diff_lines: <N>`. Readers accept older plans without these lines.
+  `oversize_override: operator` records an explicit operator decision and is
+  preserved through review rewrites, composition, bootstrap materialization, and
+  `/implement` preflight scanning.
+- `/design` evaluates plan size on body lines, `diff_added` or `diff_lines`,
+  firm heading count, and distinct surfaces. Thresholds are strict: body lines
+  `> 800`, `diff_added > 2000` or fallback `diff_lines > 1500`, firm headings
+  `> 25`, and surfaces `> 4`. Step 5c re-checks the authoritative
+  `$DESIGN_TMPDIR/plan.txt` before publishing; when Override is chosen it writes
+  `oversize_override: operator`, deletes stale `composed-plan.md`, and lets
+  Step 5c recompose from `plan.txt`.
 - The `## Plan` and `## Acceptance` sub-sections are **conventional** — parsers
   do not enforce their presence or heading level.
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,
@@ -101,6 +115,16 @@ per-file scope headings.
 `### MAY_UPDATE:` paths are included in normal scope extraction and dirty-tree
 scope checks. Dispatcher untouched-file coverage excludes `### MAY_UPDATE:`
 paths, so `WARN_PLAN_FILES_UNTOUCHED` compares only firm headings.
+
+### Decomposed plan scaffolds
+
+When the plan-size guardrail sends a design through the decomposition path, each
+filed child issue contains a placeholder `larch:plan` block. The scaffold also
+records the parent firm-heading inventory and acceptance criteria for that piece.
+Child issues are serialized with adjacent `blocked-by` rows (`1→2`, `2→3`, ...),
+plus any acyclic panel dependencies. A child issue still requires its own
+`/design` and Gate C approval before it is `[DESIGNED]` or ready for
+`/implement`.
 
 ## Design Pause Block Format
 

@@ -11,13 +11,13 @@
 ## Bind the action envelope
 
 - **Retained path**: read the final whole-line `STEP2B5_NEXT_ACTION=...` row from the `python/cli.py design step2b5` fence stdout. Also bind `STEP2B5_EXIT_RC`, `STEP2B5_STATUS`, and plan-size KVs for breadcrumbs.
-- **Direct-entry path**: read allowlisted KVs from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` (never `source`): `STEP2B5_NEXT_ACTION`, `STEP2B5_EXIT_RC`, `STEP2B5_STATUS`, `SIZE_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `DRIFT_TRIGGER_FIRED`, `DRIFT_MULTIPLE`, `DRIFT_PLAN_RATIO`, `DRIFT_DIFF_RATIO`, `BASELINE_PLAN_LINES`, `BASELINE_DIFF_LINES`, `PLAN_SIZE_STATUS`, and `PARTITION_REQUESTED`.
+- **Direct-entry path**: read allowlisted KVs from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` (never `source`): `STEP2B5_*`, size/diff counts, `FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE`, advisory/drift/baseline KVs, `PLAN_SIZE_STATUS`, and `PARTITION_REQUESTED`.
 - If `STEP2B5_NEXT_ACTION` is absent, stop for repair. Do not route from process rc or raw trigger KVs when the action row is missing.
 - If `SOFT_ADVISORY=true`, print the existing mechanical-churn advisory breadcrumb before the action branch. The advisory never changes the action.
 
 ## Branch on STEP2B5_NEXT_ACTION
 
-1. **`hard-trigger`**: Print `## Plan Size: Hard Trigger` with `PLAN_LINES`, `DIFF_LINES`, and non-empty `DIFF_ADDED` / `DIFF_DELETED`. `AskUserQuestion` options are site-aware: initial Step 2b and discussion merged callers offer Split / Cancel only; retained callers offer Split / Override / Cancel. On **Override**, run `python/cli.py design step2b-postplan --write-completion-only` through the launcher and return to the retained caller. On **Cancel**, export `SUMMARY_OUTCOME=cancelled-plan-size`, run the Final summary block, print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit `0`, preserve `$DESIGN_TMPDIR`. On **Split**, run **Split-path** in `SKILL.md` **`#### Split-path (decomposition panel)`**.
+1. **`hard-trigger`**: Print `## Plan Size: Hard Trigger` with size KVs. Initial Step 2b, discussion merged, `postplan-rc12-split`, and retained callers offer Split / Override / Cancel. Override runs `plan set-oversize-override`, deletes `composed-plan.md`, then writes postplan completion. Cancel exports `SUMMARY_OUTCOME=cancelled-plan-size`, runs Final summary, exits `0`, and preserves `$DESIGN_TMPDIR`. Split runs **Split-path**.
 2. **`partition-split`**: Route directly to Split-path without an intermediate prompt. Print `## Plan Size: Partition requested` with `trigger=partition-flag` and current `PLAN_LINES` / `DIFF_LINES`, then run **Split-path** in `SKILL.md` **`#### Split-path (decomposition panel)`**.
 3. **`drift-advisory`**: Return to the caller. Merged drivers already recorded the drift warning. Retained standalone callers run `python/cli.py design step2b-postplan --write-completion-only` through the launcher before returning.
 4. **`under-threshold`**: Print `⏩ 2b.5: plan-size: under thresholds (PLAN_LINES=<n> DIFF_LINES=<n>)` and return.

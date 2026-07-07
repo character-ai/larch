@@ -51,6 +51,9 @@ POSTPLAN_EMIT_KEYS = {
     "DIFF_ADDED",
     "DIFF_DELETED",
     "MECHANICAL_CHURN",
+    "FIRM_HEADINGS",
+    "SURFACES_TOUCHED",
+    "OVERSIZE_OVERRIDE",
     "SOFT_ADVISORY",
     "PARTITION_REQUESTED",
     "DRIFT_TRIGGER_FIRED",
@@ -60,7 +63,7 @@ POSTPLAN_EMIT_KEYS = {
     "BASELINE_PLAN_LINES",
     "BASELINE_DIFF_LINES",
 }
-OPTIONAL_TRAILER_KEYS = {"diff_added", "diff_deleted", "mechanical_churn"}
+OPTIONAL_TRAILER_KEYS = {"diff_added", "diff_deleted", "mechanical_churn", "oversize_override"}
 
 
 def plan_review_round_cap(tier: str = "") -> int:

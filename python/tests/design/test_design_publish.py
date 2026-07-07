@@ -38,7 +38,7 @@ if call_log:
 if args[:2] == ["plan","validate"]:
     plan_path = args[args.index("--plan-file") + 1]
     plan_text = open(plan_path, encoding="utf-8", errors="replace").read()
-    trailer_re = re.compile(r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|diff_lines: [0-9]+)$")
+    trailer_re = re.compile(r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator|diff_lines: [0-9]+)$")
     difficulty_re = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
     lines = plan_text.splitlines()
     end = len(lines)
@@ -66,6 +66,13 @@ if args[:2] == ["plan","validate"]:
     print("VALIDATE_SKIPPED_COUNT=0")
     print("VALIDATE_UNSAFE_TOKEN_COUNT=0")
     print("VALIDATE_LOG_FILE=/tmp/validate.log")
+    raise SystemExit(0)
+if args[:2] == ["plan","check-size"]:
+    if os.environ.get("FAKE_CLI_CHECK_SIZE_FAIL"):
+        print("PLAN_SIZE_STATUS=failed")
+        raise SystemExit(1)
+    print("PLAN_SIZE_STATUS=ok")
+    print("SIZE_TRIGGER_FIRED=" + os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED", "false"))
     raise SystemExit(0)
 if args[:2] == ["redact","secrets"]:
     sys.stdout.write(sys.stdin.read())
@@ -181,6 +188,10 @@ if args[:2] == ["plan","validate"]:
     print("VALIDATE_UNSAFE_TOKEN_COUNT=0")
     print("VALIDATE_LOG_FILE=/tmp/validate.log")
     raise SystemExit(0)
+if args[:2] == ["plan","check-size"]:
+    print("PLAN_SIZE_STATUS=ok")
+    print("SIZE_TRIGGER_FIRED=false")
+    raise SystemExit(0)
 if args[:2] == ["redact","secrets"]:
     sys.stdout.write(sys.stdin.read())
     raise SystemExit(0)
@@ -270,7 +281,7 @@ if args[:2] == ["plan","validate"]:
             f.write("REPO_ROOT=" + repo_root + "\\n")
             f.write("CLAUDE_PLUGIN_ROOT=" + os.environ.get("CLAUDE_PLUGIN_ROOT", "") + "\\n")
             f.write("LARCH_REQUIRE_PLAN_DIFFICULTY=" + os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "") + "\\n")
-    trailer_re = re.compile(r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|diff_lines: [0-9]+)$")
+    trailer_re = re.compile(r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator|diff_lines: [0-9]+)$")
     difficulty_re = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
     lines = plan_text.splitlines()
     end = len(lines)
@@ -299,6 +310,10 @@ if args[:2] == ["plan","validate"]:
     print("VALIDATE_UNSAFE_TOKEN_COUNT=0")
     print("VALIDATE_LOG_FILE=/tmp/validate.log")
     raise SystemExit(0)
+if args[:2] == ["plan","check-size"]:
+    print("PLAN_SIZE_STATUS=ok")
+    print("SIZE_TRIGGER_FIRED=false")
+    raise SystemExit(0)
 raise SystemExit(0)
 """,
         encoding="utf-8",
@@ -325,6 +340,10 @@ if args[:2] == ["plan","validate"]:
     print("VALIDATE_UNSAFE_TOKEN_COUNT=1")
     print("VALIDATE_LOG_FILE=" + log)
     raise SystemExit(1)
+if args[:2] == ["plan","check-size"]:
+    print("PLAN_SIZE_STATUS=ok")
+    print("SIZE_TRIGGER_FIRED=false")
+    raise SystemExit(0)
 raise SystemExit(0)
 """,
         encoding="utf-8",
@@ -625,6 +644,20 @@ diff_lines: 12
     assert record[record.index("--design-tier") + 1] == "MODERATE"
 
 
+def test_step5c_auto_compose_preserves_oversize_override(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "plan.txt").write_text(
+        "## Plan\n\nBody.\n\n## Testing strategy\n\nRun tests.\n\ndifficulty: MODERATE\noversize_override: operator\ndiff_lines: 12\n",
+        encoding="utf-8",
+    )
+
+    design_step5c._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert "oversize_override: operator\ndiff_lines: 12\n" in composed
+
+
 def test_publish_prefers_raw_sidecar_adjusted_tier_over_wire_plan_tier(tmp_path: Path) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
@@ -710,7 +743,8 @@ def test_publish_rejects_invalid_raw_sidecar_before_label_or_record_writes(tmp_p
     )
 
     assert result.returncode == 5
-    assert not call_log.exists()
+    calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
+    assert calls == [["plan", "check-size", "--design-tmpdir", str(design), "--plan-file", str(design / "plan.txt")]]
 
 
 def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: Path) -> None:
@@ -1576,6 +1610,76 @@ def test_review_provenance_round_count_fallback_absent_file_stays_zero(tmp_path:
 
 def test_publish_main_delegates_to_core_usage_rc() -> None:
     assert design_publish.publish_main([]) == design_publish.publish_core([]) == 5
+
+
+def test_publish_refuses_oversize_without_override(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = "true"
+    try:
+        rc = design_publish.publish_core(["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"])
+    finally:
+        if old_root is None:
+            os.environ.pop("CLAUDE_PLUGIN_ROOT", None)
+        else:
+            os.environ["CLAUDE_PLUGIN_ROOT"] = old_root
+        if old_size is None:
+            os.environ.pop("FAKE_CLI_SIZE_TRIGGER_FIRED", None)
+        else:
+            os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = old_size
+    out = capsys.readouterr().out
+    assert rc == 4
+    assert "PUBLISH_REFUSE_REASON=oversize-no-override" in out
+
+
+def test_publish_refuses_size_check_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    old_fail = os.environ.get("FAKE_CLI_CHECK_SIZE_FAIL")
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    os.environ["FAKE_CLI_CHECK_SIZE_FAIL"] = "1"
+    try:
+        rc = design_publish.publish_core(["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"])
+    finally:
+        if old_root is None:
+            os.environ.pop("CLAUDE_PLUGIN_ROOT", None)
+        else:
+            os.environ["CLAUDE_PLUGIN_ROOT"] = old_root
+        if old_fail is None:
+            os.environ.pop("FAKE_CLI_CHECK_SIZE_FAIL", None)
+        else:
+            os.environ["FAKE_CLI_CHECK_SIZE_FAIL"] = old_fail
+    out = capsys.readouterr().out
+    assert rc == 4
+    assert "PUBLISH_REFUSE_REASON=size-check-failed" in out
+
+
+def test_splice_plan_provenance_preserves_oversize_override() -> None:
+    text = "body\noversize_override: operator\ndiff_lines: 1\n"
+
+    spliced = design_publish._splice_plan_provenance(  # pyright: ignore[reportPrivateUsage]
+        text=text,
+        review_status="complete",
+        rounds_completed=2,
+    )
+
+    assert "review_status: complete\nrounds_completed: 2\noversize_override: operator\ndiff_lines: 1\n" in spliced
 
 
 def test_publish_result_env_write_failure_returns_3_with_stdout_rows(

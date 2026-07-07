@@ -20,6 +20,7 @@ from larch.core import external_defaults
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
+from larch.issue import issue_wire
 from larch.state import session_env
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -94,6 +95,134 @@ def _prepare_parse_dependency(*, dep: str, index_by_num: dict[int, int]) -> list
     return blockers
 
 
+def _piece_field(body: str, field: str) -> str:
+    prefix = f"- {field}:"
+    for line in body.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith(prefix.lower()):
+            return stripped.split(":", 1)[1].strip()
+    return ""
+
+
+def _split_csvish(value: str) -> list[str]:
+    items: list[str] = []
+    for raw in re.split(r",|\n", value):
+        item = raw.strip().strip("`")
+        if item:
+            items.append(item)
+    return items
+
+
+def _scope_tokens(scope: str) -> list[str]:
+    tokens: list[str] = []
+    for match in re.finditer(r"`([^`]+)`", scope):
+        token = match.group(1).strip().strip(",;")
+        if token:
+            tokens.append(token)
+    cleaned = re.sub(r"`[^`]+`", " ", scope)
+    for raw in re.split(r",|\s+", cleaned):
+        token = raw.strip().strip(",;")
+        if token and token not in {"and", "or"}:
+            tokens.append(token)
+    return list(dict.fromkeys(tokens))
+
+
+def _path_matches_scope(*, path: str, scope_token: str) -> bool:
+    token = scope_token.rstrip("/")
+    return path == token or path.startswith(f"{token}/")
+
+
+def _derive_firm_headings(*, parent_paths: list[str], scope: str) -> list[str]:
+    tokens = _scope_tokens(scope)
+    return [
+        path
+        for path in parent_paths
+        if any(_path_matches_scope(path=path, scope_token=token) for token in tokens)
+    ]
+
+
+def _testing_strategy_lines(plan_text: str) -> list[str]:
+    lines = plan_text.splitlines()
+    start = -1
+    level = 0
+    for idx, line in enumerate(lines):
+        match = re.match(r"^(#+)\s+Testing strategy\s*$", line, re.IGNORECASE)
+        if match:
+            start = idx + 1
+            level = len(match.group(1))
+            break
+    if start < 0:
+        return []
+    out: list[str] = []
+    for line in lines[start:]:
+        heading = re.match(r"^(#+)\s+", line)
+        if heading and len(heading.group(1)) <= level:
+            break
+        stripped = line.strip()
+        if stripped:
+            out.append(stripped)
+    return out
+
+
+def _derive_acceptance(*, plan_text: str, firm_headings: list[str], scope: str) -> str:
+    strategy = _testing_strategy_lines(plan_text)
+    matches = [
+        line
+        for line in strategy
+        if any(path in line for path in firm_headings)
+    ]
+    if matches:
+        return "\n".join(matches[:5])
+    scope_summary = scope or ", ".join(firm_headings)
+    if scope_summary:
+        return f"Verify {scope_summary} per parent Testing strategy."
+    return ""
+
+
+def _parent_plan_scope_data(design_tmpdir: Path) -> tuple[str, list[str]]:
+    parent_plan = design_tmpdir / "plan.txt"
+    if not parent_plan.is_file() or parent_plan.is_symlink():
+        return "", []
+    parent_plan_text = parent_plan.read_text(encoding="utf-8", errors="replace")
+    return parent_plan_text, issue_wire.extract_scope_paths(plan_text=parent_plan_text, include_optional=False)
+
+
+def _piece_metadata(
+    *,
+    body: str,
+    parent_plan_text: str,
+    parent_paths: list[str],
+) -> tuple[str, list[str], str] | None:
+    scope = _piece_field(body, "scope")
+    firm = _split_csvish(_piece_field(body, "firm-headings"))
+    if not firm:
+        firm = _derive_firm_headings(parent_paths=parent_paths, scope=scope)
+    acceptance = _piece_field(body, "acceptance")
+    if not acceptance:
+        acceptance = _derive_acceptance(plan_text=parent_plan_text, firm_headings=firm, scope=scope)
+    if not firm or not acceptance:
+        return None
+    return scope, firm, acceptance
+
+
+def _acyclic(*, node_count: int, edges: list[tuple[int, int]]) -> bool:
+    adj: dict[int, list[int]] = defaultdict(list)
+    indeg = [0] * node_count
+    for a, b in edges:
+        adj[a].append(b)
+        indeg[b] += 1
+    q: deque[int] = deque(i for i, degree in enumerate(indeg) if degree == 0)
+    seen_count = 0
+    while q:
+        u = q.popleft()
+        seen_count += 1
+        for v in adj[u]:
+            indeg[v] -= 1
+            if indeg[v] == 0:
+                q.append(v)
+    return seen_count == node_count
+
+
 def prepare_partition_issues(
     *,
     design_tmpdir: Path,
@@ -126,35 +255,30 @@ def prepare_partition_issues(
     pieces.sort(key=lambda item: item[0])
     index_by_num: dict[int, int] = {pnum: i for i, (pnum, _title, _body) in enumerate(pieces)}
 
-    edges: list[tuple[int, int]] = []
+    panel_edges: list[tuple[int, int]] = []
     dep_lines: list[str] = []
+    scopes: list[str] = []
+    firm_heading_lines: list[list[str]] = []
+    acceptance_lines: list[str] = []
+    parent_plan_text, parent_paths = _parent_plan_scope_data(design_tmpdir)
     for i, (_pnum, _title, body) in enumerate(pieces):
-        dep = "none"
-        for line in body.splitlines():
-            if line.strip().lower().startswith("- dependencies:"):
-                dep = line.split(":", 1)[1].strip()
-                break
+        dep = _piece_field(body, "dependencies") or "none"
         dep_lines.append(dep)
         blockers = _prepare_parse_dependency(dep=dep, index_by_num=index_by_num)
         if blockers is None:
             return "bad-dependency-ref", ""
-        edges.extend((index_by_num[blocker], i) for blocker in blockers)
+        panel_edges.extend((index_by_num[blocker], i) for blocker in blockers)
+        metadata = _piece_metadata(body=body, parent_plan_text=parent_plan_text, parent_paths=parent_paths)
+        if metadata is None:
+            return "missing-piece-metadata", ""
+        scope, firm, acceptance = metadata
+        scopes.append(scope)
+        firm_heading_lines.append(firm)
+        acceptance_lines.append(acceptance)
 
-    adj: dict[int, list[int]] = defaultdict(list)
-    indeg = [0] * len(pieces)
-    for a, b in edges:
-        adj[a].append(b)
-        indeg[b] += 1
-    q: deque[int] = deque(i for i, degree in enumerate(indeg) if degree == 0)
-    seen_count = 0
-    while q:
-        u = q.popleft()
-        seen_count += 1
-        for v in adj[u]:
-            indeg[v] -= 1
-            if indeg[v] == 0:
-                q.append(v)
-    if seen_count != len(pieces):
+    serial_edges = [(idx, idx + 1) for idx in range(len(pieces) - 1)]
+    edges = list(dict.fromkeys([*serial_edges, *panel_edges]))
+    if not _acyclic(node_count=len(pieces), edges=edges):
         witness = "; ".join(f"Piece {pieces[a][0]}→Piece {pieces[b][0]}" for a, b in edges) or "(edges unavailable)"
         return "cycle-detected", witness
 
@@ -164,21 +288,21 @@ def prepare_partition_issues(
     orig = f"#{issue_number}" if issue_number.isdigit() else "(original issue — set ISSUE_NUMBER in session)"
     lines: list[str] = []
     n = len(pieces)
-    for i, (pnum, title, body) in enumerate(pieces):
-        scope = ""
-        for line in body.splitlines():
-            if line.strip().lower().startswith("- scope:"):
-                scope = line.split(":", 1)[1].strip()
-                break
+    for i, (pnum, title, _body) in enumerate(pieces):
+        scope = scopes[i]
+        firm_text = ", ".join(firm_heading_lines[i])
+        acceptance_text = acceptance_lines[i]
         lines.append(f"### {title}\n")
         body_text = (
             f"Partition piece {pnum} of {n} split from {orig}.\n\n"
             f"**Scope**: {scope or '(see parent partition file)'}\n\n"
+            f"**Firm headings**: {firm_text}\n\n"
+            f"**Acceptance**:\n\n{acceptance_text}\n\n"
             f"**Dependencies (from panel)**: {dep_lines[i]}\n\n"
             "```\n"
             "<!-- larch:plan:start -->\n"
             "## Plan\n\n"
-            "(needs /design — operator runs `/design` on this issue after partition lands.)\n\n"
+            "(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)\n\n"
             "<!-- larch:plan:end -->\n"
             "```\n\n"
             f"**Original feature context (excerpt)**:\n\n{feat[:4000]}\n"
@@ -605,6 +729,8 @@ def aggregate_partition(*, design_tmpdir: Path, panel_outputs_file: Path, codex_
         "## Pieces (only when Recommendation is split)\n\n"
         "### Piece 1: <short title>\n"
         "- Scope: <files / behaviors covered>\n"
+        "- Firm-headings: <comma-separated parent plan heading paths covered by this piece>\n"
+        "- Acceptance: <one or more implementable criteria for this piece>\n"
         "- Dependencies: none | blocked-by Piece N[, Piece M ...]\n"
         "- Diff_lines estimate: <integer>\n"
         "- Why independently mergeable: <prose>\n\n"

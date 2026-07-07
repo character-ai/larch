@@ -42,12 +42,15 @@ Mechanical evaluation lives in `python/cli.py plan check-size` (sibling `check-p
 
 The historical **ownership-domains** sprawl heuristic is **not** part of L1; it is intentionally omitted (Round 1 decision on issue #2670).
 
-**Hard trigger**: any one suffices. No operator Continue override exists in the hard `AskUserQuestion`.
+**Hard trigger**: any one suffices. No operator Continue override exists in the hard `AskUserQuestion`; explicit Override records `oversize_override: operator`.
 
 - Plan body line count **>** 800.
 - `diff_added` trailer **>** 2000 when present in the final metadata block immediately above `diff_lines:`; otherwise legacy `diff_lines` trailer **>** 1500.
+- Firm heading count **>** 25 across `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` headings; `### MAY_UPDATE:` is excluded.
+- Distinct surfaces **>** 4 (`python/larch/<pkg>/...` → `python/larch/<pkg>`, direct `python/larch` files → `python/larch`, others → first segment).
 - Deletions (`diff_deleted`) never trip.
 - `mechanical_churn: true` downgrades only the diff trigger to a soft advisory (`SOFT_ADVISORY`); plan-body hard triggers are unchanged.
+- `oversize_override: operator` suppresses hard triggers and emits `OVERSIZE_OVERRIDE=operator`.
 
 **`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to **Split-path** even if no hard threshold fired. That path runs the real decomposition panel via `python/cli.py agent dispatch-waterfall`; procedure and filing semantics live in `skills/design/references/decompose-panel.md`.
 
@@ -59,12 +62,12 @@ If the panel fails, Step 3 skips Gate B and proceeds to Step 3b, the Step 3b com
 
 ## Helper output — `TRIGGER_REASONS`
 
-The helper emits comma-separated reason tokens in fixed priority order: `plan-body-lines`, then `diff-added` (new-style) or `diff-lines` (legacy). This is threshold order, **not** lexicographic.
+The helper emits reason tokens in threshold order: `plan-body-lines`, diff reason, `firm-headings`, `surfaces`.
 
 ## `python/cli.py plan check-size` contract (summary)
 
-- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar. Optional `diff_added:`, `diff_deleted:`, and `mechanical_churn:` trailers MAY appear in the final contiguous metadata block above `diff_lines:` (strict full-line regexes; see `check-plan-size.md`). Numeric legacy `mechanical_churn:` values normalize to `true`; drafters emit only `true` or `false`.
-- **Machine output**: `PLAN_LINES`, `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `SIZE_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). `PLAN_LINES` excludes recognized optional metadata trailers above final `diff_lines:`. On validation failure only: `PLAN_SIZE_STATUS=missing-plan` or `missing-diff-lines`.
+- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar. Optional `diff_added:`, `diff_deleted:`, `mechanical_churn:`, and `oversize_override: operator` trailers MAY appear in the final contiguous metadata block above `diff_lines:` (strict full-line regexes; see `check-plan-size.md`). Numeric legacy `mechanical_churn:` values normalize to `true`; drafters emit only `true` or `false`.
+- **Machine output**: size/diff counts, `FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE`, advisory and trigger KVs, and `PLAN_SIZE_STATUS=ok`. `PLAN_LINES` excludes recognized optional metadata trailers. On validation failure only: `PLAN_SIZE_STATUS=missing-plan` or `missing-diff-lines`.
 - **Exit codes**: **0** when the plan parses; **2** only with `PLAN_SIZE_STATUS` (`missing-plan` / `missing-diff-lines` / `invalid-mechanical-churn`); **3** on argv / usage errors (missing `--design-tmpdir`, unknown flags). Exit **3** emits no `PLAN_SIZE_STATUS`.
 
 ## Plan-command validator

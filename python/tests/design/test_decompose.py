@@ -27,15 +27,15 @@ def test_prepare_happy_path_multi_blocker_and_neutralizes_feature(tmp_path: Path
     partition = d / "partition.md"
     partition.write_text(
         "## Pieces\n\n"
-        "### Piece 1: Base\n- Scope: base\n- Dependencies: none\n\n"
-        "### Piece 2: API\n- Scope: api\n- Dependencies: blocked-by Piece 1\n\n"
-        "### Piece 3: UI\n- Scope: ui\n- Dependencies: blocked-by Piece 1, Piece 2 and Piece 2\n",
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: blocked-by Piece 1\n\n"
+        "### Piece 3: UI\n- Scope: ui\n- Firm-headings: ui/file.py\n- Acceptance: verify ui\n- Dependencies: blocked-by Piece 1, Piece 2 and Piece 2\n",
         encoding="utf-8",
     )
     status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="123")
     assert (status, witness) == ("ok", "")
     deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
-    assert deps.splitlines() == ["1\t2", "1\t3", "2\t3"]
+    assert deps.splitlines() == ["1\t2", "2\t3", "1\t3"]
     batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
     assert "#123" in batch
     assert "\u200b### embedded heading" in batch
@@ -48,12 +48,54 @@ def test_prepare_bad_dependency_and_cycle(tmp_path: Path) -> None:
     assert decompose.prepare_partition_issues(design_tmpdir=d, partition_file=bad)[0] == "bad-dependency-ref"
     cycle = d / "cycle.md"
     cycle.write_text(
-        "## Pieces\n\n### Piece 1: A\n- Dependencies: blocked-by Piece 2\n\n### Piece 2: B\n- Dependencies: blocked-by Piece 1\n",
+        "## Pieces\n\n"
+        "### Piece 1: A\n- Firm-headings: a.py\n- Acceptance: verify a\n- Dependencies: blocked-by Piece 2\n\n"
+        "### Piece 2: B\n- Firm-headings: b.py\n- Acceptance: verify b\n- Dependencies: blocked-by Piece 1\n",
         encoding="utf-8",
     )
     status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=cycle)
     assert status == "cycle-detected"
     assert "Piece 2→Piece 1" in witness
+
+
+def test_prepare_derives_piece_metadata_and_serial_edges(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text(
+        "## Files to modify\n\n"
+        "### UPDATED: `python/larch/design/a.py`\n"
+        "### UPDATED: `python/larch/design/b.py`\n\n"
+        "## Testing strategy\n\n"
+        "- Cover python/larch/design/a.py behavior.\n"
+        "- Cover python/larch/design/b.py behavior.\n"
+        "diff_lines: 10\n",
+        encoding="utf-8",
+    )
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: A\n- Scope: python/larch/design/a.py\n- Dependencies: none\n\n"
+        "### Piece 2: B\n- Scope: python/larch/design/b.py\n- Dependencies: none\n",
+        encoding="utf-8",
+    )
+
+    status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="123")
+
+    assert (status, witness) == ("ok", "")
+    deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
+    assert deps.splitlines() == ["1\t2"]
+    batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+    assert "**Firm headings**: python/larch/design/a.py" in batch
+    assert "Cover python/larch/design/b.py behavior." in batch
+    assert "Gate C approval before `[DESIGNED]` or `/implement`" in batch
+
+
+def test_prepare_missing_piece_metadata_when_fallback_cannot_match(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "plan.txt").write_text("## Files to modify\n\n### UPDATED: `python/larch/design/a.py`\ndiff_lines: 10\n", encoding="utf-8")
+    partition = d / "partition.md"
+    partition.write_text("## Pieces\n\n### Piece 1: A\n- Scope: docs/other.md\n- Dependencies: none\n", encoding="utf-8")
+
+    assert decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition)[0] == "missing-piece-metadata"
 
 
 def test_annotate_success_partial_and_idempotent(tmp_path: Path) -> None:

@@ -804,7 +804,7 @@ def _append_force_bypass(st: BootstrapState) -> bool:
 
 _PLAN_PROVENANCE_PREFIXES = ("review_status:", "rounds_completed:", "difficulty:")
 _OPTIONAL_PLAN_SIZE_TRAILER_RE = re.compile(
-    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
+    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator)$"
 )
 
 
