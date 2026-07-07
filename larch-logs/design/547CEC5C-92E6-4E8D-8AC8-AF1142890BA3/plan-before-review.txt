@@ -1,0 +1,400 @@
+## Context
+
+`approach-synthesis.txt`, `discussion-round1.md`, `brainstorm.md`, and local approved outline files were not present in the checkout. This plan is based on direct repo inspection and the supplied feature scope.
+
+## Approach
+
+1. Keep `skills/shared/bgjob-wait.md` as the normative wait contract.
+2. Migrate one surface group per commit:
+   - `/design`
+   - `/implement`
+   - `/review`
+   - `/research`
+   - stall and state classifiers
+   - shared docs and lints
+   - harnesses
+3. Preserve every existing terminal sentinel and Step 8 handoff sidecar.
+4. Make each migrated wrapper a foreground launcher that prints only:
+   `BGJOB_STATUS=STARTED STEP=<name> PGID=<n>`
+5. Move step result KVs into a merge env file passed through `bgjob start --merge-result-env`.
+6. Treat `$TMPDIR/bgjob/<step>.result.env` as the source of truth after `bgjob wait` returns `DONE`.
+7. Gate normal continuation on both:
+   - `BGJOB_RC=0`
+   - required step KVs present
+8. Treat `DEAD`, `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero rc, or missing KVs as the step’s existing failure or stall branch.
+9. Keep legacy hooks and marker helpers functional but inert until #6516 deletes them.
+
+## Files to modify/create
+
+### UPDATED: skills/shared/bgjob-wait.md
+- Add examples for wrapper launch, repeated `wait`, `DONE` parsing, and `--merge-result-env`.
+- Pin the “no prose, no tools, no sleep between WAITs” rule.
+- Name result envs as the completion source of truth.
+
+### UPDATED: skills/design/SKILL.md
+- Replace Step 3, Step 4 tail, Step 5c, final-summary cancellation, and brainstorm immediate-background instructions with `bgjob start` and `bgjob wait`.
+- Delete migrated premature notification recovery prose from live call sites.
+- Keep only compatibility text that #6516 will remove later.
+- Gate Step 5c and final-summary continuation on `BGJOB_RC=0` plus required KVs.
+
+### UPDATED: skills/design/references/plan-review.md
+- Replace `run_in_background` launch and resume instructions with bgjob launch and wait semantics.
+- Preserve `STEP3_REVIEW_LOOP_STATUS` and resume branches.
+
+### UPDATED: skills/design/references/finalize-step5.md
+- Rebind Step 5c and Step 5d parsing from task-notification stdout to the final `bgjob wait` `DONE` stdout.
+- Add `python/cli.py design read-result-env --input "$DESIGN_TMPDIR/bgjob/design-step5c.result.env"` as the primary result read, with stdout fallback only when the file is absent.
+- Gate success on `BGJOB_RC=0`.
+
+### UPDATED: skills/design/references/brainstorm.md
+- Convert external brainstorm lanes to per-lane bgjob start and wait, or foreground collection where parallelism is not needed.
+- Keep Claude Agent fallback behavior unchanged.
+
+### UPDATED: skills/design/references/sentinel-host-table.md
+- Document bgjob result envs as completion truth.
+- Keep terminal sentinels as compatibility transition markers.
+
+### UPDATED: skills/design/scripts/design-step3-review.sh
+- Remove `.bg-wait-active`, detach, and reattach ownership logic.
+- Keep precondition rehydration and pause-save checks.
+- Write step KVs to `.step3-review-result.env`.
+- `exec` bgjob start for `design-step3-review` with `--merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env"` and sentinel `.completed/step-3-terminal`.
+
+### UPDATED: skills/design/scripts/design-step3-review.md
+- Update the wrapper contract to bgjob ownership and result env parsing.
+- Preserve sentinel behavior descriptions.
+
+### UPDATED: skills/design/scripts/design-step3b-tail.sh
+- Convert Step 4 tail launch to bgjob.
+- Remove no-progress sidecar and `.bg-wait-active` setup.
+- Preserve `.completed/step-4`.
+
+### UPDATED: skills/design/scripts/design-step3b-tail.md
+- Replace “orchestrator backgrounds the fence” contract with foreground bgjob launch plus wait.
+- Remove legacy marker arming details.
+
+### UPDATED: skills/design/scripts/design-step5c.sh
+- Make the wrapper a thin bgjob launcher for `design-step5c`.
+- Pass the Step 5c status merge env and `.completed/step-5c-terminal` sentinel.
+
+### UPDATED: skills/design/scripts/design-step5c.md
+- Rebind the wrapper contract to bgjob.
+- Name `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` as the completion source.
+
+### UPDATED: python/larch/design/design_core.py
+- Retire `_bg_wait_marker_context` call paths.
+- Keep only compatibility helpers still needed by retained legacy hooks, if any.
+- Add small bgjob result path helpers if this keeps readers consistent.
+
+### UPDATED: python/larch/design/design_step5c.py
+- Stop owning bg-wait marker setup.
+- Ensure Step 5c writes a merge-result env before exit.
+- Keep `.completed/step-5c-terminal` write ordering.
+- Ensure emitted KVs match the current prompt contract.
+
+### UPDATED: python/larch/design/design_step6.py
+- Replace `_step6_in_flight` marker detection with bgjob-aware logic:
+  - terminal sentinel present means not in flight
+  - live identity-valid `design-step5c` registry row means in flight
+  - missing `bgjob/design-step5c.result.env` while publish is expected means in flight
+- Update diagnostics to say `bgjob wait`, not task notification or `.bg-wait-active`.
+
+### UPDATED: python/larch/design/design_terminal.py
+- Migrate final-summary cancellation to bgjob.
+- Preserve `.completed/step-final-summary`.
+- Allow `read_result_env_main` to read bgjob result env paths under `$DESIGN_TMPDIR/bgjob/`.
+
+### UPDATED: python/larch/design/design_lifecycle.py
+- Repoint lifecycle result parsing to bgjob result envs.
+- Remove dependencies on design bg-wait marker contexts.
+
+### UPDATED: python/larch/review/plan_review_normalize.py
+- Update comments and normalization paths that still mention task-notification races.
+- Preserve Step 3 result KV compatibility.
+
+### UPDATED: skills/implement/SKILL.md
+- Replace Step 3, Step 5, Step 6, Step 7a, and Step 8 immediate-background fences with bgjob start and wait loops.
+- Update anti-halt text so `WAIT` means the next action is another identical `bgjob wait`.
+- Keep Step 8 route-exit and handoff parsing unchanged after successful `DONE`.
+
+### UPDATED: skills/implement/references/self-review.md
+- Convert Step 5 review, self-review, and resume variants to bgjob ownership.
+- Remove `.step5-wrapper-detached` and `.step5-reattach-active` prompt contracts after tests pin replacement behavior.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+- Replace every Step 8 relaunch leg with bgjob start plus wait.
+- Keep route-exit inputs unchanged.
+
+### UPDATED: skills/implement/references/ship-pr-ci-fix.md
+- Convert CI-fix relaunch prose to bgjob.
+- Gate continuation on `BGJOB_RC=0`.
+
+### UPDATED: skills/implement/references/conflict-resolution.md
+- Convert conflict-resolution Phase 4 ship relaunch to bgjob.
+- Preserve conflict-routing semantics.
+
+### UPDATED: skills/implement/references/stall-recovery.md
+- Convert `step8-shippr` retry instructions to bgjob.
+- Keep stall state tokens unchanged.
+
+### UPDATED: skills/implement/scripts/run-step-checks.sh
+- Stop writing `.bg-wait-active`.
+- Launch Step 3 checks through bgjob with the existing Step 3 sentinel.
+- Ensure Step 6 checks legs use the same result env convention.
+
+### UPDATED: skills/implement/scripts/step-5-review.sh
+- Replace bespoke loop detach and reattach with bgjob daemon ownership.
+- Ensure owner death and orphan handling are delegated to bgjob.
+- Write normalized Step 5 KVs to the merge-result env.
+- Preserve `.completed/step-5-terminal`.
+
+### UPDATED: skills/implement/scripts/step-6-entry.sh
+- Convert to bgjob start.
+- Preserve `.completed/step-6-terminal`.
+
+### UPDATED: skills/implement/scripts/step-8-ship.sh
+- Run the ship driver as a bgjob daemon.
+- Preserve `.step-8-ship-handoff.rc`, `.step-8-ship-handoff.json`, and `persist_handoff` ordering.
+- Merge any route-exit KVs into the bgjob result env without changing `ship route-exit` consumption.
+
+### UPDATED: skills/implement/scripts/step-8-ship.md
+- Replace `.bg-wait-active` and background relaunch guidance with bgjob contract.
+- Keep handoff sidecar contract byte-compatible.
+
+### UPDATED: python/larch/implement/dispatch_commit_route.py
+- Replace `_write_bg_wait_marker` contexts with bgjob result handling or remove them when wrappers own bgjob launch.
+- Update Step 3, Step 5 resume, Step 5 self-review, and commit-route marker branches.
+
+### UPDATED: python/larch/implement/implement_dispatch.py
+- Update branches that launch or parse Step 3, Step 5, Step 6, and Step 8 wrappers.
+- Parse `BGJOB_STATUS` and bgjob result env KVs before existing branch handling.
+
+### UPDATED: python/larch/implement/dispatch_step18.py
+- Convert recovery relaunch paths that still reference legacy marker machinery.
+- Preserve Step 18 stall and final-report routing.
+
+### UPDATED: python/larch/implement/step_7a.py
+- Replace `_bg_wait_marker` usage with bgjob result and sentinel handling.
+- Preserve `.completed/step-7a-terminal`.
+
+### UPDATED: python/larch/implement/bg_wait.py
+- Narrow to the compatibility surface needed by retained legacy hooks.
+- Do not delete the module in this issue.
+
+### UPDATED: python/larch/review/review_and_fix.py
+- Audit standalone `/review --diff` and nested Step 5 paths for background assumptions.
+- Ensure long loops produce mergeable result KVs for bgjob.
+
+### UPDATED: python/larch/review/plan_review.py
+- Ensure plan-review loop outputs remain merge-result-env compatible.
+
+### UPDATED: python/larch/review/review_pipeline.py
+- Ensure nested and standalone review loops do not depend on task-notification output.
+
+### UPDATED: skills/research/references/research-phase.md
+- Replace Codex lane `run_in_background` instructions with per-lane bgjob start and wait.
+- Keep Claude Agent fallback unchanged.
+- For parallel lanes, start each separately and wait each separately.
+
+### UPDATED: skills/research/references/validation-phase.md
+- Apply the same bgjob conversion to Cursor and Codex validation lanes.
+
+### UPDATED: python/larch/state/_tokens.py
+- Replace `_abandoned_checks_marker_stall_step` marker logic with bgjob registry inspection.
+- Detect abandoned rows by identity-checked dead owner or daemon PGID.
+- Never use bare PID liveness.
+
+### UPDATED: python/larch/state/_classify.py
+- Route abandoned checks detection through the bgjob-aware helper.
+
+### UPDATED: python/larch/state/_state_mgmt.py
+- Rename or narrow `_clear_abandoned_checks_marker`.
+- Clear stale bgjob registry rows for checks steps on recovery completion.
+
+### UPDATED: skills/shared/orchestrator-never.md
+- Add bgjob wait NEVER rules.
+- Narrow retained task-notification rules to compatibility-only docs.
+- Do not delete #6516-owned defense text unless it conflicts with migrated call sites.
+
+### UPDATED: skills/shared/final-summary-emit.md
+- Rebind `/design` final-summary sources to captured bgjob `DONE` stdout and result env reads.
+- Rebind `/implement` Step 17 and Step 18b from task-notification sources to final `bgjob wait` stdout.
+
+### UPDATED: docs/workflow-lifecycle.md
+- Document bgjob result envs as completion truth for long-running steps.
+- Document diagnostics in bgjob logs and result envs.
+
+### UPDATED: docs/run-logs.md
+- Extend bgjob diagnostics and result env documentation before run-log capture.
+
+### UPDATED: docs/linting.md
+- Update bg-wait coverage and writer-parity docs.
+- Add `scripts/test-bgjob.sh` shard expectations.
+
+### UPDATED: python/larch/lint/bg_wait_allowlist.txt
+- Shrink to at most `skills/shared/orchestrator-never.md`.
+- Remove migrated entries.
+
+### UPDATED: python/larch/lint/lint_bg_wait_writer_parity.py
+- Rescope writer parity so it no longer requires `.bg-wait-active` writers.
+- Keep compatibility lint passing until #6516 removes legacy hooks.
+
+### UPDATED: python/tests/lint/test_lint_bg_wait_writer_parity.py
+- Update expectations for the narrowed compatibility lint.
+
+### UPDATED: scripts/test-design-structure.sh
+- Replace task-notification shape assertions with bgjob wait assertions.
+- Keep sentinel compatibility assertions.
+
+### UPDATED: skills/design/scripts/test-design-step3-review.sh
+- Assert wrapper stdout is exactly the bgjob started line.
+- Assert no `.bg-wait-active` writer remains.
+
+### UPDATED: scripts/test-implement-structure.sh
+- Replace Step 5 and Step 8 task-notification assertions with bgjob assertions.
+- Assert `BGJOB_RC=0` gates.
+
+### UPDATED: scripts/test-implement-anti-polling-rule.sh
+- Update anti-polling rules for bgjob `WAIT`.
+- Keep legacy defense assertions only for compatibility surfaces.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+- Update `EXPECTED_OLD` and `EXPECTED_NEW` for changed `skills/implement/SKILL.md` fences.
+
+### UPDATED: skills/implement/scripts/test-step-5-review.sh
+- Pin Step 5 bgjob ownership, owner death, orphaned result, and no detach sidecars.
+
+### UPDATED: skills/implement/scripts/test-step-8-ship.sh
+- Assert bgjob launch contract and unchanged handoff rc/json ordering.
+
+### UPDATED: scripts/test-research-structure.sh
+- Assert research and validation lanes use bgjob, not `run_in_background`.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.sh
+- Keep legacy marker coverage.
+- Add assertions that bgjob wait loops do not trigger legacy polling denies.
+
+### UPDATED: scripts/test-hook-no-progress-guard.sh
+- Keep legacy no-progress coverage.
+- Assert bgjob `WAIT` loops do not count as stale background-wait turns.
+
+### UPDATED: scripts/test-render-cost-line-callsites.sh
+- Update final-summary source assertions away from task-notification stdout.
+
+### NEW: scripts/test-bgjob.sh
+- Add real-process coverage for:
+  - one-line start stdout
+  - owner death writes `BGJOB_RC=orphaned`
+  - budget expiry writes `BGJOB_RC=timeout`
+  - external daemon kill yields `DEAD`
+  - identity-checked reap does not signal a recycled PID owner
+  - bad step names are rejected
+- Skip loudly when sandbox limitations block `ps` identity probes.
+
+### UPDATED: Makefile
+- Repoint or split `test-bgjob` so real-process `scripts/test-bgjob.sh` is in a `test-harnesses-N` shard.
+- Keep Python bgjob unit tests in `py-test`, not duplicated as the only bgjob harness.
+- Run `make test-harness-shards-coverage` after shard edits.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+- Replace `.bg-wait-active` expectations for Step 3 and Step 5 resume with bgjob start/wait contracts.
+
+### UPDATED: python/tests/implement/test_step_7a.py
+- Pin bgjob result handling and `.completed/step-7a-terminal`.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+- Pin Step 5c result env behavior.
+- Add Step 6 in-flight cases for registry liveness, missing result env, and terminal-sentinel precedence.
+- Pin final-summary bgjob behavior.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+- Replace Step 5 detached-wrapper expectations with bgjob registry ownership expectations.
+
+### UPDATED: python/tests/state/test_stall_recovery.py
+- Replace abandoned marker tests with abandoned bgjob registry row tests.
+- Cover dead owner, dead daemon, live registry without result env, and cleared registry.
+
+### MAY_UPDATE: python/tests/bgjob/test_daemon.py
+- Add any missing daemon unit coverage found while wiring real-process shell tests.
+
+### MAY_UPDATE: python/tests/bgjob/test_wait.py
+- Add parsing and `DEAD` edge coverage if the migration needs a wait helper adjustment.
+
+### MAY_UPDATE: python/tests/bgjob/test_bgjob_cli.py
+- Add CLI flag coverage for any new helper option needed by migrated wrappers.
+
+### MAY_UPDATE: scripts/hook-deny-run-in-background.sh
+- Update only if registry row shape changes.
+- Keep it denying `run_in_background` while a larch bgjob is active in the clone.
+
+### MAY_UPDATE: scripts/test-hook-deny-run-in-background.sh
+- Update fixture rows only if registry shape changes.
+
+## Edge cases
+
+- `BGJOB_STATUS=WAIT` must cause the next identical `bgjob wait` with no intervening prose or tools.
+- `BGJOB_STATUS=DEAD` must not parse stale step stdout as success.
+- `DONE` with `BGJOB_RC=timeout` or `BGJOB_RC=orphaned` must route to failure or stall.
+- Existing sentinels may exist from prior attempts. Result env plus registry state must decide current completion.
+- Step 6 must not treat Step 5c as idle when the terminal sentinel is absent and a live `design-step5c` registry row exists.
+- Step 8 must write handoff rc/json before any route-exit handling sees the result.
+- Recycled PID or PGID must never be signaled. Use identity-checked helpers only.
+- Retained legacy hooks must remain functional for #6516, but migrated paths should not trip them.
+
+## Failure modes
+
+- Wrapper stdout gains banners and breaks harness parsing.
+- A prompt path continues on `DONE` without checking `BGJOB_RC`.
+- A result env omits a required legacy KV, causing false success or false stall.
+- Step 5 detach sidecars are removed before bgjob owner-death tests cover the replacement.
+- Step 8 handoff sidecar ordering changes and breaks `ship route-exit`.
+- Allowlist shrinks before all skill prose is migrated, causing lint failure.
+- Hook tests are over-pruned and accidentally delete #6516 compatibility coverage.
+
+## Testing strategy
+
+Run targeted tests with each surface group:
+
+1. Design:
+   - `bash scripts/test-design-structure.sh`
+   - `bash skills/design/scripts/test-design-step3-review.sh`
+   - `python3 -m pytest python/tests/design/test_design_lifecycle.py -q`
+2. Implement:
+   - `bash scripts/test-implement-structure.sh`
+   - `bash scripts/test-implement-anti-polling-rule.sh`
+   - `bash scripts/test-implement-fence-shape.sh`
+   - `bash skills/implement/scripts/test-step-5-review.sh`
+   - `bash skills/implement/scripts/test-step-8-ship.sh`
+   - `python3 -m pytest python/tests/implement/test_implement_dispatch.py python/tests/implement/test_step_7a.py -q`
+3. Research:
+   - `bash scripts/test-research-structure.sh`
+4. State:
+   - `python3 -m pytest python/tests/state/test_stall_recovery.py -q`
+5. Review:
+   - `python3 -m pytest python/tests/review/test_review_and_fix.py -q`
+6. Lints:
+   - `python3 python/cli.py lint bg-wait-coverage`
+   - `python3 python/cli.py lint bg-wait-writer-parity`
+7. Bgjob:
+   - `python3 -m pytest python/tests/bgjob -q`
+   - `bash scripts/test-bgjob.sh`
+8. Final validation:
+   - `make py-lint`
+   - `make py-test`
+   - affected `test-harnesses-N` shards
+   - one full `/design` run and one full `/implement --merge` run on a MODERATE issue, verifying no `<task-notification>` transcript entries for migrated larch launches.
+
+## Implementation notes
+
+- Prefer Python helpers behind `python3 python/cli.py` for non-trivial parsing and registry checks.
+- Keep Bash wrappers thin and macOS Bash 3.2-compatible.
+- Use `larch.io` helpers for result env writes and reads where practical.
+- Use config constants for bgjob status and rc keys.
+- Keep changed prompt literals covered by prompt-shape harnesses.
+- Do not retire legacy hooks, defense docs, or `python/larch/implement/bg_wait.py`; #6516 owns deletion.
+
+difficulty: HARD
+diff_added: 1700
+diff_deleted: 1200
+mechanical_churn: true
+diff_lines: 2900

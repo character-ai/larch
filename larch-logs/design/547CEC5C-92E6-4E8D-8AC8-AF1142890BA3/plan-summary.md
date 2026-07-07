@@ -1,0 +1,1 @@
+Plan migrates all remaining larch long-running `run_in_background` call sites to `bgjob start` plus chunked `bgjob wait`, keeping terminal sentinels and legacy defenses intact for #6516. It is HARD due to cross-skill orchestration, process ownership, state classification, and ship/merge routing risk.

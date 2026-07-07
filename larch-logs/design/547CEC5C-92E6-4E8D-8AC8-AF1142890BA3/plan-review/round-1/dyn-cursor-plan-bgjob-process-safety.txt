@@ -1,0 +1,75 @@
+Reviewing the bgjob registry, identity validation, and Step 5/8 lifecycle paths against the plan.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/implement/dispatch_commit_route.py:87-93 python/larch/implement/dispatch_commit_route.py:943-947 skills/implement/scripts/step-8-ship.sh:114-115 skills/design/scripts/design-step3-review.sh:168 Plan lacks per-step --budget-s mapping from legacy TIMEOUT_S values	Daemon budget kills the child; legacy markers already pin 21600s (Step 3/5/8), 15600s (Step 6), 10800s (Step 3 checks), 900s (Step 4 tail), 14700s (self-review), and 32700s (Step 5 resume). If wrappers pick an arbitrary budget, Step 5/8 ship can get BGJOB_RC=timeout while work is still valid and orchestration may treat it like a normal failure path.	Add a single budget table to skills/shared/bgjob-wait.md (or Approach): reuse CHECKS_STEP3_BG_WAIT_TIMEOUT_S, dispatch_commit_route _checks_commit_route_marker timeouts, and existing TIMEOUT_S literals for each bgjob --step name.
+1	in_scope	major	correctness	python/larch/bgjob/wait.py:52-56 python/larch/design/design_step6.py:49-65 python/tests/design/test_design_lifecycle.py:4765-4785 Step 6 in-flight detection must use identity liveness not registry file presence	Plan replaces .bg-wait-active with registry rows but does not require registry.daemon_liveness/child_liveness. A stale dead registry row without result env could block Step 6 forever; conversely treating any registry file as in-flight mis-classifies after DEAD.	Implement _step6_in_flight via a shared helper (design_core.py) calling registry read_for plus daemon_liveness; pin dead-registry-is-not-in-flight in test_design_lifecycle.py.
+1	in_scope	major	risk-integration	python/larch/bgjob/wait.py:52-56 skills/implement/SKILL.md:604-641 skills/implement/references/ship-pr-exit-matrix.md Step 8 must gate route-exit on BGJOB_RC=0 before handoff consumption	wait.py emits BGJOB_STATUS=DONE for any result env including BGJOB_RC=timeout or orphaned. Step 8 currently keys off .step-8-ship-handoff.rc after notification; without an explicit BGJOB_RC guard, route-exit can run on a timed-out or orphaned ship daemon.	In implement SKILL Step 8 and ship-pr-exit-matrix.md, require: final bgjob wait DONE, BGJOB_RC=0, then read handoff rc/json, then ship route-exit; timeout/orphaned/DEAD skip route-exit.
+1	in_scope	major	correctness	python/larch/bgjob/wait.py:52-56 skills/implement/SKILL.md:488-495 skills/implement/references/self-review.md Step 5 must not parse STEP5_REVIEW_STATUS when BGJOB_RC is timeout or orphaned	Same DONE semantics: implement-step5-review can finish with BGJOB_RC=orphaned after owner death or BGJOB_RC=timeout after budget. Parsing STEP5_REVIEW_STATUS without an RC gate could continue to Step 6 as if review completed.	Add an explicit Step 5 branch in implement SKILL and self-review.md: only parse review KVs when BGJOB_STATUS=DONE and BGJOB_RC=0; map timeout/orphaned/DEAD to existing stall or Step 18 paths without STEP5_REVIEW_STATUS.
+1	in_scope	minor	correctness	python/larch/bgjob/cli.py:69-87 skills/shared/bgjob-wait.md bgjob wait exit 0 does not imply success	CLI wait_main returns 0 for DONE, WAIT, and DEAD. An orchestrator that keys only on Bash exit code can advance after DEAD or after DONE with BGJOB_RC=timeout.	Extend skills/shared/bgjob-wait.md: success requires parsing stdout for BGJOB_STATUS=DONE and BGJOB_RC=0; exit code 0 alone is not sufficient. Mirror in prompt-shape harnesses.
+
+## Findings
+
+### 1. Per-step `--budget-s` mapping (correctness)
+
+The plan moves killing authority into `bgjob` daemons (`python/larch/bgjob/daemon.py` `_monitor`, lines 110–139) but does not pin `--budget-s` per migrated step. Today’s timeouts live in marker `TIMEOUT_S` fields and `dispatch_commit_route.py`:
+
+```87:93:python/larch/implement/dispatch_commit_route.py
+def _checks_commit_route_marker(checks_site: str) -> tuple[str, int, str] | None:
+    if checks_site == "step3":
+        return config.CHECKS_COMMIT_ROUTE_MARKER_STEP3, CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000, ".completed/step-3-terminal"
+    if checks_site == "step5-self-review":
+        return config.CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW, 14700, ".completed/step-5-self-review-terminal"
+```
+
+Step 8 and Step 3 design review use 21600s (`skills/implement/scripts/step-8-ship.sh:114-115`, `skills/design/scripts/design-step3-review.sh:168`). Step 5 resume uses 32700s (`dispatch_commit_route.py:943-947`). Without a budget table in the plan, wrappers can easily under-budget long steps and produce `BGJOB_RC=timeout` (`python/larch/core/config.py` `BGJOB_RC_TIMEOUT`), which must not reach success routing.
+
+**Suggested revision:** Add one normative budget table to `skills/shared/bgjob-wait.md` (or Approach), sourced from existing constants rather than new magic numbers.
+
+---
+
+### 2. Step 6 in-flight must use liveness, not registry presence (correctness)
+
+The plan updates `python/larch/design/design_step6.py` but current `_step6_in_flight` only checks `.bg-wait-active` (lines 49–65). The replacement logic must call `registry.daemon_liveness` / `registry.child_liveness` (`python/larch/bgjob/registry.py:162-173`), not `registry.read_for` file existence alone.
+
+`python/tests/design/test_design_lifecycle.py` `test_step6_in_flight_signal_matrix` (4765+) covers marker/sentinel/sidecar cases but not a **dead** registry row. After `bgjob wait` returns `DEAD`, a stale registry file could falsely block Step 6 if implementation only checks path presence.
+
+**Suggested revision:** Implement liveness via a shared helper in `design_core.py`; extend `test_design_lifecycle.py` with dead-registry → not-in-flight.
+
+---
+
+### 3. Step 8: gate `route-exit` on `BGJOB_RC=0` (risk-integration)
+
+`python/larch/bgjob/wait.py` returns `BGJOB_STATUS=DONE` whenever a result env exists (52–56), including `BGJOB_RC=timeout` and `BGJOB_RC=orphaned` written by `_monitor` (`daemon.py:121-132`). The plan says keep `ship route-exit` byte-compatible, but Step 8 orchestration still describes handoff probing via `.step-8-ship-handoff.rc` after `<task-notification>` (`skills/implement/SKILL.md:604-641`).
+
+**Suggested revision:** In `skills/implement/SKILL.md` Step 8 and `ship-pr-exit-matrix.md`, document the ordered gate: `bgjob wait` → `BGJOB_STATUS=DONE` **and** `BGJOB_RC=0` → read `.step-8-ship-handoff.rc`/`.json` → `ship route-exit`. Never call `route-exit` on `timeout`, `orphaned`, or `DEAD`.
+
+---
+
+### 4. Step 5: do not parse review KVs without `BGJOB_RC=0` (correctness)
+
+Step 5 is the other high-risk lifecycle surface. The plan removes `.step5-wrapper-detached` re-entry (`skills/implement/scripts/step-5-review.sh`, `test-step-5-review.sh`) and delegates owner death to the daemon (`test_daemon.py` `test_monitor_uses_recorded_child_identity_on_orphan`). That produces `BGJOB_RC=orphaned` in the result env, surfaced as `DONE` by `wait.py`.
+
+Implement SKILL still says to parse `STEP5_REVIEW_STATUS` after notification (488–495). Without an explicit `BGJOB_RC` gate, a timed-out or orphaned review could be treated as `complete` and violate NEVER #4.
+
+**Suggested revision:** Add a Step 5-specific branch in `skills/implement/SKILL.md` and `self-review.md`: parse `STEP5_REVIEW_STATUS` only after `BGJOB_RC=0`; route `timeout`/`orphaned`/`DEAD` to stall or Step 18 without entering Step 6.
+
+---
+
+### 5. `bgjob wait` exit code vs stdout (correctness)
+
+`cli.wait_main` returns exit 0 for `DONE`, `WAIT`, and `DEAD` (`python/larch/bgjob/cli.py:69-87`). The shared contract in `skills/shared/bgjob-wait.md` focuses on stdout KVs but does not warn that exit 0 is not success.
+
+**Suggested revision:** One sentence in `bgjob-wait.md` and a harness assertion: only `BGJOB_STATUS=DONE` with `BGJOB_RC=0` (plus required step KVs) authorizes continuation.
+
+---
+
+## What the plan already covers well
+
+- Identity-checked termination in `_terminate_child_group` and `reap_main` (`daemon.py:79-85`, `cli.py:117-122`); `test_daemon.py` covers timeout/orphan paths; `scripts/test-bgjob.sh` is planned for real-process reap/PID recycling.
+- Global contract that `DONE` alone is insufficient (`skills/shared/bgjob-wait.md:9`, plan Approach items 7–8).
+- Stall classifier migration for checks legs (`python/larch/state/_tokens.py:195-223` → bgjob registry) with `test_stall_recovery.py` updates listed.
+- Step 5c/Step 8 handoff sidecar ordering preserved (`step-8-ship.sh` `persist_handoff` trap, `test-step-8-ship.sh` rc/json-before-marker assertion).
+
+## Out of scope (not raised as in-scope)
+
+- Adding a `python/cli.py bgjob done-ok` parser helper: useful hardening, but the plan’s prose contract plus failure modes already flag missing `BGJOB_RC` gates.
+- `daemon.py:197-198` raw `killpg` on startup before child identity capture: pre-existing; not introduced by this migration.
