@@ -626,7 +626,7 @@ json_deny_monitor() {
 
 json_deny_task_output_read() {
   local dir="$1" reason
-  reason=$(deny_reason_with_marker 'The classification Read of tasks/*.output is unchanged or empty during a live /design background wait. End the turn now with no prose, no tools, and no retry until the next <task-notification>.' "$dir")
+  reason=$(deny_reason_with_marker 'The classification Read of tasks/*.output is unchanged or empty during a live /design or /implement background wait. End the turn now with no prose, no tools, and no retry until the next <task-notification>.' "$dir")
   emit_deny_json "$reason"
 }
 
@@ -660,7 +660,7 @@ task_output_read_clamp() {
   while IFS='|' read -r dir step || [ -n "$dir" ]; do
     [ -n "$dir" ] || continue
     case "$step" in
-      design-step*) ;;
+      design-step*|implement-step*) ;;
       *) continue ;;
     esac
     bump=$(task_output_read_bump "$dir" "$task_id" "$sig") || return 1

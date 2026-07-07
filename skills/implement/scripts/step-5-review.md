@@ -1,6 +1,6 @@
 # step-5-review.sh
 
-Step 5 review loop launcher. Marks Step 5 telemetry, writes the bg-wait marker, prints the scripted-review banner, reads the persisted difficulty override when present, and launches the file-backed `review-and-fix step5 --mode loop` worker.
+Step 5 review loop launcher. Marks Step 5 telemetry, writes the bg-wait marker, emits the scripted-review banner on stderr, reads the persisted difficulty override when present, and launches the file-backed `review-and-fix step5 --mode loop` worker.
 
 ## Caller
 

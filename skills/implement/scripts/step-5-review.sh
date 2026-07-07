@@ -262,7 +262,7 @@ case "$dynamic_archetypes_cap" in [0-1]) ;; *) printf 'ERROR: Step 5 banner dyna
 export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
 difficulty_override=$(read_run_flag_key DIFFICULTY_OVERRIDE "")
 case "$difficulty_override" in ""|TRIVIAL|MODERATE|HARD) ;; *) difficulty_override="" ;; esac
-printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, fixed tier cap 2; escalated rounds skip pruning; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap=%s**\n' "$dynamic_archetypes_cap"
+printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, fixed tier cap 2; escalated rounds skip pruning; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap=%s**\n' "$dynamic_archetypes_cap" >&2
 
 rm -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" 2>/dev/null || true
 _step5_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step5-review-stdout.XXXXXX")" || {
