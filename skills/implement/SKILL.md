@@ -445,7 +445,7 @@ Print: `> **🔶 /implement 3: checks (1)**`
 **⚠ Bgjob foreground launch required — do NOT set `run_in_background: true`. Expected launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step3-checks PGID=<n>`.**
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}" # lint-consecutive-bash: ok step3 checks bgjob launch precedes the repeated wait fence
 ```
 
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
@@ -563,7 +563,7 @@ The Step 6 composite writes `.review-boundary-passed` at entry after Cross-Skill
 **⚠ Bgjob foreground launch required — do NOT set `run_in_background: true`. Expected launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>`.**
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" # lint-consecutive-bash: ok step6 checks bgjob launch precedes the repeated wait fence
 ```
 
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
@@ -596,7 +596,7 @@ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment 
 **⚠ Bgjob foreground launch required — do NOT set `run_in_background: true`. Expected launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step7a PGID=<n>`.**
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-7a --bgjob-launch true --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-7a --bgjob-launch true --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}" # lint-consecutive-bash: ok step7a bgjob launch precedes the repeated wait fence
 ```
 
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
