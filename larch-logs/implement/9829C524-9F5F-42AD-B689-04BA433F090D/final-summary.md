@@ -2,7 +2,7 @@
 
 - **Outcome**: shipping
 - **Duration**: 01:07:18
-- **Cost**: 💰 TOTAL ~$35.01: Claude $6.34, Codex-5.5 $21.99, Codex-mini $1.10, Cursor $4.95, Claude (subprocess) $0.63  |  Tokens: 49179k
+- **Cost**: 💰 TOTAL ~$38.10: Claude $9.43, Codex-5.5 $21.99, Codex-mini $1.10, Cursor $4.95, Claude (subprocess) $0.63  |  Tokens: 52336k
 - **Issue**: #6507: https://github.com/character-ai/larch/issues/6507
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -11,7 +11,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 5
 - **Run logs**: `larch-logs/implement/9829C524-9F5F-42AD-B689-04BA433F090D/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
@@ -21,8 +21,12 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (1):
+Warnings (5):
   1. Step 7a.1 — 5 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: docs/skills.md, docs/workflow-lifecycle.md, python/larch/report/gc_run_logs.py, py...
+  2. Consulted ARCHITECTURAL_GUIDELINES.md against the final Step 8 diff.
+  3. The change honors the guidelines the implementer acknowledged: G-Fix-1 (one shared `filter_gate_b_skipped_files` keeps Gate B compose and the new Gate C audit aligned instead of duplicating the fin...
+  4. Deviation:
+  5. G-Md-2 (sweep a changed flag's prose consumers in the same change): the `--skip-approve` semantics change updated `skills/design/SKILL.md` and `skills/design/references/approval-gates.md`, but the...
 
 ## Review Phase Detail
 
@@ -84,3 +88,12 @@ codex/pragmatism-vote            │                                            
 7. cursor/testing: 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md against the final Step 8 diff.
+
+The change honors the guidelines the implementer acknowledged: G-Fix-1 (one shared `filter_gate_b_skipped_files` keeps Gate B compose and the new Gate C audit aligned instead of duplicating the finding-block regex), G-Py-4 (helpers raise narrow `AcceptedAuditError`/`OSError` with distinct fail-closed exit codes, and `design-step3-entry.sh` aborts closed on snapshot failure), G-IO-1 and G-Sec-4 (writes go through `larch.io.atomic_write(..., nofollow=True)` with symlink rejection and design-tmpdir containment checks), G-CLI-1 and G-CLI-2 (three `main(argv) -> int` verbs registered by `(domain, verb)`, exit 2 for validation and exit 1 for I/O), and G-Wire-1 (the new `ACCEPTED_AUDIT_STATUS=ok` and `filter-gate-b-skipped` machine keys are registered in `_MACHINE_STDOUT_KEYS` and covered by tests in the same change).
+
+Deviation:
+- G-Md-2 (sweep a changed flag's prose consumers in the same change): the `--skip-approve` semantics change updated `skills/design/SKILL.md` and `skills/design/references/approval-gates.md`, but the plan's `### UPDATED:` consumers `README.md`, `docs/skills.md`, `docs/workflow-lifecycle.md`, and `skills/design/references/flags.md` were left unswept and still describe the pre-audit `--skip-approve` behavior. G-Md-2 permits no deviation here (the sweep is cheap and stale prose fails silently); the implementer and the Step 5 review loop did not complete these four files. Follow-up should sweep them to match the new Gate C accepted-findings-audit behavior.
