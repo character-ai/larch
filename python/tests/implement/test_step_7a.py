@@ -7,21 +7,77 @@ import pytest
 from larch.implement import step_7a
 
 
-def test_step7a_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> None:
-    _ = (tmp_path / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
-
-    with step_7a._bg_wait_marker(
+def test_step7a_terminal_sentinel_context_does_not_write_bg_wait_marker(tmp_path: Path) -> None:
+    with step_7a._terminal_sentinel(
         tmpdir=tmp_path,
-        step="implement-step7a",
-        timeout_s=21600,
         terminal_sentinel=".completed/step-7a-terminal",
     ):
-        marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
+        assert not (tmp_path / ".bg-wait-active").exists()
 
-    assert "STEP=implement-step7a\n" in marker_text
-    assert f"CLONE_PATH={tmp_path}\n" in marker_text
     assert (tmp_path / ".completed" / "step-7a-terminal").exists()
     assert not (tmp_path / ".bg-wait-active").exists()
+
+
+def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    merge_env = tmp_path / "bgjob" / "implement-step7a.merge.env"
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+
+    def fake_is_small_non_runtime_change(*, base_remote: str, base_ref: str) -> bool:
+        _ = (base_remote, base_ref)
+        return True
+
+    def fake_run_log_flush(
+        implement_tmpdir: Path,
+        *,
+        run_id: str,
+        no_logs_commit: bool,
+        claude_source_file: str,
+        defer_git_commit: bool = False,
+    ) -> str:
+        _ = (implement_tmpdir, run_id, no_logs_commit, claude_source_file, defer_git_commit)
+        return "skip"
+
+    monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", fake_is_small_non_runtime_change)
+    monkeypatch.setattr(step_7a, "_run_log_flush", fake_run_log_flush)
+    with patch.object(step_7a, "subprocess") as mock_subprocess:
+        mock_subprocess.run.return_value.returncode = 0
+        mock_subprocess.run.return_value.stdout = "CHECKPOINT_NEXT=continue\nREBASE_OUTCOME=skipped\n"
+        rc = step_7a.main(["--implement-tmpdir", str(tmp_path), "--bgjob-merge-result-env", str(merge_env)])
+
+    assert rc == 0
+    text = merge_env.read_text(encoding="utf-8")
+    assert "CHECKPOINT_NEXT=continue\n" in text
+    assert "REBASE_OUTCOME=skipped\n" in text
+    assert "BGJOB_RC=" not in text
+
+
+def test_step7a_bgjob_launch_starts_transport(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "BGJOB_STATUS=STARTED STEP=implement-step7a PGID=123\n", "")
+
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+
+    rc = step_7a.main(["--bgjob-launch", "true", "--implement-tmpdir", str(tmp_path), "--run-id", "run-1"])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "BGJOB_STATUS=STARTED STEP=implement-step7a PGID=123\n"
+    start = calls[0]
+    assert start[:8] == (
+        "bgjob",
+        "start",
+        "--step",
+        "implement-step7a",
+        "--tmpdir",
+        str(tmp_path),
+        "--budget-s",
+        "1800",
+    )
+    assert "--merge-result-env" in start
+    assert str(tmp_path / "bgjob" / "implement-step7a.merge.env") in start
+    assert "--bgjob-merge-result-env" in start
 
 
 def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

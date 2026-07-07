@@ -193,6 +193,12 @@ check "$AGENTS_MD" \
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
     'Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh`'
+check "$IMPL_MD" \
+    "SKILL.md bgjob WAIT repeats identical wait" \
+    'after `BGJOB_STATUS=WAIT`, run the identical `bgjob wait` again with no intervening prose or tools'
+check "$IMPL_MD" \
+    "SKILL.md bgjob DONE uses result env" \
+    'after final `DONE`, parse required KVs from the last `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env`'
 
 check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins empty-output and repeat notification scope" \

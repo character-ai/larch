@@ -152,12 +152,12 @@ self_review_read = '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}
 bootstrap_recovery_read_degraded = '**MANDATORY: READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.'
 for script in [
     'skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"',
-    'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"',
+    'skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"',
     'skills/implement/scripts/step-5-review.sh',
     'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"',
-    'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
+    'python/cli.py implement step-7a --bgjob-launch true --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'python/cli.py ship pre-driver',
     'skills/implement/scripts/step-8-ship.sh',
     'skills/implement/scripts/step-8-oos-checkpoint.sh',
@@ -273,19 +273,24 @@ require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
-    (launcher + 'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
-    (launcher + 'skills/implement/scripts/step-6-entry.sh', 'timeout: 15600000'),
-    (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
     require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
+for script, step in [
+    (launcher + 'skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r', 'implement-step3-checks'),
+    (launcher + 'skills/implement/scripts/step-6-entry.sh', 'implement-step6-checks'),
+    (launcher + 'python/cli.py implement step-7a --bgjob-launch true', 'implement-step7a'),
+]:
+    require_near(skill, script, 'Bgjob foreground launch required', f'bgjob launch pin for {script}', 1400)
+    require_near(skill, script, f'BGJOB_STATUS=STARTED STEP={step} PGID=<n>', f'bgjob started stdout pin for {script}', 1400)
+    require_near(skill, launcher + f'python/cli.py bgjob wait --step {step}', 'BGJOB_STATUS=WAIT', f'bgjob wait repeat pin for {step}', 1400)
 self_review_composite = launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review'
 require_near('skills/implement/references/self-review.md', self_review_composite, 'Immediate-background required', 'self-review immediate-background pin', 1400)
 require_near('skills/implement/references/self-review.md', self_review_composite, 'timeout: 14700000', 'self-review timeout pin', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
-require_near(skill, launcher + 'skills/implement/scripts/step-6-entry.sh', '> **Continue after child returns.**', 'Step 6 unified launcher continuation opener', 2000)
+require_near(skill, launcher + 'skills/implement/scripts/step-6-entry.sh', '> **Continue after bgjob `DONE`.**', 'Step 6 bgjob continuation opener', 2000)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
 
 require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
@@ -503,9 +508,11 @@ require(skill, 'if `BOOTSTRAP_NEXT` is absent or any other value, treat the boot
 require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
 require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
 require(skill, 'Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `step-6-entry` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
+require(skill, 'after final `DONE`, parse required KVs from the last `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env`', 'SKILL bgjob DONE result env gate')
 require('skills/implement/references/checks-repair-loop.md', 'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"', 'checks-repair-loop Step 6 initial composite launcher')
 require('skills/implement/references/checks-repair-loop.md', 'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true', 'checks-repair-loop Step 6 force-checks repair launcher')
 require('skills/implement/references/checks-repair-loop.md', 'both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`', 'checks-repair-loop Step 6 continue and main-agent force-checks')
+require('skills/implement/references/checks-repair-loop.md', 'continue only when `BGJOB_RC=0` and required composite KVs are present', 'checks-repair-loop bgjob result gate')
 forbid(checks_ref, 'python/cli.py implement checks-commit-route --checks-site step6', 'checks-repair-loop old Step 6 checks-commit-route launcher removed')
 forbid(checks_ref, 'checks-commit-route --checks-site step6 --commit-site step7', 'checks-repair-loop bare Step 6 checks-commit-route repair re-entry removed')
 forbid(skill, 'python/cli.py implement checks-commit-route --checks-site step6', 'SKILL old Step 6 checks-commit-route launcher removed')
@@ -525,7 +532,7 @@ require('skills/implement/scripts/step-5-resume.sh', "printf '%s\\n' \"$commit_o
 forbid('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe moved to commit-route')
 forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume must not mask commit failure')
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
-require(skill, 'Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`, and exactly one line-anchored composite `NEXT_ACTION=` record from the full composite capture.', 'SKILL line-anchored composite NEXT_ACTION parse')
+require(skill, 'Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`, and exactly one line-anchored composite `NEXT_ACTION=` record from the final `DONE` stdout and/or bgjob result env.', 'SKILL line-anchored composite NEXT_ACTION parse')
 require(skill, 'Whitespace-token-scan only the first physical line for checks keys', 'SKILL composite checks parsing slice')
 require(checks_ref, 're-run the section 2-pinned composite launcher with identical argv before any success-path routing', 'checks repair-loop folded-site re-capture authority')
 require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.', 'SKILL review-loop envelope branch')

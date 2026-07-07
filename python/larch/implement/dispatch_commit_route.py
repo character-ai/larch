@@ -38,8 +38,6 @@ from larch.implement.dispatch_helpers import (
     GIT_BIN,
 )
 from larch.implement.dispatch_leg import (
-    CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS,
-    CHECKS_STEP3_BG_WAIT_TIMEOUT_S,
     _CHECKS_DEADLINE_MS,
     _COMMIT_ROUTE_DEADLINE_MS,
     _COMMIT_ROUTE_FAILURE_LOG_MAX,
@@ -85,9 +83,6 @@ def _optional_bg_wait_marker(*, tmpdir: Path, marker: tuple[str, int, str] | Non
 
 
 def _checks_commit_route_marker(checks_site: str) -> tuple[str, int, str] | None:
-    if checks_site == "step3":
-        # Step 3 composites cover checks, Step 4 commit, and folded 4.r under one marker.
-        return config.CHECKS_COMMIT_ROUTE_MARKER_STEP3, CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000, ".completed/step-3-terminal"
     if checks_site == "step5-self-review":
         return config.CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW, 14700, ".completed/step-5-self-review-terminal"
     return None
@@ -1092,17 +1087,9 @@ def run_step_checks_main(argv: list[str] | None = None) -> int:
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
     command = ["checks", "run-relevant", "--site", args.site, "--tmpdir", str(implement_tmpdir)]
-    if args.site != "step3":
-        return _run_cli_forward(command)
-    _clear_step3_bg_wait_sidecars(implement_tmpdir)
-    with _bg_wait_marker(
-        tmpdir=implement_tmpdir,
-        step="implement-step3-checks",
-        # run-step-checks is checks-only; the Step 3 composite marker uses a longer full-route timeout.
-        timeout_s=CHECKS_STEP3_BG_WAIT_TIMEOUT_S,
-        terminal_sentinel=".completed/step-3-terminal",
-    ):
-        return _run_cli_forward(command)
+    if args.site == "step3":
+        _clear_step3_bg_wait_sidecars(implement_tmpdir)
+    return _run_cli_forward(command)
 
 
 def step8_python_guard_main(argv: list[str] | None = None) -> int:
