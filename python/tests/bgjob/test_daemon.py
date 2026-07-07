@@ -7,6 +7,7 @@ import signal
 import time
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 import pytest
 
 from larch import io as larch_io
@@ -28,13 +29,26 @@ def _identity(*, pid: int, pgid: int, signature: str) -> process_identity.Record
     )
 
 
+def _wait_ok(timeout: float | None = None) -> int:
+    _ = timeout
+    return 0
+
+
+def _close_fd(_fd: int) -> None:
+    """Stand-in for os.close in daemon tests."""
+
+
+def _sleep_noop(_seconds: float) -> None:
+    """Stand-in for time.sleep in daemon tests."""
+
+
 def test_daemon_child_clears_stale_result_and_registers_before_signal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
     stale_result = model.result_env_path(tmpdir=tmp_path, step="demo-step")
     stale_result.parent.mkdir(parents=True, exist_ok=True)
-    stale_result.write_text("BGJOB_RC=0\n", encoding="utf-8")
+    _ = stale_result.write_text("BGJOB_RC=0\n", encoding="utf-8")
     child_identity = _identity(pid=111, pgid=222, signature="python -c")
     daemon_identity = _identity(pid=333, pgid=444, signature="daemon")
     order: list[str] = []
@@ -49,12 +63,19 @@ def test_daemon_child_clears_stale_result_and_registers_before_signal(
         owner=model.OwnerIdentity(recorded=daemon_identity),
     )
 
+    def fake_getpgid(_pid: int) -> int:
+        return child_identity.pgid
+
+    def fake_popen(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(pid=child_identity.pid)
+
     monkeypatch.setattr(daemon.os, "setsid", lambda: None)
-    monkeypatch.setattr(daemon.os, "getpgid", lambda _pid: child_identity.pgid)
-    monkeypatch.setattr(daemon.os, "close", lambda _fd: None)
-    monkeypatch.setattr(daemon.subprocess, "Popen", lambda *args, **kwargs: SimpleNamespace(pid=child_identity.pid))
+    monkeypatch.setattr(daemon.os, "getpgid", fake_getpgid)
+    monkeypatch.setattr(daemon.os, "close", _close_fd)
+    monkeypatch.setattr(daemon.subprocess, "Popen", fake_popen)
 
     def capture(pid: int, expected_signature: str = "") -> process_identity.RecordedProcessIdentity:
+        _ = expected_signature
         order.append(f"capture:{pid}")
         if pid == child_identity.pid:
             return child_identity
@@ -66,16 +87,16 @@ def test_daemon_child_clears_stale_result_and_registers_before_signal(
         assert not stale_result.exists()
         path = tmp_path / "registry" / f"{entry.run_id}-{entry.step}.env"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("STEP=demo-step\nRUN_ID=run-1\n", encoding="utf-8")
+        _ = path.write_text("STEP=demo-step\nRUN_ID=run-1\n", encoding="utf-8")
         order.append("registry")
         return path
 
-    def write_pipe(fd: int, data: bytes) -> int:
+    def write_pipe(_fd: int, data: bytes) -> int:
         assert order == [f"capture:{child_identity.pid}", f"capture:{os.getpid()}", "registry"]
         order.append("pipe")
         return len(data)
 
-    def monitor(spec_arg: model.JobSpec, child_arg: object, child_identity_arg: object, reg_path: Path) -> int:
+    def monitor(spec_arg: model.JobSpec, _child_arg: object, child_identity_arg: object, reg_path: Path) -> int:
         assert spec_arg == spec
         assert child_identity_arg == child_identity
         assert reg_path.is_file()
@@ -86,9 +107,12 @@ def test_daemon_child_clears_stale_result_and_registers_before_signal(
     monkeypatch.setattr(daemon.registry, "write_entry", write_entry)
     monkeypatch.setattr(daemon.os, "write", write_pipe)
     monkeypatch.setattr(daemon, "_monitor", monitor)
-    monkeypatch.setattr(daemon, "_terminate_child_group", lambda *args, **kwargs: None)
+    def fake_terminate_noop(*_args: object, **_kwargs: object) -> None:
+        """Stand-in for _terminate_child_group."""
 
-    rc = daemon._daemon_child(spec, pipe_fd=99)
+    monkeypatch.setattr(daemon, "_terminate_child_group", fake_terminate_noop)
+
+    rc = daemon._daemon_child(spec, pipe_fd=99)  # pyright: ignore[reportPrivateUsage]
 
     assert rc == 0
     assert not stale_result.exists()
@@ -96,10 +120,13 @@ def test_daemon_child_clears_stale_result_and_registers_before_signal(
 
 
 def test_owner_identity_from_env_requires_capture(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(daemon, "_read_owner_identity", lambda _raw: None)
+    def fake_read_owner(_raw: str) -> process_identity.RecordedProcessIdentity | None:
+        """Simulate a missing owner process."""
+
+    monkeypatch.setattr(daemon, "_read_owner_identity", fake_read_owner)
 
     with pytest.raises(RuntimeError, match="owner pid 123"):
-        daemon.owner_identity_from_env("123")
+        _ = daemon.owner_identity_from_env("123")
 
 
 def test_owner_identity_from_env_uses_session_pid_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,11 +135,11 @@ def test_owner_identity_from_env_uses_session_pid_env(monkeypatch: pytest.Monkey
     for name in ("LARCH_BGJOB_OWNER_PID", "LARCH_BG_POLL_GUARD_SESSION_PID", "CLAUDE_PID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("LARCH_CLAUDE_PID", "123")
-    monkeypatch.setattr(
-        daemon,
-        "_read_owner_identity",
-        lambda raw: seen.append(raw) or (identity if raw == "123" else None),
-    )
+    def fake_read_owner(raw: str) -> process_identity.RecordedProcessIdentity | None:
+        seen.append(raw)
+        return identity if raw == "123" else None
+
+    monkeypatch.setattr(daemon, "_read_owner_identity", fake_read_owner)
 
     owner = daemon.owner_identity_from_env(None)
 
@@ -125,7 +152,7 @@ def test_owner_identity_from_env_fails_closed_without_session_pid(monkeypatch: p
         monkeypatch.delenv(name, raising=False)
 
     with pytest.raises(RuntimeError, match="missing session owner pid"):
-        daemon.owner_identity_from_env(None)
+        _ = daemon.owner_identity_from_env(None)
 
 
 def test_monitor_uses_recorded_child_identity_on_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -141,18 +168,28 @@ def test_monitor_uses_recorded_child_identity_on_timeout(tmp_path: Path, monkeyp
     )
     child = SimpleNamespace(
         poll=lambda: None,
-        wait=lambda timeout=None: 0,
+        wait=_wait_ok,
     )
     calls: dict[str, object] = {}
     monotonic_values = iter([0.0, 2.0, 2.0])
 
-    monkeypatch.setattr(daemon.time, "monotonic", lambda: next(monotonic_values))
-    monkeypatch.setattr(daemon.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(daemon, "_terminate_child_group", lambda identity, *, reason: calls.update(identity=identity, reason=reason))
-    monkeypatch.setattr(daemon, "write_result", lambda *, spec, rc, elapsed_s: calls.update(rc=rc, elapsed_s=elapsed_s, spec=spec))
-    monkeypatch.setattr(daemon.registry, "unlink_entry", lambda path: calls.update(unlinked=path))
+    def fake_terminate(identity: process_identity.RecordedProcessIdentity, *, reason: str) -> None:
+        calls.update(identity=identity, reason=reason)
 
-    rc = daemon._monitor(spec, child, child_identity, tmp_path / "registry.env")
+    def fake_write_result(*, spec: model.JobSpec, rc: str, elapsed_s: int) -> None:
+        calls.update(rc=rc, elapsed_s=elapsed_s, spec=spec)
+
+    def fake_unlink(path: Path) -> None:
+        calls.update(unlinked=path)
+
+    monkeypatch.setattr(daemon.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(daemon.time, "sleep", _sleep_noop)
+    monkeypatch.setattr(daemon, "_terminate_child_group", fake_terminate)
+    monkeypatch.setattr(daemon, "write_result", fake_write_result)
+    monkeypatch.setattr(daemon.registry, "unlink_entry", fake_unlink)
+
+    popen_child = cast("subprocess.Popen[bytes]", child)
+    rc = daemon._monitor(spec, popen_child, child_identity, tmp_path / "registry.env")  # pyright: ignore[reportPrivateUsage]
 
     assert rc == 0
     assert calls["identity"] == child_identity
@@ -175,24 +212,34 @@ def test_monitor_uses_recorded_child_identity_on_orphan(tmp_path: Path, monkeypa
     )
     child = SimpleNamespace(
         poll=lambda: None,
-        wait=lambda timeout=None: 0,
+        wait=_wait_ok,
     )
     calls: dict[str, object] = {}
     monotonic_values = iter([0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
+    def fake_validate(*, recorded: process_identity.RecordedProcessIdentity, runner: object = None) -> process_identity.ValidationResult:
+        _ = (recorded, runner)
+        return process_identity.ValidationResult(ok=False, reason="missing-pid")
+
+    def fake_terminate(identity: process_identity.RecordedProcessIdentity, *, reason: str) -> None:
+        calls.update(identity=identity, reason=reason)
+
+    def fake_write_result(*, spec: model.JobSpec, rc: str, elapsed_s: int) -> None:
+        calls.update(rc=rc, elapsed_s=elapsed_s, spec=spec)
+
+    def fake_unlink(path: Path) -> None:
+        calls.update(unlinked=path)
+
     monkeypatch.setattr(daemon.config, "BGJOB_OWNER_GRACE_S", 0.0)
     monkeypatch.setattr(daemon.time, "monotonic", lambda: next(monotonic_values))
-    monkeypatch.setattr(daemon.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(
-        daemon.process_identity,
-        "validate_process_identity",
-        lambda *, recorded, runner=None: process_identity.ValidationResult(ok=False, reason="missing-pid"),
-    )
-    monkeypatch.setattr(daemon, "_terminate_child_group", lambda identity, *, reason: calls.update(identity=identity, reason=reason))
-    monkeypatch.setattr(daemon, "write_result", lambda *, spec, rc, elapsed_s: calls.update(rc=rc, elapsed_s=elapsed_s, spec=spec))
-    monkeypatch.setattr(daemon.registry, "unlink_entry", lambda path: calls.update(unlinked=path))
+    monkeypatch.setattr(daemon.time, "sleep", _sleep_noop)
+    monkeypatch.setattr(daemon.process_identity, "validate_process_identity", fake_validate)
+    monkeypatch.setattr(daemon, "_terminate_child_group", fake_terminate)
+    monkeypatch.setattr(daemon, "write_result", fake_write_result)
+    monkeypatch.setattr(daemon.registry, "unlink_entry", fake_unlink)
 
-    rc = daemon._monitor(spec, child, child_identity, tmp_path / "registry.env")
+    popen_child = cast("subprocess.Popen[bytes]", child)
+    rc = daemon._monitor(spec, popen_child, child_identity, tmp_path / "registry.env")  # pyright: ignore[reportPrivateUsage]
 
     assert rc == 0
     assert calls["identity"] == child_identity
@@ -206,15 +253,6 @@ def test_monitor_treats_dead_child_live_daemon_as_pending(
 ) -> None:
     child_identity = _identity(pid=111, pgid=222, signature="python -c")
     daemon_identity = _identity(pid=333, pgid=444, signature="daemon")
-    spec = model.JobSpec(
-        step="demo-step",
-        tmpdir=tmp_path,
-        log_dir=tmp_path / "bgjob",
-        budget_s=1,
-        command=(sys.executable, "-c", "print('hello')"),
-        run_id="run-1",
-        owner=model.OwnerIdentity(recorded=daemon_identity),
-    )
     result_path = model.result_env_path(tmpdir=tmp_path, step="demo-step")
     reg_path = tmp_path / "registry.env"
     reg_entry = model.RegistryEntry(
@@ -233,10 +271,20 @@ def test_monitor_treats_dead_child_live_daemon_as_pending(
         result_env=result_path,
     )
 
-    monkeypatch.setattr(daemon.time, "sleep", lambda _seconds: None)
-    monkeypatch.setattr(daemon.registry, "read_for", lambda *, tmpdir, step, run_id=None: (reg_path, reg_entry))
-    monkeypatch.setattr(daemon.registry, "daemon_liveness", lambda entry: model.LivenessVerdict(live=True, reason="ok"))
-    monkeypatch.setattr(daemon.registry, "child_liveness", lambda entry: model.LivenessVerdict(live=False, reason="missing-pid"))
+    def fake_read_for(*, tmpdir: Path, step: str, run_id: str | None = None) -> tuple[Path, model.RegistryEntry | None]:
+        _ = (tmpdir, step, run_id)
+        return (reg_path, reg_entry)
+
+    def fake_daemon_liveness(_entry: model.RegistryEntry) -> model.LivenessVerdict:
+        return model.LivenessVerdict(live=True, reason="ok")
+
+    def fake_child_liveness(_entry: model.RegistryEntry) -> model.LivenessVerdict:
+        return model.LivenessVerdict(live=False, reason="missing-pid")
+
+    monkeypatch.setattr(daemon.time, "sleep", _sleep_noop)
+    monkeypatch.setattr(daemon.registry, "read_for", fake_read_for)
+    monkeypatch.setattr(daemon.registry, "daemon_liveness", fake_daemon_liveness)
+    monkeypatch.setattr(daemon.registry, "child_liveness", fake_child_liveness)
 
     rc = wait.wait_once(tmpdir=tmp_path, step="demo-step", max_wait_s=0, poll_interval_s=0)
     out = capsys.readouterr().out
@@ -259,16 +307,19 @@ def test_daemon_child_kills_child_group_on_post_popen_failure(tmp_path: Path, mo
     )
     calls: dict[str, object] = {}
 
+    def fake_killpg(pid: int, sig: int) -> None:
+        calls.update(killpg=(pid, sig))
+
+    def fake_popen(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        return SimpleNamespace(pid=child_identity.pid, wait=_wait_ok)
+
     monkeypatch.setattr(daemon.os, "setsid", lambda: None)
-    monkeypatch.setattr(daemon.os, "close", lambda _fd: None)
-    monkeypatch.setattr(daemon.os, "killpg", lambda pid, sig: calls.update(killpg=(pid, sig)))
-    monkeypatch.setattr(
-        daemon.subprocess,
-        "Popen",
-        lambda *args, **kwargs: SimpleNamespace(pid=child_identity.pid, wait=lambda timeout=None: 0),
-    )
+    monkeypatch.setattr(daemon.os, "close", _close_fd)
+    monkeypatch.setattr(daemon.os, "killpg", fake_killpg)
+    monkeypatch.setattr(daemon.subprocess, "Popen", fake_popen)
 
     def capture(pid: int, expected_signature: str = "") -> process_identity.RecordedProcessIdentity:
+        _ = expected_signature
         if pid == child_identity.pid:
             raise RuntimeError("child identity capture failed")
         raise AssertionError(f"unexpected pid {pid}")
@@ -276,7 +327,7 @@ def test_daemon_child_kills_child_group_on_post_popen_failure(tmp_path: Path, mo
     monkeypatch.setattr(daemon, "_capture_identity", capture)
 
     with pytest.raises(RuntimeError, match="child identity capture failed"):
-        daemon._daemon_child(spec, pipe_fd=99)
+        _ = daemon._daemon_child(spec, pipe_fd=99)  # pyright: ignore[reportPrivateUsage]
 
     assert calls["killpg"] == (child_identity.pid, signal.SIGKILL)
 
@@ -285,7 +336,7 @@ def test_daemon_child_rejects_symlinked_log_file(tmp_path: Path, monkeypatch: py
     log_dir = tmp_path / "bgjob"
     log_dir.mkdir()
     target = log_dir / "demo-step.stdout.target"
-    target.write_text("", encoding="utf-8")
+    _ = target.write_text("", encoding="utf-8")
     (log_dir / "demo-step.stdout.log").symlink_to(target)
     spec = model.JobSpec(
         step="demo-step",
@@ -297,18 +348,21 @@ def test_daemon_child_rejects_symlinked_log_file(tmp_path: Path, monkeypatch: py
         owner=model.OwnerIdentity(recorded=None),
     )
 
+    def fail_popen(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        pytest.fail("Popen should not be reached")
+
     monkeypatch.setattr(daemon.os, "setsid", lambda: None)
-    monkeypatch.setattr(daemon.os, "close", lambda _fd: None)
-    monkeypatch.setattr(daemon.subprocess, "Popen", lambda *args, **kwargs: pytest.fail("Popen should not be reached"))
+    monkeypatch.setattr(daemon.os, "close", _close_fd)
+    monkeypatch.setattr(daemon.subprocess, "Popen", fail_popen)
 
     with pytest.raises(ValueError, match="symlink"):
-        daemon._daemon_child(spec, pipe_fd=99)
+        _ = daemon._daemon_child(spec, pipe_fd=99)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_write_result_keeps_authoritative_bgjob_rc(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
     merge = tmp_path / "merge.env"
-    merge.write_text("BGJOB_RC=9\nCUSTOM=ok\nSTEP=bad\nBGJOB_ELAPSED_S=999\n", encoding="utf-8")
+    _ = merge.write_text("BGJOB_RC=9\nCUSTOM=ok\nSTEP=bad\nBGJOB_ELAPSED_S=999\n", encoding="utf-8")
     identity = _identity(pid=111, pgid=222, signature="daemon")
     spec = model.JobSpec(
         step="demo-step",

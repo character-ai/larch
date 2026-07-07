@@ -54,6 +54,28 @@ def _validated_path(path: Path, *, root: Path) -> Path | None:
     return resolved
 
 
+def _resolved_dir(raw: str) -> Path | None:
+    candidate = Path(raw)
+    if candidate.is_symlink():
+        return None
+    resolved = candidate.resolve()
+    if not resolved.is_dir():
+        return None
+    return resolved
+
+
+def _dirs_from_rows(rows: dict[str, str]) -> tuple[Path, Path] | None:
+    tmpdir = _resolved_dir(rows["TMPDIR"])
+    log_dir = _resolved_dir(rows["LOG_DIR"])
+    if tmpdir is None or log_dir is None:
+        return None
+    try:
+        _ = log_dir.relative_to(tmpdir)
+    except ValueError:
+        return None
+    return tmpdir, log_dir
+
+
 def write_entry(entry: model.RegistryEntry) -> Path:
     path = model.registry_path(run_id=entry.run_id, step=entry.step)
     rows: list[tuple[str, str]] = [
@@ -85,22 +107,10 @@ def read_entry(path: Path) -> model.RegistryEntry | None:
     if daemon is None or child is None:
         return None
     try:
-        tmpdir_raw = Path(rows["TMPDIR"])
-        if tmpdir_raw.is_symlink():
+        dirs = _dirs_from_rows(rows)
+        if dirs is None:
             return None
-        tmpdir = tmpdir_raw.resolve()
-        if not tmpdir.is_dir():
-            return None
-        log_dir_raw = Path(rows["LOG_DIR"])
-        if log_dir_raw.is_symlink():
-            return None
-        log_dir = log_dir_raw.resolve()
-        if not log_dir.is_dir():
-            return None
-        try:
-            _ = log_dir.relative_to(tmpdir)
-        except ValueError:
-            return None
+        tmpdir, log_dir = dirs
         stdout_log = _validated_path(Path(rows["STDOUT_LOG"]), root=log_dir)
         stderr_log = _validated_path(Path(rows["STDERR_LOG"]), root=log_dir)
         result_env = _validated_path(Path(rows["RESULT_ENV"]), root=model.bgjob_dir(tmpdir))

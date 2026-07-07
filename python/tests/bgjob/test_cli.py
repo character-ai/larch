@@ -32,9 +32,12 @@ def test_wait_rejects_too_large_chunk(tmp_path: Path, capsys: pytest.CaptureFixt
 def test_start_rejects_sentinel_symlink_escape(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", lambda _raw: model.OwnerIdentity(recorded=None))
+    def fake_owner_identity(_raw: str | None) -> model.OwnerIdentity:
+        return model.OwnerIdentity(recorded=None)
+
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", fake_owner_identity)
     outside = tmp_path.parent / "bgjob-sentinel-outside"
-    outside.write_text("escape\n", encoding="utf-8")
+    _ = outside.write_text("escape\n", encoding="utf-8")
     link = tmp_path / "sentinel-link"
     link.symlink_to(outside)
     rc = cli.start_main(

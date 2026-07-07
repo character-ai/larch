@@ -53,9 +53,19 @@ def test_wait_keeps_polling_when_child_is_dead_but_daemon_is_live(
     )
     reg_path = tmp_path / "registry.env"
 
-    monkeypatch.setattr(registry, "read_for", lambda *, tmpdir, step, run_id=None: (reg_path, reg_entry))
-    monkeypatch.setattr(registry, "daemon_liveness", lambda entry: model.LivenessVerdict(live=True, reason="ok"))
-    monkeypatch.setattr(registry, "child_liveness", lambda entry: model.LivenessVerdict(live=False, reason="missing-pid"))
+    def fake_read_for(*, tmpdir: Path, step: str, run_id: str | None = None) -> tuple[Path, model.RegistryEntry | None]:
+        _ = (tmpdir, step, run_id)
+        return (reg_path, reg_entry)
+
+    def fake_daemon_liveness(_entry: model.RegistryEntry) -> model.LivenessVerdict:
+        return model.LivenessVerdict(live=True, reason="ok")
+
+    def fake_child_liveness(_entry: model.RegistryEntry) -> model.LivenessVerdict:
+        return model.LivenessVerdict(live=False, reason="missing-pid")
+
+    monkeypatch.setattr(registry, "read_for", fake_read_for)
+    monkeypatch.setattr(registry, "daemon_liveness", fake_daemon_liveness)
+    monkeypatch.setattr(registry, "child_liveness", fake_child_liveness)
 
     rc = cli.wait_main(["--step", "demo-step", "--tmpdir", str(tmp_path), "--max-wait-s", "0"])
     out = capsys.readouterr().out
