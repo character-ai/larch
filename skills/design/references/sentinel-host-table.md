@@ -19,7 +19,6 @@ Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash f
 - Folded sentinels are written first at that boundary so resume skips discussion already completed before the boundary. A pause requested mid-discussion can still replay in-flight LLM work that had not reached its host fence.
 - Pause/resume helper coverage lives in `${CLAUDE_PLUGIN_ROOT}/python/test_design_pause.py` (pytest; `make test-design-pause-resume`).
 
-
 ## Bgjob completion truth during migration
 
 Migrated `/design` long-running hosts treat `$DESIGN_TMPDIR/bgjob/<step>.result.env` as completion truth after `bgjob wait` returns `BGJOB_STATUS=DONE`. Terminal sentinels remain compatibility transition markers only; they are not sufficient for normal continuation without `BGJOB_RC=0` and the required step KVs in the bgjob result env.
