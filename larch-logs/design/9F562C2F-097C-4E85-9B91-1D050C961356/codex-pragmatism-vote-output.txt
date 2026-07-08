@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- run_postmerge_phase is the finalize helper; it does not re-enter the main-health gate, so this failure mode is misstated.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the shared retry-counter issue is only relevant if the optional auto-rerun path stays in scope; the core recover-on-green fix does not need it.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same reason: separating postmerge retry state is an enhancement for the optional auto-rerun layer, not required for the feature to work.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the test rewrite is only necessary if the auto-rerun behavior is accepted; the narrower fix does not change this case.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the outline already makes the emergency-repair resume re-check conditional on an empty EMERGENCY_REPAIR_BRANCH, so this guard is redundant.
+FINDING_6: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- this race is speculative and only matters for the optional auto-rerun path; it is not required to fix the reported dead-end.
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicating the bound constant is cleanup/config churn, not a required part of the post-merge recovery feature.
+FINDING_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the reship carve-out is only needed if the extra auto-rerun path is kept; the issue can be fixed without that added complexity.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of the same config-cleanup point in FINDING_7, so it is not a distinct out-of-scope item.

@@ -1,0 +1,1 @@
+Fix the post-merge CI flake dead-end in the ship driver. Add one bounded post-merge rerun, re-verify emergency-repair resumes by merged SHA with flap checks bypassed, and document the transient-recovery path.
