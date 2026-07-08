@@ -4460,6 +4460,404 @@ def test_no_spurious_under_quorum_warning_after_successful_retry(tmp_path: Path,
     assert not any("decided below" in w for w in warned)
 
 
+def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    scope_file = impl / "scope-files.txt"
+    scope_file.write_text("python/example.py\n", encoding="utf-8")
+    call_count = 0
+    dispatch_argv: list[str] = []
+    tally_argv: list[str] = []
+    emit_argv: list[str] = []
+    prune_records: list[tuple[str, str]] = []
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "findings.md").write_text(
+            "### FINDING_1: target\n"
+            "- **Reviewer**: codex\n"
+            "target body\n\n"
+            "### FINDING_2: untouched\n"
+            "- **Reviewer**: cursor\n"
+            "untouched body\n",
+            encoding="utf-8",
+        )
+        (out_dir / "voting-tally.md").write_text(
+            "**⚠ Degraded code-review panel: 1 finding(s) decided below the 2-of-3 panel quorum "
+            "because per-item JUDGE_ERROR dropped valid votes below quorum (FINDING_1).**\n",
+            encoding="utf-8",
+        )
+        (out_dir / "review-core-threshold.env").write_text(
+            "FAILED_SLOTS=0\n"
+            "NOT_SUBSTANTIVE_SLOTS=0\n"
+            "DYNAMIC_FAILED_SLOTS=0\n"
+            "DYNAMIC_DROPPED_SLOTS=0\n",
+            encoding="utf-8",
+        )
+        (out_dir / "review-core-tally.env").write_text(
+            "VOTER_COUNT=3\nELIGIBLE_VOTER_COUNT=3\n",
+            encoding="utf-8",
+        )
+        (out_dir / "review-core-gather.env").write_text(f"MODE=diff\nFILE_LIST_FILE={scope_file}\n", encoding="utf-8")
+        (out_dir / "review-core-dispatch.env").write_text(
+            "SCOUT_STATUS=na\nDYNAMIC_SLOTS=0\nSTATIC_SLOT_COUNT=3\n",
+            encoding="utf-8",
+        )
+        voter_paths = []
+        for idx, tool in enumerate(("codex-validity", "codex-plan-fidelity", "codex-pragmatism"), start=1):
+            voter = out_dir / f"voter-{idx}.txt"
+            voter.write_text(f"FINDING_1: JUDGE_ERROR\nFINDING_2: YES -- original {idx}\n", encoding="utf-8")
+            voter_paths.append((voter, tool))
+        (out_dir / "review-core-voters.env").write_text(
+            "".join(f"VOTER_{idx}_PATH={voter}\nVOTER_{idx}_TOOL={tool}\n" for idx, (voter, tool) in enumerate(voter_paths, start=1)),
+            encoding="utf-8",
+        )
+        (out_dir / "proposer-map.tsv").write_text("item_id\treviewer\treviewer_line\nFINDING_1\tcodex\t- **Reviewer**: codex\nFINDING_2\tcursor\t- **Reviewer**: cursor\n", encoding="utf-8")
+        (out_dir / "panel-manifest.ndjson").write_text('{"slot":"correctness","tool":"codex"}\n', encoding="utf-8")
+        (out_dir / "collector-results.env").write_text("STATUS=OK\n", encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit("EXONERATED_COUNT=0")
+        logging_util.emit("NEUTRAL_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        logging_util.emit("UNDER_QUORUM_COUNT=1")
+        logging_util.emit("UNDER_QUORUM_ITEMS=FINDING_1")
+        logging_util.emit("PARSE_FAILED_COUNT=0")
+        logging_util.emit("VOTER_COUNT=3")
+        logging_util.emit("SCOUT_STATUS=na")
+        logging_util.emit("DYNAMIC_SLOTS=0")
+        logging_util.emit("STATIC_SLOT_COUNT=3")
+        logging_util.emit("EFFECTIVE_ROUND_CAP=2")
+        return 0
+
+    def fake_dispatch(argv, **_kwargs):
+        dispatch_argv.extend(str(item) for item in argv)
+        revote_dir = Path(argv[argv.index("--review-tmpdir") + 1])
+        voter_1 = revote_dir / "revote-1.txt"
+        voter_2 = revote_dir / "revote-2.txt"
+        voter_1.write_text(
+            "| Item | Vote | Reason |\n"
+            "| --- | --- | --- |\n"
+            "| FINDING_1 | **YES** | targeted |\n"
+            "| FINDING_2 | **NO** | must not merge |\n",
+            encoding="utf-8",
+        )
+        voter_2.write_text("FINDING_1: NO -- targeted direct\n", encoding="utf-8")
+        return review_and_fix.proc.CommandResult(
+            tuple(str(item) for item in argv),
+            0,
+            f"VOTER_1_PATH={voter_1}\nVOTER_1_TOOL=codex-validity\nVOTER_2_PATH={voter_2}\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_3_PATH={revote_dir / 'missing.txt'}\nVOTER_3_TOOL=codex-pragmatism\n",
+            "",
+            0.0,
+        )
+
+    def fake_tally(*, command: str, review_name: str, args, runner=None):
+        del command, review_name, runner
+        tally_argv.extend(str(item) for item in args)
+        round_dir = Path(args[args.index("--review-tmpdir") + 1])
+        (round_dir / "voting-tally.md").write_text("clean targeted tally\n", encoding="utf-8")
+        classification = round_dir / "classification.tsv"
+        classification.write_text("finding_id\treviewer_slots\tvoting_result\nFINDING_1\tcorrectness\taccepted\n", encoding="utf-8")
+        tally_file = round_dir / "review-tally.env"
+        tally_file.write_text("TALLY_STATUS=ok\n", encoding="utf-8")
+        return review_and_fix.proc.CommandResult(
+            tuple(str(item) for item in args),
+            0,
+            "TALLY_STATUS=ok\n"
+            "ACCEPTED_COUNT=0\n"
+            "REJECTED_COUNT=0\n"
+            "EXONERATED_COUNT=0\n"
+            "NEUTRAL_COUNT=0\n"
+            "UNDER_QUORUM_COUNT=0\n"
+            "UNDER_QUORUM_ITEMS=\n"
+            "PARSE_FAILED_COUNT=0\n"
+            "VOTER_COUNT=3\n"
+            f"ACCEPTED_FINDINGS_FILE={round_dir / 'accepted-findings.md'}\n"
+            f"TALLY_FILE={tally_file}\n"
+            f"VOTING_TALLY_FILE={round_dir / 'voting-tally.md'}\n"
+            f"FINDINGS_CLASSIFICATION_TSV_FILE={classification}\n",
+            "",
+            0.0,
+        )
+
+    def fake_emit(*, commands, args, out_file, runner=None):
+        del commands, runner
+        emit_argv.extend(str(item) for item in args)
+        out_file.write_text("EMIT_OK=true\n", encoding="utf-8")
+        return {"EMIT_OK": "true"}
+
+    def fake_record_prune_round(*, prune_ledger: str, round_num: int, panel_manifest: str, classification_file: str, label_map=None):
+        del round_num, label_map
+        prune_records.append((panel_manifest, classification_file))
+        return ()
+
+    monkeypatch.setattr(round_runner.review_core_body, "_run_python_cli", fake_dispatch)
+    monkeypatch.setattr(round_runner.review_core_body, "_call_maybe_override", fake_tally)
+    monkeypatch.setattr(round_runner.review_core_body, "_emit_tally", fake_emit)
+    monkeypatch.setattr(round_runner.review_core_body, "_record_prune_round", fake_record_prune_round)
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file=str(impl / "diff.patch"),
+        commit_count="",
+        plan_file=str(impl / "plan.txt"),
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+        round_cap="2",
+        panel_tier="MODERATE",
+    )
+    result = review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    round_dir = impl / "round-1"
+    assert result.degraded_round is False
+    assert call_count == 1
+    restricted = (round_dir / "under-quorum-revote" / "under-quorum-ballot.md").read_text(encoding="utf-8")
+    assert "### FINDING_1:" in restricted
+    assert "### FINDING_2:" not in restricted
+    assert dispatch_argv[0:2] == ["agent", "dispatch-voters"]
+    assert _arg_value(dispatch_argv, "--ballot-file").endswith("under-quorum-ballot.md")
+    assert _arg_value(dispatch_argv, "--codex-available") == "false"
+    assert _arg_value(dispatch_argv, "--cursor-available") == "false"
+    assert _arg_value(dispatch_argv, "--round-num") == "1"
+    assert _arg_value(dispatch_argv, "--site") == "implement Step 5"
+    assert _arg_value(tally_argv, "--ballot-file") == str(round_dir / "findings.md")
+    assert _arg_value(tally_argv, "--review-tmpdir") == str(round_dir)
+    assert _arg_value(tally_argv, "--proposer-map-file") == str(round_dir / "proposer-map.tsv")
+    assert _arg_value(tally_argv, "--manifest-file") == str(round_dir / "panel-manifest.ndjson")
+    assert _arg_value(tally_argv, "--collector-results-file") == str(round_dir / "collector-results.env")
+    assert _arg_value(tally_argv, "--scope-files") == str(scope_file)
+    assert _arg_value(tally_argv, "--session-env-path") == str(impl / "session-env.sh")
+    assert _arg_value(tally_argv, "--plan-file") == str(impl / "plan.txt")
+    voter_files = tally_argv[tally_argv.index("--voter-files") + 1 : tally_argv.index("--voter-tools")]
+    assert all("under-quorum-merged-voter" in item for item in voter_files)
+    merged_1 = Path(voter_files[0]).read_text(encoding="utf-8")
+    merged_3 = Path(voter_files[2]).read_text(encoding="utf-8")
+    assert "FINDING_2: YES -- original 1" in merged_1
+    assert "FINDING_1: YES -- targeted" in merged_1
+    assert "FINDING_2: NO -- must not merge" not in merged_1
+    assert "targeted" not in merged_3
+    assert emit_argv.index("--session-env-path") > emit_argv.index("--static-slot-count")
+    assert _arg_value(emit_argv, "--implement-tmpdir") == str(impl)
+    core_text = (round_dir / "review-core.env").read_text(encoding="utf-8")
+    assert "UNDER_QUORUM_COUNT=0" in core_text
+    assert "UNDER_QUORUM_ITEMS=\n" in core_text
+    assert "REVIEW_CORE_STATUS=ok" in core_text
+    assert prune_records == [(str(round_dir / "panel-manifest.ndjson"), str(round_dir / "classification.tsv"))]
+    assert (round_dir / "voting-tally-degraded-attempt-1.md").is_file()
+
+
+@pytest.mark.parametrize(
+    ("threshold_overrides", "core_overrides", "banner", "extra_file"),
+    [
+        ({}, {"PARSE_FAILED_COUNT": "1"}, "", ""),
+        ({"FAILED_SLOTS": "1"}, {}, "", ""),
+        ({"DYNAMIC_FAILED_SLOTS": "1"}, {}, "", ""),
+        ({"NOT_SUBSTANTIVE_SLOTS": "1"}, {}, "", ""),
+        ({}, {}, " **⚠ Degraded code-review panel: 1 judge(s) available.**", ""),
+        ({}, {}, "", "dropped-reviewer-attempts.env"),
+    ],
+)
+def test_under_quorum_mixed_degradation_falls_back_to_full_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    threshold_overrides: dict[str, str],
+    core_overrides: dict[str, str],
+    banner: str,
+    extra_file: str,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        if call_count == 1:
+            threshold = {
+                "FAILED_SLOTS": "0",
+                "NOT_SUBSTANTIVE_SLOTS": "0",
+                "DYNAMIC_FAILED_SLOTS": "0",
+                "DYNAMIC_DROPPED_SLOTS": "0",
+                **threshold_overrides,
+            }
+            core_values = {
+                "UNDER_QUORUM_COUNT": "1",
+                "UNDER_QUORUM_ITEMS": "FINDING_1",
+                "PARSE_FAILED_COUNT": "0",
+                "VOTER_COUNT": "3",
+                **core_overrides,
+            }
+            (out_dir / "voting-tally.md").write_text(
+                "**⚠ Degraded code-review panel: 1 finding(s) decided below quorum.**" + banner + "\n",
+                encoding="utf-8",
+            )
+            (out_dir / "review-core-threshold.env").write_text(
+                "".join(f"{key}={value}\n" for key, value in threshold.items()),
+                encoding="utf-8",
+            )
+            (out_dir / "review-core-tally.env").write_text("VOTER_COUNT=3\nELIGIBLE_VOTER_COUNT=3\n", encoding="utf-8")
+            if extra_file:
+                (out_dir / extra_file).write_text("STRAGGLER_DROPPED_COUNT=1\n", encoding="utf-8")
+        else:
+            core_values = {"UNDER_QUORUM_COUNT": "0", "UNDER_QUORUM_ITEMS": "", "PARSE_FAILED_COUNT": "0", "VOTER_COUNT": "3"}
+            (out_dir / "voting-tally.md").write_text("clean retry\n", encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        for key, value in core_values.items():
+            logging_util.emit(f"{key}={value}")
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert call_count == 2
+    assert (impl / "round-1" / "degraded-retry.done").is_file()
+
+
+def test_under_quorum_targeted_setup_failure_runs_full_retry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        if call_count == 1:
+            (out_dir / "findings.md").write_text("### FINDING_2: not requested\nbody\n", encoding="utf-8")
+            (out_dir / "voting-tally.md").write_text("**⚠ Degraded code-review panel: 1 finding(s) decided below quorum.**\n", encoding="utf-8")
+            (out_dir / "review-core-threshold.env").write_text(
+                "FAILED_SLOTS=0\nNOT_SUBSTANTIVE_SLOTS=0\nDYNAMIC_FAILED_SLOTS=0\nDYNAMIC_DROPPED_SLOTS=0\n",
+                encoding="utf-8",
+            )
+            (out_dir / "review-core-tally.env").write_text("VOTER_COUNT=3\nELIGIBLE_VOTER_COUNT=3\n", encoding="utf-8")
+            for idx in range(1, 4):
+                voter = out_dir / f"voter-{idx}.txt"
+                voter.write_text("FINDING_1: JUDGE_ERROR\n", encoding="utf-8")
+            (out_dir / "review-core-voters.env").write_text(
+                "".join(f"VOTER_{idx}_PATH={out_dir / f'voter-{idx}.txt'}\nVOTER_{idx}_TOOL=codex-{idx}\n" for idx in range(1, 4)),
+                encoding="utf-8",
+            )
+            core_values = {"UNDER_QUORUM_COUNT": "1", "UNDER_QUORUM_ITEMS": "FINDING_1", "PARSE_FAILED_COUNT": "0", "VOTER_COUNT": "3"}
+        else:
+            (out_dir / "voting-tally.md").write_text("clean retry\n", encoding="utf-8")
+            core_values = {"UNDER_QUORUM_COUNT": "0", "UNDER_QUORUM_ITEMS": "", "PARSE_FAILED_COUNT": "0", "VOTER_COUNT": "3"}
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        for key, value in core_values.items():
+            logging_util.emit(f"{key}={value}")
+        return 0
+
+    def fail_dispatch(argv, **_kwargs):
+        raise AssertionError(f"targeted dispatch should not run after ballot extraction fails: {argv}")
+
+    monkeypatch.setattr(round_runner.review_core_body, "_run_python_cli", fail_dispatch)
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert call_count == 2
+    assert (impl / "round-1" / "degraded-retry.flag").is_file()
+    assert (impl / "round-1" / "degraded-retry.done").is_file()
+
+
+def test_run_round_reentry_with_degraded_retry_done_reloads_settled_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir()
+    (round_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+    (round_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+    (round_dir / "voting-tally.md").write_text("settled tally\n", encoding="utf-8")
+    (round_dir / "review-core.env").write_text(
+        "REVIEW_CORE_STATUS=ok\n"
+        "ACCEPTED_COUNT=0\n"
+        "REJECTED_COUNT=0\n"
+        f"ACCEPTED_FINDINGS_FILE={round_dir / 'accepted-findings.md'}\n"
+        f"REJECTED_FINDINGS_FILE={round_dir / 'rejected-findings.md'}\n",
+        encoding="utf-8",
+    )
+    (round_dir / "degraded-retry.done").touch()
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        del argv
+        call_count += 1
+        return 0
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert call_count == 0
+    assert (round_dir / "voting-tally.md").read_text(encoding="utf-8") == "settled tally\n"
+
+
 def test_dropped_reviewer_warning_persists_after_successful_degraded_retry(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

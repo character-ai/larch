@@ -23,8 +23,10 @@ from collections.abc import Callable, Mapping
 from larch.core import config
 from larch.calibration import difficulty
 from larch.report import progress_report
+from larch.review import review_core_body
 from larch.review import review_pipeline
 from larch.review import review_tally
+from larch.review import voting
 from larch.review._raf_util import (
     _PY_CLI,
     _capture_emit_to,
@@ -85,6 +87,13 @@ class RoundResult:
     coder: CoderResult
     degraded_round: bool = False
     skipped_finding_count: int = 0
+
+
+@dataclass(frozen=True)
+class _VoterSlots:
+    voter_files: list[str]
+    voter_tools: list[str]
+    readable_paths: list[Path]
 
 
 def review_core_capture(*,
@@ -409,6 +418,456 @@ def _resolve_dropped_slots_file(*, round_dir: Path, core: dict[str, str]) -> Pat
     return None
 
 
+def _strict_env_int(mapping: Mapping[str, str], key: str) -> int | None:
+    value = mapping.get(key)
+    return int(value) if value is not None and value.isdigit() else None
+
+
+def _pure_under_quorum_degradation(core: dict[str, str], threshold_env: Path, round_dir: Path) -> bool:
+    required_threshold_keys = (
+        "FAILED_SLOTS",
+        "NOT_SUBSTANTIVE_SLOTS",
+        "DYNAMIC_FAILED_SLOTS",
+        "DYNAMIC_DROPPED_SLOTS",
+    )
+    required_core_keys = ("UNDER_QUORUM_COUNT", "PARSE_FAILED_COUNT", "VOTER_COUNT")
+    threshold = _parse_env_file(threshold_env) if threshold_env.is_file() and os.access(threshold_env, os.R_OK) else {}
+    threshold_values = {key: _strict_env_int(threshold, key) for key in required_threshold_keys}
+    core_values = {key: _strict_env_int(core, key) for key in required_core_keys}
+    pure = bool(threshold) and all(value is not None for value in threshold_values.values()) and all(value is not None for value in core_values.values())
+    if pure:
+        pure = (
+            int(core_values["UNDER_QUORUM_COUNT"] or 0) > 0
+            and int(core_values["PARSE_FAILED_COUNT"] or 0) == 0
+            and all(int(value or 0) == 0 for value in threshold_values.values())
+        )
+    tally = _parse_env_file(round_dir / "review-core-tally.env")
+    eligible = _strict_env_int(tally, "ELIGIBLE_VOTER_COUNT")
+    voters = _strict_env_int(tally, "VOTER_COUNT")
+    if pure and eligible is not None and voters is not None and eligible < voters:
+        pure = False
+    attempts = _parse_env_file(round_dir / "dropped-reviewer-attempts.env")
+    straggler = _strict_env_int(attempts, "STRAGGLER_DROPPED_COUNT")
+    if pure and straggler is not None and straggler != 0:
+        pure = False
+    dropped_file = _resolve_dropped_slots_file(round_dir=round_dir, core=core)
+    if pure and (
+        _dynamic_evidence_in_dropped_file(dropped_file)
+        or _dynamic_evidence_in_manifest(round_dir / "panel-manifest.ndjson", dropped_slots_file=dropped_file)
+    ):
+        pure = False
+    tally_text = _read_text(round_dir / "voting-tally.md") if (round_dir / "voting-tally.md").is_file() else ""
+    mixed_banner_markers = (
+        "judge(s) available",
+        "judges available",
+        "narrative-only output",
+        "NOT_SUBSTANTIVE",
+    )
+    if pure and any(marker in tally_text for marker in mixed_banner_markers):
+        pure = False
+    return pure
+
+
+def _under_quorum_item_ids(core: dict[str, str]) -> list[str]:
+    return [item.strip() for item in core.get("UNDER_QUORUM_ITEMS", "").split(",") if item.strip()]
+
+
+def _extract_ballot_blocks(source: Path, item_ids: set[str]) -> tuple[str, bool]:
+    if not source.is_file() or not item_ids:
+        return "", False
+    requested = {item.upper() for item in item_ids}
+    found: set[str] = set()
+    blocks: list[str] = []
+    current_id = ""
+    current_lines: list[str] = []
+    for raw in _read_text(source).splitlines(keepends=True):
+        match = voting.BALLOT_HEADING_RE.match(raw.rstrip("\n"))
+        if match:
+            if current_id.upper() in requested:
+                blocks.append("".join(current_lines))
+                found.add(current_id.upper())
+            current_id = match.group(1)
+            current_lines = [raw]
+        elif current_id:
+            current_lines.append(raw)
+    if current_id.upper() in requested:
+        blocks.append("".join(current_lines))
+        found.add(current_id.upper())
+    restricted = "\n".join(block.rstrip("\n") for block in blocks).rstrip() + ("\n" if blocks else "")
+    return restricted, found == requested
+
+
+def _write_under_quorum_ballot(source: Path, output: Path, item_ids: set[str]) -> bool:
+    restricted, all_present = _extract_ballot_blocks(source, item_ids)
+    ok = all_present and bool(restricted.strip())
+    if ok:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        _write_text(path=output, text=restricted)
+    return ok
+
+
+def _review_voter_slots(round_dir: Path) -> _VoterSlots | None:
+    voters = _parse_env_file(round_dir / "review-core-voters.env")
+    voter_files: list[str] = []
+    voter_tools: list[str] = []
+    readable_paths: list[Path] = []
+    for idx, default_tool in enumerate(("codex-validity", "codex-plan-fidelity", "codex-pragmatism"), start=1):
+        path = voters.get(f"VOTER_{idx}_PATH", "")
+        tool = voters.get(f"VOTER_{idx}_TOOL", default_tool) or default_tool
+        candidate = Path(path) if path else Path()
+        if not path or not candidate.is_file() or not os.access(candidate, os.R_OK):
+            return None
+        voter_files.append(path)
+        voter_tools.append(tool)
+        readable_paths.append(candidate)
+    return _VoterSlots(voter_files=voter_files, voter_tools=voter_tools, readable_paths=readable_paths)
+
+
+def _snapshot_original_voters(round_dir: Path, revote_dir: Path, slots: _VoterSlots) -> list[Path]:
+    del round_dir
+    revote_dir.mkdir(parents=True, exist_ok=True)
+    snapshots: list[Path] = []
+    for idx, original in enumerate(slots.readable_paths, start=1):
+        snapshot = revote_dir / f"original-voter-{idx}.txt"
+        shutil.copyfile(original, snapshot)
+        snapshots.append(snapshot)
+    return snapshots
+
+
+def _targeted_vote_lines(*, revote_file: str, under_quorum_ids: set[str]) -> list[str]:
+    path = Path(revote_file) if revote_file else Path()
+    if not path.is_file():
+        return []
+    normalized = voting._normalize_markdown_table_votes(_read_text(path))  # noqa: SLF001 - targeted retry must mirror voter parser normalization.
+    id_pattern = "|".join(re.escape(item) for item in sorted(under_quorum_ids))
+    vote_re = re.compile(rf"^(?:{id_pattern}):\s*(?:YES|NO|EXONERATE)\b", re.IGNORECASE)
+    return [line for line in normalized.splitlines() if vote_re.match(line)]
+
+
+def _merge_targeted_voter_outputs(
+    *,
+    originals: list[Path],
+    revote_files: list[str],
+    under_quorum_ids: set[str],
+    output_paths: list[str],
+) -> list[str]:
+    merged_files: list[str] = []
+    for idx, original in enumerate(originals):
+        output = Path(output_paths[idx])
+        original_text = _read_text(original)
+        lines = _targeted_vote_lines(
+            revote_file=revote_files[idx] if idx < len(revote_files) else "",
+            under_quorum_ids=under_quorum_ids,
+        )
+        merged_text = original_text.rstrip() + ("\n" if original_text.rstrip() else "")
+        if lines:
+            merged_text += "\n".join(lines) + "\n"
+        output.parent.mkdir(parents=True, exist_ok=True)
+        _write_text(path=output, text=merged_text)
+        merged_files.append(str(output))
+    return merged_files
+
+
+def _build_targeted_dispatch_args(
+    round_dir: Path,
+    args: argparse.Namespace,
+    restricted_ballot: Path,
+    revote_dir: Path,
+) -> list[str] | None:
+    if not restricted_ballot.is_file():
+        return None
+    dispatch_args = [
+        "--ballot-file",
+        str(restricted_ballot),
+        "--review-tmpdir",
+        str(revote_dir),
+        "--codex-available",
+        str(args.codex_available),
+        "--cursor-available",
+        str(args.cursor_available),
+        "--round-num",
+        str(args.round_num),
+        "--site",
+        "implement Step 5",
+    ]
+    for flag, value in (
+        ("--session-env-path", getattr(args, "session_env_path", "")),
+        ("--diff-file", getattr(args, "diff_file", "")),
+        ("--plan-file", getattr(args, "plan_file", "")),
+    ):
+        if value and (flag != "--plan-file" or Path(value).is_file()):
+            dispatch_args.extend([flag, str(value)])
+    del round_dir
+    return dispatch_args
+
+
+def _build_targeted_tally_args(
+    round_dir: Path,
+    core: dict[str, str],
+    args: argparse.Namespace,
+    merged_voter_files: list[str],
+    voter_tools: list[str],
+) -> list[str] | None:
+    findings = round_dir / "findings.md"
+    proposer_map = round_dir / "proposer-map.tsv"
+    if not findings.is_file() or not proposer_map.is_file() or not merged_voter_files or len(merged_voter_files) != len(voter_tools):
+        return None
+    tally_args = [
+        "--ballot-file",
+        str(findings),
+        "--review-tmpdir",
+        str(round_dir),
+        "--cursor-available",
+        str(args.cursor_available),
+        "--codex-available",
+        str(args.codex_available),
+        "--round-num",
+        str(args.round_num),
+        "--proposer-map-file",
+        str(proposer_map),
+    ]
+    session_env_path = getattr(args, "session_env_path", "")
+    if session_env_path:
+        tally_args.extend(["--session-env-path", str(session_env_path)])
+    gather = _parse_env_file(round_dir / "review-core-gather.env")
+    scope_files = gather.get("FILE_LIST_FILE", "")
+    if scope_files and Path(scope_files).is_file() and Path(scope_files).stat().st_size:
+        tally_args.extend(["--scope-files", scope_files])
+    plan_file = getattr(args, "plan_file", "")
+    if plan_file and Path(plan_file).is_file():
+        tally_args.extend(["--plan-file", str(plan_file)])
+    panel_manifest = round_dir / "panel-manifest.ndjson"
+    if panel_manifest.is_file():
+        tally_args.extend(["--manifest-file", str(panel_manifest)])
+    collector_results = round_dir / "collector-results.env"
+    if collector_results.is_file():
+        tally_args.extend(["--collector-results-file", str(collector_results)])
+    threshold = _parse_env_file(round_dir / "review-core-threshold.env")
+    not_substantive = _strict_env_int(threshold, "NOT_SUBSTANTIVE_SLOTS")
+    if not_substantive is not None and not_substantive > 0:
+        tally_args.extend(["--not-substantive-count", str(not_substantive)])
+    if core.get("PANEL_MANIFEST") and "--manifest-file" not in tally_args and Path(core["PANEL_MANIFEST"]).is_file():
+        tally_args.extend(["--manifest-file", core["PANEL_MANIFEST"]])
+    tally_args.extend(["--voter-files", *merged_voter_files, "--voter-tools", *voter_tools])
+    return tally_args
+
+
+def _build_targeted_emit_args(round_dir: Path, core: dict[str, str], tally_env_path: Path, args: argparse.Namespace) -> list[str] | None:
+    tally = _parse_env_file(tally_env_path)
+    accepted_file = Path(tally.get("ACCEPTED_FINDINGS_FILE", str(round_dir / "accepted-findings.md")))
+    if not tally_env_path.is_file() or not accepted_file.is_file():
+        return None
+    gather = _parse_env_file(round_dir / "review-core-gather.env")
+    dispatch = _parse_env_file(round_dir / "review-core-dispatch.env")
+    emit = _parse_env_file(round_dir / "review-core-emit.env")
+    mode = core.get("MODE") or gather.get("MODE") or "diff"
+    scout_status = core.get("SCOUT_STATUS") or dispatch.get("SCOUT_STATUS") or emit.get("SCOUT_STATUS") or "na"
+    dynamic_slots = core.get("DYNAMIC_SLOTS") or dispatch.get("DYNAMIC_SLOTS") or emit.get("DYNAMIC_SLOTS") or "0"
+    static_slot_count = core.get("STATIC_SLOT_COUNT") or dispatch.get("STATIC_SLOT_COUNT") or emit.get("STATIC_SLOT_COUNT") or "0"
+    del args
+    return [
+        "--tally-file",
+        str(tally.get("TALLY_FILE", str(tally_env_path))),
+        "--accepted-findings-file",
+        str(accepted_file),
+        "--oos-file",
+        str(round_dir / "oos.md"),
+        "--review-tmpdir",
+        str(round_dir),
+        "--round",
+        str(core.get("ROUND_NUM", "1")),
+        "--mode",
+        mode,
+        "--scout-status",
+        scout_status,
+        "--dynamic-slots",
+        dynamic_slots,
+        "--static-slot-count",
+        static_slot_count,
+    ]
+
+
+def _targeted_final_status(*, round_dir: Path, core: dict[str, str], tally: dict[str, str], args: argparse.Namespace) -> str:
+    mode = core.get("MODE") or _parse_env_file(round_dir / "review-core-gather.env").get("MODE") or "diff"
+    accepted = tally.get("ACCEPTED_COUNT", "0") or "0"
+    status = "ok"
+    if mode == "diff" and accepted.isdigit() and int(accepted) > 0:
+        cap_raw = core.get("EFFECTIVE_ROUND_CAP") or str(getattr(args, "round_cap", "") or "")
+        cap = int(cap_raw) if cap_raw.isdigit() else difficulty.tier_ceiling(difficulty.normalize_tier(getattr(args, "panel_tier", ""), difficulty.MODERATE))
+        round_num = int(str(getattr(args, "round_num", "1") or "1"))
+        status = "cap-reached" if round_num >= cap else "fix-required"
+    return status
+
+
+def _apply_targeted_retally_outputs(
+    round_dir: Path,
+    core_out: Path,
+    core: dict[str, str],
+    tally: dict[str, str],
+    emit: dict[str, str],
+    args: argparse.Namespace,
+    *,
+    prune_ledger: Path,
+    round_num: int,
+    panel_manifest: Path,
+) -> dict[str, str]:
+    updated = {**core, **tally, **emit}
+    status = _targeted_final_status(round_dir=round_dir, core=updated, tally=tally, args=args)
+    updated["REVIEW_CORE_STATUS"] = status
+    updated["ROUND_NUM"] = str(round_num)
+    updated["ACCEPTED_FINDINGS_FILE"] = tally.get("ACCEPTED_FINDINGS_FILE", str(round_dir / "accepted-findings.md"))
+    updated["REJECTED_FINDINGS_FILE"] = str(round_dir / "rejected-findings.md")
+    updated["FINDINGS_FILE"] = str(round_dir / "findings.md")
+    classification = updated.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
+    rows = review_core_body._record_classification(  # noqa: SLF001 - targeted retally must update the same classification sidecar.
+        review_tmpdir=round_dir,
+        round_num=round_num,
+        classification_file=classification,
+    )
+    for key, value in rows:
+        updated[str(key)] = str(value)
+    if _reviewer_prune_status_records(status):
+        review_core_body._record_prune_round(  # noqa: SLF001 - targeted retally must refresh the same prune ledger.
+            prune_ledger=str(prune_ledger),
+            round_num=round_num,
+            panel_manifest=str(panel_manifest),
+            classification_file=classification,
+        )
+    else:
+        _clear_reviewer_prune_round(ledger=prune_ledger, round_num=round_num, work_dir=round_dir)
+    _write_env(path=core_out, values=updated)
+    return updated
+
+
+def _targeted_artifact_names() -> tuple[str, ...]:
+    return (
+        "voting-tally.md",
+        "accepted-findings.md",
+        "rejected-findings.md",
+        "rejected-findings-full.md",
+        "oos.md",
+        "oos-accepted-review.md",
+        "review-round-summary.md",
+        "review-summary.json",
+    )
+
+
+def _backup_targeted_artifacts(round_dir: Path, backup_dir: Path) -> None:
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    for name in _targeted_artifact_names():
+        source = round_dir / name
+        if source.is_file():
+            shutil.copyfile(source, backup_dir / name)
+
+
+def _restore_targeted_artifacts(round_dir: Path, backup_dir: Path) -> None:
+    for name in _targeted_artifact_names():
+        source = backup_dir / name
+        target = round_dir / name
+        if source.is_file():
+            shutil.copyfile(source, target)
+        else:
+            target.unlink(missing_ok=True)
+
+
+def _run_under_quorum_revote(
+    round_dir: Path,
+    core: dict[str, str],
+    args: argparse.Namespace,
+    threshold_env: Path,
+    *,
+    prune_ledger: Path,
+    round_num: int,
+) -> bool:
+    del threshold_env
+    item_ids = {item.upper() for item in _under_quorum_item_ids(core)}
+    revote_dir = round_dir / "under-quorum-revote"
+    slots = _review_voter_slots(round_dir)
+    ok = bool(item_ids) and slots is not None
+    if ok:
+        originals = _snapshot_original_voters(round_dir, revote_dir, slots)
+        restricted_ballot = revote_dir / "under-quorum-ballot.md"
+        ok = _write_under_quorum_ballot(round_dir / "findings.md", restricted_ballot, item_ids)
+    else:
+        originals = []
+        restricted_ballot = revote_dir / "under-quorum-ballot.md"
+    dispatch_env: dict[str, str] = {}
+    if ok:
+        dispatch_args = _build_targeted_dispatch_args(round_dir, args, restricted_ballot, revote_dir)
+        ok = dispatch_args is not None
+    else:
+        dispatch_args = None
+    if ok and dispatch_args is not None:
+        commands = review_core_body._review_commands()  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+        dispatch_result = (
+            review_core_body._run_command_string(command=commands.dispatch_voters, args=dispatch_args)  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+            if commands.dispatch_voters
+            else review_core_body._run_python_cli(["agent", "dispatch-voters", *dispatch_args])  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+        )
+        _write_text(path=revote_dir / "review-core-voters.env", text=dispatch_result.stdout)
+        dispatch_env = _parse_env_file(revote_dir / "review-core-voters.env")
+        ok = dispatch_result.returncode == 0
+    revote_files = [dispatch_env.get(f"VOTER_{idx}_PATH", "") for idx in range(1, 4)]
+    merged_paths = [str(round_dir / f"under-quorum-merged-voter-{idx}.txt") for idx in range(1, 4)]
+    if ok and slots is not None:
+        merged = _merge_targeted_voter_outputs(
+            originals=originals,
+            revote_files=revote_files,
+            under_quorum_ids=item_ids,
+            output_paths=merged_paths,
+        )
+        tally_args = _build_targeted_tally_args(round_dir, core, args, merged, slots.voter_tools)
+        ok = tally_args is not None
+    else:
+        tally_args = None
+    tally_env_path = revote_dir / "review-core-targeted-tally.env"
+    backup_dir = revote_dir / "pre-targeted-final"
+    if ok and tally_args is not None:
+        _backup_targeted_artifacts(round_dir, backup_dir)
+        commands = review_core_body._review_commands()  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+        tally_result = (
+            review_core_body._run_command_string(command=commands.tally, args=tally_args)  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+            if commands.tally
+            else review_core_body._call_maybe_override(command="", review_name="tally-code-votes", args=tally_args)  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+        )
+        _write_text(path=tally_env_path, text=tally_result.stdout)
+        tally = _parse_env_file(tally_env_path)
+        ok = bool(tally.get("TALLY_STATUS")) and tally.get("TALLY_STATUS") != "main-agent-vote-required"
+    else:
+        tally = {}
+    emit: dict[str, str] = {}
+    if ok:
+        emit_args = _build_targeted_emit_args(round_dir, core, tally_env_path, args)
+        ok = emit_args is not None
+    else:
+        emit_args = None
+    if ok and emit_args is not None:
+        commands = review_core_body._review_commands()  # noqa: SLF001 - targeted retry reuses review-core command overrides.
+        with _temporary_env(name=config.ENV_IMPLEMENT_TMPDIR, value=str(getattr(args, "implement_tmpdir", ""))):
+            emit = review_core_body._emit_tally_with_context(  # noqa: SLF001 - targeted retally must mirror emit-tally context.
+                commands=commands,
+                args=emit_args,
+                out_file=revote_dir / "review-core-targeted-emit.env",
+                session_env_path=str(getattr(args, "session_env_path", "")),
+            )
+        ok = emit.get("EMIT_OK") == "true"
+    if ok:
+        _apply_targeted_retally_outputs(
+            round_dir,
+            round_dir / "review-core.env",
+            core,
+            tally,
+            emit,
+            args,
+            prune_ledger=prune_ledger,
+            round_num=round_num,
+            panel_manifest=round_dir / "panel-manifest.ndjson",
+        )
+    elif backup_dir.is_dir():
+        _restore_targeted_artifacts(round_dir, backup_dir)
+    return ok
+
+
 def _surface_dropped_reviewer_warning(
     *,
     core: dict[str, str],
@@ -464,10 +923,14 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     degraded_retry_flag = round_dir / "degraded-retry.flag"
     degraded_retry_done = round_dir / "degraded-retry.done"
     degraded_retry_flag.unlink(missing_ok=True)
-    degraded_retry_done.unlink(missing_ok=True)
-    attempts_env.unlink(missing_ok=True)
-    core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
-    _merge_dropped_reviewer_attempt(round_dir=round_dir, threshold_env=threshold_env)
+    if not degraded_retry_done.is_file():
+        attempts_env.unlink(missing_ok=True)
+    core_rc = 0
+    if degraded_retry_done.is_file() and core_out.is_file():
+        _err(f"↻ /implement Step 5: round {round_num} degraded retry already settled; reloading round artifacts.")
+    else:
+        core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
+        _merge_dropped_reviewer_attempt(round_dir=round_dir, threshold_env=threshold_env)
     core = _parse_env_file(core_out)
     (
         core_status,
@@ -487,17 +950,24 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     retry_degraded_panel = degraded_banner_present and not _core_status_is(core_status, ReviewCoreStatus.zero_findings)
     if retry_degraded_panel:
         degraded_this_round = True
-        _err(f"⏳ /implement Step 5: round {round_num} panel was degraded (banner triggered); retrying with fresh panel.")
-        if degraded_retry_flag.is_file() and not degraded_retry_done.is_file():
-            _err(f"⚠ /implement Step 5: round {round_num} found stale degraded retry marker without completion; retrying once.")
-            with contextlib.suppress(FileNotFoundError):
-                degraded_retry_flag.unlink()
-        if not degraded_retry_flag.is_file():
+        if degraded_retry_done.is_file():
+            _err(f"↻ /implement Step 5: round {round_num} degraded retry sentinel present; using settled degraded retry result.")
+        else:
+            _err(f"⏳ /implement Step 5: round {round_num} panel was degraded (banner triggered); retrying once.")
             degraded_retry_flag.touch()
             shutil.copyfile(voting_tally_file, round_dir / "voting-tally-degraded-attempt-1.md")
-            _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
-            core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
-            _merge_dropped_reviewer_attempt(round_dir=round_dir, threshold_env=threshold_env)
+            targeted_ok = _pure_under_quorum_degradation(core, threshold_env, round_dir) and _run_under_quorum_revote(
+                round_dir,
+                core,
+                args,
+                threshold_env,
+                prune_ledger=prune_ledger,
+                round_num=round_num,
+            )
+            if not targeted_ok:
+                _append_round_oos_artifact(round_num=round_num, round_oos=round_oos, oos_jsonl=oos_jsonl, oos_markdown=oos_markdown)
+                core_rc = review_core_capture(core_args=core_args, env_path=core_out, review_core_impl=review_core_impl, implement_tmpdir=implement_tmpdir)
+                _merge_dropped_reviewer_attempt(round_dir=round_dir, threshold_env=threshold_env)
             core = _parse_env_file(core_out)
             (
                 core_status,
@@ -509,7 +979,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
                 rejected_file,
             ) = _core_round_state(core=core, round_dir=round_dir)
             degraded_retry_done.touch()
-            if not _reviewer_prune_status_records(core_status):
+            if not targeted_ok and not _reviewer_prune_status_records(core_status):
                 _clear_reviewer_prune_round(ledger=prune_ledger, round_num=round_num, work_dir=round_dir)
             retry_tally_text = _read_text(voting_tally_file) if voting_tally_file.is_file() else ""
             attempt_1_text = _read_text(round_dir / "voting-tally-degraded-attempt-1.md")
