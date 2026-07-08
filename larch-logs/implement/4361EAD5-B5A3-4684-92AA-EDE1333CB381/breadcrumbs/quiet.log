@@ -3,6 +3,7 @@ usage: append-execution-issue.sh --log LOG --category CATEGORY
                                  (--entry ENTRY | --entry-file ENTRY_FILE)
 append-execution-issue.sh: error: the following arguments are required: --log, --category
 === larch-quiet-append-execution-issue.sh-83414.log ===
+=== larch-quiet-append-execution-issue.sh-88055.log ===
 === larch-quiet-cli.py-54396.log ===
 === larch-quiet-cli.py-69414.log ===
 === larch-quiet-cli.py-81314.log ===
@@ -18,3 +19,5 @@ append-execution-issue.sh: error: the following arguments are required: --log, -
 === larch-quiet-sessionstart-health.sh-85252.log ===
 === larch-quiet-sessionstart-health.sh-86052.log ===
 === larch-quiet-sessionstart-health.sh-86379.log ===
+=== larch-quiet-sessionstart-health.sh-89020.log ===
+=== larch-quiet-sessionstart-health.sh-89376.log ===
