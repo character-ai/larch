@@ -1,0 +1,22 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "MODERATE",
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "Localized correctness fix in the Codex policy-rejection scan: after the 32KB tail bound, drop the truncated first line unless the window starts on a line boundary, and pass the full combined tail through the streaming watcher so boundary detection sees the byte before the window. Small surface (one new helper plus two call-site tweaks) but subtle window-boundary and streaming edge cases; two regression tests cover no-false-kill and genuine-rejection-still-detected.",
+  "round_cap": 2,
+  "schema_version": 1
+}

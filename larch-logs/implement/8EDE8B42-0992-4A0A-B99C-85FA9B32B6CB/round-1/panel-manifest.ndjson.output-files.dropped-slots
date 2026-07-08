@@ -1,0 +1,2 @@
+correctness	codex	collector-failure	STATUS=FAILED ⏳ codex agent: still running (1m elapsed) ❌ codex agent: exec_command policy rejection detected, killing ❌ codex agent: FAILED (exit code 1, output 0 bytes) 
+testing	codex	collector-failure	STATUS=FAILED ⏳ codex agent: still running (1m elapsed) ❌ codex agent: exec_command policy rejection detected, killing ❌ codex agent: FAILED (exit code 1, output 0 bytes) 
