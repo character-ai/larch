@@ -1,0 +1,1 @@
+Patch `scripts/test-design-structure.sh` only. Add a bounded retry helper for `_DESIGN_LIFECYCLE_STDOUT_KEYS`, validate the terminal sentinel, tighten the awk close match, and keep missing-key failures for complete blocks.

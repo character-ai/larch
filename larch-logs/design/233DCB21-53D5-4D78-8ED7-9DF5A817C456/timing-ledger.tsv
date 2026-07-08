@@ -1,0 +1,22 @@
+v1	mark	1783521203	design	design Step 2b: plan	-	-	-	-	-	-	-	-
+v1	vendor	1783521281	implement	-	codex	codex-plan-draft	1783521204	1783521281	77	step2b-codex-raw.86246.txt	0	complete
+v1	mark	1783521357	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1783521430	implement	-	codex	codex-phase1-codex-plan-arch	1783521389	1783521430	41	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783521443	implement	-	codex	codex-phase1-dyn-codex-plan-bash-harness-reliability	1783521389	1783521443	54	dyn-codex-plan-bash-harness-reliability.txt	0	complete
+v1	vendor	1783521456	implement	-	codex	codex-phase1-codex-plan-innovation	1783521389	1783521456	67	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783521459	implement	-	codex	codex-phase1-codex-plan-requirements	1783521389	1783521459	70	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783521510	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783521389	1783521510	121	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1783521519	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783521389	1783521519	130	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783521525	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783521389	1783521525	136	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783521629	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783521389	1783521629	240	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783521646	implement	-	cursor	cursor-phase1-dyn-cursor-plan-bash-harness-reliability	1783521389	1783521646	257	dyn-cursor-plan-bash-harness-reliability.txt	0	complete
+v1	vendor	1783521664	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783521389	1783521663	274	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783521690	implement	-	codex	codex-phase1-voter-1	1783521667	1783521690	23	codex-validity-vote-output.txt	0	complete
+v1	vendor	1783521693	implement	-	codex	codex-phase1-voter-3	1783521667	1783521693	26	codex-pragmatism-vote-output.txt	0	complete
+v1	vendor	1783521695	implement	-	codex	codex-phase1-voter-2	1783521667	1783521695	28	codex-plan-fidelity-vote-output.txt	0	complete
+v1	round	1783521696	design	design Step 3 — plan review	1	1783521387	1783521696	309	0	0	-	1
+v1	mark	1783521824	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783521837	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1783521837	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1783522128	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783522151	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-

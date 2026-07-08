@@ -1,0 +1,70 @@
+# [BUG] test-design-structure.sh false-negative when once-captured awk block truncates
+
+## Summary
+
+`scripts/test-design-structure.sh` can emit a false-negative `cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design <verb>` failure. The harness captures the `_DESIGN_LIFECYCLE_STDOUT_KEYS` block once with a `$(awk ...)` command substitution, then reuses that single capture across a per-verb loop. When the command substitution truncates transiently, later verbs drop out of the reused block, so the check fails even though the key is present in the file. This produces spurious `main` CI failures.
+
+## Original report
+
+test-design-structure.sh emits a false-negative "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design <verb>" failure when its once-captured awk block truncates, causing spurious main-branch CI failures. Discovered during `/implement` of #6604 (PR #6606, merged); the root cause was fully investigated during that run, so no separate re-reproduction was performed.
+
+## Reproduction scenario
+
+The failure is transient and hard to force deterministically. It was observed once in CI:
+
+1. Push a merge commit to `main`.
+2. `main` CI runs the `test-harnesses` shard that executes `bash scripts/test-design-structure.sh`.
+3. Under transient I/O or memory pressure, the `$(awk ...)` capture at line 319 truncates mid-output.
+4. The per-verb loop then fails with `cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design <verb>` for a verb whose entry is actually present.
+
+Running the harness locally passes deterministically (`EXIT=0`, `test-design-structure: ok`). Re-running the failed CI job on the same commit also passes.
+
+## Expected behavior
+
+The check reads the `_DESIGN_LIFECYCLE_STDOUT_KEYS` block reliably. It fails only when a `("design", "<verb>")` entry is genuinely absent. A transient read or truncation does not produce a "missing key" verdict.
+
+## Observed behavior
+
+A transient truncation of the once-captured block yields `cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design <verb>` for a verb that is present in the file. The verdict is misleading and non-reproducible on re-run.
+
+## Root cause analysis
+
+`scripts/test-design-structure.sh` (around line 319) captures the block once:
+
+```
+stdout_keys_block="$(awk '/^_DESIGN_LIFECYCLE_STDOUT_KEYS:/{flag=1;next}/^\)/{if(flag){flag=0}}flag' "$CLI_PY")"
+```
+
+It then reuses `$stdout_keys_block` across a per-verb loop (around lines 320-324) and at two additional sites (around lines 404 and 685):
+
+```
+printf '%s' "$stdout_keys_block" | grep -Fq "(\"design\", \"$verb\")" || fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design $verb"
+```
+
+If the command substitution truncates (transient CI I/O, or `awk` killed mid-output under memory pressure), the reused block is missing later verbs, and the loop fails on the first absent verb. Nothing guards that the extracted block is complete or non-empty, so a truncated read is indistinguishable from a genuinely missing key.
+
+Secondary observation: the awk stop pattern `/^\)/` matches only a line that starts with `)`. The frozenset closes with `})` (starts with `}`), so the extraction over-captures past the frozenset into later definitions. This does not cause the false-negative, but it shows the extraction logic is loose.
+
+## Evidence
+
+- `main` CI run `28930228453` (push event, merged SHA `014e8614393cf87bcc28986ad1fe39ec8cd19e69`) failed `test-design-structure` with `cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design step0c`.
+- `("design", "step0c")` is present at `python/larch/cli.py:615`, inside the `_DESIGN_LIFECYCLE_STDOUT_KEYS` frozenset.
+- Re-running the same failed job on the same commit passed (`conclusion=success`).
+- The full harness passes deterministically locally (`EXIT=0`, `test-design-structure: ok`).
+- In the failing run, the whole-file check `contains "$CLI_PY" '("design", "step0c")'` passed, and the loop only reached `step0c` because the 8 preceding verbs passed their block-grep. So the reused block held verbs through line 614 but was truncated right before line 615 (step0c). The file content is byte-identical, so `awk` did not logically stop; the `$(awk ...)` capture truncated.
+
+## Affected files
+
+- `scripts/test-design-structure.sh`: the once-captured `stdout_keys_block` (around line 319) and its reuse sites (around lines 323, 404, 685). This harness produces the false-negative.
+
+## Suggested fix(es)
+
+- After capturing `stdout_keys_block`, validate it is non-empty and contains a known terminal sentinel, such as the last frozenset entry `("plan", "step1-log")`.
+- If the block is truncated or empty, either re-extract with bounded retries to self-heal a transient truncation, or `fail` with a distinct `block extraction incomplete` diagnostic so it is not misreported as a genuinely missing key.
+- Apply the guard at all reuse sites.
+- Optionally tighten the awk stop pattern `/^\)/` so it stops at the frozenset close (`})`) instead of over-capturing into later definitions.
+
+## Open questions
+
+- Should the guard self-heal (re-extract with bounded retries) or fail loudly with a distinct diagnostic? A distinct loud failure is best for auditability; a bounded retry then a distinct failure may be the right hybrid.
+- Is the transient truncation driven by CI resource limits on the `test-harnesses` shard? If so, a shard resource adjustment may also reduce recurrence.

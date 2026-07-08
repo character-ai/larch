@@ -1,0 +1,16 @@
+---LARCH-REJECTED-BEGIN---
+## Considered Plan Review Suggestions (Not Adopted)
+
+These reviewer suggestions were considered but not adopted. Some may already be addressed by the current plan; they are not automatically unimplemented gaps.
+
+### [Plan Review] FINDING_1
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Focus area**: risk-integration
+- **Location**: scripts/test-design-structure.sh:4
+- **Concern**: load_stdout_keys_block sentinel check not pinned for set -e safety. Scenario: The harness runs with set -euo pipefail. The plan pins if-assignment for awk retries but only says the block must contain ("plan", "step1-log") without saying how. A common then-branch grep -Fq on miss exits the script before later retries and before the distinct incomplete-block fail, restoring misleading hard aborts or skipping the new diagnostic.
+- **Proposed resolution**: Pin validation as if [[ -n $stdout_keys_block && $stdout_keys_block == *("plan", "step1-log")* ]]; then return 0; fi, or if printf %s "$stdout_keys_block" | grep -Fq ("plan", "step1-log"); then, never a bare grep in the then body. Mirror the existing awk if-assignment note in Failure modes.
+
+---LARCH-REJECTED-END---
