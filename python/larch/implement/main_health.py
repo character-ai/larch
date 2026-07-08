@@ -49,6 +49,7 @@ class MainHealthQuery:
     cwd: str | None = None
     head_sha: str | None = None
     upstream_repo: str | None = None
+    skip_flap_check: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,9 +120,11 @@ def _classify_runs(
     runs: tuple[gh.WorkflowRun, ...],
     *,
     repo: str,
-    requested_head_sha: str | None,
-    cwd: str | None,
+    query: MainHealthQuery,
 ) -> MainHealthStatus:
+    requested_head_sha: str | None = query.head_sha
+    cwd: str | None = query.cwd
+    skip_flap_check: bool = query.skip_flap_check
     matching = _matching_runs(runs, head_sha=requested_head_sha)
     if not matching:
         detail = "no matching push workflow runs"
@@ -154,15 +157,16 @@ def _classify_runs(
                 ),
             )
         else:
-            flap = _same_sha_failure_flap(
-                runner,
-                matching[1:],
-                repo=repo,
-                head_sha=matched_head_sha,
-                cwd=cwd,
-            )
-            if flap is not None:
-                return flap
+            if not skip_flap_check:
+                flap = _same_sha_failure_flap(
+                    runner,
+                    matching[1:],
+                    repo=repo,
+                    head_sha=matched_head_sha,
+                    cwd=cwd,
+                )
+                if flap is not None:
+                    return flap
             result = MainHealthStatus(
                 status="pass",
                 head_sha=matched_head_sha,
@@ -200,8 +204,7 @@ def read_main_health(
             runner,
             runs,
             repo=query_repo,
-            requested_head_sha=query.head_sha,
-            cwd=query.cwd,
+            query=query,
         )
     except ShipError as exc:
         return MainHealthStatus(status="error", detail=_bounded_detail(str(exc)))

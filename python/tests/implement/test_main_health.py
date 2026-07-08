@@ -12,6 +12,7 @@ def _query(
     *,
     repo: str = "o/r",
     upstream_repo: str | None = None,
+    skip_flap_check: bool = False,
 ) -> main_health.MainHealthQuery:
     return main_health.MainHealthQuery(
         repo=repo,
@@ -20,6 +21,7 @@ def _query(
         workflow="CI",
         limit=20,
         head_sha=head_sha,
+        skip_flap_check=skip_flap_check,
     )
 
 
@@ -176,3 +178,22 @@ def test_same_sha_repository_failure_followed_by_success_returns_fail() -> None:
 
     assert result.status == "fail"
     assert result.failed_run_id == "8"
+
+
+def test_skip_flap_check_allows_same_sha_success_after_failure() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _res(
+                "["
+                '{"databaseId":9,"status":"completed","conclusion":"success","headSha":"abc","event":"push"},'
+                '{"databaseId":8,"status":"completed","conclusion":"failure","headSha":"abc","event":"push"}'
+                "]",
+            ),
+        ],
+    )
+
+    result = main_health.read_main_health(runner, _query("abc", skip_flap_check=True))
+
+    assert result.status == "pass"
+    assert result.head_sha == "abc"
+    assert len(runner.calls) == 1

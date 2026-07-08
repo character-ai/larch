@@ -4479,7 +4479,11 @@ def test_ship_postmerge_push_watch_routes_failure_to_emergency_repair(
     def fail_if_postmerge_runs(*_args: object, **_kwargs: object) -> ship.ShipResult:
         raise AssertionError("postmerge finalize must wait for merged-SHA push CI")
 
+    def fail_if_rerun_runs(*_args: object, **_kwargs: object) -> ship.ci_monitor.RerunResult:
+        raise AssertionError("postmerge retry budget is already spent")
+
     monkeypatch.setattr(ship, "run_postmerge_phase", fail_if_postmerge_runs)
+    monkeypatch.setattr(ship.ci_monitor, "rerun_failed", fail_if_rerun_runs)
     monkeypatch.setattr(
         ship.main_health,
         "wait_main_health",
@@ -4502,7 +4506,7 @@ def test_ship_postmerge_push_watch_routes_failure_to_emergency_repair(
         iteration=1,
         rebase_count=2,
         fix_attempts=3,
-        transient_retries=4,
+        transient_retries=config.MAIN_HEALTH_MAX_TRANSIENT_RETRIES,
     )
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
@@ -4520,6 +4524,160 @@ def test_ship_postmerge_push_watch_routes_failure_to_emergency_repair(
     assert not (tmp_path / "post-merge-sentinel").exists()
 
 
+def test_ship_postmerge_push_watch_reruns_first_failure_once(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.com/pr/5",
+        pr_closed=True,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=pass\n", encoding="utf-8")
+    observed_skip_flap: list[bool] = []
+    rerun_calls: list[tuple[str, str]] = []
+
+    def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(
+            ("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"),
+            0,
+            '{"mergeCommit":{"oid":"merge-sha"}}',
+            "",
+            0.01,
+        )
+
+    def wait_main_health(
+        _runner: RecordingRunner,
+        query: ship.main_health.MainHealthWaitQuery,
+        **_kwargs: object,
+    ) -> ship.main_health.MainHealthWaitResult:
+        observed_skip_flap.append(query.health.skip_flap_check)
+        return ship.main_health.MainHealthWaitResult(
+            health=ship.main_health.MainHealthStatus(
+                status="fail",
+                failed_run_id="44",
+                head_sha="merge-sha",
+                detail="merged push failed",
+            ),
+            elapsed_seconds=1,
+            attempts=1,
+        )
+
+    def rerun_failed(
+        _runner: RecordingRunner,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None = None,
+    ) -> ship.ci_monitor.RerunResult:
+        del cwd
+        rerun_calls.append((run_id, repo))
+        return ship.ci_monitor.RerunResult(submitted=True, already_running=False, error=None)
+
+    monkeypatch.setattr(ship.gh, "pr_view_field_read", pr_view_field_read)
+    monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
+    monkeypatch.setattr(ship.ci_monitor, "rerun_failed", rerun_failed)
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postmerge forbidden")),
+    )
+
+    result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        iteration=1,
+        rebase_count=2,
+        fix_attempts=3,
+        transient_retries=0,
+    )
+
+    assert result.outcome is Outcome.TRANSIENT
+    assert result.failed_run_id == "44"
+    assert result.main_repair_run_id == "44"
+    assert result.main_repair_head == "merge-sha"
+    assert rerun_calls == [("44", "o/r")]
+    assert observed_skip_flap == [False]
+    state = _read_state(state_file)
+    assert state["PHASE"] == "postmerge-push-watch"
+    assert state["TRANSIENT_RETRIES"] == "1"
+    assert state["MAIN_REPAIR_RUN_ID"] == "44"
+    assert state["MAIN_REPAIR_HEAD"] == "merge-sha"
+
+
+def test_ship_postmerge_push_watch_rerun_failure_enters_emergency_repair(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.com/pr/5",
+        pr_closed=True,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=pass\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view_field_read",
+        lambda *_a, **_k: CommandResult(
+            ("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"),
+            0,
+            '{"mergeCommit":{"oid":"merge-sha"}}',
+            "",
+            0.01,
+        ),
+    )
+    monkeypatch.setattr(
+        ship.main_health,
+        "wait_main_health",
+        lambda *_a, **_k: ship.main_health.MainHealthWaitResult(
+            health=ship.main_health.MainHealthStatus(
+                status="fail",
+                failed_run_id="44",
+                head_sha="merge-sha",
+                detail="merged push failed",
+            ),
+            elapsed_seconds=1,
+            attempts=1,
+        ),
+    )
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "rerun_failed",
+        lambda *_a, **_k: ship.ci_monitor.RerunResult(
+            submitted=False,
+            already_running=False,
+            error="rerun unavailable",
+        ),
+    )
+
+    result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        iteration=1,
+        rebase_count=2,
+        fix_attempts=3,
+        transient_retries=0,
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL
+    assert "rerun unavailable" in result.detail
+    state = _read_state(state_file)
+    assert state["PHASE"] == "emergency-repair"
+    assert state["TRANSIENT_RETRIES"] == "0"
+
+
 def test_ship_postmerge_push_watch_passes_before_finalize(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4535,13 +4693,19 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
     )
     _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=pass\n", encoding="utf-8")
     calls: list[str] = []
+    observed_skip_flap: list[bool] = []
 
     def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
         calls.append("mergeCommit")
         return CommandResult(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), 0, '{"mergeCommit":{"oid":"merge-sha"}}', "", 0.01)
 
-    def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
+    def wait_main_health(
+        _runner: RecordingRunner,
+        query: ship.main_health.MainHealthWaitQuery,
+        **_kwargs: object,
+    ) -> ship.main_health.MainHealthWaitResult:
         calls.append("watch")
+        observed_skip_flap.append(query.health.skip_flap_check)
         return ship.main_health.MainHealthWaitResult(
             health=ship.main_health.MainHealthStatus(
                 status="pass",
@@ -4567,11 +4731,12 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
         iteration=0,
         rebase_count=0,
         fix_attempts=0,
-        transient_retries=0,
+        transient_retries=1,
     )
 
     assert result.outcome is Outcome.OK
     assert calls == ["mergeCommit", "watch", "postmerge"]
+    assert observed_skip_flap == [True]
 
 
 def test_ship_postmerge_push_watch_falls_back_to_origin_main_when_merge_commit_missing(
@@ -4637,6 +4802,159 @@ def test_ship_postmerge_push_watch_falls_back_to_origin_main_when_merge_commit_m
 
     assert result.outcome is Outcome.OK
     assert calls == ["mergeCommit", "fetch", "origin/main", "watch", "postmerge"]
+
+
+def test_emergency_repair_resume_green_without_repair_branch_finalizes_postmerge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=emergency-repair\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "REPO=o/r\nMERGE=true\nDRAFT=false\nMERGE_RESULT=merged\nMAIN_REPAIR_RUN_ID=44\n"
+        "MAIN_REPAIR_HEAD=merge-sha\nEMERGENCY_REPAIR_BRANCH=\n",
+        encoding="utf-8",
+    )
+    observed_queries: list[ship.main_health.MainHealthQuery] = []
+    postmerge_calls: list[str] = []
+
+    def read_main_health(
+        _runner: RecordingRunner,
+        query: ship.main_health.MainHealthQuery,
+    ) -> ship.main_health.MainHealthStatus:
+        observed_queries.append(query)
+        return ship.main_health.MainHealthStatus(status="pass", head_sha=query.head_sha or "", detail="green")
+
+    def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
+        postmerge_calls.append("postmerge")
+        return ship.ShipResult(Outcome.OK, detail="postmerge")
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.main_health, "read_main_health", read_main_health)
+    monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="feat", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert result.detail == "postmerge"
+    assert postmerge_calls == ["postmerge"]
+    assert len(observed_queries) == 1
+    assert observed_queries[0].head_sha == "merge-sha"
+    assert observed_queries[0].skip_flap_check is True
+    assert _read_state(state_file)["PHASE"] == "done"
+
+
+def test_emergency_repair_resume_non_green_keeps_user_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=emergency-repair\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "REPO=o/r\nMERGE=true\nDRAFT=false\nMERGE_RESULT=merged\nMAIN_REPAIR_RUN_ID=44\n"
+        "MAIN_REPAIR_HEAD=merge-sha\nEMERGENCY_REPAIR_BRANCH=\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.main_health,
+        "read_main_health",
+        lambda *_a, **_k: ship.main_health.MainHealthStatus(
+            status="pending",
+            head_sha="merge-sha",
+            detail="still running",
+        ),
+    )
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postmerge forbidden")),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="feat", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL
+    assert result.failed_run_id == "44"
+
+
+def test_emergency_repair_resume_missing_head_keeps_user_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=emergency-repair\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "REPO=o/r\nMERGE=true\nDRAFT=false\nMERGE_RESULT=merged\nMAIN_REPAIR_RUN_ID=44\n"
+        "EMERGENCY_REPAIR_BRANCH=\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.main_health,
+        "read_main_health",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("main health forbidden")),
+    )
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postmerge forbidden")),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="feat", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL
+    assert result.failed_run_id == "44"
+
+
+def test_emergency_repair_resume_with_repair_branch_keeps_user_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=emergency-repair\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "REPO=o/r\nMERGE=true\nDRAFT=false\nMERGE_RESULT=merged\nMAIN_REPAIR_RUN_ID=44\n"
+        "MAIN_REPAIR_HEAD=merge-sha\nEMERGENCY_REPAIR_BRANCH=repair/feat\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "repair/feat")
+    monkeypatch.setattr(
+        ship.main_health,
+        "read_main_health",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("main health forbidden")),
+    )
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postmerge forbidden")),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="feat", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL
+    assert result.failed_run_id == "44"
 
 
 def test_premerge_main_health_gate_uses_commit_scoped_head_sha(
