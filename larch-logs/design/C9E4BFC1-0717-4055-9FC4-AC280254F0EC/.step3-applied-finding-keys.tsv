@@ -1,0 +1,17 @@
+1	coverage/disposition are only computed on external status=complete, so claude_fallback, recovery, and post-disposition edits can reach step 8 with a missing or stale plan-coverage.env/disposition record.
+1	halt-scope-disposition has no recovery branch back to the step 2 disposition prompt, so missing scope-disposition.env is treated as terminal failure instead of a re-prompt.
+1	the forced plan-fidelity reviewer is still cursor-only, so degraded or trivial panels can lose it when cursor is absent.
+1	supported self-review paths skip step 5 entirely, so middle-band runs never get the forced plan-fidelity check there.
+1	partial-scope follow-up issues can deadlock or be recorded in the wrong order, because the dependency points at the still-open parent and disposition may be written before the durable follow-up exists.
+1	unreadable or malformed step 0 plan/coverage input is still advisory, letting complete dispatch continue without a validated disposition gate.
+1	the mandatory final summary omits todos_left, so partial scope can disappear from the end-of-run report.
+1	the ship pr mutation surface is only gated in pre-driver, so direct pr creation/refresh paths can bypass scope disposition checks.
+2	`status=complete` can be recorded before `step-2-post-dispatch.sh` settles the branch, which can leave a partial or follow-up disposition attached to a run that never actually reached step 3.
+2	the forced plan-fidelity reviewer can still be pruned because the plan does not define a wire-level exemption that `review_prune_filter` recognizes.
+2	disposition validity can drift after step 5 review commits, step 7 commit-route success, or checks-repair edits because the validator and coverage source are not clearly tied to a recomputed step 0 baseline plus current git delta.
+2	pr footers on create and refresh still hardcode `closes #n`, so partial-scope runs can close the tracking issue instead of emitting `part of #n`.
+2	the live pr create and body-update entrypoints can still mutate pr state without passing the new disposition validator, bypassing the hardened ship gate.
+2	the authoritative self-review path can still skip the forced plan-fidelity pass when `plan_fidelity_forced` is active, because the normative self-review reference has no forced-flag branch.
+2	a proceed-partial record can be written before the follow-up issue and dependency links are durably created, so later failures can leave a superficially valid disposition without the required cross-links.
+2	when the ship driver detects a stale or missing disposition, route-exit has no dedicated halt reason to send the run back into the disposition prompt, so it can fall through to operator bail instead.
+2	plan.txt:67-70 [scope-reduction] follow-up issue filing path does not require the existing issue surface. scenario: the scope_disposition module is assigned to file the follow-up issue, but the spec requires filing via /issue and repo conventions route issue creation through the existing issue helper. a custom direct gh path can bypass existing redaction, dedup, and dependency semantics while adding new issue-filing logic.
