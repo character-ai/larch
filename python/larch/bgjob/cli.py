@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from larch.bgjob import daemon, model, registry, wait
 from larch.core import config, process_identity
 
 
-def _add_common_job_args(parser: argparse.ArgumentParser) -> None:
+def _add_common_job_args(parser: argparse.ArgumentParser, *, tmpdir_required: bool = True) -> None:
     _ = parser.add_argument("--step", required=True)
-    _ = parser.add_argument("--tmpdir", required=True)
+    _ = parser.add_argument("--tmpdir", required=tmpdir_required, default="")
     _ = parser.add_argument("--run-id", default="")
 
 
@@ -73,15 +74,19 @@ def start_main(argv: list[str] | None = None) -> int:
 
 def wait_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py bgjob wait")
-    _add_common_job_args(parser)
+    _add_common_job_args(parser, tmpdir_required=False)
     _ = parser.add_argument("--max-wait-s", type=int, default=config.BGJOB_WAIT_DEFAULT_CHUNK_S)
     _ = parser.add_argument("--poll-interval-s", type=float, default=1.0)
     args = parser.parse_args(argv)
+    tmpdir_raw = str(args.tmpdir) or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not tmpdir_raw:
+        print("BGJOB_ERROR=missing-tmpdir")
+        return 2
     try:
         step = model.validate_slug(str(args.step), label="step")
         run_id = model.validate_slug(str(args.run_id), label="run-id") if args.run_id else None
         return wait.wait_once(
-            tmpdir=Path(args.tmpdir),
+            tmpdir=Path(tmpdir_raw),
             step=step,
             max_wait_s=args.max_wait_s,
             run_id=run_id,
