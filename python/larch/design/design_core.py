@@ -8,7 +8,6 @@ import io
 import os
 import subprocess
 import sys
-import time
 import traceback
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
@@ -16,7 +15,6 @@ from collections.abc import Callable, Iterable, Mapping
 from larch import io as larch_io
 from larch.core import config, logging_util
 from larch.core import redact
-from larch.implement.bg_wait import _read_keepalive_clone_path
 from larch.state.session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
@@ -25,7 +23,6 @@ _SUBPROCESS_RUN = subprocess.run
 DESIGN_BGJOB_STEP3_REVIEW = "design-step3-review"
 DESIGN_BGJOB_STEP4_TAIL = "design-step4-tail"
 DESIGN_BGJOB_STEP5C = "design-step5c"
-DESIGN_BGJOB_STEP_FINAL_SUMMARY = "design-step-final-summary"
 
 
 def design_bgjob_result_env_path(*, design_tmpdir: Path, step: str) -> Path:
@@ -183,7 +180,6 @@ _PROBE_CLAMP_COUNTER_BY_STEP = {
     DESIGN_BGJOB_STEP3_REVIEW: "step-3-terminal",
     DESIGN_BGJOB_STEP4_TAIL: "step-4",
     DESIGN_BGJOB_STEP5C: "step-5c-terminal",
-    DESIGN_BGJOB_STEP_FINAL_SUMMARY: "step-final-summary",
 }
 
 
@@ -191,7 +187,6 @@ _TERMINAL_SENTINEL_BY_STEP = {
     DESIGN_BGJOB_STEP3_REVIEW: "step-3-terminal",
     DESIGN_BGJOB_STEP4_TAIL: "step-4",
     DESIGN_BGJOB_STEP5C: "step-5c-terminal",
-    DESIGN_BGJOB_STEP_FINAL_SUMMARY: "step-final-summary",
 }
 
 
@@ -221,44 +216,6 @@ def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
     if sentinel:
         with contextlib.suppress(OSError):
             (design_tmpdir / ".completed" / sentinel).unlink(missing_ok=True)
-
-
-@contextlib.contextmanager
-def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid: str = ""):
-    tmpdir = Path(design_tmpdir)
-    marker = tmpdir / ".bg-wait-active"
-    tmp = tmpdir / f".bg-wait-active.tmp.{os.getpid()}"
-    active = False
-    _clear_terminal_sentinel(design_tmpdir=tmpdir, step=step)
-    _clear_probe_clamp_counter(design_tmpdir=tmpdir, step=step)
-    _clear_no_progress_sidecars(design_tmpdir=tmpdir)
-    try:
-        text = "\n".join(
-            [
-                f"PID={os.getpid()}",
-                f"CLAUDE_PID={claude_pid or os.environ.get('CLAUDE_PID', '')}",
-                f"START_EPOCH={int(time.time())}",
-                f"STEP={step}",
-                "TIMEOUT_S=21600",
-                f"CLONE_PATH={_read_keepalive_clone_path(tmpdir)}",
-                "",
-            ]
-        )
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(marker)
-        active = True
-    except OSError as exc:
-        with contextlib.suppress(OSError):
-            tmp.unlink()
-        _append_execution_issue(design_tmpdir=tmpdir, message=f"Warning: bg-wait marker setup failed for {step}: {exc}")
-    try:
-        yield
-    finally:
-        if active:
-            with contextlib.suppress(OSError, FileNotFoundError):
-                marker.unlink()
-        with contextlib.suppress(OSError, FileNotFoundError):
-            tmp.unlink()
 
 
 def _emit_core_kvs(rows: Iterable[tuple[str, str]]) -> None:

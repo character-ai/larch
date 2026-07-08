@@ -18,7 +18,6 @@ from larch.design.design_core import (
     _CoreUsageError,
     _append_execution_issue,
     _append_failure,
-    _bg_wait_marker_context,
     _capture_contract_stream_to_paths,
     _clear_probe_clamp_counter,
     _cli_cmd,
