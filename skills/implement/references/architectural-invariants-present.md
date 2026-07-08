@@ -27,6 +27,6 @@ Persist the durable note with this wrapper:
 
 On wrapper failure, do not continue to PR compose with a stale note. Relaunch Step 8 so `ship.py` can rematerialize if `HEAD` changed.
 
-After a successful write, clear the stale handoff and relaunch `step-8-ship.sh` in the same turn. Continue to Step 8, not Step 16. Do not ask the operator for an override.
+After a successful write, relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair in the same turn. Continue to Step 8, not Step 16. Do not ask the operator for an override.
 
 Sibling contract: `skills/implement/scripts/step-architectural-invariants-write-compose.md`.

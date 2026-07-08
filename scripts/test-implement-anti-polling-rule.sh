@@ -481,8 +481,8 @@ check "$IMPL_MD" \
     "SKILL.md NEVER list documents the /implement live-wait Read carve-out" \
     'The hook may still allow a live `Read` of `tasks/*.output` on the running task; treat that as diagnostic only and do not use it to advance the step.'
 check "$IMPL_MD" \
-    "SKILL.md NEVER list pins implement Step 8 rc probe" \
-    'Step 8 uses one foreground non-sleeping `IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
+    "SKILL.md NEVER list pins implement Step 8 bgjob route" \
+    'Step 8 uses bgjob wait/rejoin; on `DONE`, route through current `.step-8-ship-handoff.rc` and `.step-8-ship-handoff.json` sidecars, not generic `BGJOB_RC=0` success.'
 check "$IMPL_MD" \
     "SKILL.md NEVER #8 pins Step 3 same-step probe trigger (Step 5 now uses bgjob)" \
     'If a live `Read` of just-completed Step 3 task output is denied immediately after that step'
@@ -519,8 +519,8 @@ check "$IMPL_MD" \
     "SKILL.md NEVER list pins absent-sentinel no-second-notification guidance" \
     'When it is absent after a genuine completion notification, do not wait for another notification'
 check "$IMPL_MD" \
-    "SKILL.md NEVER list pins Step 8 hook clamp" \
-    'hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent'
+    "SKILL.md NEVER list pins Step 8 terminal bgjob block" \
+    'Block `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, missing sidecars, and stale sidecars.'
 
 check "$IMPL_MD" \
     "SKILL.md NEVER list bans the background recovery waiter (#4725)" \

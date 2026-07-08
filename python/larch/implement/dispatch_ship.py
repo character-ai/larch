@@ -188,6 +188,26 @@ def _read_ship_route_exit_code(*, args: argparse.Namespace, default_file: Path) 
     return None, f"missing exit-code sidecar: {file_path}"
 
 
+def _ship_route_bgjob_result_error(*, implement_tmpdir: Path, exit_code: int, json_file: Path) -> str:
+    result_env = implement_tmpdir / "bgjob" / "implement-step8-ship.result.env"
+    error: str = ""
+    if result_env.is_symlink() or (result_env.exists() and not result_env.is_file()):
+        error = "invalid bgjob result env for route-exit"
+    elif result_env.is_file():
+        bgjob_rc: str = _read_kv_file(path=result_env, key=config.BGJOB_RC_KEY, default="")
+        recorded_rc: str = _read_kv_file(path=result_env, key="STEP8_HANDOFF_RC", default="")
+        json_present: str = _read_kv_file(path=result_env, key="STEP8_HANDOFF_JSON_PRESENT", default="")
+        if bgjob_rc in {config.BGJOB_RC_TIMEOUT, config.BGJOB_RC_ORPHANED}:
+            error = f"bgjob result blocks route-exit: BGJOB_RC={bgjob_rc}"
+        elif recorded_rc and recorded_rc != str(exit_code):
+            error = "stale handoff sidecar: exit-code does not match bgjob result env"
+        elif json_present == "true" and not json_file.is_file():
+            error = "stale handoff sidecar: bgjob result expected json sidecar"
+        elif json_present == "false" and json_file.is_file():
+            error = "stale handoff sidecar: bgjob result expected rc-only handoff"
+    return error
+
+
 def _read_ship_route_json(path: Path) -> tuple[dict[str, object] | None, str]:
     if not path.is_file():
         return None, f"missing json sidecar: {path}"
@@ -757,7 +777,16 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
     if error or exit_code is None or payload is None:
         message = error or ("missing exit code" if exit_code is None else "missing json")
         return _ship_route_exit_fail(message=message, handoff=handoff)
-    action, error = _classify_ship_route_exit(exit_code=exit_code, payload=payload)
+    bgjob_error: str = _ship_route_bgjob_result_error(
+        implement_tmpdir=implement_tmpdir,
+        exit_code=exit_code,
+        json_file=json_file,
+    )
+    action: str = ""
+    if bgjob_error:
+        error = bgjob_error
+    else:
+        action, error = _classify_ship_route_exit(exit_code=exit_code, payload=payload)
     if error:
         return _ship_route_exit_fail(message=error, handoff=handoff)
     action, route_fields = _ship_route_adjust_stalled_action(

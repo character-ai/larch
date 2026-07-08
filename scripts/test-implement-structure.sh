@@ -268,10 +268,6 @@ require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
-for script, timeout in [
-    (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
-]:
-    require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
 for script, step in [
     (launcher + 'skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r', 'implement-step3-checks'),
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'implement-step5-review'),
@@ -289,7 +285,8 @@ require_near('skills/implement/references/self-review.md', launcher + 'python/cl
 require_near('skills/implement/references/self-review.md', self_review_composite, 'BUDGET_S=14700', 'self-review budget pin', 1400)
 require_near('skills/implement/references/self-review.md', self_review_composite, 'step-5-self-review-terminal', 'self-review sentinel pin', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-6-entry.sh', '> **Continue after bgjob `DONE`.**', 'Step 6 bgjob continuation opener', 2000)
-require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
+require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=<n>', 'Step 8 ship bgjob started pin', 2200)
+require_near(skill, launcher + 'python/cli.py bgjob wait --step implement-step8-ship', 'BGJOB_STATUS=WAIT', 'Step 8 ship bgjob wait pin', 2200)
 
 require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
 require(skill, 'Seeded-but-no-PR state is still pre-driver', 'SKILL seeded no-pr retry stays pre-driver')
@@ -467,9 +464,7 @@ if conflict_ref.is_file():
     for needle in [
         'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict',
         '${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh',
-        'run_in_background: true',
-        'timeout: 21600000',
-        '<task-notification>',
+        'Step 8 bgjob start/wait',
     ]:
         if needle not in conflict_text:
             checks.append(f'conflict-resolution.md missing Step 8 wrapper re-entry contract {needle!r}')
@@ -770,7 +765,7 @@ require_near(
     matrix_read,
     '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship route-exit',
     'Step 8+ matrix read before route-exit fence',
-    1200,
+    2200,
 )
 require_near(
     skill,
@@ -785,7 +780,7 @@ require('python/larch/cli.py', '("implement", "commit-route"),', 'commit-route m
 require('python/larch/cli.py', '("implement", "step-8-oos-checkpoint"),', 'step-8-oos-checkpoint machine stdout')
 require(skill, '**`stall`** (post-driver only)', 'SKILL post-driver stall paragraph')
 require(skill, '**`NEXT_ACTION=stall`** (OOS-checkpoint stall)', 'SKILL OOS-checkpoint stall paragraph')
-require(skill, '$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent', 'SKILL json absent setup-failure gate')
+require(skill, 'missing sidecars, and stale sidecars', 'SKILL sidecar setup-failure gate')
 require(skill, 'ship-pr-oos-checkpoint-router.md', 'SKILL oos-pipeline child reference')
 require(skill, 'ship-pr-ci-fix.md', 'SKILL ci-fix child reference')
 forbid(skill, 'run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`', 'SKILL retired matrix CI-fix authority')
@@ -881,7 +876,7 @@ if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr` with the Step 8+ argv
     checks.append('stall-recovery.md must not re-enter ship via direct python/cli.py prose')
 if 'compose-report --report-kind escalation-success' in stall_ref:
     checks.append('stall-recovery.md must not retain escalation-success compose procedure')
-require(skill, 'every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only', 'NEVER #13 default-path wrapper re-entry')
+require(skill, 'Step 8 uses bgjob wait/rejoin', 'NEVER #8 Step 8 bgjob re-entry')
 for needle in [
     '_restore_finalize=false',
     'restore-finalize-state',
@@ -907,7 +902,7 @@ for retired in [
 require('skills/implement/scripts/step-8-ship.sh', ': >"$HANDOFF_CAPTURE"', 'step-8-ship truncates capture')
 require('skills/implement/scripts/step-8-ship.sh', 'tee -a "$HANDOFF_CAPTURE"', 'step-8-ship captures stdout through tee')
 require('skills/implement/scripts/step-8-ship.sh', 'rm -f "$HANDOFF_JSON"', 'step-8-ship unlinks stale json on rc-only exit')
-require('skills/implement/scripts/step-8-ship.sh', 'trap persist_handoff EXIT', 'step-8-ship persists sidecars via EXIT trap')
+require('skills/implement/scripts/step-8-ship.sh', "trap 'persist_handoff \"$?\"' EXIT", 'step-8-ship persists setup failures via EXIT trap')
 require('skills/implement/scripts/step-8-oos-checkpoint.sh', 'implement step-8-oos-checkpoint', 'step-8-oos-checkpoint delegates to Python authority')
 forbid('skills/implement/scripts/step-8-oos-checkpoint.sh', 'oos disposition-checkpoint', 'step-8-oos-checkpoint wrapper does not call disposition directly')
 

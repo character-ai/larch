@@ -34,7 +34,7 @@ CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
 LAUNCHER_PREFIX = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 EXPECTED_OLD = 2
-EXPECTED_NEW = 26
+EXPECTED_NEW = 27
 
 def old_logical_commands(body):
     commands = []
@@ -217,7 +217,7 @@ try:
     oos_start = skill_text.index('- **`oos-pipeline`**:', reship_start)
     reship_slice = skill_text[reship_start:oos_start]
     reship_pre_fix = reship_slice.index('ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"')
-    reship_continue = reship_slice.index('`NEXT_ACTION=continue` proceeds to the stale-handoff clear')
+    reship_continue = reship_slice.index('`NEXT_ACTION=continue` proceeds to the Step 8 bgjob `step-8-ship.sh` relaunch')
     if reship_pre_fix > reship_continue:
         errors.append('reship branch must require ship pre-fix-rebase before stale-handoff clear')
 except ValueError as exc:
@@ -237,10 +237,9 @@ try:
     reship_start = skill_text.index('- **`reship`**:', guidelines_start)
     guidelines_slice = skill_text[guidelines_start:reship_start]
     write_compose = guidelines_slice.index('step-architectural-guidelines-write-compose.sh')
-    stale_clear = guidelines_slice.index('foreground stale-handoff clear')
-    relaunch = guidelines_slice.index('relaunch `step-8-ship.sh`')
-    if not (write_compose < stale_clear < relaunch):
-        errors.append('guidelines-assessment branch must run step-architectural-guidelines-write-compose.sh before stale-handoff clear and step-8-ship.sh relaunch')
+    relaunch = guidelines_slice.index('relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair')
+    if not (write_compose < relaunch):
+        errors.append('guidelines-assessment branch must run step-architectural-guidelines-write-compose.sh before bgjob step-8-ship.sh relaunch')
 except ValueError as exc:
     errors.append(f'guidelines-assessment branch must document compose-write ordering: {exc}')
 
