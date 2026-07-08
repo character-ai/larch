@@ -71,9 +71,9 @@ _SUCCESS_OUTCOMES = _IMPLEMENT_SUCCESS_OUTCOMES | _DESIGN_SUCCESS_OUTCOMES
 
 def _map_outcome_display(outcome: str) -> str:
     if outcome in _SUCCESS_OUTCOMES:
-        return "DONE"
+        return "✅ DONE"
     if outcome == "stalled":
-        return "STALLED"
+        return "❌ STALLED"
     return outcome
 
 

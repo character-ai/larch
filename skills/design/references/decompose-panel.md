@@ -52,7 +52,7 @@ Where:
 
 ### Failure semantics
 
-- `PANEL_STATUS=panel-failed`: zero outputs contain a parseable `## Recommendation` heading. Offer **`AskUserQuestion`**: **Retry panel** / **Cancel**. On **Retry**, rerun §2 **once**. A second `panel-failed` is owned by Step 2b.5 Split-path: invoke `python/cli.py design stage-terminal-state`, stage `failed-judge-panel`, set `--step judge-panel`, `--phase judge-panel`, `--site decompose-panel`, `--trigger decompose-panel-retry-exhausted`, use a stable bail reason such as `decompose-panel-retry-exhausted`, set `--source-script split-path`, export `SUMMARY_OUTCOME=failed-judge-panel`, run the **Final summary block**, exit `/design` **1**, and preserve `$DESIGN_TMPDIR`. If staging fails, still run the same Final summary block so the report gate can fail closed to fallback print. Keep Split-path stdout and operator text free of helper KV leakage by capturing helper stdout/stderr.
+- `PANEL_STATUS=panel-failed`: zero outputs contain a parseable `## Recommendation` heading. Offer **`AskUserQuestion`**: **Retry panel** / **Cancel**. On **Retry**, rerun §2 **once**. A second `panel-failed` is owned by Step 2b.5 Split-path: invoke `python/cli.py design stage-terminal-state`, stage `failed-judge-panel`, set `--step judge-panel`, `--phase judge-panel`, `--site decompose-panel`, `--trigger decompose-panel-retry-exhausted`, use a stable bail reason such as `decompose-panel-retry-exhausted`, set `--source-script split-path`, export `SUMMARY_OUTCOME=failed-judge-panel`, run the **Final summary block** through Read/cache, preserve `$DESIGN_TMPDIR`, emit the cached final summary as terminal plain chat, and exit `/design` **1**. If staging fails, still run the same Final summary block so the report gate can fail closed to fallback print. Keep Split-path stdout and operator text free of helper KV leakage by capturing helper stdout/stderr.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design stage-terminal-state \
@@ -95,7 +95,7 @@ Options (labels may mention degraded counts per §2):
 1. **Pick a single archetype’s split** → continue to stage 1.
 2. **Let aggregator pick optimal split** → run §5 then return to stage 1 with the aggregator’s Markdown as the active “vendor proposal” for a synthetic **aggregator** row (operator still confirms in stage 2 if multiple vendors existed: for aggregator there is only one bundle).
 3. **Refine plan myself (return to caller)**: jump back to the invoking step without filing (Step **2b.5** from Gate B returns toward Step 3 / Gate B per existing SKILL routing; sprawl from **1c** returns to the Step 1c / Step 1d pre-plan flow; sprawl from **1d** returns to the pre-plan path that re-enters **Step 1d.7** outline approval, not Gate A).
-4. **Cancel**: export `SUMMARY_OUTCOME=cancelled-decompose`, run the **Final summary block**, print `**ℹ /design cancelled by operator (decomposition panel).**`, exit **0**.
+4. **Cancel**: export `SUMMARY_OUTCOME=cancelled-decompose`, run the **Final summary block** through Read/cache, print `**ℹ /design cancelled by operator (decomposition panel).**`, emit the cached final summary as terminal plain chat, exit **0**.
 
 ### Stage 1: archetype picker
 
@@ -208,9 +208,9 @@ On `gh` or redactor failure, the helper appends via `python/cli.py run-log appen
 
 ## 9) Terminal outcomes (Split-path)
 
-- **Partition filed + original closed**: `export SUMMARY_OUTCOME=approved-partition`, run the **Final summary block**, print `**ℹ /design exited: partition into N pieces filed (see #<original> close-comment).**`, exit **0**.
+- **Partition filed + original closed**: `export SUMMARY_OUTCOME=approved-partition`, run the **Final summary block** through Read/cache, print `**ℹ /design exited: partition into N pieces filed (see #<original> close-comment).**`, emit the cached final summary as terminal plain chat, exit **0**.
 - **Cancel paths**: already covered in §4 / §6.
-- **Retry exhaustion**: §2 second `panel-failed` stages `failed-judge-panel` via `python/cli.py design stage-terminal-state`, exports `SUMMARY_OUTCOME=failed-judge-panel`, runs the **Final summary block**, exits **1**, and preserves tmpdir.
+- **Retry exhaustion**: §2 second `panel-failed` stages `failed-judge-panel` via `python/cli.py design stage-terminal-state`, exports `SUMMARY_OUTCOME=failed-judge-panel`, runs the **Final summary block** through Read/cache, preserves tmpdir, emits the cached summary as terminal plain chat, and exits **1**.
 
 **Non-exiting Split returns** (Refine, no-split Continue, and retained decomposition paths): merged `--with-plan-size` callers and retained decomposition callers MUST run `python/cli.py design step2b-postplan --write-completion-only` before returning to Gate A or continuing. Initial-site merged Split entry and non-exiting return add `--include-step2b` when both Step 2b and Step 2b.5 are complete. Retained **Refine** returns route to Gate A or an explicit pause/refine re-entry: do not silently short-circuit to Step 3b when refinement re-entry is required.
 

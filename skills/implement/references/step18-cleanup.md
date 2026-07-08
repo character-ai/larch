@@ -24,11 +24,13 @@ When `NEXT_ACTION=stall-recovery`, the inline SKILL handoff to `stall-recovery.m
 
 Green-path teardown is owned by `python/cli.py implement step-18-gate-finalize`, which invokes the existing finalize wrapper internally after the no-stall gate. Breakout teardown is owned by `step-18.sh --phase finalize` on the stall-recovery branch only.
 
-The wrapper runs `python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"`, refreshes token and final-report artifacts through that live Python path only, optionally emits the final body between stable markers, then runs closing marks, `_restore_finalize`, and teardown.
+The wrapper runs `python/cli.py final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"`, refreshes token and final-report artifacts through that live Python path only, optionally emits the final body between stable markers, then runs closing marks, `_restore_finalize`, and teardown. Chat emission happens after teardown, not before it: the orchestrator caches marker bodies, runs warning replay, finalize/teardown capture, closing marks, restore, teardown, and tail relay, then emits the selected marker body at terminal text position.
 
 Repeat any external reviewer warnings from earlier. Mode-specific reminders (`--draft`, `--merge`, fork CI dry-run notes, upstream design issue, fork-mode OOS appendix) are emitted by `python/cli.py final-report write` into the same markdown block as the run summary when applicable. Do not duplicate them as free-form Step 18 prose.
 
 `step-18.sh --phase finalize` runs marker emission under `set +e`, so a failed `cat` of `summary-final.md` cannot skip closing marks, `_restore_finalize`, or teardown. It also runs `final-report step18b` under `set +e`, relays `EMIT_BODY`, `WFR_RC`, `STEP17_EMITTED_PRESENT`, and `SNAPSHOT_OK`, and continues to teardown even when Step 18b exits non-zero.
+
+Passing `--step17-emitted true` means a non-empty Step 17 body is pending for deferred terminal emit; wrappers write `.step17-emitted` before teardown for that cached-not-yet-emitted body. The orchestrator terminal emit follows shared precedence: Step 18 refreshed markers win when `EMIT_BODY=true`, `WFR_RC=0`, and valid markers are present; otherwise Step 17 cache emits when `EMIT_BODY=false`; otherwise only the existing missing-marker warning is printed. `should_emit_updated_body` in `python/larch/report/final_report.py` remains the refresh signal for `EMIT_BODY=true` when the Step 17 sentinel exists but `summary-final.md` changed during Step 18b.
 
 ## Closing token/timing marks
 

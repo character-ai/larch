@@ -41,7 +41,7 @@ Only empty and `false` are inactive.
 ## Finalize phase
 
 The finalize phase never re-runs the active-stall gate.
-When `--step17-emitted true` is passed, the wrapper writes `$IMPLEMENT_TMPDIR/.step17-emitted` before calling Step 18b so `EMIT_BODY` sees the prompt-side Step 17 emission.
+When `--step17-emitted true` is passed, the wrapper writes `$IMPLEMENT_TMPDIR/.step17-emitted` before calling Step 18b so `EMIT_BODY` sees the prompt-side Step 17 body cached for deferred terminal emission.
 
 The wrapper calls the live Step 18b path only:
 
