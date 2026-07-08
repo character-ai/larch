@@ -67,6 +67,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: pyright strict mode can flag untyped lambda parameters in `monkeypatch.setattr` callables, and helper functions make the fake contract reviewable.
 - Deviate when: the callable has no parameters or a narrow inline pyright suppression is clearer; preserve existing suppressions and keep any new suppression on the smallest possible line.
 
+### G-Py-15: Partition status values into terminal and non-terminal sets; never branch on truthiness
+- Why: `/analyze-bugs` short-circuited on any truthy mechanical verdict, so the routing value `NEEDS_DEEP` masked already-ingested deep verdicts (#6153); resume hydration coerced any unrecognized merge result, including empty, to already-merged, and the reconciler collapsed every refresh skip into a spurious terminal STALLED (#6018).
+- Guidance: when a status, verdict, or result type has routing or in-progress members, define the terminal subset once, next to the type, and route every "is this final?" decision through that membership test; make validators reject unknown values instead of coercing them to a member; never gate on the presence or truthiness of a status value.
+- Deviate when: the status never crosses a function boundary and has no special members; a local boolean is fine.
+
 ## Configuration and protocol literals
 
 ### G-Cfg-1: Define every exit code, env-var name, tunable, and wire literal once in config.py as a Final; build token sets from prior sets rather than re-listing
@@ -76,6 +81,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ### G-Cfg-2: Release-owned version bumps use the release flow
 - Why: plugin version changes carry release automation and a reserved commit-message shape; manually reusing `Bump version to X.Y.Z` makes provenance ambiguous.
 - Deviate when: n/a for release-owned version fields. Use the release flow or leave the version unchanged.
+
+### G-Cfg-3: A convention's writer and its selectors share one constant
+- Why: `/analyze-bugs` selected bugs with a hand-written `[BUG]` prefix test while the retitle convention had grown `[DONE]` and case variants, so the audit silently skipped most of its population (#6604); the /design pause snapshot allowlist lagged the sentinel layout its resume guard read, so resume false-refused a complete review (#6548).
+- Guidance: when code writes a convention that other code later selects on, such as a title lifecycle prefix, a marker line, or an artifact filename pattern, define the token once and make the writer, every selector, and every normalizer consume that same constant; a selector that re-derives the convention by hand drifts when the convention gains a new case.
+- Deviate when: the convention belongs to an external system you cannot import; then test the selector against live samples of that system's output.
 
 ## Wire-file I/O
 
@@ -170,6 +180,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: when a reviewer or voter slot is dropped, substituted, pruned, format-rejected, or excused, append a per-slot record naming the slot, the stage, and the reason to the execution-issues log or the slot manifest before removing it from accounting; an aggregate count or generic warning does not satisfy this.
 - Deviate when: never; when volume is a concern, bound the record size, not its existence.
 
+### G-Orch-5: Key destructive watchers to structured error events, not aggregated output
+- Why: the codex policy-rejection watcher regex-scanned the raw events tail, matched historical design-log text quoted by a successful grep, and killed a healthy voter (#6577).
+- Guidance: a watcher that kills, retries, or fails over an agent must match the stream's structured error events or a dedicated error channel, never raw aggregated output that can quote arbitrary bytes such as grep results over committed logs; before acting destructively, record the matched evidence and its provenance to the run diagnostics.
+- Deviate when: the vendor emits no structured error framing; then anchor the match to the vendor's own event delimiters and keep the kill path non-silent so a false positive stays diagnosable.
+
 ## Observability and telemetry
 
 ### G-Obs-1: Keep telemetry writes best-effort, count-only, and fail-soft; a write failure skips the metric without failing the parent, and telemetry never stores prompt or payload text
@@ -188,6 +203,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: pre-terminal snapshots froze merged runs as bailed or stalled in the committed logs, corrupting every downstream outcome census (#5646, #5676, #5970, #4900).
 - Guidance: a pre-terminal run-log snapshot says `shipping` or `in-progress`, never `stalled` or `bailed`, and a stalled-then-recovered run must not stay committed as stalled.
 - Deviate when: never for failure words; a neutral label is always available.
+
+### G-Obs-5: Give report renderers a golden test with hostile-width and fallback-shaped fixtures
+- Why: the /design Gantt corrupted alignment on long slot names twice (#5587, #5753), and the round timing chart silently omitted the vendor-fallback runs that did the round's actual work (#6578).
+- Guidance: a renderer that aligns columns, truncates labels, or selects rows for a human-facing report gets a golden test whose fixture includes labels wider than the layout budget and rows produced by retry, phase2, or vendor-fallback paths.
+- Deviate when: the output is a throwaway diagnostic that no operator decision consumes.
 
 ## Skill authoring and context economy
 
