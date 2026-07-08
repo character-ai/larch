@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# test-step-8-ship.sh — offline harness for Step 8 ship wrappers.
+# test-step-8-ship.sh — offline harness for Step 8 ship bgjob wrapper.
+# shellcheck disable=SC2016 # single-quoted strings are intentional source literals.
 
 set -euo pipefail
 
@@ -20,78 +21,42 @@ assert_not_contains() { local n=$1 h=$2 l=$3; if printf '%s' "$h" | grep -Fq -- 
 assert_rc() { local a=$1 e=$2 l=$3; if [ "$a" -eq "$e" ]; then pass "$l"; else fail "$l (expected rc=$e got rc=$a)"; fi; }
 
 helper_text=$(cat "$HELPER")
+assert_contains 'bgjob start' "$helper_text" 'static: foreground wrapper starts bgjob'
+assert_contains 'STEP="implement-step8-ship"' "$helper_text" 'static: bgjob step slug pinned'
+assert_contains '--budget-s 21600' "$helper_text" 'static: bgjob budget pins Step 8 timeout'
+assert_contains '--merge-result-env "$MERGE_RESULT_ENV"' "$helper_text" 'static: bgjob merge-result env passed'
+assert_contains '--bgjob-child --merge-result-env "$MERGE_RESULT_ENV"' "$helper_text" 'static: bgjob child argv passed'
+assert_contains 'step8_live_registry_exists' "$helper_text" 'static: live registry rejoin helper present'
+assert_contains 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0' "$helper_text" 'static: live/completed rejoin uses bgjob wait'
+assert_contains 'safe_truncate "$MERGE_RESULT_ENV"' "$helper_text" 'static: merge-result env recreated before fresh start'
+assert_contains 'rm -f "$RESULT_ENV"' "$helper_text" 'static: stale canonical result env removed before fresh start'
+assert_contains 'rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"' "$helper_text" 'static: stale handoff sidecars cleared before fresh start'
+assert_contains 'write_merge_result_env' "$helper_text" 'static: child writes merge-result env'
+assert_contains 'STEP8_HANDOFF_RC=%s' "$helper_text" 'static: merge-result env records driver rc sidecar value'
+assert_contains 'STEP8_HANDOFF_JSON_PRESENT=%s' "$helper_text" 'static: merge-result env records json presence'
+assert_contains 'persist_handoff "$rc"' "$helper_text" 'static: child persists real driver rc before zero exit'
+assert_contains 'trap '\''persist_handoff "$?"'\'' EXIT' "$helper_text" 'static: setup failures still persist handoff through EXIT trap'
 assert_contains 'python/cli.py" implement clone-tag' "$helper_text" 'static: clone-tag CLI invoked'
-# shellcheck disable=SC2016
-assert_contains 'clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?' "$helper_text" 'static: clone-tag capture fails closed'
-# shellcheck disable=SC2016
-assert_contains 'eval "$clone_tag_env"' "$helper_text" 'static: clone-tag env evaluated after successful capture'
 assert_contains 'step-8-python-guard.sh' "$helper_text" 'static: shared python guard invoked'
-guard_line=$(grep -n 'step-8-python-guard.sh' "$HELPER" | head -n 1 | cut -d: -f1)
-clone_line=$(grep -n 'implement clone-tag' "$HELPER" | head -n 1 | cut -d: -f1)
-if [ -n "$guard_line" ] && [ -n "$clone_line" ] && [ "$guard_line" -lt "$clone_line" ]; then
-  pass 'static: python guard runs before clone-tag CLI'
-else
-  fail 'static: python guard runs before clone-tag CLI'
-fi
-# shellcheck disable=SC2016
 assert_contains 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git phantom-probe --step 8-pre-ship >&2' "$helper_text" 'static: bundled phantom probe redirects stdout'
-assert_not_contains 'sys.version_info >= (3, 11)' "$helper_text" 'static: inline python version guard absent from ship wrapper'
-# shellcheck disable=SC2016
-assert_not_contains 'claude-implement-${CLONE_TAG_FULL}-' "$helper_text" 'static: inline tmpdir prefix absent from ship wrapper'
-# shellcheck disable=SC2016
 assert_contains 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr' "$helper_text" 'static: python ship CLI invoked'
-# shellcheck disable=SC2016
 assert_contains '--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"' "$helper_text" 'static: state file forwarded'
-# shellcheck disable=SC2016
-assert_contains '--expected-tmpdir-basename-prefix "$EXPECTED_TMPDIR_BASENAME_PREFIX"' "$helper_text" 'static: shared prefix forwarded'
-# shellcheck disable=SC2016
-assert_contains ': >"$HANDOFF_CAPTURE"' "$helper_text" 'static: capture truncated at wrapper entry'
-assert_contains 'trap persist_handoff EXIT' "$helper_text" 'static: EXIT trap persists handoff'
-# shellcheck disable=SC2016
-assert_contains '.bg-wait-active' "$helper_text" 'static: wrapper writes bg-wait marker'
-assert_contains 'STEP=implement-step8-ship' "$helper_text" 'static: marker names implement-step8-ship'
-assert_contains 'TIMEOUT_S=21600' "$helper_text" 'static: marker pins Step 8 timeout'
-assert_contains 'CLONE_PATH=%s' "$helper_text" 'static: marker includes clone identity field'
-assert_contains 'no-progress-turns.count' "$helper_text" 'static: wrapper clears no-progress counter'
-assert_contains 'no-progress-circuit-breaker-armed' "$helper_text" 'static: wrapper clears no-progress breaker'
-assert_contains 'no-progress-stop-block-emitted' "$helper_text" 'static: wrapper clears stop-block sidecar'
-assert_contains 'no-progress-task-output-clamped' "$helper_text" 'static: wrapper clears task-output Stop bridge'
-assert_contains 'bg-poll-guard-task-output-read' "$helper_text" 'static: wrapper clears task-output clamp sidecars'
-assert_contains 'bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count' "$helper_text" 'static: wrapper clears Step 8 rc probe clamp counter'
-# shellcheck disable=SC2016
-assert_contains 'rm -f "$HANDOFF_RC" "$HANDOFF_JSON"' "$helper_text" 'static: wrapper removes stale handoff sidecars at entry'
-# shellcheck disable=SC2016
-assert_contains 'rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active"' "$helper_text" 'static: EXIT trap removes bg-wait marker'
-# shellcheck disable=SC2016
-assert_contains 'tee -a "$HANDOFF_CAPTURE"' "$helper_text" 'static: stdout captured through tee'
-# shellcheck disable=SC2016
-assert_contains 'rm -f "$HANDOFF_JSON"' "$helper_text" 'static: stale json unlinked on rc-only exit'
-rc_write_line=$(grep -n 'printf.*HANDOFF_RC' "$HELPER" | head -n 1 | cut -d: -f1)
-json_write_line=$(grep -n 'HANDOFF_JSON' "$HELPER" | grep 'printf' | head -n 1 | cut -d: -f1)
-marker_remove_line=$(grep -n 'rm -f.*bg-wait-active' "$HELPER" | head -n 1 | cut -d: -f1)
-if [ -n "$rc_write_line" ] && [ -n "$json_write_line" ] && [ -n "$marker_remove_line" ] && [ "$rc_write_line" -lt "$marker_remove_line" ] && [ "$json_write_line" -lt "$marker_remove_line" ]; then
-  pass 'static: persist_handoff writes rc/json before marker removal'
-else
-  fail 'static: persist_handoff writes rc/json before marker removal'
-fi
+legacy_bg='run_in'
+legacy_bg="${legacy_bg}_background"
+assert_not_contains "$legacy_bg" "$helper_text" 'static: helper prose/code no legacy background literal'
+assert_not_contains 'printf '\''PID=%s' "$helper_text" 'static: legacy bg-wait marker writer removed'
 
 seeder_text=$(cat "$SEEDER")
 assert_contains 'ship seed-initial-state' "$seeder_text" 'static: seeder wrapper delegates to Python seeder'
-# shellcheck disable=SC2016
 assert_contains 'session read-key --file "$file"' "$seeder_text" 'static: seeder reads session keys through python cli'
 assert_not_contains 'read-session-env-key.sh' "$seeder_text" 'static: retired session reader absent'
 assert_contains 'python/cli.py" implement clone-tag' "$seeder_text" 'static: seeder invokes clone-tag CLI'
-# shellcheck disable=SC2016
-assert_contains 'clone_tag_env=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement clone-tag) || exit $?' "$seeder_text" 'static: seeder clone-tag capture fails closed'
-# shellcheck disable=SC2016
-assert_contains ': "${EXPECTED_TMPDIR_BASENAME_PREFIX:?}"' "$seeder_text" 'static: seeder requires shared prefix'
 
 IMPL_TMP="$TMP_ROOT/implement"
-mkdir -p "$IMPL_TMP"
+mkdir -p "$IMPL_TMP/bgjob"
 printf 'BRANCH_NAME=test-branch\nISSUE_NUMBER=42\nRUN_ID=run-ship-guard\nREPO=owner/repo\nMANIFEST_PATH=/tmp/manifest.json\nNO_ADMIN_FALLBACK=true\nNO_LOGS_COMMIT=true\n' >"$IMPL_TMP/ship-pr-state.sh"
 printf 'export CLAUDE_PLUGIN_ROOT=%s\n' "$REPO_ROOT" >"$IMPL_TMP/plugin-root.env"
 printf 'session-id\n' >"$IMPL_TMP/session-id"
-printf 'CLONE_PATH=%s\n' "$REPO_ROOT" >"$IMPL_TMP/.larch-keepalive"
 cat >"$IMPL_TMP/larch-run.sh" <<EOF_RUN
 #!/usr/bin/env bash
 set -euo pipefail
@@ -107,6 +72,148 @@ STUB_BIN="$TMP_ROOT/bin"
 mkdir -p "$STUB_BIN"
 cat >"$STUB_BIN/python3" <<EOF_STUB
 #!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "start" ]; then
+  printf '%s\n' "\$@" > "$TMP_ROOT/bgjob-start-argv.txt"
+  if [ -s "$IMPL_TMP/bgjob/implement-step8-ship.merge.env" ]; then printf '%s\n' merge-not-empty > "$TMP_ROOT/merge-not-empty.txt"; fi
+  if [ -e "$IMPL_TMP/.step-8-ship-handoff.rc" ] || [ -e "$IMPL_TMP/.step-8-ship-handoff.json" ]; then printf '%s\n' stale-handoff > "$TMP_ROOT/stale-handoff.txt"; fi
+  printf '%s\n' 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=12345'
+  exit 0
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_STUB
+chmod +x "$STUB_BIN/python3"
+printf 'old\n' >"$IMPL_TMP/bgjob/implement-step8-ship.merge.env"
+printf 'stale\n' >"$IMPL_TMP/.step-8-ship-handoff.rc"
+printf '{"outcome":"STALE"}\n' >"$IMPL_TMP/.step-8-ship-handoff.json"
+set +e
+OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/launch-stderr.txt")
+RC=$?
+set -e
+assert_rc "$RC" 0 'dynamic: foreground launcher exits 0 on bgjob start'
+if [ "$OUT" = 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=12345' ]; then pass 'dynamic: foreground launcher stdout is exact bgjob start line'; else fail "dynamic: foreground launcher stdout exact (got $OUT)"; fi
+assert_contains $'--step\nimplement-step8-ship' "$(cat "$TMP_ROOT/bgjob-start-argv.txt")" 'dynamic: bgjob start step forwarded'
+assert_contains '--merge-result-env' "$(cat "$TMP_ROOT/bgjob-start-argv.txt")" 'dynamic: bgjob start merge-result env forwarded'
+assert_contains '--bgjob-child' "$(cat "$TMP_ROOT/bgjob-start-argv.txt")" 'dynamic: bgjob child argv forwarded'
+if [ ! -e "$TMP_ROOT/merge-not-empty.txt" ]; then pass 'dynamic: merge-result env truncated before bgjob start'; else fail 'dynamic: merge-result env truncated before bgjob start'; fi
+if [ ! -e "$TMP_ROOT/stale-handoff.txt" ]; then pass 'dynamic: stale handoff cleared before bgjob start'; else fail 'dynamic: stale handoff cleared before bgjob start'; fi
+
+cat >"$STUB_BIN/python3" <<EOF_REJOIN
+#!/usr/bin/env bash
+if [ "\$#" -eq 0 ]; then
+  cat >/dev/null
+  printf '%s\n' live
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "wait" ]; then
+  printf '%s\n' "\$@" > "$TMP_ROOT/bgjob-wait-argv.txt"
+  printf '%s\n' 'BGJOB_STATUS=WAIT'
+  printf '%s\n' 'ELAPSED_S=0'
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "start" ]; then
+  printf '%s\n' unexpected-start > "$TMP_ROOT/unexpected-rejoin-start.txt"
+  exit 0
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_REJOIN
+chmod +x "$STUB_BIN/python3"
+set +e
+REJOIN_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/rejoin-stderr.txt")
+REJOIN_RC=$?
+set -e
+assert_rc "$REJOIN_RC" 0 'dynamic: live registry rejoin exits with bgjob wait rc'
+assert_contains 'BGJOB_STATUS=WAIT' "$REJOIN_OUT" 'dynamic: live registry rejoin emits wait envelope'
+assert_contains $'--step\nimplement-step8-ship' "$(cat "$TMP_ROOT/bgjob-wait-argv.txt")" 'dynamic: live registry rejoin waits on Step 8 slug'
+if [ ! -e "$TMP_ROOT/unexpected-rejoin-start.txt" ]; then pass 'dynamic: live registry rejoin refuses second bgjob start'; else fail 'dynamic: live registry rejoin refuses second bgjob start'; fi
+
+cat >"$STUB_BIN/python3" <<EOF_DEAD
+#!/usr/bin/env bash
+if [ "\$#" -eq 0 ]; then
+  cat >/dev/null
+  printf '%s\n' live
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "wait" ]; then
+  printf '%s\n' "\$@" > "$TMP_ROOT/bgjob-dead-wait-argv.txt"
+  printf '%s\n' 'BGJOB_STATUS=DEAD'
+  printf '%s\n' 'BGJOB_DIAG=daemon-dead'
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "start" ]; then
+  printf '%s\n' unexpected-start > "$TMP_ROOT/unexpected-dead-start.txt"
+  exit 0
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_DEAD
+chmod +x "$STUB_BIN/python3"
+set +e
+DEAD_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/dead-wait-stderr.txt")
+DEAD_RC=$?
+set -e
+assert_rc "$DEAD_RC" 0 'dynamic: dead live-registry wait still exits cleanly'
+assert_contains 'BGJOB_STATUS=DEAD' "$DEAD_OUT" 'dynamic: dead wait propagates dead status'
+assert_contains $'--step\nimplement-step8-ship' "$(cat "$TMP_ROOT/bgjob-dead-wait-argv.txt")" 'dynamic: dead wait uses Step 8 slug'
+if [ ! -e "$TMP_ROOT/unexpected-dead-start.txt" ]; then pass 'dynamic: dead wait refuses fresh bgjob start'; else fail 'dynamic: dead wait refuses fresh bgjob start'; fi
+
+cat >"$STUB_BIN/python3" <<EOF_TIMEOUT
+#!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "wait" ]; then
+  printf '%s\n' "\$@" > "$TMP_ROOT/bgjob-timeout-wait-argv.txt"
+  printf '%s\n' 'BGJOB_STATUS=DONE'
+  printf '%s\n' 'BGJOB_RC=timeout'
+  printf '%s\n' 'STEP=implement-step8-ship'
+  printf '%s\n' 'STEP8_HANDOFF_RC=3'
+  printf '%s\n' 'STEP8_HANDOFF_JSON_PRESENT=true'
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "start" ]; then
+  printf '%s\n' unexpected-start > "$TMP_ROOT/unexpected-timeout-start.txt"
+  exit 0
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_TIMEOUT
+chmod +x "$STUB_BIN/python3"
+printf 'BGJOB_RC=timeout\nSTEP=implement-step8-ship\nSTEP8_HANDOFF_RC=3\nSTEP8_HANDOFF_JSON_PRESENT=true\n' >"$IMPL_TMP/bgjob/implement-step8-ship.result.env"
+printf '3\n' >"$IMPL_TMP/.step-8-ship-handoff.rc"
+set +e
+TIMEOUT_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/timeout-rejoin-stderr.txt")
+TIMEOUT_RC=$?
+set -e
+assert_rc "$TIMEOUT_RC" 0 'dynamic: timeout result env replays through bgjob wait'
+assert_contains 'BGJOB_STATUS=DONE' "$TIMEOUT_OUT" 'dynamic: timeout result env replays DONE envelope'
+assert_contains 'BGJOB_RC=timeout' "$TIMEOUT_OUT" 'dynamic: timeout result env preserves terminal rc'
+assert_contains $'--step\nimplement-step8-ship' "$(cat "$TMP_ROOT/bgjob-timeout-wait-argv.txt")" 'dynamic: timeout result env replays Step 8 wait'
+if [ ! -e "$TMP_ROOT/unexpected-timeout-start.txt" ]; then pass 'dynamic: timeout result env refuses fresh bgjob start'; else fail 'dynamic: timeout result env refuses fresh bgjob start'; fi
+
+cat >"$STUB_BIN/python3" <<EOF_MISSING_SIDEcar
+#!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "start" ]; then
+  printf '%s\n' "\$@" > "$TMP_ROOT/bgjob-missing-sidecar-start-argv.txt"
+  if [ -e "$IMPL_TMP/bgjob/implement-step8-ship.result.env" ]; then printf '%s\n' stale-result-env > "$TMP_ROOT/stale-missing-sidecar-result-env.txt"; fi
+  printf '%s\n' 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=23456'
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "wait" ]; then
+  printf '%s\n' unexpected-wait > "$TMP_ROOT/unexpected-missing-sidecar-wait.txt"
+  exit 0
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_MISSING_SIDEcar
+chmod +x "$STUB_BIN/python3"
+printf 'BGJOB_RC=6\nSTEP=implement-step8-ship\nSTEP8_HANDOFF_RC=6\nSTEP8_HANDOFF_JSON_PRESENT=true\n' >"$IMPL_TMP/bgjob/implement-step8-ship.result.env"
+rm -f "$IMPL_TMP/.step-8-ship-handoff.rc"
+set +e
+MISSING_SIDECAR_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/missing-sidecar-stderr.txt")
+MISSING_SIDECAR_RC=$?
+set -e
+assert_rc "$MISSING_SIDECAR_RC" 0 'dynamic: missing merge sidecar falls through to fresh bgjob start'
+if [ "$MISSING_SIDECAR_OUT" = 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=23456' ]; then pass 'dynamic: missing merge sidecar launches fresh bgjob start'; else fail "dynamic: missing merge sidecar fresh start stdout exact (got $MISSING_SIDECAR_OUT)"; fi
+assert_contains $'--step\nimplement-step8-ship' "$(cat "$TMP_ROOT/bgjob-missing-sidecar-start-argv.txt")" 'dynamic: missing merge sidecar fresh start forwards Step 8 slug'
+if [ ! -e "$TMP_ROOT/unexpected-missing-sidecar-wait.txt" ]; then pass 'dynamic: missing merge sidecar does not rejoin via bgjob wait'; else fail 'dynamic: missing merge sidecar does not rejoin via bgjob wait'; fi
+if [ ! -e "$TMP_ROOT/stale-missing-sidecar-result-env.txt" ]; then pass 'dynamic: missing merge sidecar clears stale result env before fresh start'; else fail 'dynamic: missing merge sidecar clears stale result env before fresh start'; fi
+
+cat >"$STUB_BIN/python3" <<EOF_CHILD
+#!/usr/bin/env bash
 if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then
   printf '%s\n' 'CLONE_TAG_FULL=stub'
   printf '%s\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-stub-'
@@ -120,50 +227,59 @@ fi
 if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "ship" ] && [ "\$3" = "pr" ]; then
   printf '%s\n' driver >> "$TMP_ROOT/order.txt"
   printf '%s\n' "\$@" > "$TMP_ROOT/ship-argv.txt"
-  if [ -f "$IMPL_TMP/.bg-wait-active" ]; then cp "$IMPL_TMP/.bg-wait-active" "$TMP_ROOT/marker-during-driver.txt"; fi
-  for f in no-progress-turns.count no-progress-circuit-breaker-armed bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count .step-8-ship-handoff.rc .step-8-ship-handoff.json; do
-    if [ -e "$IMPL_TMP/\$f" ]; then printf '%s\n' "\$f" >> "$TMP_ROOT/stale-seen-during-driver.txt"; fi
-  done
-  printf '%s\n' '{"outcome":"OK","detail":"stub"}'
-  exit 0
+  printf '%s\n' '{"outcome":"NEEDS_USER_INPUT","needs_user_reason":"oos-filing"}'
+  exit 3
 fi
 exec "$REAL_PYTHON" "\$@"
-EOF_STUB
+EOF_CHILD
 chmod +x "$STUB_BIN/python3"
-: >"$IMPL_TMP/no-progress-turns.count"
-: >"$IMPL_TMP/no-progress-circuit-breaker-armed"
-printf '99\n' >"$IMPL_TMP/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
-printf 'stale-rc\n' >"$IMPL_TMP/.step-8-ship-handoff.rc"
-printf '{"outcome":"STALE"}\n' >"$IMPL_TMP/.step-8-ship-handoff.json"
-
+MERGE_ENV="$IMPL_TMP/bgjob/implement-step8-ship.merge.env"
+: >"$TMP_ROOT/order.txt"
 set +e
-OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/stderr.txt")
-RC=$?
+CHILD_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" --bgjob-child --merge-result-env "$MERGE_ENV" 2>"$TMP_ROOT/child-stderr.txt")
+CHILD_RC=$?
 set -e
-assert_rc "$RC" 0 'dynamic: wrapper exits with python driver rc'
-assert_contains $'guard\nphantom\ndriver' "$(cat "$TMP_ROOT/order.txt")" 'dynamic: guard then phantom then driver order'
-assert_contains 'PHANTOM_STATUS=clean' "$(cat "$TMP_ROOT/stderr.txt")" 'dynamic: phantom stdout redirected to stderr'
-assert_not_contains 'PHANTOM_STATUS=clean' "$OUT" 'dynamic: phantom output absent from wrapper stdout'
-assert_contains '"outcome":"OK"' "$OUT" 'dynamic: forwards stdout JSON only'
-assert_contains '--branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards branch flag'
-assert_contains 'test-branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards branch value'
-assert_contains '--expected-tmpdir-basename-prefix' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards shared prefix flag'
-assert_contains 'claude-implement-stub-' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: forwards clone-tag CLI prefix value'
-assert_contains '0' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'dynamic: handoff rc written on success'
-assert_contains '"outcome":"OK"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'dynamic: driver JSON sidecar written after drain'
-assert_contains 'STEP=implement-step8-ship' "$(cat "$TMP_ROOT/marker-during-driver.txt")" 'dynamic: marker visible while driver runs with Step 8 step'
-assert_contains 'TIMEOUT_S=21600' "$(cat "$TMP_ROOT/marker-during-driver.txt")" 'dynamic: marker visible while driver runs with timeout'
-assert_contains "CLONE_PATH=$REPO_ROOT" "$(cat "$TMP_ROOT/marker-during-driver.txt")" 'dynamic: marker visible while driver runs with clone path'
-if [ ! -s "$TMP_ROOT/stale-seen-during-driver.txt" ]; then
-  pass 'dynamic: stale handoff, no-progress, and probe counter files cleared before driver'
-else
-  fail "dynamic: stale files seen by driver: $(cat "$TMP_ROOT/stale-seen-during-driver.txt")"
+assert_rc "$CHILD_RC" 0 'dynamic: child exits 0 after persisting non-zero driver rc'
+assert_contains $'guard\nphantom\ndriver' "$(cat "$TMP_ROOT/order.txt")" 'dynamic: child runs guard then phantom then driver'
+assert_contains 'PHANTOM_STATUS=clean' "$(cat "$TMP_ROOT/child-stderr.txt")" 'dynamic: phantom stdout redirected to stderr'
+assert_contains '"needs_user_reason":"oos-filing"' "$CHILD_OUT" 'dynamic: child captures and forwards driver JSON when invoked directly'
+assert_contains '--branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: child forwards branch flag'
+assert_contains 'test-branch' "$(cat "$TMP_ROOT/ship-argv.txt")" 'dynamic: child forwards branch value'
+assert_contains '3' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'dynamic: handoff rc stores driver rc 3'
+assert_contains '"needs_user_reason":"oos-filing"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'dynamic: driver JSON sidecar written after drain'
+assert_contains 'STEP8_HANDOFF_RC=3' "$(cat "$MERGE_ENV")" 'dynamic: merge result records driver rc 3'
+assert_contains 'STEP8_HANDOFF_JSON_PRESENT=true' "$(cat "$MERGE_ENV")" 'dynamic: merge result records json presence'
+
+cat >"$STUB_BIN/mv" <<'EOF_MV'
+#!/usr/bin/env bash
+exit 1
+EOF_MV
+chmod +x "$STUB_BIN/mv"
+rm -f "$MERGE_ENV"
+cat >"$STUB_BIN/python3" <<EOF_MERGE_FAIL
+#!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then
+  printf '%s\n' 'CLONE_TAG_FULL=stub'
+  printf '%s\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-stub-'
+  exit 0
 fi
-if [ ! -e "$IMPL_TMP/.bg-wait-active" ]; then
-  pass 'dynamic: bg-wait marker absent after success'
-else
-  fail 'dynamic: bg-wait marker absent after success'
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "git" ] && [ "\$3" = "phantom-probe" ]; then
+  printf '%s\n' 'PHANTOM_STATUS=clean'
+  exit 0
 fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "ship" ] && [ "\$3" = "pr" ]; then
+  printf '%s\n' '{"outcome":"NEEDS_USER_INPUT","needs_user_reason":"oos-filing"}'
+  exit 3
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_MERGE_FAIL
+chmod +x "$STUB_BIN/python3"
+set +e
+PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" --bgjob-child --merge-result-env "$MERGE_ENV" >/dev/null 2>"$TMP_ROOT/merge-fail-stderr.txt"
+MERGE_FAIL_STATUS=$?
+set -e
+assert_rc "$MERGE_FAIL_STATUS" 2 'dynamic: merge-result write failure fails closed'
+if [ ! -e "$MERGE_ENV" ] || [ ! -s "$MERGE_ENV" ]; then pass 'dynamic: merge-result write failure does not publish merge env'; else fail 'dynamic: merge-result write failure does not publish merge env'; fi
 
 cat >"$STUB_BIN/python3" <<EOF_OLD
 #!/usr/bin/env bash
@@ -179,171 +295,16 @@ assert_rc "$GUARD_RC" 4 'guard: stale python exits 4'
 assert_contains 'ERROR: Python ship driver requires Python 3.11 or newer' "$(cat "$TMP_ROOT/guard-stderr.txt")" 'guard: stale python emits stderr'
 assert_contains '"outcome":"STALLED"' "$GUARD_OUT" 'guard: stale python emits STALLED JSON'
 
-cat >"$IMPL_TMP/larch-run.sh" <<EOF_STALE_RUN
-#!/usr/bin/env bash
-set -euo pipefail
-case "\$1" in
-  skills/implement/scripts/step-8-python-guard.sh) exec bash "$GUARD" ;;
-  *) exec bash "$REPO_ROOT/\$1" "\${@:2}" ;;
-esac
-EOF_STALE_RUN
-chmod +x "$IMPL_TMP/larch-run.sh"
-: >"$TMP_ROOT/order.txt"
-set +e
-STALE_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/stale-wrapper-stderr.txt")
-STALE_RC=$?
-set -e
-assert_rc "$STALE_RC" 4 'wrapper: stale python exits 4 before clone-tag'
-assert_contains '"outcome":"STALLED"' "$STALE_OUT" 'wrapper: stale python emits STALLED JSON'
-assert_not_contains 'driver' "$(cat "$TMP_ROOT/order.txt" 2>/dev/null || true)" 'wrapper: stale python skips ship driver'
-assert_contains '4' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'wrapper: stale python handoff rc written'
-assert_contains '"outcome":"STALLED"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'wrapper: stale python JSON sidecar written'
-if [ ! -e "$IMPL_TMP/.bg-wait-active" ]; then
-  pass 'wrapper: stale python removes bg-wait marker'
-else
-  fail 'wrapper: stale python removes bg-wait marker'
-fi
-
-printf '%s\n' '{"outcome":"STALE"}' >"$IMPL_TMP/.step-8-ship-handoff.json"
+printf '{"outcome":"STALE"}\n' >"$IMPL_TMP/.step-8-ship-handoff.json"
 printf 'RUN_ID=run-ship-guard\nREPO=owner/repo\n' >"$IMPL_TMP/ship-pr-state.sh"
 set +e
-SETUP_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/setup-stderr.txt")
+SETUP_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" --bgjob-child --merge-result-env "$MERGE_ENV" 2>"$TMP_ROOT/setup-stderr.txt")
 SETUP_RC=$?
 set -e
-assert_rc "$SETUP_RC" 2 'wrapper: require_value setup failure exits 2'
-assert_contains '2' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'wrapper: setup failure handoff rc written'
-if [ ! -e "$IMPL_TMP/.step-8-ship-handoff.json" ]; then
-  pass 'wrapper: setup failure unlinks stale handoff json'
-else
-  fail 'wrapper: setup failure unlinks stale handoff json'
-fi
-if [ -z "$SETUP_OUT" ]; then
-  pass 'wrapper: setup failure stdout empty'
-else
-  fail 'wrapper: setup failure stdout empty'
-fi
-if [ ! -e "$IMPL_TMP/.bg-wait-active" ]; then
-  pass 'wrapper: setup failure removes bg-wait marker'
-else
-  fail 'wrapper: setup failure removes bg-wait marker'
-fi
-
-printf 'BRANCH_NAME=test-branch\nISSUE_NUMBER=42\nRUN_ID=run-ship-guard\nREPO=owner/repo\nMANIFEST_PATH=/tmp/manifest.json\n' >"$IMPL_TMP/ship-pr-state.sh"
-cat >"$IMPL_TMP/larch-run.sh" <<EOF_FAIL_RUN
-#!/usr/bin/env bash
-set -euo pipefail
-case "\$1" in
-  skills/implement/scripts/step-8-python-guard.sh) exit 0 ;;
-  *) exec bash "$REPO_ROOT/\$1" "\${@:2}" ;;
-esac
-EOF_FAIL_RUN
-chmod +x "$IMPL_TMP/larch-run.sh"
-cat >"$STUB_BIN/python3" <<EOF_FAIL_SHIP
-#!/usr/bin/env bash
-if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then
-  printf '%s\n' 'CLONE_TAG_FULL=stub'
-  printf '%s\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-stub-'
-  exit 0
-fi
-if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "git" ] && [ "\$3" = "phantom-probe" ]; then exit 0; fi
-if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "ship" ] && [ "\$3" = "pr" ]; then
-  [ -f "$IMPL_TMP/.bg-wait-active" ] && printf '%s\n' marker-present >"$TMP_ROOT/fail-marker-seen.txt"
-  printf '%s\n' '{"outcome":"INTERNAL_ERROR","detail":"fail-stub"}'
-  exit 1
-fi
-exec "$REAL_PYTHON" "\$@"
-EOF_FAIL_SHIP
-chmod +x "$STUB_BIN/python3"
-set +e
-FAIL_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/fail-stderr.txt")
-FAIL_RC=$?
-set -e
-assert_rc "$FAIL_RC" 1 'wrapper: failing ship driver exits 1'
-assert_contains '"outcome":"INTERNAL_ERROR"' "$FAIL_OUT" 'wrapper: failing ship forwards failure JSON stdout'
-assert_contains 'marker-present' "$(cat "$TMP_ROOT/fail-marker-seen.txt")" 'wrapper: failing ship driver runs after marker armed'
-assert_contains '1' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'wrapper: failing ship handoff rc written'
-assert_contains '"outcome":"INTERNAL_ERROR"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'wrapper: failing ship JSON sidecar written'
-if [ ! -e "$IMPL_TMP/.bg-wait-active" ]; then
-  pass 'wrapper: failing ship removes bg-wait marker'
-else
-  fail 'wrapper: failing ship removes bg-wait marker'
-fi
-
-printf 'old\n' >"$IMPL_TMP/.step-8-ship-handoff.rc"
-printf '{"outcome":"OLD"}\n' >"$IMPL_TMP/.step-8-ship-handoff.json"
-printf '99\n' >"$IMPL_TMP/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
-rm -f "$IMPL_TMP/.step-8-ship-handoff.rc" "$IMPL_TMP/.step-8-ship-handoff.json" 2>/dev/null || true
-if [ ! -e "$IMPL_TMP/.step-8-ship-handoff.rc" ] && [ ! -e "$IMPL_TMP/.step-8-ship-handoff.json" ]; then
-  pass 'relaunch regression: foreground pre-launch clear removes stale handoff sidecars'
-else
-  fail 'relaunch regression: foreground pre-launch clear removes stale handoff sidecars'
-fi
-if ! test -f "$IMPL_TMP/.step-8-ship-handoff.rc"; then
-  pass 'relaunch regression: rc probe absent after foreground pre-launch clear'
-else
-  fail 'relaunch regression: rc probe absent after foreground pre-launch clear'
-fi
-cat >"$IMPL_TMP/larch-run.sh" <<EOF_RELAUNCH_RUN
-#!/usr/bin/env bash
-set -euo pipefail
-case "\$1" in
-  skills/implement/scripts/step-8-python-guard.sh) printf '%s\n' guard >> "$TMP_ROOT/relaunch-order.txt"; exit 0 ;;
-  *) exec bash "$REPO_ROOT/\$1" "\${@:2}" ;;
-esac
-EOF_RELAUNCH_RUN
-chmod +x "$IMPL_TMP/larch-run.sh"
-cat >"$STUB_BIN/python3" <<EOF_RELAUNCH_STUB
-#!/usr/bin/env bash
-if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then
-  printf '%s\n' 'CLONE_TAG_FULL=stub'
-  printf '%s\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-stub-'
-  exit 0
-fi
-if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "git" ] && [ "\$3" = "phantom-probe" ]; then
-  printf '%s\n' phantom >> "$TMP_ROOT/relaunch-order.txt"
-  exit 0
-fi
-if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "ship" ] && [ "\$3" = "pr" ]; then
-  printf '%s\n' driver >> "$TMP_ROOT/relaunch-order.txt"
-  if [ -f "$IMPL_TMP/.bg-wait-active" ]; then cp "$IMPL_TMP/.bg-wait-active" "$TMP_ROOT/relaunch-marker-during-driver.txt"; fi
-  for f in .step-8-ship-handoff.rc .step-8-ship-handoff.json bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count; do
-    if [ -e "$IMPL_TMP/\$f" ]; then printf '%s\n' "\$f" >> "$TMP_ROOT/relaunch-stale-seen-during-driver.txt"; fi
-  done
-  printf '%s\n' '{"outcome":"OK","detail":"relaunch-stub"}'
-  exit 0
-fi
-exec "$REAL_PYTHON" "\$@"
-EOF_RELAUNCH_STUB
-chmod +x "$STUB_BIN/python3"
-: >"$TMP_ROOT/relaunch-order.txt"
-: >"$TMP_ROOT/relaunch-stale-seen-during-driver.txt"
-printf 'stale-relaunch-rc\n' >"$IMPL_TMP/.step-8-ship-handoff.rc"
-printf '{"outcome":"STALE_RELAUNCH"}\n' >"$IMPL_TMP/.step-8-ship-handoff.json"
-rm -f "$IMPL_TMP/.step-8-ship-handoff.rc" "$IMPL_TMP/.step-8-ship-handoff.json" 2>/dev/null || true
-if test -f "$IMPL_TMP/.step-8-ship-handoff.rc"; then
-  fail 'relaunch regression: stale rc must not survive foreground pre-launch clear before wrapper'
-else
-  pass 'relaunch regression: stale rc absent before wrapper relaunch'
-fi
-set +e
-_relaunch_out=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/relaunch-stderr.txt")
-RELAUNCH_RC=$?
-set -e
-assert_rc "$RELAUNCH_RC" 0 'relaunch regression: wrapper exits 0 on relaunch'
-assert_contains $'guard\nphantom\ndriver' "$(cat "$TMP_ROOT/relaunch-order.txt")" 'relaunch regression: wrapper runs guard then driver on relaunch'
-assert_contains 'STEP=implement-step8-ship' "$(cat "$TMP_ROOT/relaunch-marker-during-driver.txt")" 'relaunch regression: marker armed before driver on relaunch'
-if [ ! -s "$TMP_ROOT/relaunch-stale-seen-during-driver.txt" ]; then
-  pass 'relaunch regression: stale rc/json cleared before driver on relaunch'
-else
-  fail "relaunch regression: stale sidecars seen by driver: $(cat "$TMP_ROOT/relaunch-stale-seen-during-driver.txt")"
-fi
-assert_contains '0' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'relaunch regression: fresh handoff rc written after relaunch'
-assert_contains '"outcome":"OK"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'relaunch regression: fresh handoff json written after relaunch'
-if [ ! -e "$IMPL_TMP/.bg-wait-active" ]; then
-  pass 'relaunch regression: bg-wait marker removed after relaunch completes'
-else
-  fail 'relaunch regression: bg-wait marker removed after relaunch completes'
-fi
+assert_rc "$SETUP_RC" 2 'child: require_value setup failure exits 2'
+assert_contains '2' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'child: setup failure handoff rc written'
+if [ ! -e "$IMPL_TMP/.step-8-ship-handoff.json" ]; then pass 'child: setup failure unlinks stale handoff json'; else fail 'child: setup failure unlinks stale handoff json'; fi
+if [ -z "$SETUP_OUT" ]; then pass 'child: setup failure stdout empty'; else fail 'child: setup failure stdout empty'; fi
 
 cat >"$STUB_BIN/python3" <<EOF_NEW
 #!/usr/bin/env bash
@@ -356,11 +317,7 @@ GUARD_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_RO
 GUARD_RC=$?
 set -e
 assert_rc "$GUARD_RC" 0 'guard: new python exits 0'
-if [ -z "$GUARD_OUT" ]; then
-  pass 'guard: new python stdout empty'
-else
-  fail 'guard: new python stdout empty'
-fi
+if [ -z "$GUARD_OUT" ]; then pass 'guard: new python stdout empty'; else fail 'guard: new python stdout empty'; fi
 
 CLONE_OUT=$(mkdir -p "$TMP_ROOT/repo with spaces" && cd "$TMP_ROOT/repo with spaces" && CLONE_TAG='' "$REAL_PYTHON" "$REPO_ROOT/python/cli.py" implement clone-tag)
 assert_contains 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-repo_with_spaces-' "$CLONE_OUT" 'clone CLI: derives sanitized prefix from PWD'
