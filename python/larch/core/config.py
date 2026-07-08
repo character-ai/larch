@@ -29,6 +29,7 @@ EXIT_CHECK_MAIN_SYNC_ERROR: Final = 2
 EXIT_BEHIND_COUNT_USAGE: Final = 2
 EXIT_PHANTOM_PROBE_USAGE: Final = 2
 EXIT_GH_RUN_LOGS_IN_PROGRESS: Final = 3
+EXIT_GH_RUN_LOGS_HEALTH_BAIL: Final = 5
 # report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
 EXIT_BAIL: Final = 4
 EXIT_TIMEOUT: Final = 124
@@ -533,7 +534,6 @@ def claude_sub_default_model(raw: str) -> str:
     return CLAUDE_SUB_DEFAULT_MODEL_BY_RAW.get(raw, CLAUDE_OPUS_4_8_MODEL)
 
 
-CI_AGENTIC_FIX_MAX_CYCLES: Final = 30
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20
 # Rebase conflicts confined to these generated files are mechanically
@@ -555,6 +555,7 @@ SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME: Final = "ship-pr-rrr-after-phase14.flag
 
 # Environment variable names
 ENV_LARCH_CI_LOCAL_FIX_ITER: Final = "LARCH_CI_LOCAL_FIX_ITER"
+ENV_LARCH_CI_FIXER: Final = "LARCH_CI_FIXER"
 ENV_LARCH_NO_LOGS_COMMIT: Final = "LARCH_NO_LOGS_COMMIT"
 ENV_LARCH_RUN_ID: Final = "LARCH_RUN_ID"
 ENV_DESIGN_TMPDIR: Final = "DESIGN_TMPDIR"
@@ -686,6 +687,34 @@ CI_MONITOR_STATUS_FAILURE_BAIL: Final = 3
 CI_MONITOR_LOG_TAIL_LINES: Final = 100
 CI_MONITOR_IN_PROGRESS_POLL_INTERVAL: Final = 15
 CI_MONITOR_IN_PROGRESS_TIMEOUT: Final = 3600
+CI_FIXER_AGENT_MAX_ROUNDS: Final = 20
+CI_FIXER_MAIN_FALLBACK_MAX_ATTEMPTS: Final = 10
+CI_FIXER_KILL_SWITCH_INLINE_MAX_ATTEMPTS: Final = 30
+CI_FIXER_DISTILL_STEP_HEAD_LINES: Final = 80
+CI_FIXER_DISTILL_STEP_TAIL_LINES: Final = 80
+CI_FIXER_DISTILL_STEP_CONTEXT_LINES: Final = 4
+CI_FIXER_DISTILL_TOTAL_BYTES: Final = 60000
+CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT: Final = 2
+CI_FIXER_STATUS_SUCCESS: Final = "ci-fixer-success"
+CI_FIXER_STATUS_HEALTH_BAIL: Final = "ci-fixer-health-bail"
+CI_FIXER_STATUS_EXHAUSTED: Final = "ci-fixer-exhausted"
+CI_FIXER_STATUS_NO_PROGRESS: Final = "ci-fixer-no-progress"
+CI_FIXER_STATUS_REBASE_NEEDED: Final = "ci-fixer-rebase-needed"
+CI_FIXER_STATUS_DISABLED: Final = "ci-fixer-disabled"
+CI_FIXER_STATUS_TOKENS: Final[tuple[str, ...]] = (
+    CI_FIXER_STATUS_SUCCESS,
+    CI_FIXER_STATUS_HEALTH_BAIL,
+    CI_FIXER_STATUS_EXHAUSTED,
+    CI_FIXER_STATUS_NO_PROGRESS,
+    CI_FIXER_STATUS_REBASE_NEEDED,
+    CI_FIXER_STATUS_DISABLED,
+)
+CI_FIXER_DISTILLED_FAILURE_FILE: Final = "distilled-failure.md"
+CI_FIXER_SPAWNED_SENTINEL: Final = "fixer-spawned.sentinel"
+CI_FIXER_STATUS_FILE: Final = "fixer-status.env"
+CI_FIXER_ROUNDS_FILE: Final = "fixer-rounds.tsv"
+CI_FIXER_BAIL_FILE: Final = "fixer-bail.md"
+CI_FIXER_FALLBACK_ATTEMPTS_FILE: Final = "fallback-attempts.count"
 CI_FIX_ROLE: Final = "fix"
 CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "lint",

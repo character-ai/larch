@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": false,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "medium",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Retires a CI-fix code path, adds a new CLI surface, rewrites Step 8 prompt contracts, and updates multiple regression harnesses.",
+  "round_cap": 2,
+  "schema_version": 1
+}

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 8+ autonomous main-agent CI-fix prose harness.
+# Step 8+ autonomous CI-fix prose harness.
 
 set -euo pipefail
 
@@ -52,17 +52,29 @@ for needle in [
     '.ship-route-exit-handoff.env',
     'ledger_ready=true',
     'stall-recovery record-escalation',
+    'LARCH_CI_FIXER=0',
     'main-agent-ci-fix.count',
-    'gh run-logs',
-    'python/cli.py" push branch',
+    'ci distill-log',
+    'fixer-spawned.sentinel',
+    'fixer-bail.md',
+    'fixer-status.env',
+    'fixer-rounds.tsv',
+    'fallback-attempts.count',
+    '20 rounds',
+    'attempts 1-10 may run',
+    'Do not Read `distilled-failure.md`',
+    'do not run `gh run-logs`',
+    'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch',
+    'BAIL_CLASS=in_progress',
+    'BAIL_CLASS=ci-fixer-health-bail',
+    'BAIL_CLASS=github-log-failure',
+    'BAIL_CLASS=write-failure',
     'enumerate every failing job/check revealed',
     'git add --',
     'run-log refresh',
     're-invoke `step-8-ship.sh`',
 ]:
     require(ci_fix, needle, 'ship-pr-ci-fix.md body')
-for n in range(1,13):
-    require(ci_fix, f'  {n}.', f'ship-pr-ci-fix.md autonomous sub-step {n}')
 for needle in [
     'Python driver non-zero routing',
     'read .ship-route-exit-handoff.env',
@@ -70,6 +82,16 @@ for needle in [
     'larch.io.read_kvs',
 ]:
     forbid(matrix, needle, 'ship-pr-exit-matrix.md stripped ci-fix body')
+for needle in [
+    'ci-fixer-success',
+    'ci-fixer-health-bail',
+    'ci-fixer-exhausted',
+    'ci-fixer-no-progress',
+    'ci-fixer-rebase-needed',
+    'ci-fixer-disabled',
+    'not new Python ship driver `NEXT_ACTION` tokens',
+]:
+    require(matrix, needle, 'ship-pr-exit-matrix.md internal ci-fixer statuses')
 require_near(ci_fix, 'MANDATORY: READ ENTIRE FILE', 're-invoke `step-8-ship.sh`', 'ci-fix procedure read before ship re-entry')
 
 if errors:
