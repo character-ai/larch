@@ -1,0 +1,23 @@
+### FINDING_1: Missing verbatim invariant paragraphs
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The plan can be satisfied without embedding the two invariant body paragraphs byte-for-byte, so an implementer could paraphrase or omit the required text while still checking off the listed file-edit steps. This risks losing the exact INV-Gate-1 and INV-Pause-1 wording, including the pause-snapshot test-path requirement.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: `Paste both issue Entry 1 and Entry 2 fenced paragraph blocks verbatim into the plan Approach (or Files) section so plan.txt is self-contained for byte-stable insertion`
+  - From Cursor-Pragmatic: `Embed both full heading lines and body paragraphs from the issue anchor verbatim in the plan (under Approach or the UPDATED file section) so byte-stable copy needs no external lookup`
+
+### FINDING_2: INV-* headings are not parsed by the current invariant reader
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The proposed `INV-*` entries are not compatible with the existing invariant parsing/read path, so coverage-index success would not guarantee that `python/cli.py architectural-invariants read` or prompt/review surfaces actually expose the seeded rules. In practice, the new text could land in the file yet still parse as empty or be dropped by the reader.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: `Extend the parser to accept the new `INV-*` paragraph shape, or change the entries to the parser's current `I-*`/`- Why:` format before landing.`
+  - From Cursor-Pragmatic: `Add an Edge case noting _INVARIANT_HEADING_RE is I-* only; extend Testing strategy with python/cli.py architectural-invariants read expecting no untrusted block today, and record a follow-up to align the reader with _INVARIANT_ID_RE or reissue headings as I-*`
+
+### OOS_1: parse_invariant_entries ingests only - Why: bullets not paragraph prose
+- **Description**: parse_invariant_entries ingests only - Why: bullets not paragraph prose. Scenario: Issue-mandated paragraph bodies under each heading are ignored by the reader even if headings used I-*; only titles would reach prompts unless bodies are reformatted or the parser is extended
+- **Reviewer**: anonymous
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/larch/core/architectural_guidelines.py:287-310
+- **Phase**: design
