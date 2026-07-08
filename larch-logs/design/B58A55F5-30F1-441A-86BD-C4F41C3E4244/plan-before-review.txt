@@ -1,0 +1,78 @@
+## Approach
+
+Implement the approved narrow fix in `progress_report.py`.
+
+- Keep timing ledger format unchanged.
+- Keep Top-reviewers fallback remap unchanged.
+- In `_derive_progress_label`, compute the raw basename and the normalized basename with `_progress_normalize_output_base`.
+- Look up labels by raw basename first, then normalized basename.
+- Detect fallback rows when the normalized basename differs from the raw basename.
+- Append ` (via fallback)` to the selected or derived label only for fallback rows.
+- Do not append the suffix to special apply-task labels such as `codex/apply`, because those return before basename handling.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/progress_report.py
+
+Change `_derive_progress_label` only.
+
+Planned behavior:
+
+- `cursor-specialist-validity-vote-output-phase2.txt` with a manifest label for `cursor-specialist-validity-vote-output.txt` renders as `cursor/validity-vote (via fallback)`.
+- If no manifest label exists, derive from the normalized fallback basename, not the raw `phase2` or `phase3` name.
+- Preserve current behavior for normal primary rows, CI skipping, row capping, and apply rows.
+
+### UPDATED: python/tests/report/test_progress_report.py
+
+Add focused tests near existing progress label and Gantt row tests.
+
+Add coverage for:
+
+- `_derive_progress_label` maps a `-phase2` output through a normalized manifest label and adds ` (via fallback)`.
+- `_derive_progress_label` derives a normalized fallback label when no manifest label exists.
+- `_progress_vendor_rows` includes both a failed primary attempt row and a successful phase2 fallback row in the same round window, with the fallback row labeled distinctly.
+- Existing apply-task priority remains unaffected if convenient to fold into an existing test, but do not broaden scope if the current tests already cover it.
+
+## Edge cases
+
+- Raw manifest labels should still win when the exact basename exists.
+- Fallback normalization can strip chained suffixes such as `-phase2-retry`; keep using the existing helper so behavior stays shared.
+- A phase2 or phase3 row without a recognizable reviewer basename should still fall back to the existing unknown/vendor/kind logic, with the fallback suffix only when a label was actually derived.
+- Row cap behavior can still drop rows when the chart exceeds `PROGRESS_GANTT_ROW_CAP`; this plan does not change cap policy.
+
+## Failure modes
+
+- If only `_progress_vendor_rows` changes, direct `_derive_progress_label` callers may still mislabel fallback rows.
+- If normalization happens after `_progress_derived_label`, the chart can show `unknown/...phase2` labels.
+- If the suffix is applied before special-kind handling, apply rows may become noisy or wrong.
+- If the suffix is applied to primary rows, the chart will overstate fallback use.
+
+## Testing strategy
+
+Run focused Python tests first:
+
+```bash
+python3 -m pytest python/tests/report/test_progress_report.py -q -k 'progress_label or progress_vendor_rows'
+```
+
+Then run the changed-file relevant checks if available:
+
+```bash
+python3 python/cli.py checks run-relevant
+```
+
+If time permits, run the full report test file:
+
+```bash
+python3 -m pytest python/tests/report/test_progress_report.py -q
+```
+
+## Difficulty
+
+This is localized, but it changes a workflow report surface and reviewer timing interpretation. A small label bug can hide fallback cost, so classify it as moderate.
+
+difficulty: MODERATE
+diff_added: 35
+diff_deleted: 4
+mechanical_churn: false
+diff_lines: 39

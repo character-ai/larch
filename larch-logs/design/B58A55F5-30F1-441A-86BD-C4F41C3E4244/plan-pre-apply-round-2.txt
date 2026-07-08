@@ -1,0 +1,126 @@
+## Plan
+
+## Approach
+
+Fix the Round reviewer-timing Gantt so phase2/phase3 vendor-fallback ledger rows survive row capping and render with correct, distinct labels. The C9457B68 repro fails for two reasons: late fallback rows are dropped by start-sorted truncation at `PROGRESS_GANTT_ROW_CAP`, and labels can credit the nominal tool instead of the executing vendor.
+
+Keep timing ledger format, Top-reviewers `_fallback_label_remap` / `(via <Tool>)` behavior, CI skipping, and apply-row reservation unchanged.
+
+### Label derivation (`_derive_progress_label`)
+
+Change `_derive_progress_label` only for non-apply rows (apply kinds still return before basename handling).
+
+1. Compute `raw_base = Path(output).name` and `norm_base = _progress_normalize_output_base(raw_base)`.
+2. Treat a row as a fallback row when `norm_base != raw_base` (covers `-phase2`, `-phase3`, chained `-retry`, etc. via the existing helper).
+3. Resolve manifest labels with raw-first precedence: lookup `raw_base` in `label_map`, then `norm_base`.
+4. When no manifest label matches and the row is a fallback row, derive from `norm_base`, not the raw `phase2`/`phase3` name.
+5. For fallback rows where the resolved base label implies a nominal tool that differs from the ledger `vendor`, reconcile display with the executing vendor using the same slot/tool split as `_fallback_reconciled_manifest_label` / `_manifest_fallback_base_label` (e.g. failed `codex-validity-vote-output.txt` primary plus `codex-validity-vote-output-phase2.txt` with `vendor=cursor` renders `cursor/validity-vote`, not `codex/validity-vote`).
+6. Append ` (via fallback)` only when step 2 detected a fallback row and a label was actually selected or derived (not for exact raw-basename manifest hits, not for apply rows).
+
+Out-of-scope note (FINDING_2): chart fallback annotation stays `(via fallback)`; Top-reviewers keeps `(via <Tool>)` unless a separate unification issue is filed.
+
+### Cap reservation (`_cap_gantt_rows_reserving_apply` + `_progress_vendor_rows`)
+
+Extend the existing #5264 apply-reservation pattern so phase2/phase3 fallback rows are not silently truncated.
+
+1. In `_progress_vendor_rows`, when building each row tuple, detect fallback rows with the same `norm_base != raw_base` predicate used for labeling.
+2. Extend `_cap_gantt_rows_reserving_apply` (minimal in-place change; no rename required) to reserve both:
+   - apply rows (`kind in _CODER_APPLY_TASK_KINDS`, unchanged), and
+   - fallback rows (normalized basename differs from raw basename).
+3. Fill the remaining budget with earliest-starting non-reserved rows, then return kept rows in chronological order. Preserve current behavior when neither apply nor fallback rows are present.
+
+This directly fixes the C9457B68 case where the 89s `cursor-phase2-voter-1` row starts after 25 earlier reviewer rows and was dropped while the 10s failed primary survived.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/progress_report.py
+
+**`_derive_progress_label`**
+
+- Add raw-then-normalized manifest lookup.
+- Add fallback detection via `_progress_normalize_output_base`.
+- Derive from normalized basename on fallback rows when manifest lookup misses.
+- Reconcile cross-vendor fallback labels with ledger `vendor` using existing Top-reviewers reconciliation helpers where applicable.
+- Append ` (via fallback)` only for fallback rows with a resolved label.
+
+**`_progress_vendor_rows`**
+
+- Pass a fallback flag into the internal row tuple (alongside the existing apply flag) using the same normalization predicate.
+
+**`_cap_gantt_rows_reserving_apply`**
+
+- Reserve fallback rows alongside apply rows before start-sorted truncation.
+- Update docstring to document both reserved categories (#5264 apply + phase2/phase3 fallback).
+
+Planned behavior:
+
+- `cursor-specialist-validity-vote-output-phase2.txt` with a manifest label keyed to `cursor-specialist-validity-vote-output.txt` renders as `cursor/validity-vote (via fallback)` when appropriate.
+- `codex-validity-vote-output-phase2.txt` with `vendor=cursor` and `kind=cursor-phase2-voter-1` renders as `cursor/validity-vote (via fallback)`, not `codex/validity-vote (via fallback)`.
+- Exact raw manifest basename still wins over normalized fallback candidates.
+- Normal primary rows, CI skipping, apply priority, and non-fallback cap behavior stay unchanged.
+
+### UPDATED: python/tests/report/test_progress_report.py
+
+Add focused tests near existing progress label and Gantt row tests (`test_progress_label_fallbacks_and_manifest_precedence`, `test_progress_vendor_rows_reserve_coder_apply_under_cap`).
+
+**`_derive_progress_label` coverage**
+
+- Extend `test_progress_label_fallbacks_and_manifest_precedence`:
+  - Raw basename manifest hit wins over normalized candidate for the same logical slot.
+  - `-phase2` output maps through normalized manifest label and adds ` (via fallback)`.
+  - Normalized fallback derivation when no manifest label exists.
+- Add cross-vendor fallback case: `codex-validity-vote-output-phase2.txt` with `vendor=cursor`, `kind=cursor-phase2-voter-1` asserts `cursor/validity-vote (via fallback)`.
+- Keep existing apply-task priority assertions unchanged.
+
+**`_progress_vendor_rows` coverage**
+
+- Dual-row window: failed primary `codex-validity-vote-output.txt` (short) plus successful `codex-validity-vote-output-phase2.txt` with `vendor=cursor` (long) both appear with distinct labels when under cap.
+- Cap-pressure regression modeled on `test_progress_vendor_rows_reserve_coder_apply_under_cap`:
+  - Pre-fill `PROGRESS_GANTT_ROW_CAP - 1` early reviewer rows.
+  - Add failed primary plus late phase2 fallback success (C9457B68-shaped: ~10s codex failure, ~89s cursor phase2 success).
+  - Assert both survive truncation, fallback row keeps ` (via fallback)`, and total row count stays at `PROGRESS_GANTT_ROW_CAP`.
+- Optional saturation variant with `codex-validity-vote-output-phase2.txt` and more than 25 ledger rows if the primary test does not already exercise full cap pressure.
+
+## Edge cases
+
+- Exact raw manifest labels still win; normalized lookup is fallback only.
+- Chained suffixes such as `-phase2-retry` keep using `_progress_normalize_output_base`.
+- Rows without a recognizable reviewer basename still use existing unknown/vendor/kind logic; append ` (via fallback)` only when fallback normalization actually occurred and a label was resolved.
+- Apply rows (`codex/apply`, `cursor/apply`, `gate-b/apply`) never receive the fallback suffix.
+- When cap pressure exceeds reserved apply + fallback rows, later non-reserved rows drop first; reserved fallback rows must not be sacrificed for earlier filler rows.
+- Top-reviewers `(via <Tool>)` grammar remains intentionally separate from chart `(via fallback)` unless unified in a follow-up.
+
+## Failure modes
+
+- Label-only changes without cap reservation leave the C9457B68 omission intact under saturated rounds.
+- Normalizing after `_progress_derived_label` can still show `unknown/...phase2` labels.
+- Applying the suffix before special-kind handling can corrupt apply rows.
+- Applying the suffix to primary rows overstates fallback use.
+- Reserving fallback rows without vendor reconciliation can show `codex/... (via fallback)` for cursor-executed phase2 voters.
+- Reserving fallback rows but not passing the flag from `_progress_vendor_rows` leaves truncation behavior unchanged.
+
+## Testing strategy
+
+Run focused Python tests first:
+
+```bash
+python3 -m pytest python/tests/report/test_progress_report.py -q -k 'progress_label or progress_vendor_rows'
+```
+
+Then run changed-file relevant checks if available:
+
+python3 python/cli.py checks run-relevant
+
+If time permits, run the full report test file:
+
+python3 -m pytest python/tests/report/test_progress_report.py -q
+
+## Difficulty
+
+Localized to one module, but it touches workflow report surfaces, cap policy, and cross-vendor attribution. A regression can still hide fallback cost or mis-credit vendors, so classify as moderate.
+
+difficulty: MODERATE
+diff_added: 98
+diff_deleted: 12
+mechanical_churn: false
+diff_lines: 110
