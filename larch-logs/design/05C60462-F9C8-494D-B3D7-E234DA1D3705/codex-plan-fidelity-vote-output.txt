@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan only requires unfiltered behavior for explicit searches that differ from DEFAULT_SEARCH, so same-string origin detection is not a necessary correctness fix here.
