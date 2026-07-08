@@ -32,6 +32,12 @@ from larch.issue.issue_wire import strip_named_block
 from larch.report.report_tokens_cost import rate_row
 
 BUG_PREFIX: Final = "[BUG]"
+BUG_TITLE_LIFECYCLE_PREFIXES: Final = (
+    config.TRACKING_ISSUE_PREFIX_BY_STATE["done"],
+    config.TRACKING_ISSUE_PREFIX_BY_STATE["designed"],
+    config.TRACKING_ISSUE_PREFIX_BY_STATE["implementing"],
+    config.TRACKING_ISSUE_PREFIX_BY_STATE["stalled"],
+)
 DEFAULT_DIFF_CAP: Final = 60_000
 DEFAULT_BODY_CAP: Final = 8_000
 GIT_LOG_SCAN_LIMITS: Final = (100, 200, 400, 800, 1600, 3200)
@@ -308,7 +314,17 @@ def _closed_pr_refs_from_raw(raw: Mapping[str, Any]) -> tuple[dict[str, Any], ..
 
 
 def _bug_title(title: str) -> bool:
-    return title.lstrip().startswith(BUG_PREFIX)
+    normalized: str = title.lstrip()
+    while normalized:
+        stripped_lifecycle_prefix = False
+        for lifecycle_prefix in BUG_TITLE_LIFECYCLE_PREFIXES:
+            if normalized[: len(lifecycle_prefix)].casefold() == lifecycle_prefix.casefold():
+                normalized = normalized[len(lifecycle_prefix) :].lstrip()
+                stripped_lifecycle_prefix = True
+                break
+        if not stripped_lifecycle_prefix:
+            break
+    return normalized.casefold().startswith(BUG_PREFIX.casefold())
 
 
 def _issue_list_argv(repo: str) -> list[str]:

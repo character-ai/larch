@@ -45,6 +45,25 @@ def test_fetch_filters_bug_prefix_and_uses_paginated_gh_api() -> None:
     assert runner.calls == [["gh", "api", "--paginate", "repos/o/r/issues?state=all&per_page=100"]]
 
 
+def test_fetch_normalizes_lifecycle_prefixes_and_bug_case() -> None:
+    issues: list[dict[str, object]] = [
+        _issue(1, "[DONE] [BUG] fixed"),
+        _issue(2, "[Bug] terminal report"),
+        _issue(3, "[DONE] [Bug] fixed mixed case"),
+        _issue(4, "note mentions [BUG] later"),
+        _issue(5, "[DONE] note mentions [BUG] later"),
+        _issue(6, "[DESIGNED] [BUG] designed"),
+        _issue(7, "[IMPLEMENTING] [BUG] implementing"),
+        _issue(8, "[STALLED] [Bug] stalled mixed case"),
+    ]
+    runner: RecordingRunner = RecordingRunner(responses=[_result(json.dumps(issues))], strict=True)
+
+    selected: list[analyze_bugs.IssueRecord]
+    selected, _corpus = analyze_bugs.fetch_bug_issues(runner, repo="o/r", count=10)
+
+    assert [issue.number for issue in selected] == [1, 2, 3, 6, 7, 8]
+
+
 def test_cache_key_changes_with_state_and_state_reason() -> None:
     base = analyze_bugs._cache_key(issue_number=1, fix_sha="sha", later_history_hash="later", state="OPEN", state_reason="COMPLETED")  # pyright: ignore[reportPrivateUsage]
     changed_state = analyze_bugs._cache_key(issue_number=1, fix_sha="sha", later_history_hash="later", state="CLOSED", state_reason="COMPLETED")  # pyright: ignore[reportPrivateUsage]
