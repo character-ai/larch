@@ -2389,7 +2389,7 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
         clock=fake_clock,
     )
     assert launch_count == 0
-    assert sleeps == []
+    assert not sleeps
     assert fix.status == config.NEEDS_USER_FIRST_FIXER_NON_HEALTH
 
 
