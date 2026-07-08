@@ -18,10 +18,12 @@ class FakeRunner:
     def __init__(self, responses: dict[tuple[str, ...], CommandResult]) -> None:
         self.responses = responses
         self.calls: list[tuple[str, ...]] = []
+        self.kwargs: list[dict[str, object]] = []
 
     def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:
         key = tuple(argv)
         self.calls.append(key)
+        self.kwargs.append(dict(_kwargs))
         return self.responses.get(key, CommandResult(key, 1, "", "", 0.01))
 
 
@@ -48,6 +50,19 @@ def test_captures_ps_start_time_and_command(monkeypatch) -> None:
         command_signature="/usr/bin/python3 /repo/python/cli.py plan-review run",
         expected_signature="plan-review run",
     )
+    assert runner.kwargs == [{"timeout": config.PROCESS_IDENTITY_PS_TIMEOUT_S}]
+
+
+def test_validate_process_identity_reports_probe_timeout(monkeypatch) -> None:
+    monkeypatch.setattr(process_identity.os, "getpgid", lambda pid: pid)
+    key = ("ps", "-p", "123", "-o", "lstart=", "-o", "command=")
+    runner = FakeRunner({key: CommandResult(key, config.PROC_TIMEOUT_EXIT_CODE, "", "", 5.0)})
+    recorded = process_identity.RecordedProcessIdentity(123, 123, "Fri Jul 3 17:01:02 2026", "cmd", "cmd")
+
+    result = process_identity.validate_process_identity(recorded=recorded, runner=runner)
+
+    assert result.reason == "identity-probe-timeout"
+    assert runner.kwargs == [{"timeout": config.PROCESS_IDENTITY_PS_TIMEOUT_S}]
 
 
 def test_rejects_missing_pid(monkeypatch) -> None:
@@ -236,6 +251,11 @@ def test_terminate_validated_process_group_cleans_live_members_when_leader_missi
     monkeypatch.setattr(process_identity.os, "kill", lambda pid, sig: kills.append((pid, sig)))
     monkeypatch.setattr(process_identity.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(process_identity, "read_process_identity", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        process_identity,
+        "validate_process_identity",
+        lambda **_kwargs: process_identity.ValidationResult(ok=False, reason="missing-pid"),
+    )
     member_calls = [(10, 11), (11,)]
 
     def fake_collect_process_group_members(*, pgid: int, **_kwargs: object) -> tuple[int, ...]:
@@ -289,6 +309,11 @@ def test_terminate_validated_process_group_cleans_live_members_when_leader_missi
         return None
 
     monkeypatch.setattr(process_identity, "read_process_identity", fake_read_process_identity)
+    monkeypatch.setattr(
+        process_identity,
+        "validate_process_identity",
+        lambda **_kwargs: process_identity.ValidationResult(ok=False, reason="missing-pid"),
+    )
     monkeypatch.setattr(process_identity, "collect_process_group_members", lambda **_kwargs: (10, 11))
 
     result = process_identity.terminate_validated_process_group(
@@ -326,10 +351,13 @@ def test_terminate_validated_process_group_escalates_live_members_when_leader_ex
     )
     responses = [identity, None]
 
-    def fake_read_process_identity(**_kwargs: object) -> process_identity.RecordedProcessIdentity | None:
-        return responses.pop(0)
+    def fake_validate_process_identity(**_kwargs: object) -> process_identity.ValidationResult:
+        current = responses.pop(0)
+        if current is None:
+            return process_identity.ValidationResult(ok=False, reason="missing-pid")
+        return process_identity.ValidationResult(ok=True, reason="ok", current=current)
 
-    monkeypatch.setattr(process_identity, "read_process_identity", fake_read_process_identity)
+    monkeypatch.setattr(process_identity, "validate_process_identity", fake_validate_process_identity)
     monkeypatch.setattr(process_identity, "collect_descendants", lambda **_kwargs: (10, 11))
     monkeypatch.setattr(process_identity, "collect_process_group_members", lambda **_kwargs: (11,))
 

@@ -4,20 +4,34 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import signal
 import subprocess
 import stat
-import re
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
 
 from larch import io as larch_io
 from larch.bgjob import model, registry
-from larch.core import config, process_identity
+from larch.core import config, process_identity, redact
 
 _PACKED_ROW_TOKEN_RE = re.compile(r"[A-Z0-9_]+=.*")
 _MIN_PACKED_ROW_TOKENS = 2
+
+
+@dataclass(frozen=True)
+class OwnerValidationState:
+    missing_since: float | None = None
+    failure_count: int = 0
+
+
+@dataclass(frozen=True)
+class OwnerValidationStep:
+    state: OwnerValidationState
+    orphaned: bool
+    validation: process_identity.ValidationResult | None = None
 
 
 def _capture_identity(pid: int, *, expected_signature: str = "") -> process_identity.RecordedProcessIdentity:
@@ -108,6 +122,35 @@ def _terminate_child_group(child: process_identity.RecordedProcessIdentity, *, r
     )
 
 
+def _append_orphan_diagnostic(
+    *,
+    spec: model.JobSpec,
+    validation: process_identity.ValidationResult,
+    failure_count: int,
+) -> None:
+    stderr_log = spec.log_dir / f"{spec.step}.stderr.log"
+    current = validation.current
+    rows: list[tuple[str, object]] = [
+        ("BGJOB_ORPHAN_REASON", validation.reason),
+        ("OWNER_PID", spec.owner.recorded.pid if spec.owner.recorded is not None else ""),
+        ("OWNER_FAILURE_COUNT", failure_count),
+    ]
+    if current is not None:
+        rows.extend(
+            [
+                ("OWNER_CURRENT_PGID", current.pgid),
+                ("OWNER_CURRENT_START_TIME", current.start_time),
+                ("OWNER_CURRENT_COMMAND", process_identity.bounded_command(current.command_signature)),
+            ]
+        )
+    with contextlib.suppress(OSError, TypeError, UnicodeError, ValueError):
+        spec.log_dir.mkdir(parents=True, exist_ok=True)
+        safe_rows = _safe_rows(rows)
+        text = redact.redact_outbound(larch_io.format_kvs(safe_rows))
+        with _open_verified_log_handle(stderr_log, root=spec.log_dir) as handle:
+            _ = handle.write(text.encode("utf-8"))
+
+
 def _open_verified_log_handle(path: Path, *, root: Path) -> BinaryIO:
     if root.is_symlink() or not root.is_dir():
         raise ValueError(f"log root must be a regular directory: {root}")
@@ -130,30 +173,57 @@ def _open_verified_log_handle(path: Path, *, root: Path) -> BinaryIO:
         raise
 
 
+def _check_owner_validation(
+    *,
+    spec: model.JobSpec,
+    state: OwnerValidationState,
+    now: float,
+) -> OwnerValidationStep:
+    if spec.owner.recorded is None:
+        return OwnerValidationStep(state=state, orphaned=False)
+    validation = process_identity.validate_process_identity(recorded=spec.owner.recorded)
+    if validation.ok:
+        return OwnerValidationStep(state=OwnerValidationState(), orphaned=False, validation=validation)
+    failure_count = state.failure_count + 1
+    failure_threshold = max(1, config.BGJOB_OWNER_VALIDATION_FAILURE_THRESHOLD)
+    if failure_count < failure_threshold:
+        next_state = OwnerValidationState(missing_since=None, failure_count=failure_count)
+        return OwnerValidationStep(state=next_state, orphaned=False, validation=validation)
+    missing_since = now if state.missing_since is None else state.missing_since
+    next_state = OwnerValidationState(missing_since=missing_since, failure_count=failure_count)
+    return OwnerValidationStep(
+        state=next_state,
+        orphaned=now - missing_since >= config.BGJOB_OWNER_GRACE_S,
+        validation=validation,
+    )
+
+
 def _monitor(spec: model.JobSpec, child: subprocess.Popen[bytes], child_identity: process_identity.RecordedProcessIdentity, reg_path: Path) -> int:
     start = time.monotonic()
-    owner_missing_since: float | None = None
+    owner_state = OwnerValidationState()
     rc_token = "0"
     while True:
+        now = time.monotonic()
         rc = child.poll()
         if rc is not None:
             rc_token = str(rc)
             break
-        elapsed = time.monotonic() - start
+        elapsed = now - start
         if elapsed >= spec.budget_s:
             _terminate_child_group(child_identity, reason="timeout")
             rc_token = config.BGJOB_RC_TIMEOUT
             break
-        if spec.owner.recorded is not None:
-            owner_validation = process_identity.validate_process_identity(recorded=spec.owner.recorded)
-            if owner_validation.ok:
-                owner_missing_since = None
-            elif owner_missing_since is None:
-                owner_missing_since = time.monotonic()
-            elif time.monotonic() - owner_missing_since >= config.BGJOB_OWNER_GRACE_S:
-                _terminate_child_group(child_identity, reason="orphaned")
-                rc_token = config.BGJOB_RC_ORPHANED
-                break
+        owner_step = _check_owner_validation(spec=spec, state=owner_state, now=now)
+        owner_state = owner_step.state
+        if owner_step.orphaned and owner_step.validation is not None:
+            _append_orphan_diagnostic(
+                spec=spec,
+                validation=owner_step.validation,
+                failure_count=owner_step.state.failure_count,
+            )
+            _terminate_child_group(child_identity, reason="orphaned")
+            rc_token = config.BGJOB_RC_ORPHANED
+            break
         time.sleep(config.BGJOB_DAEMON_POLL_INTERVAL_S)
     elapsed_s = int(time.monotonic() - start)
     if rc_token in {config.BGJOB_RC_TIMEOUT, config.BGJOB_RC_ORPHANED}:

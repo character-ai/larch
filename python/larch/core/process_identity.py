@@ -39,6 +39,12 @@ class ValidationResult:
 
 
 @dataclass(frozen=True)
+class ProcessIdentityProbeResult:
+    identity: RecordedProcessIdentity | None
+    failure_reason: str
+
+
+@dataclass(frozen=True)
 class KillTargetSnapshot:
     pid: int
     pgid: int
@@ -93,22 +99,43 @@ def read_process_identity(
     pid: int,
     runner: proc.Runner | None = None,
     expected_signature: str = "",
+    probe_timeout_s: float | None = config.PROCESS_IDENTITY_PS_TIMEOUT_S,
 ) -> RecordedProcessIdentity | None:
-    if pid <= 0:
-        return None
+    probe = _probe_process_identity(
+        pid=pid,
+        runner=runner,
+        expected_signature=expected_signature,
+        probe_timeout_s=probe_timeout_s,
+    )
+    return probe.identity
+
+
+def _probe_process_identity(
+    *,
+    pid: int,
+    runner: proc.Runner | None = None,
+    expected_signature: str = "",
+    probe_timeout_s: float | None = config.PROCESS_IDENTITY_PS_TIMEOUT_S,
+) -> ProcessIdentityProbeResult:
+    identity: RecordedProcessIdentity | None = None
+    failure_reason = "missing-pid"
     pgid: int | None = None
-    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
-        pgid = os.getpgid(pid)
-    if pgid is None:
-        return None
-    active_runner = runner or proc.ProcRunner()
-    try:
-        result = active_runner.run(["ps", "-p", str(pid), "-o", "lstart=", "-o", "command="])
-    except OSError:
-        return None
-    if result.returncode != 0:
-        return None
-    return _parse_ps_identity(pid=pid, pgid=pgid, stdout=result.stdout, expected_signature=expected_signature)
+    if pid > 0:
+        with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+            pgid = os.getpgid(pid)
+    if pgid is not None:
+        active_runner = runner or proc.ProcRunner()
+        try:
+            result = active_runner.run(["ps", "-p", str(pid), "-o", "lstart=", "-o", "command="], timeout=probe_timeout_s)
+        except OSError:
+            failure_reason = "identity-probe-error"
+        else:
+            if result.returncode == config.PROC_TIMEOUT_EXIT_CODE:
+                failure_reason = "identity-probe-timeout"
+            elif result.returncode == 0:
+                identity = _parse_ps_identity(pid=pid, pgid=pgid, stdout=result.stdout, expected_signature=expected_signature)
+                failure_reason = "" if identity is not None else "missing-pid"
+    return ProcessIdentityProbeResult(identity=identity, failure_reason=failure_reason)
 
 
 def _read_stable_process_identity(
@@ -132,9 +159,10 @@ def validate_process_identity(
     recorded: RecordedProcessIdentity,
     runner: proc.Runner | None = None,
 ) -> ValidationResult:
-    current = read_process_identity(pid=recorded.pid, runner=runner, expected_signature=recorded.expected_signature)
+    probe = _probe_process_identity(pid=recorded.pid, runner=runner, expected_signature=recorded.expected_signature)
+    current = probe.identity
     if current is None:
-        return ValidationResult(ok=False, reason="missing-pid")
+        return ValidationResult(ok=False, reason=probe.failure_reason)
     if current.pgid != recorded.pgid:
         return ValidationResult(ok=False, reason="pgid-mismatch", current=current)
     if normalize_command_signature(current.start_time) != normalize_command_signature(recorded.start_time):
