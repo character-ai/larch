@@ -1,0 +1,49 @@
+# [Bug] /implement terminal: Step 5 review bgjob orphaned at ~123s on every attempt; review never produces output (same-cause-repeat at 5)
+
+<!-- larch-stall:signature=9593ad198b0eea0b04781e483d1175af529d4f2e5d6cb23b241f094ed1c06987 -->
+## Report metadata
+- **Report kind**: `terminal-failure`
+- **Failure class**: `same-cause-repeat`
+- **Step**: `5`
+- **Bail reason**: `redacted`
+- **Run ID**: `B3F0E848-7359-4219-89C3-F16E0CA7076F`
+- **Branch**: `unknown`
+- **PR URL**: `unknown`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=medium
+summary=Step 5 review bgjob orphaned at ~123s on every attempt; review never produces output
+
+The `implement-step5-review` bgjob was launched 4+ times (PGIDs 63243, 72471, 81533). Each
+attempt returned `BGJOB_RC=orphaned` after approximately 123 seconds. The bgjob stdout log was
+empty (0 bytes) on every attempt (`implement-step5-review.stdout.log`). The stderr log shows only
+the Step 5 banner line. This means the review process started but was killed before writing any
+KVs or emitting `STEP5_REVIEW_STATUS`.
+
+Evidence:
+- `$IMPLEMENT_TMPDIR/bgjob/implement-step5-review.result.env`: `BGJOB_RC=orphaned` on all
+  attempts, elapsed ~123s each.
+- `$IMPLEMENT_TMPDIR/bgjob/implement-step5-review.stdout.log`: 0 bytes (no output produced).
+- `$IMPLEMENT_TMPDIR/bgjob/implement-step5-review.stderr.log`: contains only the Step 5 banner;
+  no further diagnostics.
+- Classifier matched `transient-output` pattern; `FAILURE_CLASS=transient-infra`.
+- After 1 recorded stall-recovery attempt, classifier upgraded to `same-cause-repeat` /
+  `RESUME_HINT=none`.
+
+The consistent 123-second orphaned elapsed time suggests a session-level or daemon-level timeout
+is killing the bgjob daemon process, orphaning the review worker. This may be a bgjob daemon
+lifecycle issue on this host (darwin 23.5.0) where the daemon exits after ~120s, cutting the
+worker's process group loose as orphaned.
+
+No conflicts, no checks failures, and no log content failures were observed. The implementation
+commit is present at sha `4ff183ec3` (Codex) plus the markdownlint fix at `a9b5beff7`.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| `1` | `transient-infra` | `step5-review` | `failed` | `unknown` |
