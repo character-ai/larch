@@ -1,0 +1,83 @@
+## Final Design Plan
+
+## Scope
+
+Align the direct shell `--ready-to-commit` stall path with the existing Python dispatcher. Keep all other `NEXT_ACTION` and non-zero `commit_rc` behavior unchanged.
+
+Confidence: high
+
+## Approach
+
+1. In `run_resume_worker()` in `skills/implement/scripts/step-5-resume.sh`, change only the terminal `exit 1` in the `1:stall)` branch to `exit 0`.
+2. Preserve the preceding non-zero guard:
+   - `if [ "$commit_rc" -ne 0 ]; then exit "$commit_rc"; fi`
+3. Add shell-level regression coverage. The current Python dispatcher test already proves `step5_resume_main()` returns 0 for `NEXT_ACTION=stall`; the missing coverage is the direct shell script path.
+4. Reuse the existing shell wrapper harness in `python/tests/review/test_review_and_fix.py`.
+   - Extend the shim or add a focused helper so `python3 ... implement commit-route --site step5-resume-handoff` returns:
+     - `COMMITTED=false`
+     - `SHA=`
+     - `ERROR=no review delta paths`
+     - `COMMIT_OUTCOME=failed`
+     - `NEXT_ACTION=stall`
+   - Run `step-5-resume.sh --bgjob-child --final-round-num 2 --ready-to-commit`.
+   - Assert return code 0.
+   - Assert stdout includes one `NEXT_ACTION=stall` and `COMMIT_OUTCOME=failed`.
+   - Assert the review loop is not invoked.
+
+## Files to modify/create
+
+### UPDATED: skills/implement/scripts/step-5-resume.sh
+
+Change the `1:stall)` branch after successful `commit_rc=0` from `exit 1` to `exit 0`.
+
+Do not change:
+- `1:continue)`
+- malformed or duplicate `NEXT_ACTION` handling
+- non-zero `commit_rc` preservation
+- bgjob setup
+- timing capture
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+Add direct shell-wrapper regression coverage for the reported divergence.
+
+Prefer a small new test near `test_step5_shell_wrappers_forward_difficulty_override`, since that file already runs `step-5-resume.sh` through the real shell script with a controlled `python3` shim.
+
+## Edge cases
+
+- `NEXT_ACTION=stall` with `commit_rc != 0` must still return `commit_rc`.
+- Missing, duplicate, or invalid `NEXT_ACTION` must still fail closed.
+- `NEXT_ACTION=continue` with `commit_rc != 0` must still fail closed.
+- The test must not depend on real Git state or run the real commit route.
+
+## Failure modes
+
+- A broad shim change could affect other shell wrapper tests. Keep the intercept specific to `implement commit-route --site step5-resume-handoff`.
+- A test that runs the parent bgjob launcher may observe bgjob scheduling instead of worker semantics. Use `--bgjob-child` for a direct, deterministic exit code.
+- A test that only calls `python/cli.py implement step-5-resume` would miss the direct shell regression. Cover the shell script itself.
+
+## Testing strategy
+
+Run changed-file focused checks:
+
+```bash
+python3 -m pytest python/tests/review/test_review_and_fix.py -q -k 'step5 and shell'
+```
+
+Run shell analysis for the changed script if available:
+
+```bash
+pre-commit run shellcheck --files skills/implement/scripts/step-5-resume.sh
+```
+
+Optionally run the existing dispatcher parity tests:
+
+```bash
+python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k step5_resume
+```
+
+difficulty: MODERATE
+diff_added: 35
+diff_deleted: 1
+mechanical_churn: false
+diff_lines: 36

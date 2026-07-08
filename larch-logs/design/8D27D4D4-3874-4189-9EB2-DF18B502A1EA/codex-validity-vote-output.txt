@@ -1,0 +1,1 @@
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Broader branch coverage may be useful, but the proposed stall fix still ships correctly without it; this is a scope-expansion request, not a concrete blocker.

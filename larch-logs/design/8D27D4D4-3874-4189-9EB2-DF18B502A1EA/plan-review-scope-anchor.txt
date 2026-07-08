@@ -1,0 +1,42 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: codex-specialist-correctness, dyn-dyn-bgjob-flow
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+The direct shell `--ready-to-commit` path still exits 1 on `NEXT_ACTION=stall` while the Python dispatcher returns 0 for the same routed stall, so stall callers can observe inconsistent semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From codex-specialist-correctness: If a future chunk reuses direct shell --ready-to-commit, align its routed-stall rc with python/larch/implement/dispatch_commit_route.py:934-948.
+  - From dyn-dyn-bgjob-flow: Address the concern above.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Align `step-5-resume.sh` stall exit code with the Python dispatcher (exit 0 on `NEXT_ACTION=stall` when `commit_rc=0`).
+- Remove the inconsistency callers observe between the shell and Python stall paths.
+
+### Non-goals
+- Changing behavior for other `NEXT_ACTION` values (`continue`, `*`).
+- Modifying `dispatch_commit_route.py` or any Python code.
+- Adding new stall-handling or retry logic.
+
+### Approach sketch
+- Change `exit 1` to `exit 0` in the `1:stall` case of `run_resume_worker()` in `step-5-resume.sh`.
+- Add a test to `python/tests/review/test_review_and_fix.py` or a comparable location verifying the shell stall path exits 0.
+
+### Surfaces in scope
+- `skills/implement/scripts/step-5-resume.sh` (one-line fix)
+- Test file for `step-5-resume.sh` stall behavior
+
+### Open questions
+- None.

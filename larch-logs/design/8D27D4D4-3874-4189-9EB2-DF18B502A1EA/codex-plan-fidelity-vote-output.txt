@@ -1,0 +1,1 @@
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The observation is real that the proposed test only covers the stall happy path, but exercising unchanged non-zero/invalid branches is optional coverage, not a necessity for this plan’s shell-path fix.

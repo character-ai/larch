@@ -1,0 +1,14 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	14162	3541	13265	3317	897	225		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	17648	4412	13544	3386	4104	1026		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	17672	4418	13568	3392	4104	1026		0	0
+design Step 3	phase1	1	dyn-codex-plan-shell-dispatch-parity	plan-review	codex	dyn-codex-plan-shell-dispatch-parity.txt	14470	3618	13131	3283	1339	335		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	14175	3544	13278	3320	897	225		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	17657	4415	13553	3389	4104	1026		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	17670	4418	13566	3392	4104	1026		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	14153	3539	13256	3314	897	225		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	14177	3545	13280	3320	897	225		0	0
+design Step 3	phase1	1	dyn-cursor-plan-shell-dispatch-parity	plan-review	cursor	dyn-cursor-plan-shell-dispatch-parity.txt	17965	4492	13419	3355	4546	1137		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	11055	2764	9131	2283	1924	481		0	0
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	11055	2764	9131	2283	1924	481		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	11055	2764	9131	2283	1924	481		0	0
