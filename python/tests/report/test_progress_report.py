@@ -838,6 +838,11 @@ def test_all_round_dirs_inflight_one_completed(tmp_path: Path) -> None:
 
 
 def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> None:
+    assert progress_report._is_chart_vendor_fallback_output("codex-validity-vote-output-phase2.txt") is True
+    assert progress_report._is_chart_vendor_fallback_output("codex-validity-vote-output-phase3.txt") is True
+    assert progress_report._is_chart_vendor_fallback_output("codex-validity-vote-output-retry.txt") is False
+    assert progress_report._is_chart_vendor_fallback_output("cursor-plan-requirements-output-ns-retry.txt") is False
+
     assert progress_report._derive_progress_label(output="aggregator-output.txt") == "aggregator"
     assert progress_report._derive_progress_label(output="scout-plan-manifest.json.raw") == "scout"
     assert (
@@ -864,6 +869,53 @@ def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> Non
     manifest.write_text(f'{{"slot":"mapped","tool":"tool","output":"{output}"}}\n', encoding="utf-8")
     label_map = progress_report._progress_label_map_from_manifests([manifest])
     assert progress_report._derive_progress_label(output=str(output), vendor="codex", kind="codex-plan-autofix", label_map=label_map) == "codex/apply"
+
+    fallback_map = {
+        "codex-validity-vote-output.txt": "codex/validity-vote",
+        "codex-validity-vote-output-phase2.txt": "raw/exact",
+    }
+    assert (
+        progress_report._derive_progress_label(
+            output="codex-validity-vote-output-phase2.txt",
+            vendor="cursor",
+            kind="cursor-phase2-voter-1",
+            label_map=fallback_map,
+        )
+        == "raw/exact"
+    )
+    assert (
+        progress_report._derive_progress_label(
+            output="codex-validity-vote-output-phase3.txt",
+            vendor="codex",
+            kind="codex-phase3-voter-1",
+            label_map=fallback_map,
+        )
+        == "codex/validity-vote (via fallback)"
+    )
+    assert (
+        progress_report._derive_progress_label(
+            output="cursor-specialist-validity-vote-output-phase2.txt",
+            vendor="cursor",
+            kind="cursor-phase2-voter-1",
+        )
+        == "cursor/validity-vote (via fallback)"
+    )
+    assert (
+        progress_report._derive_progress_label(
+            output="codex-validity-vote-output-phase2.txt",
+            vendor="cursor",
+            kind="cursor-phase2-voter-1",
+        )
+        == "cursor/validity-vote (via fallback)"
+    )
+    assert (
+        progress_report._derive_progress_label(
+            output="cursor-plan-requirements-output-ns-retry.txt",
+            vendor="cursor",
+            kind="cursor-plan-requirements",
+        )
+        == "cursor/plan-requirements"
+    )
 
 
 def test_progress_vendor_rows_use_apply_task_kind_priority(tmp_path: Path) -> None:
@@ -916,6 +968,41 @@ def test_progress_vendor_rows_skip_ci_rows_when_requested(tmp_path: Path) -> Non
     assert rows[0].label == "codex/correctness"
 
 
+def test_progress_vendor_rows_include_distinct_failed_primary_and_phase2_fallback(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_vendor_timing(
+        ledger,
+        "codex-validity-vote-output.txt",
+        100,
+        110,
+        vendor="codex",
+        kind="codex-validity-vote",
+        status="failed",
+    )
+    _write_vendor_timing(
+        ledger,
+        "codex-validity-vote-output-phase2.txt",
+        111,
+        200,
+        vendor="cursor",
+        kind="cursor-phase2-voter-1",
+        status="complete",
+    )
+
+    rows = progress_report._progress_vendor_rows(
+        timing_ledger=ledger,
+        window_start_s=90,
+        window_end_s=220,
+        label_map={"codex-validity-vote-output.txt": "codex/validity-vote"},
+        require_complete_status=False,
+    )
+
+    assert [row.label for row in rows] == [
+        "codex/validity-vote",
+        "cursor/validity-vote (via fallback)",
+    ]
+
+
 def test_progress_vendor_rows_reserve_coder_apply_under_cap(tmp_path: Path) -> None:
     # Issue #5264: the coder fix-application lane (cursor/codex applying review
     # suggestions) starts after every reviewer, aggregator, and voter row, so a
@@ -947,6 +1034,51 @@ def test_progress_vendor_rows_reserve_coder_apply_under_cap(tmp_path: Path) -> N
     # The apply lane is reserved; the latest-starting reviewer row is dropped instead.
     assert labels.count("cursor/apply") == 1
     assert labels.count("codex/correctness") == progress_report.PROGRESS_GANTT_ROW_CAP - 1
+
+
+def test_progress_vendor_rows_reserve_phase2_fallback_under_cap(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_vendor_timing(
+        ledger,
+        "codex-validity-vote-output.txt",
+        100,
+        110,
+        vendor="codex",
+        kind="codex-validity-vote",
+        status="failed",
+    )
+    for i in range(progress_report.PROGRESS_GANTT_ROW_CAP):
+        _write_vendor_timing(
+            ledger,
+            "codex-specialist-correctness-output.txt",
+            120 + i,
+            150 + i,
+            vendor="codex",
+            kind="codex-review",
+        )
+    _write_vendor_timing(
+        ledger,
+        "codex-validity-vote-output-phase2.txt",
+        200,
+        289,
+        vendor="cursor",
+        kind="cursor-phase2-voter-1",
+        status="complete",
+    )
+
+    rows = progress_report._progress_vendor_rows(
+        timing_ledger=ledger,
+        window_start_s=90,
+        window_end_s=300,
+        label_map={"codex-validity-vote-output.txt": "codex/validity-vote"},
+        require_complete_status=False,
+    )
+
+    labels = [row.label for row in rows]
+    assert len(rows) == progress_report.PROGRESS_GANTT_ROW_CAP
+    assert labels.count("codex/validity-vote") == 1
+    assert labels.count("cursor/validity-vote (via fallback)") == 1
+    assert labels.count("codex/correctness") == progress_report.PROGRESS_GANTT_ROW_CAP - 2
 
 
 def test_progress_vendor_rows_reserve_gate_b_apply_under_cap(tmp_path: Path) -> None:
