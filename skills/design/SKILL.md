@@ -587,7 +587,7 @@ If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, 
 
 ### 5c: Write `larch:plan` to GitHub + publish
 
-Step 4b Gate C already returned **Approve**. Proceed without an additional prompt. Follow `finalize-step5.md` for composition, parsing, validator repair, WARN replay, and publish-tail decisions.
+Step 4b Gate C already returned **Approve**. Proceed without an additional prompt. Follow `finalize-step5.md` for composing the final plan block with `$DESIGN_TMPDIR/diff-lines.txt`, parsing, validator repair, WARN replay, and publish-tail decisions.
 
 Use the shared bgjob wait contract for Step 5c launch, rejoin, `WAIT`, `DEAD`, and `DONE`. Parameters: step `design-step5c`; tmpdir `$DESIGN_TMPDIR`; wait chunk `--max-wait-s 270`; terminal sentinel `.completed/step-5c-terminal`; result env `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`; merge input `$DESIGN_TMPDIR/.design-step5c-status.env`; require `BGJOB_RC=0`, `PUBLISH_RC`, `PLAN_WRITE_OK`, `PUBLISH_OK`, and `CLEANUP_ELIGIBLE`. Do not treat `.completed/step-5c` as completion.
 
@@ -601,7 +601,7 @@ After launch, call `bgjob wait` repeatedly. If stdout contains `BGJOB_STATUS=WAI
 
 **Driver exit-code contract:** Follow `finalize-step5.md` for `_publish_rc` abort handling, stdout fallback, validator-defect routing, and `PLAN_WRITE_OK` branches. On `_publish_rc=2` or unexpected non-zero: parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, follow the `/design` Read-always readiness profile, then stop.
 
-5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** Step 5c renders final summary before the bgjob result env is written. Parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, then follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Apply this emit **before** plan-write failure warning or success footer decisions. **Not** gated on `python/cli.py design render-final-summary` exit 0.
+5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** Step 5c calls `python/cli.py design render-final-summary --post-publish-only` before the bgjob result env is written. Parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, then follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `python/cli.py design render-final-summary` exit 0.
 
 Follow `finalize-step5.md` for Step 5b details. Keep the prepare fence and `NEXT_ACTION` skeleton here for action adjacency.
 
