@@ -1,0 +1,94 @@
+Source: `/larch:learn-from-bugs -n 25` run, 2026-07-08. Report section 6. Each entry was deduplicated against all currently indexed guidelines; each covers a residual cluster with no existing coverage.
+
+#### How to apply (read first)
+
+This issue appends four entries to `ARCHITECTURAL_GUIDELINES.md`. Each entry below gives (a) the target section, (b) the heading text, and (c) a fenced block with the bullet lines. The heading text is quoted separately because this issue body reserves level-3 headings for other purposes. Reconstruct each entry exactly as follows:
+
+1. Go to the end of the named target section: immediately after the last existing entry of that section and before the next `##` section heading.
+2. Insert one blank line after the previous entry's last bullet line.
+3. Insert a heading line consisting of three `#` characters, one space, and the quoted heading text, byte for byte.
+4. Immediately below the heading (no blank line between), insert the bullet lines exactly as they appear inside the fence. Do not copy the fence markers themselves.
+5. Keep exactly one blank line between the new entry's last bullet and the following `##` section heading.
+
+The entry texts below are final. Do not rewrite them for style, do not change punctuation, and do not renumber unless a same-ID entry already exists in the file at implementation time; in that case keep the text and take the next free number in that section.
+
+#### Entry 1 of 4
+
+- Target section: `## Python coding practices`, after the `G-Py-14` entry, before the `## Configuration and protocol literals` heading.
+- Heading text: `G-Py-15: Partition status values into terminal and non-terminal sets; never branch on truthiness`
+- Bullet lines:
+
+```
+- Why: `/analyze-bugs` short-circuited on any truthy mechanical verdict, so the routing value `NEEDS_DEEP` masked already-ingested deep verdicts (#6153); resume hydration coerced any unrecognized merge result, including empty, to already-merged, and the reconciler collapsed every refresh skip into a spurious terminal STALLED (#6018).
+- Guidance: when a status, verdict, or result type has routing or in-progress members, define the terminal subset once, next to the type, and route every "is this final?" decision through that membership test; make validators reject unknown values instead of coercing them to a member; never gate on the presence or truthiness of a status value.
+- Deviate when: the status never crosses a function boundary and has no special members; a local boolean is fine.
+```
+
+#### Entry 2 of 4
+
+- Target section: `## Configuration and protocol literals`, after the `G-Cfg-2` entry, before the `## Wire-file I/O` heading.
+- Heading text: `G-Cfg-3: A convention's writer and its selectors share one constant`
+- Bullet lines:
+
+```
+- Why: `/analyze-bugs` selected bugs with a hand-written `[BUG]` prefix test while the retitle convention had grown `[DONE]` and case variants, so the audit silently skipped most of its population (#6604); the /design pause snapshot allowlist lagged the sentinel layout its resume guard read, so resume false-refused a complete review (#6548).
+- Guidance: when code writes a convention that other code later selects on, such as a title lifecycle prefix, a marker line, or an artifact filename pattern, define the token once and make the writer, every selector, and every normalizer consume that same constant; a selector that re-derives the convention by hand drifts when the convention gains a new case.
+- Deviate when: the convention belongs to an external system you cannot import; then test the selector against live samples of that system's output.
+```
+
+#### Entry 3 of 4
+
+- Target section: `## Orchestration and panels`, after the `G-Orch-4` entry, before the `## Observability and telemetry` heading.
+- Heading text: `G-Orch-5: Key destructive watchers to structured error events, not aggregated output`
+- Bullet lines:
+
+```
+- Why: the codex policy-rejection watcher regex-scanned the raw events tail, matched historical design-log text quoted by a successful grep, and killed a healthy voter (#6577).
+- Guidance: a watcher that kills, retries, or fails over an agent must match the stream's structured error events or a dedicated error channel, never raw aggregated output that can quote arbitrary bytes such as grep results over committed logs; before acting destructively, record the matched evidence and its provenance to the run diagnostics.
+- Deviate when: the vendor emits no structured error framing; then anchor the match to the vendor's own event delimiters and keep the kill path non-silent so a false positive stays diagnosable.
+```
+
+#### Entry 4 of 4
+
+- Target section: `## Observability and telemetry`, after the `G-Obs-4` entry, before the `## Skill authoring and context economy` heading.
+- Heading text: `G-Obs-5: Give report renderers a golden test with hostile-width and fallback-shaped fixtures`
+- Bullet lines:
+
+```
+- Why: the /design Gantt corrupted alignment on long slot names twice (#5587, #5753), and the round timing chart silently omitted the vendor-fallback runs that did the round's actual work (#6578).
+- Guidance: a renderer that aligns columns, truncates labels, or selects rows for a human-facing report gets a golden test whose fixture includes labels wider than the layout budget and rows produced by retry, phase2, or vendor-fallback paths.
+- Deviate when: the output is a throwaway diagnostic that no operator decision consumes.
+```
+
+#### Acceptance
+
+- The four entries appear in their named sections with headings that match the coverage indexer pattern (`_GUIDELINE_ID_RE` in `python/larch/issue/learn_from_bugs.py`).
+- Running the learn-from-bugs coverage index verb (`coverage_index_main` in `python/larch/issue/learn_from_bugs.py`, registered in `python/cli.py`) reports a guidelines count exactly 4 higher than a pre-change run.
+- No other line of `ARCHITECTURAL_GUIDELINES.md` changes.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Append four pre-written guideline entries (G-Py-15, G-Cfg-3, G-Orch-5, G-Obs-5) to `ARCHITECTURAL_GUIDELINES.md`.
+- Place each entry byte-exact at its named anchor: end of its target section, before the next `##` heading.
+- Raise the coverage indexer's guidelines count by exactly 4.
+
+### Non-goals
+- Do not change any other line of `ARCHITECTURAL_GUIDELINES.md`.
+- Do not restyle, repunctuate, or renumber the supplied entry text; target IDs are already free.
+- Do not touch code, scripts, or CLI wiring; verification only reads `learn_from_bugs.py`.
+
+### Approach sketch
+- One file edit: four surgical insertions into `ARCHITECTURAL_GUIDELINES.md`.
+- Per entry: blank line, `### <heading>`, bullet lines directly below, one blank line before the next `##`.
+- Anchors confirmed in Step 0c: after G-Py-14 (L66), G-Cfg-2 (L76), G-Orch-4 (L168), G-Obs-4 (L187).
+- Verify new headings match `_GUIDELINE_ID_RE`; confirm `coverage_index_main` reports +4.
+
+### Surfaces in scope
+- `ARCHITECTURAL_GUIDELINES.md`: the only edited file.
+- `python/larch/issue/learn_from_bugs.py`: read-only, for `_GUIDELINE_ID_RE` and `coverage_index_main`.
+
+### Open questions
+- None.

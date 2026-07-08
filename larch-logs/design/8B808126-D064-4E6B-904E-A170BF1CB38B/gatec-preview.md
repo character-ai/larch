@@ -1,0 +1,55 @@
+## Final Design Plan
+
+## Approach
+
+Make one surgical Markdown edit.
+
+Add the four supplied entries exactly as written. Place each entry at the end of its named section, before the next `##` heading.
+
+Use the current anchors:
+
+- `G-Py-15` after `G-Py-14`, before `## Configuration and protocol literals`
+- `G-Cfg-3` after `G-Cfg-2`, before `## Wire-file I/O`
+- `G-Orch-5` after `G-Orch-4`, before `## Observability and telemetry`
+- `G-Obs-5` after `G-Obs-4`, before `## Skill authoring and context economy`
+
+Keep the existing blank line after each previous entry. Add one blank line between each new entry's last bullet and the following `##` heading.
+
+Do not rewrite the supplied text.
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+Append the four new `### G-...` entries in their target sections.
+
+No other lines should change.
+
+## Edge cases
+
+- If a target ID already exists at implementation time, keep the supplied text and use the next free number in that section.
+- Preserve Markdown heading shape so `_GUIDELINE_ID_RE` matches each new entry.
+- Avoid changing nearby existing guideline wording or spacing beyond the required insertion points.
+
+## Failure modes
+
+- A missing blank line can make the rendered section harder to scan.
+- A changed heading, punctuation mark, or ID can break acceptance.
+- An extra unrelated Markdown edit can violate the "No other line changes" requirement.
+
+## Testing strategy
+
+1. Before editing, note the current guideline count from:
+   `python3 python/cli.py learn-from-bugs coverage-index --root .`
+   Current observed count is 54.
+2. After editing, rerun the same command without `--out`.
+   Expect 58 guidelines.
+3. Check the four new IDs appear once.
+4. Review `git diff -- ARCHITECTURAL_GUIDELINES.md` and confirm only the four insertion blocks changed.
+5. Run `git diff --check -- ARCHITECTURAL_GUIDELINES.md`.
+
+difficulty: TRIVIAL
+diff_added: 20
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 20
