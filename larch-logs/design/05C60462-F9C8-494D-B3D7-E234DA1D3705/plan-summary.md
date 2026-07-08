@@ -1,0 +1,1 @@
+Fix default `/learn-from-bugs prepare` selection by sharing the existing bug-title predicate with `/analyze-bugs`, filtering only default search results, adding an additive stdout key, and covering the behavior with offline tests.

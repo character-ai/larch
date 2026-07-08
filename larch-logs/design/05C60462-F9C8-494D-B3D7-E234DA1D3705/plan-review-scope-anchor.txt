@@ -1,0 +1,55 @@
+Source: `/larch:learn-from-bugs -n 25` run, 2026-07-08, over the last 25 closed issues matching the default search. Report section 7, item I1.
+
+#### Problem
+
+`learn-from-bugs prepare` (`python/larch/issue/learn_from_bugs.py`) passes `DEFAULT_SEARCH = "[BUG] in:title"` to GitHub search (`_issue_list_argv`, `list_issues`). GitHub search tokenizes the bracketed term, so any title containing the token "bug" or "bugs" matches, not only `[BUG]`-prefixed titles.
+
+#### Evidence
+
+In the 2026-07-08 run with `-n 25` and the default search, 4 of 25 selected issues were not bug reports: #6464 (a [FEATURE] issue for the learn-from-bugs skill), #6103 (a [FEATURE] issue for /analyze-bugs), #6470 (an analysis report), and #6474 (a preventions proposal). That is 16 percent of the digest token budget spent on noise, and these are exactly the issues that discuss bugs at length, so they also pollute root-cause clustering.
+
+#### Root cause
+
+The selection predicate is the raw GitHub search result. The normalized bug-title predicate that #6604 added for `/analyze-bugs` (`_bug_title`, `BUG_TITLE_LIFECYCLE_PREFIXES`, and `BUG_PREFIX` in `python/larch/issue/analyze_bugs.py`) is never applied. This is the fix-one-surface failure shape (guideline G-Fix-1): the normalizer landed in one skill while the sibling skill still derives selection by hand.
+
+#### Fix (numbered work items)
+
+1. Hoist `_bug_title`, `BUG_TITLE_LIFECYCLE_PREFIXES`, and `BUG_PREFIX` from `python/larch/issue/analyze_bugs.py` into a shared module inside `python/larch/issue/` (suggested: a new `title_match.py`; `_util.py` is acceptable if preferred). Give the predicate a public name, for example `bug_title_match(title: str) -> bool`, preserving the current semantics exactly: strip known lifecycle prefixes case-insensitively in a loop, then case-insensitively require the `BUG_PREFIX` prefix. Repoint `analyze_bugs.py` to import from the shared module directly. No shims (see `docs/python-migration.md`).
+2. In `run_prepare` (`python/larch/issue/learn_from_bugs.py`), when `request.search == DEFAULT_SEARCH`, filter the `list_issues` result to issues whose title passes `bug_title_match` before digests are built.
+3. Do not backfill: fetch with the existing `--limit`, filter, and keep what remains. Fetching extra issues to reach the requested count after filtering is explicitly out of scope.
+4. Emit one new stdout key `ISSUES_FILTERED_NON_BUG=<count>` next to `ISSUES_SELECTED`. This is an additive `KEY=value` change; existing consumers parse named keys (G-Wire-1). `ISSUES_SELECTED` reports the post-filter count.
+5. Leave any explicit `--search` value (anything not equal to `DEFAULT_SEARCH`) unfiltered, because verbal descriptions translate to explicit searches that may legitimately target non-`[BUG]` titles.
+6. Update `skills/learn-from-bugs/SKILL.md` Step 2 to add `ISSUES_FILTERED_NON_BUG` to the list of parsed `KEY=value` records (G-Md-2 prose sweep).
+7. Extend `python/tests/issue/test_learn_from_bugs.py`: a default-search prepare drops a `[FEATURE]`-titled item and keeps `[DONE] [BUG] x` and `[Bug] x` items; an explicit `--search` prepare does not filter; the new stdout key reports the filtered count.
+
+#### Acceptance
+
+A default-search run selects only titles that pass the shared normalizer; `ISSUES_FILTERED_NON_BUG` appears in prepare stdout; `/analyze-bugs` behavior is unchanged after the hoist; the listed tests pass.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Default-search `/learn-from-bugs` prepare selects only `[BUG]`-titled issues (lifecycle prefixes tolerated).
+- Share one bug-title normalizer between `/analyze-bugs` and `/learn-from-bugs`.
+- Report dropped rows via a new additive `ISSUES_FILTERED_NON_BUG=<count>` stdout key.
+
+### Non-goals
+- No backfill to reach the requested count after filtering.
+- No filtering for explicit `--search` values.
+- No behavior change for `/analyze-bugs` beyond the import repoint.
+
+### Approach sketch
+- Hoist `_bug_title`, `BUG_TITLE_LIFECYCLE_PREFIXES`, `BUG_PREFIX` into new `python/larch/issue/title_match.py`; public name `bug_title_match`, semantics byte-identical.
+- Repoint `analyze_bugs.py` to import from the shared module; no shims.
+- In `run_prepare`, filter `list_issues` output by `bug_title_match` only when `request.search == DEFAULT_SEARCH`; count drops.
+- Add `ISSUES_FILTERED_NON_BUG` to the stats dict next to `ISSUES_SELECTED`.
+- Document the new key in `skills/learn-from-bugs/SKILL.md` Step 2.
+
+### Surfaces in scope
+- `python/larch/issue/title_match.py` (new), `analyze_bugs.py`, `learn_from_bugs.py`
+- `python/tests/issue/test_learn_from_bugs.py`, `skills/learn-from-bugs/SKILL.md`
+
+### Open questions
+- None.
