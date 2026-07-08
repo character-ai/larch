@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"5a2b5976e612ea094e84963628b24ddb1c5475898b4659dcff2439b39c1c1fcf","body":"\n- **Step 7a.1 \u2014 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: python/larch/design/design_lifecycle.py\n"}

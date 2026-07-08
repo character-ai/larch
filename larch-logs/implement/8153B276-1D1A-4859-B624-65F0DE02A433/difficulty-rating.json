@@ -1,11 +1,11 @@
 {
   "applied_tier": "HARD",
-  "audit_evaluated": null,
+  "audit_evaluated": false,
   "audit_upgrade": null,
   "codex_model_role": "default",
   "confidence": "medium",
   "design_tier": null,
-  "escalated_round": null,
+  "escalated_round": false,
   "escalations": [],
   "floors_applied": [],
   "implement_tier": "HARD",
