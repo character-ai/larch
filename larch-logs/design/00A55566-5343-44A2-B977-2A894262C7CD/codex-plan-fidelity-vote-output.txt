@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Real early-exit behavior, but cancel-route deferment is outside the anchored run-end summary bug.
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Documentation lag only; it does not block the feature path.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The green path already uses the composite finalize path; standalone finalize is confined to stall-recovery.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Stale test commentary is cleanup, not a necessary change for this feature.

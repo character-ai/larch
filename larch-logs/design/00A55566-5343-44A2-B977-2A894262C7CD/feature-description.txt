@@ -1,0 +1,76 @@
+# [BUG] Final run summary (Gantt report) not displayed at end of /design and /implement…
+
+## Summary
+
+The terminal run report (the `## /design run ...` / `## /implement run ...` block with the per-agent cost line, review-phase table, and `### Round N reviewer timing` Gantt charts) is still generated correctly but no longer appears in the operator's terminal at the end of `/design` and `/implement` runs. Both skills mandate that the verbatim summary emission is followed by more tool calls in the same turn (Step 6 cleanup for `/design`; the `.step17-emitted` sentinel write plus Step 18 fences for `/implement`). The current Claude Code build (the one that ships `claude-fable-5`) reliably renders only the final text message of a turn; assistant text written between tool calls may not be shown. The combination hides the report on every run. Larch prose did not change in the last release: the shared emit contract was last touched in PR #5798, and the emit surfaces are unchanged between v52.5.3 and v52.5.4.
+
+## Original report
+
+Operator report, verbatim:
+
+> root cause why final report including gantt chart was not displayed (it used to be displayed at the end of every /design and /implement run until last release)
+
+Filed with the follow-up instruction to capture the session's root-cause analysis and suggested fix, plus one cosmetic request: prefix the report's `Outcome` line tokens with status emoji (`✅ DONE` for success, `❌ STALLED` for stalled runs).
+
+## Reproduction scenario
+
+1. On the current Claude Code build (main-agent model `claude-fable-5`), run any `/design` to completion, for example `/design -s <issue>`.
+2. Watch the end of the run: Step 5c completes, the orchestrator emits the final-summary body and machine footer, then runs the Step 6 cleanup fence and ends the turn with a short cleanup line.
+3. The terminal shows only the trailing cleanup line. The summary block with the Gantt charts is not visible.
+
+Observed live on design run 547CEC5C-92E6-4E8D-8AC8-AF1142890BA3 (larch v52.5.4, issue #6524). On the previous Claude Code build the identical skill ordering displayed the report at the end of every run, so this does not reproduce there.
+
+## Expected behavior
+
+The structured final summary (outcome, duration, cost line with per-agent breakdown, review-phase table, per-round reviewer-timing Gantt charts, top reviewers) is visible in the terminal at the end of every `/design` and `/implement` run.
+
+## Observed behavior
+
+The summary is emitted verbatim mid-turn and then hidden. For the observed run the visible tail was only the cleanup confirmation line. `final-summary.md` itself was complete and correct (verified by direct read; both Gantt sections present), and it was published normally to the committed run logs and the tracking-issue summary comment.
+
+## Root cause analysis
+
+Two contracts interact:
+
+1. **Larch tail ordering guarantees the summary is never the turn-final message.**
+   - `/design` (`skills/design/SKILL.md` Step 5c item 5, Step 5d, Step 6): emit the summary via the shared Read-always profile, print the machine footer as "the last human-visible Step 5 line", then "Continue to Step 6 IMMEDIATELY" (a Bash fence). The anti-recap rules forbid repeating the summary after that point.
+   - `/implement` (`skills/implement/SKILL.md` NEVER #17, Step 17, Step 18): emit the marker body, write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that emission (a tool call), then "Continue to Step 18. Do NOT end the turn after the final report." On the green path Step 18b does not re-emit because the sentinel exists.
+2. **The new Claude Code harness renders only the final text message of a turn reliably.** Its guidance states that assistant text written between tool calls may not be shown and that deliverables must be in the final text message with no tool calls after it. The previous build rendered every interleaved text block as it streamed, which is why the identical ordering displayed for months.
+
+Trigger: the platform upgrade, not a larch release. Confidence is high on the larch-side ordering (directly inspectable). The harness rendering behavior is inferred from the new build's documented guidance plus the observed hidden emission; harness internals are not inspectable from this repo.
+
+## Evidence
+
+- Observed run 547CEC5C-92E6-4E8D-8AC8-AF1142890BA3: the Step 5c background task output carried `PUBLISH_RC=0`, `PLAN_WRITE_OK=true`, `FINAL_SUMMARY_PATH=$DESIGN_TMPDIR/final-summary.md`, and empty readiness markers. The orchestrator read the file and emitted the full body (both `### Round N reviewer timing` sections), then ran the `step6` fence; only the post-fence one-liner was visible to the operator.
+- `skills/design/SKILL.md` Step 5d: "emit exactly one terminal machine footer as the last human-visible Step 5 line" and "Continue to Step 6 IMMEDIATELY after the Step 5 footer"; the anti-halt block forbids any recap after the driver handoff. Together these force a tool call after the summary text.
+- `skills/implement/SKILL.md` Step 17 body: after the Step 16-17 fence, emit the marker body, "write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission", then "Continue to Step 18. Do NOT end the turn after the final report." The sentinel write and the Step 18 fences are tool calls after the emission.
+- `git log -- skills/shared/final-summary-emit.md`: last change 827170d96 (PR #5798, issue #5753), several releases ago; the `/design` Read-always profile dates from that change.
+- `git diff cdf9da42a f17b1df7e --stat -- skills/shared/final-summary-emit.md skills/design/SKILL.md skills/implement/SKILL.md` (v52.5.3 to v52.5.4): only `skills/implement/SKILL.md` changed (9 lines, PR #6518 for issue #6506, the merge CI-health gate), unrelated to summary emission. `skills/design/SKILL.md` and the shared emit contract are byte-identical across the release.
+- The same session showed other new display-layer behavior (large tool outputs persisted to a file with only a 2KB inline preview), corroborating a harness rendering change rather than a larch change.
+
+## Affected files
+
+- `skills/design/SKILL.md`: Step 5c item 5 emit placement, Step 5d footer and no-recap rules, Step 6 ordering.
+- `skills/design/references/finalize-step5.md`: Step 5d wording ("last human-visible output line of Step 5", render-once rules).
+- `skills/shared/final-summary-emit.md`: shared profiles lack a "summary must be the turn-final message" placement rule.
+- `skills/implement/SKILL.md`: NEVER #17, Step 17 emit plus `.step17-emitted` ordering, Step 18/18b sources and continuation prose.
+- `scripts/test-design-structure.sh`, `scripts/test-implement-structure.sh`: pin the prose shapes that would change; `scripts/test-implement-fence-shape.sh` if any `skills/implement/SKILL.md` fences change.
+- `python/larch/design/design_step6.py` and the Step 6 cleanup wrapper: only if the fix stages `final-summary.md` outside `$DESIGN_TMPDIR` or reorders cleanup relative to the emit.
+- `python/larch/git/pr_body.py` (`_map_outcome_display`, added by #6444), `python/larch/report/final_report.py` (`reconcile_stalled_summary_from_manifest` STALLED-to-DONE rewrite and residue guards), `python/larch/design/design_summary.py` (degraded fallback writer), plus `python/tests/git/test_pr_body.py`, `python/tests/report/test_run_logs.py`, and `skills/implement/scripts/test-write-final-report.sh`: Outcome-line emoji prefix (suggested fix 5).
+
+## Suggested fix(es)
+
+Make the verbatim summary the final output of the run's terminal turn in both skills:
+
+1. `/design`: keep the mandatory Read of `FINAL_SUMMARY_PATH` where it is (the file lives in `$DESIGN_TMPDIR`, which Step 6 deletes), but move the emission after the Step 6 cleanup fence: footer, then Step 6 fence, then the verbatim summary emit as the run's last message, sourced from the Read result already in context. Alternative: stage `final-summary.md` outside the tmpdir and Read plus emit after cleanup.
+2. `/implement`: on both the Step 17 green path and the Step 18b breakout, order the `.step17-emitted` sentinel write and all Step 18 fences before the emission so the marker-body emission is the last output with no tool call after it. The wrapper already supports sentinel ownership via `--step17-emitted true`.
+3. Add a placement rule to `skills/shared/final-summary-emit.md`: the emitted body must be the final text message of the turn; no tool call may follow it. Rebase the `/design` and `/implement` no-recap rules on "after the summary" instead of "after the footer".
+4. Sweep and update the prompt-shape harness pins for the changed prose in the same PR.
+5. Cosmetic, requested by the operator in the same report: prefix the outcome token in the report's first line with a status emoji, keeping the token text. Successful runs render `- **Outcome**: ✅ DONE` (green checkmark, space, `DONE`); stalled runs render `- **Outcome**: ❌ STALLED` (red X, space, `STALLED`). Other outcome tokens stay unchanged unless a follow-up extends the mapping. Implementation anchors (the Outcome line shipped in #6444): extend `_map_outcome_display` in `python/larch/git/pr_body.py` (shared by `/design` and `/implement` via `render_run_summary`; the degraded `/design` fallback in `python/larch/design/design_summary.py` uses the same mapper). Update the stalled-summary reconciliation in `python/larch/report/final_report.py` in the same change: `_summary_stalled_outcome_index` and the residue guards must match `❌ STALLED`, and the post-recovery rewrite must produce `✅ DONE`. Because the token text is preserved, grep-ability of committed summaries is retained; still verify consumers that parse the `Outcome:` line for exact equality tolerate the emoji prefix per the additive-schema guideline, and update `python/tests/git/test_pr_body.py`, `python/tests/report/test_run_logs.py`, and `skills/implement/scripts/test-write-final-report.sh` expectations.
+
+## Open questions
+
+- Does the new harness hide all interleaved assistant text (step breadcrumbs, voting tallies, and reviewer status tables would then also be invisible mid-run), or only de-prioritize it in some contexts? If all, larch's progress-reporting contract needs a broader follow-up beyond the final summary.
+- Should the final message also carry a durable pointer (run-log path and tracking-issue summary comment already exist) so a future rendering regression degrades to a pointer instead of silence?
+- Which exact Claude Code version introduced the turn-final rendering change, for regression tracking?
+- For fix 5, should additional outcome tokens beyond `DONE` and `STALLED` (for example `failed-*` or `cancelled-*` outcomes) also get emoji prefixes for consistency?

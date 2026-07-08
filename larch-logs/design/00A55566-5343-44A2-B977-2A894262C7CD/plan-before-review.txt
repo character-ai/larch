@@ -1,0 +1,200 @@
+Approach synthesis is `NO_SKETCHES`; draft from direct repo inspection.
+
+## Approach
+
+- Make final-summary emission a terminal-position contract:
+  - read or capture the summary before cleanup when needed;
+  - run all required cleanup, sentinel, warning, and tail-relay tool calls;
+  - emit the cached verbatim summary body last, with no later tool calls or recap text.
+- Keep generation unchanged. Only change prompt-side placement and outcome display.
+- Preserve old artifact tolerance. Readers must accept prior `DONE`, `STALLED`, and `stalled` shapes where they already exist.
+
+## Files to modify/create
+
+### UPDATED: skills/shared/final-summary-emit.md
+
+Add a shared placement rule: emitted final-summary bodies must be the final assistant text message of the turn, and no tool call may follow.
+
+Update profiles so `/design` may Read `FINAL_SUMMARY_PATH` before cleanup but defer plain-chat emission until after cleanup. Note that sidecar bodies, when allowed, must also be read before cleanup and emitted with the final summary, with no text after them.
+
+Update marker-first wording so `/implement` callers can capture marker bodies, finish sentinel and teardown work, then emit the cached marker body last.
+
+### UPDATED: skills/design/SKILL.md
+
+Change Step 5c item 5 from “Read and emit now” to “Read and cache now, emit later.”
+
+For `_publish_rc` in `{0,1,3}`:
+- parse `FINAL_SUMMARY_PATH`;
+- Read the summary and any allowed sidecar before Step 6 can delete `$DESIGN_TMPDIR`;
+- do not print the summary yet;
+- run existing WARN replay, plan-write warning, footer, and Step 6 cleanup as applicable;
+- after Step 6 completes, emit the cached final-summary body as the final text.
+
+For `PLAN_WRITE_OK=false`, skip Step 6 as today, but emit the cached summary after the plan-write failure warning so the summary is still the last text.
+
+For `_publish_rc=2` or unexpected non-zero aborts, keep the existing stop path, but ensure the summary emit is the last action after any required staging and sidecar reads.
+
+Update anti-recap text so it forbids recap after the final summary, not after the old Step 5 footer.
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+Mirror the Step 5c and Step 5d ordering changes:
+- final-summary is produced by the driver;
+- prompt-side Read may happen before cleanup;
+- prompt-side emission must wait until all cleanup or failure routing is complete;
+- Step 5 footer is no longer the last human-visible output of the whole run.
+
+Keep the existing rule that Step 6 is skipped when plan write fails.
+
+### UPDATED: skills/implement/SKILL.md
+
+Invert the Step 17 and Step 18 final-report order.
+
+Step 17 green path:
+- run `python/cli.py implement step-16-17`;
+- capture any valid marker body from wrapper stdout;
+- do not emit it yet;
+- bind `STEP17_EMITTED_FOR_STEP18=true` when a Step 17 body is pending, so Step 18 suppresses duplicate body generation and the wrapper owns `.step17-emitted` before teardown;
+- continue to Step 18;
+- after Step 18 warning and teardown tail relay, emit the pending Step 17 body as the final text.
+
+Step 18b breakout path:
+- when no Step 17 body is pending, parse Step 18 marker body from the green-path composite stdout or standalone finalize stdout;
+- run all warnings, missing-marker warnings, status parsing, and tail relay before emission;
+- emit the Step 18 marker body last;
+- do not write `.step17-emitted` after finalization returns.
+
+Update NEVER #17 to allow only one final verbatim report emission, at the terminal text position. Keep the no-recap and no-cost-paraphrase bans.
+
+### UPDATED: python/larch/git/pr_body.py
+
+Extend `_map_outcome_display`:
+- success outcomes return `✅ DONE`;
+- `stalled` returns `❌ STALLED`;
+- other outcomes stay raw.
+
+Keep the token text intact after the emoji for grep-ability.
+
+### UPDATED: python/larch/report/final_report.py
+
+Update stalled-summary reconciliation to accept old and new stalled outcome bullets:
+- `stalled`;
+- `STALLED`;
+- `❌ STALLED`.
+
+Rewrite recovered summaries to `✅ DONE`.
+
+Update residue guards so no old or emoji stalled outcome bullet remains after recovery.
+
+### UPDATED: python/larch/design/design_summary.py
+
+Verify the degraded fallback already uses `_map_outcome_display`. Change only if needed to keep degraded `/design` summaries on the shared emoji display path.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+Update `_map_outcome_display` expectations and run-summary first-bullet assertions for `✅ DONE` and `❌ STALLED`.
+
+Keep assertions that raw non-success outcomes remain unchanged.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Update stalled summary and reconciliation expectations:
+- new renders use `❌ STALLED`;
+- recovered rewrites use `✅ DONE`;
+- legacy fixture inputs may still use old `stalled` and `STALLED` to prove backward tolerance.
+
+### UPDATED: python/tests/design/test_design_summary.py
+
+Update degraded and regular design summary expectations from `DONE` to `✅ DONE` where the shared mapper renders the Outcome bullet.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+Update recovered-summary assertions where the final summary is expected to rewrite stalled state. Preserve old stalled fixture inputs to test compatibility with already-committed logs.
+
+### UPDATED: skills/implement/scripts/test-write-final-report.sh
+
+Update expected summary display strings:
+- success and design-only paths expect `✅ DONE`;
+- stalled paths expect `❌ STALLED`;
+- raw bail outcomes stay unchanged.
+
+Keep matrix coverage for outcomes that should omit the Outcome bullet.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Update pinned design prompt strings for the new terminal-position rule:
+- Step 5c reads before cleanup;
+- Step 6 precedes final emission;
+- no recap appears after final emission.
+
+Keep existing pins for `FINAL_SUMMARY_PATH`, sidecar handling, and render-exit carve-out.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Update pinned implement prompt strings:
+- Step 17 caches marker body instead of emitting immediately;
+- Step 18 receives `STEP17_EMITTED_FOR_STEP18=true` for pending Step 17 bodies;
+- `.step17-emitted` is owned by wrappers before teardown;
+- final marker body emission happens after tail relay with no following tool call.
+
+### UPDATED: scripts/test-render-cost-line-callsites.sh
+
+Update cross-surface pins for the shared final-summary emit contract and the implement Step 17/18 sentinel wording.
+
+Preserve the checks that forbid Bash or Python printing of the summary body.
+
+### MAY_UPDATE: scripts/test-implement-fence-shape.sh
+
+Update only if the implementation changes, adds, removes, or converts Bash fences in `skills/implement/SKILL.md`.
+
+If touched, update `EXPECTED_OLD` / `EXPECTED_NEW` for the new fence shape.
+
+### MAY_UPDATE: skills/implement/scripts/write-final-report.md
+
+Update only if exact prose about `DONE` and `STALLED` display would become stale after emoji prefixes. Keep this a prose-only sync with `_map_outcome_display`.
+
+## Edge cases
+
+- `/design` Step 6 deletes `$DESIGN_TMPDIR`: Read final summary and allowed sidecars before cleanup, then emit from the already-read content.
+- `/design` plan-block write failure skips cleanup: emit the cached summary after the warning, since no cleanup tool remains.
+- `/implement` Step 17 marker body exists: suppress Step 18 duplicate emission by passing the existing step17-emitted path, then emit cached Step 17 body last.
+- `/implement` Step 17 marker body is absent: Step 18 remains responsible for terminal stall or recovery report markers.
+- Legacy committed summaries with `- **Outcome**: stalled` or `STALLED` must still reconcile.
+- Raw non-success outcomes must not gain emoji unless explicitly added later.
+
+## Failure modes
+
+- Emitting before cleanup will still be hidden by the current harness.
+- Reading after cleanup on `/design` can lose the only local summary copy.
+- Writing `.step17-emitted` too late can make Step 18 emit a duplicate body.
+- Passing `--step17-emitted true` without a pending Step 17 body can suppress the only final report.
+- Regexes that require exact `STALLED` can miss `❌ STALLED` and leave stale summaries unreconciled.
+- Updating prompt prose without harness pins can leave green tests that do not protect the new ordering.
+
+## Testing strategy
+
+Run changed-file checks only.
+
+- `bash scripts/test-design-structure.sh`
+- `bash scripts/test-implement-structure.sh`
+- `bash scripts/test-render-cost-line-callsites.sh`
+- `bash skills/implement/scripts/test-write-final-report.sh`
+- If `skills/implement/SKILL.md` fence shape changes: `bash scripts/test-implement-fence-shape.sh`
+- `python3 -m pytest python/tests/git/test_pr_body.py python/tests/report/test_run_logs.py python/tests/design/test_design_summary.py python/tests/implement/test_ship.py`
+
+Also run targeted linters for changed skill and shell files if relevant checks select them:
+- `python3 python/cli.py checks run-relevant`
+
+## Acceptance
+
+- `/design` final summary body is the final assistant text on success and plan-write failure paths.
+- `/implement` final report body is the final assistant text on Step 17 green paths and Step 18b terminal paths.
+- No tool call, cleanup fence, sentinel write, warning relay, or recap text follows the verbatim final summary.
+- Outcome bullets render `✅ DONE` and `❌ STALLED`.
+- Legacy stalled summaries still reconcile to `✅ DONE`.
+- Prompt-shape harnesses pin the new ordering.
+
+difficulty: HARD
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 260

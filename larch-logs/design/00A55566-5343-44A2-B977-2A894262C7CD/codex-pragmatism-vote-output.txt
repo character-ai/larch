@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real cancel-path mismatch, but the anchored feature is the normal terminal-summary path; this is a separate follow-up
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docs-only lag; it does not gate the final-report feature path
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Step 18 cleanup already limits standalone `--phase finalize` to stall-recovery; the alleged green-path rerun is not present
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stale commentary is cleanup-only and outside the acceptance bar

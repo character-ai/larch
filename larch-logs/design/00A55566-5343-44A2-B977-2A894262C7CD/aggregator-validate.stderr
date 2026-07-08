@@ -1,0 +1,1 @@
+warning: fix text for slot 'Cursor-Requirements' in FINDING_1 not traceable to scoped input (first 80 chars: 'On finalize-done, if composite stdout has `EMIT_BODY=true` with a valid marker b')
