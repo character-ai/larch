@@ -32,9 +32,9 @@ Parse `$ARGUMENTS`. Pull out `-n`, `--state`, `--repo`, and `--search` if presen
 
 Decide the gh search query:
 
-- If `--search QUERY` was given, use it verbatim.
-- Else if a verbal description was given, translate it to a gh search expression. Prefer `in:title` for prefix-style descriptions and `in:title,body` for topical ones. Example: "stall bugs in implement" becomes `[BUG] stall implement in:title,body`.
-- Else use the default `[BUG] in:title`.
+- If `--search QUERY` was given, use it verbatim and set `SEARCH_EXPLICIT=true`.
+- Else if a verbal description was given, translate it to a gh search expression and set `SEARCH_EXPLICIT=true`. Prefer `in:title` for prefix-style descriptions and `in:title,body` for topical ones. Example: "stall bugs in implement" becomes `[BUG] stall implement in:title,body`.
+- Else use the default `[BUG] in:title` and set `SEARCH_EXPLICIT=false`.
 
 State the resolved query and count back to the operator in one line before proceeding.
 
@@ -45,15 +45,19 @@ Create a scratch run directory and run the prepare verb. Pass the plugin's `cli.
 
 ```bash
 RUN_DIR=$(mktemp -d "${TMPDIR:-/tmp}/learn-from-bugs.XXXXXX")
+SEARCH_ARGS=()
+if [ "${SEARCH_EXPLICIT:-false}" = "true" ]; then
+  SEARCH_ARGS=(--search "$RESOLVED_SEARCH")
+fi
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs prepare \
-  --search "$RESOLVED_SEARCH" \
+  "${SEARCH_ARGS[@]}" \
   --state "$STATE" \
   --limit "$COUNT" \
   --out "$RUN_DIR" \
   --root "$PWD"
 ```
 
-Parse only whole-line `KEY=value` records from stdout: `DIGEST_PATH`, `COVERAGE_INDEX_PATH`, `REPO`, `ISSUES_SELECTED`, `STRUCTURED`, `FREEFORM_OR_TITLE_ONLY`, `DIGEST_TOKENS_EST`, and the `*_INDEXED` counts. Abort if `DIGEST_PATH` is missing.
+Parse only whole-line `KEY=value` records from stdout: `DIGEST_PATH`, `COVERAGE_INDEX_PATH`, `REPO`, `ISSUES_SELECTED`, `ISSUES_FILTERED_NON_BUG`, `STRUCTURED`, `FREEFORM_OR_TITLE_ONLY`, `DIGEST_TOKENS_EST`, and the `*_INDEXED` counts. Abort if `DIGEST_PATH` is missing.
 
 If `DIGEST_TOKENS_EST` is large relative to the budget the operator signalled, say so and offer to lower `-n` before reading.
 
