@@ -4,11 +4,12 @@
 - **Duration**: 00:43:32
 - **Cost**: 💰 TOTAL ~$18.06: Claude $4.83, Codex-5.5 $5.42, Codex-mini $3.09, Cursor $4.24, Claude (subprocess) $0.48  |  Tokens: 47791k
 - **Issue**: #6534: https://github.com/character-ai/larch/issues/6534
+- **PR**: #6605: https://github.com/character-ai/larch/pull/6605
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0/8 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +243/-172, larch-logs +730/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -61,7 +62,3 @@ codex/validity-vote              │                                     ██�
 
 **Reviewer slot failures**: 1
 - cursor/dyn-dyn-design-bgjob: 1
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
