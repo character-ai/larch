@@ -1,0 +1,79 @@
+### External Reviewer Issues
+
+- **Step design Step 3: cursor-review failed (exit 124, timeout)**:
+  ```
+===== diag =====
+Timed out after 1860s (limit: 1860s). Process was killed after exceeding the timeout. Output size: 0 bytes.
+Failed with exit code 124. Output size: 0 bytes.
+===== launch-stderr =====
+⏳ cursor agent: still running (1m elapsed)
+⏳ cursor agent: still running (2m elapsed)
+⏳ cursor agent: still running (3m elapsed)
+⏳ cursor agent: still running (4m elapsed)
+⏳ cursor agent: still running (5m elapsed)
+⏳ cursor agent: still running (6m elapsed)
+⏳ cursor agent: still running (7m elapsed)
+⏳ cursor agent: still running (8m elapsed)
+⏳ cursor agent: still running (9m elapsed)
+⏳ cursor agent: still running (10m elapsed)
+⏳ cursor agent: still running (11m elapsed)
+⏳ cursor agent: still running (12m elapsed)
+⏳ cursor agent: still running (13m elapsed)
+⏳ cursor agent: still running (14m elapsed)
+⏳ cursor agent: still running (15m elapsed)
+⏳ cursor agent: still running (16m elapsed)
+⏳ cursor agent: still running (17m elapsed)
+⏳ cursor agent: still running (18m elapsed)
+⏳ cursor agent: still running (19m elapsed)
+⏳ cursor agent: still running (20m elapsed)
+⏳ cursor agent: still running (21m elapsed)
+⏳ cursor agent: still running (22m elapsed)
+⏳ cursor agent: still running (23m elapsed)
+⏳ cursor agent: still running (24m elapsed)
+⏳ cursor agent: still running (25m elapsed)
+⏳ cursor agent: still running (26m elapsed)
+⏳ cursor agent: still running (27m elapsed)
+⏳ cursor agent: still running (28m elapsed)
+⏳ cursor agent: still running (29m elapsed)
+⏳ cursor agent: still running (30m elapsed)
+⚠ cursor agent: TIMED OUT after 31 minutes, killing
+❌ cursor agent: FAILED (exit code 124, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== diag =====
+Timed out after 1860s (limit: 1860s). Process was killed after exceeding the timeout. Output size: 0 bytes.
+Failed with exit code 124. Output size: 0 bytes.
+===== launch-stderr =====
+⏳ cursor agent: still running (1m elapsed)
+⏳ cursor agent: still running (2m elapsed)
+⏳ cursor agent: still running (3m elapsed)
+⏳ cursor agent: still running (4m elapsed)
+⏳ cursor agent: still running (5m elapsed)
+⏳ cursor agent: still running (6m elapsed)
+⏳ cursor agent: still running (7m elapsed)
+⏳ cursor agent: still running (8m elapsed)
+⏳ cursor agent: still running (9m elapsed)
+⏳ cursor agent: still running (10m elapsed)
+⏳ cursor agent: still running (11m elapsed)
+⏳ cursor agent: still running (12m elapsed)
+⏳ cursor agent: still running (13m elapsed)
+⏳ cursor agent: still running (14m elapsed)
+⏳ cursor agent: still running (15m elapsed)
+⏳ cursor agent: still running (16m elapsed)
+⏳ cursor agent: still running (17m elapsed)
+⏳ cursor agent: still running (18m elapsed)
+⏳ cursor agent: still running (19m elapsed)
+⏳ cursor agent: still running (20m elapsed)
+⏳ cursor agent: still running (21m elapsed)
+⏳ cursor agent: still running (22m elapsed)
+⏳ cursor agent: still running (23m elapsed)
+⏳ cursor agent: still running (24m elapsed)
+⏳ cursor agent: still running (25m elapsed)
+⏳ cursor agent: still running (26m elapsed)
+⏳ cursor agent: still running (27m elapsed)
+⏳ cursor agent: still running (28m elapsed)
+⏳ cursor agent: still running (29m elapsed)
+⏳ cursor agent: still running (30m elapsed)
+⚠ cursor agent: TIMED OUT after 31 minutes, killing
+❌ cursor agent: FAILED (exit code 124, output 0 bytes)
+  ```

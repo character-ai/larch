@@ -1,0 +1,3 @@
+1	copying the tempfile lint's `larch/` path guard would reject valid test baselines under `python/tests/**/test_*.py` and `python/test_*.py`.
+1	a module-wide structural shortcut would be too broad if it skips the lint whenever the facade module has any top-level `def`, `class`, or assignment, because unrelated top-level code should not mask the patched attribute's own binding.
+1	the resolver must handle imported-module attribute chains, not just bare imported names, or it will miss existing `monkeypatch.setattr(ship.run_logs, ...)` patterns.

@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- lexical-scope and occurrence rules are implementation details, not a required feature condition.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- canonical facade spellings are consistency churn; the lint can still work with one resolved spelling.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the exact key/field contract is a design refinement, not a necessary blocker for the lint.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- keeping defining_module out of the baseline is cleanup, not required for the feature.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- adding a linting-catalog row is documentation churn outside the issue scope.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the V1 false-positive/suppression tradeoff is acknowledged by the design and does not block the lint.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of the docs/catalog follow-up in OOS_1.

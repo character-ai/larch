@@ -1,0 +1,155 @@
+Implement a new static lint that catches monkeypatches aimed at facade-only imported bindings. Mirror the `lint_tempfile_dir` baseline pattern and keep the scan static. Do not import scanned modules.
+
+Approach
+
+- Add `python/larch/lint/lint_monkeypatch_facade_binding.py`.
+- Scan only:
+  - `python/tests/**/test_*.py`
+  - `python/test_*.py`
+- Parse test files with `ast`.
+- Detect:
+  - `monkeypatch.setattr(M, "name", ...)`
+  - `monkeypatch.setattr("pkg.mod.name", ...)`
+- Resolve `M` only when it is an imported repo module in the test file.
+- Locate module source under `python/` without runtime import.
+- Parse that module source and classify module-level bindings for the patched name.
+- Flag only when the name is bound by import and has no module-level `def`, `class`, `Assign`, or `AnnAssign`.
+- Support relative imports in analyzed repo modules enough for accurate report text.
+- Skip silently when names are dynamic, modules are not repo modules, module source is missing, or parsing fails.
+
+Files to modify/create
+
+### NEW: python/larch/lint/lint_monkeypatch_facade_binding.py
+
+Implement the lint CLI.
+
+Use the sibling ratchet shape:
+
+- `TOOL_FAILURE_EXIT = 2`
+- `BASELINE_FILENAME = "monkeypatch-facade-binding-baseline.json"`
+- frozen `Finding` dataclass
+- `Record` `TypedDict`
+- `BaselineError`
+- `main(argv) -> int`
+- `--root`
+- `--write`
+- `--initial-reason`
+
+Suggested baseline identity:
+
+- `file`
+- `qualified_symbol`
+- `facade_module`
+- `attribute`
+- `defining_module`
+- `occurrence`
+- `reason`
+
+Assign `occurrence` before baseline and suppression filtering. Count resolved repo-module `monkeypatch.setattr` candidates with literal attributes within the nearest lexical scope.
+
+Add a same-line suppression regex:
+
+- `# lint-monkeypatch-binding: ok <reason>`
+
+Require a non-empty reason. A bare `# lint-monkeypatch-binding: ok` must not suppress.
+
+Report unbaselined findings with:
+
+- test file and line
+- qualified symbol
+- patched facade module and attribute
+- defining module seen in the import
+- suggested fix: patch the defining module, or patch the consuming module's own binding
+
+### UPDATED: python/larch/cli.py
+
+Add the dispatch row:
+
+- `("lint", "monkeypatch-facade-binding"): ("larch.lint.lint_monkeypatch_facade_binding", "main")`
+
+Place it near the other lint ratchets.
+
+### UPDATED: Makefile
+
+Wire the lint into `py-lint-checks-fast`:
+
+- `$(PYTHON) python/cli.py lint monkeypatch-facade-binding`
+
+Add `.PHONY` coverage for:
+
+- `regen-monkeypatch-facade-binding-baseline`
+
+Add the target mirroring `regen-tempfile-dir-baseline`:
+
+- if the baseline exists, run `--write`
+- if absent, run `--write --initial-reason 'grandfathered monkeypatch facade binding pre-ratchet'`
+
+### NEW: python/monkeypatch-facade-binding-baseline.json
+
+Create the baseline.
+
+Expected first implementation path:
+
+- Run the new lint in write mode.
+- If no live findings exist, commit `[]`.
+- If live findings exist, keep reason-bearing rows only.
+- Prefer targeted inline suppressions only when a line is an intentional known false positive and a local reason is clearer than a baseline row.
+
+### NEW: python/tests/lint/test_lint_monkeypatch_facade_binding.py
+
+Cover the requested cases with temp project fixtures:
+
+- facade re-export patch is flagged, matching the #6494 shape
+- patching the defining module is not flagged
+- module that defines the patched name with `def` is not flagged
+- module that defines the patched name with `class`, `Assign`, or `AnnAssign` is not flagged
+- dotted-string form is flagged
+- non-literal attribute names are skipped
+- non-repo modules or unresolved modules are skipped
+- same-line suppression with a reason suppresses
+- bare suppression without a reason does not suppress
+- baseline entries are honored
+- `--write` preserves reasons and shrinks obsolete rows
+- malformed baseline rows, duplicate identities, missing reasons, and missing baseline in check mode exit `2`
+
+Edge cases
+
+- `from x import name` should report defining module `x`.
+- `from x import y as name` should treat `name` as import-only and report the imported source.
+- `import x as name` should treat `name` as import-only.
+- If a module both imports and defines the same name at module scope, do not flag.
+- Do not attempt V1 late-attribute-access detection.
+- Do not import repo modules while linting.
+
+Failure modes
+
+- Baseline widening without reasons can re-admit the bug. Keep write mode fail-closed when a new live identity lacks a preserved or initial reason.
+- Dotted-string parsing can overreach. Use the final component as the attribute and all prior components as the module; skip if that module source is missing.
+- Existing tests may intentionally patch facade attributes for late access. Grandfather or suppress with a reason rather than expanding V1 scope.
+
+Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/tests/lint/test_lint_monkeypatch_facade_binding.py`
+
+Run the new lint directly:
+
+- `python3 python/cli.py lint monkeypatch-facade-binding`
+
+Run the fast lint target to verify Makefile wiring:
+
+- `make py-lint-checks-fast`
+
+If baseline regeneration is needed, verify:
+
+- `make regen-monkeypatch-facade-binding-baseline`
+- `python3 python/cli.py lint monkeypatch-facade-binding`
+
+Confidence: high. The existing ratchet pattern is direct, and the approved scope is narrow.
+
+difficulty: MODERATE
+diff_added: 850
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 850
