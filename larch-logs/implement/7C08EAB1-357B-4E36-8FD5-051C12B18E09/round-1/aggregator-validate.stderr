@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-testing' in FINDING_4 not traceable to scoped input (first 80 chars: 'Disable long-option abbreviation on this parser or derive explicitness from pars')
+warning: fix text for slot 'dyn-dyn-default-search' in FINDING_4 not traceable to scoped input (first 80 chars: 'Derive explicitness from the parsed namespace, or disable long-option abbreviati')
