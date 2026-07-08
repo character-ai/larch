@@ -1,0 +1,8 @@
+# attributed_ballot_sha256=041ef81d28791832ccd717d2fbfdd6e66d267cc6f0787d8054fcb17222a93001
+# neutral_ballot_sha256=a12078144177686108c55b57572ddadf42f5a8e4352413b40b5eb4f48dd5ebaa
+item_id	reviewer	reviewer_line
+FINDING_1	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
+FINDING_2	Codex-dyn-Vote Parser Collision	- **Reviewer(s)**: Codex-dyn-Vote Parser Collision
+OOS_1	Codex-Innovation	- **Reviewer**: Codex-Innovation
+OOS_2	Codex-Pragmatic	- **Reviewer**: Codex-Pragmatic
+OOS_3	Codex-dyn-Vote Parser Collision	- **Reviewer**: Codex-dyn-Vote Parser Collision

@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- parse-rate-check isn't wired to the new alias path, and the tally aliasing is already scoped by ballot ids
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- a plan-review-specific regression would be nice, but the feature can still ship with the plan's existing regression surface
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is extra plan-review test coverage, but it is not necessary to deliver the alias fix
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- ballot-heading rewrites are explicitly a non-goal in this plan

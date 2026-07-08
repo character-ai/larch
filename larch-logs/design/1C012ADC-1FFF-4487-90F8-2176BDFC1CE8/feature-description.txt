@@ -1,0 +1,31 @@
+# [BUG] Voter OOS_N relabeling of FINDING_N items causes per-item JUDGE_ERRORs
+
+Root-cause follow-up to the run C9457B68-AEF0-4FF6-9905-58D947490861 investigation (#6576, #6577, #6578). Explains the ballot-size correlation behind under-quorum degraded votes.
+
+**Direct evidence (surviving session tmpdir)**
+
+- Run tmpdir `claude-implement-larch1-_1m2tdk1`, round 1, 22-item ballot: the codex plan-fidelity voter voted all 22 items, but wrote `OOS_6:`, `OOS_7:`, `OOS_8:`, `OOS_15:`, `OOS_16:`, `OOS_17:`, `OOS_18:`, `OOS_21:`, `OOS_22:` for the nine items whose ballot headings read `### FINDING_N: [OUT_OF_SCOPE] ...`.
+- `vote_for_id` (`python/larch/review/voting.py` ~line 493) anchors on the exact ballot id, so all nine lines parsed as per-item JUDGE_ERROR even though clean votes with axes and reasons were present.
+- Scan of all 38 surviving voter outputs: these 9 lines are the only unparseable votes in the sample (9 of 337 ballot-item votes), and 9 of 9 target `[OUT_OF_SCOPE]`-titled `FINDING_N` items. No formatting-drift failures (bold, bullets, trailing punctuation) appeared.
+
+**Why this degrades rounds and correlates with ballot size**
+
+- Relabeling is a deterministic property of the item (its scope flavor), not random drift. Independent voters therefore fail the SAME items. Two same-item JUDGE_ERRORs drop the item below the 2-of-3 quorum, stamp the degraded banner, and (pre-#6576) trigger the full fresh-panel retry.
+- Corpus sweep of 547 modern committed tallies: per-item JUDGE_ERROR rate is 2.8% for ballots of 8 or fewer items vs 6-11% beyond 8; JUDGE_ERRORed items sit at mean ballot position 0.68-0.76 (56-66% in the last third). Large ballots come from weak aggregation passes that keep out-of-scope-flavored rows under `FINDING_N` headings, clustered at the tail. Size is the confounder; mixed-signal ids are the mechanism.
+- Run C9457B68 round 1 attempt 1 fits exactly: 18 items, all `FINDING_N` ids, no `OOS_N` ids; five items drew 2 JUDGE_ERRORs each and forced the roughly $10 fresh-panel retry. Its raw voter outputs were overwritten by the retry, so this instance is inferred, not proven.
+
+**Prior art**
+
+The voting-protocol note ("use `OOS_N:` only when the ballot heading itself is `### OOS_N:`"; `[OUT_OF_SCOPE]` rows under `### FINDING_N:` still use `FINDING_N:`), added by #2675 via PR #2942, targets exactly this confusion. The direct evidence shows prompt prose alone does not hold for codex voters on long ballots.
+
+**Fix**
+
+1. Parser-side alias acceptance: when tallying ballot id `FINDING_k` and no anchored `FINDING_k:` vote line exists, also accept an `OOS_k:` vote line, and vice versa. Apply the alias only when the aliased id is not itself a ballot id. Ballots like C9457B68 round-1 attempt 2 contain both `FINDING_1` and `OOS_1`, so unconditional aliasing would mis-assign votes. The tally builder knows the full ballot id set and can enable aliasing only when unambiguous.
+2. Optional ballot hygiene: have the aggregator head out-of-scope-classified items as `### OOS_N:` instead of `### FINDING_N: [OUT_OF_SCOPE] ...` so the mixed signal never reaches voters. Judge feasibility against the scope-aware reclassification contracts.
+3. Regression tests: a relabeled `OOS_k:` vote parses for a `FINDING_k`-headed ballot without `OOS_k`; collision ballots (both ids present) do not alias; existing anchored parsing stays unchanged.
+
+**Effect**
+
+Removes the dominant per-item JUDGE_ERROR mechanism, so under-quorum degraded votes (and the retry cost #6576 mitigates) mostly disappear. Complements #6576; different fix surface (`python/larch/review/voting.py` and the tally builder vs `python/larch/review/round_runner.py`).
+
+Related: #6576 (retry granularity), #5078 (markdown-table vote normalization, same fail-open parsing family), #2675 (added the protocol note).
