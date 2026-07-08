@@ -75,6 +75,10 @@ if [ "${2:-}" = "review-and-fix" ] && [ "${3:-}" = "step5" ]; then
   printf '%s\n' 'STEP5_REVIEW_STATUS=complete' 'STALL_TRACKING=false' 'STALL_REASON=' 'ROUNDS_COMPLETED=1' 'FINAL_ROUND_NUM=1' 'FINAL_REVIEW_AND_FIX_STATUS=complete' 'CODER_STATUS=' 'FILES_CHANGED_HINT=' 'EFFECTIVE_ROUND_CAP=2'
   exit 0
 fi
+if [ "${STEP5_COMMIT_ROUTE_STALL:-false}" = "true" ] && [ "${2:-}" = "implement" ] && [ "${3:-}" = "commit-route" ] && [ "${4:-}" = "--site" ] && [ "${5:-}" = "step5-resume-handoff" ]; then
+  printf '%s\n' 'COMMITTED=false' 'SHA=' 'ERROR=no review delta paths' 'COMMIT_OUTCOME=failed' 'NEXT_ACTION=stall'
+  exit 0
+fi
 exec "$REAL_PYTHON3" "$@"
 """,
         encoding="utf-8",
@@ -88,6 +92,7 @@ def _run_step5_shell_wrapper(
     wrapper_name: str,
     wrapper_args: list[str],
     include_run_flags: bool,
+    commit_route_stall: bool = False,
 ) -> tuple[Path, list[str], subprocess.CompletedProcess[str]]:
     repo_root = _repo_root()
     impl = tmp_path / "impl"
@@ -117,6 +122,8 @@ def _run_step5_shell_wrapper(
     for key in ("HOME", "PYTHONPATH", "TMPDIR", "USER"):
         if key in os.environ:
             env[key] = os.environ[key]
+    if commit_route_stall:
+        env["STEP5_COMMIT_ROUTE_STALL"] = "true"
 
     effective_args = list(wrapper_args)
     if wrapper_name == "step-5-resume.sh" and "--bgjob-child" in effective_args and "--merge-result-env" not in effective_args:
@@ -685,6 +692,25 @@ def test_step5_shell_wrappers_forward_difficulty_override(
         assert _arg_value(argv, "--difficulty") == "HARD"
     else:
         assert "--difficulty" not in argv
+
+
+@MARK_STEP5
+def test_step5_shell_ready_to_commit_stall_exits_zero_without_review_loop(
+    tmp_path: Path,
+) -> None:
+    _impl, argv, result = _run_step5_shell_wrapper(
+        tmp_path,
+        wrapper_name="step-5-resume.sh",
+        wrapper_args=["--bgjob-child", "--final-round-num", "2", "--ready-to-commit"],
+        include_run_flags=False,
+        commit_route_stall=True,
+    )
+
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert result.stdout.count("NEXT_ACTION=stall") == 1
+    assert "COMMIT_OUTCOME=failed" in result.stdout
+    assert argv == []
+
 
 @MARK_DISPATCH
 def test_dynamic_archetypes_defaults_to_zero_without_implement_tmpdir(monkeypatch, tmp_path):
