@@ -2,7 +2,7 @@
 
 - **Outcome**: STALLED
 - **Duration**: 00:43:32
-- **Cost**: 💰 TOTAL ~$17.33: Claude $4.13, Codex-5.5 $5.42, Codex-mini $3.09, Cursor $4.24, Claude (subprocess) $0.45  |  Tokens: 45940k
+- **Cost**: 💰 TOTAL ~$18.06: Claude $4.83, Codex-5.5 $5.42, Codex-mini $3.09, Cursor $4.24, Claude (subprocess) $0.48  |  Tokens: 47791k
 - **Issue**: #6534: https://github.com/character-ai/larch/issues/6534
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -61,3 +61,7 @@ codex/validity-vote              │                                     ██�
 
 **Reviewer slot failures**: 1
 - cursor/dyn-dyn-design-bgjob: 1
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
