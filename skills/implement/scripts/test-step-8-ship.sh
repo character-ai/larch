@@ -126,6 +126,34 @@ assert_contains 'BGJOB_STATUS=WAIT' "$REJOIN_OUT" 'dynamic: live registry rejoin
 assert_contains $'--step\nimplement-step8-ship' "$(cat "$TMP_ROOT/bgjob-wait-argv.txt")" 'dynamic: live registry rejoin waits on Step 8 slug'
 if [ ! -e "$TMP_ROOT/unexpected-rejoin-start.txt" ]; then pass 'dynamic: live registry rejoin refuses second bgjob start'; else fail 'dynamic: live registry rejoin refuses second bgjob start'; fi
 
+cat >"$STUB_BIN/python3" <<EOF_TIMEOUT
+#!/usr/bin/env bash
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "wait" ]; then
+  printf '%s\n' unexpected-wait > "$TMP_ROOT/unexpected-timeout-wait.txt"
+  exit 0
+fi
+if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "bgjob" ] && [ "\$3" = "start" ]; then
+  printf '%s\n' "\$@" > "$TMP_ROOT/bgjob-timeout-start-argv.txt"
+  if [ -e "$IMPL_TMP/.step-8-ship-handoff.rc" ] || [ -e "$IMPL_TMP/.step-8-ship-handoff.json" ]; then printf '%s\n' stale-handoff > "$TMP_ROOT/stale-timeout-handoff.txt"; fi
+  if [ -e "$IMPL_TMP/bgjob/implement-step8-ship.result.env" ]; then printf '%s\n' stale-result-env > "$TMP_ROOT/stale-timeout-result-env.txt"; fi
+  printf '%s\n' 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=23456'
+  exit 0
+fi
+exec "$REAL_PYTHON" "\$@"
+EOF_TIMEOUT
+chmod +x "$STUB_BIN/python3"
+printf 'BGJOB_RC=timeout\nSTEP=implement-step8-ship\nSTEP8_HANDOFF_RC=3\nSTEP8_HANDOFF_JSON_PRESENT=true\n' >"$IMPL_TMP/bgjob/implement-step8-ship.result.env"
+set +e
+TIMEOUT_OUT=$(PATH="$STUB_BIN:$PATH" IMPLEMENT_TMPDIR="$IMPL_TMP" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash "$HELPER" 2>"$TMP_ROOT/timeout-rejoin-stderr.txt")
+TIMEOUT_RC=$?
+set -e
+assert_rc "$TIMEOUT_RC" 0 'dynamic: timeout result env falls through to fresh bgjob start'
+if [ "$TIMEOUT_OUT" = 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=23456' ]; then pass 'dynamic: timeout result env launches fresh bgjob start'; else fail "dynamic: timeout result env fresh start stdout exact (got $TIMEOUT_OUT)"; fi
+assert_contains $'--step\nimplement-step8-ship' "$(cat "$TMP_ROOT/bgjob-timeout-start-argv.txt")" 'dynamic: timeout result env fresh start forwards Step 8 slug'
+if [ ! -e "$TMP_ROOT/unexpected-timeout-wait.txt" ]; then pass 'dynamic: timeout result env does not rejoin via bgjob wait'; else fail 'dynamic: timeout result env does not rejoin via bgjob wait'; fi
+if [ ! -e "$TMP_ROOT/stale-timeout-handoff.txt" ]; then pass 'dynamic: timeout result env clears stale handoff sidecars before fresh start'; else fail 'dynamic: timeout result env clears stale handoff sidecars before fresh start'; fi
+if [ ! -e "$TMP_ROOT/stale-timeout-result-env.txt" ]; then pass 'dynamic: timeout result env clears stale result env before fresh start'; else fail 'dynamic: timeout result env clears stale result env before fresh start'; fi
+
 cat >"$STUB_BIN/python3" <<EOF_CHILD
 #!/usr/bin/env bash
 if [ "\$1" = "$REPO_ROOT/python/cli.py" ] && [ "\$2" = "implement" ] && [ "\$3" = "clone-tag" ]; then

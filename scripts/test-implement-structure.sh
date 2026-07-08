@@ -877,6 +877,7 @@ if 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr` with the Step 8+ argv
 if 'compose-report --report-kind escalation-success' in stall_ref:
     checks.append('stall-recovery.md must not retain escalation-success compose procedure')
 require(skill, 'Step 8 uses bgjob wait/rejoin', 'NEVER #8 Step 8 bgjob re-entry')
+require(skill, 'Do not require `BGJOB_RC=0`; the numeric driver rc in `.step-8-ship-handoff.rc` is authoritative for route-exit.', 'SKILL Step 8 route-exit authoritative rc pin')
 for needle in [
     '_restore_finalize=false',
     'restore-finalize-state',

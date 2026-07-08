@@ -554,18 +554,28 @@ def test_ship_route_exit_classifies_driver_sidecars(
     assert f"NEXT_ACTION={action}\n" in (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    ("bgjob_rc", "payload", "expected_action"),
+    [
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"}, "oos-pipeline"),
+        (6, {"outcome": "TRANSIENT"}, "reship"),
+    ],
+)
 def test_ship_route_exit_allows_nonzero_bgjob_rc_with_current_sidecars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
+    bgjob_rc: int,
+    payload: dict[str, object],
+    expected_action: str,
 ) -> None:
     tmp = _session(tmp_path)
     bgjob = tmp / "bgjob"
     bgjob.mkdir()
     (bgjob / "implement-step8-ship.result.env").write_text(
-        "BGJOB_RC=3\n"
+        f"BGJOB_RC={bgjob_rc}\n"
         "STEP=implement-step8-ship\n"
-        "STEP8_HANDOFF_RC=3\n"
+        f"STEP8_HANDOFF_RC={bgjob_rc}\n"
         "STEP8_HANDOFF_JSON_PRESENT=true\n",
         encoding="utf-8",
     )
@@ -574,12 +584,12 @@ def test_ship_route_exit_allows_nonzero_bgjob_rc_with_current_sidecars(
         tmp,
         capsys,
         monkeypatch,
-        3,
-        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"},
+        int(bgjob_rc),
+        payload,
     )
 
     assert exit_rc == 0
-    assert out == "NEXT_ACTION=oos-pipeline\n"
+    assert out == f"NEXT_ACTION={expected_action}\n"
 
 
 @pytest.mark.parametrize("bgjob_rc", ["timeout", "orphaned"])

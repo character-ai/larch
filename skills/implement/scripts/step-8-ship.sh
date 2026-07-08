@@ -33,7 +33,7 @@ read_state_key() {
   state_file="$IMPLEMENT_TMPDIR/ship-pr-state.sh"
   if [ -f "$state_file" ]; then
     line=$(grep "^${key}=" "$state_file" 2>/dev/null | tail -n 1 || true)
-    if [ -n "$line" ]; then
+if [ -n "$line" ]; then
       printf '%s\n' "${line#*=}"
       return 0
     fi
@@ -79,9 +79,11 @@ try:
     path, entry = registry.read_for(tmpdir=Path(os.environ["IMPLEMENT_TMPDIR"]), step="implement-step8-ship")
     if entry is None:
         raise SystemExit(1)
-    if registry.child_liveness(entry).live and registry.daemon_liveness(entry).live:
+    if registry.child_liveness(entry).live or registry.daemon_liveness(entry).live:
         print("live")
         raise SystemExit(0)
+    if entry.result_env.exists():
+        raise SystemExit(1)
     registry.unlink_entry(path)
 except SystemExit:
     raise
@@ -114,6 +116,8 @@ for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines(
     key, value = line.split("=", 1)
     rows.setdefault(key, value)
 if rows.get("STEP") != "implement-step8-ship":
+    raise SystemExit(1)
+if rows.get("BGJOB_RC", "") in {"timeout", "orphaned"}:
     raise SystemExit(1)
 recorded_rc = rows.get("STEP8_HANDOFF_RC", "")
 if recorded_rc and recorded_rc != rc_file.read_text(encoding="utf-8", errors="replace").strip():
