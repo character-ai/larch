@@ -1,0 +1,1 @@
+Fix the reviewer timing chart by normalizing phase fallback output names before label lookup, then suffix fallback labels with "(via fallback)". Add focused regression tests for direct label derivation and `_progress_vendor_rows`.

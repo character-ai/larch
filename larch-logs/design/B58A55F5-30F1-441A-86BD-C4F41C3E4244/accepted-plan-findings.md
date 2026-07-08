@@ -1,0 +1,27 @@
+### FINDING_1: Test the non-complete primary row in C9457B68-shaped vendor-row cases
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: major
+- **Concern**: The planned dual-row and cap-pressure tests model a failed primary row, but they keep `_progress_vendor_rows` on its default `require_complete_status=True`. Production Gantt rendering explicitly uses `require_complete_status=False`, so non-complete primaries like the 10s `codex/validity-vote` attempt are included there. As written, the tests can pass while never exercising the production filter path that keeps the failed primary visible alongside the late phase2 success.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `In the dual-row and cap-pressure cases, call _progress_vendor_rows(..., require_complete_status=False) and write the failed primary with a non-complete status (e.g. failed).`
+  - From Cursor-Innovation: `In the cap-pressure regression, pass require_complete_status=False (and give the failed primary a non-complete status), or document that only the phase2 reservation is under test and keep the primary status=complete without calling the scenario C9457B68-shaped.`
+  - From Cursor-Pragmatic: `In planned vendor-row tests, pass require_complete_status=False on every C9457B68-shaped case (dual-row and cap-pressure). Keep failed-primary ledger rows on a non-complete status such as failed. Optionally add one assertion that the failed primary label lacks " (via fallback)" while the phase2 row keeps it.`
+
+
+### FINDING_2: Pin cap-pressure timestamps so the failed primary is not truncated away
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: The cap-pressure fixture’s start-order assumptions can drop the failed primary while preserving the reserved phase2 fallback row. With CAP-1 filler rows plus a reserved phase2 fallback, start-sorted truncation keeps the earliest 25-len(reserved) non-reserved rows; if the failed primary is appended after the filler block, it becomes the latest non-reserved row and is dropped, which contradicts the planned assertion that both rows survive and mis-models the reported C9457B68 behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Pin timestamps explicitly: phase2 fallback starts after the filler block; failed primary starts early enough (before the filler tail) that it is not the last non-reserved row when only fallback rows are reserved.`
+
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: minor
+- **Focus area**: correctness
+- **Location**: python/larch/report/progress_report.py:561-568
+- **Concern**: [SCOPE-REDUCTION] Plain retry rows are treated as vendor fallbacks. Scenario: The plan uses norm_base != raw_base as the fallback predicate, but _progress_normalize_output_base also strips -retry. Existing timing ledgers contain phase1 retry rows such as cursor-plan-requirements-output-ns-retry.txt; the proposed path would normalize that to cursor-plan-requirements-output-ns.txt, append (via fallback), and reserve it under the cap even though no phase2 or phase3 vendor fallback ran.
+- **Proposed resolution**: Use a separate chart fallback predicate that requires a stripped -phase2 or -phase3 suffix. Keep plain -retry and -ns-retry rows on the existing raw-label path, and add a focused regression case for a phase1 retry row with no fallback suffix.
+
+

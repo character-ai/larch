@@ -1,0 +1,41 @@
+Surfaced by the run-log investigation of /implement run C9457B68-AEF0-4FF6-9905-58D947490861 (issue #6536, PR #6573, larch 52.5.5).
+
+**Evidence**
+
+- The final-summary "Round 1 reviewer timing" chart shows the failed 10s `codex/validity-vote` attempt but omits the successful 89s cursor fallback that actually produced the validity votes.
+- The fallback is recorded elsewhere: `timing-report.json` `vendor_task_averages` has `cursor-phase2-voter-1` (1 sample, 89s), and `round-1/voting-tally.md` names `cursor-validity` as the voter.
+- Effect: after a vendor fallback, the chart under-reports what ran and what the round's wall clock paid for.
+
+**Root cause locus**
+
+The chart is built by `_render_phase_gantt` and `_progress_vendor_rows` in `python/larch/report/progress_report.py`; row selection appears to drop phase2/phase3 fallback ledger rows. Nearby machinery already handles fallbacks: `_progress_normalize_output_base` (~line 561) strips `-phase2/-phase3/-retry` suffixes, and #5838 added the "(via <Tool>)" annotation for Top-reviewers labels.
+
+**Fix**
+
+Include phase2/phase3 fallback rows in the round timing chart with a distinct label, for example `cursor/validity-vote (via fallback)`, or reuse the #5838 "(via <Tool>)" annotation. Add a regression test with a timing ledger containing a phase2 voter row.
+
+Severity: minor; observability only.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Include phase2/phase3 fallback timing rows in the round reviewer Gantt chart.
+- Label fallback rows with a distinct "(via fallback)" suffix so operators can distinguish the primary attempt from the fallback run.
+
+### Non-goals
+- No changes to Top-reviewers scoring or `_apply_fallback_remap` logic.
+- No changes to the timing ledger format or `record_vendor_task`.
+- No changes to how `_progress_normalize_output_base` is used in other contexts.
+
+### Approach sketch
+- Fix `_derive_progress_label` in `python/larch/report/progress_report.py` to normalize the output basename (strip `-phase2`/`-phase3`) before the label_map lookup and before calling `_progress_derived_label`.
+- When the normalized basename differs from the raw basename (i.e., it is a fallback row), append " (via fallback)" to the derived label.
+- Add a regression test in `python/tests/report/test_progress_report.py` covering the phase2 row label and the end-to-end `_progress_vendor_rows` call.
+
+### Surfaces in scope
+- `python/larch/report/progress_report.py` (`_derive_progress_label`)
+- `python/tests/report/test_progress_report.py`
+
+### Open questions
+- None.
