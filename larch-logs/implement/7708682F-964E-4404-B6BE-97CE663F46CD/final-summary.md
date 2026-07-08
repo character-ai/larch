@@ -1,7 +1,7 @@
 ## /implement run 7708682F-964E-4404-B6BE-97CE663F46CD: shipping
 
 - **Outcome**: shipping
-- **Duration**: 00:27:56
+- **Duration**: 00:28:28
 - **Cost**: 💰 TOTAL ~$9.59: Claude $0.92, Codex-5.5 $2.15, Codex-mini $1.44, Cursor $4.35, Claude (subprocess) $0.73  |  Tokens: 20158k
 - **Issue**: #6580: https://github.com/character-ai/larch/issues/6580
 - **Plan review**: N/A
@@ -11,7 +11,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/7708682F-964E-4404-B6BE-97CE663F46CD/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
@@ -21,8 +21,9 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (1):
+Warnings (2):
   1. Step agent dispatch-voters codex-pragmatism: agent launch-review --tool codex (voter parse-rate check; label codex-pragmatism) warning (exit 0)
+  2. Step 7a.r-post-rebase — phantom untracked files: 31 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7a.r-post-rebase.z locally)
 
 ## Review Phase Detail
 
