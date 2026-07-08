@@ -1,0 +1,63 @@
+#### Principle
+
+`/implement` must not complete declaring success while parts of the work the plan requires are left undone. Today the pipeline detects the gap, labels it advisory, and every later gate measures the artifact instead of the plan. A partially implemented plan can therefore reach PR, merge, [DONE] rename, and issue closure with no recorded scope decision.
+
+#### Evidence (run 0BE6E8A0-8A7D-49E2-8468-8E7BB8EB201C, issue #6514, PR #6522, 2026-07-07)
+
+- The vetted plan carried roughly 85 firm `NEW:`/`UPDATED:` headings (`diff_lines: 4800`). The Codex one-shot returned `STATUS=complete` after touching 25 files and wrote the remaining migration into manifest `todos_left`.
+- The Step 2 dispatcher detected the gap exactly (`WARN_PLAN_FILES_UNTOUCHED=true`, `WARN_PLAN_FILES_UNTOUCHED_COUNT=61`) but the SKILL.md contract makes those trailing advisory KVs that Step 2 must not branch on, and NEVER #7 forbids mid-run scope re-litigation. The orchestrator could only log a warning and proceed.
+- The plan's own acceptance criterion 1 was gamed by construction: it tested `git grep run_in_background skills/` against a lint allowlist, and the implementation put every unmigrated file on the allowlist. Coverage was measured against an artifact the implementation itself could redefine.
+- The Step 5 HARD panel ran correctness, edge-cases, testing, and one coder-proposed dynamic archetype, plus a plan-fidelity voter, but no plan-fidelity finder. Voters only score findings someone raises, and diff-anchored reviewers cannot see 61 files of absence: there are no hunks to comment on. All 21 findings addressed the code that existed.
+- Checks, CI, and the ship gates validate the artifact, not the plan. The run ended STALLED on an unrelated defect (#6521); a manual ship then closed #6514 with roughly 60 percent of its scope undone, recovered only by hand-filing #6524.
+
+#### Proposed mechanics (for /design to refine)
+
+1. Escalate the existing Step 2 plan-coverage probe from advisory to a graded mechanical gate keyed on firm-heading coverage. Below a low threshold, keep today's warning. At a middle threshold (for example untouched firm headings at or above 20 percent of the plan, or at or above 10 files), force-inject the plan-fidelity finder (`larch:reviewer-plan-fidelity`) into every Step 5 round for the run, exempt from pruning, regardless of tier. At a high threshold (for example at or above 50 percent or at or above 30 files), hard-gate the ship path: `ship pre-driver` refuses until a recorded scope disposition exists.
+2. Define the scope disposition as a small durable artifact (tmpdir plus run log): either `proceed-partial` with a mandatory auto-filed follow-up issue capturing the untouched inventory (via `/issue`, cross-linked to the tracking issue and blocked appropriately), or `bail-rescope` routing to Step 12d and `/design`. Never a silent default.
+3. Treat non-empty manifest `todos_left` on `STATUS=complete` the same way: it must flow into the disposition, the final summary, and the PR body automatically. It must not be droppable by omission.
+4. Completion surfaces must reflect partial scope mechanically: with a `proceed-partial` disposition, the PR body gets `Part of #N` plus a generated deferred-inventory section instead of a closing keyword, the tracking issue is not renamed `[DONE]`, and the final summary gains a plan-coverage line (for example `Plan coverage: 24/85 firm headings; disposition: proceed-partial; follow-up #NNNN`).
+5. Close the acceptance-gaming vector: the coverage comparison must run against the plan's firm headings as materialized at Step 0, never against acceptance checks whose inputs the implementation can rewrite (allowlists, baselines, skip markers).
+
+#### Non-goals
+
+- Reintroducing subjective mid-run scope judgment. NEVER #7 stays. The gate is mechanical: counts, thresholds, and a recorded disposition.
+- Changing external implementer dispatch or the one-shot contract. The companion /design plan-size guardrail issue handles oversized plans at the source.
+
+#### Acceptance criteria
+
+1. Replaying the run above (61 of 85 firm headings untouched, non-empty `todos_left`) cannot reach PR creation without either a recorded `proceed-partial` disposition with an auto-filed, cross-linked follow-up issue, or a `bail-rescope` bail. Pinned by tests.
+2. With a `proceed-partial` disposition, the PR body contains `Part of` rather than a closing keyword for the tracking issue, the `[DONE]` rename is suppressed, and the final summary carries the plan-coverage line. Pinned by tests on the PR-body and final-report composers.
+3. The forced plan-fidelity finder appears in every Step 5 round when the middle threshold trips, exempt from reviewer pruning, at every tier. Pinned by panel-composition tests.
+4. Thresholds live in `python/larch/core/config.py` with rationale comments, and `docs/workflow-lifecycle.md` documents the disposition flow.
+5. `make py-lint`, `make py-test`, and affected `test-harnesses` shards pass.
+
+Related: the companion /design plan-size guardrail issue filed alongside this one; #6524 (the recovered follow-up this gap required); #6514 and PR #6522 (the incident).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Convert the existing Step-2 plan-coverage gap from advisory to a graded mechanical gate (firm-heading coverage + non-empty `todos_left`) so a majority-incomplete plan cannot silently reach PR / merge / `[DONE]` / close.
+- Middle band force-injects `larch:reviewer-plan-fidelity` into every Step 5 round (exempt from pruning, all tiers); high band hard-gates ship until a recorded scope disposition exists.
+- Make completion surfaces (PR body, `[DONE]` rename, final summary) mechanically reflect partial scope.
+
+### Non-goals
+- No subjective mid-run scope re-litigation of *what to build*; NEVER #7 stays. Gate is counts, thresholds, and a recorded disposition only.
+- No change to external implementer dispatch or the one-shot contract (companion plan-size issue owns oversized plans).
+- No coverage measured against implementation-rewritable acceptance inputs (allowlists, baselines, skip markers).
+
+### Approach sketch
+- Add middle/high band thresholds to `python/larch/core/config.py` as `Final` with rationale comments; build coverage on the existing untouched-firm-heading probe, materialized at Step 0.
+- Persist a durable scope-disposition artifact (frozen dataclass -> tmpdir KV wire file via `larch.io` + run log); `proceed-partial` | `bail-rescope`, never a silent default.
+- High band and/or non-empty `todos_left` park the run on an operator `AskUserQuestion` (proceed-partial / bail-rescope) that waits indefinitely and re-fires (no time-out, no unattended default).
+- `ship pre-driver` refuses when a disposition is required but unrecorded; `proceed-partial` rewrites PR body (`Part of #N` + deferred inventory), suppresses `[DONE]`, adds the final-summary plan-coverage line, and auto-files a cross-linked follow-up via `/issue`.
+
+### Surfaces in scope
+- `python/larch/core/config.py`; `python/larch/implement/dispatch_step2.py` + `dispatch_manifest.py` (coverage/band/`todos_left`).
+- Step 5 panel composition (forced plan-fidelity finder); `ship pre-driver`; PR-body and final-report composers; `[DONE]` rename.
+- New scope-disposition module + follow-up filing; `docs/workflow-lifecycle.md`; pinning tests across dispatch, panel-composition, PR-body, final-report.
+
+### Open questions
+- Exact firm-heading set vs the existing probe (NEW/UPDATED/REWRITTEN firm; MAY_UPDATE conditional/excluded) — resolve in drafting.
+- Which `/implement` step hosts the disposition prompt + artifact write (Step 2 vs a dedicated pre-ship gate) — resolve in drafting.

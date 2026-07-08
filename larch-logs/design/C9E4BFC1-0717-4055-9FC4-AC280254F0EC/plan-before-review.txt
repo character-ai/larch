@@ -1,0 +1,387 @@
+## Goal
+
+Prevent `/implement` from declaring success when firm plan work remains undone.
+
+Use the existing Step 2 untouched-firm-heading probe as the source of truth. Add `todos_left` as an independent trigger. Keep the gate mechanical: counts, thresholds, and recorded disposition only.
+
+## Approach
+
+1. Add threshold constants in `python/larch/core/config.py`.
+
+   - Middle band: untouched firm headings >= 20% of firm headings OR >= 10 headings.
+   - High band: untouched firm headings >= 50% of firm headings OR >= 30 headings.
+   - Add comments with the incident rationale.
+   - Keep `### MAY_UPDATE:` excluded.
+
+2. Add a scope-disposition Python module.
+
+   - Define frozen dataclasses for:
+     - plan coverage summary
+     - disposition requirement
+     - recorded disposition
+   - Store tmpdir wire files through `larch.io`:
+     - `plan-coverage.env`
+     - `plan-coverage-untouched.txt`
+     - `plan-coverage-todos-left.md`
+     - `scope-disposition.env`
+     - `scope-disposition.md`
+   - Reject embedded newlines in KV values.
+   - Redact content before any GitHub or run-log surface.
+
+3. Upgrade Step 2 coverage output.
+
+   - In `dispatch_step2.py`, compute:
+     - total firm heading paths
+     - touched firm heading paths
+     - untouched firm heading paths
+     - untouched percent
+     - band: `advisory`, `middle`, `high`
+     - `todos_left` count and bounded text
+   - Persist this before emitting `STATUS=complete`.
+   - Preserve existing warning KVs for compatibility.
+   - Add new KVs only additively, such as:
+     - `PLAN_COVERAGE_TOTAL`
+     - `PLAN_COVERAGE_TOUCHED`
+     - `PLAN_COVERAGE_UNTOUCHED`
+     - `PLAN_COVERAGE_UNTOUCHED_PERCENT`
+     - `PLAN_COVERAGE_BAND`
+     - `PLAN_COVERAGE_DISPOSITION_REQUIRED`
+     - `PLAN_COVERAGE_FILE`
+     - `PLAN_COVERAGE_UNTOUCHED_FILE`
+     - `TODOS_LEFT_COUNT`
+     - `TODOS_LEFT_FILE`
+   - Treat non-empty `todos_left` on `STATUS=complete` as `PLAN_COVERAGE_DISPOSITION_REQUIRED=true` even with full file coverage.
+
+4. Prompt for disposition in `/implement` Step 2 when required.
+
+   - Update `skills/implement/SKILL.md` after Step 2 envelope validation and before Step 3.
+   - If `PLAN_COVERAGE_DISPOSITION_REQUIRED=true`, ask the operator:
+     - `proceed-partial`
+     - `bail-rescope`
+   - Wait indefinitely.
+   - If the platform returns a no-response fallback, re-ask the same prompt. Do not default.
+   - Record only after a real answer.
+
+5. Implement disposition recording.
+
+   - `proceed-partial`:
+     - Create a follow-up issue with the untouched inventory and `todos_left`.
+     - Cross-link the tracking issue.
+     - Add a blocked-by relationship so the follow-up is blocked by the current tracking issue, or use the repo’s existing dependency helper if the direct relationship is unavailable.
+     - Record `FOLLOWUP_ISSUE_NUMBER` and URL.
+   - `bail-rescope`:
+     - Record the disposition.
+     - Route through Step 12d with a new safe bail reason such as `plan-scope-disposition-bail-rescope`.
+   - Both paths write the tmpdir artifact and run-log batch.
+
+6. Hard-gate ship.
+
+   - In `ship pre-driver`, check disposition requirements before seed and OOS filing.
+   - If high band or non-empty `todos_left` requires disposition and `scope-disposition.env` is missing or invalid:
+     - emit `NEXT_ACTION=halt-scope-disposition`
+     - return non-zero
+     - do not seed PR state
+     - do not create or update a PR
+   - Update Step 8 SKILL routing for `halt-scope-disposition` as a Tool Failure unless Step 2 already asked the operator. This keeps resume and manual tampering fail-closed.
+
+7. Force plan-fidelity finder on middle and high bands.
+
+   - Add a durable flag, for example `PLAN_FIDELITY_FORCED=true`, when the middle threshold trips.
+   - In Step 5 dispatch, inject `agents/reviewer-plan-fidelity.md` into every round when forced.
+   - Exempt this slot from reviewer pruning.
+   - Keep the existing additive Cursor/`auto` plan-fidelity lane, but ensure the forced finder exists even when ordinary tier pruning would drop rows.
+   - Pin tests for TRIVIAL, MODERATE, and HARD.
+
+8. Project partial scope into completion surfaces.
+
+   - PR body:
+     - For `proceed-partial`, use `Part of #N` instead of `Closes #N`.
+     - Add a bounded `## Deferred plan inventory` section with untouched headings, `todos_left`, and follow-up issue.
+   - Final summary:
+     - Add one line:
+       - `- **Plan coverage**: <touched>/<total> firm headings; disposition: <value>; follow-up #<N>`
+   - Tracking issue rename:
+     - Suppress `[DONE]` when disposition is `proceed-partial`.
+     - Do not close the tracking issue via closing keyword.
+   - Existing success outcomes may remain `DONE` in run summary if the run completed, but the plan-coverage line and `Part of` footer must make partial scope visible.
+
+9. Keep acceptance-gaming closed.
+
+   - Coverage reads the Step 0 materialized plan file, not tests, allowlists, skip files, or implementation-authored acceptance artifacts.
+   - Coverage compares firm heading paths to the actual working-tree touched paths captured before dispatcher commit.
+   - Do not use manifest `files_touched` as the coverage source, except for displaying coder-declared context if useful.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+Add plan-coverage gate thresholds and any new wire literal constants.
+
+Add rationale comments near the existing plan-size constants.
+
+### NEW: python/larch/implement/scope_disposition.py
+
+Add dataclasses and CLI entry points for:
+
+- computing and writing coverage artifacts
+- classifying middle/high/disposition-required state
+- recording `proceed-partial` or `bail-rescope`
+- rendering deferred inventory
+- filing the follow-up issue
+- validating disposition for ship pre-driver
+
+Use `larch.io` for KV reads/writes and atomic writes.
+
+### UPDATED: python/larch/cli.py
+
+Register new `implement scope-disposition ...` subcommands.
+
+Keep exit codes distinct:
+
+- usage: existing usage code
+- missing required disposition: needs-user-input or stalled-style code as appropriate
+- invalid persisted artifact: fail closed
+
+### UPDATED: python/larch/implement/dispatch_step2.py
+
+Replace the advisory-only uncovered count with the new coverage summary call.
+
+Keep existing `WARN_PLAN_FILES_UNTOUCHED=true` and count KVs.
+
+Emit additive coverage and `todos_left` KVs.
+
+Do not branch on advisory-only below-middle gaps.
+
+### UPDATED: python/larch/implement/dispatch_manifest.py
+
+Keep `todos_left` schema validation as a list.
+
+Add bounded sanitizer support if the disposition module consumes `todos_left` text.
+
+Do not change the external implementer manifest contract.
+
+### UPDATED: skills/implement/SKILL.md
+
+Update Step 2:
+
+- parse new additive KVs
+- ask the operator when disposition is required
+- wait indefinitely
+- re-ask on no-response platform fallback
+- call the disposition-recording CLI
+- route `bail-rescope` to Step 12d
+- continue to Step 3 only after `proceed-partial` records successfully
+
+Update Step 8 routing for `halt-scope-disposition`.
+
+### UPDATED: python/larch/implement/dispatch_ship.py
+
+Gate `ship_pre_driver_main` before seed and OOS filing.
+
+Refuse when disposition is required but not recorded.
+
+Emit `NEXT_ACTION=halt-scope-disposition`.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+Inject the forced plan-fidelity finder when the persisted coverage flag requires it.
+
+Ensure every Step 5 round includes it.
+
+Mark the row so pruning can preserve it.
+
+### UPDATED: python/larch/review/review_prune.py
+
+Exempt the forced plan-fidelity reviewer from pruning.
+
+Keep ordinary reviewers and existing additive plan-fidelity lane subject to current rules unless already exempt.
+
+### UPDATED: python/larch/core/external_defaults.py
+
+Add only if the forced slot needs a named slot helper outside `review_dispatch_panel.py`.
+
+Prefer no change if `review_dispatch_panel.py` can append the row directly from existing `agents/reviewer-plan-fidelity.md`.
+
+### UPDATED: python/larch/git/pr_body.py
+
+Add a `Part of #N` linker and deferred-inventory section support.
+
+Keep `Closes #N` behavior unchanged for full-scope runs.
+
+Ensure existing PR update paths do not re-add `Closes #N` over a partial-scope body.
+
+### UPDATED: python/larch/git/pr.py
+
+Use the new partial-scope linker when a `proceed-partial` disposition exists.
+
+Cover both new PR creation and existing PR body update.
+
+### UPDATED: python/larch/implement/ship.py
+
+Pass disposition context into PR body composition.
+
+Ensure PR create and PR update paths use `Part of` plus deferred inventory when partial.
+
+### UPDATED: python/larch/state/finalize.py
+
+Suppress `[DONE]` tracking issue rename when disposition is `proceed-partial`.
+
+Keep stalled rename behavior unchanged.
+
+### UPDATED: python/larch/report/final_report.py
+
+Read disposition and coverage artifacts.
+
+Pass a `plan_coverage_line` into the run-summary renderer.
+
+Ensure the final summary carries the line even on `proceed-partial` success.
+
+### UPDATED: python/larch/git/pr_body.py
+
+Extend `render_run_summary` to include an optional plan-coverage line.
+
+Keep the line absent for runs without coverage artifacts.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+Add a `scope-disposition` batch with a simple JSON or Markdown replace payload.
+
+Prefer JSON if the artifact is machine-consumed.
+
+### UPDATED: docs/workflow-lifecycle.md
+
+Document:
+
+- Step 2 coverage bands
+- operator disposition choices
+- `todos_left` as an independent trigger
+- Step 5 forced plan-fidelity finder
+- ship pre-driver hard gate
+- `Part of #N` and `[DONE]` suppression on partial scope
+
+### UPDATED: docs/issue-anchored-plan.md
+
+Clarify that firm-heading coverage uses the Step 0 materialized plan.
+
+Clarify that `### MAY_UPDATE:` stays excluded from this gate.
+
+### UPDATED: docs/run-logs.md
+
+Document the new scope-disposition run-log batch and final-summary plan-coverage projection.
+
+### UPDATED: docs/review-agents.md
+
+Document that the plan-fidelity finder is forced and prune-exempt when the middle plan-coverage band trips.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+Add tests for:
+
+- middle band emits forced-review flag
+- high band emits disposition required
+- `todos_left` emits disposition required even with complete file coverage
+- `MAY_UPDATE` remains excluded
+- below-middle behavior remains advisory
+- run 0BE6E-like counts, 61 untouched out of 85, require disposition
+
+### UPDATED: python/tests/review/test_review_dispatch_panel.py
+
+Add or extend tests proving forced plan-fidelity appears in every Step 5 round across tiers.
+
+Assert it remains present after pruning.
+
+### UPDATED: python/tests/review/test_review_prune.py
+
+Add pruning tests for the forced plan-fidelity exemption.
+
+### UPDATED: python/tests/implement/test_ship_pre_driver.py
+
+Add tests proving pre-driver refuses when disposition is required but missing.
+
+Add tests proving it proceeds when `proceed-partial` is recorded.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+Add tests for:
+
+- `Part of #N` replaces closing keyword
+- deferred inventory section renders
+- existing PR update does not reinsert `Closes #N`
+- full-scope runs still use `Closes #N`
+
+### UPDATED: python/tests/state/test_finalize.py
+
+Add tests that `proceed-partial` suppresses `[DONE]` rename.
+
+Keep stalled and normal done paths unchanged.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+Add tests for the plan-coverage line in final summary.
+
+If no dedicated file exists, place focused tests in `python/tests/git/test_pr_body.py` near current final-summary tests.
+
+### MAY_UPDATE: skills/implement/scripts/test-implement-fence-shape.sh
+
+Only update if SKILL.md Bash fence shape changes.
+
+If updated, adjust `EXPECTED_OLD` / `EXPECTED_NEW`.
+
+## Edge cases
+
+- Empty firm-heading list: no gate; keep advisory behavior.
+- `todos_left` with non-string entries: count entries, render only safe string forms.
+- Plan read failure or git probe failure: keep existing warning-only suppression, because the gate lacks a reliable denominator.
+- Existing PR on resume: update footer from `Closes` to `Part of` if disposition is partial.
+- Follow-up issue filing fails: do not record `proceed-partial`; keep the run parked or route to stall.
+- `bail-rescope`: do not create a PR.
+- Repo unavailable or forked dry-run: fail closed for required disposition unless the existing flow cannot publish, then record a local-only disposition and surface it in final summary.
+
+## Failure modes
+
+- **Artifact tampering**: ship pre-driver validates `scope-disposition.env` against current coverage artifact and rejects mismatch.
+- **Dropped `todos_left`**: Step 2 writes `todos_left` into the coverage artifact before sanitizing manifest output.
+- **Reviewer pruning removes finder**: forced slot carries a prune-exempt marker and has unit coverage.
+- **Closing keyword leak**: PR creation and update both use the same disposition-aware linker.
+- **Silent `[DONE]` rename**: finalize reads the disposition artifact directly and skips done rename on partial scope.
+
+## Testing strategy
+
+Run focused tests only for changed files first:
+
+- `python3 -m pytest python/tests/implement/test_implement_dispatch.py`
+- `python3 -m pytest python/tests/review/test_review_dispatch_panel.py python/tests/review/test_review_prune.py`
+- `python3 -m pytest python/tests/implement/test_ship_pre_driver.py`
+- `python3 -m pytest python/tests/git/test_pr_body.py`
+- `python3 -m pytest python/tests/state/test_finalize.py`
+- `python3 -m pytest python/tests/report/test_final_report.py` if created or already present
+
+Then run required aggregates:
+
+- `make py-lint`
+- `make py-test`
+- affected `test-harnesses` shards, including `scripts/test-implement-fence-shape.sh` if SKILL.md fence shape changes
+
+## Acceptance mapping
+
+1. 61 untouched of 85 firm headings plus non-empty `todos_left` cannot reach PR without disposition.
+   - Covered by Step 2 and pre-driver tests.
+
+2. `proceed-partial` PR body uses `Part of`, suppresses `[DONE]`, and final summary has plan coverage.
+   - Covered by PR body, finalize, and final-report tests.
+
+3. Forced plan-fidelity finder appears every Step 5 round and is prune-exempt.
+   - Covered by dispatch-panel and prune tests.
+
+4. Thresholds live in config with comments.
+   - Covered by code review and direct imports in tests.
+
+5. Docs explain the disposition flow.
+   - Covered by docs updates.
+
+difficulty: HARD
+diff_added: 1320
+diff_deleted: 130
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 1450

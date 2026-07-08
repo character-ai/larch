@@ -1,0 +1,1 @@
+Plan adds a mechanical `/implement` scope-disposition gate. It persists Step 2 plan-coverage and `todos_left`, forces plan-fidelity review on middle gaps, blocks ship on high gaps or todos until an operator records `proceed-partial` or `bail-rescope`, and projects partial scope into PR, final summary, and tracking rename behavior.
