@@ -1,0 +1,19 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	2	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	27884	6971	13559	3390	14325	3582		0	0
+design Step 3	phase1	2	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	21639	5410	13271	3318	8368	2092		0	0
+design Step 3	phase1	2	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	27875	6969	13550	3388	14325	3582		0	0
+design Step 3	phase1	2	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	21630	5408	13262	3316	8368	2092		0	0
+design Step 3	phase1	2	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	27899	6975	13574	3394	14325	3582		0	0
+design Step 3	phase1	2	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	21654	5414	13286	3322	8368	2092		0	0
+design Step 3	phase1	2	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	27897	6975	13572	3393	14325	3582		0	0
+design Step 3	phase1	2	dyn-codex-plan-bgjob-owner-regression	plan-review	codex	dyn-codex-plan-bgjob-owner-regression.txt	21980	5495	13137	3285	8843	2211		0	0
+design Step 3	phase1	2	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	21652	5413	13284	3321	8368	2092		0	0
+design Step 3	phase1	2	dyn-cursor-plan-bgjob-owner-regression	plan-review	cursor	dyn-cursor-plan-bgjob-owner-regression.txt	28225	7057	13425	3357	14800	3700		0	0
+review Step 2	phase1	2	aggregator	aggregator	codex	aggregator-output.txt	17904	4476	4607	1152	13297	3325	agents/orchestrator-aggregator.md	4363	1091
+review Step 2	phase2	2	aggregator	aggregator	cursor	aggregator-output-phase2.txt	17904	4476	4607	1152	13297	3325	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	2	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	19362	4841	9137	2285	10225	2557		0	0
+design Step 3	phase1	2	voter-3	voter	codex	codex-pragmatism-vote-output.txt	19362	4841	9137	2285	10225	2557		0	0
+design Step 3	phase1	2	voter-1	voter	codex	codex-validity-vote-output.txt	19362	4841	9137	2285	10225	2557		0	0
+design Step 3	phase2	2	voter-3	voter	cursor	codex-pragmatism-vote-output-phase2.txt	19362	4841	9137	2285	10225	2557		0	0
+design Step 3	phase2	2	voter-2	voter	cursor	codex-plan-fidelity-vote-output-phase2.txt	19362	4841	9137	2285	10225	2557		0	0
+design Step 3	phase2	2	voter-1	voter	cursor	codex-validity-vote-output-phase2.txt	19362	4841	9137	2285	10225	2557		0	0
