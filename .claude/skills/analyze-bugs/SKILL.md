@@ -15,7 +15,7 @@ Dev-only workflow for verifying whether recent `[BUG]` issues were fixed in `mai
 
 Parse `$ARGUMENTS` and forward only these flags:
 
-- `-n COUNT`, `--count COUNT`: number of newest `[BUG]` title-prefix issues to select. Default: `200`.
+- `-n COUNT`, `--count COUNT`: number of newest issues whose title is `[BUG]` after stripping known lifecycle prefixes and matching case-insensitively. Default: `200`.
 - `--deep-max M`: maximum deep verifier tasks. Default: `30`.
 - `--deep-model sonnet|opus|fable`: model alias for deep checks. Default: `sonnet`.
 - `--refresh`: ignore matching ledger skips for this run.
