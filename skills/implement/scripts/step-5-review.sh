@@ -120,8 +120,12 @@ try:
 except OSError:
     print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
     raise SystemExit(2)
-if rows.get("BGJOB_RC") == "0" and rows.get("STEP5_REVIEW_STATUS") and required_keys.issubset(rows):
+status = rows.get("STEP5_REVIEW_STATUS", "")
+if rows.get("BGJOB_RC") == "0" and status and required_keys.issubset(rows):
     print("complete")
+    raise SystemExit(0)
+if status == "stall" and required_keys.issubset(rows):
+    print("stall")
     raise SystemExit(0)
 print("stale")
 raise SystemExit(1)
@@ -199,13 +203,13 @@ if [ "$result_env_rc" -eq 2 ]; then
     exit 2
 fi
 if [ "$registry_state" = live ]; then
-    if [ "$result_env_state" != complete ]; then
+    if [ "$result_env_state" != complete ] && [ "$result_env_state" != stall ]; then
         rm -f "$RESULT_ENV" 2>/dev/null || true
     fi
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
     exit $?
 fi
-if [ "$result_env_state" = complete ]; then
+if [ "$result_env_state" = complete ] || [ "$result_env_state" = stall ]; then
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
     exit $?
 fi

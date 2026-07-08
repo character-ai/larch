@@ -127,6 +127,22 @@ if sys.argv[1:3] == ["bgjob", "wait"]:
         ]
         print("\n".join(rows))
         sys.exit(0)
+    if mode == "done-stall":
+        rows = [
+            "BGJOB_STATUS=DONE",
+            "BGJOB_RC=2",
+            "STEP5_REVIEW_STATUS=stall",
+            "STALL_TRACKING=true",
+            "STALL_REASON=intentional-stall",
+            "ROUNDS_COMPLETED=1",
+            "FINAL_ROUND_NUM=1",
+            "FINAL_REVIEW_AND_FIX_STATUS=stall",
+            "CODER_STATUS=",
+            "FILES_CHANGED_HINT=",
+            "EFFECTIVE_ROUND_CAP=2",
+        ]
+        print("\n".join(rows))
+        sys.exit(0)
     print("BGJOB_STATUS=WAIT")
     print("ELAPSED_S=0")
     sys.exit(0)
@@ -176,6 +192,23 @@ EFFECTIVE_ROUND_CAP=2
 EOF
 }
 
+seed_stall_result_env() {
+  local dir="$1" path="$1/bgjob/implement-step5-review.result.env"
+  mkdir -p "$dir/bgjob"
+  cat >"$path" <<'EOF'
+BGJOB_RC=2
+STEP5_REVIEW_STATUS=stall
+STALL_TRACKING=true
+STALL_REASON=intentional-stall
+ROUNDS_COMPLETED=1
+FINAL_ROUND_NUM=1
+FINAL_REVIEW_AND_FIX_STATUS=stall
+CODER_STATUS=
+FILES_CHANGED_HINT=
+EFFECTIVE_ROUND_CAP=2
+EOF
+}
+
 D=$(mktemp -d "${TMPDIR:-/tmp}/test-step5-review.XXXXXX")
 trap 'rm -rf "$D"' EXIT
 FAKE="$D/plugin"
@@ -202,6 +235,15 @@ STEP5_REGISTRY_MODE=missing STEP5_WAIT_MODE=done-ok CLAUDE_PLUGIN_ROOT="$FAKE" I
 grep -Fq 'BGJOB_STATUS=DONE' "$IMPL/stdout.log" || fail 'canonical result env must rejoin through bgjob wait'
 [ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail 'canonical result env must not relaunch bgjob'
 pass 'Step 5 wrapper reuses canonical completed result envs without relaunching'
+
+IMPL="$D/canonical-stall-result"
+make_impl "$IMPL" "$FAKE"
+seed_stall_result_env "$IMPL"
+STEP5_REGISTRY_MODE=missing STEP5_WAIT_MODE=done-stall CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "canonical stall result rejoin wrapper failed: $(cat "$IMPL/stderr.log")"
+grep -Fq 'BGJOB_STATUS=DONE' "$IMPL/stdout.log" || fail 'canonical stall result env must rejoin through bgjob wait'
+grep -Fq 'BGJOB_RC=2' "$IMPL/stdout.log" || fail 'canonical stall result env must preserve non-zero rc'
+[ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail 'canonical stall result env must not relaunch bgjob'
+pass 'Step 5 wrapper reuses canonical stall result envs without relaunching'
 
 IMPL="$D/stale-result"
 make_impl "$IMPL" "$FAKE"
