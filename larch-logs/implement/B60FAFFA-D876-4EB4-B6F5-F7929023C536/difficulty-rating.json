@@ -1,0 +1,22 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "MODERATE",
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "Multi-file migration replacing PID-based marker detection with identity-checked bgjob registry inspection across state classifiers, state mgmt, dispatch_step18, and tests. Integration risk if registry API contract or enum slugs shift, but scope is bounded and tests are direct.",
+  "round_cap": 2,
+  "schema_version": 1
+}
