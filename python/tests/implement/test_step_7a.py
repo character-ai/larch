@@ -65,6 +65,7 @@ def test_step7a_bgjob_launch_starts_transport(tmp_path: Path, monkeypatch: pytes
     assert rc == 0
     assert capsys.readouterr().out == "BGJOB_STATUS=STARTED STEP=implement-step7a PGID=123\n"
     start = calls[0]
+    assert start[:2] == ("bgjob", "start")
     assert start[:8] == (
         "bgjob",
         "start",
@@ -75,6 +76,7 @@ def test_step7a_bgjob_launch_starts_transport(tmp_path: Path, monkeypatch: pytes
         "--budget-s",
         "1800",
     )
+    assert "--owner-pid" not in start
     assert "--merge-result-env" in start
     assert str(tmp_path / "bgjob" / "implement-step7a.merge.env") in start
     assert "--bgjob-merge-result-env" in start

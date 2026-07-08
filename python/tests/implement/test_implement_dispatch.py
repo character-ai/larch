@@ -171,6 +171,74 @@ def _clear_rater_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
+@pytest.mark.parametrize(
+    (
+        "case_name",
+        "script_relpath",
+        "slug_literal",
+        "step_arg_literal",
+        "sentinel_literal",
+    ),
+    [
+        (
+            "step3",
+            Path("skills/implement/scripts/run-step-checks.sh"),
+            'STEP="implement-step3-checks"',
+            '--step "$STEP"',
+            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"',
+        ),
+        (
+            "step5",
+            Path("skills/implement/scripts/step-5-review.sh"),
+            "implement-step5-review",
+            "--step implement-step5-review",
+            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"',
+        ),
+        (
+            "step5-resume",
+            Path("skills/implement/scripts/step-5-resume.sh"),
+            'STEP="implement-step5-resume"',
+            '--step "$STEP"',
+            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-resume-terminal"',
+        ),
+        (
+            "step6",
+            Path("skills/implement/scripts/step-6-entry.sh"),
+            'STEP="implement-step6-checks"',
+            '--step "$STEP"',
+            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal"',
+        ),
+        (
+            "step8",
+            Path("skills/implement/scripts/step-8-ship.sh"),
+            'STEP="implement-step8-ship"',
+            '--step "$STEP"',
+            None,
+        ),
+    ],
+)
+def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
+    case_name: str,
+    script_relpath: Path,
+    slug_literal: str,
+    step_arg_literal: str,
+    sentinel_literal: str | None,
+) -> None:
+    _ = case_name
+    root: Path = Path(__file__).resolve().parents[3]
+    source: str = (root / script_relpath).read_text(encoding="utf-8")
+
+    assert "bgjob start" in source
+    assert slug_literal in source
+    assert step_arg_literal in source
+    assert '--owner-pid "${LARCH_CLAUDE_PID:-$PPID}"' in source
+    assert '--merge-result-env "$MERGE_RESULT_ENV"' in source
+    if sentinel_literal is None:
+        assert "--sentinel" not in source
+    else:
+        assert sentinel_literal in source
+
+
 def test_resolve_implement_rater_model_prefers_codex_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     tmp = _session(tmp_path)
     _clear_rater_model_env(monkeypatch)
