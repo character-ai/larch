@@ -23,6 +23,7 @@ _SUBPROCESS_RUN = subprocess.run
 DESIGN_BGJOB_STEP3_REVIEW = "design-step3-review"
 DESIGN_BGJOB_STEP4_TAIL = "design-step4-tail"
 DESIGN_BGJOB_STEP5C = "design-step5c"
+DESIGN_BGJOB_STEP_FINAL_SUMMARY = "design-step-final-summary"
 
 
 def design_bgjob_result_env_path(*, design_tmpdir: Path, step: str) -> Path:

@@ -32,6 +32,7 @@ from larch.design import (
     design_terminal,
 )
 from larch.design import design_pause
+from larch.design.design_core import DESIGN_BGJOB_STEP_FINAL_SUMMARY
 from larch.design import design_publish
 from larch.core import logging_util
 from larch.core import proc as proc_module
@@ -210,10 +211,10 @@ def test_design_read_result_env_prefers_step4_tail_bgjob_result(tmp_path: Path) 
 def test_design_read_result_env_prefers_final_summary_bgjob_result(tmp_path: Path) -> None:
     legacy = tmp_path / ".design-step-final-summary-result.env"
     output = tmp_path / "out.env"
-    bgjob = tmp_path / "bgjob" / "design-step-final-summary.result.env"
+    bgjob = tmp_path / "bgjob" / f"{DESIGN_BGJOB_STEP_FINAL_SUMMARY}.result.env"
     bgjob.parent.mkdir()
     legacy.write_text("FINAL_SUMMARY_PATH=/tmp/legacy-summary.md\n", encoding="utf-8")
-    bgjob.write_text("BGJOB_RC=0\nSTEP=design-step-final-summary\nFINAL_SUMMARY_PATH=/tmp/bgjob-summary.md\n", encoding="utf-8")
+    bgjob.write_text(f"BGJOB_RC=0\nSTEP={DESIGN_BGJOB_STEP_FINAL_SUMMARY}\nFINAL_SUMMARY_PATH=/tmp/bgjob-summary.md\n", encoding="utf-8")
     result = subprocess.run(
         [
             sys.executable,

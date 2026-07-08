@@ -24,6 +24,7 @@ from larch.core.ctx import Ctx
 from larch.state import stall_recovery
 
 from larch.design.design_core import (
+    DESIGN_BGJOB_STEP_FINAL_SUMMARY,
     _CoreUsageError,
     _append_execution_issue,
     design_write_merge_env,
@@ -195,7 +196,7 @@ def _preferred_bgjob_result_input(input_path: Path) -> Path | None:
     step_by_legacy_name = {
         ".design-step4-tail-result.env": "design-step4-tail",
         ".design-step5c-status.env": "design-step5c",
-        ".design-step-final-summary-result.env": "design-step-final-summary",
+        ".design-step-final-summary-result.env": DESIGN_BGJOB_STEP_FINAL_SUMMARY,
     }
     step = step_by_legacy_name.get(input_path.name)
     if step is None:
