@@ -20,7 +20,6 @@ from larch.core.ctx import Ctx
 
 from larch.design.design_core import (
     _CoreUsageError,
-    _bg_wait_marker_context,
     _capture_contract_stream_to_paths,
     _core_diagnostic,
     _core_print_exc,
@@ -28,6 +27,7 @@ from larch.design.design_core import (
     _read_env_value,
     _validate_design_tmpdir_arg,
     _append_failure,
+    design_write_merge_env,
 )
 from larch.design.design_session import (
     _call_pause_save,
@@ -304,19 +304,20 @@ def _step5c_write_status(
     publish_ok: str,
     cleanup_eligible: bool,
 ) -> None:
-    text = "\n".join(
-        [
-            f"PLAN_WRITE_OK={plan_write_ok}",
-            f"PUBLISH_OK={publish_ok}",
-            f"STANDALONE_HEAVY_FAILED={ctx.str_value(key='STANDALONE_HEAVY_FAILED', default='')}",
-            f"SESSION_ID={ctx.session_id}",
-            f"PUBLISH_RC={publish_rc}",
-            f"PUBLISH_STDOUT_FALLBACK={'true' if publish_stdout_fallback else 'false'}",
-            f"CLEANUP_ELIGIBLE={'true' if cleanup_eligible else 'false'}",
-            "",
-        ]
+    rows: list[tuple[str, str]] = [
+        ("PLAN_WRITE_OK", plan_write_ok),
+        ("PUBLISH_OK", publish_ok),
+        ("STANDALONE_HEAVY_FAILED", ctx.str_value(key="STANDALONE_HEAVY_FAILED", default="")),
+        ("SESSION_ID", ctx.session_id),
+        ("PUBLISH_RC", str(publish_rc)),
+        ("PUBLISH_STDOUT_FALLBACK", "true" if publish_stdout_fallback else "false"),
+        ("CLEANUP_ELIGIBLE", "true" if cleanup_eligible else "false"),
+    ]
+    design_write_merge_env(
+        path=design_tmpdir / ".design-step5c-status.env",
+        design_tmpdir=design_tmpdir,
+        rows=rows,
     )
-    (design_tmpdir / ".design-step5c-status.env").write_text(text, encoding="utf-8")
 
 
 def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
@@ -566,125 +567,121 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
 
         _reset_step5c_terminal_state(design_tmpdir)
 
-        with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step5c", claude_pid=parsed.claude_pid):
-            publish_args = [
-                "--design-tmpdir",
-                str(design_tmpdir),
-                "--issue",
-                ctx.issue_number,
-                "--session-id",
-                ctx.session_id,
-                "--claude-pid",
-                ctx.claude_pid,
-            ]
-            if ctx.repo:
-                publish_args.extend(["--repo", ctx.repo])
-            if parsed.skip_validate:
-                publish_args.append("--skip-validate")
+        publish_args = [
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--issue",
+            ctx.issue_number,
+            "--session-id",
+            ctx.session_id,
+            "--claude-pid",
+            ctx.claude_pid,
+        ]
+        if ctx.repo:
+            publish_args.extend(["--repo", ctx.repo])
+        if parsed.skip_validate:
+            publish_args.append("--skip-validate")
 
-            publish_fd, publish_stdout_name = tempfile.mkstemp(prefix="larch-publish-stdout.", dir=os.environ.get("TMPDIR") or None)
-            os.close(publish_fd)
-            publish_stdout_file = Path(publish_stdout_name)
-            publish_stderr_fd, publish_stderr_name = tempfile.mkstemp(prefix="larch-publish-stderr.", dir=os.environ.get("TMPDIR") or None)
-            os.close(publish_stderr_fd)
-            publish_stderr_file = Path(publish_stderr_name)
-            publish_rc = 5
-            try:
-                publish_rc = _capture_contract_stream_to_paths(
-                    _step5c_invoke_publish_core,
-                    publish_stdout_file,
-                    publish_stderr_file,
-                    publish_args,
-                )
+        publish_fd, publish_stdout_name = tempfile.mkstemp(prefix="larch-publish-stdout.", dir=os.environ.get("TMPDIR") or None)
+        os.close(publish_fd)
+        publish_stdout_file = Path(publish_stdout_name)
+        publish_stderr_fd, publish_stderr_name = tempfile.mkstemp(prefix="larch-publish-stderr.", dir=os.environ.get("TMPDIR") or None)
+        os.close(publish_stderr_fd)
+        publish_stderr_file = Path(publish_stderr_name)
+        publish_rc = 5
+        try:
+            publish_rc = _capture_contract_stream_to_paths(
+                _step5c_invoke_publish_core,
+                publish_stdout_file,
+                publish_stderr_file,
+                publish_args,
+            )
 
-                if publish_rc == 2 or publish_rc not in {0, 1, 3, 4}:
-                    _step5c_write_status(
-                        design_tmpdir=design_tmpdir,
-                        ctx=ctx,
-                        publish_rc=publish_rc,
-                        publish_stdout_fallback=False,
-                        plan_write_ok="",
-                        publish_ok="",
-                        cleanup_eligible=False,
-                    )
-                    _step5c_stage_failed_publish_tail(design_tmpdir=design_tmpdir, plugin_root=plugin_root, publish_rc=publish_rc)
-                    failed_tail_summary_path = str(design_tmpdir / "final-summary.md")
-                    central_publish_ok = _step5c_try_central_failed_publish_tail(
-                        design_tmpdir=design_tmpdir,
-                        ctx=ctx,
-                        publish_stdout_file=publish_stdout_file,
-                    )
-                    if central_publish_ok or _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome="failed-publish-tail", final_summary_path=failed_tail_summary_path):
-                        _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=failed_tail_summary_path)
-                    _emit_report_gate_sidecars_from_disk(design_tmpdir)
-                    if publish_rc == 2:
-                        _core_diagnostic("**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**")
-                    else:
-                        _core_diagnostic(f"**⚠ Step 5c: design-publish.sh failed (exit {publish_rc}); aborting /design**")
-                    return 1, []
-                if publish_rc == 3:
-                    _core_diagnostic("**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**")
-
-                rre_rc, result_env, stdout_fallback = _step5c_safe_publish_env(design_tmpdir=design_tmpdir, publish_rc=publish_rc, publish_stdout_file=publish_stdout_file)
-                if rre_rc != 0:
-                    _core_diagnostic("**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**")
-                    return 1, []
-                final_summary_path = result_env.get("FINAL_SUMMARY_PATH", "")
-                summary_emit_path = final_summary_path or str(design_tmpdir / "final-summary.md")
-                plan_write_ok = result_env.get("PLAN_WRITE_OK", "")
-                publish_ok = result_env.get("PUBLISH_OK", "")
-                if plan_write_ok == "true":
-                    _touch(design_tmpdir / ".completed" / "step-5c")
-                cleanup_eligible = (
-                    plan_write_ok == "true"
-                    and ctx.str_value(key="STANDALONE_HEAVY_FAILED", default="false") != "true"
-                    and (not ctx.session_id or publish_ok == "true")
-                )
+            if publish_rc == 2 or publish_rc not in {0, 1, 3, 4}:
                 _step5c_write_status(
                     design_tmpdir=design_tmpdir,
                     ctx=ctx,
                     publish_rc=publish_rc,
-                    publish_stdout_fallback=stdout_fallback,
-                    plan_write_ok=plan_write_ok,
-                    publish_ok=publish_ok,
-                    cleanup_eligible=cleanup_eligible,
+                    publish_stdout_fallback=False,
+                    plan_write_ok="",
+                    publish_ok="",
+                    cleanup_eligible=False,
                 )
-                rows = [
-                    ("PUBLISH_RC", str(publish_rc)),
-                    ("PLAN_WRITE_OK", plan_write_ok),
-                    ("PUBLISH_OK", publish_ok),
-                    ("VALIDATE_STATUS", result_env.get("VALIDATE_STATUS", "")),
-                    ("VALIDATE_DEFECT_COUNT", result_env.get("VALIDATE_DEFECT_COUNT", "")),
-                    ("VALIDATE_SKIPPED_COUNT", result_env.get("VALIDATE_SKIPPED_COUNT", "")),
-                    ("VALIDATE_UNSAFE_TOKEN_COUNT", result_env.get("VALIDATE_UNSAFE_TOKEN_COUNT", "")),
-                    ("VALIDATE_MISSING_SCRIPT_COUNT", result_env.get("VALIDATE_MISSING_SCRIPT_COUNT", "")),
-                    ("VALIDATE_LOG_FILE", result_env.get("VALIDATE_LOG_FILE", "")),
-                    ("PUBLISH_REFUSE_REASON", result_env.get("PUBLISH_REFUSE_REASON", "")),
-                    ("FINAL_SUMMARY_PATH", final_summary_path),
-                    ("UPSERT_STATUS", result_env.get("UPSERT_STATUS", "")),
-                    ("ARCHITECTURE_SOURCE", result_env.get("ARCHITECTURE_SOURCE", "")),
-                    ("CLEANUP_ELIGIBLE", "true" if cleanup_eligible else "false"),
-                ]
-                _emit_core_kvs(rows)
-                if publish_rc == 4:
-                    logging_util.emit_kv(key="STEP5C_STATUS", value="validator-defects")
-                    _emit_report_gate_sidecars_from_disk(design_tmpdir)
-                    return 0, []
-                outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
-                if _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome=outcome, final_summary_path=summary_emit_path, plan_write_ok=plan_write_ok):
-                    _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=summary_emit_path)
+                _step5c_stage_failed_publish_tail(design_tmpdir=design_tmpdir, plugin_root=plugin_root, publish_rc=publish_rc)
+                failed_tail_summary_path = str(design_tmpdir / "final-summary.md")
+                central_publish_ok = _step5c_try_central_failed_publish_tail(
+                    design_tmpdir=design_tmpdir,
+                    ctx=ctx,
+                    publish_stdout_file=publish_stdout_file,
+                )
+                if central_publish_ok or _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome="failed-publish-tail", final_summary_path=failed_tail_summary_path):
+                    _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=failed_tail_summary_path)
+                _emit_report_gate_sidecars_from_disk(design_tmpdir)
+                if publish_rc == 2:
+                    _core_diagnostic("**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**")
+                else:
+                    _core_diagnostic(f"**⚠ Step 5c: design-publish.sh failed (exit {publish_rc}); aborting /design**")
+                return 1, []
+            if publish_rc == 3:
+                _core_diagnostic("**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**")
+
+            rre_rc, result_env, stdout_fallback = _step5c_safe_publish_env(design_tmpdir=design_tmpdir, publish_rc=publish_rc, publish_stdout_file=publish_stdout_file)
+            if rre_rc != 0:
+                _core_diagnostic("**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**")
+                return 1, []
+            final_summary_path = result_env.get("FINAL_SUMMARY_PATH", "")
+            summary_emit_path = final_summary_path or str(design_tmpdir / "final-summary.md")
+            plan_write_ok = result_env.get("PLAN_WRITE_OK", "")
+            publish_ok = result_env.get("PUBLISH_OK", "")
+            if plan_write_ok == "true":
+                _touch(design_tmpdir / ".completed" / "step-5c")
+            cleanup_eligible = (
+                plan_write_ok == "true"
+                and ctx.str_value(key="STANDALONE_HEAVY_FAILED", default="false") != "true"
+                and (not ctx.session_id or publish_ok == "true")
+            )
+            rows = [
+                ("PUBLISH_RC", str(publish_rc)),
+                ("PLAN_WRITE_OK", plan_write_ok),
+                ("PUBLISH_OK", publish_ok),
+                ("STANDALONE_HEAVY_FAILED", ctx.str_value(key="STANDALONE_HEAVY_FAILED", default="")),
+                ("SESSION_ID", ctx.session_id),
+                ("PUBLISH_STDOUT_FALLBACK", "true" if stdout_fallback else "false"),
+                ("VALIDATE_STATUS", result_env.get("VALIDATE_STATUS", "")),
+                ("VALIDATE_DEFECT_COUNT", result_env.get("VALIDATE_DEFECT_COUNT", "")),
+                ("VALIDATE_SKIPPED_COUNT", result_env.get("VALIDATE_SKIPPED_COUNT", "")),
+                ("VALIDATE_UNSAFE_TOKEN_COUNT", result_env.get("VALIDATE_UNSAFE_TOKEN_COUNT", "")),
+                ("VALIDATE_MISSING_SCRIPT_COUNT", result_env.get("VALIDATE_MISSING_SCRIPT_COUNT", "")),
+                ("VALIDATE_LOG_FILE", result_env.get("VALIDATE_LOG_FILE", "")),
+                ("PUBLISH_REFUSE_REASON", result_env.get("PUBLISH_REFUSE_REASON", "")),
+                ("FINAL_SUMMARY_PATH", final_summary_path),
+                ("UPSERT_STATUS", result_env.get("UPSERT_STATUS", "")),
+                ("ARCHITECTURE_SOURCE", result_env.get("ARCHITECTURE_SOURCE", "")),
+                ("CLEANUP_ELIGIBLE", "true" if cleanup_eligible else "false"),
+            ]
+            design_write_merge_env(
+                path=design_tmpdir / ".design-step5c-status.env",
+                design_tmpdir=design_tmpdir,
+                rows=rows,
+            )
+            _emit_core_kvs(rows)
+            if publish_rc == 4:
+                logging_util.emit_kv(key="STEP5C_STATUS", value="validator-defects")
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 return 0, []
-            finally:
-                with contextlib.suppress(FileNotFoundError):
-                    publish_stdout_file.unlink()
-                with contextlib.suppress(FileNotFoundError):
-                    publish_stderr_file.unlink()
-                # Write the terminal sentinel before leaving the bg-wait marker
-                # context (whose `with` exit removes `.bg-wait-active`), so
-                # Step 6 never observes both absent while step5c finalizes. The
-                # outer `finally` stays a backstop for early exits (#5695).
-                _finalize_step5c_terminal_sentinel(design_tmpdir, write_terminal_sentinel=write_terminal_sentinel)
+            outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
+            if _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome=outcome, final_summary_path=summary_emit_path, plan_write_ok=plan_write_ok):
+                _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=summary_emit_path)
+            _emit_report_gate_sidecars_from_disk(design_tmpdir)
+            return 0, []
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                publish_stdout_file.unlink()
+            with contextlib.suppress(FileNotFoundError):
+                publish_stderr_file.unlink()
+            # Write the terminal sentinel before bgjob copies the status merge
+            # env, so Step 6 waits until the result env is ready.
+            _finalize_step5c_terminal_sentinel(design_tmpdir, write_terminal_sentinel=write_terminal_sentinel)
     finally:
         _finalize_step5c_terminal_sentinel(design_tmpdir, write_terminal_sentinel=write_terminal_sentinel)
         os.environ.clear()

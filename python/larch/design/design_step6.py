@@ -9,10 +9,17 @@ import sys
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 
+from larch.bgjob import registry
 from larch.core import logging_util
 from larch.state import session_env
 
-from larch.design.design_core import _CoreUsageError, _core_diagnostic, _validate_design_tmpdir_arg
+from larch.design.design_core import (
+    DESIGN_BGJOB_STEP5C,
+    _CoreUsageError,
+    _core_diagnostic,
+    _validate_design_tmpdir_arg,
+    design_bgjob_result_env_path,
+)
 from larch.design.design_session import (
     _call_pause_save,
     _design_require_plugin_root,
@@ -50,19 +57,21 @@ def _step6_in_flight(design_tmpdir_raw: str) -> bool:
     if not design_tmpdir_raw:
         return False
     design_tmpdir = Path(design_tmpdir_raw)
-    # `.completed/step-5c-terminal` is step5c's authoritative completion
-    # signal: step5c_core writes it last — after the status sidecar and the
-    # final summary — while the bg-wait marker is still held. Once present,
-    # step5c has finished and Step 6 may proceed even if a stale marker
-    # lingers (#5695).
     if (design_tmpdir / ".completed" / "step-5c-terminal").is_file():
         return False
-    # No terminal sentinel yet: step5c is in-flight whenever its bg-wait
-    # marker is live. The status sidecar is written mid-run (before the final
-    # summary is rendered), so a present sidecar must NOT clear the in-flight
-    # state — doing so previously let Step 6 emit "missing sidecar" and
-    # preserve (or clean up) while step5c was still finalizing (#5695).
-    return (design_tmpdir / ".bg-wait-active").is_file()
+    result_env = design_bgjob_result_env_path(
+        design_tmpdir=design_tmpdir,
+        step=DESIGN_BGJOB_STEP5C,
+    )
+    if result_env.is_file() and not result_env.is_symlink():
+        return False
+    reg_path, entry = registry.read_for(tmpdir=design_tmpdir, step=DESIGN_BGJOB_STEP5C)
+    if entry is None:
+        return False
+    if registry.child_liveness(entry).live or registry.daemon_liveness(entry).live:
+        return True
+    registry.unlink_entry(reg_path)
+    return False
 
 
 def _step6_emit_prelude_skipped(message: str) -> None:
@@ -95,7 +104,7 @@ def step6_prelude_core(argv: Sequence[str]) -> int:
     if pause_rc is not None:
         return pause_rc
     if _step6_in_flight(design_tmpdir_raw):
-        _core_diagnostic("**⚠ Step 6 prelude: design-step5c.sh appears still in-flight (.bg-wait-active present); do not proceed until <task-notification> fires.**")
+        _core_diagnostic("**⚠ Step 6 prelude: design-step5c.sh appears still in-flight; run bgjob wait for design-step5c before Step 6.**")
         return 1
     sidecar = _step6_sidecar_path(design_tmpdir_raw)
     if sidecar is None or not sidecar.is_file() or design_tmpdir is None:
@@ -145,7 +154,7 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
     if pause_rc is not None:
         return pause_rc
     if _step6_in_flight(design_tmpdir_raw):
-        _core_diagnostic("**⚠ Step 6: design-step5c.sh appears still in-flight (.bg-wait-active present); do not proceed until <task-notification> fires.**")
+        _core_diagnostic("**⚠ Step 6: design-step5c.sh appears still in-flight; run bgjob wait for design-step5c before Step 6.**")
         return 1
     sidecar = _step6_sidecar_path(design_tmpdir_raw)
     if sidecar is None or not sidecar.is_file() or design_tmpdir is None:

@@ -47,7 +47,6 @@ STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
 STEP3B_ENTRY_MD="$ROOT/skills/design/scripts/design-step3b-entry.md"
 STEP3B_SANITIZE="$ROOT/skills/design/scripts/design-step3b-sanitize.sh"
 LOAD_LITERAL='Read and apply ##'
-CONFIRMATION_COMPLETION='confirmation purpose: completion'
 CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
 WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
 RESUME_BACKREF_LITERAL='Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above.'
@@ -269,10 +268,10 @@ check_context_before_step3_launch "$SKILL_MD" \
   "20" \
   'shared bgjob wait contract'
 check_context_before "$SKILL_MD" \
-  '/design Step 5c load contract precedes its background fence' \
+  '/design Step 5c bgjob contract precedes its launcher fence' \
   "$STEP5C_ANCHOR" \
   "20" \
-  "$LOAD_LITERAL Immediate-background wait rule"
+  'shared bgjob wait contract'
 check_context_before_step3_launch "$SKILL_MD" \
   '/design Step 3 launch loads bgjob-wait contract' \
   "20" \
@@ -288,17 +287,17 @@ check_context_before_step3_launch "$SKILL_MD" \
 contains "$SKILL_MD" 'If stdout contains `BGJOB_STATUS=WAIT`, the next action is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep.' 'Design Step 3 WAIT handling must be chunked and foreground-only'
 contains "$SKILL_MD" 'Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 3 parse the result env.' 'Design Step 3 DONE handling must require BGJOB_RC=0'
 contains "$SKILL_MD" 'never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone' 'Design Step 3 post-loop routing must reject non-result success signals'
-contains "$SKILL_MD" 'A prefix-identical repeat of non-empty task-output bytes (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.' 'Design Step 5c must pin repeat silent-yield routing'
+contains "$SKILL_MD" 'Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 5c parse `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`.' 'Design Step 5c DONE handling must require BGJOB_RC=0'
 check_context_before "$SKILL_MD" \
-  '/design Step 5c uses the immediate-background load contract' \
+  '/design Step 5c uses the bgjob wait contract' \
   "$STEP5C_ANCHOR" \
   "18" \
-  "$LOAD_LITERAL Immediate-background wait rule"
+  'shared bgjob wait contract'
 check_context_before "$SKILL_MD" \
-  '/design Step 5c pins completion confirmation purpose' \
+  '/design Step 5c names bgjob result env' \
   "$STEP5C_ANCHOR" \
   "18" \
-  "$CONFIRMATION_COMPLETION"
+  'bgjob/design-step5c.result.env'
 check_context_before "$SKILL_MD" \
   '/design Step 3 resume back-reference precedes its bgjob fence' \
   "$STEP3_RESUME_ANCHOR" \
@@ -483,9 +482,11 @@ not_contains "$SKILL_MD" 'dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR" --pro
 contains "$SKILL_MD" 'Step 4 routing authority is `STEP4_MODE` only.' 'Step 4 must route only on STEP4_MODE'
 contains "$SKILL_MD" 'bind `STEP4_MODE` from a whole-line `STEP4_MODE=foreground|background` row in the finalize wrapper stdout' 'Step 4 must bind STEP4_MODE from finalize stdout'
 contains "$SKILL_MD" 'read `$DESIGN_TMPDIR/.step4-mode.env` and bind the same grammar from that sidecar' 'Step 4 must support STEP4_MODE sidecar fallback'
-contains "$SKILL_MD" 'If `STEP4_MODE=foreground`, run the tail in the foreground' 'Step 4 must document foreground tail route'
-contains "$SKILL_MD" 'If `STEP4_MODE=background`, **MANDATORY: READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`' 'Step 4 must document background wait read'
+contains "$SKILL_MD" 'If `STEP4_MODE=foreground`, run the tail bgjob starter.' 'Step 4 must document foreground tail route'
+contains "$SKILL_MD" 'If `STEP4_MODE=background`, run the same tail bgjob starter.' 'Step 4 must document background bgjob route'
 contains "$SKILL_MD" 'Stop for repair if `STEP4_MODE` is absent or not `foreground|background`.' 'Step 4 must fail closed on invalid STEP4_MODE'
+contains "$SKILL_MD" 'bgjob/design-step4-tail.result.env' 'Step 4 must name bgjob tail result env'
+contains "$SKILL_MD" 'SKIP_APPROVE_REQUESTED_GATEC=true|false` from `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`' 'Step 4b must parse skip approve from bgjob result env'
 not_contains "$SKILL_MD" '**Optional trailer guard (Gate B post-apply)**' 'SKILL must not retain inline Gate B optional trailer block'
 not_contains "$SKILL_MD" 'Before any reviewer-finding `plan.txt` replacement, run' 'SKILL must not retain inline Gate B snapshot-trailers restatement'
 not_contains "$SKILL_MD" '**Gate B resume idempotency**' 'SKILL must not retain inline Gate B resume idempotency block'

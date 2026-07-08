@@ -502,15 +502,11 @@ Do not classify plans, generate diagrams, write `architecture-diagram.*`, or run
 
 Print: `> **🔶 /design 4: rejected findings**`
 
-Step 4 routing authority is `STEP4_MODE` only. Step 3b finalize decides debate eligibility via probe-only `dialectic-gatec`; Step 4 only selects the foreground or background tail launch. The full `python/cli.py design dialectic-gatec` run happens inside `design-step3b-tail.sh` only when the tail requires it; treat that as tail implementation detail documented in `design-step3b-tail.md`.
+Step 4 routing authority is `STEP4_MODE` only. Step 3b finalize decides debate eligibility; Step 4 only launches or rejoins the bgjob tail. The full `python/cli.py design dialectic-gatec` run is a `design-step3b-tail.sh` detail.
 
-If `STEP4_MODE=foreground`, run the tail in the foreground:
+Use the shared bgjob wait contract for Step 4 launch, rejoin, `WAIT`, `DEAD`, and `DONE`. Parameters: step `design-step4-tail`; tmpdir `$DESIGN_TMPDIR`; wait chunk `--max-wait-s 270`; sentinel `.completed/step-4`; result env `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`; merge input `$DESIGN_TMPDIR/.design-step4-tail-result.env`; require `BGJOB_RC=0`, `SKIP_APPROVE_REQUESTED_GATEC`, rejected-findings marker KVs, and `GATEC_PREVIEW_PATH`.
 
-```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
-```
-
-If `STEP4_MODE=background`, **MANDATORY: READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, after-present parse of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout, plus classification `Read`. Then run the tail with `run_in_background: true` and timeout `900000`:
+If `STEP4_MODE=foreground`, run the tail bgjob starter. If `STEP4_MODE=background`, run the same tail bgjob starter. No immediate-background transport:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
@@ -518,7 +514,9 @@ If `STEP4_MODE=background`, **MANDATORY: READ ENTIRE FILE**: read and apply `${C
 
 Stop for repair if `STEP4_MODE` is absent or not `foreground|background`.
 
-If the wrapper output contains a non-empty body between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---`, re-emit that exact body verbatim with no extra heading or orchestrator-side prose. Do not add a second heading; the wrapper body is authoritative. If the body is empty, continue without printing rejected-findings output.
+After launch, call `bgjob wait` repeatedly. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep. `DEAD` or non-zero `BGJOB_RC` uses the existing failure/stall branch. Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 4 parse `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`. Never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone.
+
+After final `DONE`, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design read-result-env --input "$DESIGN_TMPDIR/.design-step4-tail-result.env" --output "$DESIGN_TMPDIR/.design-step4-tail-result.safe.env" --allow SKIP_APPROVE_REQUESTED_GATEC --allow REJECTED_FINDINGS_BEGIN --allow REJECTED_FINDINGS_END --allow REJECTED_FINDINGS_BODY_PATH --allow GATEC_PREVIEW_PATH --allow DIALECTIC_GATEC_DIGEST_PATH`. Re-emit any non-empty framed `REJECTED_FINDINGS_BODY_PATH` body without extra prose. Do not parse rejected-findings or `SKIP_APPROVE_REQUESTED_GATEC` from thin tail-launcher stdout.
 
 After rejected findings are handled, IMMEDIATELY continue to Step 4b: do NOT halt or treat this as the end of the design.
 
@@ -532,9 +530,9 @@ Print: `> **🔶 /design 4b: gate C**`
 
 Execute the Gate C body in `approval-gates.md`: `approval-gates.md` is the single normative source for Gate C behavior (Presentation, accepted-findings audit, Prompt, Other-handling, large-plan summary mode).
 
-**Mechanical Gate C plan emit**: `design-step3b-tail.sh` → optional `python/cli.py design dialectic-gatec` → `python/cli.py plan-review preview --variant gatec` mirrors Step 3 thresholds, outline, and bold-note rules. On resume@4b, pause recovery, or entry without fresh tail stdout, emit fingerprint-valid `dialectic-clarifier-digest.md` before the prompt with untrusted advisory framing; same-turn normal path uses tail stdout only.
+**Mechanical Gate C plan emit**: `design-step3b-tail.sh` → optional `python/cli.py design dialectic-gatec` → `python/cli.py plan-review preview --variant gatec` mirrors Step 3 preview rules. After Step 4 bgjob `DONE`, emit `GATEC_PREVIEW_PATH`; on `resume@4b` or absent same-turn capture, read `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` first, then use disk fallbacks per `approval-gates.md`.
 
-Before the Gate C `AskUserQuestion`, parse `SKIP_APPROVE_REQUESTED_GATEC=true|false` from the tail wrapper output.
+Before the Gate C `AskUserQuestion`, parse `SKIP_APPROVE_REQUESTED_GATEC=true|false` from `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` or final `DONE` stdout, not thin tail-launcher stdout.
 
 When `_skip_approve_requested_gatec=true`, still run Gate C preview and full Presentation: guideline persistence, accepted-findings audit, and audit persistence. Auto-approve only when the audit records no strong dissent: print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 without `AskUserQuestion`. Strong audit dissent forces Gate C per `approval-gates.md` with the printed digest and `--accepted-audit-escalation true`.
 
@@ -589,21 +587,9 @@ If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, 
 
 ### 5c: Write `larch:plan` to GitHub + publish
 
-Step 4b Gate C already returned **Approve**. Proceed without an additional prompt. Follow `finalize-step5.md` for composing the final plan block with `$DESIGN_TMPDIR/diff-lines.txt`, driver parsing, validator repair routing, WARN replay, and publish-tail decisions.
+Step 4b Gate C already returned **Approve**. Proceed without an additional prompt. Follow `finalize-step5.md` for composing the final plan block with `$DESIGN_TMPDIR/diff-lines.txt`, parsing, validator repair, WARN replay, and publish-tail decisions.
 
-Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely; include its classification `Read`.
-
-Parameters:
-- breadcrumb: `⏳ 5c: writing plan to GitHub...`
-- terminal sentinel: `.completed/step-5c-terminal`
-- confirmation purpose: completion
-- after present: parse `_publish_rc` and `.design-publish-result.env`
-- extra guards:
-  - do not treat `.completed/step-5c` as completion.
-  - do not parse `.design-publish-result.env` until `step-5c-terminal` is present.
-  - do not wait for a second notification once the terminal sentinel is present.
-
-**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
+Use the shared bgjob wait contract for Step 5c launch, rejoin, `WAIT`, `DEAD`, and `DONE`. Parameters: step `design-step5c`; tmpdir `$DESIGN_TMPDIR`; wait chunk `--max-wait-s 270`; terminal sentinel `.completed/step-5c-terminal`; result env `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`; merge input `$DESIGN_TMPDIR/.design-step5c-status.env`; require `BGJOB_RC=0`, `PUBLISH_RC`, `PLAN_WRITE_OK`, `PUBLISH_OK`, and `CLEANUP_ELIGIBLE`. Do not treat `.completed/step-5c` as completion.
 
 Invoke `design-step5c.sh` (contract: `design-step5c.md`) for deterministic Step 5c. It delegates to `python/cli.py design step5c`, which calls publish-tail in-process. `python/cli.py design publish` remains the library/legacy verb for validation, redaction, plan block write, diagrams upsert, log publish, and `[DESIGNED]` rename.
 
@@ -611,11 +597,11 @@ Invoke `design-step5c.sh` (contract: `design-step5c.md`) for deterministic Step 
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh
 ```
 
-Wait for `<task-notification>` before `_publish_rc` parse, `.design-publish-result.env` read, WARN replay, `final-summary.md` emit, or Step 6. First classify active `tasks/*.output` bytes with exactly one `Read`. Probe `.completed/step-5c-terminal` only after new/changed non-empty bytes; missing or whitespace-only bytes yield silently. A prefix-identical repeat of non-empty task-output bytes (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently. `.completed/step-5c` is not completion.
+After launch, call `bgjob wait` repeatedly. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep. Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 5c parse `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`. Never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone. `.completed/step-5c` is not completion.
 
-**Driver exit-code contract:** Follow `finalize-step5.md` for `_publish_rc` abort handling, stdout fallback, validator-defect routing, and `PLAN_WRITE_OK` branches. On `_publish_rc=2` or unexpected non-zero value: parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` only when `_publish_rc` is 2 or another unexpected value before stopping. Complete the shared sidecar follow-on before stopping.
+**Driver exit-code contract:** Follow `finalize-step5.md` for `_publish_rc` abort handling, stdout fallback, validator-defect routing, and `PLAN_WRITE_OK` branches. On `_publish_rc=2` or unexpected non-zero: parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, follow the `/design` Read-always readiness profile, then stop.
 
-5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** `python/cli.py design render-final-summary --post-publish-only` runs the report gate before final render and summary upsert. Fallback chat-print and operator-action chat audit are emitted outside the final-summary body. Use source `design-step5c.sh` completed `<task-notification>` task output to parse `FINAL_SUMMARY_PATH=<path>` and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` only upon reaching Step 5c item 5. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `python/cli.py design render-final-summary` exit 0.
+5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** Step 5c calls `python/cli.py design render-final-summary --post-publish-only` before the bgjob result env is written. Parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, then follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `python/cli.py design render-final-summary` exit 0.
 
 Follow `finalize-step5.md` for Step 5b details. Keep the prepare fence and `NEXT_ACTION` skeleton here for action adjacency.
 

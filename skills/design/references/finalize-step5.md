@@ -87,11 +87,11 @@ A missing or empty `$DESIGN_TMPDIR/composed-plan.md` also exits 4 with `VALIDATE
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using parsed `VALIDATE_*` and `PUBLISH_REFUSE_REASON` keys with `--site` `design Step 5c`. Missing `composed-plan.md` offers only Fix-and-retry / Cancel. Before review-provenance, `PUBLISH_REFUSE_REASON=oversize-no-override|size-check-failed` offers Decompose / Override / Cancel; Override writes the trailer, deletes `composed-plan.md`, and re-runs `design-step5c.sh`. Empty `VALIDATE_LOG_FILE` with zero missing scripts is review-provenance refusal: Fix-and-retry re-runs `/design`, or Cancel.
 
-When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. This includes `_publish_rc=5`. Before stopping, parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Empty `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` markers confirm readiness only; Read the disk file verbatim when the path is non-empty. Complete the shared sidecar follow-on before stopping. Stop `/design` immediately after this abort-path emission. Do not run Step 5c items 5-7, Step 5d, or Step 6.
+When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. This includes `_publish_rc=5`. Parse `FINAL_SUMMARY_PATH=<path>` from final `bgjob wait` `DONE` stdout or `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`, follow the `/design` Read-always readiness profile. Complete the shared sidecar follow-on before stopping. Stop before Step 5c items 5-7, Step 5d, or Step 6.
 
 When `_publish_rc=3`, the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5-7 with the warning above. Do not treat exit 3 as publish-tail incomplete.
 
-When `_publish_rc` is in `{0, 1, 3, 4}`, the Step 5c entrypoint parses through the Python `design read-result-env` implementation, file first with stdout fallback, before `PLAN_WRITE_OK` branching. Exit 1 is the normal plan-block-write failure path. Do not abort solely because `_publish_rc=1`.
+When `_publish_rc` is in `{0, 1, 3, 4}`, parse through `python/cli.py design read-result-env --input "$DESIGN_TMPDIR/.design-step5c-status.env"` after bgjob `DONE`; the helper prefers `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` and falls back to the legacy status env only when absent. Gate success on `BGJOB_RC=0`. Exit 1 is the normal plan-block-write failure path. Do not abort solely because `_publish_rc=1`.
 
 **Driver WARN replay (top chat):** After the Bash block, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat. Do not leave them only as `WARN=` machine lines inside Bash output.
 
@@ -106,7 +106,7 @@ Repeat any external reviewer warnings from earlier steps, including Step 0 revie
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ 5b.5: arch diagram: generation failed, proceeding without diagram (<elapsed>)**`
 
-The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Step 5c owns the once-per-handoff orchestrator emit through the shared Read-always readiness profile. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
+The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Parse `FINAL_SUMMARY_PATH` from final bgjob `DONE` stdout or result env, then use the shared Read-always readiness profile. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings, then emit exactly one terminal machine footer as the last human-visible output line of Step 5. When `PLAN_WRITE_OK=false`, Step 5c already ran the summary before the `**⚠ 5: plan-block-write failed**` line. Do not invoke `python/cli.py design render-final-summary` again.
 

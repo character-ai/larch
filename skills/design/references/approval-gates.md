@@ -154,9 +154,11 @@ Gate B's plan revision may branch the merged driver fence. `--partition` maps to
 
 ### Presentation
 
-**Mandatory, immediately before the Prompt section below.** On the normal same-turn path, consume Step 4 tail stdout from `SKILL.md` / `design-step3b-tail.sh`; do not re-invoke it or duplicate previews or digests. Step 4 owns the tail.
+**Mandatory, immediately before the Prompt section below.** Normal same-turn path reads Step 4 data from `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` and final `DONE` stdout, never thin tail-launcher stdout.
 
-On `resume@4b`, pause recovery, or Step 4b entry without fresh Step 4 tail stdout, invoke `design-step3b-tail.sh` as recovery mechanical emit, or read fingerprint-valid artifacts from disk. Emit `$DESIGN_TMPDIR/dialectic-clarifier-digest.md` only when `dialectic-clarifier-status.json` matches the current `plan.txt` fingerprint, live candidate order, and clarifier generation. On `--skip-approve`, recovery must not launch a new auto debate; print only an already-cached fingerprint-valid digest.
+On `resume@4b`, pause recovery, or entry without fresh Step 4 bgjob result capture, read the bgjob result env first; if absent, invoke `design-step3b-tail.sh` as recovery mechanical emit or use fingerprint-valid disk artifacts. On `--skip-approve`, recovery must not launch a new auto debate.
+
+Read `SKIP_APPROVE_REQUESTED_GATEC`, rejected-findings marker/path KVs, `GATEC_PREVIEW_PATH`, and optional `DIALECTIC_GATEC_DIGEST_PATH` via `python/cli.py design read-result-env --input "$DESIGN_TMPDIR/.design-step4-tail-result.env"` or final `DONE` stdout. Print regular under-tmp preview/body files only. Do not parse these values from thin tail-launcher stdout.
 
 **Large-plan summary mode**: `python/cli.py plan-review preview` owns threshold parsing, outline caps, fallback preview, and note text for Step 3 and Gate C. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged.
 

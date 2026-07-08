@@ -1,24 +1,19 @@
 #!/usr/bin/env bash
 # Generated /design wrapper. Keep in sync with skills/design/SKILL.md.
-# shellcheck disable=SC1090,SC1091,SC2016,SC2034,SC2086,SC2154,SC2164,SC2312,SC2317,SC2329,SC2206,SC2207
+# shellcheck disable=SC1090,SC1091,SC2016,SC2034,SC2086,SC2154,SC2164,SC2312,SC2317,SC2329
 set -euo pipefail
 
 SESSION_ENV_PATH=""
 CLAUDE_PID=""
 CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
-MODE=""
-SITE=""
-SUMMARY_OUTCOME="${SUMMARY_OUTCOME:-}"
-SKIP_VALIDATE=""
-PUBLIC_ARGV_WORDS=()
+RUN_TAIL_CHILD=false
+ORIGINAL_ARGS=("$@")
 
 # Prompt-side values may be supplied only as environment variables by Claude Code.
-# Default them before sourced session env overrides to preserve the old inline-fence no-set-u behavior.
 DESIGN_TMPDIR="${DESIGN_TMPDIR:-}"
 SESSION_TMPDIR="${SESSION_TMPDIR:-}"
 SESSION_ID="${SESSION_ID:-}"
 ISSUE_NUMBER="${ISSUE_NUMBER:-}"
-ISSUE_TITLE="${ISSUE_TITLE:-}"
 HAS_CLARIFY_LABEL="${HAS_CLARIFY_LABEL:-false}"
 REPO="${REPO:-}"
 CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-}"
@@ -46,33 +41,22 @@ STANDALONE_HEAVY_FAILED="${STANDALONE_HEAVY_FAILED:-}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --run-tail-child) RUN_TAIL_CHILD=true; shift ;;
     --session-env-path) SESSION_ENV_PATH="$2"; shift 2 ;;
     --claude-pid) CLAUDE_PID="$2"; shift 2 ;;
     --plugin-root) CLAUDE_PLUGIN_ROOT="$2"; shift 2 ;;
-    --mode) MODE="$2"; shift 2 ;;
-    --site) SITE="$2"; shift 2 ;;
-    --snapshot-original) SNAPSHOT_ORIGINAL=true; shift ;;
-    --outcome) SUMMARY_OUTCOME="$2"; shift 2 ;;
-    --skip-validate) SKIP_VALIDATE=1; shift ;;
-    --step3-review-loop-status) STEP3_REVIEW_LOOP_STATUS="$2"; shift 2 ;;
-    --loop-status) LOOP_STATUS="$2"; shift 2 ;;
-    --) shift; PUBLIC_ARGV_WORDS=("$@"); break ;;
+    --mode|--site|--outcome|--step3-review-loop-status|--loop-status) shift 2 ;;
+    --snapshot-original|--skip-validate) shift ;;
+    --) shift; break ;;
     *) printf '%s\n' "$0: unknown argument: $1" >&2; exit 2 ;;
   esac
 done
 
-design_require_plugin_root() {
-  _cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'
-  if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-    printf '%s\n' "/design wrapper: CLAUDE_PLUGIN_ROOT is empty; abort" >&2
-    exit 1
-  fi
-  if [ "${CLAUDE_PLUGIN_ROOT:-}" = "$_cpr_literal" ]; then
-    printf '%s\n' "/design wrapper: CLAUDE_PLUGIN_ROOT is the unexpanded template literal ${_cpr_literal}; abort" >&2
-    exit 1
-  fi
-  export CLAUDE_PLUGIN_ROOT
-}
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  CLAUDE_PLUGIN_ROOT="$(cd "$_script_dir/../../.." && pwd -P)"
+fi
+export CLAUDE_PLUGIN_ROOT
 
 design_source_env_optional() {
   if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -87,37 +71,119 @@ design_pause_check() {
   fi
 }
 
-design_step4_tail_cleanup() {
-  [ -n "${DESIGN_TMPDIR:-}" ] || return 0
-  mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || true
-  printf '' >"$DESIGN_TMPDIR/.completed/step-4" 2>/dev/null || true
-  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
+design_step4_tail_recreate_merge_env() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR/.design-step4-tail-result.env" "$DESIGN_TMPDIR" <<'PY'
+from pathlib import Path
+import sys
+from larch.design.design_core import design_recreate_merge_env
+
+design_recreate_merge_env(path=Path(sys.argv[1]), design_tmpdir=Path(sys.argv[2]))
+PY
 }
 
-design_step4_tail_marker() {
-  local start claude_pid clone_path
-  [ -n "${DESIGN_TMPDIR:-}" ] || return 0
-  rm -f "$DESIGN_TMPDIR/no-progress-turns.count" "$DESIGN_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-  rm -f "$DESIGN_TMPDIR/no-progress-stop-block-emitted" "$DESIGN_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
-  rm -f "$DESIGN_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
-  rm -f "$DESIGN_TMPDIR/.completed/step-4" 2>/dev/null || true
-  start=$(date +%s 2>/dev/null) || start=0
-  case "$start" in ''|*[!0-9]*) start=0 ;; esac
-  claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${CLAUDE_PID:-${PPID:-}}}"
-  clone_path=""
-  if [ -f "$DESIGN_TMPDIR/.larch-keepalive" ] && [ ! -L "$DESIGN_TMPDIR/.larch-keepalive" ]; then
-    clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$DESIGN_TMPDIR/.larch-keepalive" 2>/dev/null || true)
-  fi
-  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=design-step4-tail\nTIMEOUT_S=900\nCLONE_PATH=%s\n' \
-    "$$" "$claude_pid" "$start" "$clone_path" >"$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
+design_step4_tail_write_merge_env() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - \
+    "$DESIGN_TMPDIR/.design-step4-tail-result.env" \
+    "$DESIGN_TMPDIR" \
+    "$_skip_approve_requested_gatec" \
+    "$DESIGN_TMPDIR/gatec-rejected-findings-framed.md" \
+    "$DESIGN_TMPDIR/gatec-preview.md" \
+    "$DESIGN_TMPDIR/dialectic-clarifier-digest.md" <<'PY'
+from pathlib import Path
+import sys
+from larch.design.design_core import design_write_merge_env
+
+merge_env = Path(sys.argv[1])
+design_tmpdir = Path(sys.argv[2])
+skip_gatec = sys.argv[3]
+rejected_path = Path(sys.argv[4])
+preview_path = Path(sys.argv[5])
+digest_path = Path(sys.argv[6])
+rows = [
+    ("SKIP_APPROVE_REQUESTED_GATEC", skip_gatec),
+    ("REJECTED_FINDINGS_BEGIN", "---LARCH-REJECTED-BEGIN---"),
+    ("REJECTED_FINDINGS_END", "---LARCH-REJECTED-END---"),
+    ("REJECTED_FINDINGS_BODY_PATH", str(rejected_path)),
+    ("GATEC_PREVIEW_PATH", str(preview_path)),
+]
+if digest_path.is_file() and not digest_path.is_symlink():
+    rows.append(("DIALECTIC_GATEC_DIGEST_PATH", str(digest_path)))
+design_write_merge_env(path=merge_env, design_tmpdir=design_tmpdir, rows=rows)
+PY
+}
+
+design_step4_tail_bgjob_registry_state() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR" <<'PY'
+from pathlib import Path
+import sys
+from larch.bgjob import registry
+
+path, entry = registry.read_for(tmpdir=Path(sys.argv[1]), step="design-step4-tail")
+if entry is None:
+    print("missing")
+    raise SystemExit(0)
+if registry.child_liveness(entry).live or registry.daemon_liveness(entry).live:
+    print("live")
+    raise SystemExit(0)
+registry.unlink_entry(path)
+print("cleared")
+PY
 }
 
 design_source_env_optional
 [ -n "${DESIGN_TMPDIR:-}" ] && rm -f "$DESIGN_TMPDIR/.pause-save-complete"
+if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
+  printf '%s\n' 'design-step3b-tail.sh: DESIGN_TMPDIR required' >&2
+  exit 1
+fi
+DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
+export DESIGN_TMPDIR
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
+
+if [ "$RUN_TAIL_CHILD" = false ]; then
+  _result_env="$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env"
+  if [ -L "$_result_env" ]; then
+    printf '%s\n' 'design-step3b-tail.sh: existing bgjob result env must not be a symlink' >&2
+    exit 1
+  fi
+  if [ -e "$_result_env" ] && [ ! -f "$_result_env" ]; then
+    printf '%s\n' 'design-step3b-tail.sh: existing bgjob result env must be a regular file' >&2
+    exit 1
+  fi
+  if [ -f "$_result_env" ]; then
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait \
+      --step design-step4-tail \
+      --tmpdir "$DESIGN_TMPDIR" \
+      --max-wait-s 0
+  fi
+  _registry_state="$(design_step4_tail_bgjob_registry_state)" || {
+    printf '%s\n' 'BGJOB_ERROR=registry-check-failed'
+    exit 2
+  }
+  if [ "$_registry_state" = live ]; then
+    exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait \
+      --step design-step4-tail \
+      --tmpdir "$DESIGN_TMPDIR" \
+      --max-wait-s 0
+  fi
+  mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
+  rm -f "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env" 2>/dev/null || true
+  design_step4_tail_recreate_merge_env
+  _owner_args=()
+  if [ -n "${CLAUDE_PID:-}" ]; then
+    _owner_args=(--owner-pid "$CLAUDE_PID")
+  fi
+  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
+    --step design-step4-tail \
+    --tmpdir "$DESIGN_TMPDIR" \
+    --budget-s 900 \
+    "${_owner_args[@]}" \
+    --sentinel "$DESIGN_TMPDIR/.completed/step-4" \
+    --merge-result-env "$DESIGN_TMPDIR/.design-step4-tail-result.env" \
+    -- bash "$0" --run-tail-child "${ORIGINAL_ARGS[@]}"
+fi
 
 design_pause_check
-trap design_step4_tail_cleanup EXIT
-design_step4_tail_marker
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4 — rejected findings" || true
 if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
   set +e
@@ -131,20 +197,18 @@ if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
   fi
 fi
 
-printf '%s\n' '---LARCH-REJECTED-BEGIN---'
-if [ -s "$DESIGN_TMPDIR/rejected-findings.md" ]; then
-  # Drop findings already applied in an earlier plan-review round, then frame
-  # any remaining operator output as considered-not-adopted suggestions. Fall
-  # back to filtered emit-rejected (without --report-framing) on any failure so Step 4
-  # still emits something without re-showing already-applied findings.
-  # The on-disk file is left unchanged.
-  if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" --report-framing; then
-    printf '%s\n\n' '## Considered Plan Review Suggestions (Not Adopted)'
-    printf '%s\n\n' 'These reviewer suggestions were considered but not adopted. Some may already be addressed by the current plan; they are not automatically unimplemented gaps.'
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" || true
+_rejected_body="$DESIGN_TMPDIR/gatec-rejected-findings-framed.md"
+{
+  printf '%s\n' '---LARCH-REJECTED-BEGIN---'
+  if [ -s "$DESIGN_TMPDIR/rejected-findings.md" ]; then
+    if ! python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" --report-framing; then
+      printf '%s\n\n' '## Considered Plan Review Suggestions (Not Adopted)'
+      printf '%s\n\n' 'These reviewer suggestions were considered but not adopted. Some may already be addressed by the current plan; they are not automatically unimplemented gaps.'
+      python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" plan-review emit-rejected --design-tmpdir "$DESIGN_TMPDIR" || true
+    fi
   fi
-fi
-printf '%s\n' '---LARCH-REJECTED-END---'
+  printf '%s\n' '---LARCH-REJECTED-END---'
+} >"$_rejected_body"
 
 design_pause_check
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4b — gate C" || true
@@ -157,21 +221,15 @@ elif ( command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([
   _skip_approve_requested_gatec=true
 fi
 
-if [ "$_skip_approve_requested_gatec" = false ]; then
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"
-else
-  # Skip auto debate launches on --skip-approve. The Python helper prints only a
-  # fingerprint-valid cached digest, if one already exists.
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"
-fi
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/dialectic-gatec-terminal"
 
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review preview \
   --design-tmpdir "$DESIGN_TMPDIR" \
-  --variant gatec
+  --variant gatec >"$DESIGN_TMPDIR/gatec-preview.md"
 [ -f "$DESIGN_TMPDIR/.pause-save-complete" ] && exit 0
 
-printf 'SKIP_APPROVE_REQUESTED_GATEC=%s\n' "$_skip_approve_requested_gatec"
 mkdir -p "$DESIGN_TMPDIR/.completed"
 : > "$DESIGN_TMPDIR/.completed/step-4"
+design_step4_tail_write_merge_env
