@@ -146,7 +146,7 @@ run_resume_worker() {
           if [ "$commit_rc" -ne 0 ]; then
             exit "$commit_rc"
           fi
-          exit 1
+          exit 0
           ;;
         *)
           printf '%s\n' "$commit_output" | relay_commit_kvs
