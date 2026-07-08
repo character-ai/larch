@@ -736,6 +736,7 @@ def _postmerge_main_health_gate(
                 limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
                 cwd=cwd,
                 head_sha=merged_head,
+                skip_flap_check=counters.transient_retries > 0,
             ),
             timeout=config.MAIN_HEALTH_WAIT_TIMEOUT_SEC,
             interval=config.MAIN_HEALTH_WAIT_POLL_INTERVAL_SEC,
@@ -746,6 +747,46 @@ def _postmerge_main_health_gate(
         return None
     if health.status == "fail":
         repair_head = health.head_sha or merged_head
+        detail = health.detail
+        if health.failed_run_id and counters.transient_retries < config.MAIN_HEALTH_MAX_TRANSIENT_RETRIES:
+            rerun = ci_monitor.rerun_failed(
+                runner,
+                run_id=health.failed_run_id,
+                repo=working.repo,
+                cwd=cwd,
+            )
+            if rerun.submitted:
+                _write_ship_state(
+                    working,
+                    phase="postmerge-push-watch",
+                    iteration=counters.iteration,
+                    rebase_count=counters.rebase_count,
+                    fix_attempts=counters.fix_attempts,
+                    transient_retries=counters.transient_retries + 1,
+                    extra_fields={
+                        "MAIN_REPAIR_RUN_ID": health.failed_run_id,
+                        "MAIN_REPAIR_HEAD": repair_head,
+                        "MAIN_HEALTH_HEAD_SHA": repair_head,
+                        "MAIN_HEALTH_REPAIR_FAILED_RUN_ID": health.failed_run_id,
+                        "MAIN_HEALTH_REPAIR_BASE_SHA": repair_head,
+                        "MAIN_HEALTH_REPAIR_HEAD": repair_head,
+                    },
+                )
+                retry_detail = "post-merge push CI failed; rerun already running"
+                if not rerun.already_running:
+                    retry_detail = "post-merge push CI failed; rerun submitted"
+                return ShipResult(
+                    Outcome.TRANSIENT,
+                    failed_run_id=health.failed_run_id,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    merge_result=working.merge_result,
+                    detail=retry_detail,
+                    main_repair_run_id=health.failed_run_id,
+                    main_repair_head=repair_head,
+                )
+            if rerun.error:
+                detail = redact.redact(f"{health.detail}; transient rerun failed: {rerun.error}")
         _write_ship_state(
             working,
             phase="emergency-repair",
@@ -771,7 +812,7 @@ def _postmerge_main_health_gate(
             pr_number=working.pr_number,
             pr_url=working.pr_url,
             merge_result=working.merge_result,
-            detail=health.detail,
+            detail=detail,
             main_health_head_sha=repair_head,
             main_health_repair_committed="false",
             main_health_repair_failed_run_id=health.failed_run_id,
@@ -1088,6 +1129,64 @@ def _resume_done_result(
     )
 
 
+def _emergency_repair_transient_recovery_result(
+    *,
+    runner: Runner,
+    working: RunContext,
+    resume: ResumePlan,
+    repo_root: str,
+) -> ShipResult | None:
+    repair_branch = run_logs.read_state_kv(
+        state_file=working.state_file,
+        key="EMERGENCY_REPAIR_BRANCH",
+    ).strip()
+    repair_head = run_logs.read_state_kv(
+        state_file=working.state_file,
+        key="MAIN_REPAIR_HEAD",
+    ).strip()
+    if repair_branch or not repair_head:
+        return None
+    health = main_health.read_main_health(
+        runner,
+        main_health.MainHealthQuery(
+            repo=working.repo,
+            base_branch="main",
+            workflow=config.MAIN_HEALTH_DEFAULT_WORKFLOW,
+            limit=config.MAIN_HEALTH_RUN_LIST_LIMIT,
+            cwd=repo_root,
+            head_sha=repair_head,
+            skip_flap_check=True,
+        ),
+    )
+    if health.status != "pass":
+        return None
+    _write_ship_state(
+        working,
+        phase="postmerge",
+        iteration=resume.iteration,
+        rebase_count=resume.rebase_count,
+        fix_attempts=resume.fix_attempts,
+        transient_retries=resume.transient_retries,
+    )
+    post = run_postmerge_phase(runner=runner, ctx=working, cwd=repo_root)
+    if post.outcome is Outcome.OK:
+        _write_ship_state(
+            working,
+            phase="done",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+    return ShipResult(
+        post.outcome,
+        pr_number=working.pr_number,
+        pr_url=working.pr_url,
+        merge_result=working.merge_result,
+        detail=post.detail,
+    )
+
+
 def run_ship(
     ctx: RunContext,
     *,
@@ -1153,6 +1252,14 @@ def run_ship(
             )
         if resume.start == "emergency-repair":
             working = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
+            recovered = _emergency_repair_transient_recovery_result(
+                runner=runner,
+                working=working,
+                resume=resume,
+                repo_root=repo_root,
+            )
+            if recovered is not None:
+                return recovered
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
                 needs_user_reason=config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL,

@@ -1735,12 +1735,6 @@
   },
   {
     "file": "larch/design/design_terminal.py",
-    "code": "C901",
-    "qualified_symbol": "step_final_summary_core",
-    "metric": 15
-  },
-  {
-    "file": "larch/design/design_terminal.py",
     "code": "PLR0911",
     "qualified_symbol": "failure_report_core",
     "metric": 19
@@ -1749,7 +1743,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0911",
     "qualified_symbol": "step_final_summary_core",
-    "metric": 10
+    "metric": 7
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1768,12 +1762,6 @@
     "code": "PLR0912",
     "qualified_symbol": "stage_terminal_state_core",
     "metric": 17
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step_final_summary_core",
-    "metric": 15
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1798,12 +1786,6 @@
     "code": "PLR0915",
     "qualified_symbol": "stage_terminal_state_core",
     "metric": 64
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step_final_summary_core",
-    "metric": 74
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -2636,14 +2618,20 @@
   {
     "file": "larch/implement/ship.py",
     "code": "C901",
+    "qualified_symbol": "_postmerge_main_health_gate",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 55
+    "metric": 56
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "_postmerge_main_health_gate",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/implement/ship.py",
@@ -2655,13 +2643,13 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "run_ship",
-    "metric": 28
+    "metric": 29
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 60
+    "metric": 61
   },
   {
     "file": "larch/implement/ship.py",
@@ -2685,7 +2673,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 188
+    "metric": 190
   },
   {
     "file": "larch/implement/ship_merge.py",

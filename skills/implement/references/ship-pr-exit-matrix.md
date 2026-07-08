@@ -57,7 +57,7 @@ Pre-driver `NEXT_ACTION=stall` stays separate: skip ship and go directly to Step
 
 ## Initial state seeder contract
 
-`python/cli.py ship seed-initial-state` owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/test_ship.py` pins the ordered keys. `step-8-seed-initial.sh` is the sole shell argv wrapper. Inputs come from durable `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.
+`python/cli.py ship seed-initial-state` owns the canonical initial `ship-pr-state.sh` key set, including `OOS_PENDING=false`; `python/tests/implement/test_ship.py` pins the ordered keys. `step-8-seed-initial.sh` is the sole shell argv wrapper. Inputs come from durable `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, `$IMPLEMENT_TMPDIR/ship-seed-input.env`, and session readers documented in `step-8-seed-initial.md`.
 
 `MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a readable JSON manifest. The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH`. The bash ship path is retired, so `LARCH_SHIP_PR_IMPL=bash` prose is moot.
 
