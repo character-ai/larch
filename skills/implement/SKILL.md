@@ -662,7 +662,7 @@ Invoke `step-8-ship.sh` as a bgjob foreground launcher. The wrapper clears stale
 Invoke:
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-ship.sh
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-ship.sh # lint-consecutive-bash: ok step8 ship bgjob launch precedes the repeated wait fence
 ```
 
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
