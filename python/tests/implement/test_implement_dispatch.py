@@ -3562,8 +3562,8 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill
     assert "timeout: 14700000" not in skill
-    assert "checks-commit-route --checks-site step5-self-review" in self_review_ref
-    assert "timeout: 14700000" in self_review_ref
+    assert "run-step-checks.sh --site step5-self-review --commit-site step5-self-review" in self_review_ref
+    assert "BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>" in self_review_ref
 
 
 def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(

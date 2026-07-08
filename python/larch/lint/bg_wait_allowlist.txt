@@ -5,7 +5,6 @@ skills/design/SKILL.md	legacy /design notification contract retained until issue
 skills/design/references/brainstorm.md	legacy brainstorm external-lane contract retained until bgjob lane migration completes.
 skills/implement/SKILL.md	legacy /implement notification contract retained until issue-2 cleanup.
 skills/implement/references/conflict-resolution.md	legacy Step 8 relaunch prose retained until ship flow migration completes.
-skills/implement/references/self-review.md	legacy self-review relaunch prose retained until Step 5 migration completes.
 skills/implement/references/ship-pr-ci-fix.md	legacy CI-fix relaunch prose retained until Step 8 migration completes.
 skills/implement/references/ship-pr-exit-matrix.md	legacy route-exit relaunch prose retained until Step 8 migration completes.
 skills/implement/references/stall-recovery.md	legacy stall-recovery relaunch prose retained until bgjob retry migration completes.

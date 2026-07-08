@@ -1,49 +1,34 @@
 # step-5-resume.sh
 
-Step 5 main-agent handoff resume helper. Records round timing, exits immediately for `--record-only`, delegates the `--ready-to-commit` commit phase to `python/cli.py implement commit-route --site step5-resume-handoff`, and re-enters `review-and-fix step5` only when commit-route emits `NEXT_ACTION=continue`. Resume reuses the persisted difficulty override while `review-and-fix step5` reuses recorded audit and escalation state.
+Step 5 resume bgjob launcher. It records main-agent handoff timing and, for review-resume work, starts `implement-step5-resume` through bgjob with merge-result env capture.
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper from the named `/implement` step so the prompt-side Bash fence remains a plugin-root source guard plus one script call.
+`skills/implement/SKILL.md` invokes `step-5-resume.sh --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"` after main-agent vote or coder-main-agent fixes, then repeatedly invokes `python/cli.py bgjob wait --step implement-step5-resume` until `DONE` or `DEAD`.
+
+The `--record-only` mode remains foreground because stall and durable-bail branches need only idempotent timing capture, not a long resume loop.
 
 ## KV grammar
 
-The wrapper relays explicit commit-route KVs as newline-delimited `KEY=value` records that the orchestrator can scan:
+Fresh launch stdout is exactly one bgjob start line:
 
-- `NEXT_ACTION=continue|stall`
-- `COMMITTED=`
-- `ERROR=`
-- `SHA=`
-- `COMMIT_OUTCOME=ok|noop|failed`
-
-`--ready-to-commit` parses `NEXT_ACTION=` only from newline-delimited records whose key is exactly `NEXT_ACTION` at the start of the line. Exactly one line-anchored `NEXT_ACTION=` is required. The wrapper relays `NEXT_ACTION=` on both stall and continue branches before the remaining filtered commit KVs.
-
-The commit phase is captured with an errexit-safe block:
-
-```bash
-set +e
-commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement commit-route --site step5-resume-handoff)"
-commit_rc=$?
-set -e
+```text
+BGJOB_STATUS=STARTED STEP=implement-step5-resume PGID=<n>
 ```
 
-This capture is required so usage errors, seed failures, and commit-route stalls can still be parsed and relayed from captured stdout. Missing, duplicated, or malformed `NEXT_ACTION=` relays any captured explicit KVs and exits non-zero so the orchestrator enters the lacks-envelope preflight/resume failure branch.
+The bgjob child tees `checks-step5-resume` stdout into `$IMPLEMENT_TMPDIR/bgjob/implement-step5-resume.merge.env`; bgjob merges it into `$IMPLEMENT_TMPDIR/bgjob/implement-step5-resume.result.env` with `BGJOB_RC`, `BGJOB_ELAPSED_S`, and `STEP`.
+
+Normal continuation requires `BGJOB_RC=0` plus the required checks/resume KVs in the final wait stdout and/or result env. `DONE` alone, launcher stdout, or `.completed/step-5-resume-terminal` is not sufficient.
 
 ## Invariants
 
 - Bash 3.2 portable; no associative arrays or namerefs.
-- Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
-- For telemetry key definitions, see `skills/shared/session-setup-output.md`; resume paths use `$IMPLEMENT_TMPDIR/session-env.sh`.
-- The round-timing duplicate probe uses awk success-on-match semantics: `found` must exit `0`, and missing rows must exit `1`.
-- `--ready-to-commit` exits before `review-and-fix step5` unless the parsed route is exactly `NEXT_ACTION=continue`.
-- Porcelain probing for the resume-handoff site lives inside `commit-route`, not in this wrapper.
-- A Python `commit-route` rc `0` with `NEXT_ACTION=stall` means durable stall state is already seeded. The wrapper relays that route and exits `1` so the immediate-background fence visibly fails while the orchestrator can still parse `NEXT_ACTION=stall` from stdout.
-- `STEP5_REVIEW_STATUS=` is the only Step 6 authorization. `NEXT_ACTION=continue` proves only that the commit phase completed and `review-and-fix step5` was allowed to start.
-
-## Python parity
-
-`python3 python/cli.py implement step-5-resume` (`step5_resume_main` in `python/implement_dispatch.py`) uses the same shared commit-route helper for the ready-to-commit phase. It treats `NEXT_ACTION=stall` as a terminal commit-phase failure, returns non-zero, relays `NEXT_ACTION`, and does not relaunch `review-and-fix step5`. Coverage lives in `python/test_implement_dispatch.py` (`test_step5_resume_*`).
+- Self-rehydrates `CLAUDE_PLUGIN_ROOT` and token/timing context from `$IMPLEMENT_TMPDIR/session-env.sh`.
+- Truncates `$IMPLEMENT_TMPDIR/bgjob/implement-step5-resume.merge.env` immediately before each fresh start.
+- Delegates owner-death, orphan, timeout, process-group cleanup, stdout/stderr logs, and terminal result env publication to bgjob.
+- Preserves `.completed/step-5-resume-terminal` as a transition sentinel through bgjob `--sentinel`; routing still keys on `BGJOB_RC=0` and required KVs.
+- `--record-only` records timing once and exits without bgjob launch.
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md` and the implement structure/timing harnesses when this contract or argv changes. Keep `step5_resume_main` in `python/implement_dispatch.py` and `python/test_implement_dispatch.py` at commit-route parity when changing the commit-handoff behavior here.
+Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `scripts/test-implement-structure.sh`, and `python/tests/implement/test_implement_dispatch.py` when this contract or argv changes.
