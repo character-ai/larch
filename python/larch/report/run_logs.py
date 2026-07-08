@@ -610,6 +610,23 @@ def append_entry_main(argv: list[str]) -> int:
     return 0
 
 
+def _failure_retry_suffix(retry_count: str, transient_retry_count: str) -> str:
+    if retry_count and transient_retry_count:
+        auth_retries = int(retry_count) - 1
+        transient_retries = int(transient_retry_count) - 1
+        retry_parts: list[str] = []
+        if auth_retries > 0:
+            retry_parts.append(f"auth-retries={auth_retries}")
+        if transient_retries > 0:
+            retry_parts.append(f"transient-retries={transient_retries}")
+        if retry_parts:
+            return ", " + ", ".join(retry_parts)
+        return ""
+    if retry_count:
+        return f", retries={retry_count}"
+    return ""
+
+
 def append_failure_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="python3 python/cli.py run-log append-failure")
     parser = argparse.ArgumentParser(prog="python3 python/cli.py run-log append-failure", add_help=False)
@@ -651,10 +668,7 @@ def append_failure_main(argv: list[str]) -> int:
     suffix = ""
     if args.verdict:
         suffix += f", {args.verdict}"
-    if args.retry_count and args.transient_retry_count:
-        suffix += f", auth-retries={args.retry_count}, transient-retries={args.transient_retry_count}"
-    elif args.retry_count:
-        suffix += f", retries={args.retry_count}"
+    suffix += _failure_retry_suffix(args.retry_count, args.transient_retry_count)
     entry = (
         f"- **Step {args.site}: {args.tool} {args.status_label} "
         f"(exit {args.exit_code}{suffix})**:\n"
