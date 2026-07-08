@@ -732,22 +732,19 @@ def test_voter1_runtime_codex_failure_redispatches_to_cursor(tmp_path: Path) -> 
 
 
 @pytest.mark.voter_edge_and_r3_claude
-def test_oos_only_ballot_triggers_parse_retry(tmp_path: Path) -> None:
+def test_oos_only_ballot_recovers_relabeled_finding_vote(tmp_path: Path) -> None:
+    # Issue #6579: a voter that writes FINDING_1 for an OOS_1-only ballot heading
+    # has safely relabeled its vote. Parser-side aliasing recovers it, so the
+    # parse-rate check keeps the voter substantive instead of dropping it as
+    # NOT_SUBSTANTIVE before the tally.
     stub_bin = _make_voter_stub_bin(tmp_path)
-    review = _harness_review_tmpdir(tmp_path, "oos-retry")
+    review = _harness_review_tmpdir(tmp_path, "oos-alias")
     ballot = tmp_path / "oos-only-ballot.md"
     ballot.write_text("### OOS_1: OOS-only observation\n", encoding="utf-8")
-    count = tmp_path / "oos-retry-count.txt"
-    result = _dispatch_via_cli(
-        review,
-        ballot,
-        stub_bin=stub_bin,
-        cursor_available="false",
-        env={"CLAUDE_STUB_MODE": "parse_retry_success", "CLAUDE_STUB_COUNT_FILE": str(count)},
-    )
+    result = _dispatch_via_cli(review, ballot, stub_bin=stub_bin, cursor_available="false")
     assert result.returncode == 0, result.stderr
-    assert "VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
-    assert not (review / "claude-vote-prompt-retry.txt").exists()
+    assert "VOTER_1_PARSE_RATE_STATUS=OK" in result.stdout
+    assert "VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" not in result.stdout
 
 
 @pytest.mark.voter_edge_and_r3_claude
