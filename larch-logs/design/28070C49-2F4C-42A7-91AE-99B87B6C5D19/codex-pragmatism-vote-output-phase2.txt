@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round-1 OOS_1; zero-retry suffix is not a plan-mandated test deliverable

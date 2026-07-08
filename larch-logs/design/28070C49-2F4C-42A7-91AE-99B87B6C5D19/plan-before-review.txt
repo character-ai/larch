@@ -1,0 +1,44 @@
+## Implementation Plan
+
+Fix two bugs reported in issue #6577: (1) false-positive policy-rejection kills when `aggregated_output` of completed Codex commands contains historical larch-log phrases; (2) attempt counters rendered as retries in execution-issue entries.
+
+### Approach
+
+**Primary fix**: `_codex_policy_rejection_excerpt` raw-scans the last 32 KB of the Codex events stream (JSON lines from `codex exec --json`). Completed-command events include `aggregated_output` that can contain phrases like "blocked by policy" or "Rejected(" from grep output over committed larch-logs, causing a false kill. Fix: strip `aggregated_output` values from JSON-parseable lines before regex scanning. Non-JSON lines (startup noise, test fixtures) pass through unchanged.
+
+**Secondary fix**: `run_logs.py` prints "auth-retries=1, transient-retries=1" for policy-rejection entries because `_review_launcher.py` starts both attempt counters at 1 (for the initial run) and always passes them. Subtracting 1 in the "both counters present" rendering branch correctly shows 0 retries for single-attempt runs and N-1 for N attempts.
+
+### Edge cases
+
+- Non-JSON lines in the events file pass through unchanged, preserving backward compat with test fixtures and Codex startup messages.
+- If `aggregated_output` is the only content in a JSON line, the stripped version has no trigger-phrase match, so no kill fires.
+- Subtracting 1 only affects the `if retry_count and transient_retry_count:` branch (review-launcher path); the `elif retry_count:` branch (ci-launcher path, 0-based counts) is unchanged.
+
+### Failure modes
+
+1. `json.loads` raises `ValueError` on malformed-but-non-`JSONDecodeError` input: the except clause catches only `json.JSONDecodeError`; other exceptions propagate. Mitigation: Codex events are well-formed; this path is unreachable in practice.
+2. Both counters become 0 after subtraction (policy rejection case): the suffix is suppressed entirely, which is the desired behavior.
+
+### Testing strategy
+
+- Update `test_run_external_agent_codex_policy_rejection_fast_fails` (test_agents.py line ~967): ensure the process-kill behavior is preserved. The test's plain-text output (non-JSON) still matches after the fix since non-JSON lines pass through.
+- Add new test `test_run_external_agent_codex_policy_no_false_positive_aggregated_output`: write a JSON events file whose `aggregated_output` contains "exec_command failed" and "Rejected(blocked by policy)" — assert no kill fires and `FAILURE_CLASS=policy-rejection` absent from diag.
+- Update `test_codex_transient_exhaustion_logs_to_implement_tmpdir` (test_launch_review.py line ~1932): change `"transient-retries=5"` to `"transient-retries=4"` (4 actual retries after subtracting the initial attempt).
+
+### Files to modify/create
+
+### UPDATED: python/larch/agents/_run_external.py
+- Add `_strip_aggregated_output_from_json_lines(text: str) -> str` helper (after the `_codex_policy_rejection_excerpt_bytes` constants block). It iterates lines, parses each as JSON, removes the `aggregated_output` key from dict objects, and returns the modified line; non-JSON lines pass through.
+- In `_codex_policy_rejection_excerpt`, call `_strip_aggregated_output_from_json_lines(bounded)` to produce `scanned`, then replace all three uses of `bounded` in the regex/excerpt logic with `scanned` (both regex guards, the `splitlines()` pass, and the fallback slice).
+
+### UPDATED: python/larch/report/run_logs.py
+- In `append_failure_main`, replace lines 654–657 with logic that subtracts 1 from both `retry_count` and `transient_retry_count` when both are present, and omits the suffix when both adjusted values are 0.
+
+### UPDATED: python/tests/agents/test_agents.py
+- Add `test_run_external_agent_codex_policy_no_false_positive_aggregated_output`: write a JSON-line events file via a helper process, verify no kill and no `FAILURE_CLASS=policy-rejection` in diag.
+
+### UPDATED: python/tests/agents/test_launch_review.py
+- In `test_codex_transient_exhaustion_logs_to_implement_tmpdir`, change `"transient-retries=5"` to `"transient-retries=4"`.
+
+difficulty: TRIVIAL
+diff_lines: 65

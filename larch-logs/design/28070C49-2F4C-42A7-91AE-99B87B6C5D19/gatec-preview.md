@@ -1,0 +1,97 @@
+## Final Design Plan
+
+## Plan
+
+Fix two bugs from issue #6577: (1) false-positive policy-rejection kills when completed Codex command `aggregated_output` (including nested `item.aggregated_output`) quotes historical larch-log phrases; (2) attempt counters rendered as retries in execution-issue entries.
+
+### Approach
+
+**Primary fix — gated, recursive `aggregated_output` stripping before regex scan**
+
+`_codex_policy_rejection_excerpt` raw-scans the last 32 KB of the Codex events stream (JSONL from `codex exec --json`). Production events nest command output under `item.aggregated_output` in `item.completed` / `command_execution` rows (see `larch-logs/design/693522DE/execution-issues.md`). A flat top-level key strip misses the real false-positive path; stripping every `aggregated_output` would hide genuine rejections in failed commands.
+
+Add `_sanitize_codex_events_for_policy_scan(text: str) -> str` (after the `_codex_policy_rejection_excerpt_bytes` constants block):
+
+1. Iterate lines of the bounded tail text.
+2. Non-JSON lines pass through unchanged (startup noise, legacy plain-text fixtures).
+3. JSON lines: `json.loads` each line; on `JSONDecodeError`, pass the original line through.
+4. Walk the parsed value recursively via `_strip_gated_aggregated_output`. For every dict that owns an `aggregated_output` key, apply a single strip contract:
+   - **Strip** when `exit_code == 0` (successful completion whose stdout/stderr body can quote grep hits over committed larch-logs).
+   - **Strip** when `"exit_code" in node`, `exit_code is None`, and `aggregated_output` is falsy (in-progress rows with empty output; no-op but safe).
+   - **Preserve** when `exit_code` is any other non-zero integer (failed command evidence must remain scannable).
+   - **Preserve** when the dict has `aggregated_output` but no `exit_code` key (ambiguous rows must not hide real failures).
+   - **Preserve** when `exit_code is None` and `aggregated_output` is non-empty (in-progress rows that already carry meaningful output).
+   - Recursion covers nested `item` dicts and any other dict nodes that carry both fields; do not assume a flat envelope.
+5. Re-serialize sanitized JSON objects with `json.dumps(..., ensure_ascii=False)` plus the original line terminator.
+
+Implement the contract with two helpers:
+
+- `_should_strip_aggregated_output(exit_code: object, aggregated_output: object) -> bool` — returns true only for `exit_code == 0`, or for `exit_code is None` with falsy `aggregated_output`. Both arguments are always passed; this helper does not decide the absent-key case.
+- `_strip_gated_aggregated_output(node: object) -> None` — recursive in-place walker. For each dict with `aggregated_output`: if `"exit_code" not in node`, preserve; elif `_should_strip_aggregated_output(node["exit_code"], node["aggregated_output"])`, pop `aggregated_output`; recurse into dict values and list elements.
+
+In `_codex_policy_rejection_excerpt`, call `_sanitize_codex_events_for_policy_scan(bounded)` to produce `scanned`, then use `scanned` everywhere `bounded` is used today (both regex guards, the `splitlines()` excerpt pass, and the fallback slice). Real policy rejections still surface via non-zero `exit_code` rows, error events, and plain-text startup/diag lines outside successful completions.
+
+**Secondary fix — retry suffix rendering**
+
+`_review_launcher.py` passes `auth_attempt` and `transient_attempt` starting at 1 (initial run). In `append_failure_main`, when both `--retry-count` and `--transient-retry-count` are present, subtract 1 from each before rendering; omit the retry suffix entirely when both adjusted values are 0 (single-attempt policy rejection). Leave the `elif args.retry_count:` ci-launcher branch unchanged (0-based counts).
+
+### Edge cases
+
+- Nested `item.completed` with `exit_code: 0` and trigger phrases only inside `item.aggregated_output` must not kill (primary regression target).
+- Nested or flat command row with non-zero `exit_code` and policy phrases in `aggregated_output` must still match after sanitization (preserves fast-kill for genuine failures).
+- `item.started` rows (`exit_code: null`, empty `aggregated_output`) pass through; stripping is a no-op.
+- `exit_code: null` with non-empty `aggregated_output` must be preserved (in-progress output must remain scannable).
+- Dicts with `aggregated_output` but no `exit_code` key must be preserved.
+- Malformed JSON lines pass through unchanged; existing plain-text policy-rejection tests keep working.
+- Both adjusted retry counters at 0 suppress the suffix (desired for policy rejection with no retries).
+
+### Failure modes
+
+1. **`exit_code` absent on a dict with `aggregated_output`**: preserve (do not strip) so ambiguous rows cannot hide real failures; the walker checks key presence before calling `_should_strip_aggregated_output`.
+2. **`exit_code is None` with non-empty `aggregated_output`**: preserve; only strip null-exit rows when output is falsy.
+3. **Deeply nested trees**: recursive walk must visit all dict nodes; shallow `item` pop alone is insufficient if Codex adds other nesting later.
+4. **Re-serialization changes key order**: irrelevant; regex scan is order-independent.
+
+### Testing strategy
+
+- Keep `test_run_external_agent_codex_policy_rejection_fast_fails` unchanged (plain-text events still kill).
+- Keep `test_run_external_agent_codex_policy_rejection_requires_both_families` unchanged.
+- Add `test_run_external_agent_codex_policy_no_false_positive_aggregated_output`:
+  - Do **not** pre-write `paths.events`; `_prepare_run_external_agent_files` unlinks `stdout_path` before child start, so a pre-launch write would be truncated and the test could pass vacuously.
+  - Mirror `test_run_external_agent_codex_policy_rejection_fast_fails`: use a long-sleep stub child that **prints and flushes** one nested `item.completed` JSONL line to stdout on startup, shaped like production Codex output:
+    `{"type":"item.completed","item":{"id":"item_0","type":"command_execution","command":"/bin/bash -c \"rg ... larch-logs\"","aggregated_output":"... exec_command failed ... Rejected(blocked by policy) ...","exit_code":0,"status":"completed"}}`
+  - Use a low `poll_interval` (e.g. `0.05`) so the policy watcher scans the emitted line.
+  - Assert the process is not killed early, diag lacks `FAILURE_CLASS=policy-rejection` and `POLICY_REJECTION=true`.
+- Add `test_sanitize_codex_events_for_policy_scan_preserves_failed_command_output` (unit-level, same module or `test_agents`):
+  - Feed a JSONL line with `exit_code: 1` and trigger phrases inside nested `item.aggregated_output`; assert sanitized text still contains the phrases.
+- Add `test_sanitize_codex_events_for_policy_scan_preserves_in_progress_output` (unit-level):
+  - Feed a dict with `exit_code: null` and non-empty `aggregated_output` containing trigger phrases; assert sanitized text still contains the phrases.
+- Add `test_sanitize_codex_events_for_policy_scan_preserves_missing_exit_code` (unit-level):
+  - Feed a dict with `aggregated_output` present but no `exit_code` key; assert output is preserved.
+- Update `test_codex_transient_exhaustion_logs_to_implement_tmpdir`: change `"transient-retries=5"` to `"transient-retries=4"` (four retries after subtracting the initial attempt).
+
+### Files to modify/create
+
+### UPDATED: python/larch/agents/_run_external.py
+
+- Add `_should_strip_aggregated_output(exit_code: object, aggregated_output: object) -> bool` returning true only for `exit_code == 0`, or for `exit_code is None` with falsy `aggregated_output`.
+- Add `_strip_gated_aggregated_output(node: object) -> None` recursive in-place walker: for each dict with `aggregated_output`, preserve when `"exit_code" not in node`; otherwise pop the key when `_should_strip_aggregated_output(node["exit_code"], node["aggregated_output"])` is true; recurse into dict values and list elements.
+- Add `_sanitize_codex_events_for_policy_scan(text: str) -> str`: line-wise JSON parse → `_strip_gated_aggregated_output` → re-serialize; non-JSON lines unchanged.
+- In `_codex_policy_rejection_excerpt`, replace direct use of `bounded` in regex/excerpt logic with `scanned = _sanitize_codex_events_for_policy_scan(bounded)`.
+
+### UPDATED: python/larch/report/run_logs.py
+
+- In `append_failure_main` (lines 654–657), when both retry counters are present: parse integers, subtract 1 from each, render `auth-retries` / `transient-retries` only when the adjusted value is > 0; skip the whole retry suffix when both adjusted values are 0.
+
+### UPDATED: python/tests/agents/test_agents.py
+
+- Add `test_run_external_agent_codex_policy_no_false_positive_aggregated_output`: stub prints/flushes nested `item.completed` / `command_execution` JSONL (`exit_code: 0`) to stdout, then sleeps; no pre-write of `paths.events`.
+- Add `test_sanitize_codex_events_for_policy_scan_preserves_failed_command_output` for the `exit_code != 0` preserve path.
+- Add unit tests for in-progress non-empty output and missing `exit_code` preserve paths.
+
+### UPDATED: python/tests/agents/test_launch_review.py
+
+- In `test_codex_transient_exhaustion_logs_to_implement_tmpdir`, change expected `"transient-retries=5"` to `"transient-retries=4"`.
+
+difficulty: TRIVIAL
+diff_lines: 115

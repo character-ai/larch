@@ -1,0 +1,3 @@
+warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: 'Have the long-sleep stub print the nested `item.completed` JSONL line (with exit')
+warning: fix text for slot 'Cursor-Pragmatic' in FINDING_1 not traceable to scoped input (first 80 chars: 'Have the stub child print/flush the nested `item.completed` JSONL line to stdout')
+warning: fix text for slot 'Cursor-Requirements' in FINDING_1 not traceable to scoped input (first 80 chars: 'Have the stub child emit the nested `item.completed` JSONL line (exit_code 0, tr')

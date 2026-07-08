@@ -1,0 +1,9 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements	accepted	YES	true	major	excellent	false	cursor-validity	YES	true	major	excellent	false	cursor-plan-fidelity	YES	true	major	excellent	false	cursor-pragmatism	major	in_scope
+FINDING_2	Cursor-Arch	accepted	YES	true	minor	excellent	false	cursor-validity	YES	true	minor	excellent	false	cursor-plan-fidelity	YES	true	minor	excellent	false	cursor-pragmatism	major	in_scope
+FINDING_3	Cursor-Innovation, Cursor-Pragmatic	accepted	YES	true	minor	excellent	false	cursor-validity	YES	true	minor	excellent	false	cursor-plan-fidelity	YES	true	minor	excellent	false	cursor-pragmatism	major	in_scope
+FINDING_4	Cursor-Innovation	rejected	NO	partially-true	nit	good	false	cursor-validity	NO	true	minor	adequate	false	cursor-plan-fidelity	NO	true	minor	adequate	false	cursor-pragmatism	minor	in_scope
+OOS_1	Cursor-Arch	neutral	NO	true	nit	adequate	false	cursor-validity	NO	true	nit	adequate	false	cursor-plan-fidelity	YES	true	nit	adequate	false	cursor-pragmatism	minor	oos
+OOS_2	Cursor-Innovation	accepted	YES	true	minor	good	false	cursor-validity	YES	partially-true	minor	good	false	cursor-plan-fidelity	YES	true	minor	good	false	cursor-pragmatism	minor	oos
+OOS_3	Cursor-Pragmatic	neutral	NO	true	minor	good	false	cursor-validity	NO	partially-true	minor	adequate	false	cursor-plan-fidelity	YES	true	minor	good	false	cursor-pragmatism	minor	oos
+OOS_4	Cursor-Requirements	rejected	NO	true	minor	good	false	cursor-validity	NO	partially-true	minor	adequate	false	cursor-plan-fidelity	NO	true	minor	adequate	false	cursor-pragmatism	minor	oos

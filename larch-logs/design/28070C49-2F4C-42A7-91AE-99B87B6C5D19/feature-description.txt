@@ -1,0 +1,23 @@
+# [BUG] Codex policy-rejection watcher false-positives on quoted grep output
+
+Surfaced by the run-log investigation of /implement run C9457B68-AEF0-4FF6-9905-58D947490861 (issue #6536, PR #6573, larch 52.5.5).
+
+**Evidence**
+
+- In round 1's retry voting pass, the codex validity voter was killed after ~10s with exit 1 and 0 bytes of output.
+- The run's `vendor-failure-diagnostics.txt` records `FAILURE_CLASS=policy-rejection` with a "Matched excerpt" that is grep output over committed `larch-logs/design/...` file content (historical design-log text), not a codex error event.
+- The slot recovered through the cursor phase2 fallback (`cursor-phase2-voter-1`, 89s, in `timing-report.json`), so the round survived. The false kill still produced the run's only exec issue and burned one voter call.
+
+**Root cause**
+
+`_codex_policy_rejection_excerpt` in `python/larch/agents/_run_external.py` (~lines 653-674) regex-scans the last 32KB of raw events text for `exec_command failed` plus `blocked by policy|Rejected\(` anywhere. That scan includes `aggregated_output` of successfully completed commands. Any codex agent that greps this repo can hit the kill, because committed larch-logs quote historical failure diagnostics containing those phrases. `_codex_policy_rejection_fast_fail` (~lines 706-735) then kills a healthy process.
+
+**Fix**
+
+1. Parse the events stream as JSON lines. Match policy-rejection markers only in genuine error surfaces (failed command events, error events, turn-failure payloads). Exclude `aggregated_output` bodies of completed commands.
+2. Keep the fast-kill behavior for real rejections.
+3. Regression tests: a fixture events stream whose `aggregated_output` quotes the trigger phrases must not trigger the kill; a genuine rejection event must.
+
+**Secondary cleanup (optional, same surface)**
+
+The exec-issue record renders attempt counters as retries: "auth-retries=1, transient-retries=1" (`python/larch/report/run_logs.py` ~line 655). Both counters start at 1, and policy rejections return without retrying (`_run_external.py` ~line 1157), so the record claims two retries when zero happened. Report attempts as attempts, or subtract the initial attempt.
