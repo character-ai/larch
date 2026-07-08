@@ -680,6 +680,91 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
         assert line in tally
 
 
+def test_tally_code_votes_accepts_safe_oos_alias_for_finding_heading(tmp_path: Path) -> None:
+    case = tmp_path / "safe-oos-alias"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: [OUT_OF_SCOPE] public follow-up
+- **Reviewer**: Codex-Plan-fidelity
+- **Concern**: File this separately.
+- **Suggested revision**: Track it out of scope.
+""",
+        encoding="utf-8",
+    )
+    for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
+        _ = (case / name).write_text(
+            "OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+            encoding="utf-8",
+        )
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "cursor-vote-output.txt"),
+        str(case / "codex-vote-output.txt"),
+        str(case / "claude-vote-output.txt"),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(stdout=result.stdout, key="PARSE_FAILED_COUNT") == "0"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| FINDING_1 | 3 | 0 | 0 | accepted |" in tally
+    row = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))[
+        "FINDING_1"
+    ]
+    assert row["voting_result"] == "accepted"
+    assert row["v1_vote"] == "YES"
+    assert row["v1_correctness"] == "true"
+    assert row["v1_severity"] == "major"
+    assert row["scope"] == "oos"
+
+
+def test_tally_code_votes_does_not_alias_when_matching_oos_heading_exists(tmp_path: Path) -> None:
+    case = tmp_path / "oos-alias-collision"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: in-scope issue
+- **Reviewer**: Codex-Correctness
+- **Concern**: Fix this.
+- **Suggested revision**: Patch it.
+
+### OOS_1: [OUT_OF_SCOPE] separate follow-up
+- **Reviewer**: Cursor-Testing
+- **Concern**: File this separately.
+- **Suggested revision**: Track it out of scope.
+""",
+        encoding="utf-8",
+    )
+    voter = case / "voter.txt"
+    _ = voter.write_text(
+        "OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(voter),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(stdout=result.stdout, key="PARSE_FAILED_COUNT") == "0"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "| FINDING_1 | 0 | 0 | 1 | rejected |" in tally
+    assert "| OOS_1 | 1 | 0 | 0 | accepted |" in tally
+    rows = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))
+    assert rows["FINDING_1"]["v1_vote"] == "JUDGE_ERROR"
+    assert rows["OOS_1"]["v1_vote"] == "YES"
+
+
 def test_tally_security_oos_holdback(tmp_path: Path) -> None:
     case = tmp_path / "security-oos"
     case.mkdir()

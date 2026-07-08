@@ -5331,7 +5331,7 @@
     "file": "larch/review/plan_review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "_Tally.run",
-    "metric": 59
+    "metric": 60
   },
   {
     "file": "larch/review/review_aggregate.py",
@@ -5727,7 +5727,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 230
+    "metric": 232
   },
   {
     "file": "larch/review/review_threshold.py",
@@ -5836,12 +5836,6 @@
     "code": "C901",
     "qualified_symbol": "lint_focus_area_enum_main",
     "metric": 12
-  },
-  {
-    "file": "larch/review/voting.py",
-    "code": "C901",
-    "qualified_symbol": "parse_judge_vote",
-    "metric": 11
   },
   {
     "file": "larch/review/voting.py",

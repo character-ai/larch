@@ -160,6 +160,7 @@ class _Tally:
         self.workdir = ""
         self.proposer_map_file = ""
         self.proposer_sidecar_required = False
+        self.ballot_id_set: set[str] = set()
 
     # -- usage / diagnostics -------------------------------------------------
     @staticmethod
@@ -294,10 +295,14 @@ class _Tally:
         self.slot_tool[slot] = tool
 
     # -- vote tallying -------------------------------------------------------
+    def _alias_id(self, item_id: str) -> str:
+        return voting.alias_ballot_id(item_id, self.ballot_id_set)
+
     def _tally_votes_for_id(self, item_id: str) -> tuple[int, int, int, str]:
         yes = no = judge_error = 0
+        alias_id = self._alias_id(item_id)
         if self.tally_voter_file:
-            vote = voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file)
+            vote = voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file, alias_id=alias_id)
             if vote == "YES":
                 yes = 1
             elif vote == "NO":
@@ -309,7 +314,7 @@ class _Tally:
                 voter_file = self.slot_file[pos]
                 if not voter_file:
                     continue
-                vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file)
+                vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
                 if vote == "YES":
                     yes += 1
                 elif vote == "NO":
@@ -366,14 +371,15 @@ class _Tally:
     def _votes_and_severities_for_item(self, item_id: str) -> tuple[list[str], list[str]]:
         votes: list[str] = []
         severities: list[str] = []
+        alias_id = self._alias_id(item_id)
         if self.tally_voter_file:
             try:
                 _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
-                    voter_file=self.tally_voter_file, ballot_id=item_id
+                    voter_file=self.tally_voter_file, ballot_id=item_id, alias_id=alias_id
                 )
             except (OSError, FileNotFoundError):
                 severity = ""
-            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file))
+            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file, alias_id=alias_id))
             severities.append(severity)
             return votes, severities
         for pos in (1, 2, 3):
@@ -381,22 +387,31 @@ class _Tally:
             if not voter_file or self.eligible <= 0:
                 continue
             try:
-                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
+                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
+                    voter_file=voter_file,
+                    ballot_id=item_id,
+                    alias_id=alias_id,
+                )
             except (OSError, FileNotFoundError):
                 severity = ""
-            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=voter_file))
+            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id))
             severities.append(severity)
         return votes, severities
 
     def _vote_and_severity_for_slot(self, item_id: str, *, pos: int) -> tuple[str, str]:
         voter_file = self.slot_file[pos]
+        alias_id = self._alias_id(item_id)
         if not voter_file:
             return "", ""
         try:
-            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
+            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
+                voter_file=voter_file,
+                ballot_id=item_id,
+                alias_id=alias_id,
+            )
         except (OSError, FileNotFoundError):
             return "", ""
-        vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file)
+        vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
         if vote == "JUDGE_ERROR":
             vote = ""
         return vote, severity
@@ -425,6 +440,7 @@ class _Tally:
         buf = voting.findings_classification_header() + "\n"
         for item_id in sorted_ids:
             block = Path(self.block_dir) / f"{item_id}.md"
+            alias_id = self._alias_id(item_id)
             reviewer = _sanitize_tsv_cell(self._proposer_for_item(item_id=item_id, block=block))
             body_severity = _sanitize_tsv_cell(_body_severity_for_block(block))
             _, _, _, result = self._tally_votes_for_id(item_id)
@@ -441,10 +457,14 @@ class _Tally:
                 tool = self.slot_tool[pos]
                 if voter_file and self.tally_voter_file != voter_file and self.eligible > 0:
                     try:
-                        _, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
+                        _, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+                            voter_file=voter_file,
+                            ballot_id=item_id,
+                            alias_id=alias_id,
+                        )
                     except (OSError, FileNotFoundError):
                         correctness = severity = quality = uncertain = ""
-                    vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file)
+                    vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
                     if vote == "JUDGE_ERROR":
                         vote = ""
                     row += [
@@ -699,6 +719,7 @@ class _Tally:
             )
 
         sorted_ids = self._sorted_ids()
+        self.ballot_id_set = set(sorted_ids)
 
         accepted_plan = Path(self.design_tmpdir) / "accepted-plan-findings.md"
         accepted_plan_all = Path(self.design_tmpdir) / "accepted-plan-findings-all.md"

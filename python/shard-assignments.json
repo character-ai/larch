@@ -3,7 +3,7 @@
   "tests/agents/test_agent_voters.py::test_default_round_num_cli_smoke_with_stub_plugin_root": 1,
   "tests/agents/test_agent_voters.py::test_env_isolation_suppresses_parent_issues_log": 13,
   "tests/agents/test_agent_voters.py::test_harness_path_guard_writes_local_diag_only": 2,
-  "tests/agents/test_agent_voters.py::test_oos_only_ballot_triggers_parse_retry": 19,
+  "tests/agents/test_agent_voters.py::test_oos_only_ballot_recovers_relabeled_finding_vote": 19,
   "tests/agents/test_agent_voters.py::test_parallel_dispatch_concurrent_waterfall_and_claude": 13,
   "tests/agents/test_agent_voters.py::test_prod_shape_claude_parse_retry_appends_issues_log": 20,
   "tests/agents/test_agent_voters.py::test_prod_shape_codex_parse_retry_appends_issues_log": 16,
