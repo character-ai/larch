@@ -1,0 +1,1 @@
+Plan changes prompt-side tail ordering so `/design` and `/implement` emit the final run summary as the last assistant text. It also adds emoji outcome display for `DONE` and `STALLED`, with tolerant reconciliation for old summaries.

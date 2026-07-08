@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- file-only cancel routes are a separate follow-up, not required for the end-of-run summary-visibility fix
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- this is documentation/comment cleanup only, so it fails the necessity gate
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the green path already owns the finalize call in the composite wrapper; the claimed rerun-after-teardown defect is not present
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate comment-cleanup observation from the prior round, so it stays out of scope
