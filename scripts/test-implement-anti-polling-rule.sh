@@ -40,12 +40,12 @@ ORCH_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 
 STEP3_LITERAL='NEVER poll `.step3-review-result.env` with a sleep loop.'
 ORCH_NEVER_LITERAL='NEVER poll a `run_in_background` result file with a Bash sleep loop.'
-SHARED_REF='skills/shared/design-background-wait.md'
-LOAD_LITERAL='Read and apply ##'
-CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
-WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
+SHARED_REF='shared bgjob wait'
+FINAL_SUMMARY_BGJOB_CONTRACT='Use shared bgjob wait for final-summary launch/rejoin/`WAIT`/`DEAD`/`DONE`.'
+FINAL_SUMMARY_RESULT_ENV='result env `$DESIGN_TMPDIR/bgjob/design-step-final-summary.result.env`'
+FINAL_SUMMARY_REQUIRED_KVS='require `BGJOB_RC=0` and `FINAL_SUMMARY_PATH`'
 RESUME_BACKREF_LITERAL='Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above.'
-DESIGN_EMPTY_OUTPUT_ANCHOR='5. **NEVER act on empty-output or prefix-identical repeat'
+DESIGN_BGJOB_WAIT_ANCHOR='5. **NEVER act on launcher stdout, `DONE` alone, or compatibility sentinels during `/design` bgjob waits'
 SHARED_IMMEDIATE_WAIT_ANCHOR='After the background launch ack'
 
 PASS=0
@@ -200,25 +200,25 @@ check "$IMPL_MD" \
     'after final `DONE`, parse required KVs from the last `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env`'
 
 check_context "$DESIGN_MD" \
-    "/design Anti-pattern #5 pins empty-output and repeat notification scope" \
-    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "/design Anti-pattern #5 pins bgjob wait scope" \
+    "$DESIGN_BGJOB_WAIT_ANCHOR" \
     "2" \
-    'empty-output or prefix-identical repeat `<task-notification>`'
+    'launcher stdout, `DONE` alone, or compatibility sentinels'
 check_context "$DESIGN_MD" \
-    "/design Anti-pattern #5 pins ordered repeat handling" \
-    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "/design Anti-pattern #5 pins WAIT repeat handling" \
+    "$DESIGN_BGJOB_WAIT_ANCHOR" \
     "2" \
-    '**Apply in order:** (0) exactly one classification `Read` of the active `tasks/*.output`; (1) missing or whitespace-only task-output bytes → silent yield; (2) prefix-identical repeat non-empty task-output bytes (first 200 chars)'
+    '`BGJOB_STATUS=WAIT` means run the identical `bgjob wait` again with no intervening prose or tools.'
 check_context "$DESIGN_MD" \
-    "/design Anti-pattern #5 pins no-tool action" \
-    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "/design Anti-pattern #5 pins DONE result-env handling" \
+    "$DESIGN_BGJOB_WAIT_ANCHOR" \
     "2" \
-    'Silent yield and denied `Read`: no prose/tools, no "waiting" narration'
+    '`BGJOB_STATUS=DONE` permits normal continuation only when `BGJOB_RC=0` and the required KVs are present in the bgjob result env.'
 check_context "$DESIGN_MD" \
-    "/design Anti-pattern #5 pins spurious notification issue" \
-    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "/design Anti-pattern #5 keeps legacy recovery text out of live waits" \
+    "$DESIGN_BGJOB_WAIT_ANCHOR" \
     "2" \
-    '#5240'
+    'Retained legacy empty-output recovery text lives only in `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`.'
 
 # (3)/(4) /design shared wait extraction and load contracts.
 check_count "$DESIGN_MD" \
@@ -284,30 +284,30 @@ check_context "$DESIGN_MD" \
     "25" \
     "$SHARED_REF"
 check_context "$DESIGN_MD" \
-    "/design Final summary block uses the immediate-background load contract" \
+    "/design Final summary block uses the bgjob wait contract" \
     '**When**: after `DESIGN_TMPDIR` exists' \
     "25" \
-    "$LOAD_LITERAL Immediate-background wait rule"
+    "$FINAL_SUMMARY_BGJOB_CONTRACT"
 check_context "$DESIGN_MD" \
-    "/design Final summary block pins durable completion confirmation purpose" \
+    "/design Final summary block names bgjob result env" \
     '**When**: after `DESIGN_TMPDIR` exists' \
     "25" \
-    "$CONFIRMATION_DURABLE_COMPLETION"
+    "$FINAL_SUMMARY_RESULT_ENV"
 check_context "$DESIGN_MD" \
-    "/design Final summary block pins WAIT-when-absent recovery" \
+    "/design Final summary block pins required success KVs" \
     '**When**: after `DESIGN_TMPDIR` exists' \
     "25" \
-    "$WAIT_WHEN_ABSENT"
+    "$FINAL_SUMMARY_REQUIRED_KVS"
 
 FINAL_SUMMARY_FENCE_ANCHOR='design-step-final-summary.sh --outcome'
 STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
 STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh'
 
 check_context_before "$DESIGN_MD" \
-    "/design Final summary load contract precedes its background fence" \
+    "/design Final summary bgjob contract precedes its launcher fence" \
     "$FINAL_SUMMARY_FENCE_ANCHOR" \
     "20" \
-    "$LOAD_LITERAL Immediate-background wait rule"
+    "$FINAL_SUMMARY_BGJOB_CONTRACT"
 check_context_before_step3_launch "$DESIGN_MD" \
     "/design Step 3 launch load contract precedes its bgjob fence" \
     "20" \
@@ -535,8 +535,8 @@ check "$DESIGN_MD" \
     'NEVER use the `Monitor` tool anywhere within the `/design` orchestrator'
 
 check "$DESIGN_MD" \
-    "/design Anti-patterns pins foreground-probe primary recovery guidance" \
-    'the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn'
+    "/design Anti-patterns pins bgjob wait primary guidance" \
+    'Use the shared bgjob wait contract for migrated long helpers, not Bash polling loops.'
 
 check "$DESIGN_MD" \
     "/design Anti-patterns bans the background recovery waiter (#4725)" \

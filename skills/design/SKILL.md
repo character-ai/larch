@@ -77,8 +77,8 @@ Consolidated NEVER rules from the steps below. Each gives WHY; step-local mentio
 
 3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** wrappers must self-terminate at Bash boundaries so pause/resume keeps pause requests and current-env paths. **Apply:** every post-Step-0a Bash fence invokes the launcher with a bare ported Step 0/1 verb or unported `*.sh` basename. The launcher supplies source-env and Claude PID; wrappers own source-env, pause checks, folded sentinel ordering, and the Step 6 cleanup exception. Harness: `scripts/test-design-structure.sh` `assert_wrapper_pause_before_work`.
 
-4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** Use `run_in_background: true` and `<task-notification>`, not Bash polling loops. For premature recovery, see `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`; the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn. NEVER launch a background recovery waiter. Do NOT fall back to Monitor.
-5. **NEVER act on empty-output or prefix-identical repeat `<task-notification>` during `/design` immediate-background waits.** Empty bytes are spurious (#5240). **Apply in order:** (0) exactly one classification `Read` of the active `tasks/*.output`; (1) missing or whitespace-only task-output bytes → silent yield; (2) prefix-identical repeat non-empty task-output bytes (first 200 chars) with absent sentinel → silent yield; (3) new/changed non-empty bytes → foreground probe. Silent yield and denied `Read`: no prose/tools, no "waiting" narration. If the denial or clamp happens while more notifications are already queued in the same batch, ignore the rest of that batch too. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`.
+4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** Use the shared bgjob wait contract for migrated long helpers, not Bash polling loops. For retained legacy hook compatibility, `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` remains a defense reference only. NEVER launch a background recovery waiter. Do NOT fall back to Monitor.
+5. **NEVER act on launcher stdout, `DONE` alone, or compatibility sentinels during `/design` bgjob waits.** `BGJOB_STATUS=WAIT` means run the identical `bgjob wait` again with no intervening prose or tools. `BGJOB_STATUS=DONE` permits normal continuation only when `BGJOB_RC=0` and the required KVs are present in the bgjob result env. Retained legacy empty-output recovery text lives only in `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`.
 6. **NEVER treat an AskUserQuestion no-response fallback as an operator answer.** **Why:** a 60-second platform fallback is no answer. **Apply:** when a `/design` `AskUserQuestion` returns the no-response fallback, do not choose, infer consent or cancellation, refine, or use "best judgment." Re-fire the identical `AskUserQuestion`, retry without a cap, and keep repeats quiet unless the tool must show the prompt. Terse real answers still count.
 
 <!-- step:0: Session Setup -->
@@ -172,23 +172,17 @@ Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because 
 
 **When**: after `DESIGN_TMPDIR` exists and before any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` on Step 0b / Steps 5–6 paths. Do not run on Step 0a setup failure or pre-Step-0 public argv abort. Runs before cleanup. Split-path invokes it only for terminal `SUMMARY_OUTCOME=approved-partition`, `cancelled-decompose`, or `failed-judge-panel`; other Split returns preserve `$DESIGN_TMPDIR`.
 **Orchestrator contract**: immediately before this single-phase fence, export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `failed-clarify` | `failed-postplan` | `failed-judge-panel` | `failed-publish-tail`. Gate-C success uses `python/cli.py design step5c`; do not run this fence on that happy path.
-Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely; include its classification `Read`.
-Parameters:
-- breadcrumb: `⏳ final-summary: writing final summary...`
-- terminal sentinel: `.completed/step-final-summary`
-- confirmation purpose: durable completion
-- after present: parse `FINAL_SUMMARY_PATH`, confirm readiness markers, then Read disk file
-- extra guards: `WAIT` when absent is expected. Present: follow after-present; absent: yield without `ps` polling.
-
-**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
+Use shared bgjob wait for final-summary launch/rejoin/`WAIT`/`DEAD`/`DONE`. Compat: read `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` completely.
+Params: step `design-step-final-summary`; sentinel `.completed/step-final-summary` (compat); result env `$DESIGN_TMPDIR/bgjob/design-step-final-summary.result.env`; merge input `$DESIGN_TMPDIR/.design-step-final-summary-result.env`; require `BGJOB_RC=0` and `FINAL_SUMMARY_PATH`.
+Before each fresh start, truncate/recreate `$DESIGN_TMPDIR/.design-step-final-summary-result.env` so stale paths cannot satisfy the new wait. Then launch through bgjob:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start --step design-step-final-summary --tmpdir "$DESIGN_TMPDIR" --budget-s 21600 --merge-result-env "$DESIGN_TMPDIR/.design-step-final-summary-result.env" -- "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?}"
 ```
 
-Wait for `<task-notification>` before parsing `FINAL_SUMMARY_PATH`, confirming empty readiness markers, Reading the disk file, emitting the summary body, printing a cancellation line, or exiting.
-The launcher-routed Python port creates `.bg-wait-active` with `STEP=design-step-final-summary` and marker-local `CLONE_PATH` during the final-summary background wait. `step_final_summary_core` removes the marker on all completion paths, including success and failure, through `try`/`finally` cleanup before the process exits.
-After this cancellation fence's completed `design-step-final-summary.sh` `<task-notification>` stdout is available, parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` only after that stdout is available. Empty `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` markers are readiness only; read the disk file verbatim. Complete the shared sidecar follow-on before any cancellation line or exit. Apply no-recap. Step 5c item 5 uses the same common procedure with its own source/timing.
+Launch stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step-final-summary PGID=<n>`. Wait with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step design-step-final-summary --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270`; on `WAIT`, repeat identical wait with no prose/tools. `DEAD` or absent/non-zero/timeout/orphaned `BGJOB_RC` uses failure/stall.
+Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Final summary parse `$DESIGN_TMPDIR/bgjob/design-step-final-summary.result.env` and require `FINAL_SUMMARY_PATH`. Use `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design read-result-env --input "$DESIGN_TMPDIR/.design-step-final-summary-result.env" --allow FINAL_SUMMARY_PATH --output "$DESIGN_TMPDIR/.design-step-final-summary-source.env"`; the reader prefers the bgjob result env. Never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone.
+After `BGJOB_STATUS=DONE` with `BGJOB_RC=0` and `read-result-env` succeeds, parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`; markers are readiness only, read disk verbatim. Complete the shared sidecar follow-on before any cancellation line or exit. Apply no-recap. Step 5c item 5 uses the same procedure.
 See sibling contract `${CLAUDE_PLUGIN_ROOT}/python/design_summary.py` (implementation: `python/design_summary.py`).
 Auto error-reporting teardown lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md`; load it at Step 5 entry or while debugging failure reporting.
 
@@ -480,7 +474,13 @@ If Round 2-style follow-up questions need to be asked (decisions emerging from t
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-continuation-entry.sh
 ```
 
-Loop back through the launcher-only Step 3 resume fence before launching the next review. Invoke `design-step3-review.sh` via `design-run-$PPID.sh` (never `--no-preview`) with `run_in_background: true`, `timeout: 21600000`, and `<task-notification>` wait before parsing. The wrapper owns rehydration/pause checks. Normal runs use the script-internal loop; Step 3.5 must not re-drive continuation.
+Loop back through the launcher-only Step 3 resume fence before launching the next review:
+
+```bash
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"
+```
+
+Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above. The wrapper owns rehydration/pause checks. Normal runs use the script-internal loop; Step 3.5 must not re-drive continuation.
 
 <!-- step:3b: Finalize plan-review artifacts -->
 

@@ -26,7 +26,6 @@ from larch.state import stall_recovery
 from larch.design.design_core import (
     _CoreUsageError,
     _append_execution_issue,
-    _bg_wait_marker_context,
     _core_diagnostic,
     _core_print_exc,
     _emit_core_kvs,
@@ -35,6 +34,7 @@ from larch.design.design_core import (
     _read_env_values,
     _validate_design_tmpdir_arg,
     _append_failure,
+    design_write_merge_env,
 )
 from larch.design.design_router import _usage
 from larch.design.design_session import (
@@ -195,6 +195,7 @@ def _preferred_bgjob_result_input(input_path: Path) -> Path | None:
     step_by_legacy_name = {
         ".design-step4-tail-result.env": "design-step4-tail",
         ".design-step5c-status.env": "design-step5c",
+        ".design-step-final-summary-result.env": "design-step-final-summary",
     }
     step = step_by_legacy_name.get(input_path.name)
     if step is None:
@@ -953,6 +954,44 @@ def _touch_final_summary_complete(design_tmpdir: Path) -> None:
     (completed / "step-final-summary").touch()
 
 
+def _write_final_summary_result_env(*, design_tmpdir: Path, final_summary_path: str) -> None:
+    summary_path = Path(final_summary_path)
+    if not _has_nonempty_final_summary(summary_path):
+        return
+    design_write_merge_env(
+        path=design_tmpdir / ".design-step-final-summary-result.env",
+        design_tmpdir=design_tmpdir,
+        rows=[("FINAL_SUMMARY_PATH", str(summary_path))],
+    )
+
+
+def _complete_final_summary(*, design_tmpdir: Path, final_summary_path: str) -> None:
+    _write_final_summary_result_env(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
+    _touch_final_summary_complete(design_tmpdir)
+
+
+def _flush_final_summary_outputs() -> None:
+    sys.stdout.flush()
+    with contextlib.suppress(OSError):
+        _final_summary_stream().flush()
+
+
+def _emit_and_complete_final_summary(*, design_tmpdir: Path, final_summary_path: str) -> int:
+    try:
+        _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
+        _emit_report_gate_sidecars_from_disk(design_tmpdir)
+    except OSError as exc:
+        _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: final summary emit failed: {exc}")
+        return 1
+    _flush_final_summary_outputs()
+    try:
+        _complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
+    except (OSError, ValueError) as exc:
+        _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: final summary result env write failed: {exc}")
+        return 1
+    return 0
+
+
 def _publish_terminal_final_summary(
     *,
     design_tmpdir: Path,
@@ -987,6 +1026,84 @@ def _publish_terminal_final_summary(
     return rc, rc == 0 and publish_ok == "true" and not recovery_branch
 
 
+def _run_terminal_publish_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_summary_path: Path) -> int:
+    if not ctx.session_id:
+        _append_execution_issue(
+            design_tmpdir=design_tmpdir,
+            message="Warning: design log publish skipped for terminal summary because SESSION_ID is missing",
+        )
+        return 1
+    try:
+        publish_rc, publish_ok = _publish_terminal_final_summary(
+            design_tmpdir=design_tmpdir,
+            run_id=ctx.session_id,
+            issue=ctx.issue_number,
+            outcome=ctx.summary_outcome,
+            repo=ctx.repo,
+        )
+    except OSError as exc:
+        _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: design log publish failed for terminal summary: {exc}")
+        return 1
+    if not publish_ok:
+        _append_execution_issue(
+            design_tmpdir=design_tmpdir,
+            message=f"Warning: design log publish failed for terminal summary (exit {publish_rc})",
+        )
+        return 1
+    from larch.design.design_summary import upsert_final_summary_from_disk  # noqa: PLC0415
+
+    repo_args = ["--repo", ctx.repo] if ctx.repo else []
+    if not upsert_final_summary_from_disk(
+        design_tmpdir=design_tmpdir,
+        issue=ctx.issue_number,
+        session_id=ctx.session_id,
+        repo_args=repo_args,
+        final_summary_path=final_summary_path,
+    ):
+        _append_execution_issue(
+            design_tmpdir=design_tmpdir,
+            message="Warning: tracking-issue upsert-summary failed for terminal final summary",
+        )
+        return 1
+    return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=str(final_summary_path))
+
+
+def _render_final_summary_post_publish(*, design_tmpdir: Path, ctx: Ctx) -> int:
+    # Local import is deliberate to avoid a design_summary <-> design_lifecycle
+    # top-level import cycle while preserving the in-process port.
+    from larch.design.design_summary import render_final_summary_main  # noqa: PLC0415
+
+    render_args = [
+        "--outcome",
+        ctx.summary_outcome,
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--issue-number",
+        ctx.issue_number,
+    ]
+    if ctx.session_id:
+        render_args.extend(["--session-id", ctx.session_id])
+    render_args.append("--post-publish-only")
+    if ctx.repo:
+        render_args.extend(["--repo", ctx.repo])
+    render_stdout = design_tmpdir / "render-final-summary.stdout.log"
+    try:
+        with render_stdout.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
+            return int(render_final_summary_main(render_args))
+    except BaseException as exc:
+        _core_print_exc()
+        _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: render_final_summary_main failed: {exc}")
+        return 1
+
+
+def _run_rendered_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_summary_path: str) -> int:
+    render_rc = _render_final_summary_post_publish(design_tmpdir=design_tmpdir, ctx=ctx)
+    if render_rc != 0:
+        _flush_final_summary_outputs()
+        return render_rc
+    return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
+
+
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ: dict[str, str] = os.environ.copy()
     try:
@@ -1011,92 +1128,12 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx), []
         with contextlib.suppress(OSError):
             (design_tmpdir / ".completed" / "step-final-summary").unlink(missing_ok=True)
-        with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step-final-summary", claude_pid=parsed.claude_pid):
-            if ctx.summary_outcome in {"cancelled-clarify", "failed-clarify"} and _has_nonempty_final_summary(disk_final_summary):
-                _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary))
-                _emit_report_gate_sidecars_from_disk(design_tmpdir)
-                sys.stdout.flush()
-                with contextlib.suppress(OSError):
-                    _final_summary_stream().flush()
-                _touch_final_summary_complete(design_tmpdir)
-                return 0, []
-            if _is_terminal_publish_outcome(ctx.summary_outcome):
-                if not ctx.session_id:
-                    _append_execution_issue(
-                        design_tmpdir=design_tmpdir,
-                        message="Warning: design log publish skipped for terminal summary because SESSION_ID is missing",
-                    )
-                    return 1, []
-                publish_rc, publish_ok = _publish_terminal_final_summary(
-                    design_tmpdir=design_tmpdir,
-                    run_id=ctx.session_id,
-                    issue=ctx.issue_number,
-                    outcome=ctx.summary_outcome,
-                    repo=ctx.repo,
-                )
-                if not publish_ok:
-                    _append_execution_issue(
-                        design_tmpdir=design_tmpdir,
-                        message=f"Warning: design log publish failed for terminal summary (exit {publish_rc})",
-                    )
-                    return 1, []
-                from larch.design.design_summary import upsert_final_summary_from_disk  # noqa: PLC0415
-
-                repo_args = ["--repo", ctx.repo] if ctx.repo else []
-                if not upsert_final_summary_from_disk(
-                    design_tmpdir=design_tmpdir,
-                    issue=ctx.issue_number,
-                    session_id=ctx.session_id,
-                    repo_args=repo_args,
-                    final_summary_path=disk_final_summary,
-                ):
-                    _append_execution_issue(
-                        design_tmpdir=design_tmpdir,
-                        message="Warning: tracking-issue upsert-summary failed for terminal final summary",
-                    )
-                    return 1, []
-                _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary))
-                _emit_report_gate_sidecars_from_disk(design_tmpdir)
-                sys.stdout.flush()
-                with contextlib.suppress(OSError):
-                    _final_summary_stream().flush()
-                _touch_final_summary_complete(design_tmpdir)
-                return 0, []
-            # Local import is deliberate to avoid a design_summary <-> design_lifecycle
-            # top-level import cycle while preserving the in-process port.
-            from larch.design.design_summary import render_final_summary_main  # noqa: PLC0415
-
-            render_args = [
-                "--outcome",
-                ctx.summary_outcome,
-                "--design-tmpdir",
-                str(design_tmpdir),
-                "--issue-number",
-                ctx.issue_number,
-            ]
-            if ctx.session_id:
-                render_args.extend(["--session-id", ctx.session_id])
-            render_args.append("--post-publish-only")
-            if ctx.repo:
-                render_args.extend(["--repo", ctx.repo])
-            render_stdout = design_tmpdir / "render-final-summary.stdout.log"
-            render_rc = 0
-            try:
-                with render_stdout.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
-                    render_rc = render_final_summary_main(render_args)
-            except BaseException as exc:
-                render_rc = 1
-                _core_print_exc()
-                _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: render_final_summary_main failed: {exc}")
-            if render_rc == 0:
-                _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
-                _emit_report_gate_sidecars_from_disk(design_tmpdir)
-            sys.stdout.flush()
-            with contextlib.suppress(OSError):
-                _final_summary_stream().flush()
-            if render_rc == 0:
-                _touch_final_summary_complete(design_tmpdir)
-            return int(render_rc), []
+            (design_tmpdir / ".design-step-final-summary-result.env").unlink(missing_ok=True)
+        if ctx.summary_outcome in {"cancelled-clarify", "failed-clarify"} and _has_nonempty_final_summary(disk_final_summary):
+            return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary)), []
+        if _is_terminal_publish_outcome(ctx.summary_outcome):
+            return _run_terminal_publish_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, final_summary_path=disk_final_summary), []
+        return _run_rendered_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, final_summary_path=final_summary_path), []
     except ValueError as exc:
         _core_diagnostic(f"design-step-final-summary.sh: {exc}")
         return 2, []

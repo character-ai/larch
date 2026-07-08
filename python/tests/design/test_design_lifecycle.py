@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import shutil
@@ -3406,7 +3405,7 @@ def test_failure_report_failed_judge_panel_terminal_gate(tmp_path: Path, monkeyp
     assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
 
 
-def test_step_final_summary_pause_skips_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_pause_skips_result_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="42")
     (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
 
@@ -3416,24 +3415,34 @@ def test_step_final_summary_pause_skips_bg_marker(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
     rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
     assert rc == 3
-    assert not (tmp_path / ".bg-wait-active").exists()
+    assert not (tmp_path / ".design-step-final-summary-result.env").exists()
 
 
-def test_step_final_summary_marker_failure_still_emits_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_success_writes_result_env_before_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
-    (tmp_path / ".bg-wait-active").mkdir()
+    result_env = tmp_path / ".design-step-final-summary-result.env"
+    terminal = tmp_path / ".completed" / "step-final-summary"
+    result_present_at_first_terminal_write: list[bool] = []
+    original_touch = design_terminal._touch_final_summary_complete  # pyright: ignore[reportPrivateUsage]
+
+    def spy_touch(design_tmpdir: Path) -> None:
+        if not terminal.exists():
+            result_present_at_first_terminal_write.append(result_env.is_file())
+        original_touch(design_tmpdir)
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def render_ok_marker(_argv: list[str]) -> int:
         return 0
 
+    monkeypatch.setattr(design_terminal, "_touch_final_summary_complete", spy_touch)
     monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok_marker)
     rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "456", "--outcome", "approved"])
     assert rc == 0
-    assert (tmp_path / ".completed" / "step-final-summary").is_file()
-    assert "bg-wait marker setup failed" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert terminal.is_file()
+    assert result_present_at_first_terminal_write == [True]
+    assert f"FINAL_SUMMARY_PATH={tmp_path / 'final-summary.md'}" in result_env.read_text(encoding="utf-8")
 
 
 def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3473,26 +3482,34 @@ def test_step_final_summary_main_returns_failure_without_sentinel_after_render_f
     assert not (tmp_path / ".completed" / "step-final-summary").is_file()
 
 
-def test_step_final_summary_bg_marker_records_claude_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_result_env_is_used_by_read_result_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
-    seen: list[str] = []
-
-    @contextlib.contextmanager
-    def capture_marker(*, design_tmpdir: object, step: str, claude_pid: str = ""):
-        _ = design_tmpdir, step
-        seen.append(claude_pid)
-        yield
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     def render_ok(_argv: list[str]) -> int:
         return 0
 
-    monkeypatch.setattr(design_terminal, "_bg_wait_marker_context", capture_marker)
     monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok)
     design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "789", "--outcome", "approved"])
-    assert seen == ["789"]
+    legacy = tmp_path / ".design-step-final-summary-result.env"
+    output = tmp_path / "out.env"
+    bgjob = tmp_path / "bgjob" / "design-step-final-summary.result.env"
+    bgjob.parent.mkdir()
+    bgjob.write_text("BGJOB_RC=0\nSTEP=design-step-final-summary\nFINAL_SUMMARY_PATH=/tmp/bgjob-summary.md\n", encoding="utf-8")
+    rc = design_lifecycle.read_result_env_main(
+        [
+            "--input",
+            str(legacy),
+            "--allow",
+            "FINAL_SUMMARY_PATH",
+            "--output",
+            str(output),
+        ],
+    )
+    assert rc == 0
+    assert "FINAL_SUMMARY_PATH='/tmp/bgjob-summary.md'" in output.read_text(encoding="utf-8")
 
 
 def test_step_final_summary_emits_report_gate_sidecars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

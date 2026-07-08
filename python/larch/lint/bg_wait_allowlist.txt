@@ -1,6 +1,4 @@
 # Reason-bearing allowlist for retained legacy run_in_background prose until the
 # bgjob migration's second cleanup issue deletes the old notification contracts.
 # Format: repo-relative path<TAB>reason.
-skills/design/SKILL.md	legacy /design notification contract retained until issue-2 cleanup.
-skills/design/references/brainstorm.md	legacy brainstorm external-lane contract retained until bgjob lane migration completes.
 skills/shared/orchestrator-never.md	legacy anti-polling rule remains as compatibility defense until issue-2 cleanup.
