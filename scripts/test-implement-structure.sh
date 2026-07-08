@@ -863,12 +863,14 @@ forbid(skill, 'The `larch-tokens-&lt;slug&gt;.jsonl` token ledger', 'SKILL closi
 stall_ref = Path('skills/implement/references/stall-recovery.md').read_text()
 for needle in [
     'step-8-ship.sh',
-    'run_in_background: true',
-    'timeout: 21600000',
-    '<task-notification>',
     'Dispatch by `RESUME_HINT`',
     '`step2-impl` means record escalation before edits, then Main Claude reads `$IMPLEMENT_TMPDIR/plan.txt` and implements inline',
     '`step8-shippr` is the only retry branch that re-invokes `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh`',
+    'The wrapper must rejoin a live identity-valid `implement-step8-ship` registry row with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step implement-step8-ship --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0`',
+    'refuse a second driver start, and clear only stale or dead rows before a fresh start',
+    'If the wrapper prints `BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=<n>`, continue with chunked `bgjob wait` per `skills/shared/bgjob-wait.md`',
+    'left an identity-checked dead bgjob registry row',
+    'wait on `implement-checks-step5-self-review` with chunked `bgjob wait`',
 ]:
     if needle not in stall_ref:
         checks.append(f'stall-recovery.md missing {needle!r}')

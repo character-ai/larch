@@ -1,4 +1,4 @@
-"""Shared bg-wait marker helpers for /implement."""
+"""Compatibility bg-wait marker helpers for retained legacy hooks."""
 
 from __future__ import annotations
 

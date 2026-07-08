@@ -2,12 +2,14 @@ from pathlib import Path
 
 import argparse
 import io
-import os
 import subprocess
 import tempfile
 import pytest
 
+from larch.bgjob import model as bgjob_model
+from larch.bgjob import registry as bgjob_registry
 from larch.core import config
+from larch.core import process_identity
 from larch.issue import issue_create
 from larch.state import stall_recovery
 from larch.state import _escalation as _sr_escalation
@@ -1143,13 +1145,15 @@ def test_clear_stall_rejects_dangling_state_symlink(tmp_path: Path, capsys: pyte
     assert "CLEARED=false" in capsys.readouterr().out
 
 
-def test_clear_stall_unlinks_dead_checks_bg_wait_marker(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _write_bg_wait_marker(tmp_path, step="implement-step3-checks", pid=_dead_pid())
+def test_clear_stall_unlinks_dead_checks_bgjob_registry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    registry_path = _write_bgjob_registry(tmp_path, monkeypatch, step="implement-step3-checks", daemon="dead")
 
     rc = stall_recovery.clear_stall_main(["--implement-tmpdir", str(tmp_path)])
 
     assert rc == 0
-    assert not (tmp_path / ".bg-wait-active").exists()
+    assert not registry_path.exists()
     assert "CLEARED=true" in capsys.readouterr().out
 
 
@@ -1929,21 +1933,75 @@ def test_classify_test_failure_step8_uses_shippr_resume_hint(tmp_path: Path, cap
     assert "RESUME_HINT=step8-shippr" in out
 
 
-def _write_bg_wait_marker(tmp_path: Path, *, step: str, pid: int) -> None:
-    _ = (tmp_path / ".bg-wait-active").write_text(
-        f"PID={pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP={step}\nTIMEOUT_S=15600\n",
-        encoding="utf-8",
+def _fake_identity(*, pid: int) -> process_identity.RecordedProcessIdentity:
+    return process_identity.RecordedProcessIdentity(
+        pid=pid,
+        pgid=pid,
+        start_time=f"start-{pid}",
+        command_signature=f"command-{pid}",
     )
 
 
-def _dead_pid() -> int:
-    with subprocess.Popen(["true"]) as proc:
-        _ = proc.wait()
-        return proc.pid
+def _write_bgjob_registry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    step: str,
+    owner: str = "live",
+    daemon: str = "live",
+    run_id: str = "",
+) -> Path:
+    registry_root = tmp_path / "registry"
+    monkeypatch.setenv(config.ENV_BGJOB_REGISTRY_ROOT, str(registry_root))
+    log_dir = tmp_path / "bgjob"
+    log_dir.mkdir()
+    dead_pids: set[int] = set()
+    live_identity = _fake_identity(pid=1001)
+    owner_identity = _fake_identity(pid=1002 if owner == "dead" else 1003)
+    daemon_identity = _fake_identity(pid=1004 if daemon == "dead" else 1005)
+    if owner == "dead":
+        dead_pids.add(owner_identity.pid)
+    if daemon == "dead":
+        dead_pids.add(daemon_identity.pid)
+
+    def fake_daemon_liveness(entry: bgjob_model.RegistryEntry) -> bgjob_model.LivenessVerdict:
+        if entry.daemon.pid in dead_pids:
+            return bgjob_model.LivenessVerdict(live=False, reason="missing-pid")
+        return bgjob_model.LivenessVerdict(live=True, reason="ok")
+
+    def fake_validate_process_identity(
+        *,
+        recorded: process_identity.RecordedProcessIdentity,
+        runner: object | None = None,
+    ) -> process_identity.ValidationResult:
+        _ = runner
+        return process_identity.ValidationResult(ok=recorded.pid not in dead_pids, reason="ok")
+
+    monkeypatch.setattr(bgjob_registry, "daemon_liveness", fake_daemon_liveness)
+    monkeypatch.setattr(process_identity, "validate_process_identity", fake_validate_process_identity)
+    active_run_id = run_id or bgjob_model.default_run_id(tmpdir=tmp_path, clone_path=Path.cwd().resolve())
+    entry = bgjob_model.RegistryEntry(
+        step=step,
+        run_id=active_run_id,
+        tmpdir=tmp_path,
+        log_dir=log_dir,
+        clone_path=Path.cwd().resolve(),
+        daemon=daemon_identity,
+        child=live_identity,
+        owner=owner_identity,
+        start_epoch=0,
+        budget_s=15600,
+        stdout_log=log_dir / f"{step}.stdout.log",
+        stderr_log=log_dir / f"{step}.stderr.log",
+        result_env=log_dir / f"{step}.result.env",
+    )
+    return bgjob_registry.write_entry(entry)
 
 
-def test_classify_step3_abandoned_checks_marker_retries(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _write_bg_wait_marker(tmp_path, step="implement-step3-checks", pid=_dead_pid())
+def test_classify_step3_dead_daemon_bgjob_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = _write_bgjob_registry(tmp_path, monkeypatch, step="implement-step3-checks", daemon="dead")
 
     rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
 
@@ -1956,8 +2014,25 @@ def test_classify_step3_abandoned_checks_marker_retries(tmp_path: Path, capsys: 
     assert "MATCHED_CLASSIFIER_PATTERN=checks-leg-abandoned" in out
 
 
-def test_classify_step3_live_marker_stays_no_stall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _write_bg_wait_marker(tmp_path, step="implement-step3-checks", pid=os.getpid())
+def test_classify_step3_dead_owner_bgjob_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = _write_bgjob_registry(tmp_path, monkeypatch, step="implement-step3-checks", owner="dead")
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=checks-commit-route-retry" in out
+    assert "STALL_STEP=3" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=checks-leg-abandoned" in out
+
+
+def test_classify_live_bgjob_without_result_env_stays_no_stall(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = _write_bgjob_registry(tmp_path, monkeypatch, step="implement-step3-checks")
 
     rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
 
@@ -1967,10 +2042,10 @@ def test_classify_step3_live_marker_stays_no_stall(tmp_path: Path, capsys: pytes
     assert "MATCHED_CLASSIFIER_PATTERN=no-stall" in out
 
 
-def test_classify_step5_self_review_abandoned_marker_retries_checks_commit_route(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+def test_classify_step5_self_review_dead_bgjob_retries_checks_commit_route(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _write_bg_wait_marker(tmp_path, step="implement-step5-self-review", pid=_dead_pid())
+    _ = _write_bgjob_registry(tmp_path, monkeypatch, step="implement-checks-step5-self-review", daemon="dead")
 
     rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
 
@@ -1982,8 +2057,10 @@ def test_classify_step5_self_review_abandoned_marker_retries_checks_commit_route
     assert "MATCHED_CLASSIFIER_PATTERN=checks-leg-abandoned" in out
 
 
-def test_classify_non_checks_marker_stays_no_stall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _write_bg_wait_marker(tmp_path, step="implement-step8-ship", pid=_dead_pid())
+def test_classify_stale_dead_bgjob_for_other_run_stays_no_stall(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = _write_bgjob_registry(tmp_path, monkeypatch, step="implement-step3-checks", daemon="dead", run_id="stale-run")
 
     rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
 

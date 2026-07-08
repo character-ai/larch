@@ -35,11 +35,11 @@
     "skill_md_lines": 682
   },
   {
-    "closure_content_estimated_tokens": 42250,
-    "closure_estimated_tokens": 42368,
+    "closure_content_estimated_tokens": 42254,
+    "closure_estimated_tokens": 42371,
     "closure_lines": 1280,
-    "conditional_content_estimated_tokens": 28835,
-    "conditional_estimated_tokens": 28904,
+    "conditional_content_estimated_tokens": 28958,
+    "conditional_estimated_tokens": 29027,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",

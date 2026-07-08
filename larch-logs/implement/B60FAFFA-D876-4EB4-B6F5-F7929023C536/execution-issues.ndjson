@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"47743f3a8c5bcbfc809002d61b0d0508a0931de781438bf057c5e7ab7ec833ab","body":"\n- **Step 2 \u2014 codex selection drift**: session-env no longer permits codex, dispatcher returned claude_fallback.\n"}
