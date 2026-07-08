@@ -569,6 +569,14 @@ def _progress_normalize_output_base(base: str) -> str:
     return stem + ext
 
 
+def _is_chart_vendor_fallback_output(base: str) -> bool:
+    basename = Path(base).name
+    if not basename.endswith(".txt"):
+        return False
+    stem = basename.removesuffix(".txt")
+    return stem.endswith(("-phase2", "-phase3"))
+
+
 def _manifest_lookup_by_slot_tool(manifest: Path) -> dict[tuple[str, str], str]:
     mapping: dict[tuple[str, str], str] = {}
     for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(manifest)):
@@ -943,6 +951,18 @@ def _progress_derived_label(output: str) -> str:
     return f"unknown/{core}"
 
 
+def _chart_fallback_label_for_vendor(*, label: str, vendor: str) -> str:
+    executing_tool = vendor.strip().lower()
+    if executing_tool not in {"codex", "cursor", "claude", "claude_sub"}:
+        return label
+    nominal_tool, sep, slot = label.partition("/")
+    if not sep or nominal_tool.strip().lower() == executing_tool:
+        return label
+    if nominal_tool.strip().lower() not in {"codex", "cursor", "claude", "claude_sub"}:
+        return label
+    return _manifest_fallback_base_label(slot=slot, tool=executing_tool)
+
+
 def _derive_progress_label(
     *, output: str,
     vendor: str = "",
@@ -958,11 +978,22 @@ def _derive_progress_label(
     }
     if kind in kind_labels:
         return kind_labels[kind]
-    basename = Path(output).name if output and output != "-" else ""
+    raw_base = Path(output).name if output and output != "-" else ""
     labels = label_map or {}
-    if basename and basename in labels:
-        return labels[basename]
-    derived = _progress_derived_label(basename) if basename else ""
+    if raw_base and raw_base in labels:
+        return labels[raw_base]
+    is_chart_fallback = _is_chart_vendor_fallback_output(raw_base)
+    normalized_base = _progress_normalize_output_base(raw_base) if raw_base else ""
+    resolved = labels.get(normalized_base, "") if normalized_base else ""
+    if not resolved:
+        derived_base = normalized_base if is_chart_fallback and normalized_base else raw_base
+        resolved = _progress_derived_label(derived_base) if derived_base else ""
+        if resolved in {"codex", "cursor", "claude", "claude_sub"} and kind and kind != "-":
+            resolved = f"{resolved}/{kind}"
+    if is_chart_fallback and resolved and resolved != "unknown/-":
+        resolved = _chart_fallback_label_for_vendor(label=resolved, vendor=vendor)
+        return f"{resolved} (via fallback)"
+    derived = resolved
     if derived in {"codex", "cursor", "claude", "claude_sub"} and kind and kind != "-":
         return f"{derived}/{kind}"
     if derived and derived != "unknown/-":
@@ -997,25 +1028,27 @@ _CODER_APPLY_TASK_KINDS: frozenset[str] = frozenset({
 
 
 def _cap_gantt_rows_reserving_apply(
-    rows: list[tuple[int, int, str, bool]],
+    rows: list[tuple[int, int, str, bool, bool]],
     *,
     cap: int,
-) -> list[tuple[int, int, str, bool]]:
-    """Cap rows to `cap` without dropping coder fix-application lanes.
+) -> list[tuple[int, int, str, bool, bool]]:
+    """Cap rows to `cap` without dropping reserved reviewer-timing lanes.
 
     Reviewer, aggregator, and voter rows all start before the coder applies
     accepted fixes, so truncating the start-sorted list at `cap` silently
     drops the late-starting `*/apply` lane (issue #5264). Keep every apply
-    row, fill the remaining budget with the earliest non-apply rows, and
-    return the kept rows in chronological order. `rows` must already be
-    sorted by (start_s, end_s, label).
+    row. Also reserve phase2/phase3 vendor-fallback rows, because they can
+    start after a saturated primary panel and otherwise disappear from the
+    chart. Fill the remaining budget with the earliest non-reserved rows, and
+    return the kept rows in chronological order. `rows` must already be sorted
+    by (start_s, end_s, label).
     """
     if len(rows) <= cap:
         return rows
-    apply_rows = [row for row in rows if row[3]]
-    non_apply = [row for row in rows if not row[3]]
-    budget = max(0, cap - len(apply_rows))
-    kept = non_apply[:budget] + apply_rows
+    reserved_rows = [row for row in rows if row[3] or row[4]]
+    non_reserved = [row for row in rows if not row[3] and not row[4]]
+    budget = max(0, cap - len(reserved_rows))
+    kept = non_reserved[:budget] + reserved_rows
     kept.sort(key=lambda row: (row[0], row[1], row[2]))
     return kept
 
@@ -1034,7 +1067,7 @@ def _progress_vendor_rows(
         lines = timing_ledger.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return []
-    rows: list[tuple[int, int, str, bool]] = []
+    rows: list[tuple[int, int, str, bool, bool]] = []
     for line in lines:
         cols = line.split("\t")
         if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor":
@@ -1058,10 +1091,16 @@ def _progress_vendor_rows(
         if skip_ci and _is_ci_gantt_row(kind=kind, output=output):
             continue
         label = _derive_progress_label(output=output, vendor=cols[TIMING_VENDOR_VENDOR_COL], kind=kind, label_map=label_map)
-        rows.append((clamped_start, clamped_end, label, kind in _CODER_APPLY_TASK_KINDS))
+        rows.append((
+            clamped_start,
+            clamped_end,
+            label,
+            kind in _CODER_APPLY_TASK_KINDS,
+            _is_chart_vendor_fallback_output(output),
+        ))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
     capped = _cap_gantt_rows_reserving_apply(rows, cap=PROGRESS_GANTT_ROW_CAP)
-    return [GanttRow(label, start_s, end_s) for start_s, end_s, label, _ in capped]
+    return [GanttRow(label, start_s, end_s) for start_s, end_s, label, _, _ in capped]
 
 
 def _prior_immediate_round_end_s(*, timing_ledger: Path, skill: str, round_num: int) -> int | None:

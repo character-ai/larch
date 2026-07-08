@@ -1623,7 +1623,7 @@
     "file": "larch/design/design_step5c.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 93
+    "metric": 92
   },
   {
     "file": "larch/design/design_step6.py",
@@ -1725,7 +1725,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "read_result_env_main",
-    "metric": 15
+    "metric": 12
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1748,12 +1748,6 @@
   {
     "file": "larch/design/design_terminal.py",
     "code": "PLR0911",
-    "qualified_symbol": "read_result_env_main",
-    "metric": 7
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "code": "PLR0911",
     "qualified_symbol": "step_final_summary_core",
     "metric": 10
   },
@@ -1768,12 +1762,6 @@
     "code": "PLR0912",
     "qualified_symbol": "phase_driver_write_result_env",
     "metric": 13
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "code": "PLR0912",
-    "qualified_symbol": "read_result_env_main",
-    "metric": 14
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1804,12 +1792,6 @@
     "code": "PLR0915",
     "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
     "metric": 53
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "code": "PLR0915",
-    "qualified_symbol": "read_result_env_main",
-    "metric": 52
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -2468,20 +2450,8 @@
   {
     "file": "larch/implement/ci_monitor.py",
     "code": "C901",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 19
-  },
-  {
-    "file": "larch/implement/ci_monitor.py",
-    "code": "C901",
-    "qualified_symbol": "_rollback_to_baseline",
-    "metric": 11
-  },
-  {
-    "file": "larch/implement/ci_monitor.py",
-    "code": "C901",
     "qualified_symbol": "evaluate_failure",
-    "metric": 20
+    "metric": 19
   },
   {
     "file": "larch/implement/ci_monitor.py",
@@ -2494,12 +2464,6 @@
     "code": "C901",
     "qualified_symbol": "stage_and_push",
     "metric": 22
-  },
-  {
-    "file": "larch/implement/ci_monitor.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 14
   },
   {
     "file": "larch/implement/ci_monitor.py",
@@ -2517,7 +2481,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0911",
     "qualified_symbol": "evaluate_failure",
-    "metric": 11
+    "metric": 10
   },
   {
     "file": "larch/implement/ci_monitor.py",
@@ -2540,26 +2504,14 @@
   {
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0912",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 18
-  },
-  {
-    "file": "larch/implement/ci_monitor.py",
-    "code": "PLR0912",
     "qualified_symbol": "evaluate_failure",
-    "metric": 19
+    "metric": 18
   },
   {
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0912",
     "qualified_symbol": "stage_and_push",
     "metric": 24
-  },
-  {
-    "file": "larch/implement/ci_monitor.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_agentic_fix_result",
-    "metric": 9
   },
   {
     "file": "larch/implement/ci_monitor.py",
@@ -4383,7 +4335,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_derive_progress_label",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/report/progress_report.py",
