@@ -1,0 +1,12 @@
+v1	mark	1783533263	design	design Step 2b: plan	-	-	-	-	-	-	-	-
+v1	vendor	1783533386	implement	-	codex	codex-plan-draft	1783533264	1783533386	122	step2b-codex-raw.27233.txt	0	complete
+v1	mark	1783533411	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1783533527	implement	-	codex	codex-phase1-codex-plan-arch	1783533428	1783533526	98	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783533533	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783533428	1783533533	105	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783533536	implement	-	codex	codex-phase1-dyn-codex-plan-bgjob-owner-regression	1783533428	1783533536	108	dyn-codex-plan-bgjob-owner-regression.txt	0	complete
+v1	vendor	1783533565	implement	-	codex	codex-phase1-codex-plan-innovation	1783533428	1783533565	137	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783533570	implement	-	codex	codex-phase1-codex-plan-requirements	1783533428	1783533570	142	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783533578	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783533428	1783533578	150	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1783533641	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783533428	1783533640	212	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783533717	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783533428	1783533717	289	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783533798	implement	-	cursor	cursor-phase1-dyn-cursor-plan-bgjob-owner-regression	1783533428	1783533798	370	dyn-cursor-plan-bgjob-owner-regression.txt	0	complete

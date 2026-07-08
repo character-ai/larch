@@ -1,0 +1,1 @@
+Plan: add targeted tests for stable bgjob owner behavior across Step 3 and sibling shared-launcher steps, leave production code unchanged unless a test exposes a gap, then post one file-backed correcting comment on #6591 during /implement.
