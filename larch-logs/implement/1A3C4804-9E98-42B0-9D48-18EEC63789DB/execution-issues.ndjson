@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"7449f6254846c941124bef15280840b4076d21df949bdd3185557f81b032c26f","body":"\n- **Step 7a.1 \u2014 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: skills/implement/scripts/test-architectural-guidelines-step.sh\n"}
