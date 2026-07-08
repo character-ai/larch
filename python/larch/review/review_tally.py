@@ -736,6 +736,7 @@ def tally_code_votes(argv: list[str]) -> int:
         blocks = _block_files(ballot_file=ballot_file, review_tmpdir=review_tmpdir)
     except RuntimeError:
         return _error("tally-code-votes: duplicate or malformed FINDING/OOS headings in ballot")
+    ballot_id_set = {block.stem for block in blocks}
     _write(path=class_tsv, text=voting.code_review_classification_header() + "\n" if three_slot else _CLASSIFICATION_HEADER + "\n")
     not_substantive_count = int(args.not_substantive_count) if str(args.not_substantive_count).isdigit() else 0
     if not blocks:
@@ -874,6 +875,7 @@ def tally_code_votes(argv: list[str]) -> int:
     oos_seq = _seed_oos_seq(args.session_env_path)
     for block in blocks:
         item_id = block.stem
+        alias_id = voting.alias_ballot_id(item_id, ballot_id_set)
         yes = no = judge_error = 0
         cells: list[tuple[str, str, str, str, str, str | None]] = []
         if three_slot:
@@ -882,7 +884,11 @@ def tally_code_votes(argv: list[str]) -> int:
                 if not effective_slot[idx]:
                     cells.append(("", "", "", "", "", tool))
                     continue
-                vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file=args.voter_files[idx], ballot_id=item_id)
+                vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+                    voter_file=args.voter_files[idx],
+                    ballot_id=item_id,
+                    alias_id=alias_id,
+                )
                 if not vote:
                     vote = "JUDGE_ERROR"
                 cells.append((vote, correctness, severity, quality, uncertain, tool))
@@ -895,7 +901,11 @@ def tally_code_votes(argv: list[str]) -> int:
         else:
             for voter_file in effective_files:
                 try:
-                    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(voter_file=voter_file, ballot_id=item_id)
+                    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+                        voter_file=voter_file,
+                        ballot_id=item_id,
+                        alias_id=alias_id,
+                    )
                 except FileNotFoundError:
                     vote, correctness, severity, quality, uncertain = "JUDGE_ERROR", "", "", "", "true"
                 if not vote:

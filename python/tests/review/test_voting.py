@@ -199,6 +199,63 @@ def test_markdown_table_votes_preserve_axis_tokens(tmp_path: Path) -> None:
     assert uncertain == "false"
 
 
+def test_alias_ballot_id_accepts_safe_finding_and_oos_aliases() -> None:
+    assert voting.alias_ballot_id("FINDING_6", {"FINDING_6"}) == "OOS_6"
+    assert voting.alias_ballot_id("OOS_6", {"OOS_6"}) == "FINDING_6"
+    assert voting.alias_ballot_id("FINDING_1", {"FINDING_1", "OOS_1"}) == ""
+    assert voting.alias_ballot_id("NOTE_1", {"NOTE_1"}) == ""
+
+
+def test_vote_for_id_accepts_alias_when_primary_missing(tmp_path: Path) -> None:
+    voter = tmp_path / "voter.txt"
+    voter.write_text("OOS_6: YES -- relabeled out-of-scope finding\n", encoding="utf-8")
+
+    assert voting.vote_for_id(ballot_id="FINDING_6", voter_file=voter) == "JUDGE_ERROR"
+    assert voting.vote_for_id(ballot_id="FINDING_6", voter_file=voter, alias_id="OOS_6") == "YES"
+
+
+def test_parse_judge_vote_accepts_alias_and_preserves_axes(tmp_path: Path) -> None:
+    voter = tmp_path / "voter.txt"
+    voter.write_text(
+        "OOS_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- relabeled\n",
+        encoding="utf-8",
+    )
+
+    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+        voter_file=voter,
+        ballot_id="FINDING_6",
+        alias_id="OOS_6",
+    )
+
+    assert vote == "YES"
+    assert correctness == "true"
+    assert severity == "major"
+    assert quality == "good"
+    assert uncertain == "false"
+
+
+def test_primary_vote_wins_over_alias_vote(tmp_path: Path) -> None:
+    voter = tmp_path / "voter.txt"
+    voter.write_text(
+        "OOS_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+
+    assert voting.vote_for_id(ballot_id="FINDING_6", voter_file=voter, alias_id="OOS_6") == "NO"
+    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+        voter_file=voter,
+        ballot_id="FINDING_6",
+        alias_id="OOS_6",
+    )
+
+    assert vote == "NO"
+    assert correctness == "false-positive"
+    assert severity == "nit"
+    assert quality == "no-fix"
+    assert uncertain == "false"
+
+
 def test_anchored_votes_unaffected_by_markdown_normalization(tmp_path: Path) -> None:
     # Plain anchored votes (no pipe characters) pass through unchanged.
     voter = tmp_path / "voter.txt"

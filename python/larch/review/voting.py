@@ -437,6 +437,7 @@ def _parse_kv(*, output: str, key: str) -> str:
 
 
 _MD_TABLE_VOTE_ID_RE = re.compile(r"^(?:FINDING|OOS)_[0-9]+$")
+_BALLOT_ID_ALIAS_RE = re.compile(r"^(FINDING|OOS)_([0-9]+)$")
 _MD_TABLE_VOTE_RE = re.compile(r"^(YES|NO|EXONERATE)\b", re.IGNORECASE)
 
 
@@ -490,13 +491,21 @@ def _normalize_markdown_table_votes(text: str) -> str:
     return "\n".join(out)
 
 
-def vote_for_id(*, ballot_id: str, voter_file: str | Path) -> str:
+def alias_ballot_id(ballot_id: str, ballot_id_set: Iterable[str]) -> str:
+    ballot_ids = set(ballot_id_set)
+    if ballot_id not in ballot_ids:
+        return ""
+    match = _BALLOT_ID_ALIAS_RE.fullmatch(ballot_id)
+    if not match:
+        return ""
+    prefix, number = match.groups()
+    alias_prefix = "OOS" if prefix == "FINDING" else "FINDING"
+    alias_id = f"{alias_prefix}_{number}"
+    return "" if alias_id in ballot_ids else alias_id
+
+
+def _vote_for_id_from_lines(*, ballot_id: str, lines: Iterable[str]) -> str:
     result = "JUDGE_ERROR"
-    try:
-        raw = Path(voter_file).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return result
-    lines = _normalize_markdown_table_votes(raw).splitlines()
     pattern = re.compile(rf"^{re.escape(ballot_id)}:\s*(YES|NO|EXONERATE)(?:[\s-]|$)", re.IGNORECASE)
     for line in lines:
         match = pattern.search(line)
@@ -504,6 +513,18 @@ def vote_for_id(*, ballot_id: str, voter_file: str | Path) -> str:
             token = match.group(1).upper()
             result = "NO" if token == "EXONERATE" else token
     return result
+
+
+def vote_for_id(*, ballot_id: str, voter_file: str | Path, alias_id: str = "") -> str:
+    try:
+        raw = Path(voter_file).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "JUDGE_ERROR"
+    lines = _normalize_markdown_table_votes(raw).splitlines()
+    result = _vote_for_id_from_lines(ballot_id=ballot_id, lines=lines)
+    if result != "JUDGE_ERROR" or not alias_id:
+        return result
+    return _vote_for_id_from_lines(ballot_id=alias_id, lines=lines)
 
 
 def vote_for_id_main(argv: list[str]) -> int:
@@ -942,14 +963,9 @@ def split_ballot_main(argv: list[str]) -> int:
     return 0
 
 
-def parse_judge_vote(*, voter_file: str | Path, ballot_id: str) -> tuple[str, str, str, str, str]:
+def _parse_judge_vote_from_lines(*, ballot_id: str, lines: Iterable[str]) -> tuple[str, str, str, str, str]:
     vote = correctness = severity = quality = uncertain_token = ""
     pattern = re.compile(rf"^{re.escape(ballot_id)}:\s*", re.IGNORECASE)
-    try:
-        raw_text = Path(voter_file).read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        raise FileNotFoundError(str(exc)) from exc
-    lines = _normalize_markdown_table_votes(raw_text).splitlines()
     for raw in lines:
         if not pattern.search(raw):
             continue
@@ -977,6 +993,18 @@ def parse_judge_vote(*, voter_file: str | Path, ballot_id: str) -> tuple[str, st
     if correctness and severity and quality and uncertain_token:
         uncertain = uncertain_token
     return vote, correctness, severity, quality, uncertain
+
+
+def parse_judge_vote(*, voter_file: str | Path, ballot_id: str, alias_id: str = "") -> tuple[str, str, str, str, str]:
+    try:
+        raw_text = Path(voter_file).read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise FileNotFoundError(str(exc)) from exc
+    lines = _normalize_markdown_table_votes(raw_text).splitlines()
+    parsed = _parse_judge_vote_from_lines(ballot_id=ballot_id, lines=lines)
+    if parsed[0] or not alias_id:
+        return parsed
+    return _parse_judge_vote_from_lines(ballot_id=alias_id, lines=lines)
 
 
 def parse_judge_vote_main(argv: list[str]) -> int:
@@ -1154,10 +1182,15 @@ def check_voter_parse_rate(
     ids = _ballot_ids(ballot_file=ballot_file, grammar=id_grammar)
     if not ids:
         return "OK"
+    ballot_id_set = set(ids)
     judge_error_count = 0
     for item_id in ids:
         try:
-            parsed_vote = parse_judge_vote(voter_file=voter_path, ballot_id=item_id)[0]
+            parsed_vote = parse_judge_vote(
+                voter_file=voter_path,
+                ballot_id=item_id,
+                alias_id=alias_ballot_id(item_id, ballot_id_set),
+            )[0]
         except FileNotFoundError:
             parsed_vote = ""
         one = parsed_vote or "JUDGE_ERROR"
