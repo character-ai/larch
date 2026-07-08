@@ -1,0 +1,2 @@
+warning: fix text for slot 'Cursor-Pragmatic' in FINDING_5 not traceable to scoped input (first 80 chars: '"In the run_ship resume.start == \\"emergency-repair\\" steps, make the empty EMER')
+warning: fix text for slot 'Cursor-dyn-Ship Ci State Machine' in FINDING_6 not traceable to scoped input (first 80 chars: '"Persist the failed run id when emitting TRANSIENT (plan already says preserve f')

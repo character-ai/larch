@@ -1,0 +1,36 @@
+Reviewing the post-merge ship state machine against the plan. I'll read the cited implementation files and adjacent contracts first.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/implement/main_health.py:210-226; python/larch/implement/ship.py:729-783; plan Approach (post-merge push watch)	TRANSIENT reship can re-enter emergency-repair while the submitted rerun is still in flight	Plan returns Outcome.TRANSIENT as soon as ci_monitor.rerun_failed() submits, then Step 8 reships into _postmerge_main_health_gate → wait_main_health. wait_main_health returns on the first pass or fail with no settle loop (main_health.py:225-226). If GitHub still lists the merged-SHA push run as completed failure before the rerun flips to in_progress, re-entry sees fail with TRANSIENT_RETRIES already 1, the retry guard is false, and the gate writes PHASE=emergency-repair (current fail path at ship.py:747-783) even though the driver-initiated rerun is still running. That recreates the operator dead-end the issue reports, bypassing the intended single auto-retry.	Persist the failed run id when emitting TRANSIENT (plan already says preserve failed-run context but only names PHASE/TRANSIENT_RETRIES). On re-entry with TRANSIENT_RETRIES>0, treat fail on that same run id as pending: poll until the run reaches success, a different terminal failure, or MAIN_HEALTH_WAIT_TIMEOUT_SEC, then only spend the emergency-repair budget on a confirmed failure. Mirror the post-rerun settle loop in python/larch/design/design_log_ship.py:223-228.
+1	in_scope	minor	correctness	python/larch/implement/ship.py:1584-1594; python/larch/implement/ship_resume.py:590; plan Approach (MAIN_HEALTH_MAX_TRANSIENT_RETRIES / TRANSIENT_RETRIES)	Post-merge retry budget shares TRANSIENT_RETRIES with CI-monitor transients	Plan gates the postmerge rerun on counters.transient_retries < MAIN_HEALTH_MAX_TRANSIENT_RETRIES and increments the same TRANSIENT_RETRIES field. That field is already incremented when CI monitor submits a transient rerun during the merge loop (ship.py:1584-1594, ship_resume.py:590). A run that consumed one CI transient rerun enters postmerge with TRANSIENT_RETRIES=1, so the first postmerge push failure skips ci_monitor.rerun_failed() and goes straight to emergency-repair despite MAIN_HEALTH_MAX_TRANSIENT_RETRIES=1.	Use a postmerge-only counter (for example POSTMERGE_MAIN_HEALTH_TRANSIENT_RETRIES) or gate the rerun on increments written only from _postmerge_main_health_gate, not on the CI-monitor shared TRANSIENT_RETRIES field.
+
+## 1. [correctness] TRANSIENT reship can declare emergency-repair before the submitted rerun finishes
+
+**Locations:** `python/larch/implement/main_health.py:210-226`, `python/larch/implement/ship.py:729-783`, plan **Approach → For post-merge push watch**
+
+**Concern:** The plan correctly routes terminal success through `run_postmerge_phase()` (`python/larch/implement/ship_pr.py:312-348`), which writes `post-merge-sentinel`, runs `finalize.postmerge`, and flushes logs before `phase=done`. That preserves post-merge sentinel, final report inputs, and teardown. The gap is in the new driver-initiated retry path.
+
+The plan returns `Outcome.TRANSIENT` immediately after `ci_monitor.rerun_failed()` submits. On reship, `_postmerge_main_health_gate()` calls `wait_main_health()`, which exits on the first `fail` (`main_health.py:225-226`). If the merged-SHA run still shows a completed failure before the rerun moves to `in_progress`, re-entry hits the existing fail branch (`ship.py:747-783`) with `TRANSIENT_RETRIES=1`, the retry guard is false, and the driver enters `PHASE=emergency-repair` while the submitted rerun may still be running.
+
+The plan says to preserve failed-run context in state, but the listed writes are only `PHASE=postmerge-push-watch` and `TRANSIENT_RETRIES`; without persisting the failed run id, re-entry cannot tell an in-flight rerun from a new real failure.
+
+**Suggested revision:** When emitting `Outcome.TRANSIENT`, persist `MAIN_REPAIR_RUN_ID` / `MAIN_REPAIR_HEAD` (or a dedicated rerun marker). On re-entry with `TRANSIENT_RETRIES>0`, do not treat the first `fail` on that run as terminal; poll until success, a different failure, or `MAIN_HEALTH_WAIT_TIMEOUT_SEC`, following the settle pattern in `python/larch/design/design_log_ship.py:223-228`.
+
+## 2. [correctness] Post-merge retry budget is coupled to CI-monitor `TRANSIENT_RETRIES`
+
+**Locations:** `python/larch/implement/ship.py:1584-1594`, `python/larch/implement/ship_resume.py:590`, plan **Approach** (`MAIN_HEALTH_MAX_TRANSIENT_RETRIES`, `TRANSIENT_RETRIES`)
+
+**Concern:** The plan reuses the shared `TRANSIENT_RETRIES` ship-state field for both CI-monitor transient reruns and postmerge main-health reruns. CI monitor already increments that field (`ship.py:1584-1594`). After one CI transient rerun, `TRANSIENT_RETRIES=1`, so the plan's guard `transient_retries < MAIN_HEALTH_MAX_TRANSIENT_RETRIES` is false on the first postmerge failure and the driver skips its one allowed `rerun_failed()` call.
+
+The reported bug path (manual rerun + emergency-repair relaunch) is still fixed by the planned green `emergency-repair` resume branch calling `run_postmerge_phase()`. This coupling only weakens the new automatic postmerge retry.
+
+**Suggested revision:** Track postmerge health retries separately (dedicated state key incremented only in `_postmerge_main_health_gate`) or base the rerun gate on that postmerge-only counter while leaving CI `TRANSIENT_RETRIES` unchanged.
+
+---
+
+**What the plan gets right (no finding):**
+
+- Green transient recovery through `run_postmerge_phase()` does not bypass sentinel, finalize, or teardown (`ship_pr.py:320-343`).
+- Emergency-repair resume with empty `EMERGENCY_REPAIR_BRANCH` and green `MAIN_REPAIR_HEAD` under `skip_flap_check=True` is the right narrow fix for the filed bug (`ship.py:1154-1163` today always re-emits `NEEDS_USER_INPUT`).
+- Real repair work stays on the existing repair-branch path (`ship_resume.py:96-100` checkout routing; plan keeps non-empty `EMERGENCY_REPAIR_BRANCH` on `NEEDS_USER_INPUT`).
+- `skip_flap_check` default `false` with only two call sites matches the failure-mode guard in the plan.
+- Scope stays narrow: no new `NEXT_ACTION`, no change to `postmerge-repair` routing (`config.py:69`, `ship-pr-exit-matrix.md:32`).

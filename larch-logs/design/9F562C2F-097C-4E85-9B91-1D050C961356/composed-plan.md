@@ -1,0 +1,142 @@
+## Plan
+
+## Approach
+
+Implement the approved narrow fix in Python, with docs and tests.
+
+- Add `MAIN_HEALTH_MAX_TRANSIENT_RETRIES: Final = 1` in `python/larch/core/config.py`.
+- Add `skip_flap_check: bool = False` to `MainHealthQuery`.
+- Thread that flag through `read_main_health()` and `_classify_runs()`.
+- Keep the current `_same_sha_failure_flap()` behavior by default.
+- Bypass the flap check only on explicit transient-recovery paths:
+  - emergency-repair relaunch re-verify
+  - post-rerun postmerge wait when `transient_retries > 0`
+
+For post-merge push watch:
+
+- In `_postmerge_main_health_gate()`, keep the existing merged-SHA resolution.
+- Pass `skip_flap_check=counters.transient_retries > 0` into `wait_main_health()`.
+- On first `health.status == "fail"` and `counters.transient_retries < MAIN_HEALTH_MAX_TRANSIENT_RETRIES`:
+  - call `ci_monitor.rerun_failed()` with `health.failed_run_id`
+  - if submitted or already running, write state as `PHASE=postmerge-push-watch` with `TRANSIENT_RETRIES` incremented
+  - return `Outcome.TRANSIENT`, so Step 8 re-enters the driver through the normal rc 6 route
+  - preserve PR, merge, failed-run, and merged-SHA context in state
+- If the rerun cannot be submitted, fall through to the existing emergency-repair handoff. Include or breadcrumb the rerun error only as diagnostic detail. Do not invent a new `NEXT_ACTION`.
+
+For emergency-repair resume:
+
+- In `run_ship()`, before the unconditional `postmerge-repair` handoff, detect the transient-only case:
+  - `resume.start == "emergency-repair"`
+  - no `EMERGENCY_REPAIR_BRANCH`
+  - non-empty `MAIN_REPAIR_HEAD`
+- Call `read_main_health()` for `MAIN_REPAIR_HEAD` with `skip_flap_check=True`.
+- If it returns `pass`, call `run_postmerge_phase()` with the hydrated, closed PR context and return its result.
+- If it returns `pending`, `fail`, or `error`, keep the current `NEEDS_USER_INPUT` / `postmerge-main-ci-fail` handoff.
+- Do not change the repair branch, repair PR, or stalled paths.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+Add `MAIN_HEALTH_MAX_TRANSIENT_RETRIES: Final = 1` near the other main-health constants.
+
+### UPDATED: python/larch/implement/main_health.py
+
+Add `skip_flap_check` to `MainHealthQuery`.
+
+Update `_classify_runs()` to accept `skip_flap_check`. When the latest matching run is a success, only call `_same_sha_failure_flap()` when `skip_flap_check` is false.
+
+Keep all default callers byte-compatible by leaving the field default false.
+
+### UPDATED: python/larch/implement/ship.py
+
+Update `_postmerge_main_health_gate()`.
+
+- Build `MainHealthQuery(..., skip_flap_check=counters.transient_retries > 0)`.
+- On first postmerge failure, call `ci_monitor.rerun_failed()`.
+- Return `ShipResult(Outcome.TRANSIENT, ...)` when the rerun was submitted or already running.
+- Write `PHASE=postmerge-push-watch` and increment `TRANSIENT_RETRIES`.
+- Keep the existing emergency-repair state write after the retry budget is spent or rerun submission fails.
+
+Update the `resume.start == "emergency-repair"` branch.
+
+- Read `MAIN_REPAIR_HEAD`, `MAIN_REPAIR_RUN_ID`, and `EMERGENCY_REPAIR_BRANCH` from state.
+- If no repair branch exists and the repair head is green under `skip_flap_check=True`, call `run_postmerge_phase()`.
+- Otherwise keep the current `NEEDS_USER_INPUT` result.
+
+### UPDATED: python/tests/implement/test_main_health.py
+
+Add coverage for `skip_flap_check=True`.
+
+- Existing same-SHA failure plus latest success still returns `fail` by default.
+- The same fixture returns `pass` when `MainHealthQuery(skip_flap_check=True)` is used.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+Add post-merge driver coverage.
+
+- A failed merged-SHA push run triggers exactly one `ci_monitor.rerun_failed()` call and returns `Outcome.TRANSIENT`.
+- The transient retry increments `TRANSIENT_RETRIES` and keeps `PHASE=postmerge-push-watch`.
+- A second failure after `TRANSIENT_RETRIES=1` still enters `emergency-repair`.
+- A rerun submission failure falls through to the current emergency-repair handoff.
+- Emergency-repair resume with empty `EMERGENCY_REPAIR_BRANCH` and green `MAIN_REPAIR_HEAD` calls `run_postmerge_phase()` and returns success.
+- Emergency-repair resume with a repair branch, non-green health, or missing repair head still returns `NEEDS_USER_INPUT`.
+
+### UPDATED: skills/implement/references/postmerge-emergency-repair.md
+
+Document the transient-recovery exit.
+
+- `postmerge-push-watch` now reruns failed jobs once before entering `emergency-repair`.
+- On emergency-repair relaunch with no repair branch and green merged SHA, the Python driver finalizes as merged.
+- Real repair work still uses the existing repair branch and repair PR flow.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+Fix the stale `python/test_ship.py` path reference to `python/tests/implement/test_ship.py`.
+
+Do not change the `postmerge-repair` routing token.
+
+### UPDATED: skills/implement/SKILL.md
+
+Fix the two stale `python/ship.py` prose references required by the approved scope.
+
+Use the package path `python/larch/implement/ship.py` where the prose describes the runtime module.
+
+## Edge cases
+
+- If the rerun command says the run is already running, treat it as a submitted retry.
+- If the failed run ID is empty, skip rerun and use the existing fail path.
+- If `MAIN_REPAIR_HEAD` is missing on emergency-repair resume, keep the current user-input handoff.
+- If a real repair branch already exists, do not auto-finalize from main health. The dedicated repair state machine owns that case.
+- If the rechecked merged SHA is pending, keep the current handoff instead of blocking in the resume branch.
+- If postmerge finalization stalls after green re-verify, return that stall through `run_postmerge_phase()`.
+
+## Failure modes
+
+- A wrong `skip_flap_check` default could mask real same-SHA failure flaps. Keep it false by default and set it only at the two approved recovery sites.
+- A retry loop could become unbounded. Use only `MAIN_HEALTH_MAX_TRANSIENT_RETRIES=1` and persist `TRANSIENT_RETRIES`.
+- A premature success could skip final report or teardown. Route green recovery through `run_postmerge_phase()`, not a custom success result.
+- A repair-branch run could be mistaken for a transient flake. Require empty `EMERGENCY_REPAIR_BRANCH` before auto-finalizing emergency-repair resume.
+
+## Testing strategy
+
+Run targeted tests only.
+
+- `python3 -m pytest python/tests/implement/test_main_health.py`
+- `python3 -m pytest python/tests/implement/test_ship.py -k 'postmerge or emergency or main_health'`
+- `python3 -m pytest python/tests/implement/test_ship.py`
+- If docs or SKILL changes trip markdown or skill checks in relevant-checks, run the named failing checks only.
+
+## Acceptance
+
+Run targeted tests only.
+
+- `python3 -m pytest python/tests/implement/test_main_health.py`
+- `python3 -m pytest python/tests/implement/test_ship.py -k 'postmerge or emergency or main_health'`
+- `python3 -m pytest python/tests/implement/test_ship.py`
+- If docs or SKILL changes trip markdown or skill checks in relevant-checks, run the named failing checks only.
+
+review_status: complete
+rounds_completed: 1
+difficulty: HARD
+diff_lines: 320

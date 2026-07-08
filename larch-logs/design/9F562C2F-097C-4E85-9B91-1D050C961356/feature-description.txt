@@ -1,0 +1,71 @@
+# [BUG] /implement emergency-repair can't finalize a transient post-merge CI flake
+
+## Summary
+
+`/implement --merge` cannot self-finalize when the post-merge push CI on the merged `main` SHA fails transiently. The ship driver enters `PHASE=emergency-repair` and `ship route-exit` returns `NEXT_ACTION=postmerge-repair` with `outcome=NEEDS_USER_INPUT`. After the operator re-runs the failed CI and it goes green, relaunching the driver re-emits the same `postmerge-repair` / `NEEDS_USER_INPUT` without re-checking the now-green run. No state transition finalizes the run as merged/success once `main` is green; the only documented exits are `repair-shipped` (needs a repair branch + repair PR) or `stalled`. The operator must finalize by hand.
+
+## Original report
+
+Distinct from #6609 (the flaky harness that triggered this); #6609 is the trigger, this issue is the ship driver's inability to recover from a transient post-merge failure.
+
+During `/implement --merge -f 6604` (PR #6606, merged 2026-07-08 as squash commit `014e8614393cf87bcc28986ad1fe39ec8cd19e69`), the post-merge push-CI run `28930228453` on the merged `main` SHA failed once on `test-design-structure.sh`, a transient false-negative unrelated to the change (tracked as #6609). The PR's own pre-merge CI (event `pull_request`, head `b1c190a598a1655f7455c82cd21e4feaae7e2771`) was green; the merge was a legitimate admin merge. The driver detected `postmerge-main-ci-fail` and set `PHASE=emergency-repair`. I re-ran the failed job on the same SHA and it passed; `main` was green. Relaunching `step-8-ship.sh` still returned `postmerge-repair` / `NEEDS_USER_INPUT`, so I finalized the run by hand.
+
+## Reproduction scenario
+
+Run `/implement --merge <issue>` where the merged SHA's post-merge push CI hits a transient/flaky failure (for example, the `test-design-structure.sh` false-negative in #6609). Observed sequence:
+
+1. PR merges (admin merge; the PR's own CI was green).
+2. Post-merge push CI on the merged SHA fails once (transient).
+3. Driver sets `PHASE=emergency-repair`; `ship route-exit` emits `NEXT_ACTION=postmerge-repair`, `outcome=NEEDS_USER_INPUT`.
+4. Operator re-runs the failed job on the same SHA; it passes; `main` is green.
+5. Operator relaunches `step-8-ship.sh` (the documented post-driver continuation).
+6. Driver re-emits `NEXT_ACTION=postmerge-repair`, `outcome=NEEDS_USER_INPUT`, `detail="post-merge emergency repair remains in progress"`. No finalize-as-merged path exists.
+
+## Expected behavior
+
+When the post-merge failure clears (the tracked failed run, or the latest push run for the merged SHA, is green), `/implement` finalizes the run as `merged`/SUCCESS: write the post-merge sentinel, render the canonical final report (per-agent token/cost breakdown), and tear down. A transient post-merge flake should not require manual finalization.
+
+## Observed behavior
+
+On emergency-repair relaunch the driver re-emits `postmerge-repair` / `NEEDS_USER_INPUT` unconditionally, ignoring the now-green run. The only non-manual exits are `repair-shipped` (requires a repair branch + repair PR, i.e. a real defect to fix) or `stalled`. With no defect to fix and `main` green, the run dead-ends; the operator must re-run CI, rename the tracking issue to `[DONE]`, and clean up the session by hand.
+
+## Root cause analysis
+
+Confirmed against runtime behavior and source:
+
+1. No re-verification on emergency-repair relaunch. `python/larch/implement/ship.py` (around lines 1154-1163) has a resume branch: `if resume.start == "emergency-repair": ... return NEEDS_USER_INPUT ... detail=resume.detail or "post-merge emergency repair remains in progress"`. It returns `NEEDS_USER_INPUT` immediately, without re-polling `MAIN_REPAIR_RUN_ID` or the latest push run for the merged SHA. A now-green run is ignored.
+2. No finalize-as-merged terminal for a transient flake. The state machine (`postmerge-push-watch -> emergency-repair -> repair-shipped | stalled`, per `postmerge-emergency-repair.md`) assumes a real defect that needs a repair branch + repair PR. There is no branch for "post-merge failure was transient; `main` is green; finalize as SUCCESS." Forcing a repair PR is wrong (no defect); finalizing as stalled/bailed would violate G-Obs-4 (never a failure label for a run that merged and is green).
+3. `postmerge-main-ci-fail` commits to emergency-repair on a single push-CI failure. `python/larch/implement/ci_monitor.py` (around lines 1758-1776) emits `NEEDS_USER_INPUT` on the first failed post-merge push run, with no bounded re-run / re-verify to rule out a flake first.
+
+## Evidence
+
+- Runtime state captured this run:
+  - `ship-pr-state.sh`: `PHASE=emergency-repair`, `PR_NUMBER=6606`, `PR_CLOSED=true`, `MERGE_RESULT=admin_merged`, `MAIN_REPAIR_RUN_ID=28930228453`, `MAIN_REPAIR_HEAD=014e861...`, `EMERGENCY_REPAIR_BRANCH=` (empty), `EMERGENCY_REPAIR_PR_NUMBER=` (empty), `STALL_TRACKING=false`.
+  - `.ship-route-exit-handoff.env`: `NEEDS_USER_REASON=postmerge-main-ci-fail`, `DETAIL="post-merge emergency repair remains in progress"`, `NEXT_ACTION=postmerge-repair`.
+  - `.step-8-ship-handoff.json`: `outcome=NEEDS_USER_INPUT`, `emergency_repair_branch=""`, `emergency_repair_pr_number=""`.
+- Failed run `28930228453` (push, merged SHA `014e861...`) failed once on `test-design-structure.sh`; re-running the failed job on the same SHA passed (`conclusion=success`). The PR's own pre-merge CI (event `pull_request`, head `b1c190a...`) was green.
+- Source anchors: `python/larch/implement/ship.py:1154` (emergency-repair resume re-emits `NEEDS_USER_INPUT`); `python/larch/implement/ci_monitor.py:1758` (postmerge `NEEDS_USER_INPUT` emission).
+- Minor doc drift found while locating the code: `skills/implement/SKILL.md` (NEVER #11) and the ship references cite `python/ship.py` / `python/test_ship.py`, but the module is `python/larch/implement/ship.py` and the test is `python/tests/implement/test_ship.py` (G-Md-1 path drift).
+
+## Affected files
+
+- `python/larch/implement/ship.py`: emergency-repair resume branch (around 1154-1163) that re-emits `NEEDS_USER_INPUT` without re-checking the run; `phase="emergency-repair"` set (around 751).
+- `python/larch/implement/ci_monitor.py`: postmerge push watch and `postmerge-main-ci-fail` emission (around 1758-1776).
+- `python/larch/implement/ship_result.py`: `NEEDS_USER_INPUT` handoff and `emergency_repair_branch` / `emergency_repair_pr_number` fields.
+- `python/larch/implement/ship_state.py`: `EMERGENCY_REPAIR_BRANCH` and related state keys.
+- `python/larch/implement/implement_dispatch.py`: `ship route-exit` maps the exit to `NEXT_ACTION=postmerge-repair`.
+- `skills/implement/references/postmerge-emergency-repair.md`, `skills/implement/references/ship-pr-exit-matrix.md`, `skills/implement/SKILL.md` (Step 8+ postmerge-repair branch): document the flow; need the transient-recovery exit and the `python/ship.py` path-reference fix.
+- Tests: `python/tests/implement/test_ship.py`, `python/tests/implement/test_ship_state.py`.
+
+## Suggested fix(es)
+
+1. On emergency-repair relaunch with empty `EMERGENCY_REPAIR_BRANCH`, re-poll `MAIN_REPAIR_RUN_ID` (and/or the latest push run for the merged SHA). If green, write the post-merge sentinel and transition to a terminal SUCCESS/merged outcome, then finalize through the normal Step 16/17/18 path.
+2. Add a bounded re-run / re-verify to `postmerge-push-watch`: on a push-CI failure, re-run the failed jobs (bounded retries) and re-check before declaring `postmerge-main-ci-fail`, so transient flakes self-heal without operator input.
+3. Ensure the transient-flake finalize yields `outcome=merged` (not stalled/bailed) per G-Obs-4, and still renders the per-agent token/cost report and teardown.
+4. Document the transient-flake resolution in `postmerge-emergency-repair.md`, and sweep the stale `python/ship.py` / `python/test_ship.py` prose references to `python/larch/implement/ship.py` / `python/tests/implement/test_ship.py` (G-Md-2).
+
+## Open questions
+
+- Should re-verification key on the exact `MAIN_REPAIR_RUN_ID` re-run, or on the latest push workflow run for the merged SHA (more robust if the re-run creates a new run id)?
+- What is the right bound (attempts, backoff) for the postmerge push-watch re-run before declaring a real `postmerge-main-ci-fail`?
+- Is the driver-side transient-recovery worth doing independently of the flaky-harness fix (#6609)? They are independent; both help, and the driver fix generalizes to any future transient post-merge flake.
