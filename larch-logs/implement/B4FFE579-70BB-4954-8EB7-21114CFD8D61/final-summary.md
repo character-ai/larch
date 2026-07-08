@@ -1,8 +1,8 @@
 ## /implement run B4FFE579-70BB-4954-8EB7-21114CFD8D61: shipping
 
 - **Outcome**: shipping
-- **Duration**: 00:14:36
-- **Cost**: 💰 TOTAL ~$3.04: Claude $0.42, Codex-5.5 $0.80, Codex-mini $0.63, Cursor $0.99, Claude (subprocess) $0.20  |  Tokens: 5667k
+- **Duration**: 00:15:39
+- **Cost**: 💰 TOTAL ~$3.20: Claude $0.42, Codex-5.5 $0.80, Codex-mini $0.63, Cursor $0.99, Claude (subprocess) $0.36  |  Tokens: 5761k
 - **Issue**: #6609: https://github.com/character-ai/larch/issues/6609
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
