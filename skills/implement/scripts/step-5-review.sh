@@ -73,12 +73,57 @@ try:
     if entry is None:
         raise SystemExit(1)
     if registry.child_liveness(entry).live and registry.daemon_liveness(entry).live:
+        print("live")
         raise SystemExit(0)
     registry.unlink_entry(path)
 except SystemExit:
     raise
 except Exception:
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+raise SystemExit(1)
+PY
+}
+
+step5_canonical_result_env_state() {
+    python3 <<'PY'
+from pathlib import Path
+import os
+import sys
+
+result_env = Path(os.environ["IMPLEMENT_TMPDIR"]) / "bgjob" / "implement-step5-review.result.env"
+required_keys = {
+    "STEP5_REVIEW_STATUS",
+    "STALL_TRACKING",
+    "STALL_REASON",
+    "ROUNDS_COMPLETED",
+    "FINAL_ROUND_NUM",
+    "FINAL_REVIEW_AND_FIX_STATUS",
+    "CODER_STATUS",
+    "FILES_CHANGED_HINT",
+    "EFFECTIVE_ROUND_CAP",
+}
+
+if result_env.is_symlink() or (result_env.exists() and not result_env.is_file()):
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+if not result_env.exists():
     raise SystemExit(1)
+try:
+    rows: dict[str, str] = {}
+    for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key and key not in rows:
+            rows[key] = value
+except OSError:
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+if rows.get("BGJOB_RC") == "0" and rows.get("STEP5_REVIEW_STATUS") and required_keys.issubset(rows):
+    print("complete")
+    raise SystemExit(0)
+print("stale")
 raise SystemExit(1)
 PY
 }
@@ -122,17 +167,51 @@ if [ "$BGJOB_CHILD" = true ]; then
     exit $?
 fi
 
-if step5_live_registry_exists; then
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
-    exit $?
-fi
-
 if [ -L "$IMPLEMENT_TMPDIR/bgjob" ]; then
     printf '%s
 ' 'step-5-review.sh: refusing symlinked bgjob directory' >&2
     exit 2
 fi
 mkdir -p "$IMPLEMENT_TMPDIR/bgjob" "$IMPLEMENT_TMPDIR/.completed"
+RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/implement-step5-review.result.env"
+if [ -L "$RESULT_ENV" ]; then
+    printf '%s
+' 'step-5-review.sh: refusing symlinked bgjob result env' >&2
+    exit 2
+fi
+if [ -e "$RESULT_ENV" ] && [ ! -f "$RESULT_ENV" ]; then
+    printf '%s
+' 'step-5-review.sh: refusing non-regular bgjob result env' >&2
+    exit 2
+fi
+set +e
+registry_state=$(step5_live_registry_exists)
+registry_rc=$?
+set -e
+if [ "$registry_rc" -eq 2 ]; then
+    exit 2
+fi
+set +e
+result_env_state=$(step5_canonical_result_env_state)
+result_env_rc=$?
+set -e
+if [ "$result_env_rc" -eq 2 ]; then
+    exit 2
+fi
+if [ "$registry_state" = live ]; then
+    if [ "$result_env_state" != complete ]; then
+        rm -f "$RESULT_ENV" 2>/dev/null || true
+    fi
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
+    exit $?
+fi
+if [ "$result_env_state" = complete ]; then
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
+    exit $?
+fi
+if [ "$result_env_state" = stale ]; then
+    rm -f "$RESULT_ENV" 2>/dev/null || true
+fi
 MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/.step5-review-result.env"
 [ -L "$MERGE_RESULT_ENV" ] && { printf '%s
 ' 'step-5-review.sh: refusing symlinked merge-result-env' >&2; exit 2; }

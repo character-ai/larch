@@ -116,6 +116,11 @@ if [ "$SITE" = "step3" ]; then
     BUDGET_S="15600"
     rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" "$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
     SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-3-terminal")
+elif [ "$SITE" = "step5-self-review" ]; then
+    STEP="implement-checks-step5-self-review"
+    BUDGET_S="14700"
+    rm -f "$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal" 2>/dev/null || true
+    SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal")
 elif [ "$SITE" = "step6" ]; then
     STEP="implement-step6-checks"
     SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal")

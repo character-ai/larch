@@ -36,6 +36,8 @@ Print `> **🔶 /implement 5: code review: self-review mode (main agent inline)*
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review # lint-consecutive-bash: ok self-review bgjob launch precedes the repeated wait fence
 ```
 
+The self-review launcher uses `BUDGET_S=14700` and sentinel `"$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal"`.
+
 Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
 
 ```bash

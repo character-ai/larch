@@ -19,6 +19,7 @@ Normal continuation requires `BGJOB_RC=0` plus the required Step 5 KVs in the fi
 - Telemetry marking is best-effort and runs in the bgjob child.
 - `dynamic_archetypes_cap` resolves from `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `1`.
 - Truncates `$IMPLEMENT_TMPDIR/.step5-review-result.env` immediately before every fresh `bgjob start`.
+- Reuses `$IMPLEMENT_TMPDIR/bgjob/implement-step5-review.result.env` only when it is canonical completion (`BGJOB_RC=0` plus the required Step 5 KVs); stale or malformed result envs are cleared before a fresh start, and registry probe failures fail closed instead of relaunching.
 - Removes legacy detach sidecars (`.step5-wrapper-detached`, `.step5-reattach-active`) before a fresh launch; migrated Step 5 does not create them.
 - Delegates owner-death, orphan, timeout, process-group cleanup, stdout/stderr logs, and terminal result env publication to bgjob.
 - Preserves `.completed/step-5-terminal` as a transition sentinel through bgjob `--sentinel`; routing still keys on `BGJOB_RC=0` and Step 5 KVs.

@@ -27,6 +27,8 @@ class Verdict:
 def read_for(*, tmpdir, step):
     mode = os.environ.get("STEP5_REGISTRY_MODE", "")
     path = Path(tmpdir) / "registry.env"
+    if mode == "error":
+        raise OSError("registry-check-failed")
     if mode in {"live", "dead"}:
         return path, Entry()
     return path, None
@@ -72,6 +74,59 @@ if sys.argv[1:3] == ["bgjob", "start"]:
     print(f"BGJOB_STATUS=STARTED STEP={arg('--step')} PGID=12345")
     sys.exit(0)
 if sys.argv[1:3] == ["bgjob", "wait"]:
+    mode = os.environ.get("STEP5_WAIT_MODE", "wait")
+    if mode == "dead":
+        print("BGJOB_STATUS=DEAD")
+        print("BGJOB_DIAG=mock-dead")
+        sys.exit(0)
+    if mode == "done-ok":
+        rows = [
+            "BGJOB_STATUS=DONE",
+            "BGJOB_RC=0",
+            "STEP5_REVIEW_STATUS=complete",
+            "STALL_TRACKING=false",
+            "STALL_REASON=",
+            "ROUNDS_COMPLETED=1",
+            "FINAL_ROUND_NUM=1",
+            "FINAL_REVIEW_AND_FIX_STATUS=complete",
+            "CODER_STATUS=",
+            "FILES_CHANGED_HINT=",
+            "EFFECTIVE_ROUND_CAP=2",
+        ]
+        print("\n".join(rows))
+        sys.exit(0)
+    if mode == "done-timeout":
+        rows = [
+            "BGJOB_STATUS=DONE",
+            "BGJOB_RC=timeout",
+            "STEP5_REVIEW_STATUS=stall",
+            "STALL_TRACKING=true",
+            "STALL_REASON=timeout",
+            "ROUNDS_COMPLETED=1",
+            "FINAL_ROUND_NUM=1",
+            "FINAL_REVIEW_AND_FIX_STATUS=stall",
+            "CODER_STATUS=",
+            "FILES_CHANGED_HINT=",
+            "EFFECTIVE_ROUND_CAP=2",
+        ]
+        print("\n".join(rows))
+        sys.exit(0)
+    if mode == "done-orphaned":
+        rows = [
+            "BGJOB_STATUS=DONE",
+            "BGJOB_RC=orphaned",
+            "STEP5_REVIEW_STATUS=stall",
+            "STALL_TRACKING=true",
+            "STALL_REASON=orphan-timeout",
+            "ROUNDS_COMPLETED=1",
+            "FINAL_ROUND_NUM=1",
+            "FINAL_REVIEW_AND_FIX_STATUS=stall",
+            "CODER_STATUS=",
+            "FILES_CHANGED_HINT=",
+            "EFFECTIVE_ROUND_CAP=2",
+        ]
+        print("\n".join(rows))
+        sys.exit(0)
     print("BGJOB_STATUS=WAIT")
     print("ELAPSED_S=0")
     sys.exit(0)
@@ -104,6 +159,23 @@ make_impl() {
   printf 'feature\n' >"$dir/feature-description.txt"
 }
 
+seed_result_env() {
+  local dir="$1" path="$1/bgjob/implement-step5-review.result.env"
+  mkdir -p "$dir/bgjob"
+  cat >"$path" <<'EOF'
+BGJOB_RC=0
+STEP5_REVIEW_STATUS=complete
+STALL_TRACKING=false
+STALL_REASON=
+ROUNDS_COMPLETED=1
+FINAL_ROUND_NUM=1
+FINAL_REVIEW_AND_FIX_STATUS=complete
+CODER_STATUS=
+FILES_CHANGED_HINT=
+EFFECTIVE_ROUND_CAP=2
+EOF
+}
+
 D=$(mktemp -d "${TMPDIR:-/tmp}/test-step5-review.XXXXXX")
 trap 'rm -rf "$D"' EXIT
 FAKE="$D/plugin"
@@ -123,6 +195,26 @@ grep -Fq -- '--merge-result-env' "$IMPL/bgjob-start-argv.txt" || fail 'wrapper m
 grep -Fq -- '--sentinel' "$IMPL/bgjob-start-argv.txt" || fail 'wrapper must preserve step-5-terminal sentinel through bgjob'
 pass 'Step 5 wrapper fresh launch uses bgjob and clears stale merge env without detach sidecars'
 
+IMPL="$D/canonical-result"
+make_impl "$IMPL" "$FAKE"
+seed_result_env "$IMPL"
+STEP5_REGISTRY_MODE=missing STEP5_WAIT_MODE=done-ok CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "canonical result rejoin wrapper failed: $(cat "$IMPL/stderr.log")"
+grep -Fq 'BGJOB_STATUS=DONE' "$IMPL/stdout.log" || fail 'canonical result env must rejoin through bgjob wait'
+[ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail 'canonical result env must not relaunch bgjob'
+pass 'Step 5 wrapper reuses canonical completed result envs without relaunching'
+
+IMPL="$D/stale-result"
+make_impl "$IMPL" "$FAKE"
+mkdir -p "$IMPL/bgjob"
+cat >"$IMPL/bgjob/implement-step5-review.result.env" <<'EOF'
+BGJOB_RC=1
+STEP5_REVIEW_STATUS=stall
+EOF
+STEP5_REGISTRY_MODE=missing STEP5_WAIT_MODE=done-ok CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "stale canonical result wrapper failed: $(cat "$IMPL/stderr.log")"
+[ "$(cat "$IMPL/stdout.log")" = 'BGJOB_STATUS=STARTED STEP=implement-step5-review PGID=12345' ] || fail 'stale canonical result env must not be trusted before fresh start'
+[ ! -f "$IMPL/bgjob/implement-step5-review.result.env" ] || fail 'stale canonical result env must be cleared before fresh start'
+pass 'Step 5 wrapper clears stale canonical result envs before fresh launch'
+
 IMPL="$D/live-registry"
 make_impl "$IMPL" "$FAKE"
 STEP5_REGISTRY_MODE=live CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "live rejoin wrapper failed: $(cat "$IMPL/stderr.log")"
@@ -131,12 +223,40 @@ grep -Fq 'BGJOB_STATUS=WAIT' "$IMPL/stdout.log" || fail 'live registry re-entry 
 [ ! -f "$IMPL/registry-unlinked" ] || fail 'live registry row must not be cleared'
 pass 'Step 5 wrapper rejoins live registry rows without duplicate launch'
 
+for mode in dead done-timeout done-orphaned; do
+  IMPL="$D/$mode-live"
+  make_impl "$IMPL" "$FAKE"
+  STEP5_REGISTRY_MODE=live STEP5_WAIT_MODE="$mode" CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "live registry wait mode $mode failed: $(cat "$IMPL/stderr.log")"
+  case "$mode" in
+    dead)
+      grep -Fq 'BGJOB_STATUS=DEAD' "$IMPL/stdout.log" || fail 'live registry DEAD wait must propagate the DEAD envelope'
+      ;;
+    done-timeout)
+      grep -Fq 'BGJOB_RC=timeout' "$IMPL/stdout.log" || fail 'live registry timeout wait must preserve timeout rc'
+      ;;
+    done-orphaned)
+      grep -Fq 'BGJOB_RC=orphaned' "$IMPL/stdout.log" || fail 'live registry orphaned wait must preserve orphaned rc'
+      ;;
+  esac
+  [ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail "live registry wait mode $mode must not launch a second bgjob"
+done
+pass 'Step 5 wrapper does not false-start on DEAD, timeout, or orphaned wait envelopes'
+
 IMPL="$D/dead-registry"
 make_impl "$IMPL" "$FAKE"
 STEP5_REGISTRY_MODE=dead CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "dead registry wrapper failed: $(cat "$IMPL/stderr.log")"
 grep -Fq 'BGJOB_STATUS=STARTED STEP=implement-step5-review PGID=12345' "$IMPL/stdout.log" || fail 'dead registry re-entry must fresh-start bgjob'
 [ -f "$IMPL/registry-unlinked" ] || fail 'dead registry row must be cleared before fresh start'
 pass 'Step 5 wrapper clears dead registry rows before fresh launch'
+
+IMPL="$D/probe-error"
+make_impl "$IMPL" "$FAKE"
+if STEP5_REGISTRY_MODE=error CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log"; then
+  fail 'registry probe errors must fail closed'
+fi
+grep -Fq 'BGJOB_ERROR=registry-check-failed' "$IMPL/stderr.log" || fail 'registry probe failure must be reported on stderr'
+[ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail 'registry probe failure must not fresh-start bgjob'
+pass 'Step 5 wrapper fails closed on registry probe errors'
 
 IMPL="$D/child"
 make_impl "$IMPL" "$FAKE"

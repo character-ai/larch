@@ -940,7 +940,7 @@ def _step5_resume_commit_phase() -> int | None:
         _emit_kv(key="NEXT_ACTION", value=next_actions[0])
         _relay_commit_kvs(commit_output, include_next_action=False)
         if next_actions[0] == "stall":
-            return commit_result.returncode if commit_result.returncode != 0 else 1
+            return 0
         if commit_result.returncode != 0:
             return commit_result.returncode
         return None
