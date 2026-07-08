@@ -517,6 +517,10 @@ def _block_fingerprint(block: _StepBlock) -> str:
     return "\n".join(normalized)
 
 
+def _escape_fence_terminators(text: str) -> str:
+    return text.replace("```", "``\\`")
+
+
 def _job_family(job: str) -> str:
     match = re.match(r"^([A-Za-z][A-Za-z0-9_-]*)\s+\((\d+)\)$", job)
     if match is not None:
@@ -525,19 +529,19 @@ def _job_family(job: str) -> str:
 
 
 def _dedupe_blocks(blocks: Iterable[_StepBlock]) -> tuple[_StepBlock, ...]:
-    grouped: dict[tuple[str, str], list[_StepBlock]] = defaultdict(list)
+    grouped: dict[tuple[str, str, str], list[_StepBlock]] = defaultdict(list)
     for block in blocks:
         fingerprint = _block_fingerprint(block)
         if fingerprint:
-            grouped[(_job_family(block.job), fingerprint)].append(block)
-    emitted: set[tuple[str, str]] = set()
+            grouped[(_job_family(block.job), block.step, fingerprint)].append(block)
+    emitted: set[tuple[str, str, str]] = set()
     out: list[_StepBlock] = []
     for block in blocks:
         fingerprint = _block_fingerprint(block)
         if not fingerprint:
             out.append(block)
             continue
-        key = (_job_family(block.job), fingerprint)
+        key = (_job_family(block.job), block.step, fingerprint)
         if key in emitted:
             continue
         emitted.add(key)
@@ -555,6 +559,18 @@ def _dedupe_blocks(blocks: Iterable[_StepBlock]) -> tuple[_StepBlock, ...]:
                 ),
             )
     return tuple(out)
+
+
+def _render_step_block(block: _StepBlock, *, include_body: bool) -> str:
+    body_lines = _bounded_step_lines(block.lines) if include_body else ("... omitted due to total-byte cap ...",)
+    lines = [
+        f"## Job: {block.job}",
+        f"### Step: {block.step}",
+        "```text",
+    ]
+    lines.extend(_escape_fence_terminators(line) for line in body_lines)
+    lines.extend(["```", ""])
+    return redact.redact("\n".join(lines))
 
 
 def _failed_job_names(run_id: str, repo: str) -> tuple[str, ...]:
@@ -606,16 +622,33 @@ def _render_digest(*, run_id: str, repo: str, blocks: tuple[_StepBlock, ...], fa
         f"Failed jobs reported by GitHub: {len(failed_jobs)}",
         "",
     ]
-    for block in _dedupe_blocks(blocks):
-        lines.extend([
-            f"## Job: {block.job}",
-            f"### Step: {block.step}",
-            "```text",
-            *_bounded_step_lines(block.lines),
-            "```",
-            "",
-        ])
-    return _truncate_digest("\n".join(lines).rstrip() + "\n")
+    intro = redact.redact("\n".join(lines).rstrip() + "\n")
+    if len(intro.encode("utf-8")) >= config.CI_FIXER_DISTILL_TOTAL_BYTES:
+        return _truncate_digest(intro)
+    deduped = _dedupe_blocks(blocks)
+    if not deduped:
+        return intro
+
+    rendered_full = [_render_step_block(block, include_body=True) for block in deduped]
+    rendered_min = [_render_step_block(block, include_body=False) for block in deduped]
+    min_suffix_bytes = [0] * (len(deduped) + 1)
+    for index in range(len(deduped) - 1, -1, -1):
+        min_suffix_bytes[index] = min_suffix_bytes[index + 1] + len(rendered_min[index].encode("utf-8"))
+
+    parts: list[str] = [intro]
+    budget = max(0, config.CI_FIXER_DISTILL_TOTAL_BYTES - len(intro.encode("utf-8")))
+    for index, _block in enumerate(deduped):
+        min_bytes = len(rendered_min[index].encode("utf-8"))
+        if budget < min_bytes + min_suffix_bytes[index + 1]:
+            break
+        chosen = rendered_full[index]
+        chosen_bytes = len(chosen.encode("utf-8"))
+        if chosen_bytes + min_suffix_bytes[index + 1] > budget:
+            chosen = rendered_min[index]
+            chosen_bytes = min_bytes
+        parts.append(chosen)
+        budget -= chosen_bytes
+    return "".join(parts)
 
 
 def _distill_validate_args(args: argparse.Namespace) -> tuple[_DistillArgs | None, str | None]:
@@ -656,11 +689,6 @@ def _distill_from_gh(args: _DistillArgs) -> int:
     failed_jobs = _failed_job_names(args.run_id, args.repo)
     blocks = _add_missing_job_placeholders(_parse_log_blocks(result.stdout), failed_jobs)
     digest = _render_digest(run_id=args.run_id, repo=args.repo, blocks=blocks, failed_jobs=failed_jobs)
-    digest = redact.redact(digest)
-    digest = _truncate_digest(digest)
-    checked_digest = redact.redact(digest)
-    if checked_digest != digest:
-        digest = checked_digest
     try:
         larch_io.atomic_write(args.output, digest, mode=0o600, nofollow=True)
     except OSError as exc:

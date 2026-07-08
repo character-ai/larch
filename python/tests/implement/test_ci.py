@@ -385,8 +385,32 @@ def test_distill_log_caps_total_size(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == 0
 
-    assert len(out.read_bytes()) <= 500 + len(b"\n\n[ci-fixer digest truncated at total-byte cap]\n")
-    assert "digest truncated" in out.read_text(encoding="utf-8")
+    assert len(out.read_bytes()) <= 500
+
+
+def test_distill_log_caps_preserve_later_jobs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "impl" / "distilled-failure.md"
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path / "impl"))
+    monkeypatch.setattr(config, "CI_FIXER_DISTILL_TOTAL_BYTES", 650)
+    _patch_failed_jobs(monkeypatch, names=("lint", "python-tests"))
+    _patch_failed_log(
+        monkeypatch,
+        stdout=(
+            "lint\tRun lint\t" + ("x" * 2000) + "\n"
+            "python-tests\tRun tests\tERROR later job\n"
+        ),
+    )
+
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == 0
+
+    digest = out.read_text(encoding="utf-8")
+    assert "## Job: lint" in digest
+    assert "## Job: python-tests" in digest
+    assert "ERROR later job" in digest
+    assert "... omitted due to total-byte cap ..." in digest
 
 
 def test_distill_log_does_not_call_collect_failed_logs(
@@ -474,6 +498,30 @@ def test_distill_log_shard_dedupe_keeps_distinct_failures(
     assert "ERROR distinct shard failure" in digest
 
 
+def test_distill_log_keeps_distinct_steps_with_same_text(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "impl" / "distilled-failure.md"
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path / "impl"))
+    monkeypatch.setattr(config, "CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT", 1)
+    _patch_failed_jobs(monkeypatch, names=("lint",))
+    _patch_failed_log(
+        monkeypatch,
+        stdout=(
+            "lint\tRun lint\tERROR shared failure\n"
+            "lint\tUpload logs\tERROR shared failure\n"
+        ),
+    )
+
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == 0
+
+    digest = out.read_text(encoding="utf-8")
+    assert "### Step: Run lint" in digest
+    assert "### Step: Upload logs" in digest
+    assert digest.count("Repeated failure block omitted") == 0
+
+
 def test_distill_log_keeps_distinct_jobs_with_same_text(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -496,6 +544,23 @@ def test_distill_log_keeps_distinct_jobs_with_same_text(
     assert "## Job: lint" in digest
     assert "## Job: python-tests" in digest
     assert digest.count("Repeated failure block omitted") == 0
+
+
+def test_distill_log_escapes_fence_terminators_in_log_lines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "impl" / "distilled-failure.md"
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path / "impl"))
+    _patch_failed_jobs(monkeypatch)
+    _patch_failed_log(monkeypatch, stdout="lint\tRun lint\tbefore ``` after\n")
+
+    assert ci.distill_log_main(["--run-id", "42", "--repo", "o/r", "--output", str(out)]) == 0
+
+    digest = out.read_text(encoding="utf-8")
+    assert "before ``\\` after" in digest
+    assert "before ``` after" not in digest
+    assert digest.count("```") == 2
 
 
 def test_distill_log_placeholder_sections_cover_missing_failed_jobs(
@@ -527,7 +592,7 @@ def test_distill_log_redacts_before_truncation(
 ) -> None:
     out = tmp_path / "impl" / "distilled-failure.md"
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path / "impl"))
-    monkeypatch.setattr(config, "CI_FIXER_DISTILL_TOTAL_BYTES", 420)
+    monkeypatch.setattr(config, "CI_FIXER_DISTILL_TOTAL_BYTES", 900)
     _patch_failed_jobs(monkeypatch)
     secret = "sk-test123456789012345678901234567890123456789012345678"
     _patch_failed_log(
@@ -540,7 +605,7 @@ def test_distill_log_redacts_before_truncation(
     digest = out.read_text(encoding="utf-8")
     assert secret not in digest
     assert "<REDACTED-TOKEN>" in digest
-    assert "digest truncated" in digest
+    assert len(out.read_bytes()) <= 900
 
 
 def test_distill_log_in_progress_and_health_failures_emit_distinct_statuses(
