@@ -16,6 +16,8 @@ append-execution-issue.sh: error: the following arguments are required: --log, -
 === larch-quiet-read-session-env-key.sh-83849.log ===
 === larch-quiet-read-session-env-key.sh-83851.log ===
 === larch-quiet-read-session-env-key.sh-83853.log ===
+=== larch-quiet-sessionstart-health.sh-7864.log ===
+=== larch-quiet-sessionstart-health.sh-8266.log ===
 === larch-quiet-sessionstart-health.sh-85252.log ===
 === larch-quiet-sessionstart-health.sh-86052.log ===
 === larch-quiet-sessionstart-health.sh-86379.log ===
