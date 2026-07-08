@@ -10,9 +10,10 @@
 #       appears in each orchestrator SKILL.md.
 #   (B) The same banner substring does NOT appear in any pure-delegator
 #       SKILL.md — the rule explicitly exempts them.
-#   (C) The micro-reminder substring "Continue after child returns"
-#       (matches both standard and loop-internal variants) appears at
-#       least once in each orchestrator SKILL.md.
+#   (C) A per-call-site blockquote micro-reminder starting with
+#       "> **Continue after" (covers both the legacy "child returns" form
+#       for Skill-tool invocations and the bgjob-migrated "bgjob `DONE`"
+#       form) appears at least once in each orchestrator SKILL.md.
 #
 # Invoked via:  bash scripts/test-anti-halt-banners.sh
 # Wired into:   make lint (via the test-anti-halt Makefile target).
@@ -27,7 +28,7 @@ set -euo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 BANNER_SIGNATURE='**Anti-halt continuation reminder.**'
-MICRO_SIGNATURE='Continue after child returns'
+MICRO_SIGNATURE='> **Continue after'
 
 ORCHESTRATORS=(
   "skills/implement/SKILL.md"

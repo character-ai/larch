@@ -71,9 +71,10 @@ BEGIN {
 }
 function is_invocation_site(line) {
     # Match concrete launcher invocations: Step 3 uses the bgjob run-step-checks.sh
-    # wrapper; Step 5 MAV uses checks-step5-resume; Step 6 uses step-6-entry.sh.
+    # wrapper; Step 5 MAV uses step-5-resume.sh (bgjob, main launch only, not
+    # --record-only timing fence); Step 6 uses step-6-entry.sh.
     return line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/run-step-checks\.sh/ \
-        || line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" python\/cli\.py implement checks-step5-resume/ \
+        || (line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/step-5-resume\.sh/ && line !~ /--record-only/) \
         || line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/step-6-entry\.sh/
 }
 
