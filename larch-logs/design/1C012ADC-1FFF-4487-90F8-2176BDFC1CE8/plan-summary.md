@@ -1,0 +1,1 @@
+Plan: add unambiguous `FINDING_N`/`OOS_N` alias parsing in voting helpers, thread ballot-id sets through code-review and plan-review tally paths, and cover alias, collision, and unchanged primary-id behavior with focused tests.
