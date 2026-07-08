@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- alias canonicalization is a maintenance concern, not a feature blocker
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dropping defining_module from the stored record is optional scope trimming, not required to ship the lint
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- docs catalog coverage is nice-to-have consistency work, not necessary for the lint feature
+OOS_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

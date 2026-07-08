@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Scope and occurrence numbering are implementation details; the lint can still ship correctly without pinning them in the plan.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Canonical module spelling is a stability choice, but it is not required for the lint to detect the bug class.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This re-raises the baseline-identity theme already treated as out-of-scope, so it is not a feature-blocking defect here.
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Persisting defining_module is extra metadata, but the scoped lint feature does not require that baseline contract change.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- A docs/linting.md catalog row is useful, but the anchored issue does not require docs wiring for the feature to ship.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Some late-access consumer-module patches may be valid, but V1 explicitly leaves those cases to suppression rather than blocking the lint feature.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- A catalog entry is discoverability work, not a required part of the scoped lint follow-up.
