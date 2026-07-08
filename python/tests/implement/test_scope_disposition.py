@@ -85,6 +85,19 @@ def test_compute_excludes_may_update_and_todos_require_disposition(tmp_path: Pat
     assert coverage.disposition_required is True
 
 
+def test_compute_requires_step2_baseline(tmp_path: Path) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
+
+    with pytest.raises(ShipError, match="step2 baseline missing or unreadable"):
+        _ = scope_disposition.compute_and_write_coverage(
+            tmpdir=tmp_path,
+            repo_root=tmp_path,
+            plan_file=plan_file,
+            runner=FakeRunner(diff_paths=[]),
+        )
+
+
 def test_record_proceed_partial_is_durable_after_all_side_effects(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     coverage = scope_disposition.PlanCoverage(
         total=2,
@@ -205,7 +218,7 @@ def test_validate_detects_stale_fingerprint(tmp_path: Path) -> None:
     assert result.reason == "scope-disposition-stale"
 
 
-def test_validate_clears_stale_partial_record_when_coverage_becomes_complete(tmp_path: Path) -> None:
+def test_validate_rejects_stale_partial_record_when_coverage_becomes_complete(tmp_path: Path) -> None:
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
     _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
@@ -220,8 +233,8 @@ def test_validate_clears_stale_partial_record_when_coverage_becomes_complete(tmp
         runner=FakeRunner(diff_paths=["src/a.py"]),
     )
 
-    assert result.ok is True
-    assert result.required is False
+    assert result.ok is False
+    assert result.required is True
     assert result.reason == "scope-disposition-stale"
-    assert not scope_disposition.disposition_path(tmp_path).exists()
-    assert scope_disposition.disposition_link_kind(tmp_path) == "closes"
+    assert scope_disposition.disposition_path(tmp_path).exists()
+    assert scope_disposition.disposition_link_kind(tmp_path) == "part-of"

@@ -844,27 +844,35 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
         _emit_kv(key="NEXT_ACTION", value="stall")
         return 4
 
-    if not _ship_state_has_shell_kv_entries(state_file):
-        seed = _run_cli_capture(["implement", "step-8-seed-initial"])
-        _forward_child_output_to_stderr(seed)
-        if seed.returncode != 0:
-            _emit_kv(key="NEXT_ACTION", value="halt-seed")
-            return seed.returncode
-
     repo_root = _resolve_repo_root()
     if repo_root is None:
         _emit_kv(key="NEXT_ACTION", value="halt-seed")
         return 2
     manifest_path = _read_kv_file(path=state_file, key="MANIFEST_PATH", default="")
+    if not manifest_path:
+        for candidate in (implement_tmpdir / "manifest.json", implement_tmpdir / "codex-step2-out" / "manifest.json"):
+            if candidate.is_file():
+                manifest_path = str(candidate)
+                break
     disposition = scope_disposition.validate_disposition_for_ship(
         tmpdir=implement_tmpdir,
         repo_root=repo_root,
         manifest_path=Path(manifest_path) if manifest_path else None,
     )
     if not disposition.ok:
-        _emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
-        _emit_kv(key="NEXT_ACTION", value=config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION)
-        return config.EXIT_NEEDS_USER_INPUT
+        if disposition.reason.startswith("scope-disposition-"):
+            _emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
+            _emit_kv(key="NEXT_ACTION", value=config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION)
+            return config.EXIT_NEEDS_USER_INPUT
+        print(f"ship pre-driver: {disposition.reason}", file=sys.stderr)
+        return 4
+
+    if not _ship_state_has_shell_kv_entries(state_file):
+        seed = _run_cli_capture(["implement", "step-8-seed-initial"])
+        _forward_child_output_to_stderr(seed)
+        if seed.returncode != 0:
+            _emit_kv(key="NEXT_ACTION", value="halt-seed")
+            return seed.returncode
 
     oos = _run_cli_capture(["oos", "file", "--implement-tmpdir", str(implement_tmpdir)])
     if oos.returncode != 0:

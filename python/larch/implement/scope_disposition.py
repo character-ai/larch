@@ -144,15 +144,13 @@ def _git_stdout(runner: Runner, argv: Sequence[str], *, cwd: Path) -> str:
 
 
 def _baseline_sha(*, tmpdir: Path, repo_root: Path, runner: Runner) -> str:
+    _ = repo_root
     baseline_file = tmpdir / "step2-baseline.txt"
     if baseline_file.is_file() and not baseline_file.is_symlink():
         raw = baseline_file.read_text(encoding="utf-8", errors="replace").strip()
         if raw:
             return raw
-    merge_base = _git(runner, ["merge-base", "HEAD", "origin/main"], cwd=repo_root)
-    if merge_base.returncode == 0 and merge_base.stdout.strip():
-        return merge_base.stdout.strip()
-    return _git_stdout(runner, ["rev-parse", "HEAD"], cwd=repo_root)
+    raise ShipError("step2 baseline missing or unreadable")
 
 
 def _porcelain_paths_z(stdout: str) -> set[str]:
@@ -566,6 +564,7 @@ def validate_disposition_for_ship(
     manifest_path: Path | None = None,
     runner: Runner = proc,
 ) -> ValidationResult:
+    persisted_coverage = load_coverage(tmpdir)
     try:
         coverage = compute_and_write_coverage(
             tmpdir=tmpdir,
@@ -574,9 +573,29 @@ def validate_disposition_for_ship(
             runner=runner,
         )
     except ShipError as exc:
-        return ValidationResult(ok=False, required=True, reason=f"coverage-recompute-failed: {_safe_line(exc)}")
+        if persisted_coverage is not None and not persisted_coverage.disposition_required:
+            return ValidationResult(
+                ok=True,
+                required=False,
+                reason=f"coverage-recompute-failed-advisory: {_safe_line(exc)}",
+                coverage=persisted_coverage,
+            )
+        return ValidationResult(
+            ok=False,
+            required=True,
+            reason=f"coverage-recompute-failed: {_safe_line(exc)}",
+            coverage=persisted_coverage,
+        )
     record = load_disposition(tmpdir)
     if record is not None and record.fingerprint != coverage.fingerprint:
+        if record.disposition == "proceed-partial":
+            return ValidationResult(
+                ok=False,
+                required=True,
+                reason="scope-disposition-stale",
+                coverage=coverage,
+                disposition=record,
+            )
         with contextlib.suppress(OSError):
             disposition_path(tmpdir).unlink()
         return ValidationResult(

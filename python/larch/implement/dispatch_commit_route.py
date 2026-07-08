@@ -61,13 +61,22 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
     if repo_root is None:
         print("scope-disposition: git rev-parse --show-toplevel failed", file=sys.stderr)
         return 2
+    manifest_path = implement_tmpdir / "manifest.json"
+    if not manifest_path.is_file():
+        codex_manifest = implement_tmpdir / "codex-step2-out" / "manifest.json"
+        if codex_manifest.is_file():
+            manifest_path = codex_manifest
+    persisted_coverage = scope_disposition.load_coverage(implement_tmpdir)
     try:
         coverage = scope_disposition.compute_and_write_coverage(
             tmpdir=implement_tmpdir,
             repo_root=repo_root,
-            manifest_path=implement_tmpdir / "manifest.json",
+            manifest_path=manifest_path,
         )
     except ShipError as exc:
+        if persisted_coverage is not None and not persisted_coverage.disposition_required:
+            _emit_coverage(persisted_coverage)
+            return 0
         print(f"scope-disposition: coverage recompute failed: {exc}", file=sys.stderr)
         return 4
     _emit_kv(key="PLAN_COVERAGE_TOTAL", value=str(coverage.total))
