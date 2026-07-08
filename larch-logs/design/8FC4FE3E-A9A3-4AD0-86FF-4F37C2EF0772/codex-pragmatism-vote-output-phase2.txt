@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- line 35 already requires static slugs; implementer reads hardcoded implement-step5-resume in step-5-resume.sh
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- plan must clear LARCH_BGJOB_OWNER_PID and CLAUDE_PID before LARCH_CLAUDE_PID or the fallback test never exercises Step 7a
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan comment bullet already names #6580 and #6595 together; extra daemon prose is optional polish
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- test_owner_identity_from_env_uses_session_pid_env already pins LARCH_CLAUDE_PID fallback; mandatory CLI test adds no new failure signal
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan line 37 limits sentinel checks to shapes stable enough to assert, so step8 omission is already allowed
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same duplication as FINDING_4; UPDATED CLI test exceeds necessity when daemon coverage exists
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

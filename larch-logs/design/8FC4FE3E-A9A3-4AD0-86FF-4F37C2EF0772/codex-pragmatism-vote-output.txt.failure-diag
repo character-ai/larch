@@ -1,0 +1,26 @@
+===== sidecar =====
+Reading additional input from stdin...
+Not inside a trusted directory and --skip-git-repo-check was not specified.
+===== diag =====
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ codex agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== sidecar =====
+Reading additional input from stdin...
+Not inside a trusted directory and --skip-git-repo-check was not specified.
+===== diag =====
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ codex agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== sidecar =====
+Reading additional input from stdin...
+Not inside a trusted directory and --skip-git-repo-check was not specified.
+agent parse-codex-usage: no usage events
+===== diag =====
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ codex agent: FAILED (exit code 1, output 0 bytes)

@@ -1,0 +1,21 @@
+### FINDING_1: step5-resume slug should be a fixed literal, not dynamic `$STEP`
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+- **Severity**: minor
+- **Concern**: The plan treats the `step5-resume` bgjob slug as dynamic via `$STEP`, but `skills/implement/scripts/step-5-resume.sh:217` hardcodes `STEP` to `implement-step5-resume`. A parametrized test that follows the plan’s dynamic-slug wording could overfit argv-derived step names or assert the wrong contract instead of pinning the static slug (same pattern as `step5-review`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the `step5-resume` parametrization row, treat `implement-step5-resume` as a fixed expected slug (same pattern as step5-review), not a dynamic `$STEP` variable
+  - From Cursor-Innovation: Assert the literal slug implement-step5-resume in the step5-resume parametrization row
+
+### FINDING_2: CLI owner-fallback test must clear higher-priority owner env vars
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: major
+- **Concern**: The planned `cli.start_main` owner-fallback test setup may clear only lower-priority env vars. `owner_identity_from_env` checks `LARCH_BGJOB_OWNER_PID` and `CLAUDE_PID` before `LARCH_CLAUDE_PID`. If `LARCH_BGJOB_OWNER_PID` remains set, the test can pass without ever exercising the Step 7a `LARCH_CLAUDE_PID` fallback path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: In the planned `cli.start_main` test, unset or clear `LARCH_BGJOB_OWNER_PID`, `CLAUDE_PID`, and `LARCH_BG_POLL_GUARD_SESSION_PID`, then set `LARCH_CLAUDE_PID=12345`. Mirror `test_owner_identity_from_env_fails_closed_without_session_pid` in `python/tests/bgjob/test_daemon.py`.
+
+### FINDING_3: #6591 correcting comment should cite both #6580 and #6595 fixes
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: minor
+- **Concern**: The planned issue-comment body for correcting #6591’s disposition cites only the stable `LARCH_CLAUDE_PID` launcher path (#6580). Issue scope requires recording that the harness-kill false-orphan root cause was fixed via both #6580 and #6595 (daemon owner-validation hardening). Omitting #6595 leaves the comment incomplete relative to the stated root-cause narrative.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: The comment body should state Step 3 is covered by stable `LARCH_CLAUDE_PID` ownership (#6580) and daemon owner-validation hardening (#6595), with both pinned by the new regression tests (or cite existing daemon tests if unchanged).
