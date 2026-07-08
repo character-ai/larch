@@ -4598,12 +4598,6 @@
   {
     "file": "larch/report/run_logs.py",
     "code": "C901",
-    "qualified_symbol": "append_failure_main",
-    "metric": 12
-  },
-  {
-    "file": "larch/report/run_logs.py",
-    "code": "C901",
     "qualified_symbol": "larch_log_write_round_main",
     "metric": 26
   },
