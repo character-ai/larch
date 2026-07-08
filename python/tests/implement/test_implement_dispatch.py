@@ -3560,7 +3560,7 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     step6_launcher = "skills/implement/scripts/step-6-entry.sh"
     assert f"(launcher + '{step6_launcher}', 'implement-step6-checks')" in structure
     assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
-    assert "BUDGET_S=\"14700\"" in run_step_checks
+    assert 'BUDGET_S="14700"' in run_step_checks
     assert '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal"' in run_step_checks
     assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
     assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
