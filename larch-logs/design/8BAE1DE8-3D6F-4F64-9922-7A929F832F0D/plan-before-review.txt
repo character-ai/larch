@@ -1,0 +1,141 @@
+## Approach
+
+Implement the fix in `/implement` review-and-fix only.
+
+`round_runner._run_round` should keep using the degraded banner as the entry point, but split the retry path:
+
+1. Parse the initial `core` dict and `review-core-threshold.env`.
+2. Treat the degradation as pure per-item under-quorum only when all are true:
+   - `UNDER_QUORUM_COUNT > 0`
+   - `PARSE_FAILED_COUNT == 0`
+   - `FAILED_SLOTS == 0`
+3. For pure under-quorum, use the existing `degraded-retry.flag`, `degraded-retry.done`, and `voting-tally-degraded-attempt-1.md` preservation.
+4. Build a restricted ballot from `findings.md` containing only IDs from `UNDER_QUORUM_ITEMS`.
+5. Dispatch voters on that restricted ballot only.
+6. Merge each new voter output after the original voter output for the same slot. `parse_judge_vote` keeps the last matching vote line, so the new per-item vote overrides the old under-quorum line while untouched items still use the original vote.
+7. Re-run the tally on the full original ballot with merged voter files, so the final `voting-tally.md`, accepted file, rejected file, OOS artifacts, classification TSV, and counts reflect the whole ballot.
+8. Update the in-memory `core` dict from the new tally result and recompute the same round status fields that `_run_round` uses downstream.
+9. If the degradation is not pure under-quorum, keep the existing fresh-panel retry unchanged.
+
+Keep the `/design` plan-review pipeline out of scope.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/round_runner.py
+
+Add small private helpers near the degraded retry helpers:
+
+- `_pure_under_quorum_degradation(core, threshold_env) -> bool`
+  - Use `_env_int`.
+  - Read `FAILED_SLOTS` from `threshold_env`.
+  - Default missing numeric fields to zero.
+- `_under_quorum_item_ids(core) -> list[str]`
+  - Split `UNDER_QUORUM_ITEMS` on commas.
+  - Trim whitespace.
+  - Keep valid item IDs.
+- `_write_under_quorum_ballot(source, output, item_ids) -> bool`
+  - Extract matching `### FINDING_N:` and, if easy with the existing ballot regex, `### OOS_N:` blocks.
+  - Preserve enough original block text for voter prompts.
+  - Return false when no requested items can be found.
+- `_review_voter_slots(round_dir) -> tuple[list[str], list[str]] | None`
+  - Parse `review-core-voters.env`.
+  - Return the three original `VOTER_N_PATH` values and `VOTER_N_TOOL` values.
+  - Return `None` when required paths are missing.
+- `_merge_voter_outputs(original_files, revote_files, output_dir) -> list[str]`
+  - Write one merged file per slot.
+  - Copy original text first.
+  - Append the re-vote text after a newline.
+- `_run_under_quorum_revote(...) -> bool`
+  - Create a bounded subdirectory under the round, for example `under-quorum-revote/`.
+  - Dispatch voters with the restricted ballot.
+  - Tally the full original ballot with merged voters and original voter tools.
+  - Write command stdout to diagnostic env files in the subdirectory.
+  - Copy or allow the final full-ballot tally outputs to replace the round-level files only after the full retally emits `TALLY_STATUS`.
+  - Return false before changing final round artifacts if required setup is missing.
+
+In `_run_round`:
+
+- Compute `threshold = _parse_env_file(threshold_env)` after the first core capture.
+- In the degraded branch:
+  - Preserve `voting-tally-degraded-attempt-1.md` before any retry or re-tally.
+  - If pure under-quorum, run the targeted re-vote path instead of calling `review_core_capture` again.
+  - Touch `degraded-retry.done` after the targeted re-vote completes or definitively declines to retry.
+  - If the final `voting-tally.md` still has the degraded banner and changed from attempt 1, preserve it as `voting-tally-degraded-attempt-2.md`.
+  - If the final tally is clean, set `degraded_this_round = False`.
+- Leave the existing full fresh-panel retry branch intact for:
+  - reviewer slot failures
+  - voter slot removal from `PARSE_FAILED_COUNT > 0`
+  - zero surviving judges
+  - malformed or missing data that prevents a safe targeted re-vote
+
+Do not change quorum thresholds, voter prompts, dispatch policy, panel shape, or `review_tally.py` parsing.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+Add tests around the existing degraded retry tests.
+
+New targeted-path test:
+
+- Set up a fake first `review_core_impl` that writes:
+  - `findings.md` with at least two findings
+  - `voting-tally.md` with the under-quorum degraded banner
+  - `review-core-threshold.env` with `FAILED_SLOTS=0`
+  - `review-core-voters.env` with three voter paths and tools
+  - core KVs with `UNDER_QUORUM_COUNT=1`, `UNDER_QUORUM_ITEMS=FINDING_1`, `PARSE_FAILED_COUNT=0`, `VOTER_COUNT=3`
+- Stub the command runner used by targeted dispatch/tally.
+- Assert:
+  - `review_core_impl` runs once, not twice
+  - the targeted voter dispatch ballot contains only `FINDING_1`
+  - the full retally uses the full original `findings.md`
+  - merged voter files include original vote text plus re-vote text
+  - `voting-tally-degraded-attempt-1.md` exists
+  - no full-panel retry artifacts or second core invocation occur
+
+Fallback tests:
+
+- Keep or adapt existing tests that assert full retry for parse-failed voter-slot removal.
+- Add a case where `UNDER_QUORUM_COUNT > 0` but `FAILED_SLOTS=1`; assert the existing full-panel retry still runs.
+- Add a case where `UNDER_QUORUM_COUNT > 0` but `PARSE_FAILED_COUNT=1`; assert the existing full-panel retry still runs.
+- Add a missing voter metadata case if the helper falls back to full retry before touching the targeted path.
+
+Update stale assertions in existing under-quorum degraded tests only when they now qualify for targeted re-vote.
+
+## Edge cases
+
+- `UNDER_QUORUM_ITEMS` names an item not present in `findings.md`: fall back to the existing full retry before replacing final artifacts.
+- Re-vote output is missing for one voter slot: merge the original file for that slot and let the final full tally decide whether degradation remains.
+- Final full retally still has an under-quorum banner: preserve attempt 2 when it differs from attempt 1 and proceed best-effort under the existing single retry cap.
+- Existing reviewer-slot warnings from `dropped-reviewer-attempts.env` must still surface when those paths use the full retry branch.
+- Zero-findings degraded banners must keep the current skip behavior.
+
+## Failure modes
+
+- A targeted retally that writes only restricted-ballot artifacts could drop unaffected findings. Avoid this by retallying the full original ballot with merged voter files.
+- A targeted path that overwrites `voting-tally.md` before preserving attempt 1 would lose audit evidence. Copy attempt 1 first.
+- A targeted path that ignores `PARSE_FAILED_COUNT` or `FAILED_SLOTS` could mask real panel degradation. Gate on all three pure-under-quorum conditions.
+- A targeted path that omits voter tools can break three-slot tally behavior. Reuse `VOTER_N_TOOL` from `review-core-voters.env`.
+
+## Testing strategy
+
+Run changed-file tests:
+
+```bash
+python3 -m pytest python/tests/review/test_review_and_fix.py -k "degraded or under_quorum or parse_failed or dropped_reviewer"
+```
+
+Run relevant Python lint/checks for the changed files:
+
+```bash
+python3 python/cli.py checks run-relevant
+```
+
+If `checks run-relevant` is too broad or blocked by local state, run the Python unit test above plus the repo's normal Python lint target for changed Python work.
+
+## Risk and difficulty
+
+This is workflow-affecting review orchestration. It changes retry behavior, persisted round artifacts, and cost-sensitive agent fan-out. It does not change security handling, merge, CI, or session-env writers.
+
+confidence: high
+difficulty: MODERATE
+mechanical_churn: false
+diff_lines: 260

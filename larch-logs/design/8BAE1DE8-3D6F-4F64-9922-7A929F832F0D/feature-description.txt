@@ -1,0 +1,27 @@
+# [BUG] Under-quorum degraded vote retries full panel; re-vote only affected items
+
+Surfaced by the run-log investigation of /implement run C9457B68-AEF0-4FF6-9905-58D947490861 (issue #6536, PR #6573, larch 52.5.5).
+
+**Evidence**
+
+- Round 1 ran the full review pipeline twice: 8 reviewers, the aggregator, and 3 voters each ran two times before one apply.
+- The panel was healthy both times. `round-1/review-core-threshold.env` shows `INTENDED_SLOTS=8`, `SUCCEEDED_SLOTS=8`, `FAILED_SLOTS=0`.
+- Attempt 1 voted an 18-item ballot. Five items (FINDING_2, 12, 13, 17, 18) each drew 2 per-item JUDGE_ERRORs from the 3 codex voters. That put them below the 2-of-3 quorum and stamped the tally with the degraded banner (preserved as `round-1/voting-tally-degraded-attempt-1.md`).
+- The banner alone triggered a full fresh-panel retry. Round 1 took 34m and $25.21; round 2 took 13m47s and $9.52. The retry added roughly $10-11 and about 14 minutes.
+
+**Root cause**
+
+`_run_round` in `python/larch/review/round_runner.py` (the `retry_degraded_panel` branch, currently lines ~486-521) treats any "⚠ Degraded code-review panel" banner as a panel-level failure and re-runs `review_core_capture` in full. When only per-item vote parsing degraded, the re-run discards healthy reviewer and aggregator work.
+
+**Fix**
+
+1. Distinguish banner causes. `python/larch/review/review_tally.py` already emits `UNDER_QUORUM_COUNT` / `UNDER_QUORUM_ITEMS` (~line 1108) and distinct banner variants: reviewer slots narrative-only; voter slots removed at >=80% JUDGE_ERROR; per-item under-quorum.
+2. When the degradation is only per-item under-quorum (no reviewer-slot failures, no whole-voter removal), skip the fresh-panel retry. Re-ballot and re-vote only the under-quorum items: build a ballot restricted to those finding ids, re-run the voter panel on it, and merge the new votes into the tally.
+3. Keep the fresh-panel retry for the other degradation causes. Keep the single-retry cap (`degraded-retry.flag` / `degraded-retry.done`) and the #5528 attempt-tally preservation.
+
+**Acceptance criteria**
+
+- A simulated round with a healthy panel and per-item under-quorum JUDGE_ERRORs re-votes only those items; reviewers and the aggregator do not re-run.
+- The other degraded paths keep today's behavior.
+
+Precedent: #6026 fixed the empty-ballot variant of the same wasteful retry.

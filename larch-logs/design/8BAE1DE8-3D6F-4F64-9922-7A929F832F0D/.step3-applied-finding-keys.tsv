@@ -1,0 +1,15 @@
+1	after a targeted retally succeeds, the round can still leave summaries, rejected-finding aggregates, and in-memory status/count fields on the first-pass snapshot, so downstream warnings and composed outputs can disagree with the settled ballot.
+1	the re-vote path can overwrite the original voter outputs or let appended targeted votes replace healthy first-pass votes on untouched items.
+1	targeted retally is missing the original first-pass tally context, so proposer mapping, manifest/collector, scope/session, and not-substantive settings can diverge from the healthy-panel path.
+1	restricted ballot extraction can silently drop requested items or item types, especially missing ids and oos blocks, so the targeted retry may not cover the full degraded set.
+1	the pure under-quorum gate is too permissive and can fail open on missing or incomplete threshold metadata or when other degradation signals imply the panel is not actually healthy enough for the targeted path.
+1	the retry branch and single-shot sentinel can let a failed targeted attempt skip the required full-panel fallback, or forget that the retry already completed on later re-entry.
+2	targeted revote merging filters only anchored `id:` lines, so parseable markdown-table vote rows can be dropped and the retally can keep stale under-quorum or judge_error results instead of incorporating the successful revote.
+2	a successful targeted revote can leave the reviewer-prune ledger stale or uncleared, so later rounds may prune or retain reviewers using the pre-revote classification instead of the final retally.
+2	targeted tally arguments can omit the first-pass `--scope-files` context, which may cause the retally to diverge from the initial scoped run and reclassify drifted findings differently.
+2	targeted emit-tally needs the same session and implement context as the first-pass emit path so oos serialization and parent-copy behavior stay aligned; omitting these flags can leave oos or classification artifacts on the stale snapshot.
+2	if a targeted retally collapses to main-agent-vote-required, continuing through the normal emit path can write the wrong rejected/oos artifacts instead of handing control back to the existing full-panel fallback.
+2	the targeted-retry gate treats the panel as healthy when `failed_slots=0`, but dynamic failed/dropped-slot counters or straggler-drop evidence can still indicate a degraded panel that should take the full fresh-panel retry path.
+2	a resumed round can rerun `review_core_capture` even though the retry already completed, which can overwrite settled artifacts and then skip the retry paths because `degraded-retry.done` is already present.
+2	targeted voter dispatch can fail validation or run with the wrong round context unless the required `dispatch-voters` flags are included alongside the optional context.
+2	the full-fallback retry path can lose attempt-1 oos accumulation semantics if it skips the pre-fallback append before rerunning the first-pass capture.
