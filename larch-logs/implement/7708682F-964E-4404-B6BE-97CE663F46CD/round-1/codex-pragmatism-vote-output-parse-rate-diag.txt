@@ -1,0 +1,9 @@
+slot=2
+voter_tool=codex-pragmatism
+judge_error_count=4
+total_findings=4
+total_ballot_items=4
+voter_file=<TMPDIR>/round-1/codex-pragmatism-vote-output.txt
+voter_sha256=c1c4f5c7992164d523a9bd7080fa328bfc57fe6104992b15844569e0f5e52b0c
+--- first 200 bytes of voter output ---
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the stable-runner test fixture already builds a clean env without LARCH_CLAUDE_PID, so there is no concrete masking bu
