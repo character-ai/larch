@@ -5757,13 +5757,31 @@
     "file": "larch/review/round_runner.py",
     "code": "C901",
     "qualified_symbol": "_run_round",
-    "metric": 37
+    "metric": 39
   },
   {
     "file": "larch/review/round_runner.py",
     "code": "PLR0912",
     "qualified_symbol": "_run_round",
-    "metric": 39
+    "metric": 43
+  },
+  {
+    "file": "larch/review/round_runner.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_run_under_quorum_revote",
+    "metric": 14
+  },
+  {
+    "file": "larch/review/round_runner.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_apply_targeted_retally_outputs",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/round_runner.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_run_under_quorum_revote",
+    "metric": 6
   },
   {
     "file": "larch/review/round_runner.py",
@@ -5775,7 +5793,13 @@
     "file": "larch/review/round_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 159
+    "metric": 163
+  },
+  {
+    "file": "larch/review/round_runner.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_run_under_quorum_revote",
+    "metric": 58
   },
   {
     "file": "larch/review/snapshot.py",
