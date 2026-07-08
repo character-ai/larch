@@ -81,6 +81,8 @@ larch-logs/
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
 
+Bgjob result envs and daemon logs are session-local routing inputs before run-log capture. They record `BGJOB_RC`, step-specific KVs, stdout, stderr, and registry state under the session tmpdir, then the ship and publish steps render committed summaries from the routed outcome. The raw bgjob registry and daemon log files are diagnostics, not stable committed batch files, unless a caller copies bounded diagnostics into `execution-issues.ndjson` or another documented batch.
+
 ### design architectural invariant and guideline assessments
 
 `larch-logs/design/<RUN_ID>/architectural-invariant-assessment.md` and

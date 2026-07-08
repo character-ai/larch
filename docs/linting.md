@@ -416,4 +416,8 @@ The residual manifest covers kept hooks, bash-targeting linters, thin wrappers, 
 
 ## Bgjob background-launch lint
 
-`python3 python/cli.py lint bg-wait-coverage` now rejects new `run_in_background: true` prose anywhere under `skills/**`. Retained legacy notification contracts must be listed in `python/larch/lint/bg_wait_allowlist.txt` with a reason, and that allowlist should shrink as bgjob migration follow-ups delete the old contracts.
+`python3 python/cli.py lint bg-wait-coverage` rejects new `run_in_background: true` prose anywhere under `skills/**`. Retained legacy notification contracts must be listed in `python/larch/lint/bg_wait_allowlist.txt` with a reason. At the bgjob migration end state, that allowlist should contain at most the `skills/shared/orchestrator-never.md` compatibility row until the cleanup issue removes the old notification defense text.
+
+`python3 python/cli.py lint bg-wait-writer-parity` keeps the remaining compatibility marker writers in sync with clone-identity fields, so hook-side denials stay scoped to the owning checkout while legacy markers exist.
+
+`make test-bgjob` runs `scripts/test-bgjob.sh`, which exercises the Python bgjob start, wait, status, reap, result-env, timeout, orphan, and log-path contracts through `python/tests/bgjob`. It is assigned to the `test-harnesses-4` shard in the current Makefile; if shard balance changes, keep exactly one `test-harnesses-N` prerequisite for this target and verify with `make test-harness-shards-coverage`.
