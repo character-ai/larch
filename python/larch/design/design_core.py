@@ -14,12 +14,63 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
 
 from larch import io as larch_io
-from larch.core import logging_util
+from larch.core import config, logging_util
 from larch.core import redact
 from larch.implement.bg_wait import _read_keepalive_clone_path
 from larch.state.session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
+
+
+DESIGN_BGJOB_STEP3_REVIEW = "design-step3-review"
+DESIGN_BGJOB_STEP4_TAIL = "design-step4-tail"
+DESIGN_BGJOB_STEP5C = "design-step5c"
+DESIGN_BGJOB_STEP_FINAL_SUMMARY = "design-step-final-summary"
+
+
+def design_bgjob_result_env_path(*, design_tmpdir: Path, step: str) -> Path:
+    return design_tmpdir / config.BGJOB_TMP_SUBDIR / f"{step}{config.BGJOB_RESULT_ENV_SUFFIX}"
+
+
+def design_recreate_merge_env(*, path: Path, design_tmpdir: Path) -> None:
+    root = design_tmpdir.resolve()
+    target = path.resolve(strict=False)
+    try:
+        _ = target.relative_to(root)
+    except ValueError as exc:
+        msg = f"merge env escapes DESIGN_TMPDIR: {path}"
+        raise OSError(msg) from exc
+    if path.is_symlink():
+        msg = f"refusing to replace symlink merge env: {path}"
+        raise OSError(msg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        msg = f"merge env parent is not a regular directory: {path.parent}"
+        raise OSError(msg)
+    larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
+
+
+def design_write_merge_env(*, path: Path, design_tmpdir: Path, rows: Iterable[tuple[str, object]]) -> None:
+    root = design_tmpdir.resolve()
+    target = path.resolve(strict=False)
+    try:
+        _ = target.relative_to(root)
+    except ValueError as exc:
+        msg = f"merge env escapes DESIGN_TMPDIR: {path}"
+        raise OSError(msg) from exc
+    safe_rows: list[tuple[str, str]] = []
+    for key, value in rows:
+        if not key or "\n" in key or "\r" in key:
+            msg = f"invalid merge env key: {key!r}"
+            raise ValueError(msg)
+        text = str(value)
+        if "\n" in text or "\r" in text:
+            msg = f"merge env value contains newline: {key}"
+            raise ValueError(msg)
+        safe_rows.append((key, text))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    larch_io.atomic_write(path=path, text=larch_io.format_kvs(safe_rows), nofollow=True, mode=0o600)
+
 
 class _CoreUsageError(Exception):
     """User-facing argument or validation error for ported design helpers."""
@@ -129,18 +180,18 @@ def _append_execution_issue(*, design_tmpdir: Path, message: str) -> None:
 
 
 _PROBE_CLAMP_COUNTER_BY_STEP = {
-    "design-step3-review": "step-3-terminal",
-    "design-step4-tail": "step-4",
-    "design-step5c": "step-5c-terminal",
-    "design-step-final-summary": "step-final-summary",
+    DESIGN_BGJOB_STEP3_REVIEW: "step-3-terminal",
+    DESIGN_BGJOB_STEP4_TAIL: "step-4",
+    DESIGN_BGJOB_STEP5C: "step-5c-terminal",
+    DESIGN_BGJOB_STEP_FINAL_SUMMARY: "step-final-summary",
 }
 
 
 _TERMINAL_SENTINEL_BY_STEP = {
-    "design-step3-review": "step-3-terminal",
-    "design-step4-tail": "step-4",
-    "design-step5c": "step-5c-terminal",
-    "design-step-final-summary": "step-final-summary",
+    DESIGN_BGJOB_STEP3_REVIEW: "step-3-terminal",
+    DESIGN_BGJOB_STEP4_TAIL: "step-4",
+    DESIGN_BGJOB_STEP5C: "step-5c-terminal",
+    DESIGN_BGJOB_STEP_FINAL_SUMMARY: "step-final-summary",
 }
 
 

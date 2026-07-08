@@ -191,6 +191,40 @@ def _classify_input(path: Path) -> str:
     return "regular"
 
 
+def _preferred_bgjob_result_input(input_path: Path) -> Path | None:
+    step_by_legacy_name = {
+        ".design-step4-tail-result.env": "design-step4-tail",
+        ".design-step5c-status.env": "design-step5c",
+    }
+    step = step_by_legacy_name.get(input_path.name)
+    if step is None:
+        return None
+    candidate = input_path.parent / config.BGJOB_TMP_SUBDIR / f"{step}{config.BGJOB_RESULT_ENV_SUFFIX}"
+    if _classify_input(candidate) == "regular":
+        return candidate
+    return None
+
+
+def _resolve_read_result_env_source(input_path: Path, fallback_path: Path | None) -> tuple[Path | None, str]:
+    preferred_bgjob_input = _preferred_bgjob_result_input(input_path)
+    if preferred_bgjob_input is not None:
+        return preferred_bgjob_input, ""
+    primary_kind = _classify_input(input_path)
+    if primary_kind == "regular":
+        return input_path, ""
+    if fallback_path is None:
+        return None, ""
+    warning = ""
+    if primary_kind == "symlink":
+        if str(input_path).endswith(".design-init-runparams-result.env"):
+            warning = "**⚠ Step 0b: design-init-runparams result env is a symlink; refusing to source**"
+        else:
+            warning = f"WARN=read-result-env input is a symlink; refusing primary path: {input_path}"
+    if fallback_path.is_symlink() or not fallback_path.is_file():
+        return None, warning
+    return fallback_path, warning
+
+
 def _stall_args(design_tmpdir: Path) -> list[str]:
     return ["--profile", "generic", "--artifact-prefix", "design-failure", "--implement-tmpdir", str(design_tmpdir)]
 
@@ -1152,21 +1186,11 @@ def read_result_env_main(argv: Sequence[str]) -> int:
 
     input_path = Path(ns.input_path)
     fallback_path = Path(ns.fallback_input) if ns.fallback_input else None
-    source_path: Path
-    primary_kind = _classify_input(input_path)
-    if primary_kind == "regular":
-        source_path = input_path
-    else:
-        if fallback_path is None:
-            return 1
-        if primary_kind == "symlink":
-            if str(input_path).endswith(".design-init-runparams-result.env"):
-                print("**⚠ Step 0b: design-init-runparams result env is a symlink; refusing to source**")
-            else:
-                print(f"WARN=read-result-env input is a symlink; refusing primary path: {input_path}")
-        if fallback_path.is_symlink() or not fallback_path.is_file():
-            return 1
-        source_path = fallback_path
+    source_path, warning = _resolve_read_result_env_source(input_path, fallback_path)
+    if warning:
+        print(warning)
+    if source_path is None:
+        return 1
 
     output_path = Path(ns.output_path)
     if not output_path.parent.is_dir():

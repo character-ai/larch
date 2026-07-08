@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Combined `/design` wrapper for Step 4 rejected-findings output and Gate C preview setup after the Step 3b finalize boundary completes.
+Bgjob launcher for `/design` Step 4 rejected-findings output and Gate C preview setup.
 
 ## Primary callers
 
@@ -10,22 +10,16 @@ Combined `/design` wrapper for Step 4 rejected-findings output and Gate C previe
 
 ## Invariants
 
-- Accepts launcher-owned `--session-env-path` and `--claude-pid` arguments.
-- Does not derive the root Claude PID from `$PPID` internally.
-- Emits rejected findings between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---` markers.
-- Filters the rejected-findings body through `python3 cli.py plan-review emit-rejected --report-framing` so operator output is presented as considered-not-adopted suggestions, not unimplemented gaps.
-- Falls back to identity-key-filtered `emit-rejected` without `--report-framing` on any non-zero exit from the framed path, with the same considered-not-adopted heading and annotation.
-- Leaves the on-disk `rejected-findings.md` unchanged for run-log audit fidelity.
-- Owns the Step 4 compatibility FINALIZE guard for paused sessions missing `.completed/finalize`.
-- Reads `skip_approve_requested` before Gate C preview.
-- Runs `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR"` as a foreground Python subprocess before preview; the call is no-op when no candidate file exists, fingerprints mismatch, or `--skip-approve` suppresses new auto debate.
-- Writes `.completed/dialectic-gatec-terminal` after `dialectic-gatec` completes.
-- Owns digest-before-preview ordering and uses `design-step3b-tail.sh` as the retired `design-step4b-preview.sh` replacement.
-- The orchestrator, not this wrapper, backgrounds the whole tail fence when debate may run.
-- When backgrounded, arms `.bg-wait-active` with `STEP=design-step4-tail`, copies `CLONE_PATH` from `.larch-keepalive` when available, clears stale no-progress sidecars before marker write, and writes `.completed/step-4` before marker removal on exit.
-- Exits early after the Gate C preview when `.pause-save-complete` exists.
-- Does not depend on architecture diagram artifacts.
-- Must not mutate repository files; dialectic artifacts live under `$DESIGN_TMPDIR`.
+- Accepts launcher-owned `--session-env-path` and `--claude-pid`; never derives the root Claude PID from `$PPID`.
+- Fresh launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step4-tail PGID=<n>`.
+- Before fresh `bgjob start`, reuses a live identity-valid `design-step4-tail` registry row or regular `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`; stale or dead rows are cleared.
+- Recreates `$DESIGN_TMPDIR/.design-step4-tail-result.env`, removes stale `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`, then passes that merge env plus sentinel `$DESIGN_TMPDIR/.completed/step-4` to `bgjob start`.
+- `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` is completion truth for `SKIP_APPROVE_REQUESTED_GATEC`, rejected-findings marker KVs, `REJECTED_FINDINGS_BODY_PATH`, `GATEC_PREVIEW_PATH`, and optional `DIALECTIC_GATEC_DIGEST_PATH`.
+- Thin launcher stdout is not a data source for `SKIP_APPROVE_REQUESTED_GATEC` or rejected findings.
+- Filters rejected findings through `plan-review emit-rejected --report-framing`, with the legacy considered-not-adopted fallback on failure; leaves `rejected-findings.md` unchanged.
+- Owns the Step 4 compatibility FINALIZE guard, `skip_approve_requested` read, foreground `design dialectic-gatec`, `.completed/dialectic-gatec-terminal`, and Gate C preview file.
+- Exits early after preview when `.pause-save-complete` exists.
+- Does not depend on architecture diagram artifacts and must not mutate repository files.
 
 ## Harness
 

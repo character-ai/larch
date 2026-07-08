@@ -319,10 +319,10 @@ check_context_before "$DESIGN_MD" \
     "20" \
     "$RESUME_BACKREF_LITERAL"
 check_context_before "$DESIGN_MD" \
-    "/design Step 5c load contract precedes its background fence" \
+    "/design Step 5c bgjob contract precedes its launcher fence" \
     "$STEP5C_ANCHOR" \
     "20" \
-    "$LOAD_LITERAL Immediate-background wait rule"
+    'shared bgjob wait contract'
 
 check_context_before_step3_launch "$DESIGN_MD" \
     "/design Step 3 launch references the bgjob wait anchor" \
@@ -377,23 +377,18 @@ check_context_before "$DESIGN_MD" \
     'first-time Step 3 review fence'
 
 check_context_before "$DESIGN_MD" \
-    "/design Step 5c references the shared wait anchor" \
+    "/design Step 5c references the bgjob wait contract" \
     "$STEP5C_ANCHOR" \
     "18" \
-    "$SHARED_REF"
+    'shared bgjob wait contract'
 check_context_before "$DESIGN_MD" \
-    "/design Step 5c uses the immediate-background load contract" \
+    "/design Step 5c names bgjob result env" \
     "$STEP5C_ANCHOR" \
     "18" \
-    "$LOAD_LITERAL Immediate-background wait rule"
-check_context_before "$DESIGN_MD" \
-    "/design Step 5c pins completion confirmation purpose" \
-    "$STEP5C_ANCHOR" \
-    "18" \
-    "$CONFIRMATION_COMPLETION"
+    'bgjob/design-step5c.result.env'
 check "$DESIGN_MD" \
-    "/design Step 5c pins prefix-identical repeat silent-yield routing" \
-    'A prefix-identical repeat of non-empty task-output bytes (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.'
+    "/design Step 5c documents BGJOB_RC success gate" \
+    'Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 5c parse `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`.'
 
 check_count "$DESIGN_MD" \
     "/design no longer carries full immediate-background boilerplate paragraphs" \

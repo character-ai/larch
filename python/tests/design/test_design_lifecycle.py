@@ -15,6 +15,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from typing import TextIO, cast
+from types import SimpleNamespace
 
 import pytest
 
@@ -140,6 +141,38 @@ def test_design_read_result_env_cli_writes_sourceable_output(tmp_path: Path) -> 
     assert result.returncode == 0
     assert "INIT_STATUS='ok'" in output.read_text(encoding="utf-8")
     assert "RUN_PARAMS_PATH='Bob'\"'\"'s run'" in output.read_text(encoding="utf-8")
+
+
+def test_design_read_result_env_prefers_step5c_bgjob_result(tmp_path: Path) -> None:
+    legacy = tmp_path / ".design-step5c-status.env"
+    output = tmp_path / "out.env"
+    bgjob = tmp_path / "bgjob" / "design-step5c.result.env"
+    bgjob.parent.mkdir()
+    legacy.write_text("PLAN_WRITE_OK=false\nPUBLISH_RC=1\n", encoding="utf-8")
+    bgjob.write_text("BGJOB_RC=0\nSTEP=design-step5c\nPLAN_WRITE_OK=true\nPUBLISH_RC=0\n", encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "design",
+            "read-result-env",
+            "--input",
+            str(legacy),
+            "--allow",
+            "PLAN_WRITE_OK",
+            "--allow",
+            "PUBLISH_RC",
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    text = output.read_text(encoding="utf-8")
+    assert "PLAN_WRITE_OK='true'" in text
+    assert "PUBLISH_RC='0'" in text
 
 
 def test_design_route_merges_flags_for_already_planned(tmp_path: Path) -> None:
@@ -3823,7 +3856,7 @@ def test_step5c_core_pause_requested_emits_step5c_status(
     assert not (design / ".completed" / "step-5c-terminal").exists()
 
 
-def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
+def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3833,11 +3866,7 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
 
     def fake_publish(argv: list[str]) -> int:
         seen.append(argv)
-        marker = design / ".bg-wait-active"
-        assert marker.is_file()
-        marker_text = marker.read_text(encoding="utf-8")
-        assert "STEP=design-step5c" in marker_text
-        assert f"CLONE_PATH={tmp_path}" in marker_text
+        assert not (design / ".bg-wait-active").exists()
         print(_step5c_rows(design), end="")
         return 0
 
@@ -3872,6 +3901,9 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
             "--skip-validate",
         ]
     ]
+    status_text = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+    assert "PUBLISH_RC=0" in status_text
+    assert "FINAL_SUMMARY_PATH=" in status_text
     assert not (design / ".bg-wait-active").exists()
     assert (design / ".completed" / "step-5c").is_file()
     assert (design / ".completed" / "step-5c-terminal").is_file()
@@ -3883,32 +3915,27 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
     assert "unmarked render stdout" in (design / "render-final-summary.approved.stdout.log").read_text(encoding="utf-8")
 
 
-def test_step5c_core_writes_terminal_sentinel_before_clearing_bg_marker(
+def test_step5c_core_writes_status_before_terminal_sentinel(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # #5695: the terminal sentinel must be durable before `.bg-wait-active` is
-    # removed, so Step 6 never observes both absent while step5c finalizes.
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-abc", REPO="owner/repo")
-    marker = design / ".bg-wait-active"
+    status = design / ".design-step5c-status.env"
     terminal = design / ".completed" / "step-5c-terminal"
-    marker_live_at_first_terminal_write: list[bool] = []
+    status_present_at_first_terminal_write: list[bool] = []
     original_touch = design_lifecycle._touch  # pyright: ignore[reportPrivateUsage]
 
     def spy_touch(path: Path) -> None:
         if path == terminal and not path.exists():
-            marker_live_at_first_terminal_write.append(marker.is_file())
+            status_present_at_first_terminal_write.append(status.is_file())
         original_touch(path)
 
     def fake_publish(_argv: list[str]) -> int:
-        assert marker.is_file()
         assert not terminal.exists()
         print(_step5c_rows(design), end="")
         return 0
 
     def fake_render(_argv: list[str]) -> int:
-        # step5c is still finalizing here: marker live, terminal not yet written.
-        assert marker.is_file()
         assert not terminal.exists()
         (design / "final-summary.md").write_text("summary body\n", encoding="utf-8")
         return 0
@@ -3925,10 +3952,7 @@ def test_step5c_core_writes_terminal_sentinel_before_clearing_bg_marker(
         monkeypatch,
     )
     assert rc == 0
-    # The terminal sentinel was first written while the bg marker was still live.
-    assert marker_live_at_first_terminal_write == [True]
-    # After step5c returns the marker is gone and the sentinel is durable.
-    assert not marker.exists()
+    assert status_present_at_first_terminal_write == [True]
     assert terminal.is_file()
 
 
@@ -4886,13 +4910,48 @@ def _step6_env_without_plugin_root(tmp_path: Path, design: Path, monkeypatch: py
     return env_path
 
 
+
+
+def _patch_step5c_registry(
+    monkeypatch: pytest.MonkeyPatch,
+    design: Path,
+    *,
+    present: bool,
+    child_live: bool = False,
+    daemon_live: bool = False,
+) -> list[Path]:
+    entry = SimpleNamespace(step="design-step5c")
+
+    def fake_read_for(*, tmpdir: Path, step: str, run_id: str | None = None) -> tuple[Path, object | None]:
+        assert tmpdir == design
+        assert step == "design-step5c"
+        assert run_id is None
+        return design / "registry.env", entry if present else None
+
+    def fake_child_liveness(_entry: object) -> SimpleNamespace:
+        return SimpleNamespace(live=child_live)
+
+    def fake_daemon_liveness(_entry: object) -> SimpleNamespace:
+        return SimpleNamespace(live=daemon_live)
+
+    unlinked: list[Path] = []
+
+    def fake_unlink_entry(path: Path) -> None:
+        unlinked.append(path)
+
+    monkeypatch.setattr(design_step6.registry, "read_for", fake_read_for)
+    monkeypatch.setattr(design_step6.registry, "child_liveness", fake_child_liveness)
+    monkeypatch.setattr(design_step6.registry, "daemon_liveness", fake_daemon_liveness)
+    monkeypatch.setattr(design_step6.registry, "unlink_entry", fake_unlink_entry)
+    return unlinked
+
 def test_step6_prelude_in_flight_guard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _step6_design(tmp_path, monkeypatch)
-    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
     rc = design_lifecycle.step6_prelude_core(_step6_args(env_path))
     captured = capsys.readouterr()
     assert rc == 1
@@ -4906,7 +4965,7 @@ def test_step6_cleanup_in_flight_guard(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _step6_design(tmp_path, monkeypatch)
-    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    _patch_step5c_registry(monkeypatch, design, present=True, daemon_live=True)
     rc = design_lifecycle.step6_cleanup_core(_step6_args(env_path))
     captured = capsys.readouterr()
     assert rc == 1
@@ -4939,10 +4998,10 @@ def test_step6_terminal_sentinel_overrides_stale_bg_marker(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # A lingering `.bg-wait-active` from a prior run must not block Step 6 once
-    # step5c has written its terminal sentinel; the sidecar gates then apply.
+    # A live registry row must not block Step 6 once step5c has written its
+    # terminal sentinel; the sidecar gates then apply.
     design, env_path = _step6_design(tmp_path, monkeypatch)
-    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
     (design / ".completed").mkdir(parents=True, exist_ok=True)
     (design / ".completed" / "step-5c-terminal").write_text("", encoding="utf-8")
     _write_step5c_status(design, plan_write_ok="false")
@@ -4973,12 +5032,11 @@ def test_step6_in_flight_when_sidecar_present_but_terminal_absent(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    # Regression (#5695): step5c writes its status sidecar mid-run, before the
-    # final summary and terminal sentinel. A live bg-wait marker with the
-    # sidecar present but no terminal sentinel means step5c is still
-    # finalizing — Step 6 must wait, not preserve or clean up.
+    # Step 5c writes its status merge env before the terminal sentinel. A live
+    # identity-valid bgjob row with no terminal sentinel means step5c is still
+    # finalizing, so Step 6 must wait instead of preserving or cleaning up.
     design, env_path = _step6_design(tmp_path, monkeypatch)
-    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
     _write_step5c_status(design)  # plan_write_ok=true, cleanup_eligible=true
 
     assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 1
@@ -4993,25 +5051,30 @@ def test_step6_in_flight_when_sidecar_present_but_terminal_absent(
     assert not (design / ".completed" / "step-6").exists()
 
 
-def test_step6_in_flight_signal_matrix(tmp_path: Path) -> None:
+def test_step6_in_flight_signal_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     raw = str(design)
-    marker = design / ".bg-wait-active"
     terminal = design / ".completed" / "step-5c-terminal"
-    sidecar = design / ".design-step5c-status.env"
+    result_env = design / "bgjob" / "design-step5c.result.env"
 
-    # Empty raw → never in-flight.
     assert design_lifecycle._step6_in_flight("") is False  # pyright: ignore[reportPrivateUsage]
-    # Nothing on disk → not in-flight (no live step5c; Step 6 handles preserve).
+    _patch_step5c_registry(monkeypatch, design, present=False)
     assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
-    # Live marker, no terminal sentinel → in-flight.
-    marker.write_text("", encoding="utf-8")
+
+    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
     assert design_lifecycle._step6_in_flight(raw) is True  # pyright: ignore[reportPrivateUsage]
-    # Sidecar written mid-run does NOT clear in-flight while the marker is live.
-    sidecar.write_text("PLAN_WRITE_OK=true\n", encoding="utf-8")
-    assert design_lifecycle._step6_in_flight(raw) is True  # pyright: ignore[reportPrivateUsage]
-    # Terminal sentinel present → not in-flight even with a stale marker.
+
+    unlinked = _patch_step5c_registry(monkeypatch, design, present=True, child_live=False, daemon_live=False)
+    assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
+    assert unlinked == [design / "registry.env"]
+
+    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
+    result_env.parent.mkdir(parents=True)
+    result_env.write_text("BGJOB_RC=0\n", encoding="utf-8")
+    assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
+
+    result_env.unlink()
     terminal.write_text("", encoding="utf-8")
     assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
 
@@ -5023,7 +5086,7 @@ def test_step6_pause_wins_over_in_flight(
 ) -> None:
     design, env_path = _step6_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
     (design / ".pause-requested").write_text("", encoding="utf-8")
-    (design / ".bg-wait-active").write_text("", encoding="utf-8")
+    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
     calls: list[list[str]] = []
 
     def fake_pause(argv: list[str]) -> int:
@@ -5236,17 +5299,18 @@ def test_step6_empty_tmpdir_ignores_cwd_bg_marker(
     assert "appears still in-flight" not in cleanup.err
 
 
-def test_step6_nonempty_tmpdir_bg_marker_remains_in_flight(
+def test_step6_nonempty_tmpdir_bg_marker_is_ignored_after_bgjob_migration(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     design, env_path = _step6_design(tmp_path, monkeypatch)
     (design / ".bg-wait-active").write_text("", encoding="utf-8")
-    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 1
-    assert "appears still in-flight" in capsys.readouterr().err
-    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 1
-    assert "appears still in-flight" in capsys.readouterr().err
+    _patch_step5c_registry(monkeypatch, design, present=False)
+    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
+    assert "appears still in-flight" not in capsys.readouterr().err
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    assert "appears still in-flight" not in capsys.readouterr().err
 
 
 def test_step6_main_machine_rows_visible_under_inherited_quiet(
