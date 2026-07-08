@@ -326,7 +326,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
 
     sh_target = fake_plugin / "scripts" / "echo-argv.sh"
     sh_target.write_text(
-        "#!/usr/bin/env bash\nprintf 'SH_ARGV=%s|%s\\n' \"$1\" \"$2\"\n",
+        "#!/usr/bin/env bash\nprintf 'SH_ARGV=%s|%s\\nCLAUDE_PID=%s\\n' \"$1\" \"$2\" \"${LARCH_CLAUDE_PID:-}\"\n",
         encoding="utf-8",
     )
     sh_target.chmod(sh_target.stat().st_mode | stat.S_IXUSR)
@@ -376,8 +376,8 @@ with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
         check=False,
         env=stable_env,
     )
-    if stable.returncode != 0 or "SH_ARGV=stable|runner arg" not in stable.stdout:
-        fail(f"implement-run launcher failed without IMPLEMENT_TMPDIR: rc={stable.returncode} stdout={stable.stdout!r} stderr={stable.stderr!r}")
+    if stable.returncode != 0 or "SH_ARGV=stable|runner arg" not in stable.stdout or "CLAUDE_PID=12345" not in stable.stdout:
+        fail(f"implement-run launcher failed without IMPLEMENT_TMPDIR or stable Claude PID: rc={stable.returncode} stdout={stable.stdout!r} stderr={stable.stderr!r}")
 
     for label, target in (("absolute", "/tmp/not-allowed.sh"), ("traversal", "../not-allowed.sh"), ("unsupported", "scripts/not-supported.txt")):
         result = run_launcher(launcher, target)

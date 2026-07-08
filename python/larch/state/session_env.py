@@ -927,6 +927,7 @@ def _implement_run_launcher_text(pid: str) -> str:
         '[ -f "$LARCH_RUN_SH" ] || { printf \'%s\\n\' "implement-run: missing larch-run.sh: $LARCH_RUN_SH" >&2; exit 2; }\n'
         '[ -x "$LARCH_RUN_SH" ] || { printf \'%s\\n\' "implement-run: larch-run.sh is not executable: $LARCH_RUN_SH" >&2; exit 2; }\n'
         "export IMPLEMENT_TMPDIR\n"
+        f'export LARCH_CLAUDE_PID="${{LARCH_CLAUDE_PID:-{pid}}}"\n'
         'exec "$LARCH_RUN_SH" "$@"\n'
     )
 

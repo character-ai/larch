@@ -1757,12 +1757,14 @@ def test_write_and_clear_implement_env_pointer(tmp_path: Path, monkeypatch: pyte
     larch_run.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
-        'printf "tmp=%s\\nargc=%s\\narg1=%s\\narg2=%s\\n" "$IMPLEMENT_TMPDIR" "$#" "$1" "$2" > "$IMPLEMENT_TMPDIR/runner.out"\n',
+        'printf "tmp=%s\\npid=%s\\nargc=%s\\narg1=%s\\narg2=%s\\n" '
+        '"$IMPLEMENT_TMPDIR" "$LARCH_CLAUDE_PID" "$#" "$1" "$2" > "$IMPLEMENT_TMPDIR/runner.out"\n',
         encoding="utf-8",
     )
     larch_run.chmod(0o755)
     env = os.environ.copy()
     env.pop("IMPLEMENT_TMPDIR", None)
+    env.pop("LARCH_CLAUDE_PID", None)
     invoked = subprocess.run(
         [str(runner), "alpha", "two words"],
         text=True,
@@ -1773,7 +1775,22 @@ def test_write_and_clear_implement_env_pointer(tmp_path: Path, monkeypatch: pyte
 
     assert invoked.returncode == 0, invoked.stderr
     assert (impl / "runner.out").read_text(encoding="utf-8") == (
-        f"tmp={impl}\nargc=2\narg1=alpha\narg2=two words\n"
+        f"tmp={impl}\npid=12345\nargc=2\narg1=alpha\narg2=two words\n"
+    )
+
+    inherited_env = env.copy()
+    inherited_env["LARCH_CLAUDE_PID"] = "67890"
+    inherited = subprocess.run(
+        [str(runner), "beta", "inherited pid"],
+        text=True,
+        capture_output=True,
+        env=inherited_env,
+        check=False,
+    )
+
+    assert inherited.returncode == 0, inherited.stderr
+    assert (impl / "runner.out").read_text(encoding="utf-8") == (
+        f"tmp={impl}\npid=67890\nargc=2\narg1=beta\narg2=inherited pid\n"
     )
 
     clear_rc = session_env.clear_implement_pointer_main(["--claude-pid", "12345"])
