@@ -1199,6 +1199,33 @@ def test_manifest_only_stalled_summary_reconciliation_rewrites_emoji_outcome(
     assert "- **Outcome**: ❌ STALLED" not in text
 
 
+def test_manifest_only_stalled_summary_reconciliation_rewrites_legacy_done_outcome(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc: stalled\n\n- **Outcome**: DONE\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+
+    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
+
+    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert "## /implement run run-abc: merged" in text
+    assert "- **Outcome**: ✅ DONE" in text
+    assert "- **Outcome**: DONE" not in text
+
+
 def test_manifest_only_stalled_summary_reconciliation_scans_prelude(
     tmp_path: Path,
 ) -> None:

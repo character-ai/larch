@@ -33,6 +33,9 @@ _STALLED_OUTCOME_LINE_RE = re.compile(
     r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*(?:❌[ \t]+)?stalled[ \t]*$",
     re.IGNORECASE,
 )
+_LEGACY_DONE_OUTCOME_LINE_RE = re.compile(
+    r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*DONE[ \t]*$",
+)
 
 
 _emit_kv = pr_body._emit_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
@@ -575,7 +578,8 @@ def _summary_stalled_heading_index(lines: Sequence[str]) -> int | None:
 
 def _summary_stalled_outcome_index(lines: list[str]) -> int | None:
     for idx, line in enumerate(lines):
-        if _STALLED_OUTCOME_LINE_RE.match(line.rstrip("\n")):
+        stripped = line.rstrip("\n")
+        if _STALLED_OUTCOME_LINE_RE.match(stripped) or _LEGACY_DONE_OUTCOME_LINE_RE.match(stripped):
             return idx
     return None
 
