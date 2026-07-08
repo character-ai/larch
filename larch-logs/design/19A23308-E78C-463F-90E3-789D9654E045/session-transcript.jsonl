@@ -1,0 +1,12 @@
+{"v":3,"source_basename":"a2054da4-8353-4d87-a9e0-54386a656c38.jsonl","turns":11,"policy":"prose-errors-and-reference-reads"}
+{"turn":1,"role":"user","blocks":[{"type":"command","name":"/larch:design","args":"-s 6612"}]}
+{"turn":2,"role":"assistant","blocks":[{"type":"text","value":"> **🔶 /design 0: setup**"}]}
+{"turn":3,"role":"assistant","blocks":[{"type":"tool_use","name":"Read","input":{"file_path":"skills/shared/readability-style.md"}}]}
+{"turn":4,"role":"assistant","blocks":[{"type":"text","value":"> **🔶 /design 1c: questions**"}]}
+{"turn":5,"role":"assistant","blocks":[{"type":"tool_use","name":"Read","input":{"file_path":"skills/design/references/discussion-rounds.md"}}]}
+{"turn":6,"role":"assistant","blocks":[{"type":"text","value":"⏩ 1d.5: brainstorm: skipped"}]}
+{"turn":7,"role":"assistant","blocks":[{"type":"tool_use","name":"Read","input":{"file_path":"skills/design/references/design-outline.md"}}]}
+{"turn":8,"role":"assistant","blocks":[{"type":"text","value":"> **🔶 /design 1d.7: outline**"}]}
+{"turn":9,"role":"assistant","blocks":[{"type":"tool_use","name":"Read","input":{"file_path":"skills/design/references/plan-review.md"}}]}
+{"turn":10,"role":"assistant","blocks":[{"type":"text","value":"Plan review reference loaded; plan candidate printed by the entry fence. Launching the Step 3 review panel driver."}]}
+{"turn":11,"role":"assistant","blocks":[{"type":"text","value":"Operator interrupt received (`p`) — treating this as a pause request for the live `/design` session and invoking the pause skill."}]}
