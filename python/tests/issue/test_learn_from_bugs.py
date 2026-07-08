@@ -258,3 +258,25 @@ def test_prepare_main_treats_search_flag_as_explicit(
     assert stats["ISSUES_SELECTED"] == "1"
     assert stats["ISSUES_FILTERED_NON_BUG"] == "0"
     assert _digest_numbers(out_dir / "digest.jsonl") == [3]
+
+
+def test_prepare_main_rejects_abbreviated_search_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(responses=[], strict=True)
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
+
+    with pytest.raises(SystemExit):
+        learn_from_bugs.prepare_main(
+            [
+                "--sear",
+                learn_from_bugs.DEFAULT_SEARCH,
+                "--repo",
+                "o/r",
+                "--out",
+                str(tmp_path / "run"),
+                "--root",
+                str(tmp_path),
+            ]
+        )

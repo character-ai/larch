@@ -305,7 +305,7 @@ def _print_kv(pairs: Mapping[str, object]) -> None:
 
 
 def prepare_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="learn-from-bugs prepare")
+    parser = argparse.ArgumentParser(prog="learn-from-bugs prepare", allow_abbrev=False)
     parser.add_argument("--search", default=DEFAULT_SEARCH)
     parser.add_argument("--state", default=DEFAULT_STATE)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
