@@ -1,0 +1,57 @@
+# [FEATURE] Seed ARCHITECTURAL_INVARIANTS.md with INV-Gate-1 and INV-Pause-1
+
+Source: `/larch:learn-from-bugs -n 25` run, 2026-07-08. Report section 5.
+
+#### Context
+
+`ARCHITECTURAL_INVARIANTS.md` exists as a scaffold: a header paragraph explaining that invariants are absolute (no Deviate-when clause; any violation is a defect), followed by the placeholder line `_No invariants recorded yet._`. The learn-from-bugs coverage index currently reports zero indexed invariants. This issue records the first two entries.
+
+#### How to apply (read first)
+
+Each entry below gives a heading text and a fenced block with the body paragraph. The heading text is quoted separately because this issue body reserves level-3 headings for other purposes. Apply as follows:
+
+1. Delete the placeholder line `_No invariants recorded yet._`.
+2. Keep the header paragraph unchanged.
+3. For each entry, in the order given: insert one blank line, then a heading line consisting of three `#` characters, one space, and the quoted heading text byte for byte, then one blank line, then the paragraph lines exactly as they appear inside the fence (without the fence markers).
+4. Headings must match the coverage indexer pattern (`_INVARIANT_ID_RE` in `python/larch/issue/learn_from_bugs.py`), which accepts `INV-<Area>-<n>:` headings at two to four `#` characters. Use exactly three.
+5. Per the file's own header, entries carry no Deviate-when clause. Do not add one.
+
+The entry texts are final. Do not rewrite them for style.
+
+#### Entry 1 of 2
+
+- Heading text: `INV-Gate-1: A gate never disarms on data authored by the gated entity`
+- Body paragraph:
+
+```
+A hard gate (a size trigger, a publish gate, a safety check) must not be
+suppressed, weakened, or disarmed solely by metadata that the gated entity
+itself declared, such as a drafting model's self-reported `diff_added` or
+`mechanical_churn`. Disarming a hard gate requires independently computed
+evidence or an explicit operator decision recorded in run state. Self-declared
+metadata may soften presentation, never the trigger condition. Evidence of
+violation: a gate whose disarm inputs are all writable by the entity under
+evaluation (#6542, #6524).
+```
+
+#### Entry 2 of 2
+
+- Heading text: `INV-Pause-1: A pause snapshot contains every artifact a resume guard reads`
+- Body paragraph:
+
+```
+The /design pause snapshot must include every file and sentinel that any
+resume-path guard or validator reads to corroborate prior progress, including
+the `.completed/` step sentinels. When a guard gains a new required artifact,
+the snapshot allowlist changes in the same commit. A resume that false-refuses
+on an artifact the pause omitted is a defect of the snapshot, not of the guard
+(#6548). Mechanical backing: the pause snapshot regression tests in
+`python/tests/design/test_design_pause.py` cover `.completed/` inclusion;
+extend them when the guard-read artifact set grows.
+```
+
+#### Acceptance
+
+- The placeholder line is gone; the header paragraph is unchanged; the two entries are present in order.
+- Running the learn-from-bugs coverage index verb reports exactly 2 indexed invariants.
+- No behavior change anywhere else; this is a documentation-only change.
