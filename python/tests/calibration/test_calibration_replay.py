@@ -170,6 +170,25 @@ def test_extract_implementation_plan_from_plan_goals_test(tmp_path: Path) -> Non
     assert calibration_replay.extract_implementation_plan_from_plan_goals_test(source) == "Do the thing.\n"
 
 
+def test_extract_implementation_plan_from_plan_goals_test_preserves_issue_comment_step(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "plan-goals-test.md"
+    source.write_text(
+        "## Goal\nship it\n\n## Implementation Plan\n"
+        "- During /implement, after tests pass, post one correcting comment on #6591 with "
+        "`gh issue comment 6591 --body-file <body-file>`.\n"
+        "- Verify the comment with `gh issue view 6591 --comments`.\n\n"
+        "## Test plan\nRun tests.\n",
+        encoding="utf-8",
+    )
+
+    plan = calibration_replay.extract_implementation_plan_from_plan_goals_test(source)
+
+    assert "gh issue comment 6591 --body-file <body-file>" in plan
+    assert "gh issue view 6591 --comments" in plan
+
+
 def test_extract_implementation_plan_fails_on_empty_body(tmp_path: Path) -> None:
     source = tmp_path / "plan-goals-test.md"
     source.write_text("## Implementation Plan\n\n## Test plan\nRun tests.\n", encoding="utf-8")
