@@ -118,8 +118,11 @@ def _run_step5_shell_wrapper(
         if key in os.environ:
             env[key] = os.environ[key]
 
+    effective_args = list(wrapper_args)
+    if wrapper_name == "step-5-resume.sh" and "--bgjob-child" in effective_args and "--merge-result-env" not in effective_args:
+        effective_args.extend(["--merge-result-env", str(tmp_path / "step5-resume.merge.env")])
     result = subprocess.run(
-        [str(repo_root / "skills" / "implement" / "scripts" / wrapper_name), *wrapper_args],
+        [str(repo_root / "skills" / "implement" / "scripts" / wrapper_name), *effective_args],
         cwd=repo_root,
         env=env,
         text=True,
@@ -649,10 +652,10 @@ def test_step5_normalize_status_failure_sets_stall_tracking_true(
 @pytest.mark.parametrize(
     ("wrapper_name", "wrapper_args", "expected_starting_round", "include_run_flags"),
     [
-        pytest.param("step-5-review.sh", [], "1", True, id="review-difficulty-override"),
-        pytest.param("step-5-review.sh", [], "1", False, id="review-no-override"),
-        pytest.param("step-5-resume.sh", ["--final-round-num", "2"], "3", True, id="resume-difficulty-override"),
-        pytest.param("step-5-resume.sh", ["--final-round-num", "2"], "3", False, id="resume-no-override"),
+        pytest.param("step-5-review.sh", ["--bgjob-child"], "1", True, id="review-difficulty-override"),
+        pytest.param("step-5-review.sh", ["--bgjob-child"], "1", False, id="review-no-override"),
+        pytest.param("step-5-resume.sh", ["--bgjob-child", "--final-round-num", "2"], "3", True, id="resume-difficulty-override"),
+        pytest.param("step-5-resume.sh", ["--bgjob-child", "--final-round-num", "2"], "3", False, id="resume-no-override"),
     ],
 )
 def test_step5_shell_wrappers_forward_difficulty_override(
@@ -676,9 +679,8 @@ def test_step5_shell_wrappers_forward_difficulty_override(
     assert _arg_value(argv, "--implement-tmpdir") == str(impl)
     assert _arg_value(argv, "--mode") == "loop"
     assert _arg_value(argv, "--starting-round") == expected_starting_round
-    if wrapper_name == "step-5-review.sh":
-        assert "--new-process-group" in argv
-        assert _arg_value(argv, "--orphan-timeout-s") == "7200"
+    assert "--new-process-group" not in argv
+    assert "--orphan-timeout-s" not in argv
     if include_run_flags:
         assert _arg_value(argv, "--difficulty") == "HARD"
     else:

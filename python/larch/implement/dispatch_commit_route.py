@@ -18,7 +18,6 @@ from larch.core import config
 from larch.core import redact
 from larch.implement import checks
 from larch.implement import ship
-from larch.implement.bg_wait import _write_bg_wait_marker
 from larch.implement.dispatch_helpers import (
     _current_cli_path,
     _emit_kv,
@@ -60,32 +59,6 @@ def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("", encoding="utf-8")
 
-
-@contextlib.contextmanager
-def _bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int, terminal_sentinel: str):
-    _write_bg_wait_marker(tmpdir=tmpdir, step=step, timeout_s=timeout_s)
-    try:
-        yield
-    finally:
-        _write_terminal_sentinel(tmpdir=tmpdir, sentinel=terminal_sentinel)
-        with contextlib.suppress(OSError):
-            (tmpdir / ".bg-wait-active").unlink()
-
-
-@contextlib.contextmanager
-def _optional_bg_wait_marker(*, tmpdir: Path, marker: tuple[str, int, str] | None):
-    if marker is None:
-        yield
-        return
-    step, timeout_s, terminal_sentinel = marker
-    with _bg_wait_marker(tmpdir=tmpdir, step=step, timeout_s=timeout_s, terminal_sentinel=terminal_sentinel):
-        yield
-
-
-def _checks_commit_route_marker(checks_site: str) -> tuple[str, int, str] | None:
-    if checks_site == "step5-self-review":
-        return config.CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW, 14700, ".completed/step-5-self-review-terminal"
-    return None
 
 
 def _clear_step3_bg_wait_sidecars(implement_tmpdir: Path) -> None:
@@ -865,11 +838,9 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C90
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    marker = _checks_commit_route_marker(args.checks_site)
     if args.checks_site == "step3":
         _clear_step3_bg_wait_sidecars(implement_tmpdir)
-    with _optional_bg_wait_marker(tmpdir=implement_tmpdir, marker=marker):
-        return _checks_commit_route_main_impl(args, implement_tmpdir)
+    return _checks_commit_route_main_impl(args, implement_tmpdir)
 
 
 def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,RUF100
@@ -935,13 +906,7 @@ def checks_step5_resume_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    with _bg_wait_marker(
-        tmpdir=implement_tmpdir,
-        step="implement-step5-resume",
-        timeout_s=32700,
-        terminal_sentinel=".completed/step-5-resume-terminal",
-    ):
-        return _checks_step5_resume_main_impl(args, implement_tmpdir)
+    return _checks_step5_resume_main_impl(args, implement_tmpdir)
 
 
 def _checks_step5_resume_main_impl(args: argparse.Namespace, implement_tmpdir: Path) -> int:
@@ -975,7 +940,7 @@ def _step5_resume_commit_phase() -> int | None:
         _emit_kv(key="NEXT_ACTION", value=next_actions[0])
         _relay_commit_kvs(commit_output, include_next_action=False)
         if next_actions[0] == "stall":
-            return commit_result.returncode if commit_result.returncode != 0 else 1
+            return 0
         if commit_result.returncode != 0:
             return commit_result.returncode
         return None

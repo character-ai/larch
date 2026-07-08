@@ -3551,19 +3551,25 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     root = Path(__file__).resolve().parents[3]
     structure = (root / "scripts" / "test-implement-structure.sh").read_text(encoding="utf-8")
     skill = (root / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
+    run_step_checks = (root / "skills" / "implement" / "scripts" / "run-step-checks.sh").read_text(
+        encoding="utf-8"
+    )
     self_review_ref = (root / "skills" / "implement" / "references" / "self-review.md").read_text(
         encoding="utf-8"
     )
     step6_launcher = "skills/implement/scripts/step-6-entry.sh"
     assert f"(launcher + '{step6_launcher}', 'implement-step6-checks')" in structure
     assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
-    assert "python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'" not in structure
+    assert 'BUDGET_S="14700"' in run_step_checks
+    assert '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal"' in run_step_checks
     assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
     assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill
     assert "timeout: 14700000" not in skill
-    assert "checks-commit-route --checks-site step5-self-review" in self_review_ref
-    assert "timeout: 14700000" in self_review_ref
+    assert "run-step-checks.sh --site step5-self-review --commit-site step5-self-review" in self_review_ref
+    assert "BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>" in self_review_ref
+    assert "BUDGET_S=14700" in self_review_ref
+    assert "step-5-self-review-terminal" in self_review_ref
 
 
 def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(
@@ -5008,12 +5014,12 @@ def test_step5_resume_commit_noop_resumes(
     assert len(resume_calls) == 1
 
 
-def test_step5_resume_commit_failed_fails_closed(
+def test_step5_resume_commit_stall_returns_zero_and_relays(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_STALL, route_rc=0)
     rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
-    assert rc == 1
+    assert rc == 0
     out = capsys.readouterr().out
     assert "COMMIT_OUTCOME=failed" in out
     assert "NEXT_ACTION=stall" in out

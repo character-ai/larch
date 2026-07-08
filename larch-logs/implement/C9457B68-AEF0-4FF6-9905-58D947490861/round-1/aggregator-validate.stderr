@@ -1,0 +1,5 @@
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'Parse STEP5_REVIEW_STATUS before the generic non-zero BGJOB_RC failure path. Whe')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'After `BGJOB_RC=0` is confirmed, branch on `STEP5_REVIEW_STATUS` first; only tre')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add step5-self-review branch with BUDGET_S=14700 and --sentinel .completed/step-')
+warning: fix text for slot 'dyn-dyn-bgjob-flow' in FINDING_4 not traceable to scoped input (first 80 chars: 'Preserve the legacy step slug and .completed/step-5-self-review-terminal sentine')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add fake bgjob wait tests for DEAD, timeout/orphan rc, and stale result.env re-e')

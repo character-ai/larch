@@ -154,7 +154,7 @@ for script in [
     'skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"',
     'skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"',
     'skills/implement/scripts/step-5-review.sh',
-    'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
+    'skills/implement/scripts/step-5-resume.sh --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
     'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"',
     'python/cli.py implement step-7a --bgjob-launch true --implement-tmpdir "$IMPLEMENT_TMPDIR"',
@@ -166,7 +166,7 @@ for script in [
 ]:
     require(skill, launcher + script, f'SKILL launcher wrapper {script}')
 
-require('skills/implement/references/self-review.md', launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review', 'self-review relocated composite launcher')
+require('skills/implement/references/self-review.md', launcher + 'skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review', 'self-review relocated bgjob composite launcher')
 require(skill, 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement step-16-17 --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'SKILL direct Step 16-17 Python CLI call')
 
 for needle in [
@@ -187,24 +187,21 @@ for name in wrappers:
     if sh.is_file() and not os.access(sh, os.X_OK): checks.append(f'{sh} is not executable')
 
 # Existing wrappers that gained behavior.
-require('skills/implement/scripts/step-5-review.sh', 'review-and-fix step5', 'step-5-review calls review-and-fix step5')
+require('skills/implement/scripts/step-5-review.sh', 'bgjob start', 'step-5-review starts bgjob')
+require('skills/implement/scripts/step-5-review.sh', 'review-and-fix step5', 'step-5-review child calls review-and-fix step5')
 for needle, label in [
-    ('review-and-fix write-loop-identity', 'step-5-review writes loop identity sidecar'),
-    ('review-and-fix await-loop-identity', 'step-5-review awaits detached loop identity'),
-    ('review-and-fix normalize-status', 'step-5-review normalizes captured stdout'),
-    ('review-and-fix teardown-loop-identity', 'step-5-review delegates teardown to identity helper'),
-    ("trap '_step5_signal_exit TERM 143' TERM", 'step-5-review traps TERM'),
-    ("trap '_step5_signal_exit HUP 129' HUP", 'step-5-review traps HUP'),
-    ("trap '_step5_signal_exit INT 130' INT", 'step-5-review traps INT'),
+    ('--merge-result-env "$MERGE_RESULT_ENV"', 'step-5-review passes merge result env to bgjob'),
+    ('--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"', 'step-5-review preserves terminal sentinel through bgjob'),
+    ('step5_live_registry_exists', 'step-5-review checks live registry before fresh start'),
+    ('bgjob wait --step implement-step5-review', 'step-5-review rejoins live bgjob instead of relaunching'),
+    ('.step5-wrapper-detached', 'step-5-review removes legacy detached sidecar'),
 ]:
     require('skills/implement/scripts/step-5-review.sh', needle, label)
 step5_text = Path('skills/implement/scripts/step-5-review.sh').read_text()
-cleanup_start = step5_text.find('_step5_cleanup()')
-cleanup_end = step5_text.find('}', cleanup_start) if cleanup_start >= 0 else -1
-if cleanup_start < 0 or cleanup_end < 0:
-    checks.append('step-5-review cleanup function missing')
-elif '.completed/step-5-terminal' in step5_text[cleanup_start:cleanup_end]:
-    checks.append('step-5-review must not write terminal sentinel from bare EXIT cleanup')
+if 'write-loop-identity' in step5_text or 'await-loop-identity' in step5_text or 'teardown-loop-identity' in step5_text:
+    checks.append('step-5-review must not retain legacy detach/reattach identity helpers')
+if '--new-process-group' in step5_text or '--orphan-timeout-s' in step5_text:
+    checks.append('step-5-review must delegate process-group and orphan handling to bgjob')
 retired_step5_entry_sh = 'skills/implement/scripts/' + 'step-5-entry.sh'
 retired_step5_entry_md = 'step-5-' + 'entry.md'
 forbid(skill, retired_step5_entry_sh, 'retired step-5-entry.sh call removed from SKILL')
@@ -272,24 +269,25 @@ require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
 require(skill, 'Bootstrap edit gate (NEVER #21)', 'NEVER #21 bootstrap edit gate pin')
 for script, timeout in [
-    (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
-    (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
-    require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
     require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
 for script, step in [
     (launcher + 'skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r', 'implement-step3-checks'),
+    (launcher + 'skills/implement/scripts/step-5-review.sh', 'implement-step5-review'),
+    (launcher + 'skills/implement/scripts/step-5-resume.sh --checks-site step5-review-fixes', 'implement-step5-resume'),
     (launcher + 'skills/implement/scripts/step-6-entry.sh', 'implement-step6-checks'),
     (launcher + 'python/cli.py implement step-7a --bgjob-launch true', 'implement-step7a'),
 ]:
     require_near(skill, script, 'Bgjob foreground launch required', f'bgjob launch pin for {script}', 1400)
     require_near(skill, script, f'BGJOB_STATUS=STARTED STEP={step} PGID=<n>', f'bgjob started stdout pin for {script}', 1400)
     require_near(skill, launcher + f'python/cli.py bgjob wait --step {step}', 'BGJOB_STATUS=WAIT', f'bgjob wait repeat pin for {step}', 1400)
-self_review_composite = launcher + 'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review'
-require_near('skills/implement/references/self-review.md', self_review_composite, 'Immediate-background required', 'self-review immediate-background pin', 1400)
-require_near('skills/implement/references/self-review.md', self_review_composite, 'timeout: 14700000', 'self-review timeout pin', 1400)
-require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
+self_review_composite = launcher + 'skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review'
+require_near('skills/implement/references/self-review.md', self_review_composite, 'Bgjob foreground launch required', 'self-review bgjob pin', 1400)
+require_near('skills/implement/references/self-review.md', self_review_composite, 'BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>', 'self-review bgjob started pin', 1400)
+require_near('skills/implement/references/self-review.md', launcher + 'python/cli.py bgjob wait --step implement-checks-step5-self-review', 'BGJOB_STATUS=WAIT', 'self-review bgjob wait pin', 1400)
+require_near('skills/implement/references/self-review.md', self_review_composite, 'BUDGET_S=14700', 'self-review budget pin', 1400)
+require_near('skills/implement/references/self-review.md', self_review_composite, 'step-5-self-review-terminal', 'self-review sentinel pin', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-6-entry.sh', '> **Continue after bgjob `DONE`.**', 'Step 6 bgjob continuation opener', 2000)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
 
@@ -360,9 +358,9 @@ if skill_text.count(step5_macro_token) != 1:
     checks.append(f'SKILL.md must contain exactly one {step5_macro_token!r} macro token occurrence')
 mav_idx = skill_text.find('- **`main-agent-vote-required`**:')
 coder_idx = skill_text.find('- **`coder-main-agent-required`**:')
-shared_step5 = '> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`.'
+shared_step5 = '> **Continue after bgjob `DONE`.** The resume launcher stdout is only `BGJOB_STATUS=STARTED STEP=implement-step5-resume PGID=<n>`.'
 shared_idx = skill_text.find(shared_step5)
-resume_idx = skill_text.find('"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"')
+resume_idx = skill_text.find('"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-5-resume.sh --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"')
 if not (mav_idx >= 0 and coder_idx > mav_idx and shared_idx > coder_idx and resume_idx > shared_idx):
     checks.append('SKILL.md must route Step 5 MAV and coder branches through one shared checks block before checks-step5-resume')
 else:
@@ -447,8 +445,8 @@ require(skill, 'Marker emission is gated on captured Step 17 render success and 
 forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
 forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
 
-if not re.search(r'timeout: 32700000[\s\S]{0,900}"\$HOME/\.cache/larch/sessions/implement-run-\$PPID\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
-    checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32700000')
+if 'BGJOB_STATUS=STARTED STEP=implement-step5-resume PGID=<n>' not in skill_text:
+    checks.append('SKILL.md must bgjob-launch the Step 5 resume composite fence')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
     checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')
 if '--auto-mode' in skill_text:
@@ -523,11 +521,11 @@ for needle in [
     'read_session_key CODEX_BINARY_FOUND', 'read_session_key CURSOR_BINARY_FOUND',
 ]:
     require('skills/implement/scripts/step-0-degraded-gate.sh', needle, f'step-0-degraded-gate legacy {needle}')
-require('skills/implement/scripts/step-5-resume.sh', 'set +e\n  commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement commit-route --site step5-resume-handoff)"\n  commit_rc=$?\n  set -e', 'step-5-resume errexit-safe commit-route capture')
+require('skills/implement/scripts/step-5-resume.sh', 'commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement commit-route --site step5-resume-handoff)"', 'step-5-resume errexit-safe commit-route capture')
 require('skills/implement/scripts/step-5-resume.sh', "awk -F= '$1 == \"NEXT_ACTION\" || $1 == \"COMMITTED\" || $1 == \"ERROR\" || $1 == \"SHA\" || $1 == \"COMMIT_OUTCOME\" { print }'", 'step-5-resume NEXT_ACTION KV relay')
 require('skills/implement/scripts/step-5-resume.sh', "next_action_count=\"$(printf '%s\\n' \"$commit_output\" | commit_kv_count NEXT_ACTION)\"", 'step-5-resume line-anchored NEXT_ACTION count')
-require('skills/implement/scripts/step-5-resume.sh', 'case "$next_action_count:$next_action" in\n    1:continue)', 'step-5-resume NEXT_ACTION continue gate')
-require('skills/implement/scripts/step-5-resume.sh', "1:stall)\n      printf 'NEXT_ACTION=%s\\n' \"$next_action\"", 'step-5-resume NEXT_ACTION stall relay')
+require('skills/implement/scripts/step-5-resume.sh', '1:continue)', 'step-5-resume NEXT_ACTION continue gate')
+require('skills/implement/scripts/step-5-resume.sh', '1:stall)', 'step-5-resume NEXT_ACTION stall relay')
 require('skills/implement/scripts/step-5-resume.sh', "printf '%s\\n' \"$commit_output\" | relay_commit_kvs_without_next_action", 'step-5-resume commit KVs after NEXT_ACTION')
 forbid('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe moved to commit-route')
 forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume must not mask commit failure')
@@ -536,11 +534,18 @@ require(skill, 'Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`,
 require(skill, 'Whitespace-token-scan only the first physical line for checks keys', 'SKILL composite checks parsing slice')
 require(checks_ref, 're-run the section 2-pinned composite launcher with identical argv before any success-path routing', 'checks repair-loop folded-site re-capture authority')
 require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.', 'SKILL review-loop envelope branch')
+require(skill, 'valid `STEP5_REVIEW_STATUS=stall` envelope', 'SKILL Step 5 stall envelope carve-out')
+require(skill, 'continue only when `BGJOB_RC=0` and required Step 5 review KVs are present', 'SKILL Step 5 review BGJOB_RC gate')
+require(skill, 'After the Step 5 resume bgjob returns `DONE` with `BGJOB_RC=0`', 'SKILL Step 5 resume BGJOB_RC gate')
 require(skill, 'First, `NEXT_ACTION=stall` means durable stall state is already seeded by commit-route; skip to Step 18.', 'SKILL lacks-envelope NEXT_ACTION stall branch')
 require(skill, '`NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation.', 'SKILL NEXT_ACTION continue without envelope is not Step 6')
 require(skill, 'missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid composite envelope', 'SKILL invalid composite envelope branch')
 require(skill, 'commit-phase success (`NEXT_ACTION=continue`, `COMMIT_ROUTE_OUTCOME=continue`, or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4', 'SKILL commit-route success alone is not review authorization')
 require(skill, 'On `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 composite NEXT_ACTION stall branch')
+require(step5_branches_ref, 'same-step re-entry is a rejoin, not a relaunch.', 'step5-review-branches bgjob rejoin contract')
+require(step5_branches_ref, 'valid `STEP5_REVIEW_STATUS=stall` envelope', 'step5-review-branches stall envelope carve-out')
+require(step5_branches_ref, 'BGJOB_RC=0 plus the required Step 5 KVs', 'step5-review-branches canonical result env gate')
+require('skills/implement/scripts/step-5-review.md', 'valid stall envelope', 'step-5-review.md canonical stall env carve-out')
 require('skills/implement/references/self-review.md', 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18', 'self-review invalid envelope fail-closed')
 require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18', 'SKILL Step 7 invalid envelope fail-closed')
 require('python/larch/implement/dispatch_commit_route.py', 'COMMIT_ROUTE_OUTCOME', 'composite commit route child outcome')
@@ -917,7 +922,6 @@ forbid(skill, 'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMEN
 forbid(skill, 'python/cli.py review-and-fix write-pre-self-review-snapshot', 'SKILL self-review snapshot fence moved to self-review.md')
 forbid(skill, 'checks-commit-route --checks-site step5-self-review', 'SKILL self-review composite fence moved to self-review.md')
 forbid(skill, 'python/cli.py review-and-fix write-self-review-tally', 'SKILL self-review tally fence moved to self-review.md')
-forbid(skill, 'timeout: 14700000', 'SKILL self-review timeout pin moved to self-review.md')
 forbid(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent', 'SKILL self-review invalid-envelope prose moved to self-review.md')
 
 bootstrap_recovery_text = Path(bootstrap_recovery_ref).read_text()
@@ -958,10 +962,8 @@ self_review_text = Path(self_review_ref).read_text()
 for needle in [
     'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review" || true',
     'python/cli.py review-and-fix write-pre-self-review-snapshot',
-    'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review',
+    'skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review',
     'python/cli.py review-and-fix write-self-review-tally',
-    'timeout: 14700000',
-    'Immediate-background required',
     'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18',
     'NEXT_ACTION=main-agent-edit',
     're-run this same composite launcher with identical argv',
@@ -974,7 +976,7 @@ for needle in [
     'OOS triage policy',
     '### [Code Review] Self-review accepted',
     'rejected-findings.md',
-    '> **Continue after child returns.**',
+    '> **Continue after bgjob `DONE`.**',
     'Checks Failure Entry Macro',
     '--site step5-self-review',
     '$IMPLEMENT_TMPDIR/self-review-accepted.md',

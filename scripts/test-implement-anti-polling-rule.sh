@@ -484,8 +484,8 @@ check "$IMPL_MD" \
     "SKILL.md NEVER list pins implement Step 8 rc probe" \
     'Step 8 uses one foreground non-sleeping `IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 check "$IMPL_MD" \
-    "SKILL.md NEVER #8 pins Step 3 and Step 5 same-step probe trigger" \
-    'If a live `Read` of the just-completed Step 3 or Step 5 task output is denied immediately after that same step'
+    "SKILL.md NEVER #8 pins Step 3 same-step probe trigger (Step 5 now uses bgjob)" \
+    'If a live `Read` of just-completed Step 3 task output is denied immediately after that step'
 check "$IMPL_MD" \
     "SKILL.md NEVER #8 forbids design sentinel probes" \
     'do not use `ps`, Monitor, TaskOutput, or background recovery waiters'
@@ -510,8 +510,8 @@ check "$IMPL_MD" \
     "SKILL.md NEVER list pins Step 3 exact probe form" \
     'test -f "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"'
 check "$IMPL_MD" \
-    "SKILL.md NEVER list pins Step 5 exact probe form" \
-    'test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"'
+    "SKILL.md NEVER list pins Step 5 bgjob-only recovery (no sentinel probe)" \
+    'Step 5 no longer uses task-output reads, detach sidecars, or notification recovery'
 check "$IMPL_MD" \
     "SKILL.md NEVER list pins retry-on-present guidance" \
     'When the same-step sentinel is present, retry the just-denied output read once.'

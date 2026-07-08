@@ -26,17 +26,25 @@ Print `> **🔶 /implement 5: code review: self-review mode (main agent inline)*
 
 5. Apply each in-scope fix via Edit/Write. Skip only fixes out of scope under the OOS triage policy from step 3 or edits targeting a submodule / `.claude-plugin/plugin.json`. For each fixed in-scope finding, append one heading with exact prefix `### [Code Review] Self-review accepted` to `$IMPLEMENT_TMPDIR/self-review-accepted.md`; create it on first append. Append once when one finding needs multiple edits, and once per finding when one edit resolves several findings. Write fileable OOS items to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using `### OOS_<N>:`; never duplicate them in `self-review-accepted.md`. Fold triage failures inline when required, such as documentation drift or < ~30 LOC bugs.
 6. For in-scope findings NOT applied because they are borderline or low priority, record them in `$IMPLEMENT_TMPDIR/rejected-findings.md` with exact heading `### [Code Review] Self-review` from `### Track Rejected Code Review Findings` in `skills/implement/SKILL.md`. Missing file means rejected count `0`.
-7. Run captured relevant checks and the self-review commit route as one composite fence:
+7. Run captured relevant checks and the self-review commit route as one bgjob-owned composite fence:
 
-> **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
+> **Continue after bgjob `DONE`.** The launcher stdout is only `BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>`. Then call the wait fence. If wait returns `BGJOB_STATUS=WAIT`, the next action is the identical wait fence again with no intervening prose or tools. If wait returns `BGJOB_STATUS=DEAD`, route through the existing self-review failure/stall branch. On final `DONE`, read the full wait KV block and `$IMPLEMENT_TMPDIR/bgjob/implement-checks-step5-self-review.result.env`; continue only when `BGJOB_RC=0` and required composite KVs are present. On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
 
-**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 14700000`.**
+**⚠ Bgjob foreground launch required: use the foreground bgjob launcher, not legacy immediate-background mode. Expected launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>`.**
 
 ```bash
-"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review --commit-site step5-self-review # lint-consecutive-bash: ok self-review bgjob launch precedes the repeated wait fence
 ```
 
-After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract, then re-run this same composite launcher with identical argv. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
+The self-review launcher uses `BUDGET_S=14700` and sentinel `"$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal"`.
+
+Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WAIT`.
+
+```bash
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py bgjob wait --step implement-checks-step5-self-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 270
+```
+
+After the self-review composite bgjob returns `DONE` with `BGJOB_RC=0`, parse exactly one line-anchored composite `NEXT_ACTION=` record from the final `DONE` stdout and/or bgjob result env. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract, then re-run this same composite launcher with identical argv. On missing, duplicated, malformed, seed-failed, non-zero `BGJOB_RC`, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
 
 9. Log `Step 5: self-review mode: main-agent inline review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
 

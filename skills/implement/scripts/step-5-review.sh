@@ -1,19 +1,21 @@
 #!/usr/bin/env bash
-# step-5-review.sh — /implement Step 5 review loop launcher.
+# step-5-review.sh — /implement Step 5 bgjob launcher and review-loop entrypoint.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 export IMPLEMENT_TMPDIR
-
-_loop_pid=""
-_step5_stdout_file=""
-_step5_loop_identity_ready=false
-_step5_external_signal=""
-_step5_external_signal_rc=0
-_step5_detached_marker="$IMPLEMENT_TMPDIR/.step5-wrapper-detached"
-_step5_reattach_active="$IMPLEMENT_TMPDIR/.step5-reattach-active"
+BGJOB_CHILD=false
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --bgjob-child) BGJOB_CHILD=true; shift ;;
+        --help) printf '%s
+' 'Usage: step-5-review.sh'; exit 0 ;;
+        *) printf '%s
+' "step-5-review.sh: unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
 
 rehydrate_plugin_root() {
     if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
@@ -49,254 +51,183 @@ read_run_flag_key() {
     fi
 }
 
-_step5_signal_exit() {
-  _step5_external_signal="${1:-signal}"
-  _step5_external_signal_rc="${2:-143}"
-  exit "$_step5_external_signal_rc"
+rehydrate_larch_triplet() {
+    LARCH_TOKEN_SESSION_ID=$(read_session_key LARCH_TOKEN_SESSION_ID "${LARCH_TOKEN_SESSION_ID:-}")
+    LARCH_CLAUDE_SOURCE_FILE=$(read_session_key LARCH_CLAUDE_SOURCE_FILE "${LARCH_CLAUDE_SOURCE_FILE:-}")
+    LARCH_TIMING_LEDGER=$(read_session_key LARCH_TIMING_LEDGER "${LARCH_TIMING_LEDGER:-}")
+    export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 }
 
-_step5_write_detached_marker() {
-  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _detached_at_epoch="${4:-}" _tmp
-  [ -n "$_pid" ] || return 1
-  _tmp="${_step5_detached_marker}.tmp.$$"
-  [ -n "$_detached_at_epoch" ] || _detached_at_epoch="$(date +%s)"
-  if {
-    printf 'PID=%s\n' "$_pid"
-    printf 'SIGNAL=%s\n' "$_signal"
-    printf 'STDOUT_FILE=%s\n' "$_stdout_file"
-    printf 'DETACHED_AT_EPOCH=%s\n' "$_detached_at_epoch"
-  } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_step5_detached_marker" 2>/dev/null && [ -f "$_step5_detached_marker" ]; then
-    return 0
-  fi
-  rm -f "$_tmp" "$_step5_detached_marker" 2>/dev/null || true
-  return 1
+step5_live_registry_exists() {
+    python3 <<'PY'
+from pathlib import Path
+import os
+import sys
+
+plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
+sys.path.insert(0, str(plugin_root / "python"))
+try:
+    from larch.bgjob import registry  # noqa: E402
+
+    path, entry = registry.read_for(tmpdir=Path(os.environ["IMPLEMENT_TMPDIR"]), step="implement-step5-review")
+    if entry is None:
+        raise SystemExit(1)
+    if registry.child_liveness(entry).live and registry.daemon_liveness(entry).live:
+        print("live")
+        raise SystemExit(0)
+    registry.unlink_entry(path)
+except SystemExit:
+    raise
+except Exception:
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+raise SystemExit(1)
+PY
 }
 
-_step5_marker_value() {
-  local _key="$1" _line
-  [ -f "$_step5_detached_marker" ] && [ ! -L "$_step5_detached_marker" ] || return 1
-  while IFS= read -r _line || [ -n "$_line" ]; do
-    case "$_line" in
-      "$_key="*) printf '%s\n' "${_line#*=}"; return 0 ;;
-    esac
-  done <"$_step5_detached_marker"
-  return 1
+step5_canonical_result_env_state() {
+    python3 <<'PY'
+from pathlib import Path
+import os
+import sys
+
+result_env = Path(os.environ["IMPLEMENT_TMPDIR"]) / "bgjob" / "implement-step5-review.result.env"
+required_keys = {
+    "STEP5_REVIEW_STATUS",
+    "STALL_TRACKING",
+    "STALL_REASON",
+    "ROUNDS_COMPLETED",
+    "FINAL_ROUND_NUM",
+    "FINAL_REVIEW_AND_FIX_STATUS",
+    "CODER_STATUS",
+    "FILES_CHANGED_HINT",
+    "EFFECTIVE_ROUND_CAP",
 }
 
-_step5_loop_identity_on_disk() {
-  [ -f "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" ] && [ ! -L "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" ]
+if result_env.is_symlink() or (result_env.exists() and not result_env.is_file()):
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+if not result_env.exists():
+    raise SystemExit(1)
+try:
+    rows: dict[str, str] = {}
+    for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key and key not in rows:
+            rows[key] = value
+except OSError:
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+status = rows.get("STEP5_REVIEW_STATUS", "")
+if rows.get("BGJOB_RC") == "0" and status and required_keys.issubset(rows):
+    print("complete")
+    raise SystemExit(0)
+if status == "stall" and required_keys.issubset(rows):
+    print("stall")
+    raise SystemExit(0)
+print("stale")
+raise SystemExit(1)
+PY
 }
 
-_step5_teardown_loop_group() {
-  local _pid="${1:-}"
-  [ -n "$_pid" ] || return 0
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix teardown-loop-identity \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --pid "$_pid" >/dev/null 2>&1 || true
-}
-
-_step5_kill_tmpdir_processes() {
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session kill-background-processes \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" >/dev/null 2>&1 || true
-}
-
-_step5_preidentity_kill_group() {
-  local _pid="${1:-}" _line="" _pgid="" _cmd=""
-  [ -n "$_pid" ] || return 0
-  _line=$(ps -p "$_pid" -o pid= -o pgid= -o command= 2>/dev/null || true)
-  [ -n "$_line" ] || return 0
-  _pgid=$(printf '%s\n' "$_line" | awk '{print $2; exit}')
-  _cmd=$(printf '%s\n' "$_line" | awk '{$1=""; $2=""; sub(/^[[:space:]]+/, ""); print; exit}')
-  case "$_pgid" in ''|*[!0-9]*) return 0 ;; esac
-  [ "$_pgid" = "$_pid" ] || return 0
-  case "$_cmd" in *"review-and-fix"*"step5"*) kill -TERM "-$_pgid" 2>/dev/null || kill -TERM "$_pid" 2>/dev/null || true ;; esac
-}
-
-_step5_emit_wrapper_stall() {
-  local _reason="${1:-reattach-failed}"
-  printf 'STEP5_REVIEW_STATUS=stall\n'
-  printf 'STALL_TRACKING=true\n'
-  printf 'STALL_REASON=%s\n' "$_reason"
-  printf 'ROUNDS_COMPLETED=0\n'
-  printf 'FINAL_ROUND_NUM=0\n'
-  printf 'FINAL_REVIEW_AND_FIX_STATUS=unknown\n'
-  printf 'CODER_STATUS=\n'
-  printf 'FILES_CHANGED_HINT=\n'
-  printf 'EFFECTIVE_ROUND_CAP=2\n'
-}
-
-_step5_write_terminal_sentinel() {
-  mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
-  : >"$IMPLEMENT_TMPDIR/.completed/step-5-terminal" 2>/dev/null || true
-}
-
-_step5_cleanup_stdout_if_temp() {
-  local _path="${1:-}" _base
-  [ -n "$_path" ] || return 0
-  [ -f "$_path" ] && [ ! -L "$_path" ] || return 0
-  _base="$(basename "$_path")"
-  case "$_base" in
-    larch-step5-review-stdout.*|larch-step5-reattach-stdout.*) rm -f "$_path" 2>/dev/null || true ;;
-  esac
-}
-
-_step5_cleanup() {
-  local _rc=$? _detached_at_epoch=""
-  trap - EXIT TERM HUP INT
-  rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
-  if [ -n "${_loop_pid:-}" ]; then
-    if [ -n "${_step5_external_signal:-}" ]; then
-      _detached_at_epoch="$(_step5_marker_value DETACHED_AT_EPOCH || true)"
-      if [ "${_step5_loop_identity_ready:-false}" = true ] || _step5_loop_identity_on_disk; then
-        if _step5_write_detached_marker "$_loop_pid" "$_step5_external_signal" "$_step5_stdout_file" "$_detached_at_epoch"; then
-          rm -f "$_step5_reattach_active" 2>/dev/null || true
-          disown -h "$_loop_pid" 2>/dev/null || true
-          exit "$_rc"
-        fi
-      else
-        _step5_preidentity_kill_group "$_loop_pid"
-      fi
+step5_run_child() {
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
+    dynamic_archetypes_cap=""
+    if [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+        dynamic_archetypes_cap=$(awk 'BEGIN{p="LARCH_DYNAMIC_ARCHETYPES_MAX="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
     fi
-    _step5_teardown_loop_group "$_loop_pid"
-    _step5_kill_tmpdir_processes
-    wait "$_loop_pid" 2>/dev/null || true
-  fi
-  rm -f "$_step5_reattach_active" 2>/dev/null || true
-  exit "$_rc"
+    if [ -z "$dynamic_archetypes_cap" ] && [ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]; then
+        dynamic_archetypes_cap="$LARCH_DYNAMIC_ARCHETYPES_MAX"
+    fi
+    [ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=1
+    case "$dynamic_archetypes_cap" in [0-1]) ;; *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s
+' "$dynamic_archetypes_cap" >&2; exit 2 ;; esac
+    export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
+    difficulty_override=$(read_run_flag_key DIFFICULTY_OVERRIDE "")
+    case "$difficulty_override" in ""|TRIVIAL|MODERATE|HARD) ;; *) difficulty_override="" ;; esac
+    printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, fixed tier cap 2; escalated rounds skip pruning; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap=%s**\n' "$dynamic_archetypes_cap" >&2
+    if [ -n "$difficulty_override" ]; then
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+            --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+            --mode loop \
+            --starting-round 1 \
+            --difficulty "$difficulty_override"
+    else
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+            --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+            --mode loop \
+            --starting-round 1
+    fi
 }
-
-_step5_bg_wait_marker_start() {
-  local _start _claude_pid _clone_path
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" "$IMPLEMENT_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-5-terminal.count" 2>/dev/null || true
-  _start=$(date +%s 2>/dev/null) || _start=0
-  case "$_start" in ''|*[!0-9]*) _start=0 ;; esac
-  _claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
-  _clone_path=""
-  if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
-    _clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
-  fi
-  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step5-review\nTIMEOUT_S=21600\nCLONE_PATH=%s\n' \
-    "$$" "$_claude_pid" "$_start" "$_clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
-}
-
-_step5_normalize_and_finish() {
-  local _stdout_file="$1" _loop_rc="$2" _rc=0
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix normalize-status \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --stdout-file "$_stdout_file" \
-    --loop-rc "$_loop_rc" || _rc=$?
-  if [ "$_rc" -eq 0 ]; then
-    _step5_write_terminal_sentinel
-    rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
-  fi
-  return "$_rc"
-}
-
-_step5_reattach_detached_loop() {
-  local _pid _stdout_file _signal _detached_at_epoch="" _await_rc=0 _normalize_rc=0
-  [ -f "$_step5_detached_marker" ] && [ ! -L "$_step5_detached_marker" ] || return 1
-  _pid="$(_step5_marker_value PID || true)"
-  _stdout_file="$(_step5_marker_value STDOUT_FILE || true)"
-  _signal="$(_step5_marker_value SIGNAL || true)"
-  _detached_at_epoch="$(_step5_marker_value DETACHED_AT_EPOCH || true)"
-  case "$_pid" in
-    ''|*[!0-9]*) rm -f "$_step5_detached_marker" "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" 2>/dev/null || true; return 1 ;;
-  esac
-  _loop_pid="$_pid"
-  _step5_stdout_file="$_stdout_file"
-  _step5_loop_identity_ready=true
-  : >"$_step5_reattach_active" 2>/dev/null || true
-  rm -f "$_step5_detached_marker" 2>/dev/null || true
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix await-loop-identity \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --pid "$_pid" \
-    --reattach >/dev/null 2>&1 || _await_rc=$?
-  if [ "$_await_rc" -ne 0 ]; then
-    _step5_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
-    rm -f "$_step5_reattach_active" "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
-    _loop_pid=""
-    _step5_emit_wrapper_stall reattach-await-failed
-    exit "$_await_rc"
-  fi
-  rm -f "$_step5_reattach_active" 2>/dev/null || true
-  _step5_kill_tmpdir_processes
-  _step5_normalize_and_finish "$_stdout_file" 0 || _normalize_rc=$?
-  if [ "$_normalize_rc" -ne 0 ]; then
-    _step5_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
-    rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
-    _loop_pid=""
-    exit "$_normalize_rc"
-  fi
-  rm -f "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" "$_step5_detached_marker" 2>/dev/null || true
-  _step5_cleanup_stdout_if_temp "$_stdout_file"
-  _loop_pid=""
-  exit 0
-}
-
-trap _step5_cleanup EXIT
-trap '_step5_signal_exit TERM 143' TERM
-trap '_step5_signal_exit HUP 129' HUP
-trap '_step5_signal_exit INT 130' INT
 
 rehydrate_plugin_root
-_step5_bg_wait_marker_start
+rehydrate_larch_triplet
+export PYTHONPATH="$CLAUDE_PLUGIN_ROOT/python${PYTHONPATH:+:$PYTHONPATH}"
 
-if [ -f "$_step5_detached_marker" ] && [ ! -L "$_step5_detached_marker" ]; then
-  _step5_reattach_detached_loop || true
+if [ "$BGJOB_CHILD" = true ]; then
+    step5_run_child
+    exit $?
 fi
 
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
-dynamic_archetypes_cap=""
-if [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  dynamic_archetypes_cap=$(awk 'BEGIN{p="LARCH_DYNAMIC_ARCHETYPES_MAX="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+if [ -L "$IMPLEMENT_TMPDIR/bgjob" ]; then
+    printf '%s
+' 'step-5-review.sh: refusing symlinked bgjob directory' >&2
+    exit 2
 fi
-if [ -z "$dynamic_archetypes_cap" ] && [ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]; then
-  dynamic_archetypes_cap="$LARCH_DYNAMIC_ARCHETYPES_MAX"
+mkdir -p "$IMPLEMENT_TMPDIR/bgjob" "$IMPLEMENT_TMPDIR/.completed"
+RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/implement-step5-review.result.env"
+if [ -L "$RESULT_ENV" ]; then
+    printf '%s
+' 'step-5-review.sh: refusing symlinked bgjob result env' >&2
+    exit 2
 fi
-[ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=1
-case "$dynamic_archetypes_cap" in [0-1]) ;; *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s
-' "$dynamic_archetypes_cap" >&2; exit 2 ;; esac
-export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
-difficulty_override=$(read_run_flag_key DIFFICULTY_OVERRIDE "")
-case "$difficulty_override" in ""|TRIVIAL|MODERATE|HARD) ;; *) difficulty_override="" ;; esac
-printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, fixed tier cap 2; escalated rounds skip pruning; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap=%s**\n' "$dynamic_archetypes_cap" >&2
-
-rm -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" 2>/dev/null || true
-_step5_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step5-review-stdout.XXXXXX")" || {
-  _step5_emit_wrapper_stall stdout-capture-failed
-  exit 1
-}
-
+if [ -e "$RESULT_ENV" ] && [ ! -f "$RESULT_ENV" ]; then
+    printf '%s
+' 'step-5-review.sh: refusing non-regular bgjob result env' >&2
+    exit 2
+fi
 set +e
-if [ -n "$difficulty_override" ]; then
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1 --difficulty "$difficulty_override" \
-    --new-process-group --orphan-timeout-s 7200 \
-    >"$_step5_stdout_file" 2>"$IMPLEMENT_TMPDIR/review-and-fix-step5-loop.stderr" &
-else
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1 \
-    --new-process-group --orphan-timeout-s 7200 \
-    >"$_step5_stdout_file" 2>"$IMPLEMENT_TMPDIR/review-and-fix-step5-loop.stderr" &
-fi
-_loop_pid=$!
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix write-loop-identity \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  --pid "$_loop_pid" \
-  --expected-signature "review-and-fix step5" >/dev/null 2>&1 || true
-if [ -f "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" ] && [ ! -L "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" ]; then
-  _step5_loop_identity_ready=true
-fi
-wait "$_loop_pid"
-_step5_loop_rc=$?
+registry_state=$(step5_live_registry_exists)
+registry_rc=$?
 set -e
-_loop_pid=""
-rm -f "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" 2>/dev/null || true
-_step5_kill_tmpdir_processes
-_step5_normalize_rc=0
-_step5_normalize_and_finish "$_step5_stdout_file" "$_step5_loop_rc" || _step5_normalize_rc=$?
-_step5_cleanup_stdout_if_temp "$_step5_stdout_file"
-exit "$_step5_normalize_rc"
+if [ "$registry_rc" -eq 2 ]; then
+    exit 2
+fi
+set +e
+result_env_state=$(step5_canonical_result_env_state)
+result_env_rc=$?
+set -e
+if [ "$result_env_rc" -eq 2 ]; then
+    exit 2
+fi
+if [ "$registry_state" = live ]; then
+    if [ "$result_env_state" != complete ] && [ "$result_env_state" != stall ]; then
+        rm -f "$RESULT_ENV" 2>/dev/null || true
+    fi
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
+    exit $?
+fi
+if [ "$result_env_state" = complete ] || [ "$result_env_state" = stall ]; then
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
+    exit $?
+fi
+if [ "$result_env_state" = stale ]; then
+    rm -f "$RESULT_ENV" 2>/dev/null || true
+fi
+MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/.step5-review-result.env"
+[ -L "$MERGE_RESULT_ENV" ] && { printf '%s
+' 'step-5-review.sh: refusing symlinked merge-result-env' >&2; exit 2; }
+: >"$MERGE_RESULT_ENV"
+rm -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" "$IMPLEMENT_TMPDIR/.step5-wrapper-detached" "$IMPLEMENT_TMPDIR/.step5-reattach-active" 2>/dev/null || true
+
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
+    --step implement-step5-review \
+    --tmpdir "$IMPLEMENT_TMPDIR" \
+    --budget-s 21600 \
+    --owner-pid "${LARCH_CLAUDE_PID:-$PPID}" \
+    --merge-result-env "$MERGE_RESULT_ENV" \
+    --sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" \
+    -- \
+    bash "$SCRIPT_DIR/step-5-review.sh" --bgjob-child
