@@ -1,0 +1,2 @@
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'Treat any identity-valid live child or daemon as a rejoin and call bgjob wait; u')
+warning: fix text for slot 'dyn-dyn-bgjob-handoff' in FINDING_8 not traceable to scoped input (first 80 chars: 'In step8_result_env_rejoinable(), reject rejoin when BGJOB_RC is timeout or orph')
