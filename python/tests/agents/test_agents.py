@@ -1054,6 +1054,66 @@ def test_run_external_agent_codex_policy_no_false_positive_aggregated_output(tmp
     assert "POLICY_REJECTION=true" not in diag
 
 
+def test_run_external_agent_codex_policy_no_false_positive_truncated_aggregated_output(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    paths = agents.LauncherPaths.from_output(output)
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=1,
+        stdout_path=paths.events,
+        stderr_path=paths.sidecar,
+        cmd=[
+            sys.executable,
+            "-c",
+            (
+                "import json, time; "
+                "payload = 'x' * 40000 + ' exec_command failed for bash: Rejected(blocked by policy)'; "
+                "item = {'type': 'item.completed', 'item': {"
+                "'id': 'item_0', 'type': 'command_execution', "
+                "'command': 'rg trigger larch-logs', "
+                "'aggregated_output': payload, "
+                "'exit_code': 0, 'status': 'completed'}}; "
+                "print(json.dumps(item), flush=True); "
+                "time.sleep(5)"
+            ),
+        ],
+        poll_interval=0.05,
+    )
+
+    assert result.exit_code == config.EXIT_TIMEOUT
+    diag = paths.diag.read_text(encoding="utf-8")
+    assert "FAILURE_CLASS=policy-rejection" not in diag
+    assert "POLICY_REJECTION=true" not in diag
+
+
+def test_codex_policy_rejection_excerpt_still_detects_genuine_rejection_after_truncated_command() -> None:
+    safe_payload = (
+        "x" * (_run_external._CODEX_POLICY_REJECTION_TAIL_BYTES + 128)
+        + " exec_command failed for bash: Rejected(blocked by policy)"
+    )
+    completed_line = json.dumps({
+        "type": "item.completed",
+        "item": {
+            "id": "item_0",
+            "type": "command_execution",
+            "command": "rg trigger larch-logs",
+            "aggregated_output": safe_payload,
+            "exit_code": 0,
+            "status": "completed",
+        },
+    })
+    genuine_line = 'error=exec_command failed for bash: CreateProcess {"message":"Rejected(blocked by policy)"}'
+
+    assert len(completed_line) > _run_external._CODEX_POLICY_REJECTION_TAIL_BYTES
+    assert _run_external._codex_policy_rejection_excerpt(f"{completed_line}\n") == ""
+
+    excerpt = _run_external._codex_policy_rejection_excerpt(f"{completed_line}\n{genuine_line}\n")
+
+    assert "exec_command failed" in excerpt
+    assert "Rejected(blocked by policy)" in excerpt
+
+
 def test_sanitize_codex_events_for_policy_scan_preserves_failed_command_output() -> None:
     line = json.dumps({
         "type": "item.completed",

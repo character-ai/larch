@@ -691,8 +691,21 @@ def _sanitize_codex_events_for_policy_scan(text: str) -> str:
     return "".join(sanitized)
 
 
-def _codex_policy_rejection_excerpt(text: str) -> str:
+def _codex_policy_scan_tail(text: str) -> str:
     bounded = text[-_CODEX_POLICY_REJECTION_TAIL_BYTES:]
+    if not bounded:
+        return ""
+    if len(text) <= _CODEX_POLICY_REJECTION_TAIL_BYTES:
+        return bounded
+    start = len(text) - len(bounded)
+    if text[start - 1] == "\n":
+        return bounded
+    _partial, separator, rest = bounded.partition("\n")
+    return rest if separator else ""
+
+
+def _codex_policy_rejection_excerpt(text: str) -> str:
+    bounded = _codex_policy_scan_tail(text)
     if not bounded:
         return ""
     scanned = _sanitize_codex_events_for_policy_scan(bounded)
@@ -754,8 +767,9 @@ def _codex_policy_rejection_fast_fail(
     update = _read_tail_update(path=watch, offset=offset)
     if not update.text:
         return False, update.offset, tail
-    new_tail = (tail + update.text)[-_CODEX_POLICY_REJECTION_TAIL_BYTES:]
-    excerpt = _codex_policy_rejection_excerpt(new_tail)
+    combined_tail = tail + update.text
+    new_tail = combined_tail[-_CODEX_POLICY_REJECTION_TAIL_BYTES:]
+    excerpt = _codex_policy_rejection_excerpt(combined_tail)
     if not excerpt:
         return False, update.offset, new_tail
     _err("❌ codex agent: exec_command policy rejection detected, killing")
