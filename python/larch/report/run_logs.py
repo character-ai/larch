@@ -652,7 +652,15 @@ def append_failure_main(argv: list[str]) -> int:
     if args.verdict:
         suffix += f", {args.verdict}"
     if args.retry_count and args.transient_retry_count:
-        suffix += f", auth-retries={args.retry_count}, transient-retries={args.transient_retry_count}"
+        auth_retries = int(args.retry_count) - 1
+        transient_retries = int(args.transient_retry_count) - 1
+        retry_parts: list[str] = []
+        if auth_retries > 0:
+            retry_parts.append(f"auth-retries={auth_retries}")
+        if transient_retries > 0:
+            retry_parts.append(f"transient-retries={transient_retries}")
+        if retry_parts:
+            suffix += ", " + ", ".join(retry_parts)
     elif args.retry_count:
         suffix += f", retries={args.retry_count}"
     entry = (

@@ -1022,6 +1022,88 @@ def test_run_external_agent_codex_policy_rejection_requires_both_families(tmp_pa
     assert "POLICY_REJECTION=true" not in diag
 
 
+def test_run_external_agent_codex_policy_no_false_positive_aggregated_output(tmp_path: Path) -> None:
+    output = tmp_path / "codex.out"
+    paths = agents.LauncherPaths.from_output(output)
+    result = agents.run_external_agent(
+        tool="codex",
+        output=str(output),
+        timeout_seconds=1,
+        stdout_path=paths.events,
+        stderr_path=paths.sidecar,
+        cmd=[
+            sys.executable,
+            "-c",
+            (
+                "import json, time; "
+                "item = {'type': 'item.completed', 'item': {"
+                "'id': 'item_0', 'type': 'command_execution', "
+                "'command': 'rg trigger larch-logs', "
+                "'aggregated_output': 'exec_command failed for bash: Rejected(blocked by policy)', "
+                "'exit_code': 0, 'status': 'completed'}}; "
+                "print(json.dumps(item), flush=True); "
+                "time.sleep(5)"
+            ),
+        ],
+        poll_interval=0.05,
+    )
+
+    assert result.exit_code == config.EXIT_TIMEOUT
+    diag = paths.diag.read_text(encoding="utf-8")
+    assert "FAILURE_CLASS=policy-rejection" not in diag
+    assert "POLICY_REJECTION=true" not in diag
+
+
+def test_sanitize_codex_events_for_policy_scan_preserves_failed_command_output() -> None:
+    line = json.dumps({
+        "type": "item.completed",
+        "item": {
+            "id": "item_1",
+            "type": "command_execution",
+            "command": "rg trigger larch-logs",
+            "aggregated_output": "exec_command failed for bash: Rejected(blocked by policy)",
+            "exit_code": 1,
+            "status": "completed",
+        },
+    })
+    sanitized = _run_external._sanitize_codex_events_for_policy_scan(line)
+    assert "exec_command failed" in sanitized
+    assert "Rejected(blocked by policy)" in sanitized
+
+
+def test_sanitize_codex_events_for_policy_scan_preserves_in_progress_output() -> None:
+    line = json.dumps({
+        "type": "item.started",
+        "item": {
+            "id": "item_2",
+            "type": "command_execution",
+            "command": "rg trigger larch-logs",
+            "aggregated_output": "exec_command failed: Rejected(blocked by policy)",
+            "exit_code": None,
+            "status": "in_progress",
+        },
+    })
+    sanitized = _run_external._sanitize_codex_events_for_policy_scan(line)
+    assert "exec_command failed" in sanitized
+    assert "Rejected(blocked by policy)" in sanitized
+
+
+def test_sanitize_codex_events_for_policy_scan_preserves_missing_exit_code() -> None:
+    line = json.dumps({
+        "type": "item.completed",
+        "item": {
+            "id": "item_3",
+            "type": "command_execution",
+            "command": "rg trigger larch-logs",
+            "aggregated_output": "exec_command failed: Rejected(blocked by policy)",
+            "status": "completed",
+        },
+    })
+    sanitized = _run_external._sanitize_codex_events_for_policy_scan(line)
+    assert "exec_command failed" in sanitized
+    assert "Rejected(blocked by policy)" in sanitized
+
+
 def test_run_external_agent_stderr_tail_prefers_diag_for_capture_stdout_only(tmp_path: Path) -> None:
     output = tmp_path / "agent.out"
     result = agents.run_external_agent(

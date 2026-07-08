@@ -654,22 +654,60 @@ _CODEX_EXEC_COMMAND_FAILED_RE = re.compile(r"\bexec_command\s+failed\b", re.IGNO
 _CODEX_POLICY_BLOCKED_RE = re.compile(r"blocked by policy|Rejected\(", re.IGNORECASE)
 
 
+def _should_strip_aggregated_output(exit_code: object, aggregated_output: object) -> bool:
+    return exit_code == 0 or (exit_code is None and not aggregated_output)
+
+
+def _strip_gated_aggregated_output(node: object) -> None:
+    if isinstance(node, dict):
+        if (
+            "aggregated_output" in node
+            and "exit_code" in node
+            and _should_strip_aggregated_output(node["exit_code"], node["aggregated_output"])
+        ):
+            node.pop("aggregated_output", None)
+        for value in node.values():
+            _strip_gated_aggregated_output(value)
+    elif isinstance(node, list):
+        for item in node:
+            _strip_gated_aggregated_output(item)
+
+
+def _sanitize_codex_events_for_policy_scan(text: str) -> str:
+    sanitized: list[str] = []
+    for line in text.splitlines(keepends=True):
+        content = line.rstrip("\r\n")
+        terminator = line[len(content):]
+        if not content.strip():
+            sanitized.append(line)
+            continue
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            sanitized.append(line)
+            continue
+        _strip_gated_aggregated_output(parsed)
+        sanitized.append(json.dumps(parsed, ensure_ascii=False) + terminator)
+    return "".join(sanitized)
+
+
 def _codex_policy_rejection_excerpt(text: str) -> str:
     bounded = text[-_CODEX_POLICY_REJECTION_TAIL_BYTES:]
     if not bounded:
         return ""
-    if _CODEX_EXEC_COMMAND_FAILED_RE.search(bounded) is None:
+    scanned = _sanitize_codex_events_for_policy_scan(bounded)
+    if _CODEX_EXEC_COMMAND_FAILED_RE.search(scanned) is None:
         return ""
-    if _CODEX_POLICY_BLOCKED_RE.search(bounded) is None:
+    if _CODEX_POLICY_BLOCKED_RE.search(scanned) is None:
         return ""
     lines = [
         line
-        for line in bounded.splitlines()
+        for line in scanned.splitlines()
         if _CODEX_EXEC_COMMAND_FAILED_RE.search(line)
         or _CODEX_POLICY_BLOCKED_RE.search(line)
         or "CreateProcess" in line
     ]
-    excerpt = "\n".join(lines[-8:]) or bounded[-_CODEX_POLICY_REJECTION_EXCERPT_BYTES:]
+    excerpt = "\n".join(lines[-8:]) or scanned[-_CODEX_POLICY_REJECTION_EXCERPT_BYTES:]
     redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(excerpt))
     return _truncate_utf8_bytes(text=redacted, cap=_CODEX_POLICY_REJECTION_EXCERPT_BYTES)
 
