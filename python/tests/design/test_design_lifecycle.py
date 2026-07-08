@@ -175,6 +175,38 @@ def test_design_read_result_env_prefers_step5c_bgjob_result(tmp_path: Path) -> N
     assert "PUBLISH_RC='0'" in text
 
 
+def test_design_read_result_env_prefers_step4_tail_bgjob_result(tmp_path: Path) -> None:
+    legacy = tmp_path / ".design-step4-tail-result.env"
+    output = tmp_path / "out.env"
+    bgjob = tmp_path / "bgjob" / "design-step4-tail.result.env"
+    bgjob.parent.mkdir()
+    legacy.write_text("SKIP_APPROVE_REQUESTED_GATEC=false\nGATEC_PREVIEW_PATH=/tmp/legacy\n", encoding="utf-8")
+    bgjob.write_text("BGJOB_RC=0\nSTEP=design-step4-tail\nSKIP_APPROVE_REQUESTED_GATEC=true\nGATEC_PREVIEW_PATH=/tmp/bgjob\n", encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "design",
+            "read-result-env",
+            "--input",
+            str(legacy),
+            "--allow",
+            "SKIP_APPROVE_REQUESTED_GATEC",
+            "--allow",
+            "GATEC_PREVIEW_PATH",
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0
+    text = output.read_text(encoding="utf-8")
+    assert "SKIP_APPROVE_REQUESTED_GATEC='true'" in text
+    assert "GATEC_PREVIEW_PATH='/tmp/bgjob'" in text
+
+
 def test_design_route_merges_flags_for_already_planned(tmp_path: Path) -> None:
     body = tmp_path / "issue-body.md"
     _ = body.write_text("x\n<!-- larch:plan:start -->\nplan\n<!-- larch:plan:end -->\n", encoding="utf-8")
