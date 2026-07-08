@@ -117,8 +117,6 @@ for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines(
     rows.setdefault(key, value)
 if rows.get("STEP") != "implement-step8-ship":
     raise SystemExit(1)
-if rows.get("BGJOB_RC", "") in {"timeout", "orphaned"}:
-    raise SystemExit(1)
 recorded_rc = rows.get("STEP8_HANDOFF_RC", "")
 if recorded_rc and recorded_rc != rc_file.read_text(encoding="utf-8", errors="replace").strip():
     raise SystemExit(1)
@@ -223,7 +221,10 @@ run_child() {
   rc=$?
   set -e
   if [ "$rc" -ne 0 ]; then
-    persist_handoff "$rc"
+    if ! persist_handoff "$rc"; then
+      trap - EXIT
+      exit 2
+    fi
     trap - EXIT
     exit 0
   fi
@@ -251,7 +252,10 @@ run_child() {
     --expected-tmpdir-basename-prefix "$EXPECTED_TMPDIR_BASENAME_PREFIX"
   rc=$?
   set -e
-  persist_handoff "$rc"
+  if ! persist_handoff "$rc"; then
+    trap - EXIT
+    exit 2
+  fi
   trap - EXIT
   exit 0
 }
