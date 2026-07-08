@@ -5,13 +5,14 @@
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.core import config
+from larch.bgjob import model as bgjob_model
+from larch.bgjob import registry as bgjob_registry
+from larch.core import config, process_identity
 
 # ---------------------------------------------------------------------------
 # Scalar constants
@@ -183,43 +184,60 @@ def _read_state_file(path: Path) -> dict[str, str]:
     return out
 
 
-# STEP values written to .bg-wait-active by checks-commit-route sites (see
-# dispatch_commit_route.py _checks_commit_route_marker), mapped to the
-# STALL_STEP token stall-recovery classification expects for that site.
-_CHECKS_MARKER_STALL_STEPS: dict[str, str] = {
+# Bgjob step slugs for checks-commit-route sites, mapped to the STALL_STEP
+# token stall-recovery classification expects for that site.
+_CHECKS_BGJOB_STALL_STEPS: dict[str, str] = {
     config.CHECKS_COMMIT_ROUTE_MARKER_STEP3: "3",
+    "implement-checks-step5-self-review": "5",
     config.CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW: "5",
 }
 
 
-def _abandoned_checks_marker_stall_step(tmpdir: Path) -> str | None:
-    """Detect a checks-commit-route .bg-wait-active marker left by a dead process.
+def _bgjob_result_env_present(entry: bgjob_model.RegistryEntry) -> bool:
+    return entry.result_env.is_file() and not entry.result_env.is_symlink()
 
-    A process killed before it can run its own cleanup (external kill, not the
-    in-process graceful timeout handled by _run_leg_with_timeout) never gets a
-    chance to write STALL_TRACKING=true anywhere, so the normal stall layers
-    all read false. The marker written before the risky leg starts is the only
-    surviving evidence in that case. Returns the STALL_STEP token for the
-    marked site only when the recorded PID is confirmed dead; returns None
-    when there is no marker, it belongs to a non-checks site (step5-review,
-    step8-ship), or its PID is still alive or unreadable.
+
+def _bgjob_owner_dead(entry: bgjob_model.RegistryEntry) -> bool:
+    if entry.owner is None:
+        return False
+    return not process_identity.validate_process_identity(recorded=entry.owner).ok
+
+
+def _abandoned_checks_bgjob_entry(tmpdir: Path, step: str) -> tuple[Path, str] | None:
+    stall_step = _CHECKS_BGJOB_STALL_STEPS[step]
+    registry_path, entry = bgjob_registry.read_for(tmpdir=tmpdir, step=step)
+    if entry is None or _bgjob_result_env_present(entry):
+        return None
+    daemon_live = bgjob_registry.daemon_liveness(entry)
+    if not daemon_live.live or _bgjob_owner_dead(entry):
+        return registry_path, stall_step
+    return None
+
+
+def _abandoned_checks_bgjob_registry_paths(tmpdir: Path) -> tuple[Path, ...]:
+    paths: list[Path] = []
+    for step in _CHECKS_BGJOB_STALL_STEPS:
+        abandoned = _abandoned_checks_bgjob_entry(tmpdir=tmpdir, step=step)
+        if abandoned is not None:
+            registry_path, _stall_step = abandoned
+            paths.append(registry_path)
+    return tuple(paths)
+
+
+def _abandoned_checks_bgjob_stall_step(tmpdir: Path) -> str | None:
+    """Detect abandoned checks bgjobs from identity-validated registry rows.
+
+    A checks process can die before it writes STALL_TRACKING=true. For migrated
+    checks sites, the bgjob registry is the surviving evidence. A row is
+    abandoned only when its owner or daemon identity is no longer valid. Live
+    rows without a result env are still in flight. Completed result envs and
+    missing or malformed rows do not create a stall signal.
     """
-    marker = tmpdir / ".bg-wait-active"
-    if not marker.is_file() or marker.is_symlink():
-        return None
-    values = _read_state_file(marker)
-    stall_step = _CHECKS_MARKER_STALL_STEPS.get(values.get("STEP", ""))
-    if stall_step is None:
-        return None
-    pid_raw = values.get("PID", "")
-    if not pid_raw.isdigit():
-        return None
-    try:
-        os.kill(int(pid_raw), 0)
-    except ProcessLookupError:
-        return stall_step
-    except OSError:
-        return None
+    for step in _CHECKS_BGJOB_STALL_STEPS:
+        abandoned = _abandoned_checks_bgjob_entry(tmpdir=tmpdir, step=step)
+        if abandoned is not None:
+            _registry_path, stall_step = abandoned
+            return stall_step
     return None
 
 

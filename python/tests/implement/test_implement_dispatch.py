@@ -1784,19 +1784,13 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
     assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
 
 
-def test_step18_gate_finalize_abandoned_checks_marker_breaks_out_without_finalize(
+def test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = _session(tmp_path)
-    with subprocess.Popen(["true"]) as dead:
-        dead.wait()
-        dead_pid = dead.pid
-    (tmp / ".bg-wait-active").write_text(
-        f"PID={dead_pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP=implement-step3-checks\nTIMEOUT_S={dispatch_leg.CHECKS_STEP3_BG_WAIT_TIMEOUT_S}\n",
-        encoding="utf-8",
-    )
+    monkeypatch.setattr(dispatch_step18, "_abandoned_checks_bgjob_stall_step", lambda _tmpdir: "3")
     monkeypatch.setattr(
         implement_dispatch,
         "_run_cli_capture",

@@ -20,7 +20,7 @@ from larch.state._tokens import (
     _DEFAULT_ESCALATION_FALLBACK,
     _DEFAULT_ESCALATION_LEDGER,
     _DISPATCH_BAIL_TOKENS,
-    _abandoned_checks_marker_stall_step,
+    _abandoned_checks_bgjob_stall_step,
     _read_state_file,
     _render_safe_bail_reason_value,
     _render_safe_source_script_value,
@@ -189,15 +189,15 @@ def _classify_text(
     return "unrecoverable", "none", "fallback"
 
 
-def _resolve_step_with_abandoned_marker(*, tmpdir: Path, any_stall: bool, step: str) -> tuple[bool, str, str | None]:
-    abandoned_marker_step = None if any_stall else _abandoned_checks_marker_stall_step(tmpdir)
-    if abandoned_marker_step is None:
+def _resolve_step_with_abandoned_bgjob(*, tmpdir: Path, any_stall: bool, step: str) -> tuple[bool, str, str | None]:
+    abandoned_bgjob_step = None if any_stall else _abandoned_checks_bgjob_stall_step(tmpdir)
+    if abandoned_bgjob_step is None:
         return any_stall, step, None
-    return True, step or abandoned_marker_step, abandoned_marker_step
+    return True, step or abandoned_bgjob_step, abandoned_bgjob_step
 
 
-def _classify_short_circuit(*, abandoned_marker_step: str | None, any_stall: bool) -> tuple[str, str, str] | None:
-    if abandoned_marker_step is not None:
+def _classify_short_circuit(*, abandoned_bgjob_step: str | None, any_stall: bool) -> tuple[str, str, str] | None:
+    if abandoned_bgjob_step is not None:
         return "transient-infra", "checks-commit-route-retry", "checks-leg-abandoned"
     if not any_stall:
         return "unrecoverable", "none", "no-stall"
@@ -249,13 +249,13 @@ def classify(args: argparse.Namespace) -> int:
     finalize_stall = _read_state_file(Path(finalize_state_file) if finalize_state_file else tmpdir / "finalize-state.sh").get("STALL_TRACKING", "false")
     session_stall = _read_state_file(Path(session_env_file) if session_env_file else tmpdir / "session-env.sh").get("STALL_TRACKING", "false")
     any_stall = _truthy(memory_stall) or _truthy(primary_stall) or _truthy(finalize_stall) or _truthy(session_stall)
-    any_stall, step, abandoned_marker_step = _resolve_step_with_abandoned_marker(tmpdir=tmpdir, any_stall=any_stall, step=step)
+    any_stall, step, abandoned_bgjob_step = _resolve_step_with_abandoned_bgjob(tmpdir=tmpdir, any_stall=any_stall, step=step)
     evidence = detail
     if not detail_log_valid:
         for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
             state_path = tmpdir / name
             evidence = f"{evidence}\n{_read_optional_evidence(state_path)}"
-    short_circuit = _classify_short_circuit(abandoned_marker_step=abandoned_marker_step, any_stall=any_stall)
+    short_circuit = _classify_short_circuit(abandoned_bgjob_step=abandoned_bgjob_step, any_stall=any_stall)
     raw_exit_code = args.exit_code or st.get("EXIT_CODE", "unknown")
     klass, _hint, pattern = short_circuit or _classify_text(
         text=evidence,

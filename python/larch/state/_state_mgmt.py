@@ -12,8 +12,9 @@ import os
 from collections.abc import Mapping
 from pathlib import Path
 
+from larch.bgjob import registry as bgjob_registry
 from larch.state._tokens import (
-    _abandoned_checks_marker_stall_step,
+    _abandoned_checks_bgjob_registry_paths,
     _safe_phase_value,
     _safe_step_value,
     _state_file_syntax_ok,
@@ -46,10 +47,9 @@ def _rewrite_state_keys(*, path: Path, updates: Mapping[str, str]) -> bool:
     return True
 
 
-def _clear_abandoned_checks_marker(tmpdir: Path) -> None:
-    if _abandoned_checks_marker_stall_step(tmpdir) is not None:
-        with contextlib.suppress(OSError):
-            (tmpdir / ".bg-wait-active").unlink()
+def _clear_abandoned_checks_bgjob_registry(tmpdir: Path) -> None:
+    for path in _abandoned_checks_bgjob_registry_paths(tmpdir):
+        bgjob_registry.unlink_entry(path)
 
 
 def clear_stall(args: argparse.Namespace) -> int:
@@ -72,7 +72,7 @@ def clear_stall(args: argparse.Namespace) -> int:
             emit(key="CLEARED", value="false")
             return 3
     if not present:
-        _clear_abandoned_checks_marker(tmpdir)
+        _clear_abandoned_checks_bgjob_registry(tmpdir)
         emit(key="CLEARED", value="true")
         return 0
     for path in _state_layer_paths(tmpdir):
@@ -90,7 +90,7 @@ def clear_stall(args: argparse.Namespace) -> int:
         if read_kv(path=path, key="STALL_TRACKING") != "false" or read_kv(path=path, key="STALL_STEP") != "":
             emit(key="CLEARED", value="false")
             return 1
-    _clear_abandoned_checks_marker(tmpdir)
+    _clear_abandoned_checks_bgjob_registry(tmpdir)
     emit(key="CLEARED", value="true")
     return 0
 
