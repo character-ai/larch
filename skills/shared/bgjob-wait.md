@@ -1,6 +1,6 @@
 # Bgjob foreground wait contract
 
-Use this contract for long-running larch helpers that have migrated off Claude `run_in_background`.
+Use this contract for long-running larch helpers that have migrated off Claude background launches.
 
 1. Launch with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start --step <step> --tmpdir "$TMPDIR" --budget-s <seconds> -- <command...>` from a foreground Bash tool call. The only harness-visible stdout from the launcher is `BGJOB_STATUS=STARTED STEP=<step> PGID=<n>`.
 2. If the child writes step result KVs for the orchestrator to consume, truncate or recreate that merge-input env immediately before every `bgjob start`, then pass it with `--merge-result-env <path>`. A stale env from a prior attempt must never satisfy a fresh wait's required-key gate.

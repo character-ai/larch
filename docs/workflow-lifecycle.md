@@ -142,4 +142,10 @@ Design, review, and implement review loops resolve a starting difficulty tier, a
 
 ## Bgjob completion artifacts
 
-Long-running migrated steps write completion through `$TMPDIR/bgjob/<step>.result.env`. Existing `.completed/*` and handoff sentinels remain as transition routing compatibility markers, but migrated orchestrator text should treat the bgjob result env and `BGJOB_RC=0` as the completion source of truth.
+Long-running migrated steps write completion through `$TMPDIR/bgjob/<step>.result.env`. Existing `.completed/*` and handoff sentinels remain as transition routing compatibility markers, but migrated orchestrator text treats the bgjob result env and `BGJOB_RC=0` as the completion source of truth.
+
+Each start truncates or recreates its merge-input env before invoking `bgjob start --merge-result-env`, so stale KVs from a prior attempt cannot satisfy a fresh wait. `BGJOB_STATUS=WAIT` means the orchestrator repeats the identical `bgjob wait` with no progress probes. `BGJOB_STATUS=DONE` is only a readiness signal until the final stdout and result env contain `BGJOB_RC=0` plus the step's required KVs.
+
+Bgjob diagnostics live beside the result env under `$TMPDIR/bgjob/`: daemon stdout and stderr logs, registry rows, and copied result KVs. Run-log capture records the committed summaries after those diagnostics and result envs have driven routing. Step 8 is the narrow exception to the generic success gate: `ship route-exit` follows the current `.step-8-ship-handoff.rc` and `.step-8-ship-handoff.json` sidecars, so a numeric driver rc is route data rather than generic bgjob failure. Timeout or orphaned bgjob results still block routing.
+
+Concurrent external lanes use unique `--step` slugs, for example per-reviewer or per-research-lane names. Shared slugs would clobber registry rows, daemon logs, and `$TMPDIR/bgjob/<step>.result.env`.

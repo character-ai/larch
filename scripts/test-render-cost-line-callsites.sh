@@ -92,7 +92,8 @@ grep -Fq -- '--post-publish-only' "$design_skill" || fail 'design SKILL must cal
 grep -Fq 'emit its full body verbatim as plain chat markdown' "$shared_final_summary" || fail 'shared final-summary emit must pin full-body emit prose'
 grep -Fq 'Caller profile parameters' "$shared_final_summary" || fail 'shared final-summary emit must define caller profile parameters'
 grep -Fq 'caller begin/end marker pair' "$shared_final_summary" || fail 'shared final-summary emit must parameterize marker tokens'
-grep -Fq 'caller-named task-output source already in the orchestrator context window' "$shared_final_summary" || fail 'shared final-summary emit must parameterize task-output source'
+grep -Fq 'source description: task-output, wrapper stdout, or bgjob `DONE` stdout plus result env' "$shared_final_summary" || fail 'shared final-summary emit must parameterize summary source'
+grep -Fq 'caller-named source already in the orchestrator context window' "$shared_final_summary" || fail 'shared final-summary emit must parameterize marker source'
 grep -Fq '`/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.' "$shared_final_summary" || fail 'shared final-summary emit must distinguish implement source from task notifications'
 # shellcheck disable=SC2016
 grep -Fq 'Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on absent/invalid markers and caller policy'
@@ -101,9 +102,11 @@ grep -Fq 'When the caller Read fallback policy is `forbidden`, skip Read fallbac
 grep -Fq 'Only when the caller sidecar policy is `allowed`' "$shared_final_summary" || fail 'shared final-summary emit must gate sidecar follow-on on caller policy'
 grep -Fq 'When the caller sidecar policy is `forbidden`, skip sidecar follow-on entirely.' "$shared_final_summary" || fail 'shared final-summary emit must define forbidden sidecar follow-on'
 # shellcheck disable=SC2016
-grep -Fq 'Do not re-read task-output files, stdout captures, result env files, or tmpdir logs to recover markers.' "$shared_final_summary" || fail 'shared final-summary emit must forbid task-output re-reads'
+grep -Fq 'Do not re-read task-output files, stdout captures, unrelated result env files, or tmpdir logs to recover markers.' "$shared_final_summary" || fail 'shared final-summary emit must forbid unrelated task-output and result-env re-reads'
 grep -Fq 'Do not scrape markers via Bash or Python.' "$shared_final_summary" || fail 'shared final-summary emit must forbid Bash/Python marker scraping'
 grep -Fq '`/design` Read-always readiness' "$shared_final_summary" || fail 'shared final-summary emit must include design readiness callsite binding'
+grep -Fq 'Use this profile for `/design` final `bgjob wait` `DONE` stdout and the matching bgjob result env.' "$shared_final_summary" || fail 'shared final-summary emit must bind design profile to bgjob DONE stdout and result env'
+grep -Fq 'final `bgjob wait` `DONE` stdout plus matching `$DESIGN_TMPDIR/bgjob/<step>.result.env` after `BGJOB_RC=0` and required-KV validation' "$shared_final_summary" || fail 'shared final-summary emit must include design bgjob source binding'
 grep -Fq '`/implement` Step 17 marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 17 callsite binding'
 grep -Fq '`/implement` Step 18b marker-first' "$shared_final_summary" || fail 'shared final-summary emit must include implement Step 18b callsite binding'
 grep -Fq 'green path: captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout when `NEXT_ACTION=finalize-done`' "$shared_final_summary" || fail 'shared final-summary emit must include composite green-path binding'

@@ -3,8 +3,8 @@
     "closure_content_estimated_tokens": 53343,
     "closure_estimated_tokens": 53498,
     "closure_lines": 1756,
-    "conditional_content_estimated_tokens": 18520,
-    "conditional_estimated_tokens": 18594,
+    "conditional_content_estimated_tokens": 18611,
+    "conditional_estimated_tokens": 18685,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
@@ -35,11 +35,11 @@
     "skill_md_lines": 682
   },
   {
-    "closure_content_estimated_tokens": 42254,
-    "closure_estimated_tokens": 42371,
+    "closure_content_estimated_tokens": 42345,
+    "closure_estimated_tokens": 42462,
     "closure_lines": 1280,
-    "conditional_content_estimated_tokens": 28958,
-    "conditional_estimated_tokens": 29027,
+    "conditional_content_estimated_tokens": 29465,
+    "conditional_estimated_tokens": 29534,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -56,7 +56,7 @@
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 806,
+    "conditional_lines": 814,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
