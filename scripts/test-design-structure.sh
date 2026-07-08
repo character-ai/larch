@@ -76,6 +76,29 @@ not_contains() {
     fail "$label"
   fi
 }
+extract_stdout_keys_block() {
+  awk '
+    /^_DESIGN_LIFECYCLE_STDOUT_KEYS:/ { flag = 1; next }
+    $0 == "})" { exit }
+    flag { print }
+  ' "$CLI_PY"
+}
+load_stdout_keys_block() {
+  attempt=1
+  while [ "$attempt" -le 3 ]; do
+    if stdout_keys_block="$(extract_stdout_keys_block)"; then
+      case "$stdout_keys_block" in
+        *'("plan", "step1-log")'*)
+          [ -n "$stdout_keys_block" ] && return 0
+          ;;
+      esac
+    else
+      stdout_keys_block=''
+    fi
+    attempt=$((attempt + 1))
+  done
+  fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS block extraction incomplete after 3 attempts"
+}
 assert_followed_count_at_least() {
   file="$1"
   first="$2"
@@ -317,7 +340,8 @@ for retired in $retired_paths; do
   contains "$MIGRATED" "skills/design/scripts/$retired" "migrated-scripts.tsv missing $retired"
 done
 
-stdout_keys_block="$(awk '/^_DESIGN_LIFECYCLE_STDOUT_KEYS:/{flag=1;next}/^\)/{if(flag){flag=0}}flag' "$CLI_PY")"
+stdout_keys_block=''
+load_stdout_keys_block
 for verb in $ported_verbs; do
   contains "$CLI_PY" "(\"design\", \"$verb\")" "cli registry missing design $verb"
   contains "$SESSION_ENV" "$verb" "design launcher missing $verb allowlist token"
