@@ -56,6 +56,10 @@ def _issue(number: int, title: str, body: str, *, state: str = "CLOSED") -> dict
     }
 
 
+def _digest_numbers(path: Path) -> list[int]:
+    return [int(json.loads(line)["number"]) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
 def test_diagnostic_prefix_cuts_at_plan_marker() -> None:
     prefix = learn_from_bugs.diagnostic_prefix(STRUCTURED_BODY)
     assert "larch:plan:start" not in prefix
@@ -153,6 +157,7 @@ def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     out_dir = tmp_path / "run"
     request = learn_from_bugs.PrepareRequest(
         search="[BUG] in:title",
+        search_explicit=False,
         state="closed",
         limit=10,
         repo_explicit="o/r",
@@ -161,6 +166,7 @@ def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     )
     stats = learn_from_bugs.run_prepare(runner, request)
     assert stats["ISSUES_SELECTED"] == 2
+    assert stats["ISSUES_FILTERED_NON_BUG"] == 0
     assert stats["STRUCTURED"] == 1
     assert stats["REPO"] == "o/r"
     digest_lines = (out_dir / "digest.jsonl").read_text(encoding="utf-8").strip().splitlines()
@@ -171,3 +177,106 @@ def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     coverage = json.loads((out_dir / "coverage-index.json").read_text(encoding="utf-8"))
     assert set(coverage) == {"guidelines", "invariants", "python_lints", "script_lints"}
     assert "RULES_INDEXED" not in stats
+
+
+def test_run_prepare_filters_implicit_default_search_to_bug_titles(tmp_path: Path) -> None:
+    rows = [
+        _issue(1, "[DONE] [BUG] fixed", STRUCTURED_BODY),
+        _issue(2, "[Bug] mixed case", FREEFORM_BODY),
+        _issue(3, "[FEATURE] discusses bugs", FREEFORM_BODY),
+    ]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    out_dir = tmp_path / "run"
+    request = learn_from_bugs.PrepareRequest(
+        search=learn_from_bugs.DEFAULT_SEARCH,
+        search_explicit=False,
+        state="closed",
+        limit=10,
+        repo_explicit="o/r",
+        out_dir=out_dir,
+        root=tmp_path,
+    )
+
+    stats = learn_from_bugs.run_prepare(runner, request)
+
+    assert stats["ISSUES_SELECTED"] == 2
+    assert stats["ISSUES_FILTERED_NON_BUG"] == 1
+    assert _digest_numbers(out_dir / "digest.jsonl") == [1, 2]
+
+
+def test_run_prepare_leaves_explicit_default_search_unfiltered(tmp_path: Path) -> None:
+    rows = [
+        _issue(1, "[DONE] [BUG] fixed", STRUCTURED_BODY),
+        _issue(2, "[Bug] mixed case", FREEFORM_BODY),
+        _issue(3, "[FEATURE] discusses bugs", FREEFORM_BODY),
+    ]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    out_dir = tmp_path / "run"
+    request = learn_from_bugs.PrepareRequest(
+        search=learn_from_bugs.DEFAULT_SEARCH,
+        search_explicit=True,
+        state="closed",
+        limit=10,
+        repo_explicit="o/r",
+        out_dir=out_dir,
+        root=tmp_path,
+    )
+
+    stats = learn_from_bugs.run_prepare(runner, request)
+
+    assert stats["ISSUES_SELECTED"] == 3
+    assert stats["ISSUES_FILTERED_NON_BUG"] == 0
+    assert _digest_numbers(out_dir / "digest.jsonl") == [1, 2, 3]
+
+
+def test_prepare_main_treats_search_flag_as_explicit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rows = [_issue(3, "[FEATURE] discusses bugs", FREEFORM_BODY)]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    out_dir = tmp_path / "run"
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
+
+    rc = learn_from_bugs.prepare_main(
+        [
+            "--search",
+            learn_from_bugs.DEFAULT_SEARCH,
+            "--repo",
+            "o/r",
+            "--out",
+            str(out_dir),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    stats = dict(line.split("=", 1) for line in stdout.splitlines() if "=" in line)
+    assert rc == 0
+    assert stats["ISSUES_SELECTED"] == "1"
+    assert stats["ISSUES_FILTERED_NON_BUG"] == "0"
+    assert _digest_numbers(out_dir / "digest.jsonl") == [3]
+
+
+def test_prepare_main_rejects_abbreviated_search_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(responses=[], strict=True)
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
+
+    with pytest.raises(SystemExit):
+        learn_from_bugs.prepare_main(
+            [
+                "--sear",
+                learn_from_bugs.DEFAULT_SEARCH,
+                "--repo",
+                "o/r",
+                "--out",
+                str(tmp_path / "run"),
+                "--root",
+                str(tmp_path),
+            ]
+        )

@@ -22,6 +22,7 @@ from typing import Final, cast
 
 from larch.core.proc import ProcRunner, Runner
 from larch.issue.analyze_bugs import resolve_repo
+from larch.issue.title_match import bug_title_match
 
 DEFAULT_SEARCH: Final = "[BUG] in:title"
 DEFAULT_STATE: Final = "closed"
@@ -112,6 +113,7 @@ class CoverageIndex:
 @dataclass(frozen=True)
 class PrepareRequest:
     search: str
+    search_explicit: bool
     state: str
     limit: int
     repo_explicit: str
@@ -252,7 +254,19 @@ def coverage_index(root: Path) -> CoverageIndex:
 def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
     """Fetch, digest, and coverage-index; write artifacts; return KV stats."""
     repo = resolve_repo(runner, request.repo_explicit)
-    issues = list_issues(runner, search=request.search, state=request.state, limit=request.limit, repo=repo)
+    raw_issues: list[dict[str, object]] = list_issues(
+        runner,
+        search=request.search,
+        state=request.state,
+        limit=request.limit,
+        repo=repo,
+    )
+    if request.search_explicit:
+        issues: list[dict[str, object]] = raw_issues
+        filtered_non_bug = 0
+    else:
+        issues = [issue for issue in raw_issues if bug_title_match(str(issue.get("title") or ""))]
+        filtered_non_bug = len(raw_issues) - len(issues)
     digests = [build_digest(issue) for issue in issues]
     out_dir = request.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -273,6 +287,7 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
         "SEARCH": request.search,
         "STATE": request.state,
         "ISSUES_SELECTED": len(digests),
+        "ISSUES_FILTERED_NON_BUG": filtered_non_bug,
         "STRUCTURED": structured,
         "FREEFORM_OR_TITLE_ONLY": len(digests) - structured,
         "DIGEST_CHARS": digest_chars,
@@ -290,16 +305,18 @@ def _print_kv(pairs: Mapping[str, object]) -> None:
 
 
 def prepare_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="learn-from-bugs prepare")
+    parser = argparse.ArgumentParser(prog="learn-from-bugs prepare", allow_abbrev=False)
     parser.add_argument("--search", default=DEFAULT_SEARCH)
     parser.add_argument("--state", default=DEFAULT_STATE)
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument("--repo", default="")
     parser.add_argument("--out", required=True)
     parser.add_argument("--root", default=".")
+    search_explicit: bool = any(token == "--search" or token.startswith("--search=") for token in argv)
     args = parser.parse_args(argv)
     request = PrepareRequest(
         search=args.search,
+        search_explicit=search_explicit,
         state=args.state,
         limit=args.limit,
         repo_explicit=args.repo,
