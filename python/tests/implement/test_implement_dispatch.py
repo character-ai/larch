@@ -6206,8 +6206,8 @@ def test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched(
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
     assert "explicit plan-listed path" not in issues
 
@@ -6243,8 +6243,8 @@ def test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope(
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
     assert "explicit plan-listed path" not in issues
     assert "docs/optional.md" not in issues
@@ -6281,8 +6281,8 @@ def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
     assert "skills/design/SKILL.md" not in issues
     assert "explicit plan-listed path" not in issues
@@ -6324,8 +6324,8 @@ def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrel
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
     assert "docs/expected.md" not in issues
     assert "explicit plan-listed path" not in issues
@@ -6377,8 +6377,8 @@ def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warning
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
     assert "git probe(s) failed" in issues
     assert "git diff --name-only HEAD" in issues
@@ -6432,10 +6432,10 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
-    assert "could not read plan file for plan-file coverage" in issues
+    assert "plan coverage compute failed closed" in issues
     assert "synthetic plan read failure" in issues
     assert "docs/expected.md" not in issues
     # Regression (#5219): the single-line plan-read-failure warning must be
@@ -6446,7 +6446,7 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     rendered = exec_issue_detail.render_issue_detail_block(
         exec_issue_detail.LoadResult(warn_groups, listing_degraded=False), assess=False
     )
-    assert "could not read plan file for plan-file coverage" in rendered
+    assert "plan coverage compute failed closed" in rendered
 
 
 def test_append_warning_normalizes_plain_text_for_final_summary(
@@ -6483,7 +6483,7 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
     rendered = exec_issue_detail.render_issue_detail_block(
         exec_issue_detail.LoadResult(groups, listing_degraded=False), assess=False
     )
-    assert "could not read plan file for plan-file coverage" in rendered
+    assert "plan coverage compute failed closed" in rendered
 
 
 def _materialize_dispatch_state(tmp_path: Path, observations: object) -> implement_dispatch.DispatchState:

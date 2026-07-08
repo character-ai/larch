@@ -261,6 +261,9 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
     eligible: list[dict[str, object]] = []
     pruned: list[str] = []
     for row in rows:
+        if row.get("prune_exempt") is True:
+            eligible.append(row)
+            continue
         key = _manifest_combo(row)
         prior_counts = hist.get(key, {})
         if not prior_counts:

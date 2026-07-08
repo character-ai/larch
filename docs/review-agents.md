@@ -107,3 +107,7 @@ The previous two archetypes `general-reviewer` and `deep-analysis-reviewer` have
 ## Difficulty-tiered panels
 
 Code review uses TRIVIAL singles (Codex review-role preferred, Cursor singles when Codex is unavailable), MODERATE Codex review-role plus Cursor pairs, and HARD pairs where only `correctness` and `edge-cases` use the Codex default role; `testing` and dynamic Codex rows stay on the review role. TRIVIAL code review still emits dynamic Cursor rows when available, but drops dynamic Codex rows. Design review always keeps Codex plus Cursor pairs; all tiers use a fixed cap of 2, while HARD uses the Codex default role only for `pragmatic` and `requirements`. Dynamic plan-review Codex rows stay pinned to the review role. The random audit is orthogonal to an operator `--difficulty` override.
+
+## Forced plan-fidelity reviewer
+
+When `/implement` plan coverage reaches the middle band, Step 5 appends a forced `plan-fidelity-forced` row. The row carries `prune_exempt=true`, so `reviewer_prune_filter` keeps it before normal productivity pruning. If Cursor is unavailable, the dispatcher chooses an available external tool for the forced row instead of dropping the slot.

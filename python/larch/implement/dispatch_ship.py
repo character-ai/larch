@@ -25,6 +25,7 @@ from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.git import git, gh, rebase
 from larch.implement import ship
+from larch.implement import scope_disposition
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
     _current_cli_path,
@@ -231,6 +232,8 @@ def _classify_ship_needs_user_reason(reason: str) -> str:
     action = "operator-bail"
     if reason == config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL:
         action = config.SHIP_ROUTE_ACTION_POSTMERGE_REPAIR
+    elif reason == config.NEEDS_USER_SCOPE_DISPOSITION:
+        action = config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION
     elif reason == "oos-filing":
         action = "oos-pipeline"
     elif reason == "architectural-invariants-assessment":
@@ -824,7 +827,7 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def ship_pre_driver_main(argv: list[str] | None = None) -> int:
+def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
     argparse.ArgumentParser(prog="cli.py ship pre-driver").parse_args(argv)
     raw_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not raw_tmpdir:
@@ -847,6 +850,21 @@ def ship_pre_driver_main(argv: list[str] | None = None) -> int:
         if seed.returncode != 0:
             _emit_kv(key="NEXT_ACTION", value="halt-seed")
             return seed.returncode
+
+    repo_root = _resolve_repo_root()
+    if repo_root is None:
+        _emit_kv(key="NEXT_ACTION", value="halt-seed")
+        return 2
+    manifest_path = _read_kv_file(path=state_file, key="MANIFEST_PATH", default="")
+    disposition = scope_disposition.validate_disposition_for_ship(
+        tmpdir=implement_tmpdir,
+        repo_root=repo_root,
+        manifest_path=Path(manifest_path) if manifest_path else None,
+    )
+    if not disposition.ok:
+        _emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
+        _emit_kv(key="NEXT_ACTION", value=config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION)
+        return config.EXIT_NEEDS_USER_INPUT
 
     oos = _run_cli_capture(["oos", "file", "--implement-tmpdir", str(implement_tmpdir)])
     if oos.returncode != 0:

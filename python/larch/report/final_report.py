@@ -26,6 +26,7 @@ from larch.report import review_phase_detail
 from larch.review.batch_report import _count_code_review_findings  # pyright: ignore[reportPrivateUsage]
 from larch.state import stall_recovery
 from larch.report import tokens
+from larch.implement import scope_disposition
 from larch.calibration import difficulty
 
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
@@ -516,6 +517,20 @@ def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
     return str(len(lines)), ",".join(sorted(set(urls)))
 
 
+
+def _plan_coverage_summary_line(implement_tmpdir: Path) -> str:
+    coverage = scope_disposition.load_coverage(implement_tmpdir)
+    if coverage is None:
+        return ""
+    record = scope_disposition.load_disposition(implement_tmpdir)
+    disposition = record.disposition if record is not None else "none"
+    followup = f"; follow-up #{record.followup_issue_number}" if record is not None and record.followup_issue_number else ""
+    return (
+        f"{coverage.touched}/{coverage.total} firm headings; "
+        f"band: {coverage.band}; disposition: {disposition}; "
+        f"todos_left: {coverage.todos_left_count}{followup}"
+    )
+
 def _manifest_pr_number(data: Mapping[str, object]) -> int:
     for key in ("pr_number", "PR_NUMBER"):
         value = data.get(key)
@@ -793,6 +808,7 @@ def write_final_report(
         pr_number=pr_number,
         pr_url=pr_url,
         plan_review_line=derived["plan_review_line"],
+        plan_coverage_line=_plan_coverage_summary_line(implement_tmpdir),
         difficulty_line=_difficulty_summary_line(run_dir),
         dynamic_archetypes_line=_dynamic_archetypes_line(implement_tmpdir),
         code_review_line=derived["code_review_line"],

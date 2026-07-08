@@ -703,3 +703,7 @@ Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer 
 The collector reads implement artifacts from `larch-logs/implement/<run>/round-*/review-findings-full.jsonl` with `round-*/findings-classification.tsv`, falling back to the run-root JSONL only when no round-local JSONL exists. It reads standalone review artifacts from `larch-logs/review/<run>/review-findings.ndjson` with `review-findings-classification-round-*.tsv`, using `review-findings-full.jsonl` only as a fallback.
 
 Each run work dir also contains non-committed `ingest-status.jsonl`. One row is appended per verifier launch attempt. `launch-failed` rows stay retryable and are not ledgered as verification failures. `parse-failed`, `location-mismatch`, `dirty-tree`, stale, and already-fixed rows are terminal dispositions. `issue-cluster-map.json` maps `/issue` batch indexes to finding hashes so record can map created and deduplicated issues without parsing issue prose.
+
+## Scope-disposition batch
+
+`/implement` writes a `scope-disposition.json` run-log batch when an operator records a partial-scope decision. The JSON payload includes the coverage fingerprint, disposition, follow-up issue reference, untouched count, total firm paths, and bounded `todos_left` count. Final summaries project the same state as a plan-coverage line.

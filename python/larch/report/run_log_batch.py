@@ -77,6 +77,7 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     "version-bump-reasoning": BatchInfo(".md", "replace", "none"),
     "oos-issues": BatchInfo(".ndjson", "append", "json-lines"),
     "run-statistics": BatchInfo(".md", "replace", "none"),
+    "scope-disposition": BatchInfo(".json", "replace", "json-object"),
     "token-report": BatchInfo(".json", "replace", "none"),
     "timing-report": BatchInfo(".json", "replace", "none"),
     "execution-issues": BatchInfo(".ndjson", "append", "json-lines"),

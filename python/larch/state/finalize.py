@@ -27,6 +27,7 @@ from larch.core import retry
 from larch.report import run_logs
 from larch.state import session_env
 from larch.issue import tracking_issue
+from larch.implement import scope_disposition
 from larch.errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult, Runner
@@ -692,7 +693,11 @@ def teardown(
     if ctx.stall_tracking:
         rename_branch = "A"
         rename_status = _rename_issue(runner=runner, ctx=ctx, state="stalled", cwd=cwd)
-    elif not ctx.done_rename_applied and (ctx.pr_number is not None or ctx.design_only_done):
+    elif (
+        not ctx.done_rename_applied
+        and (ctx.pr_number is not None or ctx.design_only_done)
+        and scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) != "part-of"
+    ):
         rename_branch = "B"
         rename_status = _rename_issue(runner=runner, ctx=ctx, state="done", cwd=cwd)
 

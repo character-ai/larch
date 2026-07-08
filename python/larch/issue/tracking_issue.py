@@ -477,13 +477,40 @@ def upsert_token_report(
     _upsert_marker_comment(runner, issue, _upsert_marker("token-report"), body, repo=repo, cwd=cwd)
 
 
+def _drop_issue_footer(*, body: str, issue_number: int) -> str:
+    needles = {f"Closes #{issue_number}", f"Part of #{issue_number}"}
+    lines = body.rstrip().splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if lines and lines[-1].strip() in needles:
+        lines.pop()
+    return "\n".join(lines).rstrip()
+
+
 def link_pr_closes(*, body: str, issue_number: int) -> str:
     """Ensure the PR body has a footer-style Closes #N line."""
     needle = f"Closes #{issue_number}"
     nonblank_lines = [line.strip() for line in body.splitlines() if line.strip()]
     if nonblank_lines and nonblank_lines[-1] == needle:
         return body
-    return body.rstrip() + f"\n\n{needle}\n"
+    stripped = _drop_issue_footer(body=body, issue_number=issue_number)
+    return stripped.rstrip() + f"\n\n{needle}\n"
+
+
+def link_pr_part_of(*, body: str, issue_number: int) -> str:
+    """Ensure the PR body has a footer-style Part of #N line."""
+    needle = f"Part of #{issue_number}"
+    nonblank_lines = [line.strip() for line in body.splitlines() if line.strip()]
+    if nonblank_lines and nonblank_lines[-1] == needle:
+        return body
+    stripped = _drop_issue_footer(body=body, issue_number=issue_number)
+    return stripped.rstrip() + f"\n\n{needle}\n"
+
+
+def link_pr_for_disposition(*, body: str, issue_number: int, partial: bool = False) -> str:
+    if partial:
+        return link_pr_part_of(body=body, issue_number=issue_number)
+    return link_pr_closes(body=body, issue_number=issue_number)
 
 
 def _snap_truncate(*, text: str, cap: int, scope: str) -> str:

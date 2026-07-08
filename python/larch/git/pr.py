@@ -13,6 +13,7 @@ from larch.git import git
 from larch.git import pr_body
 from larch.git import push
 from larch.issue import tracking_issue
+from larch.implement import scope_disposition
 from pathlib import Path
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
@@ -52,6 +53,21 @@ def _issue_number(issue: str) -> int:
     return int(issue)
 
 
+
+def _require_scope_disposition(*, ctx: RunContext, cwd: str | None) -> None:
+    if not ctx.tmpdir:
+        return
+    tmpdir = Path(ctx.tmpdir)
+    if not (tmpdir / "plan.txt").is_file():
+        return
+    repo_root = Path(cwd or ".").resolve()
+    scope_disposition.require_valid_disposition_for_ship(
+        tmpdir=tmpdir,
+        repo_root=repo_root,
+        manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
+        runner=proc,
+    )
+
 def ensure_pr(
     *,
     runner: Runner,
@@ -65,11 +81,16 @@ def ensure_pr(
     if ctx.repo_unavailable:
         return PrResult(number=0, url="", status="local-only")
     issue_num = _issue_number(ctx.issue)
+    _require_scope_disposition(ctx=ctx, cwd=cwd)
     push.assert_clean_worktree(runner, cwd=cwd)
     existing = gh.pr_for_branch(runner, ctx.branch, repo=ctx.repo, cwd=cwd)
     if existing is not None and existing.state == "OPEN":
         _push_existing_pr(runner=runner, ctx=ctx, cwd=cwd)
-        linked = tracking_issue.link_pr_closes(body=body, issue_number=issue_num)
+        linked = tracking_issue.link_pr_for_disposition(
+            body=body,
+            issue_number=issue_num,
+            partial=scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) == "part-of",
+        )
         remote_body = gh.pr_view_body(runner, existing.number, repo=ctx.repo, cwd=cwd)
         guidelines_changed = remote_body is not None and pr_body.architectural_guidelines_section(
             remote_body
@@ -94,7 +115,11 @@ def ensure_pr(
     if push_result.status != "pushed":
         msg = "branch push failed before PR create"
         raise ShipError(msg)
-    linked_body = tracking_issue.link_pr_closes(body=body, issue_number=issue_num)
+    linked_body = tracking_issue.link_pr_for_disposition(
+        body=body,
+        issue_number=issue_num,
+        partial=scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) == "part-of",
+    )
     created, was_created = gh.pr_create(
         runner,
         repo=ctx.repo,
@@ -115,6 +140,7 @@ def _push_existing_pr(
     ctx: RunContext,
     cwd: str | None = None,
 ) -> None:
+    _require_scope_disposition(ctx=ctx, cwd=cwd)
     remote = push.select_push_remote(_runner=runner, _ctx=ctx, cwd=cwd)
     def attempt() -> tuple[object, int, str]:
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)

@@ -149,3 +149,25 @@ Each start truncates or recreates its merge-input env before invoking `bgjob sta
 Bgjob diagnostics live beside the result env under `$TMPDIR/bgjob/`: daemon stdout and stderr logs, registry rows, and copied result KVs. Run-log capture records the committed summaries after those diagnostics and result envs have driven routing. Step 8 is the narrow exception to the generic success gate: `ship route-exit` follows the current `.step-8-ship-handoff.rc` and `.step-8-ship-handoff.json` sidecars, so a numeric driver rc is route data rather than generic bgjob failure. Timeout or orphaned bgjob results still block routing.
 
 Concurrent external lanes use unique `--step` slugs, for example per-reviewer or per-research-lane names. Shared slugs would clobber registry rows, daemon logs, and `$TMPDIR/bgjob/<step>.result.env`.
+### Plan-coverage scope disposition
+
+`/implement` compares the live work against the Step 0 materialized plan at `$IMPLEMENT_TMPDIR/plan.txt`. It counts firm `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` paths. It excludes `### MAY_UPDATE:`.
+
+Bands:
+
+- `advisory`: below the middle thresholds. The run may continue with warning KVs.
+- `middle`: at least 20 percent untouched or at least 10 untouched firm paths. Step 5 gets a forced plan-fidelity reviewer with `prune_exempt=true`.
+- `high`: at least 50 percent untouched or at least 30 untouched firm paths. Ship and direct PR mutation require a recorded scope disposition.
+
+Non-empty implementer `todos_left` also requires disposition, even when file coverage is complete.
+
+On external `STATUS=complete`, the dispatcher computes coverage first, but the prompt runs only after `step-2-post-dispatch.sh` emits `POST_DISPATCH_NEXT=continue`. Main-agent fallback and recovery paths compute coverage after main-agent edits and before Step 3.
+
+The operator choices are:
+
+- `proceed-partial`: file a follow-up issue, cross-link it, mark the tracking issue blocked by that follow-up, then record the disposition.
+- `bail-rescope`: record the disposition and route to the Step 12d rescope path.
+
+The coverage fingerprint covers plan paths, touched paths, and bounded `todos_left`. Step 5 commits, Step 7 commits, checks repair, ship pre-driver, and PR mutation recompute coverage. If the fingerprint changes, the old disposition is stale and the operator must choose again. Ship route-exit maps this to `halt-scope-disposition`.
+
+Partial scope changes completion surfaces. The PR footer uses `Part of #N` instead of a closing keyword, the PR body includes a bounded deferred inventory, `[DONE]` rename is suppressed, and the final summary includes plan coverage and `todos_left` count.

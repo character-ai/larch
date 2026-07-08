@@ -4799,3 +4799,60 @@ def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
     )
     assert "REVIEW_CORE_STATUS=cap-reached" in hard.stdout
     assert "EFFECTIVE_ROUND_CAP=2" in hard.stdout
+
+
+@pytest.mark.parametrize(
+    ("tier", "cursor_available", "expected_tool"),
+    [
+        (config.DIFFICULTY_TIER_TRIVIAL, True, "cursor"),
+        (config.DIFFICULTY_TIER_MODERATE, False, "codex"),
+        (config.DIFFICULTY_TIER_HARD, False, "codex"),
+    ],
+)
+def test_forced_plan_fidelity_row_uses_available_tool_and_is_prune_exempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tier: str,
+    cursor_available: bool,
+    expected_tool: str,
+) -> None:
+    from larch.review import review_dispatch_panel  # noqa: PLC0415
+
+    implement_tmpdir = tmp_path / "impl"
+    implement_tmpdir.mkdir()
+    (implement_tmpdir / "plan-coverage.env").write_text("PLAN_FIDELITY_FORCED=true\n", encoding="utf-8")
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(implement_tmpdir))
+    manifest = tmp_path / "panel.ndjson"
+    manifest.write_text("", encoding="utf-8")
+
+    review_dispatch_panel._append_forced_plan_fidelity_row(  # pyright: ignore[reportPrivateUsage]
+        manifest=manifest,
+        review_tmpdir=tmp_path,
+        codex_slots_available=True,
+        cursor_slots_available=cursor_available,
+        tier=tier,
+    )
+
+    rows = _panel_manifest_rows(manifest)
+    assert len(rows) == 1
+    assert rows[0]["slot"] == "plan-fidelity-forced"
+    assert rows[0]["tool"] == expected_tool
+    assert rows[0]["prune_exempt"] is True
+
+
+def test_prune_keeps_prune_exempt_rows_without_history(tmp_path: Path) -> None:
+    from larch.review import review_prune  # noqa: PLC0415
+
+    manifest = tmp_path / "panel.ndjson"
+    exempt = {"slot": "plan-fidelity-forced", "tool": "codex", "output": str(tmp_path / "pf.txt"), "prune_exempt": True}
+    ordinary = {"slot": "correctness", "tool": "codex", "output": str(tmp_path / "c.txt")}
+    manifest.write_text(json.dumps(exempt) + "\n" + json.dumps(ordinary) + "\n", encoding="utf-8")
+    ledger = tmp_path / "ledger.tsv"
+    ledger.write_text("round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\n", encoding="utf-8")
+    out = tmp_path / "out.ndjson"
+
+    result = review_prune.reviewer_prune_filter(ledger=ledger, round_num=2, manifest=manifest, out=out)
+
+    rows = _panel_manifest_rows(out)
+    assert result.prune_active == "true"
+    assert [row["slot"] for row in rows] == ["plan-fidelity-forced"]

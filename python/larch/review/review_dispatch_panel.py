@@ -36,6 +36,8 @@ from larch.review.review_pipeline_shared import (
     _write_text,
 )
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
+from larch import io as larch_io
+from larch.core import config
 from larch.review.review_prune import (
     derive_prune_status,
     normalize_prune_eligible,
@@ -316,6 +318,47 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
         )
 
 
+
+def _forced_plan_fidelity_active() -> bool:
+    raw_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        return False
+    return larch_io.read_kv(
+        path=Path(raw_tmpdir) / "plan-coverage.env",
+        key="PLAN_FIDELITY_FORCED",
+        default="false",
+        first_match=True,
+        on_error_default=True,
+    ) == "true"
+
+
+def _append_forced_plan_fidelity_row(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool, cursor_slots_available: bool, tier: str) -> None:
+    if not _forced_plan_fidelity_active():
+        return
+    from larch.review.review_pipeline_shared import _PLUGIN_ROOT  # noqa: PLC0415
+
+    tool = "cursor" if cursor_slots_available else "codex" if codex_slots_available else ""
+    if not tool:
+        return
+    row: dict[str, object] = {
+        "slot": "plan-fidelity-forced",
+        "tool": tool,
+        "output": str(review_tmpdir / f"{tool}-specialist-plan-fidelity-forced-output.txt"),
+        "agent": str(_PLUGIN_ROOT / "agents" / "reviewer-plan-fidelity.md"),
+        "focus_area": "architecture",
+        "prune_exempt": True,
+    }
+    if tool == "cursor":
+        row["cursor_model"] = "auto"
+        row["resolved_model"] = "auto"
+    else:
+        row["model_role"] = difficulty.codex_review_model_role_for_archetype(
+            "review.panel",
+            "plan-fidelity-auto",
+            tier,
+        )
+    _append_manifest_row(manifest=manifest, row=row)
+
 def _synthesize_dynamic_slots(*,
     scout_manifest: Path,
     review_tmpdir: Path,
@@ -578,6 +621,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     codex_slots_available = codex_available == "true"
     cursor_slots_available = cursor_available == "true"
     _append_static_specialist_rows(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available, cursor_slots_available=cursor_slots_available, tier=tier)
+    _append_forced_plan_fidelity_row(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available, cursor_slots_available=cursor_slots_available, tier=tier)
     _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num, codex_slots_available=codex_slots_available)
     scout_status = "na"
     scout_fail_reason = ""
