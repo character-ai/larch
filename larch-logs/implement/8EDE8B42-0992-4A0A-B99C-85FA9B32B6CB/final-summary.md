@@ -1,15 +1,16 @@
-## /implement run 8EDE8B42-0992-4A0A-B99C-85FA9B32B6CB: shipping
+## /implement run 8EDE8B42-0992-4A0A-B99C-85FA9B32B6CB: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: DONE
 - Force: true
 - **Duration**: 00:34:24
-- **Cost**: 💰 TOTAL ~$11.13: Claude $8.86, Codex-5.5 $0.00, Codex-mini $0.06, Cursor $1.80, Claude (subprocess) $0.41  |  Tokens: 14985k
+- **Cost**: 💰 TOTAL ~$13.13: Claude $10.85, Codex-5.5 $0.00, Codex-mini $0.06, Cursor $1.80, Claude (subprocess) $0.42  |  Tokens: 17611k
 - **Issue**: #6603: https://github.com/character-ai/larch/issues/6603
+- **PR**: #6607: https://github.com/character-ai/larch/pull/6607
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +77/-3, larch-logs +796/-0
 - **OOS filed**: 0
 - **Exec issues**: 7
 - **Warnings**: 1
@@ -68,7 +69,3 @@ cursor/validity-vote (via fallback)      │                              ██
 **Reviewer slot failures**: 2
 - codex/correctness: 1
 - codex/testing: 1
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
