@@ -46,9 +46,9 @@ MAKEFILE="$ROOT/Makefile"
 STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
 STEP3B_ENTRY_MD="$ROOT/skills/design/scripts/design-step3b-entry.md"
 STEP3B_SANITIZE="$ROOT/skills/design/scripts/design-step3b-sanitize.sh"
-LOAD_LITERAL='Read and apply ##'
-CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
-WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
+FINAL_SUMMARY_BGJOB_CONTRACT='Use shared bgjob wait for final-summary launch/rejoin/`WAIT`/`DEAD`/`DONE`.'
+FINAL_SUMMARY_RESULT_ENV='result env `$DESIGN_TMPDIR/bgjob/design-step-final-summary.result.env`'
+FINAL_SUMMARY_REQUIRED_KVS='require `BGJOB_RC=0` and `FINAL_SUMMARY_PATH`'
 RESUME_BACKREF_LITERAL='Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above.'
 FINAL_SUMMARY_FENCE_ANCHOR='design-step-final-summary.sh --outcome'
 STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
@@ -201,11 +201,12 @@ retired_paths='design-step0-parse.sh design-step0-session.sh design-step0-route.
 contains "$SKILL_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session' 'Step 0 session fence must call direct Python verb'
 contains "$AGENTS_MD" 'prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with the relevant terminal sentinel absent also mean silent yield.' 'AGENTS.md must pin /design repeat silent-yield carve-out'
 contains "$SKILL_MD" 'NEVER use the `Monitor` tool anywhere within the `/design` orchestrator' 'Design anti-patterns must retain Monitor ban stub'
-contains "$SKILL_MD" 'the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn' 'Design anti-patterns must retain foreground-probe primary guidance'
+contains "$SKILL_MD" 'Use the shared bgjob wait contract for migrated long helpers, not Bash polling loops.' 'Design anti-patterns must retain bgjob wait primary guidance'
 contains "$SKILL_MD" 'NEVER launch a background recovery waiter' 'Design anti-patterns must retain background recovery waiter ban'
 contains "$SKILL_MD" 'Do NOT fall back to Monitor' 'Design anti-patterns must retain Monitor fallback ban'
-contains "$SKILL_MD" 'NEVER act on empty-output or prefix-identical repeat `<task-notification>` during `/design` immediate-background waits' 'Design anti-pattern #5 title must cover repeat notifications'
-contains "$SKILL_MD" '**Apply in order:** (0) exactly one classification `Read` of the active `tasks/*.output`; (1) missing or whitespace-only task-output bytes → silent yield; (2) prefix-identical repeat non-empty task-output bytes (first 200 chars)' 'Design anti-pattern #5 must pin ordered repeat handling'
+contains "$SKILL_MD" 'NEVER act on launcher stdout, `DONE` alone, or compatibility sentinels during `/design` bgjob waits' 'Design anti-pattern #5 title must cover bgjob waits'
+contains "$SKILL_MD" '`BGJOB_STATUS=WAIT` means run the identical `bgjob wait` again with no intervening prose or tools.' 'Design anti-pattern #5 must pin WAIT repeat handling'
+contains "$SKILL_MD" '`BGJOB_STATUS=DONE` permits normal continuation only when `BGJOB_RC=0` and the required KVs are present in the bgjob result env.' 'Design anti-pattern #5 must pin DONE result-env handling'
 contains "$SKILL_MD" '`${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`' 'Design anti-patterns must point detailed recovery to design-background-wait'
 contains "$SKILL_MD" 'NEVER treat an AskUserQuestion no-response fallback as an operator answer' 'Design anti-patterns must not treat AskUserQuestion no-response as an answer'
 contains "$SHARED_DESIGN_WAIT_MD" 'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.' 'Shared design wait must own Step 3 completion-condition literal'
@@ -244,25 +245,25 @@ check_context "$SKILL_MD" \
   "8" \
   'shared bgjob wait contract'
 check_context "$SKILL_MD" \
-  '/design Final summary block uses the immediate-background load contract' \
+  '/design Final summary block uses the bgjob wait contract' \
   '**When**: after `DESIGN_TMPDIR` exists' \
   "25" \
-  "$LOAD_LITERAL Immediate-background wait rule"
+  "$FINAL_SUMMARY_BGJOB_CONTRACT"
 check_context "$SKILL_MD" \
-  '/design Final summary block pins durable completion confirmation purpose' \
+  '/design Final summary block names bgjob result env' \
   '**When**: after `DESIGN_TMPDIR` exists' \
   "25" \
-  "$CONFIRMATION_DURABLE_COMPLETION"
+  "$FINAL_SUMMARY_RESULT_ENV"
 check_context "$SKILL_MD" \
-  '/design Final summary block pins WAIT-when-absent recovery' \
+  '/design Final summary block pins required success KVs' \
   '**When**: after `DESIGN_TMPDIR` exists' \
   "25" \
-  "$WAIT_WHEN_ABSENT"
+  "$FINAL_SUMMARY_REQUIRED_KVS"
 check_context_before "$SKILL_MD" \
-  '/design Final summary load contract precedes its background fence' \
+  '/design Final summary bgjob contract precedes its launcher fence' \
   "$FINAL_SUMMARY_FENCE_ANCHOR" \
   "20" \
-  "$LOAD_LITERAL Immediate-background wait rule"
+  "$FINAL_SUMMARY_BGJOB_CONTRACT"
 check_context_before_step3_launch "$SKILL_MD" \
   '/design Step 3 launch load contract precedes its bgjob fence' \
   "20" \

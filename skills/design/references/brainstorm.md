@@ -18,7 +18,7 @@ Before launching each external slot (framing, scope) and before composing the al
 
 Step 1d.5 **overrides** the generic “never halt after Bash” anxiety **only** for the narrow case: after externals return and you print the **brainstorm synthesis digest** once, you may yield the turn so the operator can speak in the discussion loop below.
 
-**Hard prohibition (non-negotiable)**: Do **NOT** use `ScheduleWakeup`, wall-clock `sleep` polling loops, or Monitor-driven polling to wait for brainstorm externals or operator replies. Follow Bash `<task-notification>` / blocking collector semantics per `BASH_AUTHORING.md`. Do not add summary/handoff prose that masquerades as a parent-skill terminal.
+**Hard prohibition (non-negotiable)**: Do **NOT** use `ScheduleWakeup`, wall-clock `sleep` polling loops, Monitor-driven polling, or Claude background waits for brainstorm externals or operator replies. Use foreground `bgjob start` plus chunked `bgjob wait` for external lanes. Do not add summary/handoff prose that masquerades as a parent-skill terminal.
 
 ---
 
@@ -63,28 +63,40 @@ External review **Agent** fallbacks return **text only** to the parent session. 
 
 ## External launches (representative)
 
-Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals, matching the long-running review launch family. Capture failures under the launch-failure sink that matches the slot's canonical output path, and append via `run-log append-failure` during collection.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/shared/bgjob-wait.md` before launching or waiting on external brainstorm lanes. Each parallel external lane MUST use a unique bgjob `--step` slug and its own merge-result env so registry rows, stdout/stderr logs, and result envs cannot clobber each other. Use `design-brainstorm-framing` for the framing lane and `design-brainstorm-scope` for the scope lane. Capture failures under the launch-failure sink that matches the slot's canonical output path, and append via `run-log append-failure` during collection.
 
 Canonical pairings:
 
-- **Framing** output: `$DESIGN_TMPDIR/cursor-brainstorm-output.txt`; matching failure sink: `$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log`.
-- **Scope** output: `$DESIGN_TMPDIR/codex-brainstorm-output.txt`; matching failure sink: `$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log`.
+- **Framing** output: `$DESIGN_TMPDIR/cursor-brainstorm-output.txt`; matching failure sink: `$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log`; bgjob step: `design-brainstorm-framing`; merge input: `$DESIGN_TMPDIR/.design-brainstorm-framing-result.env`.
+- **Scope** output: `$DESIGN_TMPDIR/codex-brainstorm-output.txt`; matching failure sink: `$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log`; bgjob step: `design-brainstorm-scope`; merge input: `$DESIGN_TMPDIR/.design-brainstorm-scope-result.env`.
 
-The launcher `.meta` file's `STDERR_SINK=` value must point at the matching failure log for the same output path. Mismatched sink/output pairs can create `External Reviewer Issues` rows that collect mode cannot ingest.
+Before every fresh external lane start, truncate or recreate that lane's merge input. The launcher `.meta` file's `STDERR_SINK=` value must point at the matching failure log for the same output path. Mismatched sink/output pairs can create `External Reviewer Issues` rows that collect mode cannot ingest.
 
 **Framing** (when the registry-selected tool is external and available):
 
-**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 1260000`.**
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+  --step design-brainstorm-framing \
+  --tmpdir "$DESIGN_TMPDIR" \
+  --budget-s 1260 \
+  --merge-result-env "$DESIGN_TMPDIR/.design-brainstorm-framing-result.env" \
+  -- \
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
 ```
 
 **Scope** (when the registry-selected tool is external and available):
 
-**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 1260000`.**
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+  --step design-brainstorm-scope \
+  --tmpdir "$DESIGN_TMPDIR" \
+  --budget-s 1260 \
+  --merge-result-env "$DESIGN_TMPDIR/.design-brainstorm-scope-result.env" \
+  -- \
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
 ```
+
+Fresh-launch stdout for each lane must be exactly `BGJOB_STATUS=STARTED STEP=<lane-step> PGID=<n>`. Wait on each launched lane with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step <lane-step> --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270` and timeout `330000`. `BGJOB_STATUS=WAIT` means the next action for that lane is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep. After `BGJOB_STATUS=DONE`, read `$DESIGN_TMPDIR/bgjob/<lane-step>.result.env`; continue to collection only when `BGJOB_RC=0`. `DEAD`, missing `BGJOB_RC`, non-zero `BGJOB_RC`, `BGJOB_RC=timeout`, or `BGJOB_RC=orphaned` uses the existing launch-failure and dirty-tree recovery path.
 
 **Always-Claude pragmatic**: run in the parent session (Agent or inline) using `<BRAINSTORM_PRAGMATIC_PROMPT>` embedded in `<CLAUDE_BRAINSTORM_ASSEMBLED_PROMPT>`; merge result into synthesis input (no `python/cli.py agent collect-results` row required for a purely in-session path).
 

@@ -69,6 +69,9 @@ def design_write_merge_env(*, path: Path, design_tmpdir: Path, rows: Iterable[tu
             raise ValueError(msg)
         safe_rows.append((key, text))
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        msg = f"merge env parent is not a regular directory: {path.parent}"
+        raise OSError(msg)
     larch_io.atomic_write(path=path, text=larch_io.format_kvs(safe_rows), nofollow=True, mode=0o600)
 
 
@@ -225,6 +228,7 @@ def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
 
 @contextlib.contextmanager
 def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid: str = ""):
+    """Retained only for legacy hook compatibility until the bg-wait cleanup."""
     tmpdir = Path(design_tmpdir)
     marker = tmpdir / ".bg-wait-active"
     tmp = tmpdir / f".bg-wait-active.tmp.{os.getpid()}"
