@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The plan only requires a sentinel-based completeness check; it does not require the unsafe bare-grep pattern described, so this is implementation-style over-specification rather than a necessary fix.

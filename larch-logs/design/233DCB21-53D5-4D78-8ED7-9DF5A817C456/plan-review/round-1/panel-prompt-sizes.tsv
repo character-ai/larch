@@ -1,0 +1,14 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	23016	5754	13583	3396	9433	2359		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	18641	4661	13310	3328	5331	1333		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18626	4657	13295	3324	5331	1333		0	0
+design Step 3	phase1	1	dyn-cursor-plan-bash-harness-reliability	plan-review	cursor	dyn-cursor-plan-bash-harness-reliability.txt	23335	5834	13449	3363	9886	2472		0	0
+design Step 3	phase1	1	dyn-codex-plan-bash-harness-reliability	plan-review	codex	dyn-codex-plan-bash-harness-reliability.txt	18945	4737	13161	3291	5784	1446		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	18639	4660	13308	3327	5331	1333		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	23007	5752	13574	3394	9433	2359		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	18617	4655	13286	3322	5331	1333		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	23029	5758	13596	3399	9433	2359		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	23031	5758	13598	3400	9433	2359		0	0
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	16381	4096	9167	2292	7214	1804		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	16381	4096	9167	2292	7214	1804		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	16381	4096	9167	2292	7214	1804		0	0
