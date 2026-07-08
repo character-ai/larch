@@ -29,6 +29,13 @@ from larch.report import tokens
 from larch.calibration import difficulty
 
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
+_STALLED_OUTCOME_LINE_RE = re.compile(
+    r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*(?:❌[ \t]+)?stalled[ \t]*$",
+    re.IGNORECASE,
+)
+_LEGACY_DONE_OUTCOME_LINE_RE = re.compile(
+    r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*DONE[ \t]*$",
+)
 
 
 _emit_kv = pr_body._emit_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
@@ -571,7 +578,8 @@ def _summary_stalled_heading_index(lines: Sequence[str]) -> int | None:
 
 def _summary_stalled_outcome_index(lines: list[str]) -> int | None:
     for idx, line in enumerate(lines):
-        if re.match(r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*stalled[ \t]*$", line.rstrip("\n"), re.IGNORECASE):
+        stripped = line.rstrip("\n")
+        if _STALLED_OUTCOME_LINE_RE.match(stripped) or _LEGACY_DONE_OUTCOME_LINE_RE.match(stripped):
             return idx
     return None
 
@@ -622,13 +630,10 @@ def reconcile_stalled_summary_from_manifest(run_dir: Path) -> bool:
     lines[heading_idx] = rewritten_heading + newline
     outcome_line = lines[outcome_idx]
     outcome_newline = "\n" if outcome_line.endswith("\n") else ""
-    lines[outcome_idx] = f"- **Outcome**: DONE{outcome_newline}"
+    recovered_display: str = pr_body._map_outcome_display("merged")  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001 - reuse shared outcome display mapping
+    lines[outcome_idx] = f"- **Outcome**: {recovered_display}{outcome_newline}"
     rewritten = "".join(lines)
-    if re.search(
-        r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*stalled[ \t]*$",
-        rewritten,
-        re.MULTILINE | re.IGNORECASE,
-    ):
+    if _STALLED_OUTCOME_LINE_RE.search(rewritten):
         return False
     larch_io.atomic_write(summary, rewritten, prefix=".final-summary-", nofollow=True)
     return True

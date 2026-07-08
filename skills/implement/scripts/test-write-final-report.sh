@@ -145,11 +145,11 @@ assert_contains 'https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'sum
 assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$TMP_ROOT/content.md")" 'summary includes run-summary sentinel'
 assert_contains '## /implement run run-5: merged' "$(cat "$TMP_ROOT/content.md")" 'summary title shows merged outcome'
 assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$TMP_ROOT/content.md")" 'happy path includes bucketed line counts'
-assert_contains '- **Outcome**: DONE' "$(cat "$TMP_ROOT/content.md")" 'success path renders DONE outcome'
+assert_contains '- **Outcome**: ✅ DONE' "$(cat "$TMP_ROOT/content.md")" 'success path renders DONE outcome'
 assert_not_contains '- **Mode**:' "$(cat "$TMP_ROOT/content.md")" 'success path omits Mode bullet'
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
 assert_contains '## /implement run run-5: merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary title merged'
-assert_contains '- **Outcome**: DONE' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary renders DONE outcome on success'
+assert_contains '- **Outcome**: ✅ DONE' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary renders DONE outcome on success'
 assert_not_contains '- **Mode**:' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary omits Mode bullet'
 
 # Comment-only path leaves the tracked run-log file untouched while still
@@ -197,7 +197,7 @@ printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=true
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-stall.md" \
       "$HELPER" --implement-tmpdir "$impl_st")
 assert_contains 'STATUS=ok' "$out" 'stalled path status ok'
-assert_contains '- **Outcome**: STALLED' "$(cat "$TMP_ROOT/content-stall.md")" 'stalled outcome in summary'
+assert_contains '- **Outcome**: ❌ STALLED' "$(cat "$TMP_ROOT/content-stall.md")" 'stalled outcome in summary'
 
 # Design-only outcome
 impl_do="$TMP_ROOT/impl-do"; mkdir -p "$impl_do"
@@ -217,7 +217,7 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-do.md
       "$HELPER" --implement-tmpdir "$impl_do")
 assert_contains 'STATUS=ok' "$out" 'design-only status ok'
 assert_contains '## /implement run run-do: design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only title'
-assert_contains '- **Outcome**: DONE' "$(cat "$TMP_ROOT/content-do.md")" 'design-only success renders DONE outcome'
+assert_contains '- **Outcome**: ✅ DONE' "$(cat "$TMP_ROOT/content-do.md")" 'design-only success renders DONE outcome'
 
 # BAIL_NEEDS_USER_INPUT → distinct outcome when still bailed
 impl_bu="$TMP_ROOT/impl-bu"; mkdir -p "$impl_bu"
@@ -774,15 +774,15 @@ assert_eq "1" "$(grep -c '^LINES_STATUS=' "$impl_line_stale/ship-pr-state.sh")" 
 assert_eq "17" "$(awk -F= '$1=="CODE_ADDED"{print $2; exit}' "$impl_line_stale/ship-pr-state.sh")" 'line-count state merge stores latest CODE_ADDED'
 
 for outcome_case in \
-    "merged:$impl_dir:DONE:present" \
-    "stalled:$impl_st:STALLED:present" \
-    "design-only:$impl_do:DONE:absent" \
+    "merged:$impl_dir:✅ DONE:present" \
+    "stalled:$impl_st:❌ STALLED:present" \
+    "design-only:$impl_do:✅ DONE:absent" \
     "bailed-needs-user-input:$impl_bu:bailed-needs-user-input:absent" \
     "bailed:$impl_bl:bailed:absent" \
-    "forked-dry-run:$TMP_ROOT/impl-forked:DONE:present" \
-    "pr-created:$TMP_ROOT/impl-pr-created:DONE:present" \
-    "pr-created-draft:$TMP_ROOT/impl-pr-created-draft:DONE:present" \
-    "force-merged-externally:$TMP_ROOT/impl-force-merged:DONE:present"
+    "forked-dry-run:$TMP_ROOT/impl-forked:✅ DONE:present" \
+    "pr-created:$TMP_ROOT/impl-pr-created:✅ DONE:present" \
+    "pr-created-draft:$TMP_ROOT/impl-pr-created-draft:✅ DONE:present" \
+    "force-merged-externally:$TMP_ROOT/impl-force-merged:✅ DONE:present"
 do
     IFS=: read -r expected fixture expect_outcome_display expect_pr <<EOF
 $outcome_case

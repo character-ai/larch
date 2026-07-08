@@ -1091,7 +1091,7 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
     assert not skip1.skipped
     stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert ": stalled" in stalled_summary
-    assert "- **Outcome**: STALLED" in stalled_summary
+    assert "- **Outcome**: ❌ STALLED" in stalled_summary
 
     _ = state.write_text(
         "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPR_URL=https://example.test/pr/12\n"
@@ -1104,9 +1104,10 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
     assert not skip2.skipped
     recovered_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert ": pr-created" in recovered_summary
-    assert "- **Outcome**: DONE" in recovered_summary
+    assert "- **Outcome**: ✅ DONE" in recovered_summary
     assert "- **Outcome**: stalled" not in recovered_summary
     assert "- **Outcome**: STALLED" not in recovered_summary
+    assert "- **Outcome**: ❌ STALLED" not in recovered_summary
 
 
 @pytest.mark.parametrize("heading_separator", [": ", " — "])
@@ -1134,9 +1135,10 @@ def test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcom
 
     text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: DONE" in text
+    assert "- **Outcome**: ✅ DONE" in text
     assert "- **Outcome**: stalled" not in text
     assert "- **Outcome**: STALLED" not in text
+    assert "- **Outcome**: ❌ STALLED" not in text
 
 
 def test_manifest_only_stalled_summary_reconciliation_rewrites_uppercase_outcome(
@@ -1162,9 +1164,66 @@ def test_manifest_only_stalled_summary_reconciliation_rewrites_uppercase_outcome
 
     text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: DONE" in text
+    assert "- **Outcome**: ✅ DONE" in text
     assert "- **Outcome**: stalled" not in text
     assert "- **Outcome**: STALLED" not in text
+    assert "- **Outcome**: ❌ STALLED" not in text
+
+
+def test_manifest_only_stalled_summary_reconciliation_rewrites_emoji_outcome(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc: stalled\n\n- **Outcome**: ❌ STALLED\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+
+    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
+
+    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert "## /implement run run-abc: merged" in text
+    assert "- **Outcome**: ✅ DONE" in text
+    assert "- **Outcome**: stalled" not in text
+    assert "- **Outcome**: STALLED" not in text
+    assert "- **Outcome**: ❌ STALLED" not in text
+
+
+def test_manifest_only_stalled_summary_reconciliation_rewrites_legacy_done_outcome(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc: stalled\n\n- **Outcome**: DONE\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+
+    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
+
+    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert "## /implement run run-abc: merged" in text
+    assert "- **Outcome**: ✅ DONE" in text
+    assert "- **Outcome**: DONE" not in text
 
 
 def test_manifest_only_stalled_summary_reconciliation_scans_prelude(
@@ -1192,9 +1251,10 @@ def test_manifest_only_stalled_summary_reconciliation_scans_prelude(
     text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert text.startswith("Preface line\n\n")
     assert "## /implement run run-abc: merged" in text
-    assert "- **Outcome**: DONE" in text
+    assert "- **Outcome**: ✅ DONE" in text
     assert "- **Outcome**: stalled" not in text
     assert "- **Outcome**: STALLED" not in text
+    assert "- **Outcome**: ❌ STALLED" not in text
 
 
 def test_manifest_only_stalled_summary_outcome_bullet_without_heading_does_not_reconcile(

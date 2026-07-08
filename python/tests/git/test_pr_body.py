@@ -634,9 +634,9 @@ def test_render_run_summary_splits_codex_by_model() -> None:
 @pytest.mark.parametrize(
     ("outcome", "expected"),
     [
-        ("merged", "DONE"),
-        ("approved", "DONE"),
-        ("stalled", "STALLED"),
+        ("merged", "✅ DONE"),
+        ("approved", "✅ DONE"),
+        ("stalled", "❌ STALLED"),
         ("bailed-needs-user-input", "bailed-needs-user-input"),
     ],
 )
@@ -657,10 +657,10 @@ def test_render_run_summary_emits_outcome_first_and_omits_mode() -> None:
 
     assert lines[0] == "## /implement run run1: merged"
     assert lines[1] == ""
-    assert lines[2] == "- **Outcome**: DONE"
+    assert lines[2] == "- **Outcome**: ✅ DONE"
     assert "- **Mode**:" not in body
-    assert lines.index("- **Outcome**: DONE") < lines.index("- **Path**: post-plan")
-    assert lines.index("- **Outcome**: DONE") < lines.index("- **Duration**: N/A")
+    assert lines.index("- **Outcome**: ✅ DONE") < lines.index("- **Path**: post-plan")
+    assert lines.index("- **Outcome**: ✅ DONE") < lines.index("- **Duration**: N/A")
 
 
 def test_render_run_summary_main_emits_codex_model_split(capsys: pytest.CaptureFixture[str]) -> None:

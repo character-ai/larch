@@ -83,9 +83,11 @@ if printf '%s\n' "$step18_block" | grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-em
     fail 'Step 18 Bash block must not touch .step17-emitted before orchestrator emit'
 fi
 # shellcheck disable=SC2016
-grep -Fq 'When the shared profile emits a non-empty marker body as plain chat markdown, write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that plain-chat emission.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 sentinel after shared emit'
+grep -Fq 'When the shared profile caches a non-empty marker body, retain it as the Step 17 cache for deferred terminal emit.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 deferred cache'
+grep -Fq 'Use `true` only when a non-empty Step 17 marker body was cached for deferred terminal emit; otherwise use `false`.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18 sentinel to a cached body'
 # shellcheck disable=SC2016
-grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission from the shared marker-first profile using the Step 17 source or the branch-qualified Step 18b source.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #17 shared-profile exception prose'
+grep -Fq 'The only final orchestrator-text addition permitted is one verbatim full-body emission from the selected cached Step 18 or Step 17 source at terminal text position.' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #17 terminal exception prose'
+grep -Fq 'terminal chat emit must use that post-Step-18b marker body even if a Step 17 cache exists' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 18-over-Step 17 precedence'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'
 grep -Fq -- '--post-publish-only' "$design_skill" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
@@ -96,7 +98,7 @@ grep -Fq 'source description: task-output, wrapper stdout, or bgjob `DONE` stdou
 grep -Fq 'caller-named source already in the orchestrator context window' "$shared_final_summary" || fail 'shared final-summary emit must parameterize marker source'
 grep -Fq '`/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.' "$shared_final_summary" || fail 'shared final-summary emit must distinguish implement source from task notifications'
 # shellcheck disable=SC2016
-grep -Fq 'Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on absent/invalid markers and caller policy'
+grep -Fq 'Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read/cache the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on absent/invalid markers and caller policy'
 grep -Fq 'Do not extract or emit summary bodies from marker pairs on `/design` paths.' "$shared_final_summary" || fail 'shared final-summary emit must forbid /design marker-body extraction'
 grep -Fq 'When the caller Read fallback policy is `forbidden`, skip Read fallback entirely.' "$shared_final_summary" || fail 'shared final-summary emit must define forbidden Read fallback'
 grep -Fq 'Only when the caller sidecar policy is `allowed`' "$shared_final_summary" || fail 'shared final-summary emit must gate sidecar follow-on on caller policy'
@@ -114,14 +116,14 @@ grep -Fq 'non-green path: captured foreground `step-18.sh --phase finalize` Bash
 grep -Fq 'Skip marker extraction entirely; do not scan prior tool output for markers.' "$shared_final_summary" || fail 'shared final-summary emit must pin file-only no-marker behavior'
 
 # shellcheck disable=SC2016
-grep -Fq 'is to follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL anti-halt must point to shared Read-always readiness profile'
-grep -Fq 'only when `_publish_rc` is 0, 1, or 3' "$design_skill" || fail 'design SKILL must pin post-driver full-body emit gate with rc 4 carve-out'
+grep -Fq 'The `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` reads/caches' "$design_skill" || fail 'design SKILL anti-halt must point to shared Read-always readiness profile'
+grep -Fq 'when `_publish_rc` is 0, 1, or 3, including `_publish_rc`=1 after plan-block-write failure' "$design_skill" || fail 'design SKILL must pin post-driver full-body cache gate with rc 4 carve-out'
 # shellcheck disable=SC2016
 grep -Fq 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL must pin Step 0b file-only profile'
 # shellcheck disable=SC2016
 grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$design_skill" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
 # shellcheck disable=SC2016
-grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$design_skill" || fail 'design SKILL must pin full-body emit regardless of PLAN_WRITE_OK'
+grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$design_skill" || fail 'design SKILL must pin full-body Read/cache regardless of PLAN_WRITE_OK'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$design_skill" || fail 'design SKILL must pin anti-recap prose'
 grep -Fq 'parenthetical cost paraphrase such as `~$10.46`' "$design_skill" || fail 'design SKILL must pin no-cost-paraphrase prose'
 grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
@@ -129,10 +131,10 @@ grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follo
 grep -Fq 'Parse `FINAL_SUMMARY_PATH=<path>` from final `bgjob wait` `DONE` stdout' "$finalize_step5" || fail 'Step 5c abort path must name bgjob DONE stdout source and cite shared readiness profile'
 grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5c abort must name bgjob result env source and cite shared readiness profile'
 grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 must follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared readiness profile'
-grep -Fq 'Complete the shared sidecar follow-on before any cancellation line or exit.' "$design_skill" || fail 'cancellation fence must preserve sidecar-before-exit ordering'
-grep -Fq 'Complete the shared sidecar follow-on before stopping.' "$finalize_step5" || fail 'Step 5c abort must preserve sidecar-before-stop ordering'
-grep -Fq 'Apply this emit **before** the plan-write failure warning or success footer decisions below.' "$design_skill" || fail 'Step 5c item 5 must preserve warning/footer ordering'
-grep -Fq 'No free-form recap may appear between or after those pieces.' "$design_skill" || fail 'Step 5d must preserve no-recap ordering token'
+grep -Fq 'Complete the shared sidecar Read/cache before any cleanup, cancellation line, or exit.' "$design_skill" || fail 'cancellation fence must preserve sidecar Read/cache ordering'
+grep -Fq 'follow the `/design` Read-always readiness profile to Read/cache the final summary and allowed sidecars before tmpdir loss' "$finalize_step5" || fail 'Step 5c abort must preserve sidecar Read/cache before tmpdir loss'
+grep -Fq 'Apply terminal emit **after** the plan-write failure warning or success footer decisions below, and after Step 6 cleanup when cleanup runs.' "$design_skill" || fail 'Step 5c item 5 must preserve deferred terminal ordering'
+grep -Fq 'No free-form recap may appear between or after terminal emission.' "$design_skill" || fail 'Step 5d must preserve no-recap terminal ordering token'
 grep -Fq 'Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.' "$shared_final_summary" || fail 'shared final-summary emit must pin recap/no-cost rule'
 render_exit_count=$(grep -cF '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill") || render_exit_count=0
 test "$render_exit_count" -ge 2 || fail 'design SKILL must pin render-exit carve-out in preamble and Step 5c item 5'

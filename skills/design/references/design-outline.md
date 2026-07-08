@@ -116,9 +116,10 @@ Bound the invariant outline remediation loop with a counter persisted at `$DESIG
 On **Cancel**:
 
 1. Export `SUMMARY_OUTCOME=cancelled-outline`.
-2. Execute the `### Final summary block` fenced bash block from `SKILL.md` Step 0b. Do **not** call `python/cli.py design render-final-summary` directly from prompt-side orchestration.
+2. Execute the `### Final summary block` fenced bash block from `SKILL.md` Step 0b through its Read/cache step. Do **not** call `python/cli.py design render-final-summary` directly from prompt-side orchestration.
 3. Print `**ℹ /design cancelled by operator (outline gate).**`.
-4. Exit 0. `$DESIGN_TMPDIR` is preserved because `PLAN_WRITE_OK=true` is not set. **Cancel** does **not** write `$DESIGN_TMPDIR/.outline-approved`.
+4. Emit the cached final summary as terminal plain chat with no following tool call or recap.
+5. Exit 0. `$DESIGN_TMPDIR` is preserved because `PLAN_WRITE_OK=true` is not set. **Cancel** does **not** write `$DESIGN_TMPDIR/.outline-approved`.
 
 ## Downstream consumer contract (additive)
 
