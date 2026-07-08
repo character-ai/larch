@@ -246,6 +246,72 @@ def test_monitor_uses_recorded_child_identity_on_orphan(tmp_path: Path, monkeypa
     assert calls["reason"] == "orphaned"
     assert calls["rc"] == "orphaned"
     assert calls["spec"] == spec
+    stderr_text = (tmp_path / "bgjob/demo-step.stderr.log").read_text(encoding="utf-8")
+    assert "BGJOB_ORPHAN_REASON=missing-pid" in stderr_text
+    assert "OWNER_FAILURE_COUNT=3" in stderr_text
+
+
+def test_monitor_starts_owner_grace_after_consecutive_validation_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    child_identity = _identity(pid=111, pgid=222, signature="python -c")
+    owner_identity = _identity(pid=333, pgid=444, signature="owner")
+    spec = model.JobSpec(
+        step="demo-step",
+        tmpdir=tmp_path,
+        log_dir=tmp_path / "bgjob",
+        budget_s=10,
+        command=(sys.executable, "-c", "print('hello')"),
+        run_id="run-1",
+        owner=model.OwnerIdentity(recorded=owner_identity),
+    )
+    child = SimpleNamespace(
+        poll=lambda: None,
+        wait=_wait_ok,
+    )
+    calls: dict[str, object] = {}
+    validations: list[process_identity.ValidationResult] = [
+        process_identity.ValidationResult(ok=False, reason="missing-pid"),
+        process_identity.ValidationResult(ok=False, reason="identity-probe-timeout"),
+        process_identity.ValidationResult(ok=True, reason="ok"),
+        process_identity.ValidationResult(ok=False, reason="missing-pid"),
+        process_identity.ValidationResult(ok=False, reason="missing-pid"),
+        process_identity.ValidationResult(ok=False, reason="identity-probe-timeout"),
+    ]
+    monotonic_values = iter([0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 5.0])
+
+    def fake_validate(*, recorded: process_identity.RecordedProcessIdentity, runner: object = None) -> process_identity.ValidationResult:
+        _ = (recorded, runner)
+        return validations.pop(0)
+
+    def fake_terminate(identity: process_identity.RecordedProcessIdentity, *, reason: str) -> None:
+        calls.update(identity=identity, reason=reason)
+
+    def fake_write_result(*, spec: model.JobSpec, rc: str, elapsed_s: int) -> None:
+        calls.update(rc=rc, elapsed_s=elapsed_s, spec=spec)
+
+    def fake_unlink(path: Path) -> None:
+        calls.update(unlinked=path)
+
+    monkeypatch.setattr(daemon.config, "BGJOB_OWNER_GRACE_S", 0.0)
+    monkeypatch.setattr(daemon.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(daemon.time, "sleep", _sleep_noop)
+    monkeypatch.setattr(daemon.process_identity, "validate_process_identity", fake_validate)
+    monkeypatch.setattr(daemon, "_terminate_child_group", fake_terminate)
+    monkeypatch.setattr(daemon, "write_result", fake_write_result)
+    monkeypatch.setattr(daemon.registry, "unlink_entry", fake_unlink)
+
+    popen_child = cast("subprocess.Popen[bytes]", child)
+    rc = daemon._monitor(spec, popen_child, child_identity, tmp_path / "registry.env")  # pyright: ignore[reportPrivateUsage]
+
+    assert rc == 0
+    assert not validations
+    assert calls["identity"] == child_identity
+    assert calls["reason"] == "orphaned"
+    assert calls["rc"] == "orphaned"
+    stderr_text = (tmp_path / "bgjob/demo-step.stderr.log").read_text(encoding="utf-8")
+    assert "BGJOB_ORPHAN_REASON=identity-probe-timeout" in stderr_text
+    assert "OWNER_FAILURE_COUNT=3" in stderr_text
 
 
 def test_monitor_treats_dead_child_live_daemon_as_pending(
