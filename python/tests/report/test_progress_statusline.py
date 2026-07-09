@@ -191,14 +191,19 @@ def test_progress_note_run_id_writes_only_explicit_run_log(tmp_path: Path, monke
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
     repo.mkdir()
+    seed_run_id = "design-20260708.1"
     run_id = "implement-20260708.1"
+
+    progress_file.activate_run(repo, seed_run_id)
+    current_path = progress_file.current_run_path(repo)
+    current_before = current_path.read_text(encoding="utf-8")
 
     assert progress_file.progress_note_main(
         ["--repo-root", str(repo), "--run-id", run_id, "--skill", "implement", "--step", "5", "reviewers", "done"]
     ) == 0
 
     assert progress_file.run_progress_path(repo, run_id).read_text(encoding="utf-8") == "[implement 5] reviewers done\n"
-    assert not progress_file.current_run_path(repo).exists()
+    assert current_path.read_text(encoding="utf-8") == current_before
     assert not progress_file.progress_path(repo).exists()
 
 
@@ -323,6 +328,76 @@ def test_cleanup_old_progress_files_reaps_run_dirs_and_legacy_logs(tmp_path: Pat
     assert symlink_flat.is_symlink()
     assert outside_flat.exists()
     assert outside_run.exists()
+
+
+def test_cleanup_old_progress_files_pins_clone_dir_before_enumeration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    root = progress_file.progress_root()
+    clone_dir = progress_file.progress_clone_dir(repo)
+    clone_dir.mkdir(parents=True)
+    current_path = progress_file.current_run_path(repo)
+    current_path.write_text("active-20260708.1\n", encoding="utf-8")
+
+    now = time.time()
+    old_time = now - 9 * 86400
+
+    original_run = clone_dir / "old-20260708.1"
+    original_run.mkdir()
+    original_log = original_run / progress_file.RUN_BREADCRUMB_FILENAME
+    original_log.write_text("row\n", encoding="utf-8")
+    _ = os.utime(original_run, (old_time, old_time))
+    _ = os.utime(original_log, (old_time, old_time))
+
+    outside_clone = tmp_path / "outside-clone"
+    outside_clone.mkdir()
+    outside_run = outside_clone / "old-20260708.1"
+    outside_run.mkdir()
+    outside_log = outside_run / progress_file.RUN_BREADCRUMB_FILENAME
+    outside_log.write_text("outside\n", encoding="utf-8")
+    _ = os.utime(outside_run, (old_time, old_time))
+    _ = os.utime(outside_log, (old_time, old_time))
+
+    real_clone_dir = tmp_path / "real-clone"
+    swapped = False
+    opened_clone_fd: int | None = None
+    original_iterdir = Path.iterdir
+    original_listdir = progress_file.os.listdir
+    original_open_verified_dir = progress_file._open_verified_dir
+
+    def swap_clone_dir() -> None:
+        nonlocal swapped
+        if swapped:
+            return
+        clone_dir.rename(real_clone_dir)
+        clone_dir.symlink_to(outside_clone, target_is_directory=True)
+        swapped = True
+
+    def traced_open_verified_dir(path: Path) -> int:
+        fd = original_open_verified_dir(path)
+        nonlocal opened_clone_fd
+        if path == clone_dir:
+            opened_clone_fd = fd
+        return fd
+
+    def patched_iterdir(self: Path):
+        if self == clone_dir:
+            swap_clone_dir()
+        yield from original_iterdir(self)
+
+    def patched_listdir(path):
+        if opened_clone_fd is not None and path == opened_clone_fd:
+            swap_clone_dir()
+        return original_listdir(path)
+
+    monkeypatch.setattr(progress_file, "_open_verified_dir", traced_open_verified_dir)
+    monkeypatch.setattr(Path, "iterdir", patched_iterdir)
+    monkeypatch.setattr(progress_file.os, "listdir", patched_listdir)
+
+    assert progress_file.cleanup_old_progress_files(retention_days=7, root=root, now=now) == 1
+    assert not (real_clone_dir / "old-20260708.1").exists()
+    assert (outside_clone / "old-20260708.1").exists()
 
 
 def test_statusline_fail_silent_empty_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

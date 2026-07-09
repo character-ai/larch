@@ -8,7 +8,6 @@ import contextlib
 import hashlib
 import os
 import re
-import shutil
 import stat
 import sys
 import time
@@ -189,6 +188,13 @@ def _open_verified_dir(path: Path) -> int:
     return fd
 
 
+def _readonly_file_flags() -> int:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    return flags
+
+
 def _assert_safe_destination(dir_fd: int, name: str) -> None:
     try:
         stat_result = os.lstat(name, dir_fd=dir_fd)
@@ -331,14 +337,55 @@ def _read_active_run_id(clone_dir: Path) -> str | None:
         return None
 
 
-def _remove_run_dir(run_dir: Path) -> bool:
+def _read_active_run_id_from_dirfd(dir_fd: int) -> str | None:
     try:
-        if run_dir.is_symlink() or not run_dir.is_dir():
-            return False
-        shutil.rmtree(run_dir)
+        fd = os.open(CURRENT_RUN_FILENAME, _readonly_file_flags(), dir_fd=dir_fd)
     except OSError:
-        return False
-    return True
+        return None
+    try:
+        stat_result = os.fstat(fd)
+        if not stat.S_ISREG(stat_result.st_mode):
+            return None
+        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+            fd = -1
+            first_line = handle.readline()
+    finally:
+        if fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+    normalized = first_line.rstrip()
+    if not normalized:
+        return None
+    try:
+        return validate_run_id(normalized)
+    except ValueError:
+        return None
+
+
+def _remove_tree_in_dirfd(dir_fd: int) -> None:
+    try:
+        entries = list(os.listdir(dir_fd))
+    except OSError:
+        return
+    for name in entries:
+        try:
+            stat_result = os.lstat(name, dir_fd=dir_fd)
+        except OSError:
+            continue
+        if stat.S_ISDIR(stat_result.st_mode):
+            try:
+                child_fd = os.open(name, _dir_open_flags(), dir_fd=dir_fd)
+            except OSError:
+                continue
+            try:
+                _remove_tree_in_dirfd(child_fd)
+            finally:
+                os.close(child_fd)
+            with contextlib.suppress(OSError):
+                os.rmdir(name, dir_fd=dir_fd)
+        else:
+            with contextlib.suppress(OSError):
+                os.unlink(name, dir_fd=dir_fd)
 
 
 def _is_clone_hash_name(name: str) -> bool:
@@ -382,27 +429,48 @@ def _clone_dirs_under(progress_dir: Path) -> set[Path]:
 
 def _cleanup_run_dirs_for_clone(clone_dir: Path, *, cutoff: float) -> int:
     try:
-        if clone_dir.is_symlink() or not clone_dir.is_dir():
-            return 0
-        children = list(clone_dir.iterdir())
-        active_run_id = _read_active_run_id(clone_dir)
+        dir_fd = _open_verified_dir(clone_dir)
     except OSError:
         return 0
     removed = 0
-    for child in children:
-        if child.name == CURRENT_RUN_FILENAME:
-            continue
+    try:
+        active_run_id = _read_active_run_id_from_dirfd(dir_fd)
         try:
-            run_id = validate_run_id(child.name)
-            if run_id == active_run_id or child.is_symlink() or not child.is_dir():
+            children = list(os.listdir(dir_fd))
+        except OSError:
+            return 0
+        for child_name in children:
+            if child_name == CURRENT_RUN_FILENAME:
                 continue
-            mtime = _entry_mtime_for_cleanup(child, log_path=child / RUN_BREADCRUMB_FILENAME)
-            if mtime is None or mtime >= cutoff:
+            try:
+                run_id = validate_run_id(child_name)
+            except ValueError:
                 continue
-            if _remove_run_dir(child):
+            try:
+                child_fd = os.open(child_name, _dir_open_flags(), dir_fd=dir_fd)
+            except OSError:
+                continue
+            try:
+                stat_result = os.fstat(child_fd)
+                if not stat.S_ISDIR(stat_result.st_mode) or run_id == active_run_id:
+                    continue
+                try:
+                    log_stat = os.stat(RUN_BREADCRUMB_FILENAME, dir_fd=child_fd, follow_symlinks=False)
+                    mtime = log_stat.st_mtime if stat.S_ISREG(log_stat.st_mode) else stat_result.st_mtime
+                except OSError:
+                    mtime = stat_result.st_mtime
+                if mtime >= cutoff:
+                    continue
+                _remove_tree_in_dirfd(child_fd)
+                try:
+                    os.rmdir(child_name, dir_fd=dir_fd)
+                except OSError:
+                    continue
                 removed += 1
-        except (OSError, ValueError):
-            continue
+            finally:
+                os.close(child_fd)
+    finally:
+        os.close(dir_fd)
     return removed
 
 
