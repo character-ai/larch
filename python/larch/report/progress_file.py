@@ -1,7 +1,13 @@
 # pyright: reportUnusedCallResult=false
 """Per-clone progress breadcrumb writer for larch statuslines."""
 
+# ruff: noqa: PLR2004
 from __future__ import annotations
+
+ASCII_CONTROL_END = 32
+ASCII_DELETE = 127
+C1_CONTROL_START = 0x80
+C1_CONTROL_END = 0x9F
 
 import argparse
 import contextlib
@@ -19,6 +25,10 @@ PROGRESS_DIRNAME = "progress"
 PROGRESS_SUFFIX = ".log"
 _HASH_HEX_CHARS = 16
 _NEWLINE_CHARS = "\n\r"
+_PRINTABLE_ASCII_MIN = 32
+_ASCII_DELETE = 127
+_C1_CONTROL_MIN = 0x80
+_C1_CONTROL_MAX = 0x9F
 
 
 def _cache_home() -> Path:
@@ -59,7 +69,7 @@ def _reject_line_part(value: object, *, label: str) -> str:
     if "\t" in text or any(ch in text for ch in _NEWLINE_CHARS):
         msg = f"{label} must be one line without tabs"
         raise ValueError(msg)
-    if any(ord(ch) < 32 or ord(ch) == 127 or 0x80 <= ord(ch) <= 0x9F for ch in text):
+    if any(ord(ch) < _PRINTABLE_ASCII_MIN or ord(ch) == _ASCII_DELETE or _C1_CONTROL_MIN <= ord(ch) <= _C1_CONTROL_MAX for ch in text):
         msg = f"{label} must not contain control characters"
         raise ValueError(msg)
     if label == "text" and "://" in text:

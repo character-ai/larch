@@ -1,4 +1,5 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false
+# ruff: noqa: ARG001
 from __future__ import annotations
 
 import json
@@ -56,7 +57,7 @@ def test_append_breadcrumb_rechecks_after_mkdir(tmp_path: Path, monkeypatch: pyt
     repo.mkdir()
     calls = 0
 
-    def fake_assert(path: Path) -> None:
+    def fake_assert(_path: Path) -> None:
         nonlocal calls
         calls += 1
         if calls == 2:

@@ -865,7 +865,7 @@ def _review_core_body(
         + ((("PRUNED_COMBOS", dispatch["PRUNED_COMBOS"]),) if dispatch.get("PRUNED_COMBOS") else ())
         + (("PANEL_PRUNED_EMPTY", panel_pruned_empty),)
     )
-    _progress_note(step="5", text=f"launching {intended_slots} reviewers")
+    _progress_note(step="5", text="launching reviewers")
     if panel_pruned_empty == "true" and prune_status == "pruned-empty":
         _snapshot_oos(review_tmpdir=review_tmpdir, stem="prune-skipped", session_env_path=session_env_path)
         for name in ("findings.md", "accepted-findings.md", "rejected-findings.md", "oos.md", "oos-accepted-review.md"):
@@ -891,7 +891,7 @@ def _review_core_body(
         collect_args.append("--claude-output-files")
         collect_args.extend(claude_array)
     logging_util.diagnostic("→ review: consolidating findings")
-    _progress_note(step="5", text=f"collecting reviewer outputs from {launched_slots} reviewers")
+    _progress_note(step="5", text="collecting reviewer outputs")
     collect_result = _call_maybe_override(command=commands.collect, review_name="collect-findings", args=collect_args)
     collect_out = review_tmpdir / "review-core-collect.env"
     _write_text(path=collect_out, text=collect_result.stdout)
