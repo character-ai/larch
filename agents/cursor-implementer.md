@@ -240,7 +240,7 @@ Before writing `<MANIFEST_PATH>`, verify:
 - [ ] `files_touched[].path` and `tests_added_or_modified`: normalized repo-relative paths, not submodules.
 - [ ] `summary_bullets`: WHY, not HOW; public PR body and CHANGELOG copy.
 - [ ] `oos_observations`: only post-triage filed-OOS candidates not fixed here; exclude folded rules 1-2 and SECURITY.md-routed findings; each entry has `title`, `description`, `phase: "implement"`.
-- [ ] `todos_left`: actionable follow-ups, free-form strings.
+- [ ] `todos_left`: actionable deferred implementation work only. Do not list unrun full-suite validation commands, including full `make py-lint` / `make py-test`, when focused relevant checks passed or `/implement`/CI owns later validation.
 - [ ] Manifest `jq -e` self-validation against <MANIFEST_PATH>.tmp exited 0.
 - [ ] For `needs_qa`, qa-pending `jq -e` self-validation against <QA_PENDING_PATH>.tmp exited 0.
 
