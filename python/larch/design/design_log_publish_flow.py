@@ -453,7 +453,8 @@ def _publish_design_logs(
             return (False, "", "", branch, scrub_violations)
         body_file = wt_parent / "pr-body.txt"
         _ = body_file.write_text(
-            f"Automated design log directory for run {request.run_id}. Merged once required CI checks pass.\n",
+            f"Automated design log directory for run {request.run_id}. "
+            f"Merged once required CI checks pass (issue #{request.issue}).\n",
             encoding="utf-8",
         )
         pr = _run(
@@ -466,7 +467,7 @@ def _publish_design_logs(
                 "--base",
                 _default_base_ref(repo_root),
                 "--title",
-                f"chore(larch-logs): design run {request.run_id}",
+                f"chore(larch-logs): design run {request.run_id} (issue #{request.issue})",
                 "--body-file",
                 str(body_file),
                 *repo_args,

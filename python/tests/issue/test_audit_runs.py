@@ -47,9 +47,13 @@ def test_title_design_noncontiguous_compact(capsys):
 
 
 def test_design_run_id_extraction_requires_strict_uuid_title():
-    title = "chore(larch-logs): design run 12345678-1234-1234-1234-123456789ABC"
+    run_id = "12345678-1234-1234-1234-123456789ABC"
+    title = f"chore(larch-logs): design run {run_id}"
     assert audit_runs.match_design_run_log_pr_title(title)
-    assert audit_runs.extract_design_run_log_pr_id(title) == "12345678-1234-1234-1234-123456789ABC"
+    assert audit_runs.extract_design_run_log_pr_id(title) == run_id
+    suffixed = f"chore(larch-logs): design run {run_id} (issue #33)"
+    assert audit_runs.match_design_run_log_pr_title(suffixed)
+    assert audit_runs.extract_design_run_log_pr_id(suffixed) == run_id
     loose = "chore(larch-logs): design run 12345678-extra"
     assert not audit_runs.match_design_run_log_pr_title(loose)
     assert audit_runs.extract_design_run_log_pr_id(loose) == ""

@@ -25,8 +25,8 @@ from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
 
 _CANONICAL = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
-_DESIGN_RUN_TITLE_RE = re.compile(r"^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")
-_DESIGN_RUN_ID_RE = re.compile(r"^chore\(larch-logs\): design run ([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})$")
+_DESIGN_RUN_TITLE_RE = re.compile(r"^chore\(larch-logs\): design run [0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}(?: \(issue #[0-9]+\))?$")
+_DESIGN_RUN_ID_RE = re.compile(r"^chore\(larch-logs\): design run ([0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12})(?: \(issue #[0-9]+\))?$")
 _TERMINAL_RE = re.compile(r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?|shipping)$")
 GENERIC_CODEX_SLOTS = frozenset({"generalist", "codex-plan-generic"})
 
