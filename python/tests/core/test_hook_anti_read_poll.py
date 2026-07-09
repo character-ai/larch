@@ -177,13 +177,21 @@ def test_swap_after_mkdir_rejected(monkeypatch: Any, tmp_path: Path, capsys: Any
 
     def swap_state_dir(state_path: Path) -> None:
         state_path.rmdir()
-        state_path.symlink_to(redirect, target_is_directory=True)
+        redirect.rename(state_path)
 
     monkeypatch.setattr(hook, "AFTER_MKDIR_HOOK", swap_state_dir)
     _run_main(monkeypatch, _event(), tmp_path)
 
     assert capsys.readouterr().out == ""
-    assert not list(redirect.iterdir())
+    state_path = _state_path(tmp_path)
+    assert not state_path.exists()
+
+
+def test_state_parent_uses_private_tmp_fallback(monkeypatch: Any) -> None:
+    monkeypatch.delenv("TMPDIR", raising=False)
+    monkeypatch.setattr(hook, "TMP_FALLBACK", "/private/tmp")
+
+    assert hook._state_parent() == Path("/private/tmp")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_fchmod_uses_opened_fd(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:

@@ -23,7 +23,7 @@ from larch.core import config
 WINDOW_SECONDS: Final = 30
 THRESHOLD_COUNT: Final = 3
 STATE_DIR_NAME: Final = "larch-read-poll"
-TMP_FALLBACK: Final = "/tmp"  # noqa: S108 - hook state contract uses the platform temp root.
+TMP_FALLBACK: Final = "/private/tmp"  # noqa: S108 - hook state contract uses the platform temp root.
 REMINDER_TEXT: Final = "Read-poll detected: repeated identical Read calls. Use one read after state changes instead of polling."
 SAFE_BASENAME_RE: Final = re.compile(r"^[A-Za-z0-9._-]+$")
 _DIGEST_SIZE: Final = 32
@@ -248,13 +248,20 @@ def _open_tmp_root_fd() -> int:
     return fd
 
 
-def _mkdir_state_dir(parent_fd: int, state_path: Path) -> None:
+def _mkdir_state_dir(parent_fd: int) -> None:
     try:
         os.mkdir(STATE_DIR_NAME, 0o700, dir_fd=parent_fd)
     except FileExistsError:
         return
-    if AFTER_MKDIR_HOOK is not None:
-        AFTER_MKDIR_HOOK(state_path)
+
+
+def _assert_same_state_dir(*, parent_fd: int, state_fd: int) -> None:
+    state_stat = os.stat(STATE_DIR_NAME, dir_fd=parent_fd, follow_symlinks=False)
+    opened_stat = os.fstat(state_fd)
+    if not stat.S_ISDIR(state_stat.st_mode) or not stat.S_ISDIR(opened_stat.st_mode):
+        raise _FailOpen("state directory changed")
+    if (state_stat.st_dev, state_stat.st_ino) != (opened_stat.st_dev, opened_stat.st_ino):
+        raise _FailOpen("state directory changed")
 
 
 def open_state_dir() -> int:
@@ -262,10 +269,14 @@ def open_state_dir() -> int:
     _open_supports_dir_fd()
     state_path = _state_parent() / STATE_DIR_NAME
     with _Fd(_open_tmp_root_fd()) as parent:
-        _mkdir_state_dir(parent.fd, state_path)
+        _mkdir_state_dir(parent.fd)
         fd = os.open(STATE_DIR_NAME, _dir_open_flags(), dir_fd=parent.fd)
         try:
             _assert_directory_fd(fd)
+            if AFTER_MKDIR_HOOK is not None:
+                AFTER_MKDIR_HOOK(state_path)
+            # Re-check the current path after the seam so a same-UID swap cannot retarget the fd.
+            _assert_same_state_dir(parent_fd=parent.fd, state_fd=fd)
             os.fchmod(fd, 0o700)
         except BaseException:
             os.close(fd)
