@@ -1,0 +1,1 @@
+Flip progress breadcrumbs from clone-flat logs to the active run selected by `current`. Keep the change limited to the four firm files, with tests for missing or invalid pointers, old run isolation, legacy flat-log ignores, stale mtime behavior, and symlink fail-silent paths.

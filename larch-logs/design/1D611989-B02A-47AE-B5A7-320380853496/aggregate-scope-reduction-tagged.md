@@ -1,0 +1,7 @@
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Focus area**: correctness
+- **Location**: python/larch/report/progress_file.py:121-151
+- **Concern**: [SCOPE-REDUCTION] Default `append_breadcrumb` clone open must use `_open_verified_dir` only, not `_ensure_directory_fd`. Scenario: The plan lists `_ensure_directory_fd` as the primary clone-dir opener for default `append_breadcrumb`, mirroring `append_breadcrumb_for_run`. `_ensure_directory_fd` mkdirs the clone-hash directory before `current` is validated. A call with no prior `activate_run` (missing clone or missing `current`) can return `False` yet leave `progress/<hash>/` on disk. That breaks the issue's missing-pointer best-effort no-op contract and can litter the cache on every failed default append.
+- **Proposed resolution**: In `append_breadcrumb`, open the clone directory only with `_open_verified_dir(progress_clone_dir(repo_root))`; on `OSError`, return `False` without creating directories. After a verified fd exists, read `current` via `_read_active_run_id_from_dirfd`, then open the run subdir with `_open_or_create_subdir` and append with `_append_line_in_dir`. Drop `_ensure_directory_fd` from the default-writer shape; keep `_ensure_directory_fd` limited to `activate_run` and `append_breadcrumb_for_run`. Add an assertion in the missing-`current` acceptance test that `progress_clone_dir(repo)` does not exist after a failed default append.
