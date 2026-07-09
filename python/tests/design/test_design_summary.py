@@ -1,5 +1,7 @@
 """Unit coverage for /design final-summary helpers, plus CLI-port smoke re-export."""
 
+# pyright: reportUnusedCallResult=false, reportArgumentType=false
+
 from __future__ import annotations
 
 import subprocess
