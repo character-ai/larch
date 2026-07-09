@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import re
 import signal
@@ -49,6 +50,42 @@ def _read_owner_identity(raw_pid: str) -> process_identity.RecordedProcessIdenti
     if not raw_pid or not raw_pid.isdigit():
         return None
     return process_identity.read_process_identity(pid=int(raw_pid))
+
+
+def _timing_override_or_default(*, env_name: str, default: float, label: str) -> float:
+    raw_value: str = os.environ.get(env_name, "")
+    if raw_value == "":
+        return default
+    try:
+        value = float(raw_value)
+    except ValueError as exc:
+        msg = f"invalid {label} override {env_name}={raw_value!r}"
+        raise RuntimeError(msg) from exc
+    if not math.isfinite(value) or value < 0:
+        msg = f"invalid {label} override {env_name}={raw_value!r}"
+        raise RuntimeError(msg)
+    return value
+
+
+def _owner_grace_s() -> float:
+    return _timing_override_or_default(
+        env_name=config.ENV_TEST_BGJOB_OWNER_GRACE_S,
+        default=float(config.BGJOB_OWNER_GRACE_S),
+        label="bgjob owner grace",
+    )
+
+
+def _daemon_poll_interval_s() -> float:
+    return _timing_override_or_default(
+        env_name=config.ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S,
+        default=float(config.BGJOB_DAEMON_POLL_INTERVAL_S),
+        label="bgjob daemon poll interval",
+    )
+
+
+def _validate_timing_overrides() -> None:
+    _ = _owner_grace_s()
+    _ = _daemon_poll_interval_s()
 
 
 def owner_identity_from_env(raw_owner_pid: str | None) -> model.OwnerIdentity:
@@ -192,7 +229,7 @@ def _check_owner_validation(
     next_state = OwnerValidationState(missing_since=missing_since, failure_count=failure_count)
     return OwnerValidationStep(
         state=next_state,
-        orphaned=now - missing_since >= config.BGJOB_OWNER_GRACE_S,
+        orphaned=now - missing_since >= _owner_grace_s(),
         validation=validation,
     )
 
@@ -223,7 +260,7 @@ def _monitor(spec: model.JobSpec, child: subprocess.Popen[bytes], child_identity
             _terminate_child_group(child_identity, reason="orphaned")
             rc_token = config.BGJOB_RC_ORPHANED
             break
-        time.sleep(config.BGJOB_DAEMON_POLL_INTERVAL_S)
+        time.sleep(_daemon_poll_interval_s())
     elapsed_s = int(time.monotonic() - start)
     if rc_token in {config.BGJOB_RC_TIMEOUT, config.BGJOB_RC_ORPHANED}:
         with contextlib.suppress(Exception):
@@ -301,6 +338,7 @@ def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
 
 
 def start_daemon(spec: model.JobSpec) -> int:
+    _validate_timing_overrides()
     read_fd, write_fd = os.pipe()
     pid = os.fork()
     if pid == 0:

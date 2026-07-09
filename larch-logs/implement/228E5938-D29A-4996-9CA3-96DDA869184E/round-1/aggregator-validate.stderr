@@ -1,0 +1,1 @@
+warning: fix text for slot 'codex-specialist-testing' in FINDING_10 not traceable to scoped input (first 80 chars: 'Wait for `process_identity.read_process_identity(pid=$owner_pid)` to succeed bef')

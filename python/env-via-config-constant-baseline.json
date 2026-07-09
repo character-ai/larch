@@ -207,60 +207,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "invalidate_main",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "materialize_diff_main",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "persist_design_assessment_main",
-    "env_name": "DESIGN_TMPDIR",
-    "constant": "ENV_DESIGN_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "pin_note_from_staged_main",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "prepare_main",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "write_staged_assessment_main",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "larch/core/logging_util.py",
     "qualified_symbol": "quiet_init",
     "env_name": "TMPDIR",
@@ -393,15 +339,6 @@
     "constant": "ENV_USER",
     "access": "get",
     "occurrence": 6,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/design/design_core.py",
-    "qualified_symbol": "_bg_wait_marker_context",
-    "env_name": "CLAUDE_PID",
-    "constant": "ENV_CLAUDE_PID",
-    "access": "get",
-    "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
@@ -811,15 +748,6 @@
   },
   {
     "file": "larch/design/design_terminal.py",
-    "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/design/design_terminal.py",
     "qualified_symbol": "failure_report_main",
     "env_name": "DESIGN_TMPDIR",
     "constant": "ENV_DESIGN_TMPDIR",
@@ -1028,15 +956,6 @@
   {
     "file": "larch/implement/dispatch_helpers.py",
     "qualified_symbol": "_tmpdir_from_env",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/implement/dispatch_leg.py",
-    "qualified_symbol": "_active_leg_pgid_path",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "get",
@@ -1494,24 +1413,6 @@
     "reason": "grandfathered existing debt in moved larch.review modules"
   },
   {
-    "file": "larch/review/plan_review.py",
-    "qualified_symbol": "_run_apply",
-    "env_name": "CODEX_BINARY_FOUND",
-    "constant": "ENV_CODEX_BINARY_FOUND",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "qualified_symbol": "_run_apply",
-    "env_name": "CURSOR_BINARY_FOUND",
-    "constant": "ENV_CURSOR_BINARY_FOUND",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
     "file": "larch/review/plan_review_common.py",
     "qualified_symbol": "_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
@@ -1611,33 +1512,6 @@
     "reason": "grandfathered existing debt in moved larch.review modules"
   },
   {
-    "file": "larch/review/review_and_fix.py",
-    "qualified_symbol": "step5",
-    "env_name": "CODEX_BINARY_FOUND",
-    "constant": "ENV_CODEX_BINARY_FOUND",
-    "access": "subscript_store",
-    "occurrence": 2,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/review_and_fix.py",
-    "qualified_symbol": "step5",
-    "env_name": "CURSOR_BINARY_FOUND",
-    "constant": "ENV_CURSOR_BINARY_FOUND",
-    "access": "subscript_store",
-    "occurrence": 3,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/review_and_fix.py",
-    "qualified_symbol": "step5",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_store",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
     "file": "larch/review/review_core_body.py",
     "qualified_symbol": "_flush_round_log",
     "env_name": "IMPLEMENT_TMPDIR",
@@ -1653,24 +1527,6 @@
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "get",
     "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/review_core_body.py",
-    "qualified_symbol": "_zero_findings_branch",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/review_core_body.py",
-    "qualified_symbol": "_zero_findings_branch",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_load",
-    "occurrence": 2,
     "reason": "grandfathered existing debt in moved larch.review modules"
   },
   {

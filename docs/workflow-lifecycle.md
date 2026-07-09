@@ -149,6 +149,25 @@ Each start truncates or recreates its merge-input env before invoking `bgjob sta
 Bgjob diagnostics live beside the result env under `$TMPDIR/bgjob/`: daemon stdout and stderr logs, registry rows, and copied result KVs. Run-log capture records the committed summaries after those diagnostics and result envs have driven routing. Step 8 is the narrow exception to the generic success gate: `ship route-exit` follows the current `.step-8-ship-handoff.rc` and `.step-8-ship-handoff.json` sidecars, so a numeric driver rc is route data rather than generic bgjob failure. Timeout or orphaned bgjob results still block routing.
 
 Concurrent external lanes use unique `--step` slugs, for example per-reviewer or per-research-lane names. Shared slugs would clobber registry rows, daemon logs, and `$TMPDIR/bgjob/<step>.result.env`.
+
+### #6516 sentinel disposition record
+
+This committed record is the operator-directed substitute for editing already-merged PR #6706. It satisfies #6516's audit intent without changing that PR description.
+
+| Sentinel | Decision | Evidence |
+|---|---|---|
+| design `.completed/step-3-terminal` | DELETE | zero refs outside `larch-logs/`; Step 3 routes on `bgjob/design-step3-review.result.env` |
+| `.completed/step-4` | KEEP | boundary-local compatibility sentinel per `skills/design/references/sentinel-host-table.md`; consumers: `design-step3b-entry.sh` diagram gate, `plan_review_loop.py` downstream clear |
+| `.completed/step-5c-terminal` | DELETE | zero refs; Step 6 uses `bgjob/design-step5c.result.env` plus registry liveness |
+| `.completed/step-final-summary` | DELETE | zero refs |
+| implement `.completed/step-3-terminal` | DELETE | zero refs |
+| `.completed/step-5-terminal` | DELETE | zero refs |
+| `.completed/step-5-resume-terminal` | DELETE | zero refs |
+| `.completed/step-5-self-review-terminal` | DELETE | zero refs |
+| `.completed/step-6-terminal` | DELETE | zero refs |
+| `.completed/step-7a-terminal` | DELETE | zero refs |
+| `.step3-terminal-persisted-this-run` | DELETE | zero refs |
+| `.step-8-ship-handoff.rc` | KEEP | route-exit consumer `python/larch/implement/dispatch_ship.py`; plan carve-out keeps the driver rc in the sidecar |
 ### Plan-coverage scope disposition
 
 `/implement` compares the live work against the Step 0 materialized plan at `$IMPLEMENT_TMPDIR/plan.txt`. It counts firm `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` paths. It excludes `### MAY_UPDATE:`.
