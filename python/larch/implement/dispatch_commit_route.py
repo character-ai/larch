@@ -1037,7 +1037,6 @@ def step5_resume_main(argv: list[str] | None = None) -> int:
         commit_rc = _step5_resume_commit_phase()
         if commit_rc is not None:
             return commit_rc
-    print("progress: type p (or progress) at any time")
     return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", str(int(args.final_round_num) + 1)])
 
 

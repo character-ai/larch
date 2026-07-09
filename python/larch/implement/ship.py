@@ -65,11 +65,16 @@ from larch.core import proc
 from larch.git import push
 from larch.core import redact
 from larch.git import rebase
+from larch.report import progress_file
 from larch.report import run_logs
 from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
+
+
+def _progress_note(*, step: str, text: str) -> None:
+    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
 
 # Re-exports from sibling modules — preserves `ship.X` access for callers and tests.
 from larch.implement.ship_state import (
@@ -1420,6 +1425,7 @@ def run_ship(
             transient_retries=resume.transient_retries,
         )
         _breadcrumb(step="pr-create", detail="PR")
+        _progress_note(step="8", text="creating PR")
         body = _compose_pr_body_for_pr_create(
             pr_context=pr_context,
             architectural_invariants_note=invariants_gate.note,
@@ -1433,6 +1439,8 @@ def run_ship(
             pr_title=title,
             pr_closed=False,
         )
+        if working.pr_number:
+            _progress_note(step="8", text=f"PR #{working.pr_number} created")
         _write_ship_state(
             working,
             phase="ci-initial" if working.merge and not working.draft else "done",
@@ -1441,6 +1449,8 @@ def run_ship(
             fix_attempts=resume.fix_attempts,
             transient_retries=resume.transient_retries,
         )
+        if working.merge and not working.draft and working.pr_number:
+            _progress_note(step="8", text=f"CI running for PR #{working.pr_number}")
         if resume.start == "fresh":
             try:
                 run_logs.write_final_report_comment(runner=runner, ctx=working)

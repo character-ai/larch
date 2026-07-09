@@ -902,7 +902,7 @@ def _design_run_launcher_text(*, pid: str, plugin_root: str) -> str:
 def _write_design_run_sh(*, pid: str, plugin_root: str) -> None:
     run_path = _design_run_path(pid)
     run_path.parent.mkdir(parents=True, exist_ok=True)
-    _assert_no_symlink_path_or_ancestors(run_path)
+    larch_io.assert_no_symlink_path_or_ancestors(run_path)
     _atomic_write(path=run_path, text=_design_run_launcher_text(pid=pid, plugin_root=plugin_root), mode=0o755)
 
 
@@ -937,26 +937,15 @@ def _write_implement_run_sh(pid: str) -> None:
     expected_parent = Path.home() / ".cache" / "larch" / "sessions"
     if run_path.parent != expected_parent:
         raise ValueError(f"implement run path mismatch: {run_path}")
-    _assert_no_symlink_path_or_ancestors(run_path)
+    larch_io.assert_no_symlink_path_or_ancestors(run_path)
     run_path.parent.mkdir(parents=True, exist_ok=True)
-    _assert_no_symlink_path_or_ancestors(run_path)
+    larch_io.assert_no_symlink_path_or_ancestors(run_path)
     _atomic_write(path=run_path, text=_implement_run_launcher_text(pid), create_parent=False, mode=0o755)
 
 
 def _validate_claude_pid(pid: str) -> None:
     if not re.match(r"^[1-9][0-9]{0,6}$", pid):
         raise ValueError("Invalid --claude-pid: must be a positive integer of at most 7 decimal digits")
-
-
-def _assert_no_symlink_path_or_ancestors(path: Path) -> None:
-    current = path
-    while True:
-        if current.is_symlink():
-            msg = f"refusing symlinked pointer path or ancestor: {current}"
-            raise OSError(msg)
-        if current == current.parent:
-            break
-        current = current.parent
 
 
 def _validate_design_current_env_link(*, symlink_path: Path, pid: str) -> None:
@@ -1104,9 +1093,9 @@ def write_implement_env_main(argv: list[str]) -> int:
         expected_parent = Path.home() / ".cache" / "larch" / "sessions"
         if target.parent != expected_parent:
             raise ValueError(f"implement current-env path mismatch: {target}")
-        _assert_no_symlink_path_or_ancestors(target)
+        larch_io.assert_no_symlink_path_or_ancestors(target)
         target.parent.mkdir(parents=True, exist_ok=True)
-        _assert_no_symlink_path_or_ancestors(target)
+        larch_io.assert_no_symlink_path_or_ancestors(target)
         _atomic_write(path=target, text=_kv_text(data), create_parent=False)
         _write_implement_run_sh(args.claude_pid)
         return 0

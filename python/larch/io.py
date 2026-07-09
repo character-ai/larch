@@ -23,6 +23,18 @@ KvRows: TypeAlias = Mapping[str, object] | Iterable[tuple[str, object]]
 _CR_MODES = {"none", "suffix", "rstrip", "strip"}
 
 
+def assert_no_symlink_path_or_ancestors(path: Path) -> None:
+    """Raise when ``path`` or any ancestor is a symlink."""
+    current = path
+    while True:
+        if current.is_symlink():
+            msg = f"refusing symlinked path or ancestor: {current}"
+            raise OSError(msg)
+        if current == current.parent:
+            break
+        current = current.parent
+
+
 def _strip_cr(*, value: str, mode: str) -> str:
     if mode == "none":
         return value

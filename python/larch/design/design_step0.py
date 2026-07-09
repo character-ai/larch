@@ -162,6 +162,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
     _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    _run_best_effort(command=_cli_cmd(plugin_root, "progress", "install-statusline", "--plugin-root", str(plugin_root), "--repo-root", str(Path.cwd()), "--notice"))
     setup = subprocess.run(
         _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
         stdout=subprocess.PIPE,

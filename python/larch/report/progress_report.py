@@ -1,4 +1,4 @@
-"""On-demand progress reports for live larch runs."""
+"""Review phase detail and round metadata helpers."""
 # ruff: noqa: F401
 # pylint: disable=unused-import
 # pyright: reportUnknownVariableType=false, reportUnusedCallResult=false, reportPrivateUsage=false, reportUnusedImport=false
@@ -2110,20 +2110,3 @@ def write_implement_round_meta_main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
     return write_implement_round_meta(Path(args.round_dir))
-
-
-def report_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="progress report", add_help=True)
-    _ = parser.add_argument("--cwd", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
-    try:
-        report = _report(args.cwd)
-    except Exception:  # pylint: disable=broad-except
-        return 0
-    if report:
-        print(report)
-    return 0
-# pyright: reportUnnecessaryIsInstance=false, reportUnknownArgumentType=false

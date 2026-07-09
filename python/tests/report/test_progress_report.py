@@ -3,14 +3,11 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
-import sys
 import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from larch.core import config
 from larch.report import progress_report
 
 
@@ -272,45 +269,6 @@ def test_empty_cwd_returns_no_live_run(tmp_path: Path, monkeypatch) -> None:  # 
     _write_mark(impl, "Step 2 — implementation")
 
     assert progress_report._report("") == ""
-
-
-def test_report_cli_stdout_not_rerouted_by_quiet_env(tmp_path: Path) -> None:
-    home = tmp_path / "home"
-    cwd = tmp_path / "repo"
-    cwd.mkdir()
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    _write_implement_pointer(home, "123", impl, cwd)
-    _write_mark(impl, "Step 2 — implementation")
-    quiet_log = tmp_path / "quiet.log"
-    report_text = "implement: Step 2 — implementation"
-    env = os.environ.copy()
-    env["HOME"] = str(home)
-    env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
-    env[config.ENV_LARCH_QUIET_ACTIVE] = "1"
-    env[config.ENV_LARCH_QUIET_PID] = "999999"
-    env[config.ENV_LARCH_QUIET_LOG_FILE] = str(quiet_log)
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(Path(__file__).resolve().parents[2] / "cli.py"),
-            "progress",
-            "report",
-            "--cwd",
-            str(cwd),
-        ],
-        cwd=Path(__file__).resolve().parents[3],
-        text=True,
-        capture_output=True,
-        check=False,
-        env=env,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert report_text in result.stdout
-    quiet_text = quiet_log.read_text(encoding="utf-8") if quiet_log.exists() else ""
-    assert report_text not in quiet_text
 
 
 def test_design_pointer_match(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

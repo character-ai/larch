@@ -90,6 +90,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sessionstart-statusline.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-sessionstart.sh",
             "timeout": 10
           }
@@ -107,15 +117,6 @@
       }
     ],
     "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-progress-report.sh",
-            "timeout": 10
-          }
-        ]
-      },
       {
         "hooks": [
           {
