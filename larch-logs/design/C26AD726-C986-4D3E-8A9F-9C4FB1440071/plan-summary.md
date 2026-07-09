@@ -1,0 +1,1 @@
+Remove the obsolete task-notification guard stack, keep the bgjob wait contract, repoint terminal-sentinel consumers to bgjob result envs where safe, and add an extinct-token harness. This is HARD because it changes hooks, prompt contracts, lints, wrappers, and lifecycle routing.

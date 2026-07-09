@@ -1,0 +1,20 @@
+### FINDING_1: Stale companion doc still pins retired literals
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: major
+- **Concern**: The companion markdown for the deleted anti-polling harness still references retired tokens, so the extinct-token grep will keep failing even after the harness itself is removed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Delete this companion doc with the harness, or rewrite it to describe only the bgjob-wait replacement contract
+
+### FINDING_2: Agent-lint inventory still lists deleted harness rows
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: minor
+- **Concern**: The shipped `agent-lint.toml` inventory would keep dead rows for hooks and anti-polling harnesses after the file deletions, causing the inventory to diverge from the tree.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Remove those rows from `agent-lint.toml` when the files are deleted
+
+### FINDING_3: Cost-line harness still expects removed notification literals
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: major
+- **Concern**: The cost-line callsite test still hard-codes the old `task-notification` wording, so it will fail once the planned prose changes remove that literal from the source docs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add scripts/test-render-cost-line-callsites.sh to the plan and retarget these greps to the new foreground-wrapper/source wording without the forbidden token
