@@ -153,36 +153,6 @@ python3 python/cli.py design driver --action resume --design-tmpdir "$DESIGN_TMP
     assert rc == 0, err
 
 
-def test_foreground_recovery_probe_passes(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    write(tmp_path / "skills/implement/SKILL.md", skill_doc("""
-```bash
-DESIGN_TMPDIR=/tmp/demo; test -f "$DESIGN_TMPDIR/.completed/step-3-terminal"
-```
-Then parse the sentinel.
-```bash
-cat "$DESIGN_TMPDIR/.completed/step-3-terminal"
-```
-"""))
-    rc, err = run(tmp_path, capsys)
-    assert rc == 0, err
-
-
-def test_task_notification_immediate_background_boundary_passes(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    write(tmp_path / "skills/implement/SKILL.md", skill_doc("""
-```bash
-run_in_background python3 python/cli.py review-and-fix step5
-```
-<task-notification> fires on completion.
-```bash
-python3 python/cli.py review-and-fix step5 --parse-result
-```
-"""))
-    rc, err = run(tmp_path, capsys)
-    assert rc == 0, err
-
-
 def test_indented_openers_detect_and_suppress(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "skills/foo/SKILL.md", "   ```bash\necho one\n   ```\n   ```bash\necho two\n   ```\n")
     rc, err = run(tmp_path, capsys)

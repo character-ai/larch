@@ -189,10 +189,14 @@ for name in wrappers:
 # Existing wrappers that gained behavior.
 require('skills/implement/scripts/step-5-review.sh', 'bgjob start', 'step-5-review starts bgjob')
 require('skills/implement/scripts/step-5-review.sh', 'review-and-fix step5', 'step-5-review child calls review-and-fix step5')
+require('skills/implement/scripts/run-step-checks.sh', 'step_checks_live_registry_exists', 'run-step-checks live registry helper present')
+require('skills/implement/scripts/run-step-checks.sh', 'step_checks_result_env_state', 'run-step-checks canonical result env helper present')
+require('skills/implement/scripts/run-step-checks.sh', 'RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"', 'run-step-checks canonical result env pin')
+require('skills/implement/scripts/run-step-checks.sh', 'rm -f "$RESULT_ENV"', 'run-step-checks clears stale canonical result env before fresh start')
+require('skills/implement/scripts/run-step-checks.sh', 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0', 'run-step-checks rejoin wait pin')
 for needle, label in [
     ('--merge-result-env "$MERGE_RESULT_ENV"', 'step-5-review passes merge result env to bgjob'),
-    ('--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"', 'step-5-review preserves terminal sentinel through bgjob'),
-    ('step5_live_registry_exists', 'step-5-review checks live registry before fresh start'),
+        ('step5_live_registry_exists', 'step-5-review checks live registry before fresh start'),
     ('bgjob wait --step implement-step5-review', 'step-5-review rejoins live bgjob instead of relaunching'),
     ('.step5-wrapper-detached', 'step-5-review removes legacy detached sidecar'),
 ]:
@@ -283,7 +287,6 @@ require_near('skills/implement/references/self-review.md', self_review_composite
 require_near('skills/implement/references/self-review.md', self_review_composite, 'BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>', 'self-review bgjob started pin', 1400)
 require_near('skills/implement/references/self-review.md', launcher + 'python/cli.py bgjob wait --step implement-checks-step5-self-review', 'BGJOB_STATUS=WAIT', 'self-review bgjob wait pin', 1400)
 require_near('skills/implement/references/self-review.md', self_review_composite, 'BUDGET_S=14700', 'self-review budget pin', 1400)
-require_near('skills/implement/references/self-review.md', self_review_composite, 'step-5-self-review-terminal', 'self-review sentinel pin', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-6-entry.sh', '> **Continue after bgjob `DONE`.**', 'Step 6 bgjob continuation opener', 2000)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=<n>', 'Step 8 ship bgjob started pin', 2200)
 require_near(skill, launcher + 'python/cli.py bgjob wait --step implement-step8-ship', 'BGJOB_STATUS=WAIT', 'Step 8 ship bgjob wait pin', 2200)
@@ -406,7 +409,7 @@ require(skill, 'markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FI
 require(skill, 'captured foreground `python/cli.py implement step-16-17` Bash wrapper stdout', 'SKILL Step 17 captured foreground stdout source')
 require(skill, 'captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout', 'SKILL Step 18 composite stdout source')
 require(skill, 'captured foreground `step-18.sh --phase finalize` Bash wrapper stdout', 'SKILL Step 18 captured foreground stdout source')
-require(skill, 'not `<task-notification>` output', 'SKILL implement source is not task notification output')
+require(skill, 'not asynchronous notification output', 'SKILL implement source is not task notification output')
 require(skill, 'Read fallback `forbidden`', 'SKILL Read fallback forbidden binding')
 require(skill, 'sidecar follow-on `forbidden`', 'SKILL sidecar follow-on forbidden binding')
 require(skill, 'do not Read that file on the Step 17 primary path', 'SKILL no Read-tool Step 17 primary path')

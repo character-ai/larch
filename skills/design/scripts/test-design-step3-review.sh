@@ -31,7 +31,6 @@ if len(sys.argv) >= 3 and sys.argv[1] == "bgjob" and sys.argv[2] == "start":
     step = sys.argv[sys.argv.index("--step") + 1]
     tmpdir = sys.argv[sys.argv.index("--tmpdir") + 1]
     merge_env = sys.argv[sys.argv.index("--merge-result-env") + 1]
-    sentinel = sys.argv[sys.argv.index("--sentinel") + 1]
     command = sys.argv[sys.argv.index("--") + 1 :]
     result_dir = os.path.join(tmpdir, "bgjob")
     os.makedirs(result_dir, exist_ok=True)
@@ -58,8 +57,6 @@ if len(sys.argv) >= 3 and sys.argv[1] == "bgjob" and sys.argv[2] == "start":
     with open(result_env, "w", encoding="utf-8") as handle:
         for key, value in rows:
             handle.write(f"{key}={value}\n")
-    os.makedirs(os.path.dirname(sentinel), exist_ok=True)
-    open(sentinel, "w", encoding="utf-8").close()
     print(f"BGJOB_STATUS=STARTED STEP={step} PGID=12345")
     raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "bgjob" and sys.argv[2] == "wait":
@@ -128,13 +125,8 @@ grep -Fq 'bgjob wait --step design-step3-review' "$SKILL_MD" || fail 'SKILL must
 grep -Fq 'python/cli.py" bgjob start' "$WRAPPER" || fail 'wrapper must launch through bgjob start'
 # shellcheck disable=SC2016
 grep -Fq -- '--merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env"' "$WRAPPER" || fail 'wrapper must pass Step 3 merge-result env'
-# shellcheck disable=SC2016
-grep -Fq -- '--sentinel "$DESIGN_TMPDIR/.completed/step-3-terminal"' "$WRAPPER" || fail 'wrapper must preserve Step 3 terminal sentinel'
 grep -Fq 'step3_review_recreate_merge_env' "$WRAPPER" || fail 'wrapper must recreate stale merge env safely before start'
 grep -Fq 'step3_review_bgjob_registry_state' "$WRAPPER" || fail 'wrapper must check live bgjob registry before start'
-if grep -Fq '.bg-wait-active' "$WRAPPER"; then
-  fail 'Step 3 wrapper must not write legacy .bg-wait-active marker after bgjob migration'
-fi
 if grep -Fq 'plan-review write-loop-identity' "$WRAPPER" || grep -Fq 'plan-review teardown-loop-identity' "$WRAPPER"; then
   fail 'Step 3 wrapper must not retain legacy loop identity ownership after bgjob migration'
 fi

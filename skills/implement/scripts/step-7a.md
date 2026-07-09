@@ -54,7 +54,7 @@ The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log captu
 - `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `python3 python/cli.py tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
 - The pre-ship log flush runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still flushing diagnostics when inputs allow.
 - The helper does not write a `diagrams` larch-log batch.
-- The Python entrypoint no longer writes `.bg-wait-active`. With `--bgjob-launch true`, it truncates the merge-result env, starts bgjob step slug `implement-step7a`, and passes `.completed/step-7a-terminal` as the compatibility sentinel. The child mirrors required KVs into the merge-result env for the final bgjob `DONE` gate.
+- With `--bgjob-launch true`, the Python entrypoint truncates the merge-result env and starts bgjob step slug `implement-step7a`. The child mirrors required KVs into the merge-result env for the final bgjob `DONE` gate.
 
 ## Regression checklist
 

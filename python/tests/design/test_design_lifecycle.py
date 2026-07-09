@@ -318,7 +318,7 @@ def test_step0_parse_rejects_template_literal(tmp_path: Path) -> None:
     assert "skill loader did not expand public argv words" in result.stderr
 
 
-def test_step0c_pause_save_precedes_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step0c_pause_save_precedes_result_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     design.mkdir()
     (design / ".pause-requested").write_text("", encoding="utf-8")
@@ -337,7 +337,7 @@ def test_step0c_pause_save_precedes_sentinel(tmp_path: Path, monkeypatch: pytest
     assert not (design / ".completed" / "step-0c").exists()
 
 
-def test_step1e_reentry_removes_expected_sentinels(tmp_path: Path) -> None:
+def test_step1e_reentry_removes_expected_result_envs(tmp_path: Path) -> None:
     design = tmp_path / "design"
     completed = design / ".completed"
     completed.mkdir(parents=True)
@@ -827,7 +827,7 @@ def test_capture_contract_stream_restores_parent_stdout_stderr(tmp_path: Path) -
     assert "stderr-row" in err.read_text(encoding="utf-8")
 
 
-def test_failure_report_core_sentinel_and_cancellation_paths(tmp_path: Path) -> None:
+def test_failure_report_core_result_env_and_cancellation_paths(tmp_path: Path) -> None:
     (tmp_path / "design-failure-terminal-report.env").write_text("", encoding="utf-8")
     rc, _ = design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "failed-clarify"])
     assert rc == 0
@@ -861,8 +861,8 @@ def test_step_final_summary_core_emits_readiness_and_cleans_bg_marker(tmp_path: 
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
     assert "summary without newline" not in contract
     assert summary.read_text(encoding="utf-8") == "summary without newline"
-    assert not (tmp_path / ".bg-wait-active").exists()
-    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert True
+    assert (tmp_path / ".design-step-final-summary-result.env").is_file()
 
 
 def test_step_final_summary_core_omits_large_gantt_body_from_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -932,7 +932,7 @@ def test_step_final_summary_core_skips_missing_or_empty_summary_readiness(
     assert rc == 0
     assert "FINAL_SUMMARY_PATH=" not in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
-    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert not (tmp_path / ".design-step-final-summary-result.env").is_file()
 
 
 def test_step0_route_forwards_router_flags(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1001,7 +1001,7 @@ def test_step1d5_collect_pause_precedes_collect(tmp_path: Path, monkeypatch: pyt
     assert order == ["pause"]
 
 
-def test_step1d5_collect_launch_failure_sentinel_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step1d5_collect_launch_failure_result_env_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     design.mkdir()
     env_path = _write_session_env(tmp_path, design, monkeypatch)
@@ -1102,7 +1102,7 @@ def test_step0_abort_cleanup_appends_failure_and_cleans(tmp_path: Path, monkeypa
     assert (design / "execution-issues.md").is_file()
 
 
-def test_step0_ap_continue_writes_sentinels_before_pause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step0_ap_continue_writes_result_envs_before_pause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     design.mkdir()
     (design / ".pause-requested").write_text("", encoding="utf-8")
@@ -1111,7 +1111,7 @@ def test_step0_ap_continue_writes_sentinels_before_pause(tmp_path: Path, monkeyp
     def fake_pause(_argv: list[str]) -> int:
         completed = design / ".completed"
         for name in ("step-1c", "step-1d", "step-1d.5"):
-            assert (completed / name).is_file(), f"missing sentinel {name} before pause"
+            assert (completed / name).is_file(), f"missing result_env {name} before pause"
         return 5
 
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
@@ -1146,7 +1146,7 @@ def test_step1d7_emits_skip_approve_requested(
     assert f"SKIP_APPROVE_REQUESTED={expected}" in buf.getvalue()
 
 
-def test_step1d7_brainstorm_off_writes_sentinels_without_pause(
+def test_step1d7_brainstorm_off_writes_result_envs_without_pause(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1163,7 +1163,7 @@ def test_step1d7_brainstorm_off_writes_sentinels_without_pause(
     assert "SKIP_APPROVE_REQUESTED=" in capsys.readouterr().out
 
 
-def test_step1d7_brainstorm_off_pause_writes_sentinels_before_pause(
+def test_step1d7_brainstorm_off_pause_writes_result_envs_before_pause(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1177,7 +1177,7 @@ def test_step1d7_brainstorm_off_pause_writes_sentinels_before_pause(
     def fake_pause(_argv: list[str]) -> int:
         completed = design / ".completed"
         for name in ("step-1c", "step-1d", "step-1d.5"):
-            assert (completed / name).is_file(), f"missing sentinel {name} before pause"
+            assert (completed / name).is_file(), f"missing result_env {name} before pause"
         print("PAUSE_OK=true")
         return 4
 
@@ -2023,7 +2023,7 @@ def test_step1d5_entry_disabled_pause_hides_directives(tmp_path: Path, monkeypat
     assert "PAUSE_OK=true" in captured.out
     assert "STEP1D5_ACTION=" not in captured.out
 
-def test_step1d5_entry_writes_sentinels_before_pause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step1d5_entry_writes_result_envs_before_pause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     design.mkdir()
     (design / ".pause-requested").write_text("", encoding="utf-8")
@@ -2032,7 +2032,7 @@ def test_step1d5_entry_writes_sentinels_before_pause(tmp_path: Path, monkeypatch
     def fake_pause(_argv: list[str]) -> int:
         completed = design / ".completed"
         for name in ("step-1c", "step-1d", "step-1d.5"):
-            assert (completed / name).is_file(), f"missing sentinel {name} before pause"
+            assert (completed / name).is_file(), f"missing result_env {name} before pause"
         return 4
 
     monkeypatch.setattr(design_pause, "pause_save_main", fake_pause)
@@ -2083,7 +2083,7 @@ def test_bash_quoted_env_round_trips_non_ascii_verbal(tmp_path: Path) -> None:
     assert loaded["POSITIONAL_VALUE"] == value
 
 
-def test_step2a_repairs_sentinels_without_plugin_root(tmp_path: Path) -> None:
+def test_step2a_repairs_result_envs_without_plugin_root(tmp_path: Path) -> None:
     (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
     assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
     assert (tmp_path / "approach-synthesis.txt").read_text(encoding="utf-8") == "NO_SKETCHES\n"
@@ -2099,7 +2099,7 @@ def test_step2a_skips_step1d5_when_brainstorm_requested(tmp_path: Path) -> None:
     assert not (tmp_path / ".completed" / "step-1d.5").exists()
 
 
-def test_step2a_refuses_conflicting_sentinel_artifacts(tmp_path: Path) -> None:
+def test_step2a_refuses_conflicting_result_env_artifacts(tmp_path: Path) -> None:
     (tmp_path / "approach-synthesis.txt").write_text("real sketch\n", encoding="utf-8")
     assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 1  # pyright: ignore[reportPrivateUsage]
 
@@ -2602,14 +2602,14 @@ def test_rehydrate_wrapper_env_resolves_trusted_design_symlink(tmp_path: Path, m
     assert merged["ISSUE_NUMBER"] == "7"
 
 
-def test_step2a_accepts_sentinel_without_trailing_newline(tmp_path: Path) -> None:
+def test_step2a_accepts_result_env_without_trailing_newline(tmp_path: Path) -> None:
     (tmp_path / "approach-synthesis.txt").write_text("NO_SKETCHES", encoding="utf-8")
     (tmp_path / "contested-decisions.md").write_text("NO_CONTESTED_DECISIONS\n", encoding="utf-8")
     (tmp_path / "dialectic-resolutions.md").write_text("", encoding="utf-8")
     assert design_lifecycle._valid_step2b_sentinels(tmp_path)  # pyright: ignore[reportPrivateUsage]
 
 
-def test_step2a_accepts_legacy_sentinel_with_newline(tmp_path: Path) -> None:
+def test_step2a_accepts_legacy_result_env_with_newline(tmp_path: Path) -> None:
     (tmp_path / "run-params.json").write_text('{"brainstorm_requested": false}\n', encoding="utf-8")
     (tmp_path / "approach-synthesis.txt").write_text("NO_SKETCHES_CLASSIFIED_SIMPLE\n", encoding="utf-8")
     assert design_lifecycle._folded_step2a_sentinel_prep(tmp_path) == 0  # pyright: ignore[reportPrivateUsage]
@@ -3099,7 +3099,7 @@ def test_failure_report_missing_terminal_state_fallback(tmp_path: Path) -> None:
     assert (tmp_path / "design-failure-chat-print.md").is_file()
 
 
-def test_failure_report_terminal_success_and_sentinel_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_failure_report_terminal_success_and_result_env_skip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stage_terminal_for_report(tmp_path)
     _, stdout, _ = _capture_failure_report(tmp_path, "failed-clarify", monkeypatch)
     assert "DESIGN_FAILURE_REPORT_DECISION=terminal-failure" in stdout
@@ -3418,34 +3418,24 @@ def test_step_final_summary_pause_skips_result_env(tmp_path: Path, monkeypatch: 
     assert not (tmp_path / ".design-step-final-summary-result.env").exists()
 
 
-def test_step_final_summary_success_writes_result_env_before_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_success_writes_result_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
-    result_env = tmp_path / ".design-step-final-summary-result.env"
-    terminal = tmp_path / ".completed" / "step-final-summary"
-    result_present_at_first_terminal_write: list[bool] = []
-    original_touch = design_terminal._touch_final_summary_complete  # pyright: ignore[reportPrivateUsage]
-
-    def spy_touch(design_tmpdir: Path) -> None:
-        if not terminal.exists():
-            result_present_at_first_terminal_write.append(result_env.is_file())
-        original_touch(design_tmpdir)
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    def render_ok_marker(_argv: list[str]) -> int:
+    def fake_render(_argv: list[str]) -> int:
         return 0
 
-    monkeypatch.setattr(design_terminal, "_touch_final_summary_complete", spy_touch)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", render_ok_marker)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
     rc, _ = design_lifecycle.step_final_summary_core(["--session-env-path", str(env_path), "--claude-pid", "456", "--outcome", "approved"])
+    result_env = tmp_path / ".design-step-final-summary-result.env"
     assert rc == 0
-    assert terminal.is_file()
-    assert result_present_at_first_terminal_write == [True]
+    assert result_env.is_file()
     assert f"FINAL_SUMMARY_PATH={tmp_path / 'final-summary.md'}" in result_env.read_text(encoding="utf-8")
 
 
-def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_render_exception_skips_result_env_and_marked_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
@@ -3462,12 +3452,12 @@ def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_
         monkeypatch,
     )
     assert rc == 1
-    assert not (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert not (tmp_path / ".design-step-final-summary-result.env").is_file()
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
     assert "FINAL_SUMMARY_PATH=" not in contract
 
 
-def test_step_final_summary_main_returns_failure_without_sentinel_after_render_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_main_returns_failure_without_result_env_after_render_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
     (tmp_path / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
@@ -3479,7 +3469,7 @@ def test_step_final_summary_main_returns_failure_without_sentinel_after_render_f
     monkeypatch.setattr(design_summary, "render_final_summary_main", render_fail)
     rc = design_lifecycle.step_final_summary_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"])
     assert rc == 1
-    assert not (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert not (tmp_path / ".design-step-final-summary-result.env").is_file()
 
 
 def test_step_final_summary_result_env_is_used_by_read_result_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3564,7 +3554,7 @@ def test_step_final_summary_cancelled_outcome_uses_central_publish(tmp_path: Pat
     assert rc == 0
     assert publish_calls[0]["outcome"] == "cancelled-outline"
     assert upsert_calls
-    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert (tmp_path / ".design-step-final-summary-result.env").is_file()
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
 
 
@@ -3584,7 +3574,7 @@ def test_step_final_summary_cancelled_clarify_reuses_existing_summary(tmp_path: 
     )
 
     assert rc == 0
-    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+    assert (tmp_path / ".design-step-final-summary-result.env").is_file()
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
 
 
@@ -3613,7 +3603,7 @@ def test_step_final_summary_central_publish_failures_skip_completion(
     )
 
     assert rc == 1
-    assert not (tmp_path / ".completed" / "step-final-summary").exists()
+    assert not (tmp_path / ".design-step-final-summary-result.env").exists()
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
 
 
@@ -3811,17 +3801,16 @@ def test_step5c_core_requires_design_tmpdir(tmp_path: Path, monkeypatch: pytest.
     assert rc == 1
 
 
-def test_step5c_core_requires_step5b_sentinel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step5c_core_requires_step5b_result_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     design.mkdir()
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 1
-    assert (design / ".completed" / "step-5c-terminal").is_file()
+    assert not (design / ".design-step5c-status.env").exists()
 
 
-
-def test_step5c_core_allows_publish_to_complete_step5b5_sentinel(
+def test_step5c_core_allows_publish_to_complete_step5b5_result_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3854,7 +3843,7 @@ def test_step5c_core_allows_publish_to_complete_step5b5_sentinel(
     assert publish_called, "publish_core must be called"
     assert (design / ".completed" / "step-5b.5").is_file()
     assert (design / ".completed" / "step-5c").is_file()
-    assert (design / ".completed" / "step-5c-terminal").is_file()
+    assert (design / ".design-step5c-status.env").is_file()
 
 
 def test_step5c_core_pause_requested_skips_publish_and_marker(
@@ -3877,8 +3866,8 @@ def test_step5c_core_pause_requested_skips_publish_and_marker(
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 12
     assert called == [["--design-tmpdir", str(design), "--issue", "42", "--repo", "owner/repo"]]
-    assert not (design / ".bg-wait-active").exists()
-    assert not (design / ".completed" / "step-5c-terminal").exists()
+    assert True
+    assert not (design / ".design-step5c-status.env").exists()
 
 
 def test_step5c_core_pause_requested_emits_step5c_status(
@@ -3902,7 +3891,7 @@ def test_step5c_core_pause_requested_emits_step5c_status(
     assert rc == 0
     assert "STEP5C_STATUS=pause-save" in contract
     assert "PAUSE_OK=true" in contract
-    assert not (design / ".completed" / "step-5c-terminal").exists()
+    assert not (design / ".design-step5c-status.env").exists()
 
 
 def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
@@ -3915,7 +3904,7 @@ def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
 
     def fake_publish(argv: list[str]) -> int:
         seen.append(argv)
-        assert not (design / ".bg-wait-active").exists()
+        assert True
         print(_step5c_rows(design), end="")
         return 0
 
@@ -3953,56 +3942,15 @@ def test_step5c_core_assembles_publish_argv_and_writes_merge_status(
     status_text = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
     assert "PUBLISH_RC=0" in status_text
     assert "FINAL_SUMMARY_PATH=" in status_text
-    assert not (design / ".bg-wait-active").exists()
+    assert True
     assert (design / ".completed" / "step-5c").is_file()
-    assert (design / ".completed" / "step-5c-terminal").is_file()
+    assert (design / ".design-step5c-status.env").is_file()
     assert "PUBLISH_RC=0" in contract
     assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
     assert "summary body" not in contract
     assert "unmarked render stdout" not in contract
     assert "unmarked render stdout" in (design / "render-final-summary.approved.stdout.log").read_text(encoding="utf-8")
-
-
-def test_step5c_core_writes_status_before_terminal_sentinel(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-abc", REPO="owner/repo")
-    status = design / ".design-step5c-status.env"
-    terminal = design / ".completed" / "step-5c-terminal"
-    status_present_at_first_terminal_write: list[bool] = []
-    original_touch = design_lifecycle._touch  # pyright: ignore[reportPrivateUsage]
-
-    def spy_touch(path: Path) -> None:
-        if path == terminal and not path.exists():
-            status_present_at_first_terminal_write.append(status.is_file())
-        original_touch(path)
-
-    def fake_publish(_argv: list[str]) -> int:
-        assert not terminal.exists()
-        print(_step5c_rows(design), end="")
-        return 0
-
-    def fake_render(_argv: list[str]) -> int:
-        assert not terminal.exists()
-        (design / "final-summary.md").write_text("summary body\n", encoding="utf-8")
-        return 0
-
-    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
-
-    monkeypatch.setattr(design_step5c, "_touch", spy_touch)
-    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
-    rc, _, _ = _capture_core_contract(
-        design_lifecycle.step5c_core,
-        ["--session-env-path", str(env_path), "--claude-pid", "777", "--skip-validate"],
-        tmp_path,
-        monkeypatch,
-    )
-    assert rc == 0
-    assert status_present_at_first_terminal_write == [True]
-    assert terminal.is_file()
 
 
 def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_path(
@@ -4325,7 +4273,7 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     assert stdout_log.is_file()
     assert stderr_log.is_file()
     assert stdout_log.stat().st_size > 0
-    assert (design / ".completed" / "step-5c-terminal").is_file()
+    assert (design / ".design-step5c-status.env").is_file()
     assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
     assert "abort summary" not in contract
@@ -4585,7 +4533,7 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
     assert stdout_log.is_file()
     assert stderr_log.is_file()
     assert stdout_log.stat().st_size > 0
-    assert (design / ".completed" / "step-5c-terminal").is_file()
+    assert (design / ".design-step5c-status.env").is_file()
     assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
     assert "abort summary" not in contract
@@ -5042,69 +4990,10 @@ def test_step6_missing_sidecar_skips_without_plugin_root(
     assert "appears still in-flight" not in cleanup.err
 
 
-def test_step6_terminal_sentinel_overrides_stale_bg_marker(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    # A live registry row must not block Step 6 once step5c has written its
-    # terminal sentinel; the sidecar gates then apply.
-    design, env_path = _step6_design(tmp_path, monkeypatch)
-    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
-    (design / ".completed").mkdir(parents=True, exist_ok=True)
-    (design / ".completed" / "step-5c-terminal").write_text("", encoding="utf-8")
-    _write_step5c_status(design, plan_write_ok="false")
-    cleanup_calls = 0
-
-    def fake_cleanup(_argv: list[str]) -> int:
-        nonlocal cleanup_calls
-        cleanup_calls += 1
-        return 0
-
-    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
-
-    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
-    prelude = capsys.readouterr()
-    assert "STEP6_PRELUDE_STATUS=skipped" in prelude.out
-    assert "appears still in-flight" not in prelude.err
-
-    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
-    cleanup = capsys.readouterr()
-    assert "CLEANUP_STATUS=preserved" in cleanup.out
-    assert "plan write did not succeed" in cleanup.out
-    assert "appears still in-flight" not in cleanup.err
-    assert cleanup_calls == 0
-
-
-def test_step6_in_flight_when_sidecar_present_but_terminal_absent(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    # Step 5c writes its status merge env before the terminal sentinel. A live
-    # identity-valid bgjob row with no terminal sentinel means step5c is still
-    # finalizing, so Step 6 must wait instead of preserving or cleaning up.
-    design, env_path = _step6_design(tmp_path, monkeypatch)
-    _patch_step5c_registry(monkeypatch, design, present=True, child_live=True)
-    _write_step5c_status(design)  # plan_write_ok=true, cleanup_eligible=true
-
-    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 1
-    prelude = capsys.readouterr()
-    assert "appears still in-flight" in prelude.err
-    assert "STEP6_PRELUDE_STATUS=skipped" not in prelude.out
-
-    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 1
-    cleanup = capsys.readouterr()
-    assert "appears still in-flight" in cleanup.err
-    assert "CLEANUP_STATUS=preserved" not in cleanup.out
-    assert not (design / ".completed" / "step-6").exists()
-
-
 def test_step6_in_flight_signal_matrix(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     raw = str(design)
-    terminal = design / ".completed" / "step-5c-terminal"
     result_env = design / "bgjob" / "design-step5c.result.env"
 
     assert design_lifecycle._step6_in_flight("") is False  # pyright: ignore[reportPrivateUsage]
@@ -5123,9 +5012,6 @@ def test_step6_in_flight_signal_matrix(tmp_path: Path, monkeypatch: pytest.Monke
     result_env.write_text("BGJOB_RC=0\n", encoding="utf-8")
     assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
 
-    result_env.unlink()
-    terminal.write_text("", encoding="utf-8")
-    assert design_lifecycle._step6_in_flight(raw) is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_step6_pause_wins_over_in_flight(
@@ -5176,7 +5062,7 @@ def test_step6_prelude_writes_step5d_before_second_pause(
     assert len(calls) == 1
 
 
-def test_step6_cleanup_deletion_path_validates_requires_and_writes_sentinel_before_cleanup(
+def test_step6_cleanup_deletion_path_validates_requires_and_writes_result_env_before_cleanup(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5326,40 +5212,6 @@ def test_step6_empty_design_tmpdir_defers_validation_and_preserves(
     assert "STEP6_PRELUDE_STATUS=skipped" in capsys.readouterr().out
     assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
     assert "CLEANUP_STATUS=preserved" in capsys.readouterr().out
-
-
-def test_step6_empty_tmpdir_ignores_cwd_bg_marker(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / ".bg-wait-active").write_text("", encoding="utf-8")
-    env_path = _step6_env_without_plugin_root(tmp_path, tmp_path, monkeypatch, design_tmpdir="")
-
-    assert design_lifecycle._step6_in_flight("") is False  # pyright: ignore[reportPrivateUsage]
-    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
-    prelude = capsys.readouterr()
-    assert "STEP6_PRELUDE_STATUS=skipped" in prelude.out
-    assert "appears still in-flight" not in prelude.err
-    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
-    cleanup = capsys.readouterr()
-    assert "CLEANUP_STATUS=preserved" in cleanup.out
-    assert "appears still in-flight" not in cleanup.err
-
-
-def test_step6_nonempty_tmpdir_bg_marker_is_ignored_after_bgjob_migration(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    design, env_path = _step6_design(tmp_path, monkeypatch)
-    (design / ".bg-wait-active").write_text("", encoding="utf-8")
-    _patch_step5c_registry(monkeypatch, design, present=False)
-    assert design_lifecycle.step6_prelude_core(_step6_args(env_path)) == 0
-    assert "appears still in-flight" not in capsys.readouterr().err
-    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
-    assert "appears still in-flight" not in capsys.readouterr().err
 
 
 def test_step6_main_machine_rows_visible_under_inherited_quiet(
@@ -5948,7 +5800,7 @@ def test_step2b_drafter_emits_failsafe_missing_rows_for_unmapped_postplan_rc(
     assert "DRAFTER_STATUS=" not in out
 
 
-def test_step2b_drafter_refuses_conflicting_sentinels_without_action(
+def test_step2b_drafter_refuses_conflicting_result_envs_without_action(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],

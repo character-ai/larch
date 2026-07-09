@@ -1,4 +1,1 @@
-# Reason-bearing allowlist for retained legacy run_in_background prose until the
-# bgjob migration's second cleanup issue deletes the old notification contracts.
-# Format: repo-relative path<TAB>reason.
-skills/shared/orchestrator-never.md	legacy anti-polling rule remains as compatibility defense until issue-2 cleanup.
+# Intentionally empty: bgjob migration removed retained skill prose exceptions.

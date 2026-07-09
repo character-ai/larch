@@ -14,7 +14,7 @@ High-level structural harness for the wrapperized `/implement` prompt. It verifi
 - The prompt-side parser consumes the helper envelope only after exit `0`.
 - Post-Step-0 call sites use `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" <relative-script>`.
 - Background wrapper assertions match the one-line launcher form for Step 5 review composites, Step 7a, and Step 8.
-- Timeout assertions and `<task-notification>` assertions remain load-bearing.
+- Timeout assertions remain load-bearing.
 - Step 8+ loads `ship-pr-exit-matrix.md` before the route-exit and pre-driver fences. Every-run branch semantics stay there, while the OOS checkpoint router and autonomous CI-fix bodies live in `ship-pr-oos-checkpoint-router.md` and `ship-pr-ci-fix.md`.
 - Step 18 loads `step18-cleanup.md` before the gate fence. Four-layer stall tracking and teardown prose stay there. `step18a5-filing.md` is retired: escalation-success filing is removed from `/implement`.
 - Wrapper sibling and executable checks still pin every local `skills/implement/scripts/*.sh` helper used by the prompt.
@@ -34,4 +34,4 @@ High-level structural harness for the wrapperized `/implement` prompt. It verifi
 - `/implement` Step 17 and Step 18b point to `skills/shared/final-summary-emit.md` instead of restating the marker extraction algorithm.
 - Step 17 binds captured foreground `python/cli.py implement step-16-17` wrapper stdout as its source.
 - Step 18b binds captured foreground `step-18.sh --phase finalize` wrapper stdout as its source.
-- Both `/implement` marker-first callsites forbid `<task-notification>` sources, Read fallback, and sidecar follow-on.
+- Both `/implement` marker-first callsites forbid asynchronous notification sources, Read fallback, and sidecar follow-on.

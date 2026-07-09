@@ -63,7 +63,7 @@ grep -Fq 'captured foreground `python/cli.py implement step-16-17` Bash wrapper 
 grep -Fq 'captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18 composite stdout source'
 # shellcheck disable=SC2016
 grep -Fq 'captured foreground `step-18.sh --phase finalize` Bash wrapper stdout' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must bind Step 18b captured foreground stdout source'
-grep -Fq 'not `<task-notification>` output' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid task-notification as implement summary source'
+grep -Fq 'not asynchronous notification output' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid async-notification as implement summary source'
 grep -Fq 'Read fallback `forbidden`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid Read fallback for Step 17/18b'
 grep -Fq 'sidecar follow-on `forbidden`' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must forbid sidecar follow-on for Step 17/18b'
 grep -Fq '**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 composite missing-marker warning must be pinned'
@@ -96,7 +96,7 @@ grep -Fq 'Caller profile parameters' "$shared_final_summary" || fail 'shared fin
 grep -Fq 'caller begin/end marker pair' "$shared_final_summary" || fail 'shared final-summary emit must parameterize marker tokens'
 grep -Fq 'source description: task-output, wrapper stdout, or bgjob `DONE` stdout plus result env' "$shared_final_summary" || fail 'shared final-summary emit must parameterize summary source'
 grep -Fq 'caller-named source already in the orchestrator context window' "$shared_final_summary" || fail 'shared final-summary emit must parameterize marker source'
-grep -Fq '`/implement` binds captured foreground Bash wrapper stdout, not `<task-notification>`.' "$shared_final_summary" || fail 'shared final-summary emit must distinguish implement source from task notifications'
+grep -Fq '`/implement` binds captured foreground Bash wrapper stdout, not asynchronous notification output.' "$shared_final_summary" || fail 'shared final-summary emit must distinguish implement source from async notifications'
 # shellcheck disable=SC2016
 grep -Fq 'Only when steps 1–2 yield no valid marker body and the caller Read fallback policy is `allowed`, Read/cache the caller-named fallback path when non-empty.' "$shared_final_summary" || fail 'shared final-summary emit must gate Read fallback on absent/invalid markers and caller policy'
 grep -Fq 'Do not extract or emit summary bodies from marker pairs on `/design` paths.' "$shared_final_summary" || fail 'shared final-summary emit must forbid /design marker-body extraction'

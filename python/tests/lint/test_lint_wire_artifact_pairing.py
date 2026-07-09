@@ -97,15 +97,15 @@ def test_python_atomic_writer_with_split_binding_counts(tmp_path: Path) -> None:
 
 
 def test_python_writer_with_distant_split_binding_counts(tmp_path: Path) -> None:
-    _project(tmp_path, manifest=[_row(".completed/step-final-summary", "relative_path")])
-    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/step-final-summary"\n')
+    _project(tmp_path, manifest=[_row(".completed/demo-summary", "relative_path")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/demo-summary"\n')
     _write(
         tmp_path / "python/larch/writer.py",
         'from pathlib import Path\n'
         '\n'
         'def write_summary(tmpdir: Path) -> None:\n'
         '    completed = tmpdir / ".completed"\n'
-        '    target = completed / "step-final-summary"\n'
+        '    target = completed / "demo-summary"\n'
         '    prefix = "ignored"\n'
         '    for _ in range(2):\n'
         '        prefix = prefix\n'
@@ -118,14 +118,14 @@ def test_python_writer_with_distant_split_binding_counts(tmp_path: Path) -> None
 
 
 def test_python_writer_with_joinpath_counts(tmp_path: Path) -> None:
-    _project(tmp_path, manifest=[_row(".completed/step-5c-terminal", "relative_path")])
-    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/step-5c-terminal"\n')
+    _project(tmp_path, manifest=[_row(".completed/example-terminal", "relative_path")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/example-terminal"\n')
     _write(
         tmp_path / "python/larch/writer.py",
         'from pathlib import Path\n'
         '\n'
         'def write_terminal(tmpdir: Path) -> None:\n'
-        '    artifact = "step-5c-terminal"\n'
+        '    artifact = "example-terminal"\n'
         '    target = Path(tmpdir).joinpath(".completed").joinpath(artifact)\n'
         '    target.touch()\n'
         '\n'
@@ -241,8 +241,8 @@ def test_write_preserves_reasons_and_drops_obsolete_rows(tmp_path: Path) -> None
 
 
 def test_relative_path_rows_match_anchored_suffix(tmp_path: Path) -> None:
-    _project(tmp_path, manifest=[_row(".completed/step-3-terminal", "relative_path")])
-    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/step-3-terminal"\n')
-    _write(tmp_path / "scripts/write.sh", 'touch "$DIR/.completed/step-3-terminal"\n')
+    _project(tmp_path, manifest=[_row(".completed/example-terminal", "relative_path")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/example-terminal"\n')
+    _write(tmp_path / "scripts/write.sh", 'touch "$DIR/.completed/example-terminal"\n')
 
     assert lwa.main([str(tmp_path)]) == 0

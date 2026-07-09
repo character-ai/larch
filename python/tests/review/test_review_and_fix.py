@@ -595,38 +595,13 @@ def test_step5_normalize_status_replays_envelope(tmp_path, capsys):
 
 
 @MARK_STEP5
-def test_step5_normalize_status_writes_terminal_sentinel_for_nonzero_loop_rc(tmp_path, capsys):
+def test_step5_normalize_status_writes_result_env_for_nonzero_loop_rc(tmp_path, capsys):
     impl = _tmp_impl(tmp_path)
     stdout_file = tmp_path / "stdout.txt"
     stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
     rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "7"])
     assert rc == 7
-    assert (impl / ".completed" / "step-5-terminal").is_file()
-    assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
-
-
-@MARK_STEP5
-def test_step5_normalize_status_writes_result_env_before_terminal_sentinel(tmp_path, monkeypatch, capsys):
-    impl = _tmp_impl(tmp_path)
-    stdout_file = tmp_path / "stdout.txt"
-    stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
-    calls: list[str] = []
-
-    def fake_write(rows):
-        calls.append("result-env")
-        assert any(key == "STEP5_REVIEW_STATUS" for key, _ in rows)
-
-    def fake_sentinel(*, implement_tmpdir):
-        calls.append("sentinel")
-        assert implement_tmpdir == impl
-
-    monkeypatch.setattr(review_and_fix, "_write_step5_result_env", fake_write)
-    monkeypatch.setattr(review_and_fix, "_step5_write_terminal_sentinel", fake_sentinel)
-
-    rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "0"])
-
-    assert rc == 0
-    assert calls == ["result-env", "sentinel"]
+    assert (impl / ".step5-review-result.env").is_file()
     assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
 
 

@@ -111,13 +111,6 @@ def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
 
 
 
-def _clear_step3_bg_wait_sidecars(implement_tmpdir: Path) -> None:
-    with contextlib.suppress(OSError):
-        (implement_tmpdir / ".completed" / "step-3-terminal").unlink()
-    with contextlib.suppress(OSError):
-        (implement_tmpdir / "bg-poll-guard-probe-denials.step-3-terminal.count").unlink()
-
-
 def step5_review_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-5-review").parse_args(argv)
     implement_tmpdir = _tmpdir_from_env()
@@ -891,8 +884,6 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C90
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    if args.checks_site == "step3":
-        _clear_step3_bg_wait_sidecars(implement_tmpdir)
     return _checks_commit_route_main_impl(args, implement_tmpdir)
 
 
@@ -1107,8 +1098,6 @@ def run_step_checks_main(argv: list[str] | None = None) -> int:
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
     command = ["checks", "run-relevant", "--site", args.site, "--tmpdir", str(implement_tmpdir)]
-    if args.site == "step3":
-        _clear_step3_bg_wait_sidecars(implement_tmpdir)
     return _run_cli_forward(command)
 
 

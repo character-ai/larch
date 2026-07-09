@@ -7,7 +7,6 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 AGENTS_MD="$ROOT/AGENTS.md"
 IMPL_MD="$ROOT/skills/implement/SKILL.md"
-SHARED_DESIGN_WAIT_MD="$ROOT/skills/shared/design-background-wait.md"
 ORCH_NEVER_MD="$ROOT/skills/shared/orchestrator-never.md"
 BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
 DESIGN_OUTLINE_MD="$ROOT/skills/design/references/design-outline.md"
@@ -46,11 +45,7 @@ MAKEFILE="$ROOT/Makefile"
 STEP3B_ENTRY="$ROOT/skills/design/scripts/design-step3b-entry.sh"
 STEP3B_ENTRY_MD="$ROOT/skills/design/scripts/design-step3b-entry.md"
 STEP3B_SANITIZE="$ROOT/skills/design/scripts/design-step3b-sanitize.sh"
-FINAL_SUMMARY_BGJOB_CONTRACT='Use shared bgjob wait for final-summary launch/rejoin/`WAIT`/`DEAD`/`DONE`.'
-FINAL_SUMMARY_RESULT_ENV='result env `$DESIGN_TMPDIR/bgjob/design-step-final-summary.result.env`'
-FINAL_SUMMARY_REQUIRED_KVS='require `BGJOB_RC=0` and `FINAL_SUMMARY_PATH`'
-RESUME_BACKREF_LITERAL='Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above.'
-FINAL_SUMMARY_FENCE_ANCHOR='design-step-final-summary.sh --outcome'
+RESUME_BACKREF_LITERAL='Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, and result-env contract as the first-time Step 3 review fence above.'
 STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
 STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh'
 
@@ -222,80 +217,21 @@ ported_verbs='step0-parse step0-session step0-route step0-clarify-hard-halt step
 retired_paths='design-step0-parse.sh design-step0-session.sh design-step0-route.sh design-step0-clarify-hard-halt.sh design-step0-init.sh design-step0-abort-cleanup.sh design-step0-ap-continue.sh design-step0c.sh design-step1d5.sh design-step1d7.sh design-step1e-reentry.sh test-design-step0-init.sh test-design-step1d5.sh'
 
 contains "$SKILL_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session' 'Step 0 session fence must call direct Python verb'
-contains "$AGENTS_MD" 'prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with the relevant terminal sentinel absent also mean silent yield.' 'AGENTS.md must pin /design repeat silent-yield carve-out'
+contains "$AGENTS_MD" 'Use larch bgjob daemons for long helpers' 'AGENTS.md must pin bgjob-owned long-helper waits'
 contains "$SKILL_MD" 'NEVER use the `Monitor` tool anywhere within the `/design` orchestrator' 'Design anti-patterns must retain Monitor ban stub'
 contains "$SKILL_MD" 'Use the shared bgjob wait contract for migrated long helpers, not Bash polling loops.' 'Design anti-patterns must retain bgjob wait primary guidance'
 contains "$SKILL_MD" 'NEVER launch a background recovery waiter' 'Design anti-patterns must retain background recovery waiter ban'
 contains "$SKILL_MD" 'Do NOT fall back to Monitor' 'Design anti-patterns must retain Monitor fallback ban'
-contains "$SKILL_MD" 'NEVER act on launcher stdout, `DONE` alone, or compatibility sentinels during `/design` bgjob waits' 'Design anti-pattern #5 title must cover bgjob waits'
 contains "$SKILL_MD" '`BGJOB_STATUS=WAIT` means run the identical `bgjob wait` again with no intervening prose or tools.' 'Design anti-pattern #5 must pin WAIT repeat handling'
 contains "$SKILL_MD" '`BGJOB_STATUS=DONE` permits normal continuation only when `BGJOB_RC=0` and the required KVs are present in the bgjob result env.' 'Design anti-pattern #5 must pin DONE result-env handling'
-contains "$SKILL_MD" '`${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`' 'Design anti-patterns must point detailed recovery to design-background-wait'
 contains "$SKILL_MD" 'NEVER treat an AskUserQuestion no-response fallback as an operator answer' 'Design anti-patterns must not treat AskUserQuestion no-response as an answer'
-contains "$SHARED_DESIGN_WAIT_MD" 'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.' 'Shared design wait must own Step 3 completion-condition literal'
-contains "$SHARED_DESIGN_WAIT_MD" 'Foreground terminal-sentinel probe: after the one classification `Read` finds new or changed non-empty task-output bytes' 'Shared design wait must own foreground-probe literal'
-contains "$SHARED_DESIGN_WAIT_MD" 'A bg-poll denial of that classification `Read` is same: no prose/tools/retry before next `<task-notification>`.' 'Shared design wait must document denied classification-Read silent yield'
-contains "$SHARED_DESIGN_WAIT_MD" 'If several notifications are already queued in the same batch, ignore the rest of that batch after the first denial or clamp: no more tools, no prose, and no extra reads until a later `<task-notification>` arrives.' 'Shared design wait must document same-batch silent yield'
-contains "$SHARED_DESIGN_WAIT_MD" 'blocks directly at `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 3)' 'Shared design wait must document Stop direct block threshold'
-not_contains "$SHARED_DESIGN_WAIT_MD" 'blocks the next prompt at `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 5; `UserPromptSubmit` hook)' 'Shared design wait must not describe UserPromptSubmit as primary no-progress block path'
-contains "$SHARED_DESIGN_WAIT_MD" 'Foreground probes are non-sleeping `[ -f … ]` or `test -f …` checks only.' 'Shared design wait must document foreground probe forms'
-contains "$SHARED_DESIGN_WAIT_MD" 'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Shared design wait must own DESIGN_TMPDIR prefix literal'
-contains "$SHARED_DESIGN_WAIT_MD" 'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Shared design wait must own foreground DESIGN_TMPDIR prefix literal'
-contains "$SHARED_DESIGN_WAIT_MD" 'the backgrounded `/design` task reliably re-fires a `<task-notification>` on completion' 'Shared design wait must document notification-refire platform assumption'
-contains "$SHARED_DESIGN_WAIT_MD" 'If non-empty task-output bytes are prefix-identical to the prior non-empty bytes in the same wait over the first 200 chars' 'Shared design wait must pin prefix-identical Step 3 fingerprint scope'
-contains "$SHARED_DESIGN_WAIT_MD" 'The fingerprint is the first 200 chars.' 'Shared design wait must pin first-200-char fingerprint definition'
-not_contains "$SHARED_DESIGN_WAIT_MD" 'byte-identical' 'Shared design wait must not retain stale byte-identical wording'
 not_contains "$SKILL_MD" 'WRONG — background sleep-loop recovery waiter' 'Design anti-patterns must not retain wrong/correct probe fence'
 not_contains "$SKILL_MD" 'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Design anti-patterns must not retain DESIGN_TMPDIR prefix prose'
-not_contains "$SKILL_MD" 'the review task reliably re-fires a `<task-notification>` on completion' 'Design anti-patterns must not retain notification-refire assumption'
-not_contains "$SKILL_MD" 'When present, proceed to post-notification parsing; do not wait for a second `<task-notification>`.' 'Design anti-patterns must not retain long WAIT block'
 not_contains "$ORCH_NEVER_MD" 'Load once per session' 'Shared orchestrator never must not claim session-start loading'
 not_contains "$IMPL_MD" 'See `skills/implement/references/step2-dispatch.md` orchestrator wait contract and `skills/shared/orchestrator-never.md`.' 'Implement anti-patterns must not retain routine orchestrator-never wait pointer'
-not_contains "$ORCH_NEVER_MD" 'only after an empty `<task-notification>`' 'Shared orchestrator never must remove empty-notification-only qualifier'
-not_contains "$ORCH_NEVER_MD" 'only after the empty `<task-notification>`' 'Shared orchestrator never must remove the-empty-notification-only qualifier'
-contains "$ORCH_NEVER_MD" 'For `/design`, after a premature `<task-notification>`, first run exactly one `Read` of the active `tasks/*.output`' 'Shared orchestrator never must document /design non-empty premature recovery'
-contains "$ORCH_NEVER_MD" 'Missing or whitespace-only task-output bytes mean silent yield (#5240)' 'Shared orchestrator never must document /design empty-output no-probe recovery'
-contains "$ORCH_NEVER_MD" 'prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with the relevant terminal sentinel absent also mean silent yield.' 'Shared orchestrator never must document /design repeat silent-yield carve-out'
-contains "$ORCH_NEVER_MD" 'For `/implement` Steps 3 and 5, premature notifications remain notification-only' 'Shared orchestrator never must document /implement Steps 3 and 5 notification-only recovery'
-contains "$ORCH_NEVER_MD" 'If a read of the just-completed Step 3 or Step 5 task output is denied immediately after that same step' 'Shared orchestrator never must document /implement Steps 3 and 5 post-denial recovery'
-contains "$ORCH_NEVER_MD" 'When the sentinel is present, retry the just-denied output read once.' 'Shared orchestrator never must document retry-on-present guidance'
-contains "$ORCH_NEVER_MD" 'For `/implement` Step 8, run one foreground non-sleeping `IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time' 'Shared orchestrator never must document /implement Step 8 rc-probe recovery'
-contains "$ORCH_NEVER_MD" 'hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent' 'Shared orchestrator never must document Step 8 hook clamp'
-
-check_context "$SKILL_MD" \
-  '/design Verbosity Control uses the Step 3 bgjob wait contract' \
-  '**Step 3 foreground waits**' \
-  "8" \
-  'shared bgjob wait contract'
-check_context "$SKILL_MD" \
-  '/design Final summary block uses the bgjob wait contract' \
-  '**When**: after `DESIGN_TMPDIR` exists' \
-  "25" \
-  "$FINAL_SUMMARY_BGJOB_CONTRACT"
-check_context "$SKILL_MD" \
-  '/design Final summary block names bgjob result env' \
-  '**When**: after `DESIGN_TMPDIR` exists' \
-  "25" \
-  "$FINAL_SUMMARY_RESULT_ENV"
-check_context "$SKILL_MD" \
-  '/design Final summary block pins required success KVs' \
-  '**When**: after `DESIGN_TMPDIR` exists' \
-  "25" \
-  "$FINAL_SUMMARY_REQUIRED_KVS"
-check_context_before "$SKILL_MD" \
-  '/design Final summary bgjob contract precedes its launcher fence' \
-  "$FINAL_SUMMARY_FENCE_ANCHOR" \
-  "20" \
-  "$FINAL_SUMMARY_BGJOB_CONTRACT"
-check_context_before_step3_launch "$SKILL_MD" \
-  '/design Step 3 launch load contract precedes its bgjob fence' \
-  "20" \
-  'shared bgjob wait contract'
-check_context_before "$SKILL_MD" \
-  '/design Step 5c bgjob contract precedes its launcher fence' \
-  "$STEP5C_ANCHOR" \
-  "20" \
-  'shared bgjob wait contract'
+contains "$ORCH_NEVER_MD" 'NEVER wait on long helpers with task-output reads, Monitor, sleeps, or ad-hoc probes.' 'Shared orchestrator never must own bgjob wait rule'
+contains "$ORCH_NEVER_MD" 'After `BGJOB_STATUS=WAIT`, run the identical wait again with no intervening prose' 'Shared orchestrator never must document identical wait repeats'
+contains "$ORCH_NEVER_MD" 'Do not treat compatibility sentinels, launcher stdout, or wrapper stdout as completion evidence.' 'Shared orchestrator never must reject non-result completion evidence'
 check_context_before_step3_launch "$SKILL_MD" \
   '/design Step 3 launch loads bgjob-wait contract' \
   "20" \
@@ -310,7 +246,7 @@ check_context_before_step3_launch "$SKILL_MD" \
   'bgjob/design-step3-review.result.env'
 contains "$SKILL_MD" 'If stdout contains `BGJOB_STATUS=WAIT`, the next action is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep.' 'Design Step 3 WAIT handling must be chunked and foreground-only'
 contains "$SKILL_MD" 'Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 3 parse the result env.' 'Design Step 3 DONE handling must require BGJOB_RC=0'
-contains "$SKILL_MD" 'never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone' 'Design Step 3 post-loop routing must reject non-result success signals'
+contains "$SKILL_MD" 'Never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, or wrapper stdout.' 'Design Step 3 post-loop routing must reject non-result success signals'
 contains "$SKILL_MD" 'Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 5c parse `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`.' 'Design Step 5c DONE handling must require BGJOB_RC=0'
 check_context_before "$SKILL_MD" \
   '/design Step 5c uses the bgjob wait contract' \

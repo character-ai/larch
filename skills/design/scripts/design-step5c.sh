@@ -96,7 +96,7 @@ if [ "$_registry_state" = live ]; then
 fi
 
 mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
-rm -f "$DESIGN_TMPDIR/.completed/step-5c-terminal" "$DESIGN_TMPDIR/bgjob/design-step5c.result.env" 2>/dev/null || true
+rm -f "$DESIGN_TMPDIR/bgjob/design-step5c.result.env" 2>/dev/null || true
 step5c_recreate_merge_env
 
 _owner_args=()
@@ -108,6 +108,5 @@ exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
   --tmpdir "$DESIGN_TMPDIR" \
   --budget-s 21600 \
   "${_owner_args[@]}" \
-  --sentinel "$DESIGN_TMPDIR/.completed/step-5c-terminal" \
   --merge-result-env "$DESIGN_TMPDIR/.design-step5c-status.env" \
   -- bash "$0" --run-step5c-child "${ORIGINAL_ARGS[@]}"

@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 export IMPLEMENT_TMPDIR
+STEP="implement-step6-checks"
+RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"
 BGJOB_CHILD="false"
 MERGE_RESULT_ENV=""
 ORIGINAL_ARGS=()
@@ -48,9 +50,65 @@ rehydrate_larch_triplet() {
     export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 }
 
+step6_live_registry_exists() {
+    python3 <<'PY'
+from pathlib import Path
+import os
+import sys
+
+plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
+sys.path.insert(0, str(plugin_root / "python"))
+try:
+    from larch.bgjob import registry  # noqa: E402
+
+    path, entry = registry.read_for(tmpdir=Path(os.environ["IMPLEMENT_TMPDIR"]), step="implement-step6-checks")
+    if entry is None:
+        raise SystemExit(1)
+    if registry.child_liveness(entry).live or registry.daemon_liveness(entry).live:
+        print("live")
+        raise SystemExit(0)
+    registry.unlink_entry(path)
+except SystemExit:
+    raise
+except Exception:
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+raise SystemExit(1)
+PY
+}
+
+step6_result_env_state() {
+    python3 <<'PY'
+from pathlib import Path
+import os
+import sys
+
+result_env = Path(os.environ["IMPLEMENT_TMPDIR"]) / "bgjob" / "implement-step6-checks.result.env"
+if result_env.is_symlink() or (result_env.exists() and not result_env.is_file()):
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+if not result_env.exists():
+    raise SystemExit(1)
+try:
+    rows: dict[str, str] = {}
+    for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        rows.setdefault(key, value)
+except OSError:
+    print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
+    raise SystemExit(2)
+if rows.get("STEP") == "implement-step6-checks" and rows.get("BGJOB_RC") == "0" and rows.get("NEXT_ACTION") in {"continue", "skip-to-7a", "checks-failed", "stall"}:
+    print("complete")
+    raise SystemExit(0)
+print("stale")
+raise SystemExit(1)
+PY
+}
+
 step6_cleanup() {
     mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
-    printf '' >"$IMPLEMENT_TMPDIR/.completed/step-6-terminal" 2>/dev/null || true
 }
 
 step6_merge_cleanup() {
@@ -92,14 +150,43 @@ if [ -L "$IMPLEMENT_TMPDIR/bgjob" ]; then
     exit 2
 fi
 mkdir -p "$IMPLEMENT_TMPDIR/bgjob"
-STEP="implement-step6-checks"
+if [ -L "$RESULT_ENV" ] || { [ -e "$RESULT_ENV" ] && [ ! -f "$RESULT_ENV" ]; }; then
+    printf '%s
+' 'step-6-entry.sh: refusing invalid bgjob result env' >&2
+    exit 2
+fi
+set +e
+registry_state=$(step6_live_registry_exists)
+registry_rc=$?
+set -e
+if [ "$registry_rc" -eq 2 ]; then
+    exit 2
+fi
+set +e
+result_env_state=$(step6_result_env_state)
+result_env_rc=$?
+set -e
+if [ "$result_env_rc" -eq 2 ]; then
+    exit 2
+fi
+if [ "$registry_state" = live ]; then
+    if [ "$result_env_state" != complete ]; then
+        rm -f "$RESULT_ENV" 2>/dev/null || true
+    fi
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
+    exit $?
+fi
+if [ "$result_env_state" = complete ]; then
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
+    exit $?
+fi
+rm -f "$RESULT_ENV" 2>/dev/null || true
 MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.merge.env"
 MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
 : >"$MERGE_RESULT_ENV_TMP"
 [ -L "$MERGE_RESULT_ENV" ] && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
 ' 'step-6-entry.sh: refusing symlinked merge-result-env' >&2; exit 2; }
 mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; exit 2; }
-rm -f "$IMPLEMENT_TMPDIR/.completed/step-6-terminal" 2>/dev/null || true
 
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --step "$STEP" \
@@ -107,6 +194,5 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --budget-s 15600 \
     --owner-pid "${LARCH_CLAUDE_PID:-$PPID}" \
     --merge-result-env "$MERGE_RESULT_ENV" \
-    --sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal" \
     -- \
     bash "$SCRIPT_DIR/step-6-entry.sh" --bgjob-child --merge-result-env "$MERGE_RESULT_ENV" "${ORIGINAL_ARGS[@]}"

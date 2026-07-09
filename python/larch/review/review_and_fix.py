@@ -227,12 +227,6 @@ def _step5_probe_prior_round_env(*, implement_tmpdir: Path, prior_round: int) ->
     return expected.is_file()
 
 
-def _step5_write_terminal_sentinel(*, implement_tmpdir: Path) -> None:
-    completed = implement_tmpdir / ".completed"
-    completed.mkdir(parents=True, exist_ok=True)
-    (completed / "step-5-terminal").touch()
-
-
 @contextlib.contextmanager
 def _stderr_sidecar(path: Path) -> Generator[None, None, None]:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -855,12 +849,8 @@ def normalize_status(argv: list[str] | None = None) -> int:
         return 2
     has_envelope = any(line.startswith("STEP5_REVIEW_STATUS=") and line.partition("=")[2] for line in text.splitlines())
     if has_envelope:
-        terminal = implement_tmpdir / ".completed" / "step-5-terminal"
-        with contextlib.suppress(FileNotFoundError):
-            terminal.unlink()
         try:
             _write_step5_result_env(_step5_result_env_rows_from_text(text))
-            _step5_write_terminal_sentinel(implement_tmpdir=implement_tmpdir)
         except OSError as exc:
             _err(f"review-and-fix normalize-status: {exc}")
             _emit_step5_envelope(_Step5Envelope(

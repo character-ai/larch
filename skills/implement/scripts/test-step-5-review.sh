@@ -242,7 +242,7 @@ CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.lo
 grep -Fq -- '--step' "$IMPL/bgjob-start-argv.txt" || fail 'wrapper must pass --step to bgjob'
 grep -Fq -- 'implement-step5-review' "$IMPL/bgjob-start-argv.txt" || fail 'wrapper must start implement-step5-review bgjob'
 grep -Fq -- '--merge-result-env' "$IMPL/bgjob-start-argv.txt" || fail 'wrapper must pass merge-result-env to bgjob'
-grep -Fq -- '--sentinel' "$IMPL/bgjob-start-argv.txt" || fail 'wrapper must preserve step-5-terminal sentinel through bgjob'
+if grep -Fq -- '--sentinel' "$IMPL/bgjob-start-argv.txt"; then fail 'wrapper must not pass terminal sentinel to bgjob'; fi
 pass 'Step 5 wrapper fresh launch uses bgjob and clears stale merge env without detach sidecars'
 
 IMPL="$D/canonical-result"

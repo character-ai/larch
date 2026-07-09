@@ -688,12 +688,6 @@ repos:
         language: system
         pass_filenames: false
         files: ^skills/(design|implement|review|review-and-fix)/
-
-      - id: lint-bg-wait-writer-parity
-        name: lint background wait writer parity
-        entry: python3 python/cli.py lint bg-wait-writer-parity
-        language: system
-        pass_filenames: false
         files: ^skills/(design|implement|review|review-and-fix)/
 
       - id: lint-awk-multibyte-regex

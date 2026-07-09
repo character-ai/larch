@@ -42,8 +42,8 @@ Valid routing records are newline-delimited and line-anchored:
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Step 6 relies on the telemetry contract in `skills/shared/session-setup-output.md` and reads the session-env copy under `$IMPLEMENT_TMPDIR`.
-- Uses bgjob step slug `implement-step6-checks`, clears stale `.completed/step-6-terminal`, and passes that sentinel to `bgjob start`.
-- The wrapper does not write `.bg-wait-active`; the terminal sentinel is written by the bgjob daemon and by the child cleanup as a compatibility marker.
+- Uses bgjob step slug `implement-step6-checks` and routes completion through `bgjob/implement-step6-checks.result.env`.
+- The wrapper does not write legacy wait markers; bgjob owns completion state.
 - The wrapper does not call `review-and-fix check-changes` directly. Python owns the composite routing.
 
 ## Edit-in-sync

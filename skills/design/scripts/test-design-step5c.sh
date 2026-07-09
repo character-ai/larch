@@ -32,7 +32,6 @@ if args[:2] == ["bgjob", "start"]:
     step = args[args.index("--step") + 1]
     tmpdir = Path(args[args.index("--tmpdir") + 1])
     merge_env = Path(args[args.index("--merge-result-env") + 1])
-    sentinel = Path(args[args.index("--sentinel") + 1])
     command = args[args.index("--") + 1 :]
     result_dir = tmpdir / "bgjob"
     result_dir.mkdir(exist_ok=True)
@@ -50,8 +49,6 @@ if args[:2] == ["bgjob", "start"]:
                 if key not in {"BGJOB_RC", "BGJOB_ELAPSED_S", "STEP"}:
                     rows.append((key, value))
     result_env.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
-    sentinel.parent.mkdir(parents=True, exist_ok=True)
-    sentinel.write_text("", encoding="utf-8")
     print(f"BGJOB_STATUS=STARTED STEP={step} PGID=12345")
     raise SystemExit(0)
 if args[:2] == ["bgjob", "wait"]:
@@ -116,8 +113,7 @@ pass 'wrapper launches bgjob and child delegates to python/cli.py design step5c'
 
 grep -Fxq 'PLAN_WRITE_OK=true' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must merge Step 5c status rows'
 grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must include BGJOB_RC'
-[ -f "$D/.completed/step-5c-terminal" ] || fail 'bgjob must preserve step-5c-terminal sentinel'
-pass 'wrapper writes bgjob result env and terminal sentinel'
+pass 'wrapper writes bgjob result env'
 
 out=$(CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$D" LARCH_BGJOB_REGISTRY_ROOT="$TMP/registry" \
   "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh" --session-env-path "$TMP/source-env.sh" --claude-pid $$)

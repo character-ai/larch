@@ -412,7 +412,6 @@ def test_step3_normalizer_zero_round_and_synthesis_paths(tmp_path: Path) -> None
     result_text = (launched / ".step3-review-result.env").read_text(encoding="utf-8")
     assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in result_text
     assert "STEP3_REVIEW_CAP_REACHED=false" in result_text
-    assert (launched / ".step3-terminal-persisted-this-run").is_file()
 
 
 def test_step3_normalizer_writes_terminal_sentinel_on_normal_complete_path(tmp_path: Path) -> None:
@@ -425,22 +424,20 @@ def test_step3_normalizer_writes_terminal_sentinel_on_normal_complete_path(tmp_p
     proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n")
     assert proc.returncode == 0, proc.stderr
     assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
-    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
-    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+    assert (tmp_path / ".completed" / "step-3").is_file()
 
 
-def test_step3_normalizer_writes_sentinel_from_stdout_status_without_result_env(tmp_path: Path) -> None:
+def test_step3_normalizer_records_completion_from_stdout_status_without_result_env(tmp_path: Path) -> None:
     # #5418 Fix A: even with no result env (e.g., cleared by auto-continuation
-    # before the loop was killed), normalize writes step-3-terminal when the
+    # before the loop was killed), normalize writes step-3 when the
     # merged status resolves to a terminal value from the stdout content.
     proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n")
     assert proc.returncode == 0, proc.stderr
     assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
-    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
-    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+    assert (tmp_path / ".completed" / "step-3").is_file()
 
 
-def test_step3_normalizer_no_sentinel_for_interactive_status(tmp_path: Path) -> None:
+def test_step3_normalizer_no_completion_for_interactive_status(tmp_path: Path) -> None:
     # #5418 Fix A guard: interactive mid-loop statuses must NOT trigger sentinel write.
     _ = (tmp_path / ".step3-review-result.env").write_text(
         "STEP3_REVIEW_LOOP_STATUS=main-agent-vote-required\nLOOP_STATUS=main-agent-vote-required\nROUNDS_COMPLETED=1\n",
@@ -448,25 +445,24 @@ def test_step3_normalizer_no_sentinel_for_interactive_status(tmp_path: Path) -> 
     )
     proc = _run_step3_normalizer(tmp_path, "LOOP_STATUS=main-agent-vote-required\nROUNDS_COMPLETED=1\n")
     assert proc.returncode == 0, proc.stderr
-    assert not (tmp_path / ".completed" / "step-3-terminal").exists()
-    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+    assert not (tmp_path / ".completed" / "step-3").exists()
 
 
-def test_step3_normalizer_sentinel_before_kv_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step3_normalizer_completion_before_kv_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # #5418: reordering sentinel write after emit would pass post-exit checks but
-    # restore premature-notification WAIT loops; pin ordering at emit entry.
+    # hide result-env ordering regressions; pin completion before emit entry.
     _ = (tmp_path / ".step3-review-result.env").write_text(
         "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=1\nREVIEW_ROUND_COUNT=1\n",
         encoding="utf-8",
     )
     stdout_file = tmp_path / "plan-review.stdout"
     _ = stdout_file.write_text("LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
-    sentinel_seen = False
+    completion_seen = False
     original = plan_review_normalize._step3_emit_normalize_envelope_with_next_action  # pyright: ignore[reportPrivateUsage]
 
     def _assert_sentinel_before_emit(tmpdir: Path, *, values: dict[str, str]) -> None:
-        nonlocal sentinel_seen
-        sentinel_seen = (tmpdir / ".completed" / "step-3-terminal").is_file()
+        nonlocal completion_seen
+        completion_seen = (tmpdir / ".completed" / "step-3").is_file()
         original(tmpdir=tmpdir, values=values)
 
     monkeypatch.setattr(plan_review_normalize, "_step3_emit_normalize_envelope_with_next_action", _assert_sentinel_before_emit)
@@ -475,7 +471,7 @@ def test_step3_normalizer_sentinel_before_kv_emit(tmp_path: Path, monkeypatch: p
             ["--design-tmpdir", str(tmp_path), "--stdout-file", str(stdout_file), "--loop-rc", "0"]
         )
     assert rc == 0
-    assert sentinel_seen
+    assert completion_seen
 
 
 def test_step3_normalizer_empty_primary_replays_stdout_fallback_warn_error(tmp_path: Path) -> None:
@@ -628,20 +624,14 @@ def test_step3_loop_persist_envelope_persists_and_emits_invalid_slot_panel_warni
     assert "INVALID_SLOT_PANEL_WARNING=**⚠ Degraded plan-review panel: 1 invalid slot row(s) dropped.**" in out.getvalue()
 
 
-def test_step3_loop_persist_envelope_writes_terminal_sentinels(tmp_path: Path) -> None:
-    # #4688 hook-release contract: persisting the result env writes the
-    # step-3-terminal sentinel pair so hook-bg-poll-guard.sh releases the marker.
+def test_step3_loop_persist_envelope_writes_result_env(tmp_path: Path) -> None:
     plan_review.step3_loop_persist_envelope(design_tmpdir=tmp_path, status="complete", round_num=1, rounds_completed=1, final_round=1, values={})
-    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
-    assert (tmp_path / ".step3-terminal-persisted-this-run").is_file()
+    assert (tmp_path / ".step3-review-result.env").is_file()
 
 
-def test_step3_loop_persist_envelope_terminal_without_step3_on_midloop_bail(tmp_path: Path) -> None:
-    # Mid-loop bail-outs write step-3-terminal (hook release) but not step-3
-    # (the pause / Gate B milestone), per the split-sentinel contract.
+def test_step3_loop_persist_envelope_midloop_bail_writes_result_env_only(tmp_path: Path) -> None:
     plan_review.step3_loop_persist_envelope(design_tmpdir=tmp_path, status="main-agent-apply-required", round_num=2, rounds_completed=2, final_round=2, values={})
-    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
-    assert (tmp_path / ".step3-terminal-persisted-this-run").is_file()
+    assert (tmp_path / ".step3-review-result.env").is_file()
     assert not (tmp_path / ".completed" / "step-3").exists()
 
 
@@ -721,14 +711,13 @@ def _seed_step3_downstream(tmp_path: Path) -> None:
     bgjob = tmp_path / "bgjob"
     completed.mkdir(parents=True, exist_ok=True)
     bgjob.mkdir(parents=True, exist_ok=True)
-    for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
+    for name in ("step-3", "step-3.5", "step-3", "step-3b", "step-4", "step-4b"):
         (completed / name).touch()
     _ = (bgjob / "design-step3-review.result.env").write_text("BGJOB_RC=0\nNEXT_ACTION=step3b\n", encoding="utf-8")
     _ = (bgjob / "design-step4-tail.result.env").write_text(
         "BGJOB_RC=0\nSKIP_APPROVE_REQUESTED_GATEC=false\n",
         encoding="utf-8",
     )
-    (tmp_path / ".step3-terminal-persisted-this-run").touch()
     (tmp_path / ".gate-b-postapply-ready-1").touch()
     (tmp_path / ".gate-b-postapply-ready-2").touch()
 
@@ -748,7 +737,7 @@ def test_step3_state_direct_review_entry_noop_without_reentry(tmp_path: Path) ->
     assert "REVIEW_ROUND_COUNT=0" in proc.stdout
     # No .step3-reentry breadcrumb -> nothing cleared.
     assert (tmp_path / ".completed" / "step-3").is_file()
-    assert (tmp_path / ".completed" / "step-3-terminal").is_file()
+    assert (tmp_path / ".completed" / "step-3").is_file()
     assert (tmp_path / ".gate-b-postapply-ready-1").is_file()
     for result_env in _step3_bgjob_result_envs(tmp_path):
         assert result_env.is_file()
@@ -774,9 +763,8 @@ def test_step3_state_direct_review_entry_clears_restores_and_consumes(tmp_path: 
     assert "STEP3_STATE=direct-review-entry" in proc.stdout
     assert "REVIEW_ROUND_COUNT=2" in proc.stdout
     # Downstream sentinels cleared.
-    for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
+    for name in ("step-3", "step-3.5", "step-3", "step-3b", "step-4", "step-4b"):
         assert not (tmp_path / ".completed" / name).exists()
-    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
     assert not (tmp_path / ".gate-b-postapply-ready-1").exists()
     assert not (tmp_path / ".gate-b-postapply-ready-2").exists()
     for result_env in _step3_bgjob_result_envs(tmp_path):
@@ -807,7 +795,6 @@ def test_step3_state_pause_hygiene_clears_but_preserves_findings_and_reentry(tmp
     assert "STEP3_STATE=direct-review-pause-hygiene" in proc.stdout
     # Clears downstream and restores upstream, same as direct-review-entry.
     assert not (tmp_path / ".completed" / "step-3").exists()
-    assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
     for result_env in _step3_bgjob_result_envs(tmp_path):
         assert not result_env.exists()
     for name in ("step-1e", "step-2a", "step-2b", "step-2b.5"):
@@ -836,7 +823,7 @@ def test_step3_state_auto_continuation_clears_without_restore(tmp_path: Path) ->
     assert "STEP3_STATE=auto-continuation-entry" in proc.stdout
     assert "REVIEW_ROUND_COUNT=1" in proc.stdout
     # Downstream cleared unconditionally (no .step3-reentry gate).
-    for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
+    for name in ("step-3", "step-3.5", "step-3", "step-3b", "step-4", "step-4b"):
         assert not (tmp_path / ".completed" / name).exists()
     assert not (tmp_path / ".gate-b-postapply-ready-1").exists()
     for result_env in _step3_bgjob_result_envs(tmp_path):
@@ -4066,7 +4053,7 @@ def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(
     assert "REVIEW_ROUND_COUNT=2" in out, out
 
 
-def test_step3_loop_zero_findings_degraded_stop_writes_sentinels(
+def test_step3_loop_zero_findings_degraded_stop_records_completions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The final zero-findings-degraded-panel stop path must write step-3 sentinels."""
@@ -4103,7 +4090,7 @@ def test_step3_loop_zero_findings_degraded_stop_writes_sentinels(
 
     assert rc == 0
     assert (design / ".completed" / "step-3").is_file()
-    assert (design / ".completed" / "step-3-terminal").is_file()
+    assert (design / ".completed" / "step-3").is_file()
 
 
 def test_step3_loop_postplan_validator_runs_from_consumer_cwd(tmp_path: Path) -> None:

@@ -62,17 +62,5 @@
   {
     "kind": "basename",
     "artifact": "plan-review-slots.ndjson"
-  },
-  {
-    "kind": "relative_path",
-    "artifact": ".completed/step-3-terminal"
-  },
-  {
-    "kind": "relative_path",
-    "artifact": ".completed/step-5c-terminal"
-  },
-  {
-    "kind": "relative_path",
-    "artifact": ".completed/step-final-summary"
   }
 ]

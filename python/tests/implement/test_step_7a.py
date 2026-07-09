@@ -7,17 +7,6 @@ import pytest
 from larch.implement import step_7a
 
 
-def test_step7a_terminal_sentinel_context_does_not_write_bg_wait_marker(tmp_path: Path) -> None:
-    with step_7a._terminal_sentinel(
-        tmpdir=tmp_path,
-        terminal_sentinel=".completed/step-7a-terminal",
-    ):
-        assert not (tmp_path / ".bg-wait-active").exists()
-
-    assert (tmp_path / ".completed" / "step-7a-terminal").exists()
-    assert not (tmp_path / ".bg-wait-active").exists()
-
-
 def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     merge_env = tmp_path / "bgjob" / "implement-step7a.merge.env"
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")

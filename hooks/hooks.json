@@ -30,16 +30,6 @@
             "timeout": 10
           }
         ]
-      },
-      {
-        "matcher": "Read|Bash|Monitor|TaskOutput",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-bg-poll-guard.sh",
-            "timeout": 10
-          }
-        ]
       }
     ],
     "PostToolUse": [
@@ -61,15 +51,6 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/hook-stop-fail-close.sh",
             "timeout": 30
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-no-progress-guard.sh",
-            "timeout": 10
           }
         ]
       }
@@ -111,17 +92,6 @@
           {
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sweep-design-logs.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/hook-no-progress-guard.sh",
             "timeout": 10
           }
         ]

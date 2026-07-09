@@ -21,14 +21,14 @@ def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:
 
 
 def write_allowlist(root: Path, rows: str = "") -> None:
-    base = "skills/shared/design-background-wait.md\tlegacy issue-2 cleanup doc.\n"
+    base = "skills/shared/old-wait.md\tlegacy issue-2 cleanup doc.\n"
     write(root / "python/larch/lint/bg_wait_allowlist.txt", base + rows)
 
 
 def test_accepts_allowlisted_legacy_skill_doc(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write_allowlist(tmp_path)
     write(
-        tmp_path / "skills/shared/design-background-wait.md",
+        tmp_path / "skills/shared/old-wait.md",
         "Use `run_in_background: true` only in this retained legacy contract.",
     )
     rc, err = run(tmp_path, capsys)

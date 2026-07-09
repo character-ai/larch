@@ -764,8 +764,8 @@ def test_final_log_publish_clears_preexisting_completed_sentinels(
     repo = _operator_repo_with_remote(tmp_path)
     stale_completed = repo / "larch-logs" / "design" / RUN_ID / ".completed"
     stale_completed.mkdir(parents=True)
-    _ = (stale_completed / "step-3-terminal").write_text("", encoding="utf-8")
-    _git("add", f"larch-logs/design/{RUN_ID}/.completed/step-3-terminal", cwd=repo)
+    _ = (stale_completed / "legacy-terminal").write_text("", encoding="utf-8")
+    _git("add", f"larch-logs/design/{RUN_ID}/.completed/legacy-terminal", cwd=repo)
     _git("commit", "-q", "-m", "stale completed sentinel", cwd=repo)
 
     design = tmp_path / "design"
@@ -787,7 +787,7 @@ def test_final_log_publish_clears_preexisting_completed_sentinels(
         check=False,
     ).stdout
     assert f"larch-logs/design/{RUN_ID}/artifact.txt" in tree, tree
-    assert f"larch-logs/design/{RUN_ID}/.completed/step-3-terminal" not in tree, tree
+    assert f"larch-logs/design/{RUN_ID}/.completed/legacy-terminal" not in tree, tree
 
 
 def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
@@ -849,7 +849,7 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     _ = (autofix / "codex-output.txt").write_text("AF", encoding="utf-8")
     completed = design / ".completed"
     completed.mkdir()
-    _ = (completed / "step-3-terminal").write_text("", encoding="utf-8")
+    _ = (completed / "legacy-terminal").write_text("", encoding="utf-8")
 
     bin_dir = tmp_path / "bin"
     _write_gh_stub(bin_dir / "gh", pr_create_rc=0)

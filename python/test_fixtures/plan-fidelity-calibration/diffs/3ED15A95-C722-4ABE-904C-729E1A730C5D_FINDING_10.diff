@@ -3346,7 +3346,7 @@ index 108eaf0ca..42dc6cf4a 100644
  
  Step 1d.5 **overrides** the generic “never halt after Bash” anxiety **only** for the narrow case: after externals return and you print the **brainstorm synthesis digest** once, you may yield the turn so the operator can speak in the discussion loop below.
  
- **Hard prohibition (non-negotiable)**: Do **NOT** use `ScheduleWakeup`, wall-clock `sleep` polling loops, or Monitor-driven polling to wait for brainstorm externals or operator replies. Follow Bash `<task-notification>` / blocking collector semantics per `BASH_AUTHORING.md`. Do not add summary/handoff prose that masquerades as a parent-skill terminal.
+ **Hard prohibition (non-negotiable)**: Do **NOT** use `ScheduleWakeup`, wall-clock `sleep` polling loops, or Monitor-driven polling to wait for brainstorm externals or operator replies. Follow Bash `<async-notification>` / blocking collector semantics per `BASH_AUTHORING.md`. Do not add summary/handoff prose that masquerades as a parent-skill terminal.
  
  ---
  
@@ -3394,7 +3394,7 @@ index 108eaf0ca..42dc6cf4a 100644
  
  ## External launches (representative)
  
- Use `run_in_background: true` + `timeout: 1260000` on Bash tool calls for externals, matching the long-running review launch family. Capture failures under the launch-failure sink that matches the slot's canonical output path, and append via `run-log append-failure` during collection.
+ Use `bgjob start` + `timeout: 1260000` on Bash tool calls for externals, matching the long-running review launch family. Capture failures under the launch-failure sink that matches the slot's canonical output path, and append via `run-log append-failure` during collection.
  
  Canonical pairings:
  

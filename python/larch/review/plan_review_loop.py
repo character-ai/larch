@@ -57,7 +57,6 @@ from larch.review.plan_review_normalize import (
     _step3_next_action_rows,
     step3_loop_status_to_loop_status,
     step3_loop_write_completed_step3,
-    step3_loop_write_terminal_step3,
     step3_record_report_evidence,
     step3_stage_postplan_failed,
 )
@@ -134,7 +133,6 @@ def step3_loop_persist_envelope(
                 continue
         rows.append((key, value))
     phase_driver_write_result_env(path=result_env, kvs=rows)
-    step3_loop_write_terminal_step3(tmpdir)
 
 
 def step3_loop_emit_envelope(*, tmpdir: Path, status: str, round_num: int, rounds_completed: int, final_round: int, values: dict[str, str]) -> None:
@@ -454,8 +452,6 @@ def _step3_clear_downstream_sentinels(tmpdir: Path) -> None:
     for rel in (
         ".completed/step-3",
         ".completed/step-3.5",
-        ".completed/step-3-terminal",
-        ".step3-terminal-persisted-this-run",
         ".completed/step-3b",
         ".completed/step-4",
         ".completed/step-4b",
