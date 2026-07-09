@@ -1,15 +1,15 @@
-## /implement run 06C16D0F-FFC4-4B7F-97FC-F5708C0AD950: pr-created
+## /implement run 06C16D0F-FFC4-4B7F-97FC-F5708C0AD950: stalled
 
-- **Outcome**: DONE
+- **Outcome**: STALLED
 - **Duration**: 05:40:04
-- **Cost**: 💰 TOTAL ~$74.30: Claude $15.41, Codex-5.5 $37.07, Codex-mini $3.68, Cursor $15.56, Claude (subprocess) $2.58  |  Tokens: 156759k
+- **Cost**: 💰 TOTAL ~$74.32: Claude $15.41, Codex-5.5 $37.07, Codex-mini $3.68, Cursor $15.56, Claude (subprocess) $2.60  |  Tokens: 156792k
 - **Issue**: #6526: https://github.com/character-ai/larch/issues/6526
 - **PR**: #6644: https://github.com/character-ai/larch/pull/6644
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 7/10 accepted
-- **Lines (PR diff)**: code +1466/-67, larch-logs +1645/-0
+- **Lines (PR diff)**: code +1466/-67, larch-logs +1656/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6643
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -94,11 +94,3 @@ unknown/coder-claude.log  │                                       ████
 7. codex/testing: 2
 
 **Reviewer slot failures**: 0
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
