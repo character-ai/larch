@@ -152,6 +152,51 @@ def test_start_rejects_merge_result_env_symlink(
     assert "BGJOB_ERROR" in out
 
 
+@pytest.mark.parametrize(
+    ("env_name", "raw_value"),
+    [
+        (config.ENV_TEST_BGJOB_OWNER_GRACE_S, "not-a-float"),
+        (config.ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S, "-0.01"),
+    ],
+)
+def test_start_rejects_invalid_timing_overrides_before_pipe(
+    env_name: str,
+    raw_value: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv(env_name, raw_value)
+
+    def fake_owner_identity(_raw: str | None) -> model.OwnerIdentity:
+        return model.OwnerIdentity(recorded=None)
+
+    def fail_pipe() -> tuple[int, int]:
+        pytest.fail("daemon startup pipe should not be opened for invalid timing overrides")
+
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", fake_owner_identity)
+    monkeypatch.setattr(cli.daemon.os, "pipe", fail_pipe)
+
+    rc = cli.start_main(
+        [
+            "--step",
+            "demo-step",
+            "--tmpdir",
+            str(tmp_path),
+            "--budget-s",
+            "1",
+            "--",
+            sys.executable,
+            "-c",
+            "print('hello')",
+        ]
+    )
+    out = capsys.readouterr().out
+
+    assert rc == 2
+    assert "BGJOB_ERROR" in out
+
+
 def test_model_rejects_path_escape_slug() -> None:
     with pytest.raises(ValueError, match="invalid step"):
         _ = model.validate_slug("bad/step", label="step")

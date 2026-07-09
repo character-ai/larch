@@ -83,6 +83,11 @@ def _daemon_poll_interval_s() -> float:
     )
 
 
+def _validate_timing_overrides() -> None:
+    _ = _owner_grace_s()
+    _ = _daemon_poll_interval_s()
+
+
 def owner_identity_from_env(raw_owner_pid: str | None) -> model.OwnerIdentity:
     candidate = (
         raw_owner_pid
@@ -333,6 +338,7 @@ def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
 
 
 def start_daemon(spec: model.JobSpec) -> int:
+    _validate_timing_overrides()
     read_fd, write_fd = os.pipe()
     pid = os.fork()
     if pid == 0:

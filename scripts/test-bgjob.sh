@@ -177,6 +177,8 @@ import sys
 
 process = subprocess.Popen(  # noqa: S603 - test harness starts a controlled sleeper
     [sys.executable, "-c", "import time; time.sleep(60)"],
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
     start_new_session=True,
 )
 print(process.pid)
@@ -325,6 +327,29 @@ test_reap_recycled_pid_does_not_signal_new_owner() {
     track_pid "$recycled_pid"
     registry_file="$(write_reap_fixture "$tmpdir" "$step" "$daemon_pid" "$recycled_pid")"
     [ -f "$registry_file" ] || fail "reap fixture did not create registry row"
+    if ! kill -0 "$daemon_pid" 2>/dev/null; then
+        fail "reap fixture daemon pid $daemon_pid died before reap"
+    fi
+    python3 - "$registry_file" "$daemon_pid" <<'PY'
+import sys
+from pathlib import Path
+
+from larch.bgjob import registry
+
+path = Path(sys.argv[1])
+daemon_pid = int(sys.argv[2])
+entry = registry.read_entry(path)
+if entry is None:
+    raise SystemExit(f"missing registry entry at {path}")
+if entry.daemon.pid != daemon_pid:
+    raise SystemExit(f"unexpected daemon pid {entry.daemon.pid}")
+if not registry.daemon_liveness(entry).live:
+    raise SystemExit("daemon liveness precondition failed")
+if registry.child_liveness(entry).live:
+    raise SystemExit("child liveness precondition failed")
+if not registry.entry_expired(entry):
+    raise SystemExit("expiry precondition failed")
+PY
     output="$(python3 python/cli.py bgjob reap)"
     [ "$output" = "BGJOB_REAPED=1" ] || fail "unexpected reap output: $output"
     [ ! -e "$registry_file" ] || fail "reap did not remove recycled fixture row"
