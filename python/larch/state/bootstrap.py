@@ -23,6 +23,7 @@ from larch.core import config, external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.calibration import difficulty
+from larch.report.progress_file import validate_run_id
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -114,6 +115,14 @@ def _parse_kv(text: str) -> dict[str, str]:
 
 def _valid_run_id(value: str) -> bool:
     return bool(value) and _RUN_ID_RE.fullmatch(value) is not None
+
+
+def _activatable_run_id(run_id: str) -> bool:
+    try:
+        validate_run_id(run_id)
+    except ValueError:
+        return False
+    return True
 
 
 def _valid_issue(value: str) -> bool:
@@ -490,6 +499,8 @@ def _phase_infra(st: BootstrapState) -> None:
         if not st.session_id and (Path(st.implement_tmpdir) / "session-id").is_file():
             st.session_id = (Path(st.implement_tmpdir) / "session-id").read_text(encoding="utf-8", errors="replace").strip()
         st.run_id = st.resolve_run_id()
+        if _activatable_run_id(st.run_id):
+            _cli("progress", "activate", "--repo-root", str(Path.cwd()), "--run-id", st.run_id)
         _write_claude_source_snapshot(st)
         _write_base_session_env(st)
         _cli("token", "mark", "Step 0 — preflight")

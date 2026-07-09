@@ -1169,6 +1169,123 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
     assert "rename failed" in (tmp_path / "tracking-rename-warning.stderr.log").read_text(encoding="utf-8")
 
 
+def _phase_infra_setup_stdout(tmp_path: Path, *, session_id: str) -> str:
+    return (
+        f"SESSION_TMPDIR={tmp_path}\n"
+        f"SESSION_ID={session_id}\n"
+        "REPO=owner/repo\n"
+        "REPO_UNAVAILABLE=false\n"
+        "CODEX_PRESENT=false\n"
+        "CURSOR_PRESENT=false\n"
+        "CODEX_BINARY_FOUND=false\n"
+        "CURSOR_BINARY_FOUND=false\n"
+    )
+
+
+def _run_phase_infra_for_progress(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    opts_run_id: str = "",
+    setup_session_id: str = "setup-run-id",
+    activate_returncode: int = 0,
+) -> tuple[bootstrap.BootstrapState, list[tuple[str, ...]]]:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
+
+    def fake_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        _ = env
+        calls.append(args)
+        if args[:3] == ("pr", "create-branch", "--check"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
+        if args[:2] == ("session", "entry-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "ENTRY_GATE=user-branch\nSKIP_BRANCH_CHECK=true\n", "")
+        if args[:2] == ("session", "setup"):
+            return subprocess.CompletedProcess(["cli", *args], 0, _phase_infra_setup_stdout(tmp_path, session_id=setup_session_id), "")
+        if args[:2] == ("progress", "activate"):
+            stderr = "activate failed\n" if activate_returncode else ""
+            return subprocess.CompletedProcess(["cli", *args], activate_returncode, "", stderr)
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="infra", run_id=opts_run_id))
+    bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
+    return st, calls
+
+
+def test_phase_infra_progress_activate_uses_explicit_run_id_before_timing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    st, calls = _run_phase_infra_for_progress(
+        tmp_path,
+        monkeypatch,
+        opts_run_id="explicit-run-id",
+        setup_session_id="setup-run-id",
+    )
+
+    activate_call = next(call for call in calls if call[:2] == ("progress", "activate"))
+    timing_call = next(call for call in calls if call[:2] == ("timing", "mark"))
+
+    assert st.run_id == "explicit-run-id"
+    assert activate_call == ("progress", "activate", "--repo-root", str(Path.cwd()), "--run-id", "explicit-run-id")
+    assert calls.index(activate_call) < calls.index(timing_call)
+    assert timing_call[:3] == ("timing", "mark", "Step 0 — preflight")
+
+
+def test_phase_infra_progress_activate_uses_setup_session_id_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    st, calls = _run_phase_infra_for_progress(
+        tmp_path,
+        monkeypatch,
+        setup_session_id="setup-session-run-id",
+    )
+
+    activate_call = next(call for call in calls if call[:2] == ("progress", "activate"))
+
+    assert st.run_id == "setup-session-run-id"
+    assert activate_call[-2:] == ("--run-id", "setup-session-run-id")
+
+
+def test_phase_infra_progress_activate_failure_is_best_effort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    st, calls = _run_phase_infra_for_progress(
+        tmp_path,
+        monkeypatch,
+        setup_session_id="setup-run-id",
+        activate_returncode=1,
+    )
+
+    captured = capsys.readouterr()
+
+    assert st.run_id == "setup-run-id"
+    assert any(call[:2] == ("progress", "activate") for call in calls)
+    assert any(call[:2] == ("session", "write-implement-env") for call in calls)
+    assert "STEP_FAILED=" not in captured.out
+
+
+@pytest.mark.parametrize("reserved_run_id", ["current", ".", ".."])
+def test_phase_infra_reserved_run_id_skips_progress_activate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reserved_run_id: str,
+) -> None:
+    st, calls = _run_phase_infra_for_progress(
+        tmp_path,
+        monkeypatch,
+        opts_run_id=reserved_run_id,
+        setup_session_id="setup-run-id",
+    )
+
+    assert st.run_id == reserved_run_id
+    assert not any(call[:2] == ("progress", "activate") for call in calls)
+
+
 def test_write_implement_env_failure_is_fatal(tmp_path, monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
