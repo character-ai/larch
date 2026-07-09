@@ -2293,6 +2293,32 @@ def test_tally_manifest_yield_and_dead_scoreboard_rows(tmp_path: Path) -> None:
     assert "STATUS=NOT_SUBSTANTIVE" in tally
 
 
+def test_archetype_map_buckets_forced_plan_fidelity_as_architecture(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    output = tmp_path / "cursor-specialist-plan-fidelity-forced-output.txt"
+    _ = output.write_text("FINDING_1: YES\n", encoding="utf-8")
+    _ = manifest.write_text(
+        json.dumps(
+            {
+                "slot": "plan-fidelity-forced",
+                "tool": "cursor",
+                "output": str(output),
+                "focus_area": "architecture",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    mapping = review_tally._write_archetype_map(manifest)  # pyright: ignore[reportPrivateUsage]
+
+    assert mapping["cursor-specialist-plan-fidelity-forced-output.txt"] == (
+        "plan-fidelity-forced",
+        "architecture",
+        "1",
+    )
+
+
 def test_tally_oos_seq_seeded_from_accumulated_oos(tmp_path: Path) -> None:
     parent = tmp_path / "impl-parent"
     round_dir = parent / "round-2"

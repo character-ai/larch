@@ -2776,7 +2776,7 @@ def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Pat
         assert result.returncode == 0, result.stderr
         rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
         assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=7" in result.stdout
+        assert "STATIC_SLOT_COUNT=6" in result.stdout
 
 
 def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
@@ -2813,7 +2813,7 @@ def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp
         assert result.returncode == 0, result.stderr
         rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
         assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=4" in result.stdout
+        assert "STATIC_SLOT_COUNT=3" in result.stdout
 
 
 def _write_waterfall_noop(path: Path) -> None:
@@ -3082,7 +3082,10 @@ def test_dispatch_panel_trivial_dynamic_manifest_emits_cursor_only(tmp_path: Pat
         pre_scouted_manifest=pre_scouted,
     )
 
-    assert any(row.get("slot") == "dyn-api-contract" and row.get("tool") == "cursor" for row in rows)
+    cursor_row = next(row for row in rows if row.get("slot") == "dyn-api-contract")
+    assert cursor_row.get("tool") == "cursor"
+    assert cursor_row.get("cursor_model") == "auto"
+    assert cursor_row.get("resolved_model") == "auto"
     assert not any(row.get("slot") == "dyn-api-contract-codex" for row in rows)
 
 
@@ -3125,6 +3128,8 @@ def test_dispatch_panel_dynamic_manifest_adds_review_codex_rows_for_upper_tiers(
     cursor_row = next(row for row in rows if row.get("slot") == "dyn-api-contract")
     codex_row = next(row for row in rows if row.get("slot") == "dyn-api-contract-codex")
     assert cursor_row.get("tool") == "cursor"
+    assert cursor_row.get("cursor_model") == "auto"
+    assert cursor_row.get("resolved_model") == "auto"
     assert codex_row.get("tool") == "codex"
     assert codex_row.get("model_role") == "review"
     assert codex_row.get("resolved_model") == config.CODEX_REVIEW_MODEL_DEFAULT
@@ -4545,7 +4550,7 @@ cat > "$tmp/panel-manifest.ndjson" <<EOF
 EOF
 printf 'EXTERNAL_OUTPUT_FILES=%s\\n' "$external"
 printf 'CLAUDE_OUTPUT_FILES=\\nPANEL_MODE=normal\\nPANEL_SHAPE=%s\\n' "$panel"
-printf 'SCOUT_STATUS=na\\nSTATIC_SLOT_COUNT=7\\nDYNAMIC_SLOTS=2\\nSLOT_COUNT=9\\n'
+printf 'SCOUT_STATUS=na\\nSTATIC_SLOT_COUNT=6\\nDYNAMIC_SLOTS=2\\nSLOT_COUNT=8\\n'
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\n' "$tmp"
 printf 'DROPPED_SLOTS_FILE=%s\\nSTRAGGLER_DROPPED_COUNT=1\\n' "$dropped"
 """,
@@ -4623,7 +4628,7 @@ printf 'FINDINGS_COUNT=0\\nOOS_COUNT=0\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\
 
     assert result.returncode == 0, result.stderr
     threshold_env = (outdir / "review-core-threshold.env").read_text(encoding="utf-8")
-    assert "INTENDED_SLOTS=9" in threshold_env
+    assert "INTENDED_SLOTS=8" in threshold_env
     assert "FAILED_SLOTS=1" in threshold_env
     assert "DYNAMIC_DROPPED_SLOTS=1" in threshold_env
     assert "STRAGGLER_DROPPED_COUNT=1" in threshold_env
@@ -4690,17 +4695,13 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
         ("correctness", "codex"),
         ("edge-cases", "codex"),
         ("testing", "codex"),
-        ("plan-fidelity-auto", "cursor"),
     ]
     assert all(row.get("model_role") == "review" for row in rows if row["tool"] == "codex")
-    plan_row = next(row for row in rows if row["slot"] == "plan-fidelity-auto")
-    assert plan_row["cursor_model"] == "auto"
-    assert plan_row["resolved_model"] == "auto"
     assert "PANEL_SHAPE=singles" in proc.stdout
     assert "PANEL_TIER=TRIVIAL" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
-    assert "STATIC_SLOT_COUNT=4" in proc.stdout
-    assert "SLOT_COUNT=4" in proc.stdout
+    assert "STATIC_SLOT_COUNT=3" in proc.stdout
+    assert "SLOT_COUNT=3" in proc.stdout
 
 
 def test_dispatch_panel_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -> None:
@@ -4736,17 +4737,17 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
         "edge-cases": config.CODEX_DEFAULT_MODEL,
         "testing": config.CODEX_REVIEW_MODEL_DEFAULT,
     }
-    plan_row = next(row for row in rows if row["slot"] == "plan-fidelity-auto")
-    assert plan_row["tool"] == "cursor"
-    assert plan_row["cursor_model"] == "auto"
-    assert plan_row["resolved_model"] == "auto"
+    cursor_rows = [row for row in rows if row["tool"] == "cursor"]
+    assert {row["slot"] for row in cursor_rows} == {"correctness", "edge-cases", "testing"}
+    assert all(row["cursor_model"] == "auto" for row in cursor_rows)
+    assert all(row["resolved_model"] == "auto" for row in cursor_rows)
     assert "PANEL_SHAPE=pairs" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
-    assert "STATIC_SLOT_COUNT=7" in proc.stdout
-    assert "SLOT_COUNT=7" in proc.stdout
+    assert "STATIC_SLOT_COUNT=6" in proc.stdout
+    assert "SLOT_COUNT=6" in proc.stdout
 
 
-def test_dispatch_panel_codex_unavailable_keeps_cursor_auto_lane(tmp_path: Path) -> None:
+def test_dispatch_panel_codex_unavailable_emits_cursor_specialists_with_auto(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("plan", encoding="utf-8")
     waterfall = tmp_path / "waterfall.sh"
@@ -4771,11 +4772,10 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     assert proc.returncode == 0
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert {row["tool"] for row in rows} == {"cursor"}
-    assert {row["slot"] for row in rows} == {"correctness", "edge-cases", "testing", "plan-fidelity-auto"}
-    plan_row = next(row for row in rows if row["slot"] == "plan-fidelity-auto")
-    assert plan_row["cursor_model"] == "auto"
-    assert plan_row["resolved_model"] == "auto"
-    assert "STATIC_SLOT_COUNT=4" in proc.stdout
+    assert {row["slot"] for row in rows} == {"correctness", "edge-cases", "testing"}
+    assert all(row["cursor_model"] == "auto" for row in rows)
+    assert all(row["resolved_model"] == "auto" for row in rows)
+    assert "STATIC_SLOT_COUNT=3" in proc.stdout
 
 
 def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
@@ -4838,6 +4838,13 @@ def test_forced_plan_fidelity_row_uses_available_tool_and_is_prune_exempt(
     assert rows[0]["slot"] == "plan-fidelity-forced"
     assert rows[0]["tool"] == expected_tool
     assert rows[0]["prune_exempt"] is True
+    assert rows[0]["focus_area"] == "architecture"
+    if expected_tool == "cursor":
+        assert rows[0]["cursor_model"] == "auto"
+        assert rows[0]["resolved_model"] == "auto"
+    else:
+        assert rows[0]["model_role"] == "review"
+        assert rows[0]["resolved_model"] == config.CODEX_REVIEW_MODEL_DEFAULT
 
 
 def test_prune_keeps_prune_exempt_rows_without_history(tmp_path: Path) -> None:
