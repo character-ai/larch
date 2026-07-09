@@ -1,0 +1,68 @@
+Source: `/larch:learn-from-bugs -n 25` run, 2026-07-08. Report section 4, rule L2.
+
+#### Problem
+
+#6604: `/analyze-bugs` selected bug titles with a hand-written, case-sensitive `[BUG]` prefix test while the retitle convention had grown lifecycle prefixes (`[DONE] `, `[DESIGNED] `, `[IMPLEMENTING] `, `[STALLED] `, defined in `config.TRACKING_ISSUE_PREFIX_BY_STATE` in `python/larch/core/config.py`) and case variants such as `[Bug]`. The audit silently skipped most of its population. The fix introduced a normalizer, but nothing stops the next selector from re-deriving these tokens by hand.
+
+#### Rule
+
+Flag lifecycle and bug title-prefix string literals used in comparison or match positions in `python/larch` non-test sources.
+
+- Token set: build at lint runtime from `config.TRACKING_ISSUE_PREFIX_BY_STATE.values()` plus the bug-title prefix constant (`BUG_PREFIX`, currently in `python/larch/issue/analyze_bugs.py`; the learn-from-bugs over-selection issue filed in this same batch hoists it into a shared module). Match tokens with trailing spaces stripped and case-insensitively, so `[DONE]`, `[done] `, and `[Bug]` all count. Do not hardcode the token list inside the lint; build it from the existing constants (G-Cfg-1).
+- Comparison and match positions: operands of `==`, `!=`, and `in`; arguments to `.startswith`, `.endswith`, `.removeprefix`, and `.lstrip`; string-literal patterns passed to `re.compile`, `re.search`, `re.match`, or `re.fullmatch` whose pattern contains one of the tokens.
+- Allowlist: `python/larch/core/config.py` (the definitions), the shared normalizer module produced by the hoist, and all test files.
+- Not flagged: literals in display strings, f-string display output, log messages, docstrings, and comments. Only comparison and match positions count.
+
+The report line must name the file, line, matched token, and the constant the code should consume instead.
+
+#### Suppression and baseline
+
+- Inline suppression: `# lint-lifecycle-prefix: ok <reason>`.
+- Shrinking reason-bearing baseline per G-Enf-2, seeded from the initial scan; regen target `regen-lifecycle-prefix-literal-baseline`.
+
+#### Wiring
+
+Same conventions as sibling lints: module `python/larch/lint/lint_lifecycle_prefix_literal.py` with module-level `main(argv) -> int` (G-CLI-1); registry entry `("lint", "lifecycle-prefix-literal")` in `python/larch/cli.py`; a `$(PYTHON) python/cli.py lint lifecycle-prefix-literal` line in the `py-lint-checks-fast` recipe plus the regen baseline target and `.PHONY` entry; tests at `python/tests/lint/test_lint_lifecycle_prefix_literal.py` (flag a `.startswith("[DONE]")` fixture; do not flag the config.py definitions, display f-strings, or suppressed lines; baseline honored).
+
+#### Sequencing
+
+This lint references the shared normalizer module created by the learn-from-bugs over-selection issue filed in this same batch. If this lint lands first, allowlist `python/larch/issue/analyze_bugs.py` temporarily and move that allowlist entry to the shared module when the hoist lands.
+
+#### Acceptance
+
+`make py-lint-checks-fast` runs the new verb; fixtures behave as listed; the repo-wide scan passes with a reason-bearing baseline.
+
+#### Related existing check (not a duplicate)
+
+`scripts/test-legacy-title-prefix-literals-scope.sh` audits only the retired legacy tokens `[IN PROGRESS]` and `[PLANNED]` against a path allowlist. It does not cover the live lifecycle prefixes from `config.TRACKING_ISSUE_PREFIX_BY_STATE` or the bug prefix, and it checks token presence, not comparison-position constant consumption. The new lint is complementary; do not fold the two.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `lint_lifecycle_prefix_literal.py` to flag hand-written lifecycle/bug prefix literals in comparison and match positions.
+- Wire the lint into `py-lint-checks-fast`, cli.py, and the Makefile regen target.
+- Seed a reason-bearing shrinking baseline from the initial repo-wide scan.
+
+### Non-goals
+- No changes to `config.py`, `title_match.py`, or any existing lint module.
+- No coverage of display strings, log messages, docstrings, or comments.
+- Not a replacement for `scripts/test-legacy-title-prefix-literals-scope.sh` (different scope).
+
+### Approach sketch
+- New `python/larch/lint/lint_lifecycle_prefix_literal.py`: build token set at runtime from `config.TRACKING_ISSUE_PREFIX_BY_STATE.values()` plus `BUG_PREFIX` from `title_match.py`; AST-walk non-test sources; flag comparison and match positions.
+- Allowlist `config.py` and `title_match.py`; skip test files; support `# lint-lifecycle-prefix: ok <reason>` inline suppression.
+- Register `("lint", "lifecycle-prefix-literal")` in `python/larch/cli.py` next to sibling lints.
+- Add `$(PYTHON) python/cli.py lint lifecycle-prefix-literal` to `py-lint-checks-fast` and `regen-lifecycle-prefix-literal-baseline` make target.
+- Seed `python/lifecycle-prefix-literal-baseline.json` via `--write --initial-reason`.
+
+### Surfaces in scope
+- `python/larch/lint/lint_lifecycle_prefix_literal.py` (new)
+- `python/tests/lint/test_lint_lifecycle_prefix_literal.py` (new)
+- `python/larch/cli.py` (registry entry)
+- `Makefile` (recipe line, regen target, .PHONY)
+- `python/lifecycle-prefix-literal-baseline.json` (new, seeded)
+
+### Open questions
+- None.

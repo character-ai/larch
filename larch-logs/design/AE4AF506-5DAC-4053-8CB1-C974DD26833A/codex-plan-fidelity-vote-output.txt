@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Useful coverage, but the feature can still ship correctly without a suppression-sensitive occurrence fixture.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- These extra branch fixtures are nice-to-have coverage, not a necessary part of the scoped lint.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- This is a remediation-hint nuance, not a blocking defect in the lint feature itself.
+FINDING_5: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Catching debracketed regex alternations is a future enhancement, but the plan can satisfy the stated scope without it.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The anchored issue explicitly includes .removeprefix and .lstrip, so this is an over-reduction rather than a valid scope correction.
+OOS_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Duplicate of the regex-alternation concern already raised out of scope; it should not be re-opened as a new OOS item.

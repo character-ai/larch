@@ -1,0 +1,200 @@
+## Plan
+
+### Approach
+
+Implement the lint as a new Python module behind `python/cli.py lint lifecycle-prefix-literal`.
+
+Keep the scope narrow:
+
+- Scan `python/larch/**/*.py` production sources only.
+- Skip tests and helper test modules.
+- Skip `python/larch/core/config.py`.
+- Skip `python/larch/issue/title_match.py`, because it owns `BUG_PREFIX` and the shared normalizer today.
+- Build tokens at runtime from:
+  - `config.TRACKING_ISSUE_PREFIX_BY_STATE.items()` (state key plus prefix value)
+  - `title_match.BUG_PREFIX`
+- Normalize tokens with `.rstrip().casefold()` before matching.
+- Build a normalized-token reverse map at lint init. Each lifecycle hit maps to a concrete consumable symbol such as `config.TRACKING_ISSUE_PREFIX_BY_STATE["done"]`; each bug hit maps to `title_match.BUG_PREFIX`. Store that exact replacement string on every `Finding.constant`, baseline `constant` field, and report line.
+
+Flag only comparison and match positions:
+
+- `==` and `!=` operands.
+- `in` and `not in` operands.
+- Literal arguments to `.startswith`, `.endswith`, `.removeprefix`, and `.lstrip`.
+- String literal patterns passed to `re.compile`, `re.search`, `re.match`, and `re.fullmatch` when the pattern contains a tracked token, including escaped bracket forms.
+
+Report each unbaselined finding with:
+
+- file
+- line
+- matched token
+- concrete constant symbol to use instead
+
+Use a shrinking baseline like sibling AST ratchets:
+
+- `python/lifecycle-prefix-literal-baseline.json`
+- rows should carry a non-empty reason
+- check mode warns on baselined rows and exits `0`
+- new rows exit `1`
+- malformed baseline exits `2`
+- `--write` preserves existing reasons and drops obsolete rows
+- `--initial-reason` bootstraps or seeds newly discovered rows
+
+Support inline suppression:
+
+- `# lint-lifecycle-prefix: ok <reason>`
+- require a non-empty reason
+- apply occurrence numbering before suppression, matching sibling lints.
+
+### Files to modify/create
+
+#### NEW: python/larch/lint/lint_lifecycle_prefix_literal.py
+
+Create the lint module with module-level `main(argv) -> int`.
+
+Implementation details:
+
+- Define a frozen `Finding` dataclass with fields such as `file`, `qualified_symbol`, `token`, `constant`, `context`, `occurrence`, and `lineno`.
+- Use a typed record shape for baseline rows. Include `reason` and a `constant` field that stores the fully qualified replacement symbol, not the whole map.
+- Reuse naming and exit-code conventions from `lint_env_via_config_constant.py` and `lint_tempfile_dir.py`.
+- Discover files under `root / "python" / "larch"`.
+- Normalize file paths relative to `python/`.
+- Skip symlinks, tests, `conftest.py`, `test_support.py`, `review_test_support.py`, caches, virtual envs, and vendored dirs.
+- Allowlist:
+  - `larch/core/config.py`
+  - `larch/issue/title_match.py`
+- Build the token-to-constant map at runtime from constants only:
+  - for each `(state, prefix)` in `config.TRACKING_ISSUE_PREFIX_BY_STATE.items()`, normalize `prefix` with `.rstrip().casefold()` and map it to `config.TRACKING_ISSUE_PREFIX_BY_STATE["<state>"]`
+  - map normalized `title_match.BUG_PREFIX` to `title_match.BUG_PREFIX`
+- Strip only trailing spaces from tracked tokens before matching. Preserve the original matched token in the report where practical.
+- Match case-insensitively.
+- Treat both `[DONE]` and `[DONE] ` as tracked when the literal appears in a comparison or match position.
+- For regex patterns, derive match candidates from each tracked token:
+  - the raw literal substring
+  - a regex-escaped bracket form such as `\[DONE\]` for `[DONE]`
+  - a lightly de-escaped view of the pattern string when needed
+  - check the pattern against those candidates before deciding there is no match; do not rely on raw substring matching alone
+- Do not inspect comments or docstrings. AST traversal already avoids comments; skip module, class, and function docstring expression nodes to avoid docstring findings.
+- Do not flag display-only f-strings or string literals outside the listed positions.
+- For `.startswith` and `.endswith`, handle both a direct literal and a tuple of literals.
+- For `.lstrip`, flag only exact tracked prefix literals. Do not flag character-set strings unless they contain a full tracked token.
+- For `in` and `not in`, handle `ast.In` and `ast.NotIn` with the same literal/tuple/list/set operand rules; flag when either operand is a string literal or collection of string literals containing a tracked token.
+- For comparisons, handle chained comparisons and inspect each comparator pair.
+- Keep output concise and deterministic.
+
+Use a report format similar to:
+
+`larch/state/admission.py:_managed_title line 49 matched [DONE] in startswith; use config.TRACKING_ISSUE_PREFIX_BY_STATE["done"]`
+
+`larch/issue/_report.py:render line 363 matched [DONE] in not in; use config.TRACKING_ISSUE_PREFIX_BY_STATE["done"]`
+
+#### NEW: python/tests/lint/test_lint_lifecycle_prefix_literal.py
+
+Add pytest coverage for the lint.
+
+Cover at least:
+
+- Flags `.startswith("[DONE]")`.
+- Flags case variants such as `.startswith("[done] ")` and `[Bug]`.
+- Flags `==`, `!=`, `in`, and `not in` positions.
+- Asserts the emitted `constant` column is a concrete symbol such as `config.TRACKING_ISSUE_PREFIX_BY_STATE["done"]` or `title_match.BUG_PREFIX`, not the whole map name alone.
+- Flags `.endswith`, `.removeprefix`, and `.lstrip` arguments.
+- Flags `re.compile`, `re.search`, `re.match`, and `re.fullmatch` patterns that contain a token.
+- Flags regex patterns with escaped bracket tokens such as `re.compile(r"\[DONE\]")`.
+- Does not flag `python/larch/core/config.py` definitions.
+- Does not flag `python/larch/issue/title_match.py`.
+- Does not flag test files.
+- Does not flag display strings, f-strings, log-style strings, comments, or docstrings.
+- Honors inline suppression with a reason.
+- Does not honor a bare suppression without a reason.
+- Honors baselined rows.
+- Exits `1` for new findings.
+- Exits `2` for malformed JSON, duplicate identities, missing reasons, bad paths, or invalid row shapes.
+- `--write` preserves reasons and shrinks obsolete rows.
+- missing baseline in check mode exits `2`.
+- absent baseline with `--write --initial-reason` succeeds.
+
+Use temporary projects under `tmp_path`, matching sibling lint tests.
+
+#### UPDATED: python/larch/cli.py
+
+Register the new lint near the other lint entries:
+
+`("lint", "lifecycle-prefix-literal"): ("larch.lint.lint_lifecycle_prefix_literal", "main")`
+
+Keep registry ordering close to sibling Python AST ratchets.
+
+#### UPDATED: Makefile
+
+Wire the lint into fast Python lint:
+
+- Add `$(PYTHON) python/cli.py lint lifecycle-prefix-literal` to `py-lint-checks-fast`.
+
+Add a regen target:
+
+- `regen-lifecycle-prefix-literal-baseline`
+
+Add it to `.PHONY`.
+
+Use the same reason-preserving pattern as sibling regen targets:
+
+- if the baseline exists, run `--write`
+- if absent, run `--write --initial-reason 'grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet'`
+
+#### NEW: python/lifecycle-prefix-literal-baseline.json
+
+Seed the baseline from the initial repo-wide scan.
+
+Expected current candidates from direct inspection include comparison or match uses in production modules such as:
+
+- `larch/implement/preflight.py`
+- `larch/state/admission.py`
+- `larch/issue/_report.py`
+- `larch/issue/deps_audit.py`
+- `larch/design/design_publish.py`
+
+Do not hand-edit guesses into the baseline. Generate it with the new regen target, then review each row reason.
+
+Use one clear reason for initial grandfathering, unless a row needs a more specific reason. Each row `constant` field must store the same concrete replacement symbol the live report would emit.
+
+### Edge cases
+
+- Lifecycle constants include trailing spaces. The lint should detect literals with or without that trailing space.
+- Case variants should match, including `[Bug]`.
+- Tuple arguments to `.startswith` can contain both valid constants and bad literals.
+- Chained comparisons can hide literals in non-obvious comparator positions.
+- `not in` membership tests must be scanned with the same operand rules as `in`.
+- Regex strings can contain escaped bracket characters. Before rejecting a regex literal, also test escaped variants derived from each tracked token.
+- Docstrings are AST string literals. Skip them explicitly.
+- Inline suppression should suppress only the finding on that line or the immediately following line for standalone comments.
+- Occurrence numbers should remain stable when a prior finding is suppressed.
+
+### Failure modes
+
+- Importing the wrong bug-prefix source can create an import cycle. Keep the import to `larch.issue.title_match.BUG_PREFIX`, which already depends only on `larch.core.config`.
+- Emitting only `TRACKING_ISSUE_PREFIX_BY_STATE` as remediation text would leave callers without a consumable symbol. Always emit the state-keyed lookup form or `title_match.BUG_PREFIX`.
+- Over-scanning display strings can make the baseline noisy. Limit findings to the named AST contexts.
+- Hardcoding token text would recreate the drift this lint prevents. Build the token map from constants only.
+- A baseline identity that includes line numbers would churn on unrelated edits. Exclude line numbers from identity.
+- If the shared normalizer moves after this lands, update only the allowlist and import source in this lint.
+
+### Testing strategy
+
+Run focused tests first:
+
+- `cd python && python3 -m pytest tests/lint/test_lint_lifecycle_prefix_literal.py -q`
+
+Run focused lint checks:
+
+- `python3 python/cli.py lint lifecycle-prefix-literal`
+- `make regen-lifecycle-prefix-literal-baseline`
+- `python3 python/cli.py lint lifecycle-prefix-literal`
+
+Run integration checks for changed surfaces:
+
+- `make py-lint-checks-fast`
+- `make py-test`
+
+confidence: high
+difficulty: MODERATE
+diff_lines: 700
