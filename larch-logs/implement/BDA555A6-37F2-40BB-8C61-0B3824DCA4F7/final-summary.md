@@ -1,8 +1,8 @@
-## /implement run BDA555A6-37F2-40BB-8C61-0B3824DCA4F7: stalled
+## /implement run BDA555A6-37F2-40BB-8C61-0B3824DCA4F7: pr-created
 
-- **Outcome**: ❌ STALLED
+- **Outcome**: ✅ DONE
 - **Duration**: 01:21:29
-- **Cost**: 💰 TOTAL ~$26.40: Claude $4.87, Codex-5.5 $11.44, Codex-mini $2.68, Cursor $5.13, Claude (subprocess) $2.28  |  Tokens: 50355k
+- **Cost**: 💰 TOTAL ~$33.47: Claude $11.94, Codex-5.5 $11.44, Codex-mini $2.68, Cursor $5.13, Claude (subprocess) $2.28  |  Tokens: 67349k
 - **Issue**: #6673: https://github.com/character-ai/larch/issues/6673
 - **PR**: #6704: https://github.com/character-ai/larch/pull/6704
 - **Plan review**: N/A
@@ -10,7 +10,7 @@
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/8 accepted
-- **Lines (PR diff)**: code +906/-198, larch-logs +1125/-0
+- **Lines (PR diff)**: code +914/-198, larch-logs +1119/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -82,3 +82,11 @@ codex/pragmatism-vote     │                                      ████�
 7. dynamic/dyn-runlog-gate: 2
 
 **Reviewer slot failures**: 0
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
