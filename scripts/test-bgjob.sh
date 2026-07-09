@@ -80,14 +80,37 @@ start_bgjob() {
     local tmpdir="$2"
     local budget_s="$3"
     local owner_pid="$4"
+    local output_file
+    local start_pid
+    local output=""
+    local tries=0
     shift 4
     mkdir -p "$tmpdir"
+    output_file="$(mktemp "$TEST_ROOT/${step}.start.XXXXXX")"
     python3 python/cli.py bgjob start \
         --step "$step" \
         --tmpdir "$tmpdir" \
         --budget-s "$budget_s" \
         --owner-pid "$owner_pid" \
-        -- "$@"
+        -- "$@" >"$output_file" 2>&1 &
+    start_pid="$!"
+    track_pid "$start_pid"
+    while [ "$tries" -lt 200 ]; do
+        if [ -s "$output_file" ]; then
+            output="$(cat "$output_file")"
+            break
+        fi
+        if ! kill -0 "$start_pid" 2>/dev/null; then
+            if [ -f "$output_file" ]; then
+                output="$(cat "$output_file")"
+            fi
+            break
+        fi
+        tries=$((tries + 1))
+        sleep 0.05
+    done
+    rm -f "$output_file"
+    printf '%s\n' "$output"
 }
 
 assert_started_line() {
@@ -327,17 +350,19 @@ test_reap_recycled_pid_does_not_signal_new_owner() {
     track_pid "$recycled_pid"
     registry_file="$(write_reap_fixture "$tmpdir" "$step" "$daemon_pid" "$recycled_pid")"
     [ -f "$registry_file" ] || fail "reap fixture did not create registry row"
-    if ! kill -0 "$daemon_pid" 2>/dev/null; then
-        fail "reap fixture daemon pid $daemon_pid died before reap"
-    fi
-    python3 - "$registry_file" "$daemon_pid" <<'PY'
+    output="$(python3 - "$registry_file" "$daemon_pid" "$recycled_pid" <<'PY'
+import contextlib
+import io
+import os
 import sys
 from pathlib import Path
 
-from larch.bgjob import registry
+from larch.bgjob import cli, registry
+from larch.core import process_identity
 
 path = Path(sys.argv[1])
 daemon_pid = int(sys.argv[2])
+recycled_pid = int(sys.argv[3])
 entry = registry.read_entry(path)
 if entry is None:
     raise SystemExit(f"missing registry entry at {path}")
@@ -349,13 +374,52 @@ if registry.child_liveness(entry).live:
     raise SystemExit("child liveness precondition failed")
 if not registry.entry_expired(entry):
     raise SystemExit("expiry precondition failed")
+
+calls: list[process_identity.RecordedProcessIdentity] = []
+
+def fake_terminate(
+    *,
+    recorded: process_identity.RecordedProcessIdentity,
+    log_path: Path | None,
+    caller: str,
+    reason: str,
+) -> process_identity.ValidationResult:
+    if log_path is not None:
+        raise SystemExit("terminate should not use log_path")
+    if caller != "bgjob-reap":
+        raise SystemExit(f"unexpected caller {caller}")
+    if reason != "expired-registry":
+        raise SystemExit(f"unexpected reason {reason}")
+    calls.append(recorded)
+    return process_identity.ValidationResult(ok=False, reason="start-time-mismatch")
+
+buf = io.StringIO()
+original = cli.process_identity.terminate_validated_process_group
+try:
+    cli.process_identity.terminate_validated_process_group = fake_terminate
+    with contextlib.redirect_stdout(buf):
+        rc = cli.reap_main([])
+finally:
+    cli.process_identity.terminate_validated_process_group = original
+
+if rc != 0:
+    raise SystemExit(f"unexpected reap rc {rc}")
+if buf.getvalue() != "BGJOB_REAPED=1\n":
+    raise SystemExit(f"unexpected reap output: {buf.getvalue()!r}")
+if calls != [entry.child]:
+    raise SystemExit("terminate_validated_process_group was not exercised")
+if path.exists():
+    raise SystemExit(f"reap did not remove {path}")
+try:
+    os.kill(recycled_pid, 0)
+except OSError as exc:
+    raise SystemExit(f"reap signaled recycled pid {recycled_pid}") from exc
+
+print("BGJOB_REAPED=1")
 PY
-    output="$(python3 python/cli.py bgjob reap)"
+)"
     [ "$output" = "BGJOB_REAPED=1" ] || fail "unexpected reap output: $output"
     [ ! -e "$registry_file" ] || fail "reap did not remove recycled fixture row"
-    if ! kill -0 "$recycled_pid" 2>/dev/null; then
-        fail "reap signaled recycled pid $recycled_pid"
-    fi
 }
 
 expect_bad_step() {
