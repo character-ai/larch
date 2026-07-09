@@ -2,7 +2,7 @@
 
 - **Outcome**: shipping
 - **Duration**: 00:32:38
-- **Cost**: 💰 TOTAL ~$8.53: Claude $1.28, Codex-5.5 $1.39, Codex-mini $1.24, Cursor $2.80, Claude (subprocess) $1.82  |  Tokens: 15715k
+- **Cost**: 💰 TOTAL ~$9.51: Claude $2.26, Codex-5.5 $1.39, Codex-mini $1.24, Cursor $2.80, Claude (subprocess) $1.82  |  Tokens: 18236k
 - **Issue**: #6676: https://github.com/character-ai/larch/issues/6676
 - **Plan review**: N/A
 - **Plan coverage**: 3/3 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -12,13 +12,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/3EBB35EE-BC0E-4D84-BD9B-30569CCFC961/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
 - **Larch version**: 52.5.15
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. G-Py-11 (inline suppression reason): `file_oos.py` line 10 imports `_balanced_fence_line_indices` with `# type: ignore[reportPrivateUsage]` but omits an inline reason comment. G-Py-11 requires a re...
 
 ## Review Phase Detail
 
@@ -58,3 +63,11 @@ codex/apply                      │                                            
 1. cursor/correctness: 2
 
 **Reviewer slot failures**: 0
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+- **G-Py-11 (inline suppression reason)**: `file_oos.py` line 10 imports `_balanced_fence_line_indices` with `# type: ignore[reportPrivateUsage]` but omits an inline reason comment. G-Py-11 requires a reason on every suppression so reviewers can distinguish deliberate carve-outs from silenced defects. Rationale for carve-out: the function is a module-internal helper in `issue_create.py` consumed by `file_oos.py` to keep the OOS cap validator fence-aware; it was not made public to avoid widening the `issue_create` API surface. The suppression line should read `# type: ignore[reportPrivateUsage]  # _balanced_fence_line_indices is a shared parse utility; consider exporting it`.
