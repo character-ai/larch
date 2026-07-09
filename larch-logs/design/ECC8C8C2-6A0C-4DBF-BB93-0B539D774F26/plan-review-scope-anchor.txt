@@ -1,0 +1,46 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-correctness, cursor-specialist-edge-cases, codex-specialist-testing, dyn-dyn-hook-state, codex-specialist-correctness, codex-specialist-edge-cases
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+The hook still relies on a mutable `state_dir` pathname after validation. A same-UID symlink or rename swap, including through a symlinked ancestor, can redirect `chmod`, `mktemp`, or the final promotion into attacker-controlled storage before cleanup or bailout.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - Revalidate `[ -d "$state_dir" ] && [ ! -L "$state_dir" ]` immediately after `mkdir -p`, before `chmod`, immediately before `mktemp`, and immediately before `mv`; exit 0 and delete any temp file if validation fails.
+  - Resolve or reject the full temp-root path before any mutation, including every ancestor, and fail closed if any path component is a symlink.
+  - Prefer binding work to a stable verified directory root, for example `cd` into the verified directory and rename by basename, or use a directory-handle based helper. If that is not possible, create the temp file under a trusted root and move it only after a fresh containment check.
+  - Consider `mktemp -t` with a validated directory or opening a dir fd and using `mktemp` relative to that fd for stronger TOCTOU resistance on shared `/tmp`.
+  - Add a race-focused regression if the harness can model the same-user swap.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Close two TOCTOU windows in `hook-anti-read-poll.sh`: between `mkdir -p` and `chmod`, and between the last state-dir guard and `mktemp`.
+- Add a negative-control regression test showing the new pre-mktemp guard is load-bearing.
+
+### Non-goals
+- Ancestor-symlink path-component checks (requires per-hop traversal; attack surface requires same-UID compromise of a `/tmp` parent, which is out of scope).
+- Changes to any other hook or script beyond the two targeted files.
+
+### Approach sketch
+- Add one guard line (`[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || exit 0`) immediately after `mkdir -p`, before `chmod 700`.
+- Add one guard line with the same text immediately before `mktemp`.
+- In the test, create two hook variants via inline Python heredocs: a fully-guardless hook (all state-dir guards removed) and a deep-guardless hook (same but the new pre-mktemp guard is kept).
+- Run each variant with `state_dir` pointing at a symlink to a redirect dir; verify the negative control writes a state file to the redirect and the positive test does not.
+
+### Surfaces in scope
+- `scripts/hook-anti-read-poll.sh`
+- `scripts/test-hook-anti-read-poll.sh`
+
+### Open questions
+- None.
