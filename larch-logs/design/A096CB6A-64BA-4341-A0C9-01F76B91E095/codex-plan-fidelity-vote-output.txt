@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- current fallback already treats an empty discriminator as absent; the plan does not require changing that contract.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no concrete wrapper/python3 failure path is introduced by this plan, so the test request is speculative and out of scope.

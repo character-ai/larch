@@ -1,0 +1,1 @@
+Replace the advisory read-poll hook's path-racy state writes with a Python fd-based helper. Keep the shipped hook as a thin fail-open Bash wrapper. Add focused Python and shell coverage plus a SECURITY.md update.
