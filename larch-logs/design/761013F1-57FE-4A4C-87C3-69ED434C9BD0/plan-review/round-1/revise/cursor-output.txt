@@ -1,0 +1,232 @@
+Verifying the codebase against the accepted finding so the revised plan is accurate.
+## Plan
+
+Implement two repo-local lint ratchets under the existing `python/larch/lint/` pattern. Use direct codebase inspection because `approach-synthesis.txt` is `NO_SKETCHES`.
+
+## Approach
+
+- Mirror `lint_lifecycle_prefix_literal.py` and `lint_tempfile_dir.py` for the renderer lint.
+- Mirror `lint_shared_convention_regex.py` for the guidelines-note bypass lint.
+- Keep both lints read-only, stdlib-only, and registered through `python/cli.py`.
+- Add both names to the `py-lint-checks-fast` loop. Do not add a CI job.
+- Document both under `docs/linting.md`.
+- Add focused tests under `python/tests/lint/`.
+- For renderer test-reference coverage, match whole identifiers only. Do not use bare substring search; a name like `_vendor_rows` must not be satisfied by `_progress_vendor_rows` in test text.
+
+## Files to modify/create
+
+### NEW: python/larch/lint/lint_renderer_golden_tests.py
+
+Implement `cli.py lint renderer-golden-tests`.
+
+Behavior:
+
+- Scan only top-level `FunctionDef` and `AsyncFunctionDef` nodes in `python/larch/report/*.py`.
+- Match function names where `name.startswith("_render_") or name.endswith("_rows")`.
+- Treat a function as covered when any file under `python/tests/report/*.py` contains the function name as a whole identifier.
+- Whole-identifier matching rules:
+  - Compile one boundary-safe pattern per candidate name, for example `re.search(r"(?<![A-Za-z0-9_])" + re.escape(name) + r"(?![A-Za-z0-9_])", text)`.
+  - Do not use bare `name in text`.
+  - Apply the same boundary rule across all test files read for coverage.
+- Skip symlinks and non-files.
+- Validate parse/read failures as tool failures, exit `2`.
+- Support same-line suppression only:
+  - `# lint-renderer-golden-tests: ok <reason>`
+  - Empty or missing reasons do not suppress.
+- Use baseline file `python/renderer-golden-tests-baseline.json`.
+- Baseline row schema:
+  - `file`
+  - `function_name`
+  - `reason`
+- Normalize `file` relative to `python/`, for example `larch/report/progress_report.py`.
+- Reject malformed baseline rows, extra keys, missing reasons, duplicates, invalid paths, and stale baseline rows.
+- Exit behavior:
+  - `0` when no unbaselined live findings exist and no stale baseline rows exist.
+  - `1` when new unbaselined renderers or stale baseline rows exist.
+  - `2` for malformed baseline, bad args, parse/read failures, or duplicate live identities.
+- `--write` should preserve reasons for still-live rows and fail closed when a live finding has no preserved reason and no `--initial-reason`.
+- `--initial-reason` must be non-empty when supplied.
+- Emit diagnostics that name the file, function, and missing test reference.
+
+Important identity choice:
+
+- Use `(file, function_name)` only.
+- Do not include line numbers.
+
+### NEW: python/renderer-golden-tests-baseline.json
+
+Seed from the current tree after the lint exists and identifier-boundary matching is implemented.
+
+Authoritative seeding path:
+
+- Run `make regen-renderer-golden-tests-baseline` after the lint module is implemented.
+- Do not trust a hand-maintained static inventory as the final source of truth.
+
+Current direct measurement with the requested predicate and whole-identifier test matching found these unreferenced candidates:
+
+- `larch/report/exec_issue_detail.py` `_parse_ndjson_structured_rows`
+- `larch/report/exec_issue_detail.py` `_render_category`
+- `larch/report/final_report.py` `_state_file_has_rows`
+- `larch/report/progress_report.py` `_render_phase_gantt`
+- `larch/report/progress_report.py` `_tsv_has_data_rows`
+- `larch/report/progress_report.py` `_oos_result_rows`
+- `larch/report/report_tokens_scan.py` `_phase_rows`
+- `larch/report/timing.py` `_parse_rows`
+- `larch/report/timing.py` `_render_markdown`
+- `larch/report/tokens.py` `_read_transcript_rows`
+- `larch/report/tokens.py` `_ranked_cache_run_rows`
+- `larch/report/tokens.py` `_ranked_cache_step_rows`
+- `larch/report/tokens.py` `_render_checks_digest_savings_report`
+- `larch/report/tokens.py` `_vendor_rows`
+
+Note: earlier drafts listed 13 rows and omitted `tokens.py` `_vendor_rows`. Substring-style matching would also have falsely treated `_progress_vendor_rows` test references as coverage for `_vendor_rows`. Re-measure during implementation and seed the live 14-row set from the lint output, not the stale count.
+
+Use one clear reason per row. Example reason shape:
+
+- `grandfathered current report helper before renderer golden-test coverage ratchet`
+
+Give non-renderer helpers a reason that says they match the broad name predicate but are not operator-facing renderers.
+
+### NEW: python/larch/lint/lint_guidelines_note_wrapper_bypass.py
+
+Implement `cli.py lint guidelines-note-wrapper-bypass`.
+
+Behavior:
+
+- Scan production `python/larch/**/*.py`.
+- Exclude tests, `conftest.py`, `test_support.py`, `review_test_support.py`, symlinks, `__pycache__`, and `tests` dirs.
+- Exclude the owner module `larch/implement/ship_guidelines.py`.
+- Exclude the lint module itself.
+- Parse AST and flag calls whose callee is named `_invalidate_guidelines_note`.
+  - Catch direct calls: `_invalidate_guidelines_note(...)`.
+  - Catch attribute calls: `module._invalidate_guidelines_note(...)`.
+- Ignore function definitions. Only calls matter.
+- Support same-line suppression:
+  - `# lint-guidelines-note-wrapper-bypass: ok <reason>`
+  - Empty or missing reasons do not suppress.
+- Exit `1` on violations, `0` when clean, and `2` on parse/read/arg failures.
+- Diagnostic should direct callers to `_pin_or_invalidate_guidelines_note`.
+
+No baseline.
+
+### NEW: python/tests/lint/test_lint_renderer_golden_tests.py
+
+Add unit tests that mirror existing lint tests.
+
+Cover:
+
+- A violating report function exits `1`.
+- A clean report function referenced from `python/tests/report/test_*.py` exits `0`.
+- Same-line suppression with a reason exits `0`.
+- Same-line suppression without a reason does not suppress.
+- Baseline row suppresses a live finding.
+- New unbaselined renderer fails while a baselined renderer passes.
+- `--write --initial-reason` writes canonical JSON.
+- Routine `--write` preserves existing reasons.
+- Stale baseline row fails.
+- Malformed baseline rows fail exit `2`.
+- Scope ignores nested helpers, non-report modules, test files, symlinks where practical, and non-matching function names.
+- Whole-identifier matching is required; a test fixture that references only `_progress_vendor_rows` does not cover `_vendor_rows`, and the lint still exits `1`.
+- Identifier-boundary reference is enough; no import execution is required.
+
+### NEW: python/tests/lint/test_lint_guidelines_note_wrapper_bypass.py
+
+Add unit tests.
+
+Cover:
+
+- A direct call outside `ship_guidelines.py` exits `1`.
+- An attribute call outside `ship_guidelines.py` exits `1`.
+- Calls inside `larch/implement/ship_guidelines.py` are allowed.
+- No call exits `0`.
+- Same-line suppression with a reason exits `0`.
+- Same-line suppression without a reason does not suppress.
+- Definitions of `_invalidate_guidelines_note` outside the owner are not flagged unless called.
+- Scope excludes tests and helper files.
+- Parse/read failure path exits `2` where practical.
+
+### UPDATED: python/larch/cli.py
+
+Register:
+
+- `("lint", "renderer-golden-tests")`
+- `("lint", "guidelines-note-wrapper-bypass")`
+
+Point them at the new modules' `main`.
+
+### UPDATED: Makefile
+
+Add both lint names to `py-lint-checks-fast`:
+
+- `renderer-golden-tests`
+- `guidelines-note-wrapper-bypass`
+
+Add regeneration target for the renderer baseline:
+
+- `.PHONY: regen-renderer-golden-tests-baseline`
+- Target should preserve reasons when the baseline exists.
+- If absent, run with a bootstrap `--initial-reason`.
+
+Do not add a regeneration target for the guidelines-note bypass lint.
+
+### UPDATED: docs/linting.md
+
+Document both ratchets in the Python subprocess and environment ratchets section or nearby custom AST ratchet section.
+
+Include:
+
+- Scope for each lint.
+- Baseline file and row schema for `renderer-golden-tests`.
+- Whole-identifier test-reference matching for `renderer-golden-tests`.
+- Suppression pragma strings for both lints.
+- Baseline-only-shrinks behavior.
+- `make regen-renderer-golden-tests-baseline`.
+- State that `guidelines-note-wrapper-bypass` has no baseline and should stay empty from day one.
+- State that both run under `make py-lint` through `py-lint-checks-fast`.
+
+## Edge cases
+
+- A helper named `*_rows` may not render user-facing output. Keep it baselined, not excluded, because round 1 resolved the broad predicate.
+- A longer identifier that contains a shorter candidate name as a substring must not count as coverage. Example: `_progress_vendor_rows` must not satisfy `_vendor_rows`.
+- A test may reference a function name in a comment. This is accepted by design when the comment contains the whole identifier. The lint is a presence ratchet, not a fixture-quality verifier.
+- Renaming a renderer may create one stale baseline row and one new finding. This is useful. It forces either a test reference or a reason-preserving baseline update.
+- Suppression comments in string literals must not suppress findings. Use `tokenize` comments, as existing lints do.
+- The guidelines lint should not flag the owner helper in `ship_guidelines.py`; that file owns the legacy helper and wrapper sequence.
+- Do not scan tests for guidelines bypass calls. Tests may need direct fixture calls.
+
+## Failure modes
+
+- `py-lint-checks-fast` can fail on the current tree if the renderer baseline is not seeded from the same predicate and identifier-matching rules used by the lint.
+- Substring-style test matching would let unreferenced `*_rows` helpers such as `_vendor_rows` pass while only a longer sibling name appears in tests. Whole-identifier matching closes that hole.
+- A stale baseline implementation that silently drops missing live rows would weaken the ratchet. Make stale rows an exit `1`.
+- A broad AST search could flag definitions instead of calls. Limit the bypass lint to `ast.Call`.
+- A raw text search for `_invalidate_guidelines_note(` would risk false positives in strings and comments. Use AST for the bypass lint.
+- If `--write` assigns a generic reason to new rows during routine regen, the baseline can grow silently. Preserve reasons and fail closed unless `--initial-reason` is explicitly supplied.
+
+## Testing strategy
+
+Run focused tests:
+
+- `cd python && pytest tests/lint/test_lint_renderer_golden_tests.py`
+- `cd python && pytest tests/lint/test_lint_guidelines_note_wrapper_bypass.py`
+
+Run focused lint commands:
+
+- `python3 python/cli.py lint renderer-golden-tests`
+- `python3 python/cli.py lint guidelines-note-wrapper-bypass`
+
+Run changed Python lint surface:
+
+- `make py-lint`
+
+If docs changed only in `docs/linting.md`, no Markdown harness is needed unless local policy requires it.
+
+## Difficulty
+
+This is a multi-file lint-authoring change that affects the standard Python lint sweep and introduces a committed baseline. The implementation is bounded and follows existing patterns, but integration, identifier-boundary matching, and baseline behavior can fail.
+
+difficulty: MODERATE
+diff_added: 1080
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 1080

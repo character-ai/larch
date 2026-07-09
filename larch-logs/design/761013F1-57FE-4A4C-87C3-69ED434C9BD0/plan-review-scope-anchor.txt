@@ -1,0 +1,42 @@
+Source: /learn-from-bugs mining run, 2026-07-08. Two independent regression-ratchet lints combined into one lint-authoring change. Both prevent recurrence of closed bug clusters, both live in `python/larch/lint/` under the existing conventions (see `docs/linting.md`), and both run under the standard sweep. No new CI job.
+
+## Context and motivation
+
+Lint 1 mechanizes G-Obs-5 (report renderers get golden tests with hostile-width and fallback-shaped fixtures), per G-Enf-1 (prefer mechanical enforcement). Five closed bugs motivated that guideline:
+
+- #5473, #5587, #5753: three separate Gantt-chart corruption reports across /design and /implement summaries in five weeks. The label column width keyed on individual row name lengths instead of the maximum across rows, so one long reviewer or branch name shifted bars and broke the frame. The same defect shipped three times because nothing forces a renderer to carry a hostile-width test.
+- #6578: the round reviewer-timing chart omitted phase2/phase3 vendor-fallback rows. Row selection in `_progress_vendor_rows` (`python/larch/report/progress_report.py`) dropped fallback ledger rows even though sibling machinery (`_progress_normalize_output_base`) already normalizes fallback suffixes.
+- #5940: the vendor-fallback attribution remap `_fallback_label_remap` read only /design manifests and silently no-oped for /review.
+
+Lint 2 ratchets the guidelines-note pin/invalidate sequence. #6106 found rebase call sites invalidating the architectural-guidelines final-report note directly, with no re-pin attempt, after eight prior issues had fixed sibling call sites of the same class one at a time (the chain is cited in G-Fix-1's Why). The class fix has landed: as of 2026-07-08, `python/larch/implement/ship_guidelines.py` owns the sequence behind `_pin_or_invalidate_guidelines_note`, and no direct caller of `_invalidate_guidelines_note` exists outside that module. Nothing today stops a tenth regression; the lint makes the wrapper the only path.
+
+## Lint 1: `lint_renderer_golden_tests`
+
+- Flags: a top-level function in `python/larch/report/*.py` whose name matches `_render_*` or `*_rows` and that no test file under `python/tests/report/` references by name.
+- Mechanics: collect matching function definitions, then search the text of `python/tests/report/*.py` for each name. Any reference satisfies the lint. The lint is a presence ratchet; fixture quality (hostile widths, fallback shapes) stays a review concern under G-Obs-5.
+- False-positive risk: medium. Name reference is a proxy, and private helpers get renamed. Scope stays limited to `python/larch/report/`; /design may narrow the name predicate after measuring current hits.
+- Suppression: same-line `# lint-renderer-golden-tests: ok <reason>`, narrowest scope.
+- Baseline: enumerate today's unreferenced renderers into a reason-bearing baseline that only shrinks, per G-Enf-2, mirroring the existing baseline-lint mechanics (`lint_complexity_baseline`). New renderer functions get a hard ban.
+
+## Lint 2: `lint_guidelines_note_wrapper_bypass`
+
+- Flags: any call of `_invalidate_guidelines_note(` in `python/larch/**/*.py` outside `python/larch/implement/ship_guidelines.py`, tests excluded. Callers must use `_pin_or_invalidate_guidelines_note`, which attempts the re-pin (`pin_note_from_staged_for_current_head`) before invalidating.
+- False-positive risk: near zero; the symbol is distinctive and current violations are zero.
+- Suppression: same-line pragma with reason; expected never to be needed.
+- Baseline: empty; hard ban from day one.
+
+## Work items
+
+1. Implement each lint as one module in `python/larch/lint/`, mirroring the structure and registration of `lint_lifecycle_prefix_literal.py`, so both run under `make py-lint` with the existing sweep.
+2. Unit tests in `python/tests/lint/`, mirroring `test_lint_lifecycle_prefix_literal.py`: per lint, a violating fixture, a clean fixture, and a suppressed fixture. For lint 1, also a baseline round-trip: a baselined hit passes; a new unbaselined renderer fails; mirror the existing baseline lint's stale-entry handling so the baseline only shrinks.
+3. Seed lint 1's baseline from the current tree, one reason per entry.
+
+## Acceptance criteria
+
+- `make py-lint` fails on: a new unreferenced `_render_*` function in `python/larch/report/` absent from the baseline; any new direct `_invalidate_guidelines_note` call outside `ship_guidelines.py`.
+- `make py-lint` passes on the current tree after baseline seeding.
+- No new CI job; the lints ride the existing sweep.
+
+## Backing issues
+
+Lint 1: #5473, #5587, #5753, #6578, #5940. Lint 2: #6106 and the call-site chain cited in G-Fix-1's Why.
