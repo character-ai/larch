@@ -36,8 +36,11 @@ else
 fi
 
 state_dir="${TMPDIR:-/tmp}/larch-read-poll"
+[ -L "$state_dir" ] && exit 0
+[ -e "$state_dir" ] && [ ! -d "$state_dir" ] && exit 0
 mkdir -p "$state_dir" 2>/dev/null || exit 0
 chmod 700 "$state_dir" 2>/dev/null || true
+[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || exit 0
 
 emit_reminder() {
     local msg="$1"
@@ -52,7 +55,8 @@ path_hash=$(printf '%s' "$file_path" | cksum 2>/dev/null | awk '{print $1}') || 
 key="read-${cwd_hash}-${session_hash}"
 state_file="$state_dir/$key.state"
 prev_path=""; prev_offset=""; prev_count=0; prev_time=0
-if [ -r "$state_file" ]; then
+[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || exit 0
+if [ ! -L "$state_file" ] && [ -f "$state_file" ] && [ -r "$state_file" ]; then
     IFS='	' read -r prev_path prev_offset prev_count prev_time <"$state_file" || true
 fi
 case "$prev_count" in ''|*[!0-9]*) prev_count=0 ;; esac
@@ -63,8 +67,24 @@ if [ "$prev_path" = "$path_hash" ] && [ "$prev_offset" = "$offset" ] && [ $((now
 else
     count=1
 fi
+tmp_state=$(mktemp "$state_dir/.${key}.tmp.XXXXXX" 2>/dev/null) || exit 0
+[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || { rm -f "$tmp_state" 2>/dev/null || true; exit 0; }
+if [ -L "$state_file" ]; then
+    rm -f "$state_file" 2>/dev/null || { rm -f "$tmp_state" 2>/dev/null || true; exit 0; }
+elif [ -e "$state_file" ] && [ ! -f "$state_file" ]; then
+    rm -f "$tmp_state" 2>/dev/null || true
+    exit 0
+fi
 printf '%s	%s	%s	%s
-' "$path_hash" "$offset" "$count" "$now" >"$state_file" 2>/dev/null || exit 0
+' "$path_hash" "$offset" "$count" "$now" >"$tmp_state" 2>/dev/null || { rm -f "$tmp_state" 2>/dev/null || true; exit 0; }
+[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || { rm -f "$tmp_state" 2>/dev/null || true; exit 0; }
+if [ -L "$state_file" ]; then
+    rm -f "$state_file" 2>/dev/null || { rm -f "$tmp_state" 2>/dev/null || true; exit 0; }
+elif [ -e "$state_file" ] && [ ! -f "$state_file" ]; then
+    rm -f "$tmp_state" 2>/dev/null || true
+    exit 0
+fi
+mv "$tmp_state" "$state_file" 2>/dev/null || { rm -f "$tmp_state" 2>/dev/null || true; exit 0; }
 if [ "$count" -eq 3 ]; then
     emit_reminder "Read-poll detected: repeated identical Read calls. Use one read after state changes instead of polling."
 fi
