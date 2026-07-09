@@ -1,0 +1,7 @@
+# attributed_ballot_sha256=0dcd204885f8569e29e7a63cfbbf0ecb61aa8f91ba16b409ea8428094bebf438
+# neutral_ballot_sha256=7891ea278a9555c3eb8276d5e3f99f14d1615bd5b5b190c4d13a38c6cca23ad8
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Innovation, Cursor-Requirements, Codex-dyn-Report Order Regression	- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements, Codex-dyn-Report Order Regression
+FINDING_2	Codex-Pragmatic	- **Reviewer(s)**: Codex-Pragmatic
+FINDING_3	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+OOS_1	Codex-Innovation	- **Reviewer**: Codex-Innovation

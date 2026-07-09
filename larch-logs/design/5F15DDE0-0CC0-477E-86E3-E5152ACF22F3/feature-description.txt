@@ -1,0 +1,3 @@
+# [FEATURE] reverse the order of summary table and review details summary (including Gantt chart) in final report of /design and /implement
+
+Motivation: the 2 key info points of final report -- final status and cost -- come at the top of the summary table, but often get scrolled off screen by tall Gantt charts.  Therefore, please print summary table LAST in final report.
