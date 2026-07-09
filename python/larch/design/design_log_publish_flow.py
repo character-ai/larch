@@ -17,6 +17,7 @@ from pathlib import Path
 from larch.core import redact
 from larch.design import design_publish
 from larch.design.design_summary import resolve_summary_mode
+from larch.report import run_logs
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
@@ -508,6 +509,45 @@ def _default_outcome_for_reason(reason: str) -> str:
     return "paused" if reason == "pause" else "approved"
 
 
+def _repo_root_for_guideline_check() -> Path | None:
+    top = _run(["git", "rev-parse", "--show-toplevel"])
+    repo_root = top.stdout.strip()
+    if top.returncode != 0 or not repo_root:
+        return None
+    return Path(repo_root)
+
+
+def _record_missing_guideline_assessment_warning(
+    *,
+    design_tmpdir: Path,
+    outcome: str,
+    repo_root: Path | None,
+) -> None:
+    if repo_root is None:
+        return
+    completeness = design_publish._check_guideline_assessment_completeness(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001 - degraded publish shares Step 5c gate
+        design_tmpdir=design_tmpdir,
+        repo_root=repo_root,
+        outcome=outcome,
+    )
+    if not (completeness.required and not completeness.present):
+        return
+    with contextlib.suppress(OSError):
+        run_logs.append_execution_issue(
+            log_file=design_tmpdir / "execution-issues.md",
+            category="Warnings",
+            entry=(
+                "guideline-assessment: missing architectural-guideline-assessment.md; "
+                "Gate C assessment did not persist before direct log publish."
+            ),
+        )
+    with contextlib.suppress(OSError):
+        _ = (design_tmpdir / ".missing-guideline-assessment-warning").write_text(
+            "",
+            encoding="utf-8",
+        )
+
+
 def _render_final_summary_before_copy(
     *,
     design_tmpdir: Path,
@@ -604,6 +644,11 @@ def log_publish_main(argv: Sequence[str]) -> int:
             _emit(k="PR_NUMBER", v="")
             _emit(k="PR_URL", v="")
             return 0
+        _record_missing_guideline_assessment_warning(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            repo_root=Path(repo_root),
+        )
         if not _render_final_summary_before_copy(
             design_tmpdir=design_tmpdir,
             outcome=outcome,
@@ -626,6 +671,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
     plugin_root = Path(
         os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3])
     )
+    repo_root = _repo_root_for_guideline_check()
     capture_ctx = design_publish._TranscriptCaptureContext(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
         design_tmpdir=design_tmpdir,
         plugin_root=plugin_root,
@@ -640,6 +686,12 @@ def log_publish_main(argv: Sequence[str]) -> int:
         _emit(k="PR_NUMBER", v="")
         _emit(k="PR_URL", v="")
         return 0
+
+    _record_missing_guideline_assessment_warning(
+        design_tmpdir=design_tmpdir,
+        outcome=outcome,
+        repo_root=repo_root,
+    )
 
     if not _render_final_summary_before_copy(
         design_tmpdir=design_tmpdir,

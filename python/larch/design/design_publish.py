@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from larch import io as larch_io
 from larch.report import design_diagram_log
 from larch.calibration import difficulty
-from larch.core import proc
+from larch.core import architectural_guidelines, proc
 from larch.report import run_logs
 from larch.design import design_step0_env
 from larch.git.repo_roots import consumer_repo_root
@@ -29,6 +29,15 @@ class _TranscriptCaptureContext:
     repo: str
     claude_pid: str
     warning_step_label: str
+
+
+@dataclass(frozen=True)
+class GuidelineAssessmentCompleteness:
+    guidelines_status: str
+    required: bool
+    present: bool
+    artifact: str
+    reason: str
 
 
 def _emit_rows(rows: list[tuple[str, str]]) -> None:
@@ -406,6 +415,61 @@ def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env
         _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value=reason)
     kvs[1] = ("VALIDATE_STATUS", "defects-found")
     kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
+    _emit_rows(kvs)
+    _ = _write_result_env(path=result_env, rows=kvs)
+
+
+def _check_guideline_assessment_completeness(
+    *,
+    design_tmpdir: Path,
+    repo_root: Path,
+    outcome: str = "approved",
+) -> GuidelineAssessmentCompleteness:
+    guidelines = architectural_guidelines.read_guidelines(repo_root=repo_root)
+    artifact = architectural_guidelines.DESIGN_ASSESSMENT
+    required = outcome in {"approved", "approved-partition"} and guidelines.status == "present"
+    path = design_tmpdir / artifact
+    present = path.is_file() and not path.is_symlink()
+    if not required:
+        reason = "outcome-not-approved" if outcome not in {"approved", "approved-partition"} else f"guidelines-{guidelines.status}"
+    elif present:
+        reason = "present"
+    elif path.is_symlink():
+        reason = "artifact-symlink"
+    elif path.exists():
+        reason = "artifact-not-regular"
+    else:
+        reason = "artifact-missing"
+    return GuidelineAssessmentCompleteness(
+        guidelines_status=guidelines.status,
+        required=required,
+        present=present,
+        artifact=artifact,
+        reason=reason,
+    )
+
+
+def _emit_missing_guideline_assessment_refusal(
+    *,
+    design_tmpdir: Path,
+    result: GuidelineAssessmentCompleteness,
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> None:
+    del design_tmpdir
+    print(
+        "**⚠ 5c: publish refused: missing architectural-guideline-assessment.md; "
+        "return to Gate C to persist the architectural-guideline assessment before publish.**",
+        flush=True,
+    )
+    _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="not-run")
+    _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value="0")
+    _replace_kv(rows=kvs, key="VALIDATE_LOG_FILE", value="")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_REQUIRED", value="true")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_PRESENT", value="false")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_STATUS", value="missing")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_ARTIFACT", value=result.artifact)
+    _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value="missing-guideline-assessment")
     _emit_rows(kvs)
     _ = _write_result_env(path=result_env, rows=kvs)
 
@@ -819,6 +883,8 @@ def publish_core(argv: Sequence[str]) -> int:
             _ = composed_plan.write_text(rewritten, encoding="utf-8")
             plan_text = rewritten
 
+    repo_root_arg = Path(consumer_repo_root() or plugin_root)
+
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")
     else:
@@ -829,7 +895,6 @@ def publish_core(argv: Sequence[str]) -> int:
             "CLAUDE_PLUGIN_ROOT": str(plugin_root),
             "LARCH_REQUIRE_PLAN_DIFFICULTY": "1",
         }
-        repo_root_arg = consumer_repo_root() or plugin_root
         validate = subprocess.run(
             [
                 sys.executable,
@@ -863,6 +928,20 @@ def publish_core(argv: Sequence[str]) -> int:
             return 4
         if validate.returncode != 0 or kvs[1][1] != "ok":
             return 5
+
+    completeness = _check_guideline_assessment_completeness(
+        design_tmpdir=design_tmpdir,
+        repo_root=repo_root_arg,
+        outcome="approved",
+    )
+    if completeness.required and not completeness.present:
+        _emit_missing_guideline_assessment_refusal(
+            design_tmpdir=design_tmpdir,
+            result=completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
 
     redacted_plan = design_tmpdir / "composed-plan.redacted.md"
     redact = subprocess.run(

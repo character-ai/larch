@@ -1868,6 +1868,34 @@ def persist_invariant_design_assessment(
     return 0
 
 
+def _emit_design_assessment_persist_result(
+    *,
+    guidelines_status: str,
+    persist_result: str,
+    reason: str,
+) -> None:
+    print("ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ATTEMPTED=true")
+    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_GUIDELINES_STATUS={guidelines_status}")
+    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT={persist_result}")
+    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON={_env_escape(reason)}")
+    print(f"ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ARTIFACT={DESIGN_ASSESSMENT}")
+
+
+def _design_assessment_flag_error(
+    *,
+    guidelines_status: str,
+    has_clean: bool,
+    has_file: bool,
+) -> str | None:
+    if guidelines_status == "present":
+        if has_clean == has_file:
+            return "present architectural guidelines require exactly one of --assessment clean or --assessment-file"
+        return None
+    if has_clean or has_file:
+        return "absent or invalid architectural guidelines do not accept assessment source flags"
+    return None
+
+
 def persist_design_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines persist-design-assessment")
     parser.add_argument("--repo-root")
@@ -1883,13 +1911,17 @@ def persist_design_assessment_main(argv: list[str]) -> int:
     result = read_guidelines(repo_root=args.repo_root)
     has_clean = args.assessment == "clean"
     has_file = bool(args.assessment_file)
-    flag_error: str | None = None
-    if result.status == "present":
-        if has_clean == has_file:
-            flag_error = "present architectural guidelines require exactly one of --assessment clean or --assessment-file"
-    elif has_clean or has_file:
-        flag_error = "absent or invalid architectural guidelines do not accept assessment source flags"
+    flag_error = _design_assessment_flag_error(
+        guidelines_status=result.status,
+        has_clean=has_clean,
+        has_file=has_file,
+    )
     if flag_error is not None:
+        _emit_design_assessment_persist_result(
+            guidelines_status=result.status,
+            persist_result="failed",
+            reason="invalid-flags",
+        )
         print(flag_error, file=sys.stderr)
         return 1
     assessment_text: str | None = None
@@ -1897,19 +1929,41 @@ def persist_design_assessment_main(argv: list[str]) -> int:
         try:
             assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
         except OSError as exc:
+            _emit_design_assessment_persist_result(
+                guidelines_status=result.status,
+                persist_result="failed",
+                reason="assessment-file-unreadable",
+            )
             print(f"assessment-file: {exc}", file=sys.stderr)
             return 1
         if not assessment_text.strip():
+            _emit_design_assessment_persist_result(
+                guidelines_status=result.status,
+                persist_result="failed",
+                reason="assessment-file-empty",
+            )
             print("assessment-file: content must not be empty", file=sys.stderr)
             return 1
     try:
-        return persist_design_assessment(
+        rc = persist_design_assessment(
             repo_root=args.repo_root,
             design_tmpdir=str(design_tmpdir),
             assessment=args.assessment or "",
             assessment_text=assessment_text,
         )
+        reason = "not-required" if result.status in {"absent", "invalid"} else "persisted"
+        _emit_design_assessment_persist_result(
+            guidelines_status=result.status,
+            persist_result="ok",
+            reason=reason,
+        )
+        return rc
     except (OSError, ValueError) as exc:
+        _emit_design_assessment_persist_result(
+            guidelines_status=result.status,
+            persist_result="failed",
+            reason="persist-failed",
+        )
         print(f"persist-design-assessment: {exc}", file=sys.stderr)
         return 1
 

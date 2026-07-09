@@ -4160,6 +4160,48 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     assert "PLAN_WRITE_OK=false" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
 
 
+def test_step5c_core_rc4_missing_guideline_assessment_not_validator_defects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(
+            "\n".join(
+                [
+                    "PLAN_WRITE_OK=false",
+                    "VALIDATE_STATUS=not-run",
+                    "PUBLISH_REFUSE_REASON=missing-guideline-assessment",
+                    "ARCH_GUIDE_ASSESSMENT_REQUIRED=true",
+                    "ARCH_GUIDE_ASSESSMENT_PRESENT=false",
+                    "ARCH_GUIDE_ASSESSMENT_STATUS=missing",
+                    "ARCH_GUIDE_ASSESSMENT_ARTIFACT=architectural-guideline-assessment.md",
+                    f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}",
+                    "",
+                ]
+            ),
+            end="",
+        )
+        return 4
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
+
+    status_env = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+    assert rc == 0
+    assert "STEP5C_STATUS=missing-guideline-assessment" in contract
+    assert "STEP5C_STATUS=validator-defects" not in contract
+    assert "CLEANUP_ELIGIBLE=false" in status_env
+    assert "ARCH_GUIDE_ASSESSMENT_REQUIRED=true" in status_env
+    assert not (design / ".completed" / "step-5c").exists()
+
+
 def test_step5c_auto_compose_basic(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()

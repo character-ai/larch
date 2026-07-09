@@ -3108,6 +3108,122 @@ def test_design_publish_transcript_waived_by_committed_execution_issue(tmp_path:
     assert missing == []
 
 
+def _design_run_with_final_summary(tmp_path: Path, *, outcome: str = "approved") -> tuple[Path, Path]:
+    repo = tmp_path / "repo"
+    run_dir = repo / "larch-logs" / "design" / "RUN1"
+    repo.mkdir(parents=True)
+    _write_run_manifest(run_dir, skill="design")
+    (run_dir / "final-summary.md").write_text(f"## /design run RUN1: {outcome}\n\n", encoding="utf-8")
+    (run_dir / "session-transcript.jsonl").write_text('{"type":"message"}\n', encoding="utf-8")
+    return repo, run_dir
+
+
+def test_design_guideline_assessment_required_for_approved_present_guidelines(tmp_path: Path) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path)
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+
+    assert ok is False
+    assert missing == ["guideline-assessment:architectural-guideline-assessment.md"]
+
+
+def test_design_guideline_assessment_present_passes(tmp_path: Path) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path)
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
+    (run_dir / "architectural-guideline-assessment.md").write_text("clean\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+
+    assert ok is True
+    assert missing == []
+
+
+def test_design_guideline_assessment_warning_waives_missing_artifact(tmp_path: Path) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path)
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
+    (run_dir / "execution-issues.md").write_text(
+        "### Warnings\n- guideline-assessment: missing architectural-guideline-assessment.md\n",
+        encoding="utf-8",
+    )
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+
+    assert ok is True
+    assert missing == []
+
+
+def test_design_guideline_assessment_not_required_for_nonapproved_or_absent_invalid(
+    tmp_path: Path,
+) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path, outcome="failed-plan-write")
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+    assert ok is True
+    assert missing == []
+
+    (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
+    (repo / "ARCHITECTURAL_GUIDELINES.md").unlink()
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+    assert ok is True
+    assert missing == []
+
+    (repo / "ARCHITECTURAL_GUIDELINES.md").mkdir()
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+    assert ok is True
+    assert missing == []
+
+
+def test_copy_tree_to_repo_completeness_uses_consumer_repo_root_for_guidelines(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
+    log_root = tmp_path / "session" / "larch-logs"
+    run_dir = log_root / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
+    (run_dir / "session-transcript.jsonl").write_text('{"type":"message"}\n', encoding="utf-8")
+
+    rels, _dest, _violations, error, rc = run_log_commit._copy_tree_to_repo_after_completeness(  # pyright: ignore[reportPrivateUsage]
+        log_root=log_root,
+        repo_root=repo,
+        skill="design",
+        run_id="RUN1",
+    )
+
+    assert rels == []
+    assert rc == config.RUN_LOG_INCOMPLETE_RC
+    assert error == "run-log incomplete: guideline-assessment:architectural-guideline-assessment.md"
+    assert not (repo / "larch-logs" / "design" / "RUN1").exists()
+
+
 def test_design_completed_step3_without_plan_review_does_not_reach_round_requirements(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
     _write_run_manifest(run_dir, skill="design")

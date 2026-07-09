@@ -127,6 +127,10 @@ STEP5C_PUBLISH_RESULT_ALLOW_KEYS = (
     "RECOVERY_BRANCH",
     "LOG_RECOVERY_BRANCH",
     "PUBLISH_REFUSE_REASON",
+    "ARCH_GUIDE_ASSESSMENT_REQUIRED",
+    "ARCH_GUIDE_ASSESSMENT_PRESENT",
+    "ARCH_GUIDE_ASSESSMENT_STATUS",
+    "ARCH_GUIDE_ASSESSMENT_ARTIFACT",
 )
 
 
@@ -607,10 +611,10 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             summary_emit_path = final_summary_path or str(design_tmpdir / "final-summary.md")
             plan_write_ok = result_env.get("PLAN_WRITE_OK", "")
             publish_ok = result_env.get("PUBLISH_OK", "")
-            if plan_write_ok == "true":
-                _touch(design_tmpdir / ".completed" / "step-5c")
+            publish_refuse_reason = result_env.get("PUBLISH_REFUSE_REASON", "")
             cleanup_eligible = (
-                plan_write_ok == "true"
+                publish_rc != 4
+                and plan_write_ok == "true"
                 and ctx.str_value(key="STANDALONE_HEAVY_FAILED", default="false") != "true"
                 and (not ctx.session_id or publish_ok == "true")
             )
@@ -627,7 +631,11 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 ("VALIDATE_UNSAFE_TOKEN_COUNT", result_env.get("VALIDATE_UNSAFE_TOKEN_COUNT", "")),
                 ("VALIDATE_MISSING_SCRIPT_COUNT", result_env.get("VALIDATE_MISSING_SCRIPT_COUNT", "")),
                 ("VALIDATE_LOG_FILE", result_env.get("VALIDATE_LOG_FILE", "")),
-                ("PUBLISH_REFUSE_REASON", result_env.get("PUBLISH_REFUSE_REASON", "")),
+                ("PUBLISH_REFUSE_REASON", publish_refuse_reason),
+                ("ARCH_GUIDE_ASSESSMENT_REQUIRED", result_env.get("ARCH_GUIDE_ASSESSMENT_REQUIRED", "")),
+                ("ARCH_GUIDE_ASSESSMENT_PRESENT", result_env.get("ARCH_GUIDE_ASSESSMENT_PRESENT", "")),
+                ("ARCH_GUIDE_ASSESSMENT_STATUS", result_env.get("ARCH_GUIDE_ASSESSMENT_STATUS", "")),
+                ("ARCH_GUIDE_ASSESSMENT_ARTIFACT", result_env.get("ARCH_GUIDE_ASSESSMENT_ARTIFACT", "")),
                 ("FINAL_SUMMARY_PATH", final_summary_path),
                 ("UPSERT_STATUS", result_env.get("UPSERT_STATUS", "")),
                 ("ARCHITECTURE_SOURCE", result_env.get("ARCHITECTURE_SOURCE", "")),
@@ -640,9 +648,16 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             )
             _emit_core_kvs(rows)
             if publish_rc == 4:
-                logging_util.emit_kv(key="STEP5C_STATUS", value="validator-defects")
+                status_value = (
+                    "missing-guideline-assessment"
+                    if publish_refuse_reason == "missing-guideline-assessment"
+                    else "validator-defects"
+                )
+                logging_util.emit_kv(key="STEP5C_STATUS", value=status_value)
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 return 0, []
+            if plan_write_ok == "true":
+                _touch(design_tmpdir / ".completed" / "step-5c")
             outcome = "approved" if plan_write_ok == "true" else "failed-plan-write"
             if _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome=outcome, final_summary_path=summary_emit_path, plan_write_ok=plan_write_ok):
                 _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=summary_emit_path)
@@ -676,5 +691,9 @@ STEP5C_STATUS_ALLOW_KEYS = {
     "PUBLISH_RC",
     "PUBLISH_STDOUT_FALLBACK",
     "CLEANUP_ELIGIBLE",
+    "ARCH_GUIDE_ASSESSMENT_REQUIRED",
+    "ARCH_GUIDE_ASSESSMENT_PRESENT",
+    "ARCH_GUIDE_ASSESSMENT_STATUS",
+    "ARCH_GUIDE_ASSESSMENT_ARTIFACT",
 }
 STEP6_INFO_ICON = "\N{INFORMATION SOURCE}"

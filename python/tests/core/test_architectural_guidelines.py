@@ -400,6 +400,63 @@ def test_persist_design_assessment_clean_writes_clean_note(tmp_path: Path, monke
     assert (design_tmpdir / ag.DESIGN_ASSESSMENT).read_text(encoding="utf-8") == ag.CLEAN_PRESENTATION_NOTE + "\n"
 
 
+def test_persist_design_assessment_machine_lines_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+
+    rc = ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean"])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ATTEMPTED=true" in out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_GUIDELINES_STATUS=present" in out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT=ok" in out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ARTIFACT=architectural-guideline-assessment.md" in out
+
+
+def test_persist_design_assessment_machine_lines_absent_and_invalid(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 0
+    absent_out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_GUIDELINES_STATUS=absent" in absent_out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT=ok" in absent_out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON=not-required" in absent_out
+
+    (repo / ag.GUIDELINES_FILENAME).mkdir()
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)]) == 0
+    invalid_out = capsys.readouterr().out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_GUIDELINES_STATUS=invalid" in invalid_out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT=ok" in invalid_out
+
+
+def test_persist_design_assessment_machine_lines_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+
+    rc = ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir)])
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_ATTEMPTED=true" in out
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_RESULT=failed" in out
+
+
 def test_skip_approve_sequence_uses_explicit_repo_root_from_wrong_cwd(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

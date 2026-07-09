@@ -19,6 +19,11 @@ from larch.design import design_publish
 from larch.design import design_step5c
 
 
+@pytest.fixture(autouse=True)
+def _publish_tests_start_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+
 def _write_fake_cli(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
@@ -386,6 +391,147 @@ def _run_publish_with_fake_cli(
         env=env,
     )
     return result, design
+
+
+def _git_repo_with_guidelines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    text: str = "### G-Test-1: Test\n- Why: test.\n",
+) -> Path:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text(text, encoding="utf-8")
+    monkeypatch.chdir(repo)
+    return repo
+
+
+def _minimal_publish_design(tmp_path: Path) -> tuple[Path, Path]:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    return plugin_root, design
+
+
+def test_publish_guidelines_present_missing_assessment_refuses_gate_c(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _git_repo_with_guidelines(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "missing architectural-guideline-assessment.md" in stdout
+    assert "PUBLISH_REFUSE_REASON=missing-guideline-assessment" in result_env
+    assert "VALIDATE_STATUS=not-run" in result_env
+    assert "ARCH_GUIDE_ASSESSMENT_REQUIRED=true" in result_env
+    assert "ARCH_GUIDE_ASSESSMENT_PRESENT=false" in result_env
+
+
+def test_publish_guidelines_present_regular_assessment_proceeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git_repo_with_guidelines(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    (design / "architectural-guideline-assessment.md").write_text("clean\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+
+    assert rc == 0
+
+
+@pytest.mark.parametrize("guidelines_state", ["absent", "invalid"])
+def test_publish_guidelines_absent_or_invalid_not_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    guidelines_state: str,
+) -> None:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    if guidelines_state == "invalid":
+        (repo / "ARCHITECTURAL_GUIDELINES.md").mkdir()
+    monkeypatch.chdir(repo)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+
+    assert rc == 0
+
+
+def test_publish_skip_validate_still_checks_missing_guideline_assessment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git_repo_with_guidelines(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+            "--skip-validate",
+        ]
+    )
+
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "PUBLISH_REFUSE_REASON=missing-guideline-assessment" in result_env
+    assert "VALIDATE_STATUS=not-run" in result_env
 
 
 
