@@ -142,7 +142,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ## Idempotency and resumability
 
 ### G-Idem-1: Make each skill step and helper safe to re-run, so a resumed, retried, or re-notified turn converges instead of duplicating or acting on stale state
-- Why: larch re-enters steps constantly: pause and resume, premature `<task-notification>`, CI-fix loops, Step 8 relaunch. Use marker-keyed or deduplicated writes, HEAD-pinned or content-hashed notes, and completion sentinels, or a re-run duplicates an issue or comment, or ships a note stale for the current `HEAD`.
+- Why: larch re-enters steps constantly: pause and resume, premature async wakeup, CI-fix loops, Step 8 relaunch. Use marker-keyed or deduplicated writes, HEAD-pinned or content-hashed notes, and completion sentinels, or a re-run duplicates an issue or comment, or ships a note stale for the current `HEAD`.
 - Deviate when: a one-shot terminal action already guarded by an upstream single-flight gate.
 
 ### G-Idem-2: Write a step's completion marker only after its postcondition artifact exists and verifies; a marker without its evidence is corrupt and must fail audit

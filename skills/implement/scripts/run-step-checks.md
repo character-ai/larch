@@ -16,8 +16,8 @@ The bgjob child tees the underlying helper stdout into the merge-result env. Aft
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Session telemetry key names live in `skills/shared/session-setup-output.md`; check wrappers consume the `$IMPLEMENT_TMPDIR/session-env.sh` copy.
-- When `--site step3`, uses bgjob step slug `implement-step3-checks`, clears stale `.completed/step-3-terminal`, and passes that sentinel to `bgjob start`.
-- The wrapper does not write `.bg-wait-active`; legacy marker helpers remain elsewhere until the cleanup chunk removes them.
+- When `--site step3`, uses bgjob step slug `implement-step3-checks`, uses bgjob result-env completion.
+- The wrapper does not write legacy wait markers; bgjob owns completion state.
 
 ## Edit-in-sync
 

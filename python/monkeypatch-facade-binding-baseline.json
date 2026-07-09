@@ -1936,7 +1936,7 @@
   },
   {
     "file": "tests/design/test_design_lifecycle.py",
-    "qualified_symbol": "test_step1d5_collect_launch_failure_sentinel_idempotent",
+    "qualified_symbol": "test_step1d5_collect_launch_failure_result_env_idempotent",
     "facade_module": "larch.design.design_step1",
     "attribute": "_append_failure",
     "defining_module": "larch.design.design_step0",
@@ -2044,16 +2044,7 @@
   },
   {
     "file": "tests/design/test_design_lifecycle.py",
-    "qualified_symbol": "test_step5c_core_writes_status_before_terminal_sentinel",
-    "facade_module": "larch.design.design_step5c",
-    "attribute": "_touch",
-    "defining_module": "larch.design.design_session",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/design/test_design_lifecycle.py",
-    "qualified_symbol": "test_step6_cleanup_deletion_path_validates_requires_and_writes_sentinel_before_cleanup",
+    "qualified_symbol": "test_step6_cleanup_deletion_path_validates_requires_and_writes_result_env_before_cleanup",
     "facade_module": "larch.design.design_step6",
     "attribute": "_design_require_plugin_root",
     "defining_module": "larch.design.design_session",
@@ -2062,7 +2053,7 @@
   },
   {
     "file": "tests/design/test_design_lifecycle.py",
-    "qualified_symbol": "test_step6_cleanup_deletion_path_validates_requires_and_writes_sentinel_before_cleanup",
+    "qualified_symbol": "test_step6_cleanup_deletion_path_validates_requires_and_writes_result_env_before_cleanup",
     "facade_module": "larch.design.design_step6",
     "attribute": "_validate_design_tmpdir_arg",
     "defining_module": "larch.design.design_core",
@@ -4358,15 +4349,6 @@
   {
     "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_run_step_checks_main_leaves_non_step3_sites_unmarked",
-    "facade_module": "larch.implement.dispatch_commit_route",
-    "attribute": "_run_cli_forward",
-    "defining_module": "larch.implement.dispatch_helpers",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_run_step_checks_main_step3_clears_legacy_sidecars_without_marker",
     "facade_module": "larch.implement.dispatch_commit_route",
     "attribute": "_run_cli_forward",
     "defining_module": "larch.implement.dispatch_helpers",
@@ -8704,7 +8686,7 @@
   },
   {
     "file": "tests/review/test_plan_review.py",
-    "qualified_symbol": "test_step3_loop_zero_findings_degraded_stop_writes_sentinels",
+    "qualified_symbol": "test_step3_loop_zero_findings_degraded_stop_records_completions",
     "facade_module": "larch.review.plan_review",
     "attribute": "_run_command",
     "defining_module": "larch.review.plan_review_common",

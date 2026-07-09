@@ -1140,7 +1140,6 @@ def test_real_implement_scan_tracks_macro_and_audit_refs_conditionally() -> None
         "skills/implement/references/checks-repair-loop.md",
         "skills/implement/references/extracted-script-registry.md",
         "skills/implement/references/phantom-probe.md",
-        "skills/shared/orchestrator-never.md",
     ):
         assert rel not in result.files
         assert rel in result.conditional_files

@@ -220,7 +220,7 @@ MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/.step5-review-result.env"
 [ -L "$MERGE_RESULT_ENV" ] && { printf '%s
 ' 'step-5-review.sh: refusing symlinked merge-result-env' >&2; exit 2; }
 : >"$MERGE_RESULT_ENV"
-rm -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" "$IMPLEMENT_TMPDIR/.step5-wrapper-detached" "$IMPLEMENT_TMPDIR/.step5-reattach-active" 2>/dev/null || true
+rm -f "$IMPLEMENT_TMPDIR/.step5-wrapper-detached" "$IMPLEMENT_TMPDIR/.step5-reattach-active" 2>/dev/null || true
 
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --step implement-step5-review \
@@ -228,6 +228,5 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --budget-s 21600 \
     --owner-pid "${LARCH_CLAUDE_PID:-$PPID}" \
     --merge-result-env "$MERGE_RESULT_ENV" \
-    --sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" \
     -- \
     bash "$SCRIPT_DIR/step-5-review.sh" --bgjob-child

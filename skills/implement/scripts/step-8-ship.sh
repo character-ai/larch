@@ -174,7 +174,6 @@ run_child() {
       rm -f "$HANDOFF_JSON" 2>/dev/null || true
     fi
     write_merge_result_env "$rc" "$json_present" || return 2
-    rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
     return 0
   }
   trap 'persist_handoff "$?"' EXIT
@@ -211,10 +210,6 @@ run_child() {
   [ -n "$NO_ADMIN_FALLBACK_RESOLVED" ] || NO_ADMIN_FALLBACK_RESOLVED=false
   [ -n "$NO_LOGS_COMMIT_RESOLVED" ] || NO_LOGS_COMMIT_RESOLVED=false
 
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" "$IMPLEMENT_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count" 2>/dev/null || true
 
   set +e
   run_and_capture_stdout bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-python-guard.sh

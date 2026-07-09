@@ -13,14 +13,11 @@ from larch.design import design_postplan
 from larch.design import plan_quality
 
 from larch.design.design_core import (
-    _PROBE_CLAMP_COUNTER_BY_STEP,
     _SUBPROCESS_RUN,
     _CoreUsageError,
     _append_execution_issue,
     _append_failure,
-    _bg_wait_marker_context,
     _capture_contract_stream_to_paths,
-    _clear_probe_clamp_counter,
     _cli_cmd,
     _core_diagnostic,
     _core_print_exc,
@@ -226,11 +223,9 @@ from larch.design.design_step5c import (
     _auto_compose_plan_md,
     _build_acceptance_section,
     _build_trailer_lines_from_sidecars,
-    _finalize_step5c_terminal_sentinel,
     _optional_trailer_lines_from_values_file,
     _peel_trailing_optional_trailers,
     _read_diff_lines_sidecar,
-    _reset_step5c_terminal_state,
     _split_plan_body_and_trailers,
     _step5b_mark_complete,
     _step5c_invoke_publish_core,

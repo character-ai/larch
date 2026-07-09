@@ -949,9 +949,7 @@ def _has_nonempty_final_summary(path: Path) -> bool:
 
 
 def _touch_final_summary_complete(design_tmpdir: Path) -> None:
-    completed = design_tmpdir / ".completed"
-    completed.mkdir(parents=True, exist_ok=True)
-    (completed / "step-final-summary").touch()
+    _ = design_tmpdir
 
 
 def _write_final_summary_result_env(*, design_tmpdir: Path, final_summary_path: str) -> None:
@@ -1127,7 +1125,6 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if (design_tmpdir / ".pause-requested").is_file():
             return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx), []
         with contextlib.suppress(OSError):
-            (design_tmpdir / ".completed" / "step-final-summary").unlink(missing_ok=True)
             (design_tmpdir / ".design-step-final-summary-result.env").unlink(missing_ok=True)
         if ctx.summary_outcome in {"cancelled-clarify", "failed-clarify"} and _has_nonempty_final_summary(disk_final_summary):
             return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary)), []
@@ -1198,7 +1195,8 @@ def step_final_summary_main(argv: Sequence[str]) -> int:
     rc, _ = step_final_summary_core(argv)
     if rc in {2, 3}:
         return rc
-    if (design_tmpdir / ".completed" / "step-final-summary").is_file():
+    result_env = design_tmpdir / ".design-step-final-summary-result.env"
+    if result_env.is_file() and not result_env.is_symlink():
         return 0
     return rc
 

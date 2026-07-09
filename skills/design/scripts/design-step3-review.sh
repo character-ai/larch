@@ -342,7 +342,6 @@ if [ "$RUN_LOOP_CHILD" = false ]; then
     rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
   fi
   mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
-  rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
   rm -f "$DESIGN_TMPDIR/bgjob/design-step3-review.result.env" 2>/dev/null || true
   step3_review_recreate_merge_env
 
@@ -361,7 +360,6 @@ if [ "$RUN_LOOP_CHILD" = false ]; then
     --tmpdir "$DESIGN_TMPDIR" \
     --budget-s 21600 \
     "${_owner_args[@]}" \
-    --sentinel "$DESIGN_TMPDIR/.completed/step-3-terminal" \
     --merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env" \
     -- <"$_child_argv_file"
 fi

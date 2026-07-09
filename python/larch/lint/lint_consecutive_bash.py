@@ -25,11 +25,6 @@ TRAILING_PRAGMA_RE = re.compile(r"\s# lint-consecutive-bash: ok\s+(\S.*)$")
 BREADCRUMB_MAX_CHARS = 160
 BREADCRUMB_MAX_LINE_CHARS = 100
 BREADCRUMB_MAX_LINES = 2
-RECOVERY_SENTINELS = (
-    ".completed/step-3-terminal",
-    ".completed/step-5c-terminal",
-    ".completed/step-final-summary",
-)
 VIOLATION_HELP = (
     "combine into one cli.py-backed call or add trailing "
     "# lint-consecutive-bash: ok <reason> on single-line launcher fences "
@@ -191,12 +186,6 @@ def _combined_pair_text( *,first: Fence, second: Fence, gap_lines: list[str]) ->
     return "\n".join([first.body, *gap_lines, second.body])
 
 
-def _is_recovery_probe_pair(text: str) -> bool:
-    if not any(sentinel in text for sentinel in RECOVERY_SENTINELS):
-        return False
-    return "test -f" in text or "[ -f" in text
-
-
 def _is_design_pause_resume_pair(text: str) -> bool:
     if "/design" not in text and " design " not in text and "design driver" not in text:
         return False
@@ -204,15 +193,11 @@ def _is_design_pause_resume_pair(text: str) -> bool:
     return any(marker in text for marker in markers)
 
 
-def _is_immediate_background_pair(text: str) -> bool:
-    return "<task-notification>" in text or "run_in_background" in text
-
-
 def _is_carved_out_pair( *,first: Fence, second: Fence, gap_lines: list[str]) -> bool:
     if _is_wrong_correct_pair(first=first, second=second, gap_lines=gap_lines):
         return True
     text = _combined_pair_text(first=first, second=second, gap_lines=gap_lines)
-    return _is_recovery_probe_pair(text) or _is_design_pause_resume_pair(text) or _is_immediate_background_pair(text)
+    return _is_design_pause_resume_pair(text)
 
 
 def _rel( *,path: Path, root: Path) -> str:

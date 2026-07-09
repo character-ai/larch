@@ -167,7 +167,7 @@ if [ "$RUN_TAIL_CHILD" = false ]; then
       --max-wait-s 0
   fi
   mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
-  rm -f "$DESIGN_TMPDIR/.completed/step-4" "$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env" 2>/dev/null || true
+  rm -f "$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env" 2>/dev/null || true
   design_step4_tail_recreate_merge_env
   _owner_args=()
   if [ -n "${CLAUDE_PID:-}" ]; then
@@ -178,7 +178,6 @@ if [ "$RUN_TAIL_CHILD" = false ]; then
     --tmpdir "$DESIGN_TMPDIR" \
     --budget-s 900 \
     "${_owner_args[@]}" \
-    --sentinel "$DESIGN_TMPDIR/.completed/step-4" \
     --merge-result-env "$DESIGN_TMPDIR/.design-step4-tail-result.env" \
     -- bash "$0" --run-tail-child "${ORIGINAL_ARGS[@]}"
 fi

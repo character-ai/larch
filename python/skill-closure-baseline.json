@@ -1,10 +1,10 @@
 [
   {
-    "closure_content_estimated_tokens": 53835,
-    "closure_estimated_tokens": 53991,
-    "closure_lines": 1759,
-    "conditional_content_estimated_tokens": 19377,
-    "conditional_estimated_tokens": 19454,
+    "closure_content_estimated_tokens": 51619,
+    "closure_estimated_tokens": 51770,
+    "closure_lines": 1701,
+    "conditional_content_estimated_tokens": 19360,
+    "conditional_estimated_tokens": 19437,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
@@ -22,7 +22,6 @@
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",
       "skills/shared/readability-style.md",
-      "skills/shared/design-background-wait.md",
       "skills/design/references/discussion-rounds.md",
       "skills/design/references/design-outline.md",
       "skills/design/references/approval-gates.md",
@@ -30,18 +29,17 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25840,
-    "skill_md_estimated_tokens": 25894,
+    "skill_md_content_estimated_tokens": 25578,
+    "skill_md_estimated_tokens": 25632,
     "skill_md_lines": 684
   },
   {
-    "closure_content_estimated_tokens": 44137,
-    "closure_estimated_tokens": 44256,
+    "closure_content_estimated_tokens": 43701,
+    "closure_estimated_tokens": 43820,
     "closure_lines": 1309,
-    "conditional_content_estimated_tokens": 29510,
-    "conditional_estimated_tokens": 29579,
+    "conditional_content_estimated_tokens": 26509,
+    "conditional_estimated_tokens": 26576,
     "conditional_files": [
-      "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
       "skills/implement/references/rebase-checkpoint-routing.md",
@@ -56,7 +54,7 @@
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 814,
+    "conditional_lines": 793,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -69,8 +67,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 32118,
-    "skill_md_estimated_tokens": 32196,
+    "skill_md_content_estimated_tokens": 31686,
+    "skill_md_estimated_tokens": 31764,
     "skill_md_lines": 816
   },
   {

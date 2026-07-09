@@ -1232,7 +1232,7 @@ index 9efbf78e0..ff675fdf2 100644
  - Post-Step-0 call sites use `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script>`.
 -- Background wrapper assertions match the one-line launcher form for Step 5 review, Step 7a, and Step 8.
 +- Background wrapper assertions match the one-line launcher form for Step 5 review composites, Step 7a, and Step 8.
- - Timeout assertions and `<task-notification>` assertions remain load-bearing.
+ - Timeout assertions and `<async-notification>` assertions remain load-bearing.
  - Step 8+ loads `ship-pr-exit-matrix.md` before the route-exit and pre-driver fences, while post-driver branch semantics and moved seeder/OOS/checkpoint prose live only in that reference.
  - Step 18 loads `step18-cleanup.md` before the gate fence, while moved cleanup, four-layer stall tracking, escalation-success, and teardown prose live only in that reference.
  - Wrapper sibling and executable checks still pin every local `skills/implement/scripts/*.sh` helper used by the prompt.
@@ -1335,8 +1335,8 @@ index 8d2675266..1a11ac4af 100755
  ]:
      require_near(skill, script, 'Immediate-background required', f'immediate-background pin for {script}', 1400)
      require_near(skill, script, timeout, f'timeout pin for {script}', 1400)
- require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
- require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
+ require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<async-notification>', 'Step 5 review task notification wait', 1800)
+ require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<async-notification>', 'Step 8 ship task notification wait', 2000)
  
  require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
  require(skill, 'Seeded-but-no-PR state is still pre-driver', 'SKILL seeded no-pr retry stays pre-driver')
@@ -1588,7 +1588,7 @@ index 14a9ae378..53a575c40 100644
 -> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, continue the self-review flow. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
 +> **Continue after child returns.** On composite `NEXT_ACTION=continue`, continue the self-review flow. On composite `NEXT_ACTION=stall`, skip to Step 18 (durable stall state is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-self-review`.
  
--**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
+-**⚠ Immediate-background required — set `bgjob start` and `timeout: 15600000`.**
 -
 -```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step5-self-review
@@ -1597,7 +1597,7 @@ index 14a9ae378..53a575c40 100644
 -On terminal `NEXT_ACTION=stall`, set `STALL_TRACKING=true` and skip to Step 18 (stall recovery runs before the final report). On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract.
 -
 -8. If any fixes were applied, stage and commit them:
-+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14400000`.**
++**⚠ Immediate-background required — set `bgjob start` and `timeout: 14400000`.**
  
  ```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit-route --site step5-self-review
@@ -1621,17 +1621,17 @@ index 14a9ae378..53a575c40 100644
  
  ### Scripted review loop
  
- **IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes, code, skills, documentation, data files, and configuration all require review. Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh` Bash tool call with `run_in_background: true` (immediate-background mode) that marks Step 5 telemetry, resolves `dynamic_archetypes_cap` from `LARCH_DYNAMIC_ARCHETYPES_MAX` in `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `3`, prints the Step 5 banner (3-judge panel on every round: three Cursor archetype voters with single-Claude fallback when Cursor is unavailable, specialists per vendor, a rounds 1-2 generic Codex reviewer at `codex-generalist-output.txt` with `model_role=default`, mechanically pruned in rounds 3-4 when prior yield is zero), and execs `review-and-fix step5 --mode loop --starting-round 1`. `/implement` Step 5 does not launch a separate dynamic scout. It consumes the coder-produced manifest when eligible, and otherwise runs static reviewers only. The absorbed loop internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates. Rely on `<task-notification>` for one-shot completion; never use a polling or Monitor launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix CLI` → `review core` with specialists per vendor plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and an all-pruned round converges the review loop immediately rather than advancing toward a round-5 full re-probe.
+ **IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes, code, skills, documentation, data files, and configuration all require review. Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh` Bash tool call with `bgjob start` (immediate-background mode) that marks Step 5 telemetry, resolves `dynamic_archetypes_cap` from `LARCH_DYNAMIC_ARCHETYPES_MAX` in `$IMPLEMENT_TMPDIR/session-env.sh`, then from process `LARCH_DYNAMIC_ARCHETYPES_MAX`, then the implement-mode default `3`, prints the Step 5 banner (3-judge panel on every round: three Cursor archetype voters with single-Claude fallback when Cursor is unavailable, specialists per vendor, a rounds 1-2 generic Codex reviewer at `codex-generalist-output.txt` with `model_role=default`, mechanically pruned in rounds 3-4 when prior yield is zero), and execs `review-and-fix step5 --mode loop --starting-round 1`. `/implement` Step 5 does not launch a separate dynamic scout. It consumes the coder-produced manifest when eligible, and otherwise runs static reviewers only. The absorbed loop internalizes the entire round loop, post-round captured relevant checks, lint-fix repair, and the substantiality / bulk-skip gates. Rely on `<async-notification>` for one-shot completion; never use a polling or Monitor launch. The launcher reads `$IMPLEMENT_TMPDIR/plan.txt`, passes a fixed `--round-cap` of **5** (hard ceiling; degraded rounds consume the budget), and does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix CLI` → `review core` with specialists per vendor plus optional dynamic archetypes; rounds 3-4 may launch a mechanically reduced reviewer panel, and an all-pruned round converges the review loop immediately rather than advancing toward a round-5 full re-probe.
  
  Nested review token-context propagation through `review-and-fix CLI` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
  
- **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+ **⚠ Immediate-background required — set `bgjob start` and `timeout: 21600000`.**
  
  ```bash
  bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-review.sh
  ```
  
- Wait for `<task-notification>` before parsing the loop stdout or reading Step 5 result files. If the wrapper exits non-zero and stdout has no `STEP5_REVIEW_STATUS`, treat it as a Step 5 preflight failure, log it to `Warnings`, set `STALL_TRACKING=true`, set `STALL_STEP=5`, and skip to Step 18 (stall recovery runs before the final report) — do **not** fall through to status parsing or branching. Step 6 continuation requires a present `STEP5_REVIEW_STATUS`; without it, the review loop did not run and NEVER #4 is not satisfied by proceeding to Step 6.
+ Wait for `<async-notification>` before parsing the loop stdout or reading Step 5 result files. If the wrapper exits non-zero and stdout has no `STEP5_REVIEW_STATUS`, treat it as a Step 5 preflight failure, log it to `Warnings`, set `STALL_TRACKING=true`, set `STALL_STEP=5`, and skip to Step 18 (stall recovery runs before the final report) — do **not** fall through to status parsing or branching. Step 6 continuation requires a present `STEP5_REVIEW_STATUS`; without it, the review loop did not run and NEVER #4 is not satisfied by proceeding to Step 6.
  
  Only when stdout contains `STEP5_REVIEW_STATUS`, parse the child stdout with **token-aware** key extraction (each output line may carry multiple `KEY=value` tokens separated by whitespace; scan every token on every line — do not assume one KV per line). Extract at minimum: `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, `EFFECTIVE_ROUND_CAP`.
  
@@ -1657,8 +1657,8 @@ index 14a9ae378..53a575c40 100644
 -> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, log `Step 5 — coder waterfall: main-agent applied review fixes (externals unavailable)` to `Warnings` and proceed to the record→commit→resume sequence below. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On `NEXT_ACTION=continue`, enter the deferred record→commit→resume path. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
 +> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do **not** skip to Step 18 here; defer to the main-agent handoff terminal-stall path below for `--record-only` timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
  
--**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
-+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 32400000`.**
+-**⚠ Immediate-background required — set `bgjob start` and `timeout: 15600000`.**
++**⚠ Immediate-background required — set `bgjob start` and `timeout: 32400000`.**
  
  ```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step5-review-fixes
@@ -1675,7 +1675,7 @@ index 14a9ae378..53a575c40 100644
  
 -Only on the successful resume path, set `STEP5_HANDOFF_READY_TO_COMMIT=true`, then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `python/cli.py implement commit-route --site step5-resume-handoff` delegates to `review-and-fix commit-fixes --stage-all`, which stages review delta paths only via pathspec-from-file, matching coder round commits; it must not use `git add -A`.
 -
--**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+-**⚠ Immediate-background required — set `bgjob start` and `timeout: 21600000`.**
 -
 -```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --ready-to-commit
@@ -1724,8 +1724,8 @@ index 14a9ae378..53a575c40 100644
 -> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute Step 7's commit (review) flow next. On `STATUS=fail`, read `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 +> **Continue after child returns.** On composite `NEXT_ACTION=continue`, proceed to Step 7.r. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
  
--**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
-+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14400000`.**
+-**⚠ Immediate-background required — set `bgjob start` and `timeout: 15600000`.**
++**⚠ Immediate-background required — set `bgjob start` and `timeout: 14400000`.**
  
  ```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/run-step-checks.sh --site step6 # lint-consecutive-bash: ok immediate-background checks boundary precedes separate review commit
@@ -1753,7 +1753,7 @@ index 14a9ae378..53a575c40 100644
  
  Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6–7 were skipped, skip this rebase — the pre-Step-8 rebase provides the safety net.
  
- **⚠ Foreground required — do NOT set `run_in_background: true`.**
+ **⚠ Foreground required — do NOT set `bgjob start`.**
  
  ```bash
  bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py push checkpoint-probe 7.r 'commit (review)' --forked-target "${forked_target:-false}"

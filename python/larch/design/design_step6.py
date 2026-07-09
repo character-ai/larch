@@ -57,8 +57,6 @@ def _step6_in_flight(design_tmpdir_raw: str) -> bool:
     if not design_tmpdir_raw:
         return False
     design_tmpdir = Path(design_tmpdir_raw)
-    if (design_tmpdir / ".completed" / "step-5c-terminal").is_file():
-        return False
     result_env = design_bgjob_result_env_path(
         design_tmpdir=design_tmpdir,
         step=DESIGN_BGJOB_STEP5C,

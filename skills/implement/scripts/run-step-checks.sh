@@ -110,20 +110,14 @@ fi
 
 STEP="implement-checks-$SITE"
 BUDGET_S="10800"
-SENTINEL_ARGS=()
 if [ "$SITE" = "step3" ]; then
     STEP="implement-step3-checks"
     BUDGET_S="15600"
-    rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" "$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
-    SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-3-terminal")
 elif [ "$SITE" = "step5-self-review" ]; then
     STEP="implement-checks-step5-self-review"
     BUDGET_S="14700"
-    rm -f "$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal" 2>/dev/null || true
-    SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal")
 elif [ "$SITE" = "step6" ]; then
     STEP="implement-step6-checks"
-    SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal")
 fi
 
 if [ -L "$IMPLEMENT_TMPDIR/bgjob" ]; then
@@ -149,6 +143,5 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --budget-s "$BUDGET_S" \
     --owner-pid "${LARCH_CLAUDE_PID:-$PPID}" \
     --merge-result-env "$MERGE_RESULT_ENV" \
-    "${SENTINEL_ARGS[@]}" \
     -- \
     bash "$SCRIPT_DIR/run-step-checks.sh" "${CHILD_ARGS[@]}"

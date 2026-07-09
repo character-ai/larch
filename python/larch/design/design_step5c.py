@@ -1,4 +1,4 @@
-"""Step 2b.5 plan-size check, Step 5c publish, and step-5c-terminal sentinel helpers."""
+"""Step 2b.5 plan-size check, Step 5c publish, and Step 5c status helpers."""
 # pylint: disable=cyclic-import
 # pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false, reportPrivateUsage=false
 # ruff: noqa: PLR2004
@@ -501,31 +501,9 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
     )
 
 
-def _reset_step5c_terminal_state(design_tmpdir: Path) -> None:
-    """Clear the Step 5c terminal sentinel and any probe-denial clamp counters."""
-    with contextlib.suppress(OSError):
-        (design_tmpdir / ".completed" / "step-5c-terminal").unlink(missing_ok=True)
-        for counter in design_tmpdir.glob("bg-poll-guard-probe-denials.*.count"):
-            counter.unlink(missing_ok=True)
-
-
-def _finalize_step5c_terminal_sentinel(design_tmpdir: Path | None, *, write_terminal_sentinel: bool) -> None:
-    """Write step5c's `.completed/step-5c-terminal` sentinel, best-effort.
-
-    Idempotent and OSError-suppressing, so it is safe to call from both the
-    bg-wait-marker `finally` (before the marker is removed) and the outer
-    `finally` (backstop for early exits) (#5695).
-    """
-    if design_tmpdir is None or not write_terminal_sentinel:
-        return
-    with contextlib.suppress(OSError):
-        _touch(design_tmpdir / ".completed" / "step-5c-terminal")
-
-
 def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ = os.environ.copy()
     design_tmpdir: Path | None = None
-    write_terminal_sentinel = False
     try:
         try:
             parsed = _parse_common_wrapper_args(argv)
@@ -553,19 +531,15 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             return req, []
         plugin_root = Path(os.environ["CLAUDE_PLUGIN_ROOT"])
         ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
-        write_terminal_sentinel = True
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b: OOS filing incomplete; repair Step 5b before publish**")
             return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
-            write_terminal_sentinel = False
             pause_rc = _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
             logging_util.emit_kv(key="STEP5C_STATUS", value="pause-save")
             return pause_rc, []
 
         _auto_compose_plan_md(design_tmpdir)
-
-        _reset_step5c_terminal_state(design_tmpdir)
 
         publish_args = [
             "--design-tmpdir",
@@ -679,11 +653,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 publish_stdout_file.unlink()
             with contextlib.suppress(FileNotFoundError):
                 publish_stderr_file.unlink()
-            # Write the terminal sentinel before bgjob copies the status merge
-            # env, so Step 6 waits until the result env is ready.
-            _finalize_step5c_terminal_sentinel(design_tmpdir, write_terminal_sentinel=write_terminal_sentinel)
     finally:
-        _finalize_step5c_terminal_sentinel(design_tmpdir, write_terminal_sentinel=write_terminal_sentinel)
         os.environ.clear()
         os.environ.update(old_environ)
 

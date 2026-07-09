@@ -50,7 +50,6 @@ rehydrate_larch_triplet() {
 
 step6_cleanup() {
     mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
-    printf '' >"$IMPLEMENT_TMPDIR/.completed/step-6-terminal" 2>/dev/null || true
 }
 
 step6_merge_cleanup() {
@@ -99,7 +98,6 @@ MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
 [ -L "$MERGE_RESULT_ENV" ] && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
 ' 'step-6-entry.sh: refusing symlinked merge-result-env' >&2; exit 2; }
 mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; exit 2; }
-rm -f "$IMPLEMENT_TMPDIR/.completed/step-6-terminal" 2>/dev/null || true
 
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --step "$STEP" \
@@ -107,6 +105,5 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --budget-s 15600 \
     --owner-pid "${LARCH_CLAUDE_PID:-$PPID}" \
     --merge-result-env "$MERGE_RESULT_ENV" \
-    --sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal" \
     -- \
     bash "$SCRIPT_DIR/step-6-entry.sh" --bgjob-child --merge-result-env "$MERGE_RESULT_ENV" "${ORIGINAL_ARGS[@]}"

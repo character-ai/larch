@@ -57,7 +57,6 @@ def owner_identity_from_env(raw_owner_pid: str | None) -> model.OwnerIdentity:
         or os.environ.get(config.ENV_BGJOB_OWNER_PID, "")
         or os.environ.get("LARCH_CLAUDE_PID", "")
         or os.environ.get(config.ENV_CLAUDE_PID, "")
-        or os.environ.get("LARCH_BG_POLL_GUARD_SESSION_PID", "")
     )
     if candidate:
         recorded = _read_owner_identity(candidate)

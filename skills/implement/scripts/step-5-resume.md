@@ -18,7 +18,7 @@ BGJOB_STATUS=STARTED STEP=implement-step5-resume PGID=<n>
 
 The bgjob child tees `checks-step5-resume` stdout into `$IMPLEMENT_TMPDIR/bgjob/implement-step5-resume.merge.env`; bgjob merges it into `$IMPLEMENT_TMPDIR/bgjob/implement-step5-resume.result.env` with `BGJOB_RC`, `BGJOB_ELAPSED_S`, and `STEP`.
 
-Normal continuation requires `BGJOB_RC=0` plus the required checks/resume KVs in the final wait stdout and/or result env. `DONE` alone, launcher stdout, or `.completed/step-5-resume-terminal` is not sufficient.
+Normal continuation requires `BGJOB_RC=0` plus the required checks/resume KVs in the final wait stdout and/or result env. `DONE` alone, launcher stdout is not sufficient.
 
 ## Invariants
 
@@ -26,7 +26,7 @@ Normal continuation requires `BGJOB_RC=0` plus the required checks/resume KVs in
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` and token/timing context from `$IMPLEMENT_TMPDIR/session-env.sh`.
 - Truncates `$IMPLEMENT_TMPDIR/bgjob/implement-step5-resume.merge.env` immediately before each fresh start.
 - Delegates owner-death, orphan, timeout, process-group cleanup, stdout/stderr logs, and terminal result env publication to bgjob.
-- Preserves `.completed/step-5-resume-terminal` as a transition sentinel through bgjob `--sentinel`; routing still keys on `BGJOB_RC=0` and required KVs.
+- Routes Step 5 resume completion through the bgjob result env; routing keys on `BGJOB_RC=0` and required KVs.
 - `--record-only` records timing once and exits without bgjob launch.
 
 ## Edit-in-sync

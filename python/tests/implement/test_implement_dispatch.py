@@ -36,7 +36,6 @@ from larch.implement import (
 from larch.core import config
 from larch.core import process_identity
 from larch.core import logging_util
-from larch.implement.bg_wait import _write_bg_wait_marker
 from larch.outcomes import Outcome
 from larch.report import run_logs
 
@@ -48,38 +47,17 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
 
 
-def test_dispatch_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> None:
-    (tmp_path / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
-    _write_bg_wait_marker(
-        tmpdir=tmp_path,
-        step="implement-step3-checks",
-        timeout_s=dispatch_leg.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000,
-    )
-
-    marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
-    assert "STEP=implement-step3-checks\n" in marker_text
-    assert f"CLONE_PATH={tmp_path}\n" in marker_text
-
-
-
-def test_checks_commit_route_step3_clears_stale_sidecars_without_marker_write(
+def test_checks_commit_route_step3_does_not_touch_legacy_sidecars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tmp = _session(tmp_path)
-    (tmp / ".completed").mkdir()
-    stale_sentinel = tmp / ".completed" / "step-3-terminal"
-    probe_denials = tmp / "bg-poll-guard-probe-denials.step-3-terminal.count"
-    stale_sentinel.write_text("stale", encoding="utf-8")
-    probe_denials.write_text("1", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
 
     def fake_impl(args: Any, implement_tmpdir: Path) -> int:
         assert args.checks_site == "step3"
         assert args.commit_site == "step4"
         assert implement_tmpdir == tmp
-        assert not stale_sentinel.exists()
-        assert not probe_denials.exists()
         return 0
 
     monkeypatch.setattr(dispatch_commit_route, "_checks_commit_route_main_impl", fake_impl)
@@ -87,30 +65,6 @@ def test_checks_commit_route_step3_clears_stale_sidecars_without_marker_write(
     rc = dispatch_commit_route.checks_commit_route_main(["--checks-site", "step3", "--commit-site", "step4"])
 
     assert rc == 0
-    assert not stale_sentinel.exists()
-    assert not (tmp / ".bg-wait-active").exists()
-
-
-def test_run_step_checks_main_step3_clears_legacy_sidecars_without_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = _session(tmp_path)
-    (tmp / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
-    (tmp / ".completed").mkdir()
-    (tmp / ".completed" / "step-3-terminal").write_text("stale", encoding="utf-8")
-    (tmp / "bg-poll-guard-probe-denials.step-3-terminal.count").write_text("1", encoding="utf-8")
-    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-
-    def fake_run_cli_forward(args: Sequence[str]) -> int:
-        assert list(args) == ["checks", "run-relevant", "--site", "step3", "--tmpdir", str(tmp)]
-        assert not (tmp / "bg-poll-guard-probe-denials.step-3-terminal.count").exists()
-        assert not (tmp / ".completed" / "step-3-terminal").exists()
-        assert not (tmp / ".bg-wait-active").exists()
-        return 0
-
-    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
-
-    assert dispatch_commit_route.run_step_checks_main(["--site", "step3"]) == 0
-
-    assert not (tmp / ".bg-wait-active").exists()
 
 
 def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -119,13 +73,11 @@ def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, mo
 
     def fake_run_cli_forward(args: Sequence[str]) -> int:
         assert list(args) == ["checks", "run-relevant", "--site", "step5", "--tmpdir", str(tmp)]
-        assert not (tmp / ".bg-wait-active").exists()
         return 0
 
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
 
     assert dispatch_commit_route.run_step_checks_main(["--site", "step5"]) == 0
-    assert not (tmp / ".bg-wait-active").exists()
 
 
 @pytest.fixture(autouse=True)
@@ -189,7 +141,6 @@ def _write_step2_baseline(tmpdir: Path) -> None:
         "script_relpath",
         "slug_literal",
         "step_arg_literal",
-        "sentinel_literal",
     ),
     [
         (
@@ -197,35 +148,30 @@ def _write_step2_baseline(tmpdir: Path) -> None:
             Path("skills/implement/scripts/run-step-checks.sh"),
             'STEP="implement-step3-checks"',
             '--step "$STEP"',
-            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"',
         ),
         (
             "step5",
             Path("skills/implement/scripts/step-5-review.sh"),
             "implement-step5-review",
             "--step implement-step5-review",
-            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"',
         ),
         (
             "step5-resume",
             Path("skills/implement/scripts/step-5-resume.sh"),
             'STEP="implement-step5-resume"',
             '--step "$STEP"',
-            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-resume-terminal"',
         ),
         (
             "step6",
             Path("skills/implement/scripts/step-6-entry.sh"),
             'STEP="implement-step6-checks"',
             '--step "$STEP"',
-            '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal"',
         ),
         (
             "step8",
             Path("skills/implement/scripts/step-8-ship.sh"),
             'STEP="implement-step8-ship"',
             '--step "$STEP"',
-            None,
         ),
     ],
 )
@@ -234,7 +180,6 @@ def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
     script_relpath: Path,
     slug_literal: str,
     step_arg_literal: str,
-    sentinel_literal: str | None,
 ) -> None:
     _ = case_name
     root: Path = Path(__file__).resolve().parents[3]
@@ -245,10 +190,7 @@ def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
     assert step_arg_literal in source
     assert '--owner-pid "${LARCH_CLAUDE_PID:-$PPID}"' in source
     assert '--merge-result-env "$MERGE_RESULT_ENV"' in source
-    if sentinel_literal is None:
-        assert "--sentinel" not in source
-    else:
-        assert sentinel_literal in source
+    assert "--sentinel" not in source
 
 
 def test_resolve_implement_rater_model_prefers_codex_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3912,7 +3854,6 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert f"(launcher + '{step6_launcher}', 'implement-step6-checks')" in structure
     assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
     assert 'BUDGET_S="14700"' in run_step_checks
-    assert '--sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-self-review-terminal"' in run_step_checks
     assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
     assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill
@@ -3920,7 +3861,6 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert "run-step-checks.sh --site step5-self-review --commit-site step5-self-review" in self_review_ref
     assert "BGJOB_STATUS=STARTED STEP=implement-checks-step5-self-review PGID=<n>" in self_review_ref
     assert "BUDGET_S=14700" in self_review_ref
-    assert "step-5-self-review-terminal" in self_review_ref
 
 
 def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(

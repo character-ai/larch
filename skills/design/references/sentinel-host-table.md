@@ -38,7 +38,7 @@ Phase 7 folds absorbed prior-step sentinel writes into adjacent real-work Bash f
 | `step-5c` | `python/cli.py design step5c` fence when `PLAN_WRITE_OK=true` | in-fence gated |
 | `step-5d` | Step 6 prelude | before pause-check |
 | `step-6` | Step 6 cleanup fence | **after** pause-check |
-| Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b`, `.completed/step-3-terminal`, and `.step3-terminal-persisted-this-run` before pause-check |
+| Step 1e re-entry clears | Gate B(c)/Gate C(b) re-entry fence | `rm` stale `step-1e`…`step-4b` before pause-check |
 | Step 3 direct-review restore | Step 3 entry via `python/cli.py plan-review step3-state --direct-review-entry` | clear stale downstream state, restore `step-2a`/`step-2b`/`step-2b.5`, and consume `.step3-reentry` before pause-check |
 | Q&A-only terminal prefix | Step 0b ad-hoc Q&A-only branch | contiguous through `step-1d.5` before Final summary |
 | Kept preludes | Step 1d.5 (brainstorm externals); Step 0c folded discussion block; Step 1d.7 (`SKIP_APPROVE_REQUESTED` read fence) | pause-check retained |

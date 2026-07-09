@@ -9,7 +9,7 @@ Use this contract for long-running larch helpers that have migrated off Claude b
 5. If wait prints `BGJOB_STATUS=DEAD`, route through the step's existing failure or stall handling.
 6. If wait prints `BGJOB_STATUS=DONE`, read the full KV block and the result env at `$TMPDIR/bgjob/<step>.result.env` before continuing. The result env is the completion source of truth. Continue normal branch handling only when `BGJOB_RC=0` and the step's required KVs are present in the final wait output and/or result env. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or missing required KVs as step failure or stall.
 
-Existing terminal sentinels remain transition compatibility markers. Never treat the `bgjob wait` shell exit code, `BGJOB_STATUS=DONE` alone, launcher stdout, or notification-time wrapper stdout as sufficient for continuation.
+Never treat the `bgjob wait` shell exit code, `BGJOB_STATUS=DONE` alone, launcher stdout, wrapper stdout, or compatibility sidecars as sufficient for continuation.
 
 ## Wrapper launch example
 
@@ -66,7 +66,7 @@ After `DONE`, parse all rows and read `$IMPLEMENT_TMPDIR/bgjob/implement-step5-r
 
 ## Step 8 handoff carve-out
 
-Do not apply the generic `BGJOB_RC=0` success gate to `ship route-exit`. Step 8 follows its handoff sidecars: the child must write the current `.step-8-ship-handoff.rc` and, when schema JSON exists, `.step-8-ship-handoff.json` before exit. The orchestrator reads those sidecars for routing rather than treating `BGJOB_RC=0` alone as success.
+Do not apply the generic `BGJOB_RC=0` success gate to `ship route-exit`. Step 8 follows its handoff contract: the child records `STEP8_HANDOFF_RC` in the bgjob result env and writes the route JSON sidecar when schema JSON exists. The orchestrator reads that route data rather than treating `BGJOB_RC=0` alone as success.
 
 ## Parallel external lanes
 

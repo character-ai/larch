@@ -569,9 +569,6 @@ exclude = [
   # tests for the script-first green path; the runtime scripts are referenced
   # from SKILL.md or hooks.json, while these tests are not.
   "scripts/test-hook-anti-read-poll.sh",
-  "scripts/test-hook-bg-poll-guard.sh",
-  "scripts/test-hook-no-progress-guard.sh",
-  "scripts/test-hook-clone-ownership-parity.sh",
   "scripts/test-sessionstart-statusline.sh",
   "scripts/test-hook-stop-fail-close.sh",
   "scripts/test-hook-deny-run-in-background.sh",
@@ -890,13 +887,7 @@ exclude = [
   # and scripts/test-implement-cleanup-roundtrip.md (sibling contract),
   # matching the same Makefile-only pattern as other test-implement-* harnesses.
   "scripts/test-implement-cleanup-roundtrip.sh",
-  # scripts/test-implement-anti-polling-rule.sh pins the AGENTS.md anti-polling
-  # rule literals and the Step 5.3-rounds1to3 / Step 5.3-generic inline
-  # reminders in skills/implement/SKILL.md (closes #1011). Referenced only
-  # from Makefile (test-implement-anti-polling-rule target) and the sibling
-  # scripts/test-implement-anti-polling-rule.md (contract), matching the
   # same Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-implement-anti-polling-rule.sh",
   # scripts/test-implement-anti-halt.sh is the step-boundary anti-halt
   # regression harness for skills/implement/SKILL.md (specific per-boundary
   # literal pins) and the SSOT section heading in
@@ -1035,10 +1026,6 @@ exclude = [
   "scripts/check-stale-plugin.md",
   "scripts/test-hook-anti-read-poll.md",
   "scripts/hook-anti-read-poll.md",
-  "scripts/test-hook-bg-poll-guard.md",
-  "scripts/hook-bg-poll-guard.md",
-  "scripts/test-hook-no-progress-guard.md",
-  "scripts/hook-no-progress-guard.md",
   "scripts/sessionstart-statusline.md",
   "python/agents.py",
   "python/test_agents.py",

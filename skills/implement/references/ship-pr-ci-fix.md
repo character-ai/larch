@@ -52,7 +52,7 @@ Before any spawn, apply the no-spawn guard: if `fixer-spawned.sentinel` or `fixe
 
 The main agent passes file-backed paths and commands only. Do not inline log contents into the Agent prompt. The prompt should include the issue URL, PR URL, head branch, base branch, the command to print the branch diff vs merge-base, the path to `distilled-failure.md`, pointers to `docs/linting.md` and repair recipes, the path to `fixer-status.env`, the path to `fixer-rounds.tsv`, and the path to `fixer-bail.md`.
 
-The main agent remains notification-only while the fixer task runs. Do not poll task output once per turn and do not run a background recovery waiter. Record a `Step 8 - CI fixer` timing/token mark before Agent dispatch and close it after the Agent returns; if native Agent token data is unavailable, timing still records the CI-fixer span.
+Do not poll CI-fixer task output or run background recovery waiters while the fixer runs. Record a `Step 8 - CI fixer` timing/token mark before Agent dispatch and close it after the Agent returns; if native Agent token data is unavailable, timing still records the CI-fixer span.
 
 ## Fixer loop contract
 

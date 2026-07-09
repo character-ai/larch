@@ -131,21 +131,6 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
-    path = tmpdir / sentinel
-    with contextlib.suppress(OSError):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("", encoding="utf-8")
-
-
-@contextlib.contextmanager
-def _terminal_sentinel(*, tmpdir: Path, terminal_sentinel: str) -> Generator[None, None, None]:
-    try:
-        yield
-    finally:
-        _write_terminal_sentinel(tmpdir=tmpdir, sentinel=terminal_sentinel)
-
-
 def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) -> None:
     section = implement_tmpdir / "code-flow-section.md"
     diagram = implement_tmpdir / "code-flow-diagram.md"
@@ -281,19 +266,15 @@ def run_step7a(
     base_ref: str = "main",
 ) -> int:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
-    with _terminal_sentinel(
-        tmpdir=implement_tmpdir,
-        terminal_sentinel=".completed/step-7a-terminal",
-    ):
-        return _run_step7a_inner(
-            implement_tmpdir,
-            issue_number=issue_number,
-            run_id=run_id,
-            no_logs_commit=no_logs_commit,
-            forked_target=forked_target,
-            base_remote=base_remote,
-            base_ref=base_ref,
-        )
+    return _run_step7a_inner(
+        implement_tmpdir,
+        issue_number=issue_number,
+        run_id=run_id,
+        no_logs_commit=no_logs_commit,
+        forked_target=forked_target,
+        base_remote=base_remote,
+        base_ref=base_ref,
+    )
 
 
 def _run_step7a_inner(
@@ -486,8 +467,6 @@ def _launch_step7a_bgjob(spec: Step7aBgjobLaunch) -> int:
     merge_result_env = spec.implement_tmpdir / "bgjob" / f"{step}.merge.env"
     merge_result_env.parent.mkdir(parents=True, exist_ok=True)
     larch_io.atomic_write(path=merge_result_env, text="", nofollow=True, mode=0o600)
-    with contextlib.suppress(OSError):
-        (spec.implement_tmpdir / ".completed" / "step-7a-terminal").unlink()
     result = _run_cli(
         "bgjob",
         "start",
@@ -499,8 +478,6 @@ def _launch_step7a_bgjob(spec: Step7aBgjobLaunch) -> int:
         "1800",
         "--merge-result-env",
         str(merge_result_env),
-        "--sentinel",
-        str(spec.implement_tmpdir / ".completed" / "step-7a-terminal"),
         "--",
         sys.executable,
         str(_plugin_root() / "python" / "cli.py"),

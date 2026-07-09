@@ -219,7 +219,6 @@ MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
 [ -L "$MERGE_RESULT_ENV" ] && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
 ' 'step-5-resume.sh: refusing symlinked merge-result-env' >&2; exit 2; }
 mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; exit 2; }
-rm -f "$IMPLEMENT_TMPDIR/.completed/step-5-resume-terminal" 2>/dev/null || true
 
 CHILD_ARGS=(--bgjob-child --merge-result-env "$MERGE_RESULT_ENV" --final-round-num "$FINAL_ROUND_NUM")
 if [ "$READY" = true ]; then
@@ -235,6 +234,5 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
     --budget-s 32700 \
     --owner-pid "${LARCH_CLAUDE_PID:-$PPID}" \
     --merge-result-env "$MERGE_RESULT_ENV" \
-    --sentinel "$IMPLEMENT_TMPDIR/.completed/step-5-resume-terminal" \
     -- \
     bash "$SCRIPT_DIR/step-5-resume.sh" "${CHILD_ARGS[@]}"

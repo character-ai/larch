@@ -228,10 +228,10 @@ assert_contains '--skill implement --run-id RUN1 --defer-commit true' "$log_text
 assert_contains 'teardown sentinel=before argv=implement-finalize teardown --state-file' "$log_text" 'finalize teardown invocation'
 assert_contains 'SESSION_TRANSCRIPT_STATUS=captured' "$text" 'finalize transcript status relay'
 
-# Step 7a completion suppresses Step 18 transcript recapture.
+# Step 7a bgjob result suppresses Step 18 transcript recapture.
 impl=$(make_impl step7a-complete)
-mkdir -p "$impl/.completed"
-: >"$impl/.completed/step-7a-terminal"
+mkdir -p "$impl/bgjob"
+: >"$impl/bgjob/implement-step7a.result.env"
 out="$TMP_ROOT/step7a-complete.out"; log="$TMP_ROOT/step7a-complete.log"
 STEP18_STUB_EMIT_BODY=false run_step18 "$impl" "$out" "$log" --phase finalize --step17-emitted false || fail 'step7a-complete exited non-zero'
 log_text=$(cat "$log")

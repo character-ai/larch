@@ -1,4 +1,4 @@
-"""Step 3 result-env normalization, terminal sentinels, and escalation recording."""
+"""Step 3 result-env normalization and escalation recording."""
 
 from __future__ import annotations
 
@@ -52,33 +52,8 @@ def step3_wrapper_write_completed_step3_only(design_tmpdir: str | Path) -> None:
 
 
 def step3_loop_write_terminal_step3(design_tmpdir: str | Path) -> None:
-    # #4688 terminal-sentinel contract: after the result env persists, write the
-    # hook-release sentinel pair so hook-bg-poll-guard.sh releases the live
-    # design-step3-review marker on the first <task-notification> and the
-    # wrapper EXIT trap can guarantee step-3-terminal. Distinct from .completed/step-3
-    # (the pause / Gate B milestone): mid-loop bail-outs write step-3-terminal
-    # without step-3. Written on every terminal envelope persist, including the
-    # apply-required / vote-required mid-loop bails.
-    tmpdir = Path(design_tmpdir)
-    completed = tmpdir / ".completed"
-    completed.mkdir(parents=True, exist_ok=True)
-    terminal = completed / "step-3-terminal"
-    sidecar = tmpdir / ".step3-terminal-persisted-this-run"
-    for path in (terminal, sidecar):
-        path.unlink(missing_ok=True)
-    terminal.touch()
-    sidecar.touch()
-
-
-def _step3_normalize_write_terminal_sentinel(design_tmpdir: Path) -> None:
-    # #5418 Fix A: write step-3-terminal ONLY (no sidecar) so the harness probe
-    # returns success before KV output triggers a <task-notification>, without
-    # engaging the EXIT trap's step-3 minting path (which requires the sidecar).
-    completed = design_tmpdir / ".completed"
-    completed.mkdir(parents=True, exist_ok=True)
-    terminal = completed / "step-3-terminal"
-    terminal.unlink(missing_ok=True)
-    terminal.touch()
+    """Compatibility no-op; Step 3 completion is recorded in the bgjob result env."""
+    _ = design_tmpdir
 
 
 def step3_loop_status_to_loop_status(*, status: str, fallback: str = "complete") -> str:
@@ -579,20 +554,13 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
     result_env = tmpdir / ".step3-review-result.env"
     if status_for_synthesis in _STEP3_SYNTHESIS_STATUSES and _step3_result_env_unusable(result_env):
         _step3_normalize_warn_stderr(
-            f"**⚠ Step 3: {status_for_synthesis} without a persisted result env; synthesizing terminal result env so the Step 3 completion sentinel is written**"
+            f"**⚠ Step 3: {status_for_synthesis} without a persisted result env; synthesizing terminal result env for Step 3 routing**"
         )
         _step3_review_write_result_env(tmpdir=tmpdir, status=status_for_synthesis, reason=values.get("REASON", "result-env-missing-after-loop"), rounds=rounds_completed)
 
-    # #5418 Fix A: write step-3-terminal before emitting KV output so that the
-    # harness probe triggered by the <task-notification> finds the sentinel
-    # present. Write only the sentinel (not the sidecar) so the wrapper EXIT
-    # trap's step-3 minting gate remains intact. Guard: skip interactive
-    # mid-loop statuses (mav/gate-b) that are not terminal.
     _step3_normalize_terminal_status = values.get("STEP3_REVIEW_LOOP_STATUS", "")
-    if _step3_normalize_terminal_status and _step3_normalize_terminal_status not in _STEP3_INTERACTIVE_STATUSES:
-        _step3_normalize_write_terminal_sentinel(tmpdir)
-        if _step3_normalize_terminal_status in _STEP3_COMPLETED_SENTINEL_STATUSES:
-            step3_wrapper_write_completed_step3_only(tmpdir)
+    if _step3_normalize_terminal_status in _STEP3_COMPLETED_SENTINEL_STATUSES:
+        step3_wrapper_write_completed_step3_only(tmpdir)
     _step3_emit_normalize_envelope_with_next_action(tmpdir=tmpdir, values=values)
 
     status = values.get("STEP3_REVIEW_LOOP_STATUS", "")

@@ -132,7 +132,7 @@ def test_owner_identity_from_env_requires_capture(monkeypatch: pytest.MonkeyPatc
 def test_owner_identity_from_env_uses_session_pid_env(monkeypatch: pytest.MonkeyPatch) -> None:
     identity = _identity(pid=123, pgid=456, signature="owner")
     seen: list[str] = []
-    for name in ("LARCH_BGJOB_OWNER_PID", "LARCH_BG_POLL_GUARD_SESSION_PID", "CLAUDE_PID"):
+    for name in ("LARCH_BGJOB_OWNER_PID", "CLAUDE_PID"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("LARCH_CLAUDE_PID", "123")
     def fake_read_owner(raw: str) -> process_identity.RecordedProcessIdentity | None:
@@ -148,7 +148,7 @@ def test_owner_identity_from_env_uses_session_pid_env(monkeypatch: pytest.Monkey
 
 
 def test_owner_identity_from_env_fails_closed_without_session_pid(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("LARCH_BGJOB_OWNER_PID", "LARCH_BG_POLL_GUARD_SESSION_PID", "LARCH_CLAUDE_PID", "CLAUDE_PID"):
+    for name in ("LARCH_BGJOB_OWNER_PID", "LARCH_CLAUDE_PID", "CLAUDE_PID"):
         monkeypatch.delenv(name, raising=False)
 
     with pytest.raises(RuntimeError, match="missing session owner pid"):

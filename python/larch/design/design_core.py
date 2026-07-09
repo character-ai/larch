@@ -8,7 +8,6 @@ import io
 import os
 import subprocess
 import sys
-import time
 import traceback
 from pathlib import Path
 from collections.abc import Callable, Iterable, Mapping
@@ -16,7 +15,6 @@ from collections.abc import Callable, Iterable, Mapping
 from larch import io as larch_io
 from larch.core import config, logging_util
 from larch.core import redact
-from larch.implement.bg_wait import _read_keepalive_clone_path
 from larch.state.session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
@@ -180,89 +178,6 @@ def _append_execution_issue(*, design_tmpdir: Path, message: str) -> None:
     path = design_tmpdir / "execution-issues.md"
     with path.open("a", encoding="utf-8") as handle:
         handle.write(message if message.endswith("\n") else message + "\n")
-
-
-_PROBE_CLAMP_COUNTER_BY_STEP = {
-    DESIGN_BGJOB_STEP3_REVIEW: "step-3-terminal",
-    DESIGN_BGJOB_STEP4_TAIL: "step-4",
-    DESIGN_BGJOB_STEP5C: "step-5c-terminal",
-    DESIGN_BGJOB_STEP_FINAL_SUMMARY: "step-final-summary",
-}
-
-
-_TERMINAL_SENTINEL_BY_STEP = {
-    DESIGN_BGJOB_STEP3_REVIEW: "step-3-terminal",
-    DESIGN_BGJOB_STEP4_TAIL: "step-4",
-    DESIGN_BGJOB_STEP5C: "step-5c-terminal",
-    DESIGN_BGJOB_STEP_FINAL_SUMMARY: "step-final-summary",
-}
-
-
-def _clear_probe_clamp_counter(*, design_tmpdir: Path, step: str) -> None:
-    sentinel = _PROBE_CLAMP_COUNTER_BY_STEP.get(step)
-    if sentinel:
-        with contextlib.suppress(OSError):
-            (design_tmpdir / f"bg-poll-guard-probe-denials.{sentinel}.count").unlink(missing_ok=True)
-    with contextlib.suppress(OSError):
-        for counter in design_tmpdir.glob("bg-poll-guard-task-output-read.*.count"):
-            counter.unlink(missing_ok=True)
-
-
-def _clear_no_progress_sidecars(*, design_tmpdir: Path) -> None:
-    for name in (
-        "no-progress-turns.count",
-        "no-progress-circuit-breaker-armed",
-        "no-progress-stop-block-emitted",
-        "no-progress-task-output-clamped",
-    ):
-        with contextlib.suppress(OSError):
-            (design_tmpdir / name).unlink(missing_ok=True)
-
-
-def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
-    sentinel = _TERMINAL_SENTINEL_BY_STEP.get(step)
-    if sentinel:
-        with contextlib.suppress(OSError):
-            (design_tmpdir / ".completed" / sentinel).unlink(missing_ok=True)
-
-
-@contextlib.contextmanager
-def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid: str = ""):
-    """Retained only for legacy hook compatibility until the bg-wait cleanup."""
-    tmpdir = Path(design_tmpdir)
-    marker = tmpdir / ".bg-wait-active"
-    tmp = tmpdir / f".bg-wait-active.tmp.{os.getpid()}"
-    active = False
-    _clear_terminal_sentinel(design_tmpdir=tmpdir, step=step)
-    _clear_probe_clamp_counter(design_tmpdir=tmpdir, step=step)
-    _clear_no_progress_sidecars(design_tmpdir=tmpdir)
-    try:
-        text = "\n".join(
-            [
-                f"PID={os.getpid()}",
-                f"CLAUDE_PID={claude_pid or os.environ.get('CLAUDE_PID', '')}",
-                f"START_EPOCH={int(time.time())}",
-                f"STEP={step}",
-                "TIMEOUT_S=21600",
-                f"CLONE_PATH={_read_keepalive_clone_path(tmpdir)}",
-                "",
-            ]
-        )
-        tmp.write_text(text, encoding="utf-8")
-        tmp.replace(marker)
-        active = True
-    except OSError as exc:
-        with contextlib.suppress(OSError):
-            tmp.unlink()
-        _append_execution_issue(design_tmpdir=tmpdir, message=f"Warning: bg-wait marker setup failed for {step}: {exc}")
-    try:
-        yield
-    finally:
-        if active:
-            with contextlib.suppress(OSError, FileNotFoundError):
-                marker.unlink()
-        with contextlib.suppress(OSError, FileNotFoundError):
-            tmp.unlink()
 
 
 def _emit_core_kvs(rows: Iterable[tuple[str, str]]) -> None:
