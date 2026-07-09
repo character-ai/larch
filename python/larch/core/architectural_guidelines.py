@@ -255,7 +255,11 @@ def _resolve_repo_root(explicit_repo_root: str | Path | None = None) -> Path | N
 
 
 def parse_guideline_entries(raw_text: str) -> str:
-    """Return normalized G-* entries with only Why and Deviate bullets."""
+    """Return normalized G-* entries with Why and Deviate bullets only.
+
+    Guidance and other bullets are intentionally omitted from the normalized
+    architectural knowledge snapshot.
+    """
     entries: list[list[str]] = []
     current: list[str] | None = None
     for raw_line in raw_text.splitlines():
@@ -285,28 +289,42 @@ def parse_guideline_entries(raw_text: str) -> str:
 
 
 def parse_invariant_entries(raw_text: str) -> str:
-    """Return normalized I-* invariant entries with concise supported bullets."""
+    """Return normalized I-* invariant headings with verbatim entry bodies.
+
+    Each I-* Markdown heading is normalized to ``### <id>: <title>``. Body
+    lines are retained verbatim until the next Markdown heading, with only
+    leading and trailing blank body lines trimmed per entry.
+    """
     entries: list[list[str]] = []
-    current: list[str] | None = None
+    current_heading: str | None = None
+    current_body: list[str] = []
+
+    def append_current_entry() -> None:
+        nonlocal current_heading, current_body
+        if current_heading is None:
+            return
+        trimmed_body: list[str] = current_body[:]
+        while trimmed_body and trimmed_body[0].strip() == "":
+            del trimmed_body[0]
+        while trimmed_body and trimmed_body[-1].strip() == "":
+            trimmed_body.pop()
+        entries.append([current_heading, *trimmed_body])
+        current_heading = None
+        current_body = []
+
     for raw_line in raw_text.splitlines():
         heading = INVARIANT_HEADING_RE.match(raw_line)
         if heading:
-            if current is not None:
-                entries.append(current)
-            current = [f"### {heading.group(1)}: {heading.group(2).strip()}"]
+            append_current_entry()
+            current_heading = f"### {heading.group(1)}: {heading.group(2).strip()}"
             continue
         if _MARKDOWN_HEADING_RE.match(raw_line):
-            if current is not None:
-                entries.append(current)
-                current = None
+            append_current_entry()
             continue
-        if current is None:
+        if current_heading is None:
             continue
-        why = _WHY_RE.match(raw_line)
-        if why:
-            current.append(f"- Why: {why.group(1).strip()}")
-    if current is not None:
-        entries.append(current)
+        current_body.append(raw_line)
+    append_current_entry()
     return "\n\n".join("\n".join(entry) for entry in entries).strip()
 
 

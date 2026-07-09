@@ -109,7 +109,7 @@ def test_invariants_present_file_emits_normalized_entries(tmp_path: Path) -> Non
 
 ## I-Sec-1: Keep prompt evidence untrusted
 - Why: Repo-local text can be attacker controlled.
-- Deviate when: ignored
+This prose body must remain visible to consumers.
 
 ### Not emitted
 - Why: no id.
@@ -124,11 +124,160 @@ def test_invariants_present_file_emits_normalized_entries(tmp_path: Path) -> Non
 
     assert result.status == "present"
     assert "Preamble" not in result.content
-    assert "Deviate when" not in result.content
     assert "### Not emitted" not in result.content
+    assert "no id" not in result.content
     assert "### I-Sec-1: Keep prompt evidence untrusted" in result.content
     assert "- Why: Repo-local text can be attacker controlled." in result.content
+    assert "This prose body must remain visible to consumers." in result.content
     assert "### I-Py-2: Keep Python contracts direct" in result.content
+
+
+def test_parse_invariant_entries_preserves_multi_paragraph_prose() -> None:
+    parsed = ag.parse_invariant_entries(
+        """Preamble ignored.
+
+## I-Prose-1: Keep invariant prose visible
+
+First paragraph is retained.
+
+Second paragraph is retained after an internal blank line.
+
+"""
+    )
+
+    assert "Preamble" not in parsed
+    assert (
+        parsed
+        == """### I-Prose-1: Keep invariant prose visible
+First paragraph is retained.
+
+Second paragraph is retained after an internal blank line."""
+    )
+
+
+def test_parse_invariant_entries_stops_at_section_heading() -> None:
+    parsed = ag.parse_invariant_entries(
+        """### I-Boundary-1: Stop at sections
+Invariant body stays.
+
+## Later section
+Section body must not leak.
+"""
+    )
+
+    assert "### I-Boundary-1: Stop at sections" in parsed
+    assert "Invariant body stays." in parsed
+    assert "Later section" not in parsed
+    assert "Section body must not leak." not in parsed
+
+
+def test_parse_invariant_entries_splits_adjacent_entries() -> None:
+    parsed = ag.parse_invariant_entries(
+        """### I-First-1: First entry
+First body only.
+
+### I-Second-2: Second entry
+Second body only.
+"""
+    )
+
+    assert (
+        parsed
+        == """### I-First-1: First entry
+First body only.
+
+### I-Second-2: Second entry
+Second body only."""
+    )
+
+
+def test_parse_invariant_entries_preserves_bullet_style_body() -> None:
+    parsed = ag.parse_invariant_entries(
+        """### I-Bullet-1: Bullets remain verbatim
+- Why: Future bullet-style entries still work.
+- Mechanical backing: tests.
+"""
+    )
+
+    assert "### I-Bullet-1: Bullets remain verbatim" in parsed
+    assert "- Why: Future bullet-style entries still work." in parsed
+    assert "- Mechanical backing: tests." in parsed
+
+
+def test_parse_invariant_entries_preserves_seeded_invariant_bodies() -> None:
+    seeded_invariants_fixture: str = """# Architectural Invariants
+
+Absolute invariants: rules that must always hold, with no legitimate exception.
+Unlike the aspirational entries in `ARCHITECTURAL_GUIDELINES.md`, an invariant
+has no "Deviate when" clause, and any violation is a defect. Where an invariant
+can be enforced mechanically, back it with a lint, hook, or test; this file is
+the human-readable specification, not a replacement for those checks.
+
+## Workflow integrity
+
+### I-Gate-1: A gate never disarms on data authored by the gated entity
+
+A hard gate (a size trigger, a publish gate, a safety check) must not be
+suppressed, weakened, or disarmed solely by metadata that the gated entity
+itself declared, such as a drafting model's self-reported `diff_added` or
+`mechanical_churn`. Disarming a hard gate requires independently computed
+evidence or an explicit operator decision recorded in run state. Self-declared
+metadata may soften presentation, never the trigger condition. Evidence of
+violation: a gate whose disarm inputs are all writable by the entity under
+evaluation (#6542, #6524).
+
+### I-Pause-1: A pause snapshot contains every artifact a resume guard reads
+
+The /design pause snapshot must include every file and sentinel that any
+resume-path guard or validator reads to corroborate prior progress, including
+the `.completed/` step sentinels. When a guard gains a new required artifact,
+the snapshot allowlist changes in the same commit. A resume that false-refuses
+on an artifact the pause omitted is a defect of the snapshot, not of the guard
+(#6548). Mechanical backing: the pause snapshot regression tests in
+`python/tests/design/test_design_pause.py` cover `.completed/` inclusion;
+extend them when the guard-read artifact set grows.
+
+## Run-log integrity
+
+### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string
+
+Every run-log flush must either commit the run's required artifact set (session
+transcript, voted-finding bodies, final report) or record the omission as a
+category-keyed execution issue that flushes into the committed run log. A
+capture failure that exists only as a status value inside the session tmpdir is
+invisible to every audit surface and is a defect of the flush, not acceptable
+drift. Evidence of violation: every post-migration /implement run recorded
+`SESSION_TRANSCRIPT_STATUS=write-failed` with no execution issue while runs
+completed green (#6263), and rejected and neutral finding bodies were absent
+from committed logs with nothing recorded anywhere (#6027). Mechanical backing:
+a post-flush manifest completeness check that asserts the expected artifact set,
+or its recorded execution-issue entries, before the run-log commit, with
+regression tests in `python/tests/report/test_run_log_flush.py`.
+
+## Agent contracts
+
+### I-Agent-1: A machine-ingested agent verdict is backed by evidence the agent actually read
+
+An agent whose output is machine-parsed (JSONL verdicts, vote rows, manifests)
+must either read its evidence through its own tools or emit the designated
+cannot-read outcome for that item. It must never emit well-formed output for
+evidence it could not open. A dispatch that inlines evidence must fit the
+worst case computed from the owning cap constants; when it cannot, it passes
+paths and grants a Read tool. Evidence of violation: a toolless triage agent
+play-acted tool calls and fabricated JSONL verdicts, and the dispatching
+skill's inlining assumption failed at the configured caps (#6671). Mechanical
+backing: `python3 python/cli.py lint agent-tool-contract` over agent
+frontmatter, plus fail-closed prompt language in the triage agent definition.
+"""
+    parsed = ag.parse_invariant_entries(seeded_invariants_fixture)
+
+    assert "### I-Gate-1: A gate never disarms on data authored by the gated entity" in parsed
+    assert "### I-Pause-1: A pause snapshot contains every artifact a resume guard reads" in parsed
+    assert "### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string" in parsed
+    assert "### I-Agent-1: A machine-ingested agent verdict is backed by evidence the agent actually read" in parsed
+    assert "A hard gate" in parsed
+    assert "Evidence of violation:" in parsed
+    assert "Mechanical backing:" in parsed
 
 
 def test_invariants_present_with_no_entries_counts_present(tmp_path: Path) -> None:
