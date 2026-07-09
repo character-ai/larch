@@ -51,8 +51,8 @@ LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
 INVARIANT_MATERIALIZE_ENV = "architectural-invariant-materialize.env"
 _STATUS_VALUES = {"present", "absent", "invalid"}
-_HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
-_INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
+GUIDELINE_HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
+INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
@@ -259,7 +259,7 @@ def parse_guideline_entries(raw_text: str) -> str:
     entries: list[list[str]] = []
     current: list[str] | None = None
     for raw_line in raw_text.splitlines():
-        heading = _HEADING_RE.match(raw_line)
+        heading = GUIDELINE_HEADING_RE.match(raw_line)
         if heading:
             if current is not None:
                 entries.append(current)
@@ -289,7 +289,7 @@ def parse_invariant_entries(raw_text: str) -> str:
     entries: list[list[str]] = []
     current: list[str] | None = None
     for raw_line in raw_text.splitlines():
-        heading = _INVARIANT_HEADING_RE.match(raw_line)
+        heading = INVARIANT_HEADING_RE.match(raw_line)
         if heading:
             if current is not None:
                 entries.append(current)

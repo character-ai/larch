@@ -6,7 +6,7 @@ Backs the ``/learn-from-bugs`` skill. GitHub access goes through the
 ``larch.core.proc.Runner`` seam so the digest and coverage-index logic stay
 unit-testable offline. The module never reads a full issue backlog into a model:
 it compresses each body to a compact root-cause digest first (an average
-``[BUG]`` body is dominated by an appended ``/design`` plan, which this drops),
+bug-report body is dominated by an appended ``/design`` plan, which this drops),
 so the synthesis step reads a small fraction of the raw tokens.
 """
 
@@ -20,11 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, cast
 
+from larch.core.architectural_guidelines import GUIDELINE_HEADING_RE, INVARIANT_HEADING_RE
 from larch.core.proc import ProcRunner, Runner
 from larch.issue.analyze_bugs import resolve_repo
-from larch.issue.title_match import bug_title_match
+from larch.issue.title_match import BUG_PREFIX, bug_title_match
 
-DEFAULT_SEARCH: Final = "[BUG] in:title"
+DEFAULT_SEARCH: Final = f"{BUG_PREFIX} in:title"
 DEFAULT_STATE: Final = "closed"
 DEFAULT_LIMIT: Final = 50
 
@@ -58,10 +59,6 @@ _BOUNDARY_PATTERNS: Final = (
 _HEADING_RE: Final = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
 _DONE_PREFIX_RE: Final = re.compile(r"^\[DONE\]\s*")
 
-# Coverage-index scanners: match a repo's existing enforcement surface so the
-# report can flag proposals that already have coverage.
-_GUIDELINE_ID_RE: Final = re.compile(r"^#{2,4}\s+(G-[A-Za-z0-9]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
-_INVARIANT_ID_RE: Final = re.compile(r"^#{2,4}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
 
 
 class LearnFromBugsError(RuntimeError):
@@ -241,8 +238,8 @@ def _scan_lint_names(directory: Path, glob: str, prefix: str) -> tuple[str, ...]
 def coverage_index(root: Path) -> CoverageIndex:
     """Scan the repo root for existing guidelines, invariants, and lints."""
     return CoverageIndex(
-        guidelines=_scan_marked_ids(root / "ARCHITECTURAL_GUIDELINES.md", _GUIDELINE_ID_RE),
-        invariants=_scan_marked_ids(root / "ARCHITECTURAL_INVARIANTS.md", _INVARIANT_ID_RE),
+        guidelines=_scan_marked_ids(root / "ARCHITECTURAL_GUIDELINES.md", GUIDELINE_HEADING_RE),
+        invariants=_scan_marked_ids(root / "ARCHITECTURAL_INVARIANTS.md", INVARIANT_HEADING_RE),
         python_lints=_scan_lint_names(root / "python" / "larch" / "lint", "lint_*.py", "lint_"),
         script_lints=_scan_lint_names(root / "scripts", "lint-*", "lint-"),
     )
