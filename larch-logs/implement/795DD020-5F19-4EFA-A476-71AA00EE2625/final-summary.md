@@ -37,11 +37,19 @@ codex/apply                 │                                       ███�
 
 **Reviewer slot failures**: 0
 
-## /implement run 795DD020-5F19-4EFA-A476-71AA00EE2625: stalled
+## Architectural invariants
 
-- **Outcome**: ❌ STALLED
-- **Duration**: 00:50:18
-- **Cost**: 💰 TOTAL ~$15.01: Claude $4.05, Codex-5.5 $4.76, Codex-mini $1.30, Cursor $2.78, Claude (subprocess) $2.12  |  Tokens: 27483k
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
+## /implement run 795DD020-5F19-4EFA-A476-71AA00EE2625: pr-created
+
+- **Outcome**: ✅ DONE
+- **Duration**: 00:57:11
+- **Cost**: 💰 TOTAL ~$18.01: Claude $7.05, Codex-5.5 $4.76, Codex-mini $1.30, Cursor $2.78, Claude (subprocess) $2.12  |  Tokens: 35001k
 - **Issue**: #6732: https://github.com/character-ai/larch/issues/6732
 - **PR**: #6761: https://github.com/character-ai/larch/pull/6761
 - **Plan review**: N/A
@@ -49,7 +57,7 @@ codex/apply                 │                                       ███�
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/3 accepted
-- **Lines (PR diff)**: code +800/-383, larch-logs +827/-0
+- **Lines (PR diff)**: code +798/-383, larch-logs +821/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
