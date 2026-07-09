@@ -1,0 +1,3 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-Requirements	accepted	YES	true	major	excellent	false	codex-validity	YES	true	major	good	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	major	in_scope
+OOS_1	Codex-Arch	accepted	NO	partially-true	minor	no-fix	false	codex-validity	YES	true	minor	good	false	codex-plan-fidelity	YES	true	minor	adequate	false	codex-pragmatism	minor	oos

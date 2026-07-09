@@ -1,0 +1,2 @@
+1	`_seed_step3_downstream()` seeds `bgjob/design-step3-review.result.env` and `bgjob/design-step4-tail.result.env` without first creating the `bgjob/` parent directory, so fresh `tmp_path` runs can raise `filenotfounderror` before the new cleanup/regression assertions execute.
+2	the new regression helper leaves the bgjob result env files unseeded, so the cleanup assertions can pass vacuously instead of proving that stale re-entry state is actually removed or preserved as intended.
