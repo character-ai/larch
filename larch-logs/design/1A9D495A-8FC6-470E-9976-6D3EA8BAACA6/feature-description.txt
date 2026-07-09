@@ -1,0 +1,75 @@
+# architectural-knowledge-IV [FEATURE] Promote G-Orch-4 and G-Obs-4 from guidelines to invariants
+
+From the 2026-07-09 audit of the architectural-knowledge features.
+
+**Motivation.** The invariants file's charter, verbatim from `ARCHITECTURAL_INVARIANTS.md`:
+
+```markdown
+Absolute invariants: rules that must always hold, with no legitimate exception.
+Unlike the aspirational entries in `ARCHITECTURAL_GUIDELINES.md`, an invariant
+has no "Deviate when" clause, and any violation is a defect. Where an invariant
+can be enforced mechanically, back it with a lint, hook, or test; this file is
+the human-readable specification, not a replacement for those checks.
+```
+
+Two guideline entries already declare "Deviate when: never" and carry multi-issue evidence. By the charter they are invariants. Verbatim from `ARCHITECTURAL_GUIDELINES.md`:
+
+```markdown
+### G-Orch-4: Record a per-slot diagnostic before any panel slot disappears
+- Why: silent slot drops hid systemic reviewer loss for weeks, and the coverage gates downstream could not see drops that were never persisted (#3392, #3423, #5047, #5529).
+- Guidance: when a reviewer or voter slot is dropped, substituted, pruned, format-rejected, or excused, append a per-slot record naming the slot, the stage, and the reason to the execution-issues log or the slot manifest before removing it from accounting; an aggregate count or generic warning does not satisfy this.
+- Deviate when: never; when volume is a concern, bound the record size, not its existence.
+```
+
+```markdown
+### G-Obs-4: Commit only neutral in-progress outcome labels for runs that are still in flight; reconcile the terminal outcome at the last allowed commit window
+- Why: pre-terminal snapshots froze merged runs as bailed or stalled in the committed logs, corrupting every downstream outcome census (#5646, #5676, #5970, #4900).
+- Guidance: a pre-terminal run-log snapshot says `shipping` or `in-progress`, never `stalled` or `bailed`, and a stalled-then-recovered run must not stay committed as stalled.
+- Deviate when: never for failure words; a neutral label is always available.
+```
+
+**Required change.**
+
+1. Remove both entries from `ARCHITECTURAL_GUIDELINES.md`.
+2. Add both to `ARCHITECTURAL_INVARIANTS.md` in the file's entry shape (heading, prose contract, "Evidence of violation:", "Mechanical backing:"). Proposed texts, ready to adapt:
+
+```markdown
+### I-Slot-1: A panel slot never disappears without a per-slot record
+
+When a reviewer or voter slot is dropped, substituted, pruned, format-rejected,
+or excused, the orchestration layer appends a per-slot record naming the slot,
+the stage, and the reason to the execution-issues log or the slot manifest
+before the slot leaves accounting. An aggregate count or a generic warning does
+not satisfy this. When record volume is a concern, bound the record size, never
+its existence. Evidence of violation: silent slot drops hid systemic reviewer
+loss for weeks, and downstream coverage gates could not see drops that were
+never persisted (#3392, #3423, #5047, #5529). Mechanical backing: the per-slot
+prune ledgers and slot manifests (`reviewer-prune-ledger.tsv`, `*-slots.ndjson`),
+plus structural tests asserting every drop path writes its record before slot
+removal.
+```
+
+```markdown
+### I-Outcome-1: A committed outcome label for an in-flight run is neutral
+
+A pre-terminal run-log snapshot commits only neutral in-progress labels such as
+`shipping` or `in-progress`, never terminal failure words such as `stalled` or
+`bailed`, and a stalled-then-recovered run must not stay committed as stalled;
+the terminal outcome is reconciled at the last allowed commit window. Evidence
+of violation: pre-terminal snapshots froze merged runs as bailed or stalled in
+the committed logs, corrupting every downstream outcome census (#5646, #5676,
+#5970, #4900). Mechanical backing: a flush-time label check that rejects
+terminal failure words in pre-terminal snapshots, with regression tests beside
+the run-log flush tests.
+```
+
+3. Section placement: I-Slot-1 under a new `## Panel integrity` section (or `## Agent contracts`, designer's call); I-Outcome-1 under `## Run-log integrity`.
+4. ID compatibility: both IDs must match `INVARIANT_HEADING_RE` (`^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):`). `I-Slot-1` and `I-Outcome-1` match.
+5. Verify or create the named mechanical backing. If a named backstop does not exist yet (for example the flush-time label check), either add it in this change or file a follow-up and reference it from the entry.
+6. Sweep references per G-Md-2: `rg "G-Orch-4|G-Obs-4"` across `docs/`, `skills/`, `python/` (including test fixtures and baselines) and update each hit. Renumbering other G-Orch-* or G-Obs-* entries is NOT wanted; leave a gap so existing citations in committed run logs stay meaningful.
+
+**Acceptance criteria.**
+
+- `python3 python/cli.py architectural-invariants read` lists 6 entries including I-Slot-1 and I-Outcome-1.
+- `rg "G-Orch-4|G-Obs-4" ARCHITECTURAL_GUIDELINES.md` matches nothing; the reference sweep is documented in the PR body.
+- Each new entry names a real, existing mechanical backstop or links the follow-up issue that adds it.

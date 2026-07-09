@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	23959	5990	13553	3389	10406	2602		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18420	4605	13265	3317	5155	1289		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	23974	5994	13568	3392	10406	2602		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	18411	4603	13256	3314	5155	1289		0	0
+design Step 3	phase1	1	dyn-cursor-plan-run-log-guard	plan-review	cursor	dyn-cursor-plan-run-log-guard.txt	24270	6068	13419	3355	10851	2713		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	23972	5993	13566	3392	10406	2602		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	18435	4609	13280	3320	5155	1289		0	0
+design Step 3	phase1	1	dyn-codex-plan-run-log-guard	plan-review	codex	dyn-codex-plan-run-log-guard.txt	18731	4683	13131	3283	5600	1400		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	23950	5988	13544	3386	10406	2602		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	18433	4609	13278	3320	5155	1289		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	32624	8156	4459	1115	28165	7042	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	16177	4045	9131	2283	7046	1762		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	16177	4045	9131	2283	7046	1762		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	16177	4045	9131	2283	7046	1762		0	0

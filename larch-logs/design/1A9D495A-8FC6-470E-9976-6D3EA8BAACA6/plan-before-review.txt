@@ -1,0 +1,111 @@
+## Approach
+
+Implement the approved outline with the minimum scope.
+
+1. Move the two entries:
+   - Remove `G-Orch-4` and `G-Obs-4` from `ARCHITECTURAL_GUIDELINES.md`.
+   - Do not renumber later `G-Orch-*` or `G-Obs-*` entries.
+   - Add `I-Slot-1` under a new `## Panel integrity` section in `ARCHITECTURAL_INVARIANTS.md`.
+   - Add `I-Outcome-1` under `## Run-log integrity`.
+
+2. Keep invariant entry shape consistent:
+   - Heading matches `INVARIANT_HEADING_RE`.
+   - Body includes the prose contract.
+   - Include `Evidence of violation:`.
+   - Include `Mechanical backing:`.
+   - For `I-Slot-1`, cite existing slot-drop backing, including `reviewer-prune-ledger.tsv`, `*-slots.ndjson`, dropped-slot sidecars, and tests in `python/tests/review/test_plan_review_round.py`, `python/tests/review/test_plan_review_panel.py`, and agent waterfall drop coverage.
+   - For `I-Outcome-1`, cite the new flush-time guard and `python/tests/report/test_run_log_flush.py`.
+
+3. Add the pre-terminal label guard:
+   - Add `PRETERMINAL_FORBIDDEN_OUTCOME_LABELS: Final[frozenset[str]]` to `python/larch/core/config.py` with members `stalled`, `bailed`, and `bailed-needs-user-input` (per G-Cfg-1; protocol literals belong in config).
+   - Add a small helper in `python/larch/report/run_log_flush.py`, for example `_check_preterminal_outcome_label(outcome: str) -> None`, that accepts the already-computed outcome as a parameter (per G-Py-5; injectable for tests) and raises `ShipError` when `outcome` is in `config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS`.
+   - Call it after `_write_final_report()` during the pre-commit refresh path and before `_commit_run()`.
+   - Leave terminal reconciliation paths alone. Post-merge and true final report reconciliation can still report terminal outcomes.
+
+4. Add regression tests:
+   - Cover `flush_logs_pre()` refusing a pre-terminal `final-summary.md` with `: stalled`.
+   - Cover `flush_logs_pre()` refusing `: bailed`.
+   - Cover an allowed neutral label, such as `shipping` or `pr-created`, still commits.
+   - Use existing monkeypatch seams in `test_run_log_flush.py` for `_stage_pre_commit`, `_commit_run`, or final-report writing as appropriate.
+
+5. Sweep references:
+   - Run `rg "G-Orch-4|G-Obs-4" docs/ skills/ python/ README.md SECURITY.md .github/workflows ARCHITECTURAL_GUIDELINES.md ARCHITECTURAL_INVARIANTS.md`.
+   - Update any prose or fixtures that cite the old guideline IDs.
+   - Expected result after edits: no old IDs in `ARCHITECTURAL_GUIDELINES.md`; no old IDs in runtime docs, skills, or Python references unless a test fixture explicitly documents history.
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+Remove only the `G-Orch-4` and `G-Obs-4` entries.
+
+Leave `G-Orch-5`, `G-Orch-6`, and `G-Obs-5` headings unchanged. Do not renumber.
+
+### UPDATED: ARCHITECTURAL_INVARIANTS.md
+
+Add `I-Slot-1` under a new `## Panel integrity` section.
+
+Add `I-Outcome-1` under `## Run-log integrity`.
+
+Keep current invariant prose style. Include real mechanical backing for each entry.
+
+### UPDATED: python/larch/core/config.py
+
+Add `PRETERMINAL_FORBIDDEN_OUTCOME_LABELS: Final[frozenset[str]]` constant containing `stalled`, `bailed`, and `bailed-needs-user-input`.
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Add the pre-terminal outcome label check.
+
+Keep it local to flush-time behavior. Do not change outcome normalization broadly unless needed for the guard.
+
+Raise `ShipError` with a clear message naming the rejected label and pre-terminal context.
+
+### UPDATED: python/tests/report/test_run_log_flush.py
+
+Add focused tests for the guard.
+
+Prefer direct unit coverage of the helper plus one `flush_logs_pre()` path test if that keeps setup small.
+
+## Edge cases
+
+- A summary heading may use legacy punctuation. Parse only the canonical current heading if possible, and fail closed only when the label is clearly `stalled` or `bailed`.
+- `bailed-needs-user-input` is also a failure label. Treat it as rejected if the parser sees it in a pre-terminal committed summary.
+- Missing `final-summary.md` should not become a new failure in this guard. Existing completeness checks own missing artifacts.
+- Terminal post-merge reconciliation must still allow final failure labels where the run has actually ended.
+
+## Failure modes
+
+- The guard runs too early and misses a summary rendered later.
+- The guard runs on terminal paths and blocks legitimate final reports.
+- The invariant entry names a backstop that does not exist.
+- Reference sweep misses old IDs in fixtures or docs.
+
+## Testing strategy
+
+Run targeted checks only:
+
+```bash
+python3 python/cli.py architectural-invariants read
+```
+
+Verify it reports 6 entries including `I-Slot-1` and `I-Outcome-1`.
+
+```bash
+python3 -m pytest python/tests/report/test_run_log_flush.py
+```
+
+Run the reference sweep:
+
+```bash
+rg "G-Orch-4|G-Obs-4" docs/ skills/ python/ README.md SECURITY.md .github/workflows ARCHITECTURAL_GUIDELINES.md ARCHITECTURAL_INVARIANTS.md
+```
+
+If any panel-slot backing prose is changed or questioned, also run:
+
+```bash
+python3 -m pytest python/tests/review/test_plan_review_round.py python/tests/review/test_plan_review_panel.py python/tests/agents/test_agent_waterfall.py
+```
+
+difficulty: MODERATE
+diff_lines: 155
