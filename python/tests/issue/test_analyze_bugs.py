@@ -893,7 +893,7 @@ def test_legacy_unverified_triage_requeues_and_does_not_drive_report_or_deep(tmp
 
 
 def test_bug_fix_triage_agent_grants_read_tool() -> None:
-    agent = Path(".claude/agents/bug-fix-triage.md").read_text(encoding="utf-8")
+    agent = (Path(__file__).resolve().parents[3] / ".claude/agents/bug-fix-triage.md").read_text(encoding="utf-8")
 
     assert "tools: [Read]" in agent
     assert "tools: []" not in agent
