@@ -127,7 +127,7 @@ def test_codex_agent_file_writes_and_replays_compact_sentinel(tmp_path: Path, mo
     assert "HASH=" in text
     assert "DIFFICULTY=TRIVIAL" in text
     def fake_render(*_args: object, **_kwargs: object) -> object:
-        argv = [str(item) for item in cast("Sequence[object]", _args[0])]
+        argv = [str(item) for item in cast(Sequence[object], _args[0])]
         assert argv[argv.index("--difficulty") + 1] == "TRIVIAL"
         return type("R", (), {"stdout": prompt, "returncode": 0})()
 
