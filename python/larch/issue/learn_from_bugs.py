@@ -61,7 +61,7 @@ _DONE_PREFIX_RE: Final = re.compile(r"^\[DONE\]\s*")
 # Coverage-index scanners: match a repo's existing enforcement surface so the
 # report can flag proposals that already have coverage.
 _GUIDELINE_ID_RE: Final = re.compile(r"^#{2,4}\s+(G-[A-Za-z0-9]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
-_INVARIANT_ID_RE: Final = re.compile(r"^#{2,4}\s+((?:INV|I)-[A-Za-z0-9]*-?\d+):\s*(.+?)\s*$", re.MULTILINE)
+_INVARIANT_ID_RE: Final = re.compile(r"^#{2,4}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
 
 
 class LearnFromBugsError(RuntimeError):

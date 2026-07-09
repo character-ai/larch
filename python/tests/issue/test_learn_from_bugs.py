@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core import architectural_guidelines as ag
 from larch.core.proc import CommandResult
 from larch.issue import learn_from_bugs
 from test_support import RecordingRunner
@@ -149,6 +150,26 @@ def test_coverage_index_does_not_emit_retired_rule_field(tmp_path: Path) -> None
 
     assert "rules" not in payload
     assert set(payload) == {"guidelines", "invariants", "python_lints", "script_lints"}
+
+
+@pytest.mark.parametrize(
+    ("heading", "expected_invariants", "expected_reader_lines"),
+    [
+        ("### I-Test-1: Canonical", (("I-Test-1", "Canonical"),), ("### I-Test-1: Canonical",)),
+        ("### INV-Test-1: Noncanonical", (), ()),
+    ],
+)
+def test_coverage_index_invariant_id_grammar_matches_reader(
+    tmp_path: Path,
+    heading: str,
+    expected_invariants: tuple[tuple[str, str], ...],
+    expected_reader_lines: tuple[str, ...],
+) -> None:
+    raw_text: str = f"{heading}\n- Why: Example rationale.\n"
+    (tmp_path / ag.INVARIANTS_FILENAME).write_text(raw_text, encoding="utf-8")
+
+    assert learn_from_bugs.coverage_index(tmp_path).invariants == expected_invariants
+    assert tuple(ag.parse_invariant_entries(raw_text).splitlines()[0:1]) == expected_reader_lines
 
 
 def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
