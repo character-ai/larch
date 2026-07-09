@@ -140,7 +140,8 @@ def test_activate_run_writes_current_with_fd_anchored_helpers(tmp_path: Path, mo
 
     assert progress_file.current_run_path(repo).read_text(encoding="utf-8") == f"{run_id}\n"
     assert progress_file.run_progress_dir(repo, run_id).is_dir()
-    assert open_calls == [progress_file.progress_clone_dir(repo)]
+    assert Path("/") in open_calls
+    assert progress_file.progress_clone_dir(repo) in open_calls
     assert write_calls == [(progress_file.CURRENT_RUN_FILENAME, f"{run_id}\n", 0o600, ".current.")]
 
 
@@ -171,6 +172,24 @@ def test_activate_run_refuses_clone_dir_swap_before_write(tmp_path: Path, monkey
     assert not (target / progress_file.CURRENT_RUN_FILENAME).exists()
 
 
+def test_activate_run_uses_anchored_directory_creation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+
+    def forbid_path_mkdir(self: Path, *args, **kwargs):
+        raise AssertionError(f"path.mkdir unexpectedly used for {self}")
+
+    monkeypatch.setattr(Path, "mkdir", forbid_path_mkdir)
+
+    progress_file.activate_run(repo, run_id)
+
+    assert progress_file.current_run_path(repo).read_text(encoding="utf-8") == f"{run_id}\n"
+    assert progress_file.run_progress_dir(repo, run_id).is_dir()
+    assert progress_file.progress_clone_dir(repo).is_dir()
+
+
 def test_read_active_run_id_normalizes_activate_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
@@ -185,6 +204,47 @@ def test_read_active_run_id_normalizes_activate_output(tmp_path: Path, monkeypat
 
     progress_file.current_run_path(repo).write_text(" \t\n", encoding="utf-8")
     assert progress_file._read_active_run_id(progress_file.progress_clone_dir(repo)) is None
+
+
+def test_read_active_run_id_from_dirfd_is_best_effort_on_invalid_utf8_and_fifo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    clone_dir = progress_file.progress_clone_dir(repo)
+    clone_dir.mkdir(parents=True)
+    current_path = progress_file.current_run_path(repo)
+
+    current_path.write_bytes(b"\xff\xfe\n")
+    dir_fd = progress_file._open_verified_dir(clone_dir)
+    try:
+        assert progress_file._read_active_run_id_from_dirfd(dir_fd) is None
+    finally:
+        os.close(dir_fd)
+
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("fifo support unavailable")
+
+    current_path.unlink()
+    os.mkfifo(current_path)
+    open_flags: list[int] = []
+    original_open = progress_file.os.open
+
+    def traced_open(path, flags, *args, **kwargs):
+        if path == progress_file.CURRENT_RUN_FILENAME:
+            open_flags.append(flags)
+            assert flags & os.O_NONBLOCK
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(progress_file.os, "open", traced_open)
+
+    dir_fd = progress_file._open_verified_dir(clone_dir)
+    try:
+        assert progress_file._read_active_run_id_from_dirfd(dir_fd) is None
+    finally:
+        os.close(dir_fd)
+    assert open_flags
 
 
 def test_progress_note_run_id_writes_only_explicit_run_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -232,6 +292,34 @@ def test_append_breadcrumb_for_run_refuses_symlinked_log(tmp_path: Path, monkeyp
 
     assert not progress_file.append_breadcrumb_for_run(repo, "design-20260708.1", "design", "3", "reviewers done")
     assert target.read_text(encoding="utf-8") == ""
+
+
+def test_append_breadcrumb_for_run_uses_nonblocking_open_on_fifo(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "design-20260708.1"
+    run_dir = progress_file.run_progress_dir(repo, run_id)
+    run_dir.mkdir(parents=True)
+    log_path = progress_file.run_progress_path(repo, run_id)
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("fifo support unavailable")
+    os.mkfifo(log_path)
+    open_flags: list[int] = []
+    original_open = progress_file.os.open
+
+    def traced_open(path, flags, *args, **kwargs):
+        if path == progress_file.RUN_BREADCRUMB_FILENAME:
+            open_flags.append(flags)
+            assert flags & os.O_NONBLOCK
+        return original_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(progress_file.os, "open", traced_open)
+
+    assert not progress_file.append_breadcrumb_for_run(repo, run_id, "design", "3", "reviewers done")
+    assert open_flags
 
 
 def test_append_breadcrumb_for_run_refuses_parent_swap_before_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

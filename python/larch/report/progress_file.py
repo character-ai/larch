@@ -124,9 +124,11 @@ def append_breadcrumb(repo_root: str | Path, skill: str, step: str, text: str) -
         line = breadcrumb_line(skill=skill, step=step, text=text)
         path = progress_path(repo_root)
         larch_io.assert_no_symlink_path_or_ancestors(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        _ensure_directory(path.parent)
         larch_io.assert_no_symlink_path_or_ancestors(path)
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+        if hasattr(os, "O_NONBLOCK"):
+            flags |= os.O_NONBLOCK
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         fd = os.open(path, flags, 0o600)
@@ -163,6 +165,8 @@ def _nofollow_file_flags(*, append: bool) -> int:
         flags |= os.O_APPEND
     else:
         flags |= os.O_EXCL
+    if hasattr(os, "O_NONBLOCK"):
+        flags |= os.O_NONBLOCK
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     return flags
@@ -172,6 +176,39 @@ def _validate_dir_entry_name(name: str) -> None:
     if not name or name in {".", ".."} or "/" in name or "\\" in name:
         msg = f"unsafe directory entry name: {name!r}"
         raise ValueError(msg)
+
+
+def _ensure_directory(path: Path) -> None:
+    """Create ``path`` and its parents without following symlink swaps."""
+    target = path.expanduser()
+    if not target.is_absolute():
+        target = Path.cwd() / target
+    if len(target.parts) == 1:
+        return
+    current_fd = _open_verified_dir(Path(target.anchor))
+    try:
+        for part in target.parts[1:]:
+            _validate_dir_entry_name(part)
+            try:
+                next_fd = os.open(part, _dir_open_flags(), dir_fd=current_fd)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(part, 0o777, dir_fd=current_fd)
+                except FileExistsError:
+                    pass
+                next_fd = os.open(part, _dir_open_flags(), dir_fd=current_fd)
+            try:
+                stat_result = os.fstat(next_fd)
+                if not stat.S_ISDIR(stat_result.st_mode):
+                    msg = f"refusing non-directory progress path: {target}"
+                    raise OSError(msg)
+            except OSError:
+                os.close(next_fd)
+                raise
+            os.close(current_fd)
+            current_fd = next_fd
+    finally:
+        os.close(current_fd)
 
 
 def _open_verified_dir(path: Path) -> int:
@@ -190,6 +227,8 @@ def _open_verified_dir(path: Path) -> int:
 
 def _readonly_file_flags() -> int:
     flags = os.O_RDONLY
+    if hasattr(os, "O_NONBLOCK"):
+        flags |= os.O_NONBLOCK
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     return flags
@@ -274,8 +313,8 @@ def activate_run(repo_root: str | Path, run_id: str) -> None:
     larch_io.assert_no_symlink_path_or_ancestors(clone_dir)
     larch_io.assert_no_symlink_path_or_ancestors(run_dir)
     larch_io.assert_no_symlink_path_or_ancestors(pointer_path)
-    clone_dir.mkdir(parents=True, exist_ok=True)
-    run_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_directory(clone_dir)
+    _ensure_directory(run_dir)
     larch_io.assert_no_symlink_path_or_ancestors(clone_dir)
     larch_io.assert_no_symlink_path_or_ancestors(run_dir)
     larch_io.assert_no_symlink_path_or_ancestors(pointer_path)
@@ -293,7 +332,7 @@ def append_breadcrumb_for_run(repo_root: str | Path, run_id: str, skill: str, st
         run_dir = run_progress_dir(repo_root, run_id)
         path = run_dir / RUN_BREADCRUMB_FILENAME
         larch_io.assert_no_symlink_path_or_ancestors(path)
-        run_dir.mkdir(parents=True, exist_ok=True)
+        _ensure_directory(run_dir)
         larch_io.assert_no_symlink_path_or_ancestors(path)
         dir_fd = _open_verified_dir(run_dir)
         try:
@@ -346,7 +385,7 @@ def _read_active_run_id_from_dirfd(dir_fd: int) -> str | None:
         stat_result = os.fstat(fd)
         if not stat.S_ISREG(stat_result.st_mode):
             return None
-        with os.fdopen(fd, "r", encoding="utf-8") as handle:
+        with os.fdopen(fd, "r", encoding="utf-8", errors="replace") as handle:
             fd = -1
             first_line = handle.readline()
     finally:
