@@ -105,7 +105,8 @@ PYRIGHT_REPORT_FAMILY_RE = re.compile(
     re.IGNORECASE,
 )
 PYRIGHT_REPORT_STRICT_RE = re.compile(
-    SUPPRESSION_PREFIX + r"pyright:\s*report[A-Za-z0-9_]+\s*=\s*false\s*(?:#\s*(?P<reason>.*))?$",
+    SUPPRESSION_PREFIX
+    + r"pyright:\s*report[A-Za-z0-9_]+\s*=\s*false(?:\s*,\s*report[A-Za-z0-9_]+\s*=\s*false)*\s*(?:#\s*(?P<reason>.*))?$",
     re.IGNORECASE,
 )
 REASON_SUPPRESSION_PREFIX_RE = re.compile(
@@ -255,22 +256,7 @@ def _comment_segments(comment: str) -> list[str]:
 
 
 def _pyright_report_segments(segment: str) -> list[str]:
-    if PYRIGHT_REPORT_FAMILY_RE.search(segment) is None or "," not in segment:
-        return [segment]
-    head, _, tail = segment.partition("#")
-    parts = [
-        part.strip()
-        for part in re.split(r",\s*(?=report[A-Za-z0-9_]+\s*=\s*false\b)", head, flags=re.IGNORECASE)
-        if part.strip()
-    ]
-    if len(parts) <= 1 or not parts[0].lower().startswith("pyright:"):
-        return [segment]
-    normalized: list[str] = [parts[0]]
-    for part in parts[1:]:
-        normalized.append(part if part.lower().startswith("pyright:") else f"pyright: {part}")
-    if tail:
-        normalized[-1] = f"{normalized[-1]}  # {tail.strip()}"
-    return normalized
+    return [segment]
 
 
 def _has_reason_text(text: str | None) -> bool:

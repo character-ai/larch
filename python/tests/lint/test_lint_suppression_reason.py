@@ -95,6 +95,7 @@ def test_missing_reason_forms_are_detected(
         "# type: ignore[assignment]  # typed fixture narrows at runtime",
         "# pyright: ignore[reportPrivateUsage]  # fixture inspects private state",
         "# pyright: reportMissingImports=false  # optional dependency imported in production",
+        "# pyright: reportMissingImports=false, reportPrivateUsage=false  # optional dependency imported in production",
     ],
 )
 def test_reason_bearing_forms_pass(tmp_path: Path, comment: str) -> None:
@@ -183,14 +184,37 @@ def test_embedded_hash_reason_keeps_later_suppression(tmp_path: Path) -> None:
     ]
 
 
-def test_comma_separated_pyright_report_clauses_are_scanned_individually(tmp_path: Path) -> None:
+def test_comma_separated_pyright_report_clauses_are_scanned_as_one_suppression(tmp_path: Path) -> None:
     assert _scan_comment(
         tmp_path,
         "# pyright: reportMissingImports=false, reportPrivateUsage=false",
     ) == [
-        lsr.Finding("larch/mod.py", lsr.KIND_PYRIGHT_REPORT, "pyright: reportMissingImports=false", 1, 3),
-        lsr.Finding("larch/mod.py", lsr.KIND_PYRIGHT_REPORT, "pyright: reportPrivateUsage=false", 1, 3),
+        lsr.Finding(
+            "larch/mod.py",
+            lsr.KIND_PYRIGHT_REPORT,
+            "pyright: reportMissingImports=false, reportPrivateUsage=false",
+            1,
+            3,
+        ),
     ]
+
+
+def test_baseline_row_suppresses_comma_separated_pyright_report_live_finding(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/mod.py": _module("# pyright: reportMissingImports=false, reportPrivateUsage=false")},
+        baseline=[
+            _record(
+                suppression_kind=lsr.KIND_PYRIGHT_REPORT,
+                text="pyright: reportMissingImports=false, reportPrivateUsage=false",
+            )
+        ],
+    )
+
+    assert lsr.main(["--root", str(tmp_path)]) == 0
+    assert "baselined" in capsys.readouterr().err
 
 
 def test_plain_comments_containing_suppression_words_are_ignored(tmp_path: Path) -> None:
