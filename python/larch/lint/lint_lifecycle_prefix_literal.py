@@ -497,9 +497,12 @@ def load_baseline(path: Path) -> list[Record]:
 
 def _comment_tokens_by_line(source: str) -> dict[int, tuple[tuple[int, str], ...]]:
     comments: dict[int, list[tuple[int, str]]] = {}
-    for token in tokenize.generate_tokens(io.StringIO(source).readline):
-        if token.type == tokenize.COMMENT:
-            comments.setdefault(token.start[0], []).append((token.start[1], token.string))
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                comments.setdefault(token.start[0], []).append((token.start[1], token.string))
+    except tokenize.TokenError:
+        return {}
     return {line: tuple(tokens) for line, tokens in comments.items()}
 
 
