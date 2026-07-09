@@ -152,3 +152,13 @@ def test_parse_failure_exits_2(tmp_path: Path) -> None:
     _write_project(tmp_path, files={"larch/broken.py": "def run(:\n"})
 
     assert lgnwb.main(["--root", str(tmp_path)]) == 2
+
+
+def test_non_utf8_source_reads_exit_2(tmp_path: Path, capsys: CaptureFixture) -> None:
+    python_dir: Path = tmp_path / "python"
+    path: Path = python_dir / "larch/binary.py"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_bytes(b"def run() -> None:\n\xff\n")
+
+    assert lgnwb.main(["--root", str(tmp_path)]) == 2
+    assert "cannot read source" in capsys.readouterr().err

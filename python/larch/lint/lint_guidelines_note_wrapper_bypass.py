@@ -84,7 +84,7 @@ def scan_file(path: Path, *, larch_dir: Path) -> list[Finding]:
     normalized_file: str = path.relative_to(larch_dir.parent).as_posix()
     try:
         source: str = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise RuntimeError(f"{normalized_file}: cannot read source: {exc}") from exc
     try:
         tree: ast.Module = ast.parse(source)
