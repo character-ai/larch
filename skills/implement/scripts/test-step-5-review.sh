@@ -209,6 +209,23 @@ EFFECTIVE_ROUND_CAP=2
 EOF
 }
 
+seed_zero_rc_stall_result_env() {
+  local dir="$1" path="$1/bgjob/implement-step5-review.result.env"
+  mkdir -p "$dir/bgjob"
+  cat >"$path" <<'EOF'
+BGJOB_RC=0
+STEP5_REVIEW_STATUS=stall
+STALL_TRACKING=true
+STALL_REASON=zero-rc-stall
+ROUNDS_COMPLETED=1
+FINAL_ROUND_NUM=1
+FINAL_REVIEW_AND_FIX_STATUS=stall
+CODER_STATUS=
+FILES_CHANGED_HINT=
+EFFECTIVE_ROUND_CAP=2
+EOF
+}
+
 D=$(mktemp -d "${TMPDIR:-/tmp}/test-step5-review.XXXXXX")
 trap 'rm -rf "$D"' EXIT
 FAKE="$D/plugin"
@@ -244,6 +261,15 @@ STEP5_REGISTRY_MODE=missing STEP5_WAIT_MODE=done-stall CLAUDE_PLUGIN_ROOT="$FAKE
 [ -f "$IMPL/bgjob-start-argv.txt" ] || fail 'cached canonical stall result env must relaunch bgjob'
 [ ! -f "$IMPL/bgjob/implement-step5-review.result.env" ] || fail 'cached canonical stall result env must be cleared before fresh start'
 pass 'Step 5 wrapper clears cached canonical stall result envs before relaunching'
+
+IMPL="$D/zero-rc-stall-result"
+make_impl "$IMPL" "$FAKE"
+seed_zero_rc_stall_result_env "$IMPL"
+STEP5_REGISTRY_MODE=missing CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "zero-rc stall result recovery wrapper failed: $(cat "$IMPL/stderr.log")"
+[ "$(cat "$IMPL/stdout.log")" = 'BGJOB_STATUS=STARTED STEP=implement-step5-review PGID=12345' ] || fail 'cached zero-rc stall result env must start a fresh bgjob'
+[ -f "$IMPL/bgjob-start-argv.txt" ] || fail 'cached zero-rc stall result env must relaunch bgjob'
+[ ! -f "$IMPL/bgjob/implement-step5-review.result.env" ] || fail 'cached zero-rc stall result env must be cleared before fresh start'
+pass 'Step 5 wrapper clears cached zero-rc stall result envs before relaunching'
 
 IMPL="$D/stale-result"
 make_impl "$IMPL" "$FAKE"

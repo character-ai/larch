@@ -121,7 +121,7 @@ except OSError:
     print("BGJOB_ERROR=registry-check-failed", file=sys.stderr)
     raise SystemExit(2)
 status = rows.get("STEP5_REVIEW_STATUS", "")
-if rows.get("BGJOB_RC") == "0" and status and required_keys.issubset(rows):
+if rows.get("BGJOB_RC") == "0" and status == "complete" and required_keys.issubset(rows):
     print("complete")
     raise SystemExit(0)
 if status == "stall" and required_keys.issubset(rows):
