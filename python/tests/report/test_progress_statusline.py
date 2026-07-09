@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnusedCallResult=false
+# pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnknownVariableType=false
 from __future__ import annotations
 
 import json
@@ -178,7 +178,7 @@ def test_activate_run_uses_anchored_directory_creation(tmp_path: Path, monkeypat
     repo.mkdir()
     run_id = "implement-20260708.1"
 
-    def forbid_path_mkdir(self: Path, *args, **kwargs):
+    def forbid_path_mkdir(self: Path, *_args: object, **_kwargs: object) -> None:
         raise AssertionError(f"path.mkdir unexpectedly used for {self}")
 
     monkeypatch.setattr(Path, "mkdir", forbid_path_mkdir)

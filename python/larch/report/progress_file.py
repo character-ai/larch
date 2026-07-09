@@ -1,4 +1,4 @@
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false
 """Per-clone progress breadcrumb writer for larch statuslines."""
 
 from __future__ import annotations
@@ -192,10 +192,8 @@ def _ensure_directory(path: Path) -> None:
             try:
                 next_fd = os.open(part, _dir_open_flags(), dir_fd=current_fd)
             except FileNotFoundError:
-                try:
+                with contextlib.suppress(FileExistsError):
                     os.mkdir(part, 0o777, dir_fd=current_fd)
-                except FileExistsError:
-                    pass
                 next_fd = os.open(part, _dir_open_flags(), dir_fd=current_fd)
             try:
                 stat_result = os.fstat(next_fd)
@@ -357,7 +355,7 @@ def _entry_mtime_for_cleanup(entry_path: Path, *, log_path: Path | None = None) 
         return None
 
 
-def _read_active_run_id(clone_dir: Path) -> str | None:
+def _read_active_run_id(clone_dir: Path) -> str | None:  # pyright: ignore[reportUnusedFunction]
     """Return the normalized ``current`` pointer written by ``activate_run``."""
     pointer_path = clone_dir / CURRENT_RUN_FILENAME
     try:
@@ -466,6 +464,36 @@ def _clone_dirs_under(progress_dir: Path) -> set[Path]:
     return clone_dirs
 
 
+def _maybe_remove_run_dir(dir_fd: int, child_name: str, active_run_id: str | None, cutoff: float) -> int:
+    try:
+        run_id = validate_run_id(child_name)
+    except ValueError:
+        return 0
+    try:
+        child_fd = os.open(child_name, _dir_open_flags(), dir_fd=dir_fd)
+    except OSError:
+        return 0
+    try:
+        stat_result = os.fstat(child_fd)
+        if not stat.S_ISDIR(stat_result.st_mode) or run_id == active_run_id:
+            return 0
+        try:
+            log_stat = os.stat(RUN_BREADCRUMB_FILENAME, dir_fd=child_fd, follow_symlinks=False)
+            mtime = log_stat.st_mtime if stat.S_ISREG(log_stat.st_mode) else stat_result.st_mtime
+        except OSError:
+            mtime = stat_result.st_mtime
+        if mtime >= cutoff:
+            return 0
+        _remove_tree_in_dirfd(child_fd)
+        try:
+            os.rmdir(child_name, dir_fd=dir_fd)
+        except OSError:
+            return 0
+        return 1
+    finally:
+        os.close(child_fd)
+
+
 def _cleanup_run_dirs_for_clone(clone_dir: Path, *, cutoff: float) -> int:
     try:
         dir_fd = _open_verified_dir(clone_dir)
@@ -475,39 +503,11 @@ def _cleanup_run_dirs_for_clone(clone_dir: Path, *, cutoff: float) -> int:
     try:
         active_run_id = _read_active_run_id_from_dirfd(dir_fd)
         try:
-            children = list(os.listdir(dir_fd))
+            children = list(os.listdir(dir_fd))  # noqa: PTH208
         except OSError:
             return 0
         for child_name in children:
-            if child_name == CURRENT_RUN_FILENAME:
-                continue
-            try:
-                run_id = validate_run_id(child_name)
-            except ValueError:
-                continue
-            try:
-                child_fd = os.open(child_name, _dir_open_flags(), dir_fd=dir_fd)
-            except OSError:
-                continue
-            try:
-                stat_result = os.fstat(child_fd)
-                if not stat.S_ISDIR(stat_result.st_mode) or run_id == active_run_id:
-                    continue
-                try:
-                    log_stat = os.stat(RUN_BREADCRUMB_FILENAME, dir_fd=child_fd, follow_symlinks=False)
-                    mtime = log_stat.st_mtime if stat.S_ISREG(log_stat.st_mode) else stat_result.st_mtime
-                except OSError:
-                    mtime = stat_result.st_mtime
-                if mtime >= cutoff:
-                    continue
-                _remove_tree_in_dirfd(child_fd)
-                try:
-                    os.rmdir(child_name, dir_fd=dir_fd)
-                except OSError:
-                    continue
-                removed += 1
-            finally:
-                os.close(child_fd)
+            removed += _maybe_remove_run_dir(dir_fd, child_name, active_run_id, cutoff)
     finally:
         os.close(dir_fd)
     return removed
