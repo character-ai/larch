@@ -54,7 +54,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal shared-convention-regex renderer-golden-tests guidelines-note-wrapper-bypass layering flat-tests; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason guidelines-note-wrapper-bypass layering flat-tests; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -84,7 +84,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-layering-baseline regen-skill-closure-baseline
+.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-layering-baseline regen-skill-closure-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -162,6 +162,16 @@ regen-renderer-golden-tests-baseline:
 		$(PYTHON) python/cli.py lint renderer-golden-tests --write; \
 	else \
 		$(PYTHON) python/cli.py lint renderer-golden-tests --write --initial-reason 'grandfathered current report helper before renderer golden-test coverage ratchet'; \
+	fi
+
+regen-suppression-reason-baseline:
+	# Regenerate python/suppression-reason-baseline.json from live suppression scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/suppression-reason-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint suppression-reason --write; \
+	else \
+		$(PYTHON) python/cli.py lint suppression-reason --write --initial-reason 'grandfathered pre-G-Py-11 suppression without inline reason'; \
 	fi
 
 regen-layering-baseline:
