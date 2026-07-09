@@ -44,6 +44,19 @@ PREFLIGHT_OUT=$(python3 "$PWD/python/cli.py" audit-runs preflight \
 
 Read `PREFLIGHT_OK` and `REASON` from stdout. Fail-fast when `PREFLIGHT_OK=false`; print `REASON` to the user. Contract: `python/cli.py audit-runs preflight`.
 
+## Bugs-backlog advisory
+
+After `PREFLIGHT_OK=true` and before `resolve-prs`, run the advisory once:
+
+```bash
+NUDGE_RC=0
+NUDGE_OUT=$(python3 "$PWD/python/cli.py" audit-runs bugs-backlog-nudge \
+  --repo "<owner/name>" \
+  --root "$PWD" 2>"$TMPDIR/bugs-backlog-nudge.err") || NUDGE_RC=$?
+```
+
+If stdout is non-empty, print it to chat as advisory text only and retain it for early-exit paths. If the command fails, print a short non-fatal advisory failure, including stderr when helpful, and continue the audit. Do not include this output in the filed audit report body, YAML frontmatter, `compute-counters` input, or scan NDJSON.
+
 ## Verbal-Description Resolution
 
 ```bash
@@ -51,7 +64,7 @@ RESOLVE_OUT=$(python3 "$PWD/python/cli.py" audit-runs resolve-prs \
   --skill "$SKILL" --repo "<owner/name>" [--verbal-description "<verbal-description>"])
 ```
 
-Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, `RESOLVED_ECHO`, and `ERROR` from stdout. Fail-fast when `ERROR` is non-empty; print it to the user. Print `RESOLVED_ECHO` before scanning. Contract: `python/cli.py audit-runs resolve-prs`.
+Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, `RESOLVED_ECHO`, and `ERROR` from stdout. Fail-fast when `ERROR` is non-empty; print any non-empty `NUDGE_OUT`, then print `ERROR` to the user. Print `RESOLVED_ECHO` before scanning. Contract: `python/cli.py audit-runs resolve-prs`.
 
 ## Scan Registry
 
@@ -348,6 +361,7 @@ Optional stdout-style summary after the chat contract (for example per-scan PASS
 ```
 parse --skill (design|implement) → $SKILL; fail-fast if missing/invalid
 python/cli.py audit-runs preflight --skill $SKILL → PREFLIGHT_OK / fail-fast
+python/cli.py audit-runs bugs-backlog-nudge --repo <owner/name> --root $PWD → chat-only advisory
 python/cli.py audit-runs resolve-prs --skill $SKILL → full stdout KV contract
 python/cli.py audit-runs map-runs --skill $SKILL → run-map.tsv
 for each PR:
@@ -368,6 +382,7 @@ python/cli.py audit-runs close-priors --skill $SKILL → close prior audit-repor
 
 - `python/audit_runs.py title matching helpers`: per-skill audit-report title matching
 - `python/cli.py audit-runs preflight`: git fetch/pull, repo-identity, concurrency guard
+- `python/cli.py audit-runs bugs-backlog-nudge`: chat-only `/learn-from-bugs` backlog advisory
 - `python/cli.py audit-runs resolve-prs`: verbal-description → PR_LIST
 - `python/cli.py audit-runs map-runs`: PR → run-log directory mapping (TSV)
 - `python/cli.py audit-runs scan-run`: all scans against one run-log dir; NDJSON output

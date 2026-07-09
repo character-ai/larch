@@ -21,7 +21,7 @@ The engine keeps this cheap. It never reads full issue bodies into context: `lea
 
 - Flags: `-n COUNT` (issues to mine, default 50), `--state` (default `closed`), `--repo OWNER/REPO`, `--search QUERY` (explicit gh search that overrides the verbal description).
 - Everything else in `$ARGUMENTS` is a **verbal description** of which issues to mine. Translate it into a `gh` search expression. With no description and no `--search`, mine `[BUG] in:title`.
-- Report-only by default. Every repository or GitHub mutation is gated behind an explicit operator approval in Step 5.
+- Report-only by default. Every repository or GitHub mutation is gated behind an explicit operator approval in Step 5, except the durable `/learn-from-bugs` state marker: after a successful Step 4 report, write and commit only `config.LEARN_FROM_BUGS_STATE_RELPATH` before Step 5.
 - File issues only through `/issue` (never `gh issue create` directly).
 - Cite issues by number and refer to code by symbol, not line number. Do not paste machine-local absolute paths or hardcode counts that will drift; read live counts from the prepared stats and coverage index.
 
@@ -57,7 +57,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs prepare \
   --root "$PWD"
 ```
 
-Parse only whole-line `KEY=value` records from stdout: `DIGEST_PATH`, `COVERAGE_INDEX_PATH`, `REPO`, `ISSUES_SELECTED`, `ISSUES_FILTERED_NON_BUG`, `STRUCTURED`, `FREEFORM_OR_TITLE_ONLY`, `DIGEST_TOKENS_EST`, and the `*_INDEXED` counts. Abort if `DIGEST_PATH` is missing.
+Parse only whole-line `KEY=value` records from stdout: `DIGEST_PATH`, `COVERAGE_INDEX_PATH`, `REPO`, `SEARCH`, `STATE`, `ISSUES_SELECTED`, `SCAN_STARTED_AT`, `HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED`, `ISSUES_FILTERED_NON_BUG`, `STRUCTURED`, `FREEFORM_OR_TITLE_ONLY`, `DIGEST_TOKENS_EST`, and the `*_INDEXED` counts. Retain them through Step 4. Abort if `DIGEST_PATH` is missing.
 
 If `DIGEST_TOKENS_EST` is large relative to the budget the operator signalled, say so and offer to lower `-n` before reading.
 
@@ -84,6 +84,54 @@ For proposal wording in sections 4 through 6, exactness and pasteability take pr
 7. **Issues to file.** Concrete still-broken code the mining surfaced, for example a fix that was scoped to one call site while identical sites remain, phrased as a fileable problem statement with evidence.
 
 Print the report to the operator and the `RUN_DIR` path.
+
+Immediately after `${RUN_DIR}/report.md` is written and printed, capture the report boundary once:
+
+```bash
+RUN_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+```
+
+Then write the durable marker using the Step 2 `SCAN_STARTED_AT`; do not re-capture the scan boundary here.
+
+```bash
+STATE_RC=0
+STATE_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs write-state \
+  --root "$PWD" \
+  --repo "$REPO" \
+  --search "$SEARCH" \
+  --state "$STATE" \
+  --selected-count "$ISSUES_SELECTED" \
+  --highest-closed-issue-number-scanned "$HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED" \
+  --run-date "$RUN_DATE" \
+  --scan-started-at "$SCAN_STARTED_AT") || STATE_RC=$?
+```
+
+If `STATE_RC` is non-zero, report the `write-state` failure clearly and stop before Step 5.
+
+Parse `STATE_RELPATH` from `STATE_OUT` and commit only that marker path:
+
+```bash
+STATE_RELPATH=$(printf '%s\n' "$STATE_OUT" | sed -n 's/^STATE_RELPATH=//p')
+MARKER_REL="${STATE_RELPATH:-larch-logs/shared/learn-from-bugs-state.json}"
+COMMIT_RC=0
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git commit \
+  -m "chore(larch-logs): update learn-from-bugs state" \
+  --only "$MARKER_REL" || COMMIT_RC=$?
+```
+
+Do not use `git add -A`, `git commit -a`, or a bare `git commit` without `--only`. If the marker commit fails, roll back only the marker and stop before Step 5:
+
+```bash
+if [ "$COMMIT_RC" -ne 0 ]; then
+  if git -C "$PWD" ls-files --error-unmatch -- "$MARKER_REL" >/dev/null 2>&1; then
+    git -C "$PWD" restore --staged --worktree -- "$MARKER_REL"
+  else
+    rm -f "$PWD/$MARKER_REL"
+  fi
+fi
+```
+
+Report that the durable marker was not committed. Do not leave an uncommitted on-disk marker that readers could treat as durable.
 
 <!-- step:5 - Follow-up gates -->
 ## Step 5 - Follow-up gates

@@ -21,6 +21,9 @@ from larch.core import config
 from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record, validate_invariant_ship_outcome_record
 from larch.core import proc
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_SHIP_OUTCOME_SIDECAR
+from larch.git import gh
+from larch.issue import learn_from_bugs
+from larch.issue.title_match import bug_title_match
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
 
@@ -107,6 +110,111 @@ def pacific_timestamp_main(argv: list[str] | None = None) -> int:
         source = "utc_fallback"
     print(f"PACIFIC_TIMESTAMP={ts}")
     print(f"PACIFIC_TIMESTAMP_SOURCE={source}")
+    return 0
+
+
+def _parse_utc_instant(raw: str) -> datetime | None:
+    text = (raw or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _iso_z(value: datetime) -> str:
+    return value.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _valid_repo(value: str) -> bool:
+    return re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value or "") is not None
+
+
+def _bugs_backlog_nudge_issue_rows(*, repo: str, boundary: str) -> list[dict[str, object]] | None:
+    result = gh._gh(  # noqa: SLF001 - existing typed gh argv seam; no public issue-list wrapper yet
+        proc,
+        [
+            "issue",
+            "list",
+            "--state",
+            "closed",
+            "--repo",
+            repo,
+            "--search",
+            f"[BUG] in:title closed:>{boundary}",
+            "--limit",
+            "100000",
+            "--json",
+            "number,title,closedAt",
+        ]
+    )
+    if result.returncode != 0:
+        reason = (result.stderr or result.stdout or "gh issue list failed").strip()
+        print(f"audit-runs bugs-backlog-nudge: gh issue list failed: {reason}", file=sys.stderr)
+        return None
+    try:
+        parsed = json.loads(result.stdout or "[]")
+    except json.JSONDecodeError as exc:
+        print(f"audit-runs bugs-backlog-nudge: gh issue list returned invalid JSON: {exc}", file=sys.stderr)
+        return None
+    if not isinstance(parsed, list):
+        print("audit-runs bugs-backlog-nudge: gh issue list did not return a JSON array", file=sys.stderr)
+        return None
+    rows: list[dict[str, object]] = []
+    for row in parsed:
+        if isinstance(row, dict):
+            rows.append(dict(row))
+    return rows
+
+
+def _bugs_backlog_nudge_count(*, repo: str, boundary: datetime) -> int | None:
+    rows = _bugs_backlog_nudge_issue_rows(repo=repo, boundary=_iso_z(boundary))
+    if rows is None:
+        return None
+    count = 0
+    for row in rows:
+        if not bug_title_match(str(row.get("title") or "")):
+            continue
+        closed_at = _parse_utc_instant(str(row.get("closedAt") or ""))
+        if closed_at is not None and closed_at > boundary:
+            count += 1
+    return count
+
+
+def bugs_backlog_nudge_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py audit-runs bugs-backlog-nudge", allow_abbrev=False)
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--root", required=True)
+    args = parser.parse_args(argv)
+    repo = str(args.repo)
+    if not _valid_repo(repo):
+        print("audit-runs bugs-backlog-nudge: --repo must be OWNER/REPO", file=sys.stderr)
+        return 2
+    marker = learn_from_bugs.state_path(Path(args.root))
+    state = learn_from_bugs.read_state(marker)
+    if state is not None and state.repo.lower() != repo.lower():
+        state = None
+    boundary_raw = state.scan_started_at if state is not None and state.scan_started_at else (
+        state.run_date if state is not None else ""
+    )
+    boundary = _parse_utc_instant(boundary_raw)
+    if state is None or boundary is None:
+        print("Advisory: /learn-from-bugs has never run for this repo; consider running /learn-from-bugs.")
+        return 0
+    count = _bugs_backlog_nudge_count(repo=repo, boundary=boundary)
+    if count is None:
+        return 1
+    if count > config.LEARN_FROM_BUGS_NUDGE_THRESHOLD:
+        print(
+            f"Advisory: {count} closed [BUG] issues accumulated since the last /learn-from-bugs scan; "
+            "consider running /learn-from-bugs."
+        )
     return 0
 
 

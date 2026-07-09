@@ -5,10 +5,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
 
+from larch.core import config
 from larch.core import architectural_guidelines as ag
 from larch.core.proc import CommandResult
 from larch.issue import learn_from_bugs
@@ -259,6 +261,238 @@ def test_default_search_uses_shared_bug_prefix() -> None:
     assert f"{BUG_PREFIX} in:title" == learn_from_bugs.DEFAULT_SEARCH
 
 
+def test_state_write_and_read_schema_version_one(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    state = learn_from_bugs.LearnFromBugsState(
+        run_date="2026-07-09T12:00:00Z",
+        scan_started_at="2026-07-09T11:00:00Z",
+        highest_closed_issue_number_scanned=123,
+        repo="o/r",
+        search="[BUG] in:title",
+        state="closed",
+        selected_count=7,
+    )
+
+    learn_from_bugs.write_state(marker, state)
+
+    payload = json.loads(marker.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == 1
+    assert payload["scan_started_at"] == "2026-07-09T11:00:00Z"
+    assert learn_from_bugs.read_state(marker) == state
+
+
+def test_state_missing_and_malformed_markers_are_unusable(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    assert learn_from_bugs.read_state(marker) is None
+
+    marker.parent.mkdir(parents=True)
+    marker.write_text("{not-json\n", encoding="utf-8")
+    assert learn_from_bugs.read_state(marker) is None
+
+    marker.write_text(json.dumps({"schema_version": 1, "repo": "o/r"}), encoding="utf-8")
+    assert learn_from_bugs.read_state(marker) is None
+
+
+def test_state_prior_shape_without_scan_started_at_reads_run_date(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker.parent.mkdir(parents=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_date": "2026-07-09T12:00:00Z",
+                "repo": "o/r",
+                "extra": "ignored",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    state = learn_from_bugs.read_state(marker)
+
+    assert state is not None
+    assert state.run_date == "2026-07-09T12:00:00Z"
+    assert state.scan_started_at is None
+    assert state.repo == "o/r"
+
+
+def test_write_state_cli_creates_parent_and_prints_kv(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert learn_from_bugs.write_state_main(
+        [
+            "--root",
+            str(tmp_path),
+            "--repo",
+            "o/r",
+            "--search",
+            "[BUG] in:title",
+            "--state",
+            "closed",
+            "--selected-count",
+            "0",
+            "--highest-closed-issue-number-scanned",
+            "0",
+            "--run-date",
+            "2026-07-09T12:00:00Z",
+            "--scan-started-at",
+            "2026-07-09T11:00:00Z",
+        ]
+    ) == 0
+
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    assert marker.is_file()
+    assert out["STATE_RELPATH"] == config.LEARN_FROM_BUGS_STATE_RELPATH
+    assert out["RUN_DATE"] == "2026-07-09T12:00:00Z"
+    assert out["SCAN_STARTED_AT"] == "2026-07-09T11:00:00Z"
+    assert out["HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED"] == "0"
+
+
+def test_read_state_cli_reports_missing_without_crashing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert learn_from_bugs.read_state_main(["--root", str(tmp_path)]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["LEARN_FROM_BUGS_STATE_FOUND"] == "false"
+
+
+def test_run_prepare_captures_scan_started_at_before_issue_list(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[str] = []
+
+    def fake_now() -> str:
+        events.append("clock")
+        return "2026-07-09T11:00:00Z"
+
+    class EventRunner(RecordingRunner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            events.append("gh")
+            return super().run(
+                argv, timeout=timeout, cwd=cwd, env=env, check=check, stdout=stdout, stderr=stderr
+            )
+
+    monkeypatch.setattr(learn_from_bugs, "_utc_now_iso", fake_now)
+    runner = EventRunner(responses=[_result("[]")], strict=True)
+
+    stats = learn_from_bugs.run_prepare(
+        runner,
+        learn_from_bugs.PrepareRequest(
+            search="[BUG] in:title",
+            search_explicit=False,
+            state="closed",
+            limit=50,
+            repo_explicit="o/r",
+            out_dir=tmp_path / "out",
+            root=tmp_path,
+        ),
+    )
+
+    assert events == ["clock", "gh"]
+    assert stats["SCAN_STARTED_AT"] == "2026-07-09T11:00:00Z"
+    assert stats["HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED"] == 0
+    assert stats["ISSUES_SELECTED"] == 0
+
+
+def test_run_prepare_highest_issue_number_uses_unfiltered_rows(tmp_path: Path) -> None:
+    rows = [
+        _issue(40, "not a bug", FREEFORM_BODY),
+        _issue(12, "[BUG] included", STRUCTURED_BODY),
+    ]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+
+    stats = learn_from_bugs.run_prepare(
+        runner,
+        learn_from_bugs.PrepareRequest(
+            search="[BUG] in:title",
+            search_explicit=False,
+            state="closed",
+            limit=50,
+            repo_explicit="o/r",
+            out_dir=tmp_path / "out",
+            root=tmp_path,
+        ),
+    )
+
+    assert stats["HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED"] == 40
+    assert stats["ISSUES_FILTERED_NON_BUG"] == 1
+    assert _digest_numbers(Path(str(stats["DIGEST_PATH"]))) == [12]
+
+
+def test_run_prepare_explicit_search_still_filters_non_bug_rows(tmp_path: Path) -> None:
+    rows = [
+        _issue(1, "plain issue", FREEFORM_BODY),
+        _issue(2, "[IMPLEMENTING] [BUG] lifecycle bug", STRUCTURED_BODY),
+    ]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+
+    stats = learn_from_bugs.run_prepare(
+        runner,
+        learn_from_bugs.PrepareRequest(
+            search="operator search",
+            search_explicit=True,
+            state="closed",
+            limit=50,
+            repo_explicit="o/r",
+            out_dir=tmp_path / "out",
+            root=tmp_path,
+        ),
+    )
+
+    assert stats["ISSUES_FILTERED_NON_BUG"] == 1
+    assert stats["ISSUES_SELECTED"] == 1
+    assert _digest_numbers(Path(str(stats["DIGEST_PATH"]))) == [2]
+
+
+def test_state_symlink_marker_rejected_on_read_and_write(tmp_path: Path) -> None:
+    target = tmp_path / "target.json"
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker.parent.mkdir(parents=True)
+    marker.symlink_to(target)
+    state = learn_from_bugs.LearnFromBugsState(
+        run_date="2026-07-09T12:00:00Z",
+        scan_started_at="2026-07-09T11:00:00Z",
+        highest_closed_issue_number_scanned=1,
+        repo="o/r",
+        search="[BUG] in:title",
+        state="closed",
+        selected_count=1,
+    )
+
+    assert learn_from_bugs.read_state(marker) is None
+    with pytest.raises(OSError, match="symlink"):
+        learn_from_bugs.write_state(marker, state)
+
+
+def test_state_symlink_ancestor_rejected_on_read_and_write(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    link_parent = tmp_path / "link-parent"
+    link_parent.symlink_to(real_parent, target_is_directory=True)
+    marker = link_parent / "learn-from-bugs-state.json"
+    state = learn_from_bugs.LearnFromBugsState(
+        run_date="2026-07-09T12:00:00Z",
+        scan_started_at="2026-07-09T11:00:00Z",
+        highest_closed_issue_number_scanned=1,
+        repo="o/r",
+        search="[BUG] in:title",
+        state="closed",
+        selected_count=1,
+    )
+
+    assert learn_from_bugs.read_state(marker) is None
+    with pytest.raises(OSError, match="symlink"):
+        learn_from_bugs.write_state(marker, state)
+
+
 def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     rows = [_issue(1, "[BUG] a", STRUCTURED_BODY), _issue(2, "[BUG] b", FREEFORM_BODY)]
     runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
@@ -312,7 +546,7 @@ def test_run_prepare_filters_implicit_default_search_to_bug_titles(tmp_path: Pat
     assert _digest_numbers(out_dir / "digest.jsonl") == [1, 2]
 
 
-def test_run_prepare_leaves_explicit_default_search_unfiltered(tmp_path: Path) -> None:
+def test_run_prepare_filters_explicit_default_search_to_bug_titles(tmp_path: Path) -> None:
     rows = [
         _issue(1, "[DONE] [BUG] fixed", STRUCTURED_BODY),
         _issue(2, "[Bug] mixed case", FREEFORM_BODY),
@@ -332,12 +566,12 @@ def test_run_prepare_leaves_explicit_default_search_unfiltered(tmp_path: Path) -
 
     stats = learn_from_bugs.run_prepare(runner, request)
 
-    assert stats["ISSUES_SELECTED"] == 3
-    assert stats["ISSUES_FILTERED_NON_BUG"] == 0
-    assert _digest_numbers(out_dir / "digest.jsonl") == [1, 2, 3]
+    assert stats["ISSUES_SELECTED"] == 2
+    assert stats["ISSUES_FILTERED_NON_BUG"] == 1
+    assert _digest_numbers(out_dir / "digest.jsonl") == [1, 2]
 
 
-def test_prepare_main_treats_search_flag_as_explicit(
+def test_prepare_main_filters_explicit_search_results(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -363,9 +597,9 @@ def test_prepare_main_treats_search_flag_as_explicit(
     stdout = capsys.readouterr().out
     stats = dict(line.split("=", 1) for line in stdout.splitlines() if "=" in line)
     assert rc == 0
-    assert stats["ISSUES_SELECTED"] == "1"
-    assert stats["ISSUES_FILTERED_NON_BUG"] == "0"
-    assert _digest_numbers(out_dir / "digest.jsonl") == [3]
+    assert stats["ISSUES_SELECTED"] == "0"
+    assert stats["ISSUES_FILTERED_NON_BUG"] == "1"
+    assert _digest_numbers(out_dir / "digest.jsonl") == []
 
 
 def test_prepare_main_rejects_abbreviated_search_flag(
