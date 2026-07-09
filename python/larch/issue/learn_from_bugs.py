@@ -208,7 +208,7 @@ def read_state(path: Path) -> LearnFromBugsState | None:
         if not path.is_file():
             return None
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return _state_from_json(payload)
 
@@ -220,6 +220,7 @@ def write_state(path: Path, state: LearnFromBugsState) -> None:
         path,
         json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n",
         create_parent=True,
+        prefix=f".{path.name}.",
         nofollow=True,
     )
 

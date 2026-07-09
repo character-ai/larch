@@ -292,6 +292,9 @@ def test_state_missing_and_malformed_markers_are_unusable(tmp_path: Path) -> Non
     marker.write_text(json.dumps({"schema_version": 1, "repo": "o/r"}), encoding="utf-8")
     assert learn_from_bugs.read_state(marker) is None
 
+    marker.write_bytes(b"{\"schema_version\":1,\"run_date\":\"2026-07-09T12:00:00Z\",\"repo\":\"o/r\",\"search\":\"x\",\"state\":\"closed\",\"selected_count\":1,\"highest_closed_issue_number_scanned\":0}\xff")
+    assert learn_from_bugs.read_state(marker) is None
+
 
 def test_state_prior_shape_without_scan_started_at_reads_run_date(tmp_path: Path) -> None:
     marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
@@ -470,6 +473,26 @@ def test_state_symlink_marker_rejected_on_read_and_write(tmp_path: Path) -> None
     assert learn_from_bugs.read_state(marker) is None
     with pytest.raises(OSError, match="symlink"):
         learn_from_bugs.write_state(marker, state)
+
+
+def test_state_write_ignores_fixed_temp_symlink(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker.parent.mkdir(parents=True)
+    temp = marker.with_name(marker.name + ".tmp")
+    temp.symlink_to(tmp_path / "target.json")
+    state = learn_from_bugs.LearnFromBugsState(
+        run_date="2026-07-09T12:00:00Z",
+        scan_started_at="2026-07-09T11:00:00Z",
+        highest_closed_issue_number_scanned=1,
+        repo="o/r",
+        search="[BUG] in:title",
+        state="closed",
+        selected_count=1,
+    )
+
+    learn_from_bugs.write_state(marker, state)
+
+    assert learn_from_bugs.read_state(marker) == state
 
 
 def test_state_symlink_ancestor_rejected_on_read_and_write(tmp_path: Path) -> None:
