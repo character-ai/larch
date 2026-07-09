@@ -1,0 +1,11 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	19485	4872	13553	3389	5932	1483		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	14855	3714	13256	3314	1599	400		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	14864	3716	13265	3317	1599	400		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	14879	3720	13280	3320	1599	400		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	19476	4869	13544	3386	5932	1483		0	0
+design Step 3	phase1	1	dyn-codex-plan-postmerge-route-auditor	plan-review	codex	dyn-codex-plan-postmerge-route-auditor.txt	15273	3819	13131	3283	2142	536		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	19500	4875	13568	3392	5932	1483		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	14877	3720	13278	3320	1599	400		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	19498	4875	13566	3392	5932	1483		0	0
+design Step 3	phase1	1	dyn-cursor-plan-postmerge-route-auditor	plan-review	cursor	dyn-cursor-plan-postmerge-route-auditor.txt	19894	4974	13419	3355	6475	1619		0	0

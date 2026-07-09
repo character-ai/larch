@@ -1,0 +1,1 @@
+Plan: add a closed-PR skip in `ship pre-fix-rebase`, pin it with dispatch tests, and update the Step 8 route matrix so postmerge reship keeps rechecking main health without rebasing a merged PR branch.

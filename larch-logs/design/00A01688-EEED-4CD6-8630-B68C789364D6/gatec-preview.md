@@ -1,0 +1,87 @@
+## Final Design Plan
+
+## Approach
+
+Fix the pre-fix rebase step, not the transient routing.
+
+- Keep `ship route-exit` unchanged. It should still convert transient to `reship` and write `PRE_FIX_REBASE_REQUIRED=true`.
+- Keep `Outcome.TRANSIENT`, retry counters, and `_emergency_repair_transient_recovery_result` unchanged.
+- In `_ship_pre_fix_rebase_step`, treat `PR_CLOSED=true` as a no-op pre-fix rebase.
+- Return the same shape as the phase14 skip: `(None, "skip", "continue")`.
+- Preserve the existing proof guard path: `ship_pre_fix_rebase_main` will write `.ship-pre-fix-rebase-ok` when action is `continue`.
+- Place the guard before `rebase.rebase_and_push`, adjacent to the phase14 skip. Keep existing checkout, active-rebase, and conflict-handoff handling ahead of it so a dirty mid-rebase is not hidden by `PR_CLOSED=true`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/dispatch_ship.py
+
+Add a `PR_CLOSED` guard in `_ship_pre_fix_rebase_step`.
+
+Implementation detail:
+
+- Use `_ship_pre_fix_truthy(state.get("PR_CLOSED", ""))`.
+- Return `(None, "skip", "continue")`.
+- Do not alter `_write_ship_route_handoff`.
+- Do not add a `PHASE=postmerge-push-watch` dependency. `_ship_pre_fix_read_state` already reads `PR_CLOSED`, and the approved scope chooses the closed-PR state as the guard.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+Add regression coverage near the existing pre-fix rebase tests.
+
+Suggested edits:
+
+- Extend `_write_pre_fix_state` with `pr_closed: str = "false"` and write `PR_CLOSED={pr_closed}`.
+- Add a test for `PR_CLOSED=true` with no phase14 flag:
+  - current branch and repo match state.
+  - `git.rebase_in_progress` returns `False`.
+  - `rebase.rebase_and_push` fails the test if called.
+  - CLI returns `0`.
+  - stdout is `PRE_FIX_REBASE_STATUS=skip\nNEXT_ACTION=continue\n`.
+  - `.ship-pre-fix-rebase-ok` exists.
+  - `REBASE_COUNT` does not change.
+- Add a small precedence assertion if the guard is placed after conflict handling:
+  - `PR_CLOSED=true` plus an existing conflict handoff still emits `conflict` / `conflict-fix`.
+  - This prevents a future edit from masking an in-progress handoff.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+Update the `reship` branch wording.
+
+Add a short carve-out that says `ship pre-fix-rebase` skips the physical rebase when persisted state has `PR_CLOSED=true`, emits `NEXT_ACTION=continue`, and lets the Step 8 relaunch resume the persisted phase such as `postmerge-push-watch`.
+
+Do not imply that `route-exit` stops setting `PRE_FIX_REBASE_REQUIRED=true`.
+
+## Edge cases
+
+- Open PRs must keep current pre-fix rebase behavior for `ci-fix` and normal `reship`.
+- Closed PR state should skip only the physical rebase and force-push path.
+- Existing rebase or conflict handoff state should not be masked by the closed-PR skip.
+- Missing or malformed `PR_CLOSED` should behave like false.
+- Phase14 skip behavior must remain unchanged.
+
+## Failure modes
+
+- If the guard is added in `route-exit`, the reship path may skip required proof-guard setup or change retry semantics.
+- If the guard does not write `.ship-pre-fix-rebase-ok`, Step 8 may fail the pre-fix proof guard.
+- If the guard keys only on `PHASE=postmerge-push-watch`, it widens the state reader and may miss other closed-PR resumes.
+- If the guard runs before conflict handling, a prior partial rebase can be hidden and the next ship relaunch may run from a dirty checkout.
+
+## Testing strategy
+
+Run focused tests only.
+
+- `cd python && python3 -m pytest -q tests/implement/test_implement_dispatch.py -k 'pre_fix_rebase'`
+- `cd python && python3 -m pytest -q tests/implement/test_implement_dispatch.py -k 'route_exit_marks_pre_fix_rebase_required or pre_fix_rebase_closed_pr'`
+- `cd python && python3 -m ruff check larch/implement/dispatch_ship.py tests/implement/test_implement_dispatch.py`
+
+If the Markdown edit is made, run the relevant Markdown/pre-commit check for `skills/implement/references/ship-pr-exit-matrix.md` or rely on scoped `checks run-relevant` before commit.
+
+## Confidence
+
+High. The relevant state key is already read, the existing skip/sentinel path already supports `skip` plus `continue`, and current tests cover nearby route and pre-fix behavior.
+
+difficulty: MODERATE
+diff_added: 55
+diff_deleted: 2
+mechanical_churn: false
+diff_lines: 57

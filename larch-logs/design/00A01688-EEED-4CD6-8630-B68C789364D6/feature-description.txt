@@ -1,0 +1,8 @@
+# [BUG] #6610 fix incomplete: postmerge transient retry rebases closed PR
+
+# Analyze-bugs follow-up
+
+Repo: character-ai/larch
+
+Findings:
+- #6610: INCOMPLETE. The literal reported repro (operator manually reruns failed post-merge CI, relaunches the driver, still stuck at NEEDS_USER_INPUT) is fixed: ship.py's _emergency_repair_transient_recovery_result (~1133-1188), reached from run_ship's resume.start=='emergency-repair' branch, re-checks MAIN_REPAIR_HEAD with skip_flap_check=True and, if green, calls run_postmerge_phase() directly to finalize as merged, bypassing pre-fix-rebase entirely. But the fix's second, proactive mechanism (_postmerge_main_health_gate, ship.py:730-788, reruns the failed job once and returns Outcome.TRANSIENT) surfaces through the generic ship-route-exit TRANSIENT-to-reship conversion in dispatch_ship.py (~802-815), which unconditionally sets PRE_FIX_REBASE_REQUIRED=true (dispatch_ship.py:375-378) with no phase-specific carve-out for PHASE=postmerge-push-watch or PR_CLOSED=true (grep found zero references to postmerge-push-watch in dispatch_ship.py). Since larch avoids checking out main directly post-merge, the local branch will typically still equal BRANCH_NAME, so _ship_pre_fix_validate_checkout will not block a pre-fix-rebase attempt against an already-merged, closed-PR branch. Code review raised exactly this concern (FINDING_2, major) and it was voted down 0/3 YES, but no protective carve-out exists in the code I read. The manual-recovery path is solid; the fully-automatic proactive-retry path added by this same fix has an unresolved routing gap.

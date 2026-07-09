@@ -1,0 +1,12 @@
+{"type":"mark","step":"design Step 0: session setup","ts":"2026-07-09T04:43:03Z"}
+{"type":"vendor","vendor":"codex","input":121951,"output":5476,"cache_read":202112,"cache_create":0,"total":329539,"raw":"codex_plan_draft","ts":"2026-07-09T04:56:14Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":38865,"output":9935,"cache_read":385280,"cache_create":0,"total":434080,"raw":"codex_review","ts":"2026-07-09T04:58:38Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":43843,"output":9686,"cache_read":460032,"cache_create":0,"total":513561,"raw":"codex_review","ts":"2026-07-09T04:58:56Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":57546,"output":14895,"cache_read":548096,"cache_create":0,"total":620537,"raw":"codex_review","ts":"2026-07-09T04:59:12Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":98936,"output":16240,"cache_read":965632,"cache_create":0,"total":1080808,"raw":"codex_review","ts":"2026-07-09T04:59:23Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":53097,"output":12945,"cache_read":664064,"cache_create":0,"total":730106,"raw":"codex_review","ts":"2026-07-09T04:59:30Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":110022,"output":8194,"cache_read":1209984,"cache_create":0,"total":1328200,"raw":"cursor_review","ts":"2026-07-09T05:01:16Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":119790,"output":10548,"cache_read":1542614,"cache_create":0,"total":1672952,"raw":"cursor_review","ts":"2026-07-09T05:01:55Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":106694,"output":9364,"cache_read":1238487,"cache_create":0,"total":1354545,"raw":"cursor_review","ts":"2026-07-09T05:02:21Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":120690,"output":12307,"cache_read":2031765,"cache_create":0,"total":2164762,"raw":"cursor_review","ts":"2026-07-09T05:02:45Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":174672,"output":9559,"cache_read":1190162,"cache_create":0,"total":1374393,"raw":"cursor_review","ts":"2026-07-09T05:03:42Z","model":"composer-2.5"}
