@@ -1,15 +1,16 @@
-## /implement run AF4B5053-000D-4EEC-A142-A7CDA7200B34: shipping
+## /implement run AF4B5053-000D-4EEC-A142-A7CDA7200B34: stalled
 
-- **Outcome**: shipping
+- **Outcome**: ❌ STALLED
 - **Duration**: 01:55:51
-- **Cost**: 💰 TOTAL ~$79.78: Claude $11.91, Codex-5.5 $39.54, Codex-mini $4.20, Cursor $22.63, Claude (subprocess) $1.50  |  Tokens: 151153k
+- **Cost**: 💰 TOTAL ~$79.81: Claude $11.91, Codex-5.5 $39.54, Codex-mini $4.20, Cursor $22.63, Claude (subprocess) $1.53  |  Tokens: 151222k
 - **Issue**: #6516: https://github.com/character-ai/larch/issues/6516
+- **PR**: #6706: https://github.com/character-ai/larch/pull/6706
 - **Plan review**: N/A
-- **Plan coverage**: 74/93 firm headings; band: middle; disposition: none; todos_left: 0
+- **Plan coverage**: 75/93 firm headings; band: middle; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/7 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +637/-6967, larch-logs +1481/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6705
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -90,11 +91,3 @@ codex/apply                 │                                            █�
 6. dynamic/dyn-bgjob-routing: 2
 
 **Reviewer slot failures**: 0
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
