@@ -235,6 +235,12 @@ def test_parse_preterminal_outcome_label_targets_run_heading() -> None:
         )
         == "shipping"
     )
+    assert (
+        run_log_flush._parse_preterminal_outcome_label(  # pyright: ignore[reportPrivateUsage]
+            "## /implement final summary\n\n## /implement final summary: stalled\n",
+        )
+        == "stalled"
+    )
 
 
 def test_flush_logs_pre_refuses_preterminal_forbidden_label(

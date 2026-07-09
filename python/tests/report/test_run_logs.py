@@ -3293,6 +3293,44 @@ def test_capture_transcript_main_missing_source(tmp_path: Path) -> None:
     assert "SESSION_TRANSCRIPT_STATUS=source-file-missing" in buf.getvalue()
 
 
+def test_capture_transcript_main_rejects_invalid_run_id_before_path_lookup(
+    tmp_path: Path,
+) -> None:
+    outside = tmp_path / "outside" / "session-transcript.jsonl"
+    outside.parent.mkdir(parents=True)
+    _ = outside.write_text('{"type":"message"}\n', encoding="utf-8")
+    issues_log = tmp_path / "execution-issues.md"
+    _ = issues_log.write_text("", encoding="utf-8")
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.capture_transcript_main(
+            [
+                "--source-file",
+                str(tmp_path / "missing.txt"),
+                "--log-root",
+                str(tmp_path / "larch-logs"),
+                "--tmpdir",
+                str(tmp_path),
+                "--skill",
+                "implement",
+                "--run-id",
+                "../../../outside",
+                "--no-logs-commit",
+                "true",
+                "--refresh-mode",
+                "true",
+                "--execution-issues-log",
+                str(issues_log),
+            ],
+        )
+    assert rc == 0
+    captured = buf.getvalue()
+    assert "SESSION_TRANSCRIPT_STATUS=invalid-run-id" in captured
+    assert "source-file-missing" not in captured
+    assert outside.read_text(encoding="utf-8") == '{"type":"message"}\n'
+
+
 def test_capture_transcript_main_defer_commit_no_warning(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

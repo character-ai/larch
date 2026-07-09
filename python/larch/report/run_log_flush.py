@@ -663,7 +663,7 @@ def _parse_preterminal_outcome_label(text: str) -> str | None:
         dash_index = line.rfind(" — ")
         separator_index = max(colon_index, dash_index)
         if separator_index < 0:
-            return None
+            continue
         separator_len = 3 if dash_index > colon_index else 2
         label = line[separator_index + separator_len:].strip().lower()
         return label or None
@@ -966,6 +966,13 @@ def capture_transcript_main(argv: list[str]) -> int:
         return 0
     issues_log = Path(args.execution_issues_log) if args.execution_issues_log else None
     log_root = Path(args.log_root)
+    if not validate_run_id_slug(args.run_id):
+        return _capture_transcript_emit(
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="invalid-run-id",
+            message="run-id was invalid; transcript capture skipped.",
+        )
     existing_transcript = log_root / args.skill / args.run_id / "session-transcript.jsonl"
     source = Path(args.source_file) if args.source_file else None
     transcript_path: Path | None = None
