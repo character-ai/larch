@@ -266,6 +266,13 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: stale prose pointing at a renamed entity is the top recurring OOS source, and a green test suite does not catch it. Grep `docs/`, `skills/**/SKILL.md`, `README.md`, `SECURITY.md`, and `.github/workflows/` for the old token.
 - Deviate when: n/a; the sweep is cheap and the failure mode is silent.
 
+## Migration discipline
+
+### G-Mig-1: Inventory environmental assumptions before a platform migration
+- Why: two platform migrations broke distant features that depended on properties the migration changed rather than on any code it edited; the Python flush port moved rendered files into the system `$TMPDIR` and corrupted every subsequent transcript capture (#6263), and the bgjob transport removed the idle prompt that the typed `p`/`progress` surface required to fire at all (#6624), and neither victim surface appeared in the migration diffs, so review could not catch them.
+- Guidance: before landing a migration that changes an execution-environment property, such as temp-file location, process lifetime, turn or idle structure, working directory, or notification timing, enumerate the features keyed on that property by searching for its consumers (env-var reads, hook trigger channels, path derivations), and verify or migrate each consumer in the same change or a linked tracking issue.
+- Deviate when: the changed property provably has no consumer outside the migration's edit surface; say so in the PR description and name the search you ran.
+
 ## Enforcement philosophy
 
 ### G-Enf-1: Prefer mechanical enforcement
