@@ -13,6 +13,7 @@ from pathlib import Path
 from larch.core import config
 from larch.core import env_file
 from larch.core import proc
+from larch.report import progress_file  # lint-layering: ok cleanup driver prunes stale progress breadcrumb files owned by larch.report
 
 TMP_PATTERNS = (
     "claude-implement-*",
@@ -194,10 +195,13 @@ def run_main(argv: list[str]) -> int:
             if (not impl_tmpdir or not Path(impl_tmpdir).is_dir()) and _remove_entry(pointer):
                 pointers_removed += 1
     _emit(key="IMPLEMENT_POINTERS_REMOVED", value=pointers_removed)
+    progress_removed = progress_file.cleanup_old_progress_files(retention_days=retention)
+    _emit(key="PROGRESS_REMOVED", value=progress_removed)
     _warn("")
     _warn("Cleanup complete:")
     _warn(f"  ~/.cache/larch/sessions/: {cache_removed} entries removed")
     _warn(f"  /tmp (larch patterns):    {tmp_removed} entries removed")
     _warn(f"  dangling design-env links: {symlinks_removed} removed")
     _warn(f"  stale implement-env files: {pointers_removed} removed")
+    _warn(f"  progress breadcrumbs:      {progress_removed} removed")
     return 0

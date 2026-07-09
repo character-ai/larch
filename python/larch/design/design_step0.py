@@ -2,6 +2,7 @@
 # pylint: disable=cyclic-import
 # pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false, reportPrivateUsage=false
 
+# ruff: noqa: SLF001
 from __future__ import annotations
 
 import contextlib
@@ -24,6 +25,7 @@ from larch.core import proc
 
 from larch.design.design_core import _capture_contract_stream_to_paths, _cli_cmd, _append_failure
 from larch.design.design_router import _parse_stdout_kv, _write_kv_file
+from larch.state import bootstrap
 from larch.design.design_step0_env import (
     _emit_parse_kvs,
     _emit_step0_init_rows,
@@ -162,6 +164,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
     _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    bootstrap._install_statusline_best_effort()
     setup = subprocess.run(
         _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
         stdout=subprocess.PIPE,

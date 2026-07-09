@@ -116,11 +116,24 @@ def test_scaling_clamping_and_filtering() -> None:
     assert _track(rows[3]).startswith("█")
 
 
-def test_label_width_uses_all_rows_not_just_filtered() -> None:
-    # An out-of-window row with a longer label than any in-window row must still
-    # anchor the left column so the border and all data-row │ glyphs line up.
+def test_label_width_uses_visible_rows_not_filtered_out_rows() -> None:
     long_label = "this-label-is-longer-than-any-visible-row"
-    chart = render_gantt(
+    default_chart = render_gantt(
+        window_start_s=100,
+        window_end_s=200,
+        rows=[
+            GanttRow("short", 100, 150),
+            GanttRow(long_label, 1, 99),  # outside window, not rendered
+        ],
+    )
+    default_lines = default_chart.splitlines()
+    default_left, _ = _border_cols(default_lines)
+    default_row = next(line for line in default_lines if line.startswith("short"))
+    assert long_label not in default_chart
+    assert default_left == len("short") + 1
+    assert len(_track(default_row)) == DEFAULT_WIDTH
+
+    explicit_chart = render_gantt(
         window_start_s=100,
         window_end_s=200,
         rows=[
@@ -129,9 +142,9 @@ def test_label_width_uses_all_rows_not_just_filtered() -> None:
         ],
         width=20,
     )
-    lines = chart.splitlines()
+    lines = explicit_chart.splitlines()
     left, _ = _border_cols(lines)
-    assert left == len(long_label) + 1
+    assert left == len("short") + 1
     for line in lines:
         if "│" in line:
             assert line.index("│") == left

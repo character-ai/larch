@@ -266,9 +266,5 @@ fi
 if [ "$_inv_rc" -ne 0 ]; then
     exit "$_inv_rc"
 fi
-if [ "$MODE" != resume ]; then
-    printf '%s
-' 'progress: type p (or progress) at any time'
-fi
 printf '%s
 ' "$_inv_out"

@@ -572,7 +572,7 @@ exclude = [
   "scripts/test-hook-bg-poll-guard.sh",
   "scripts/test-hook-no-progress-guard.sh",
   "scripts/test-hook-clone-ownership-parity.sh",
-  "scripts/test-hook-progress-report.sh",
+  "scripts/test-sessionstart-statusline.sh",
   "scripts/test-hook-stop-fail-close.sh",
   "scripts/test-hook-deny-run-in-background.sh",
   # scripts/test-bgjob.sh is the Makefile-only regression harness for bgjob
@@ -1039,8 +1039,7 @@ exclude = [
   "scripts/hook-bg-poll-guard.md",
   "scripts/test-hook-no-progress-guard.md",
   "scripts/hook-no-progress-guard.md",
-  "scripts/test-hook-progress-report.md",
-  "scripts/hook-progress-report.md",
+  "scripts/sessionstart-statusline.md",
   "python/agents.py",
   "python/test_agents.py",
   "python/test_agents.py",

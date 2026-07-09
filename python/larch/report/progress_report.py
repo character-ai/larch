@@ -1,4 +1,4 @@
-"""On-demand progress reports for live larch runs."""
+"""Review phase detail and round metadata helpers."""
 # ruff: noqa: F401
 # pylint: disable=unused-import
 # pyright: reportUnknownVariableType=false, reportUnusedCallResult=false, reportPrivateUsage=false, reportUnusedImport=false
@@ -715,6 +715,7 @@ def _render_phase_gantt(
                 label_map=label_map,
                 skip_ci=True,
                 require_complete_status=False,
+                cap=None,
             )
             chart = render_gantt(window_start_s=start_s, window_end_s=end_s, rows=rows) if rows else ""
             if chart:
@@ -1060,6 +1061,7 @@ def _progress_vendor_rows(
     label_map: dict[str, str] | None = None,
     skip_ci: bool = False,
     require_complete_status: bool = True,
+    cap: int | None = PROGRESS_GANTT_ROW_CAP,
 ) -> list[GanttRow]:
     if window_end_s <= window_start_s:
         return []
@@ -1099,7 +1101,7 @@ def _progress_vendor_rows(
             _is_chart_vendor_fallback_output(output),
         ))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
-    capped = _cap_gantt_rows_reserving_apply(rows, cap=PROGRESS_GANTT_ROW_CAP)
+    capped = rows if cap is None else _cap_gantt_rows_reserving_apply(rows, cap=cap)
     return [GanttRow(label, start_s, end_s) for start_s, end_s, label, _, _ in capped]
 
 
@@ -1601,7 +1603,7 @@ def _render_design(run: LiveRun) -> str:
     return _render_generic(skill="design", step_label=step_label, start_s=start_s, tmpdir=run.tmpdir)
 
 
-def _report(cwd: str) -> str:
+def _report(cwd: str) -> str:  # type: ignore[reportUnusedFunction]
     run = _discover_live_run(cwd)
     if run is None:
         return ""
@@ -1821,7 +1823,7 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
     raw = round_dir / difficulty.SCOUT_RAW_RATING_BASENAME
     rating = difficulty.read_rating_file(raw)
     record = _read_json_object(round_dir / difficulty.DIFFICULTY_RECORD_BASENAME)
-    if not isinstance(record, dict):
+    if not isinstance(record, dict):  # type: ignore[reportUnnecessaryIsInstance]
         record = {}
     if rating is None and not record:
         return {
@@ -1837,7 +1839,7 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
         "scout": {"status": "absent"},
     }
     if rating is not None:
-        object_data.update(
+        object_data.update(  # type: ignore[reportUnknownArgumentType]
             {
                 "tier_in_effect": rating.adjusted_tier,
                 "ceiling_in_effect": rating.adjusted_tier,
@@ -1858,7 +1860,7 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
             round_cap = min(round_cap, difficulty.tier_ceiling(panel_tier))
         escalations = record.get("escalations")
         object_data.update(
-            {
+            {  # type: ignore[reportUnknownArgumentType]
                 "tier_in_effect": panel_tier or object_data.get("tier_in_effect"),
                 "ceiling_in_effect": round_cap if round_cap is not None else object_data.get("ceiling_in_effect"),
                 "applied_tier": str(record.get("applied_tier") or ""),
@@ -2108,20 +2110,3 @@ def write_implement_round_meta_main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
     return write_implement_round_meta(Path(args.round_dir))
-
-
-def report_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="progress report", add_help=True)
-    _ = parser.add_argument("--cwd", default="")
-    try:
-        args = parser.parse_args(argv)
-    except SystemExit as exc:
-        return int(exc.code) if isinstance(exc.code, int) else 2
-    try:
-        report = _report(args.cwd)
-    except Exception:  # pylint: disable=broad-except
-        return 0
-    if report:
-        print(report)
-    return 0
-# pyright: reportUnnecessaryIsInstance=false, reportUnknownArgumentType=false

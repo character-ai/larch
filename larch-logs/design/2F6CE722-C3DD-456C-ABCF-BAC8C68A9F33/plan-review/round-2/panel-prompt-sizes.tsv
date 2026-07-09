@@ -1,0 +1,5 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	2	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18632	4658	13265	3317	5367	1342		0	0
+design Step 3	phase1	2	voter-1	voter	codex	codex-validity-vote-output.txt	14807	3702	9132	2283	5675	1419		0	0
+design Step 3	phase1	2	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14807	3702	9132	2283	5675	1419		0	0
+design Step 3	phase1	2	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14807	3702	9132	2283	5675	1419		0	0

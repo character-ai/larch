@@ -25,6 +25,7 @@ from pathlib import Path
 
 from larch.core import logging_util
 from larch.core import config
+from larch.report import progress_file
 from larch.design.design_lifecycle import (
     json_get_bool_main as design_json_get_bool_main,
     phase_driver_read_result_env,
@@ -99,6 +100,10 @@ from larch.review.plan_review_normalize import (
 # Tests can patch plan_review._run_command to intercept all facade subprocess calls.
 
 
+def _progress_note(*, step: str, text: str) -> None:
+    _ = progress_file.append_breadcrumb(Path.cwd(), "design", step, text)
+
+
 def _exec_pause_save(tmpdir: Path) -> int:
     issue = os.environ.get("ISSUE_NUMBER", "")
     cmd = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "pause-save", "--design-tmpdir", str(tmpdir)]
@@ -118,9 +123,11 @@ def _run_post_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> 
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "postplan-emit"]
+    _progress_note(step="3", text="plan-review post-apply running")
     proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=consumer_repo_root())
     rc = proc.returncode
     if rc == 0:
+        _progress_note(step="3", text="plan-review awaiting continuation")
         _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
     if rc == POSTPLAN_RC_PAUSE:
@@ -198,6 +205,7 @@ def _run_dedup(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-review", "gate-b-dedup"]
+    _progress_note(step="3", text="plan-review dedup running")
     proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--snapshot-trailers"])
     rc = proc.returncode
     if rc == 0:
@@ -503,6 +511,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 _step3_emit_cap_reached(review_count=review_count)
                 step3_loop_persist_envelope(design_tmpdir=tmpdir, status="cap-hit", round_num=review_count + 1, rounds_completed=review_count, final_round=review_count + 1, values=values)
                 return 0
+            _progress_note(step="3", text=f"round {round_num} launched")
             _write_count(tmpdir=tmpdir, count=round_num)
             _body_rc, values = _run_round_body(tmpdir=tmpdir, round_num=round_num)
             rounds_done = _read_count(tmpdir)
@@ -527,6 +536,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 values = _merge_step3_round_carry_warnings(values=values, carry=degraded_values)
                 accepted = _count_accepted(tmpdir) or int(values.get("ACCEPTED_COUNT", "0") or "0")
                 values["ACCEPTED_COUNT"] = str(accepted)
+                _progress_note(step="3", text=f"round {round_num} complete with {accepted} accepted")
                 for key in _STEP3_ROUND_CARRY_KEYS:
                     if values.get(key):
                         degraded_values[key] = values[key]

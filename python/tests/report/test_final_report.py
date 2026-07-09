@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from larch.core import config
-from larch.report import final_report
+from larch.report import final_report, progress_report
 
 if TYPE_CHECKING:
     import pytest
@@ -38,6 +38,60 @@ def _stub_cost_and_assessment(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
     monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", no_assess)
+
+
+def _write_round_meta(round_dir: Path, *, reviewers: int) -> None:
+    round_dir.mkdir(parents=True, exist_ok=True)
+    (round_dir / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "2",
+                "REJECTED_COUNT": "1",
+                "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "1",
+                "OOS_ACCEPTED_COUNT": "1",
+                "OOS_REJECTED_COUNT": "1",
+            },
+            "summary": {"panel": {"total_slot_count": reviewers}},
+        }),
+        encoding="utf-8",
+    )
+
+
+def _write_round_timing(ledger: Path, *, round_num: int, start_s: int, end_s: int) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    duration = max(0, end_s - start_s)
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(
+            f"v1\tround\t{start_s}\timplement\t-\t{round_num}\t{start_s}\t{end_s}\t"
+            f"{duration}\t0\t0\t0\t-\n"
+        )
+
+
+def _write_vendor_timing(ledger: Path, output: str, start_s: int, end_s: int) -> None:
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    duration = max(0, end_s - start_s)
+    with ledger.open("a", encoding="utf-8") as handle:
+        handle.write(
+            f"v1\tvendor\t{end_s}\timplement\t-\tcodex\tcodex-review\t{start_s}\t{end_s}\t"
+            f"{duration}\t{output}\t0\tcomplete\n"
+        )
+
+
+def _write_over_cap_plain_codex_review_rows(ledger: Path) -> tuple[int, str]:
+    over_cap = progress_report.PROGRESS_GANTT_ROW_CAP + 2
+    for index in range(over_cap):
+        _write_vendor_timing(
+            ledger,
+            f"codex-specialist-row-{index}-output.txt",
+            100 + index,
+            150,
+        )
+    return over_cap, f"codex/row-{over_cap - 1}"
+
+
+def _visible_gantt_data_row_count(text: str) -> int:
+    return sum(1 for line in text.splitlines() if "│" in line and "█" in line)
 
 
 def test_write_final_report_summary_final_write_failure_returns_error(
@@ -134,6 +188,37 @@ def test_write_final_report_includes_review_timing_gantt(tmp_path: Path, monkeyp
     assert "No review rounds completed." not in summary
     assert "No reviewer timing tasks overlapped this round." not in summary
     assert "No reviewer timing tasks overlapped" not in summary
+
+
+def test_write_final_report_includes_uncapped_review_timing_gantt(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    round_dir = run_dir / "round-1"
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, round_num=1, start_s=100, end_s=200)
+    over_cap, latest_label = _write_over_cap_plain_codex_review_rows(timing)
+    _write_round_meta(round_dir, reviewers=over_cap)
+    _stub_cost_and_assessment(monkeypatch)
+
+    rc, url, err = final_report.write_final_report(
+        tmp_path,
+        comment_only=False,
+        skip_tracking_upsert=True,
+    )
+
+    assert (rc, url, err) == (0, "", "")
+    summary_paths = [
+        tmp_path / "summary-final.md",
+        run_dir / "final-summary.md",
+    ]
+    for summary_path in summary_paths:
+        body = summary_path.read_text(encoding="utf-8")
+        assert "### Round 1 reviewer timing" in body
+        assert "```" in body
+        assert "█" in body
+        assert latest_label in body
+        assert _visible_gantt_data_row_count(body) >= over_cap
+        assert "codex/codex-review" not in body
 
 
 def test_step18b_reports_write_failure(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

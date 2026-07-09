@@ -26,6 +26,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.report import progress_report
+from larch.report import progress_file
 from larch.core import redact
 from larch.review import review_pipeline
 from larch.review import review_tally
@@ -111,6 +112,12 @@ from larch.review.round_runner import (
     _timing_row_matches,
     review_core_capture,
 )
+
+
+
+def _progress_note(*, step: str, text: str) -> None:
+    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
+
 
 # Keep these module-level constants for backward compatibility with any code
 # that reads them via review_and_fix._PLUGIN_ROOT etc.
@@ -978,12 +985,20 @@ def step5(argv: list[str] | None = None) -> int:
                 return 0
             args.round_num = str(round_num)
             start_s = int(time.time())
+            _progress_note(step="5", text=f"review round {round_num} running")
             _persist_round_start(implement_tmpdir=implement_tmpdir, round_num=round_num, start_s=start_s)
             stderr_path = round_dir_stderr(implement_tmpdir=implement_tmpdir, round_num=round_num)
             with _stderr_sidecar(stderr_path):
                 result = _run_round(args, suppress_emit=True)
             last = result
             rounds_completed = round_num
+            _progress_note(
+                step="5",
+                text=(
+                    f"review round {round_num} done: "
+                    f"{result.accepted_count} accepted, {result.rejected_count} rejected"
+                ),
+            )
             if result.status in {"main-agent-vote-required", "coder-main-agent-required"}:
                 _persist_round_start(implement_tmpdir=implement_tmpdir, round_num=round_num, start_s=start_s)
                 handoff_rows = _record_handoff_escalation_and_restage(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path, run_id=args.run_id)

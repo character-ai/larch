@@ -14,6 +14,7 @@ from larch.core import logging_util
 from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.outcomes import Outcome
+from larch.report import progress_file
 from larch.report import run_logs
 from larch.state import finalize
 
@@ -158,6 +159,10 @@ INITIAL_SHIP_STATE_KEYS: tuple[str, ...] = (
 def _breadcrumb(*, step: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
     logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}")
+
+
+def _progress_note(*, step: str, text: str) -> None:
+    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
 
 
 def _state_bool(*, value: bool) -> str:

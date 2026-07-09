@@ -1,0 +1,74 @@
+### FINDING_1: Preserve `ctx.tmpdir`-only gating
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: minor
+- **Concern**: Preserve `ctx.tmpdir`-only gating in `_require_scope_disposition`; otherwise stale `IMPLEMENT_TMPDIR` can change today’s no-op behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: State in the plan that _require_scope_disposition keeps the falsy ctx.tmpdir early return and calls the shared gate only with explicit tmpdir=Path(ctx.tmpdir); reserve IMPLEMENT_TMPDIR fallback for create_pr_parity, body_update_main, and gh helpers only.
+
+### FINDING_2: Align `body_update_main` refusal output
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: minor
+- **Concern**: `body_update_main`’s needs-user stdout contract is underspecified versus `create_main`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Align body_update_main with create_main: on scope-disposition refusal emit needs_user_reason=scope-disposition and NEXT_ACTION=halt-scope-disposition with exit 3 and UPDATED=false, and extend python/tests/git/test_pr.py assertions accordingly.
+
+### FINDING_3: Fail closed on stale disposition recompute failures
+- **Reviewer(s)**: Codex-Arch, Cursor-dyn-Scope Gate Security, Codex-dyn-Scope Gate Security
+- **Severity**: major
+- **Concern**: Advisory fallback still bypasses stale scope-disposition records when recompute cannot run.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: If scope-disposition.json exists, fail closed when recompute cannot prove the current plan. Do not return the advisory success path unless no disposition record is present.
+  - From Cursor-dyn-Scope Gate Security: Tighten validate_disposition_for_ship or the new gate helper: when relevance artifacts exist and recompute cannot run (missing/unreadable plan.txt), fail closed even if persisted coverage marks disposition_required=false; narrow the planned advisory test to cases where recompute succeeds or plan.txt is readable.
+  - From Codex-dyn-Scope Gate Security: Change the mutation gate to block on any gate-relevant recompute failure. Do not downgrade to advisory solely because persisted coverage was non-required. Raise NeedsUserInput for the stale or missing-plan case instead.
+
+### FINDING_4: Gate push paths before `git push`
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: The plan omits push-module gates, so stale tmpdirs can still reach `git push`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Run the shared relevance gate at the start of push_branch (and force_main if it can push) before any git push when scope artifacts are present
+
+### FINDING_5: Pin repo-root resolution in shared gate callers
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Scope Gate Security
+- **Severity**: minor
+- **Concern**: The shared gate contract omits explicit repo_root resolution, which can misvalidate subdirectory and env-only gh callers.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Pin repo_root resolution in the helper (git rev-parse --show-toplevel with cwd, shared _resolve_repo_root, then Path.cwd) and thread cwd through gh gate calls
+  - From Cursor-Pragmatic: Add repo_root to the shared helper contract: resolve via git rev-parse --show-toplevel with runner and cwd, matching dispatch_helpers._resolve_repo_root, and pass it into require_valid_disposition_for_ship from every gate caller
+  - From Cursor-dyn-Scope Gate Security: Specify in the helper contract: resolve repo_root via git rev-parse --show-toplevel (cwd when provided, else proc); when relevance artifacts exist and resolution fails, fail closed with NeedsUserInput instead of no-op or advisory pass-through.
+
+### FINDING_6: Resolve the consumer repo root before validation
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: major
+- **Concern**: The new validation path uses `Path(cwd or ".").resolve()` as repo_root instead of the git toplevel.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Resolve the consumer repo root with git rev-parse --show-toplevel or consumer_repo_root() before validation, and fail closed if it cannot be found.
+
+### FINDING_7: Treat manifest-only tmpdirs as in-scope
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: major
+- **Concern**: Gate relevance ignores the resolved manifest, so a tmpdir with only `manifest.json` can skip validation even when disposition is still required.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Include manifest presence or manifest-derived todo state in the relevance check, or call the validator whenever the manifest is present and fail closed on required disposition.
+
+### FINDING_8: Check body-file existence before gating
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: major
+- **Concern**: `body_update_main` would run the new gate before the helper’s existing body-file existence check, changing the current missing-file error path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Check the body file before the new gate in body_update_main, or keep the existence check inside the helper and call the gate only after that check.
+
+### FINDING_9: Preserve `NeedsUserInput` through parity and push helpers
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: minor
+- **Concern**: The shared gate must not be translated into push-failed or `False` paths before `create_main` can emit the needs-user route.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: State explicitly that the shared gate raises NeedsUserInput and that create_pr_parity / _push_open_pr_branch must not catch or translate it into push_failed or False
+
+### FINDING_10: Handle `NeedsUserInput` before the broad `Exception` handler
+- **Reviewer(s)**: Cursor-dyn-Scope Gate Security, Codex-dyn-Scope Gate Security
+- **Severity**: major
+- **Concern**: `create_main` still downgrades a scope-disposition refusal to generic `PR_STATUS=error` instead of the required needs-user route.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Scope Gate Security: Add an explicit except NeedsUserInput handler before the broad except in create_main (and assert in test_pr.py) that emits the same KVs as ship pre-driver and returns config.EXIT_NEEDS_USER_INPUT without calling gh or git push.
+  - From Codex-dyn-Scope Gate Security: Add an explicit except NeedsUserInput block before the broad handler. Emit needs_user_reason=scope-disposition, NEXT_ACTION=halt-scope-disposition, return config.EXIT_NEEDS_USER_INPUT, and leave the generic catch for unexpected errors only.

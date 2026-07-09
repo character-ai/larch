@@ -765,7 +765,7 @@
     "file": "larch/core/cleanup_skill.py",
     "code": "PLR0915",
     "qualified_symbol": "run_main",
-    "metric": 51
+    "metric": 54
   },
   {
     "file": "larch/core/forked_repo.py",
@@ -2565,7 +2565,7 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0915",
     "qualified_symbol": "stage_and_push",
-    "metric": 60
+    "metric": 61
   },
   {
     "file": "larch/implement/dispatch_helpers.py",
@@ -2625,7 +2625,7 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 56
+    "metric": 59
   },
   {
     "file": "larch/implement/ship.py",
@@ -2649,7 +2649,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 61
+    "metric": 64
   },
   {
     "file": "larch/implement/ship.py",
@@ -2673,7 +2673,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 190
+    "metric": 200
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -4359,7 +4359,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_progress_vendor_rows",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/report/progress_report.py",
@@ -5097,7 +5097,7 @@
     "file": "larch/review/plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 140
+    "metric": 142
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5463,7 +5463,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 155
+    "metric": 157
   },
   {
     "file": "larch/review/review_collect.py",
@@ -5541,7 +5541,7 @@
     "file": "larch/review/review_core_body.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_core_body",
-    "metric": 229
+    "metric": 241
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -6255,7 +6255,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_phase_infra",
-    "metric": 76
+    "metric": 77
   },
   {
     "file": "larch/state/bootstrap.py",

@@ -1,0 +1,23 @@
+# [OOS] [OUT_OF_SCOPE] PR mutation entry points can bypass disposition validation
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-correctness, cursor-specialist-edge-cases, cursor-specialist-plan-fidelity-auto, codex-specialist-correctness, codex-specialist-edge-cases, codex-specialist-testing, dyn-dyn-scope-gate
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+Direct PR mutation paths, including `create_main`/`create_pr_parity`, `body_update_main`, `gh.pr_edit_body_file`, and the `plan.txt` skip/carve-out path, can reach `gh` mutations without the shared scope-disposition validator. A resumed or corrupted tmpdir can therefore bypass the gate, especially when coverage artifacts require disposition but `plan.txt` is missing, stale, malformed, or used as the sole gate signal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - Run `_require_scope_disposition` or `scope_disposition.require_valid_disposition_for_ship()` before every PR mutation path, including create, push, parity, and body-edit flows; alternatively route these paths through `ensure_pr`.
+  - Resolve `IMPLEMENT_TMPDIR` from env or an explicit flag before mutation, and fail closed before any `gh` operation when required artifacts are missing, stale, unreadable, malformed, or cannot be recomputed.
+  - Gate on readable coverage artifacts such as `plan-coverage.json` with `disposition_required=true`, not `plan.txt` presence alone; fail closed when `scope-disposition.json` exists but `plan.txt` is absent.
+  - Map missing or stale disposition to the same needs-user route used by existing guarded ship paths.
+  - Add direct-mutation regression coverage, including `body_update_main`/`gh.pr_edit_body_file`, in `python/tests/git/test_pr.py`.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
