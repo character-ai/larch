@@ -1,0 +1,14 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	2	dyn-dyn-ast-ratchet	specialist	cursor	dyn-dyn-ast-ratchet-output.txt	62676	15669	31629	7908	31047	7762		0	0
+implement Step 5	phase1	2	dyn-dyn-ast-ratchet-codex	specialist	codex	dyn-dyn-ast-ratchet-codex-output.txt	62676	15669	31629	7908	31047	7762		0	0
+implement Step 5	phase1	2	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	65919	16480	35366	8842	30553	7639	agents/reviewer-correctness.md	5788	1447
+implement Step 5	phase1	2	testing	specialist	cursor	cursor-specialist-testing-output.txt	65833	16459	35280	8820	30553	7639	agents/reviewer-testing.md	5764	1441
+implement Step 5	phase1	2	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	66391	16598	35838	8960	30553	7639	agents/reviewer-edge-cases.md	6297	1575
+implement Step 5	phase1	2	correctness	specialist	codex	codex-specialist-correctness-output.txt	65919	16480	35366	8842	30553	7639	agents/reviewer-correctness.md	5788	1447
+implement Step 5	phase1	2	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	66391	16598	35838	8960	30553	7639	agents/reviewer-edge-cases.md	6297	1575
+implement Step 5	phase1	2	testing	specialist	codex	codex-specialist-testing-output.txt	65833	16459	35280	8820	30553	7639	agents/reviewer-testing.md	5764	1441
+review Step 2	phase1	2	aggregator	aggregator	codex	aggregator-output.txt	22166	5542	4140	1035	18026	4507	agents/orchestrator-aggregator.md	4363	1091
+implement Step 5	phase1	2	voter-1	voter	codex	codex-validity-vote-output.txt	12694	3174	8456	2114	4238	1060		0	0
+implement Step 5	phase1	2	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	13040	3260	8802	2201	4238	1060		0	0
+implement Step 5	phase1	2	voter-3	voter	codex	codex-pragmatism-vote-output.txt	12751	3188	8513	2129	4238	1060		0	0
+review.fix_coder	review.fix_coder	2	implementer	implementer	codex	coder-output.log	1746	437	1229	308	517	130		0	0
