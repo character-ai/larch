@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'Treat proceed-partial records without follow-up evidence as invalid, and re-veri')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_3 not traceable to scoped input (first 80 chars: 'Default `manifest_path` to `tmpdir/manifest.json` or read persisted todos from `')
