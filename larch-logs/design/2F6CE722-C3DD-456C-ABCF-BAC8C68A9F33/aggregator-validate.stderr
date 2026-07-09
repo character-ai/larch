@@ -1,0 +1,6 @@
+warning: fix text for slot 'Codex-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: 'Align body_update_main with create_main: on scope-disposition refusal emit needs')
+warning: fix text for slot 'Codex-Arch' in FINDING_3 not traceable to scoped input (first 80 chars: 'If scope-disposition.json exists, fail closed when recompute cannot prove the cu')
+warning: fix text for slot 'Codex-dyn-Scope Gate Security' in FINDING_3 not traceable to scoped input (first 80 chars: 'Change the mutation gate to block on any gate-relevant recompute failure. Do not')
+warning: fix text for slot 'Codex-Innovation' in FINDING_6 not traceable to scoped input (first 80 chars: 'Resolve the consumer repo root with git rev-parse --show-toplevel or consumer_re')
+warning: fix text for slot 'Codex-Innovation' in FINDING_8 not traceable to scoped input (first 80 chars: 'Check the body file before the new gate in body_update_main, or keep the existen')
+warning: fix text for slot 'Codex-dyn-Scope Gate Security' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add an explicit except NeedsUserInput block before the broad handler. Emit needs')

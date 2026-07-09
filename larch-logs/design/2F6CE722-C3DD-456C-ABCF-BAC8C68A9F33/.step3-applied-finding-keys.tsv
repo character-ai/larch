@@ -1,0 +1,3 @@
+1	advisory fallback still bypasses stale scope-disposition records when recompute cannot run.
+1	gate relevance ignores the resolved manifest, so a tmpdir with only `manifest.json` can skip validation even when disposition is still required.
+1	`create_main` still downgrades a scope-disposition refusal to generic `pr_status=error` instead of the required needs-user route.
