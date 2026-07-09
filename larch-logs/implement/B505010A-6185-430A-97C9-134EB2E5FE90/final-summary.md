@@ -1,15 +1,16 @@
-## /implement run B505010A-6185-430A-97C9-134EB2E5FE90: stalled
+## /implement run B505010A-6185-430A-97C9-134EB2E5FE90: pr-created
 
-- **Outcome**: ❌ STALLED
+- **Outcome**: ✅ DONE
 - **Duration**: 01:13:23
 - **Cost**: 💰 TOTAL ~$18.82: Claude $9.21, Codex-5.5 $4.27, Codex-mini $1.89, Cursor $3.18, Claude (subprocess) $0.27  |  Tokens: 38658k
 - **Issue**: #6683: https://github.com/character-ai/larch/issues/6683
+- **PR**: #6703: https://github.com/character-ai/larch/pull/6703
 - **Plan review**: N/A
 - **Plan coverage**: 3/3 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD structural-loc
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/5 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +829/-13, larch-logs +1317/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6702
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -92,11 +93,3 @@ codex/apply                   │                                         ██
 
 **Reviewer slot failures**: 2
 - cursor/dyn-dyn-fd-safety: 2
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
