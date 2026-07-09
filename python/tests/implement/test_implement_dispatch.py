@@ -6561,10 +6561,10 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
     monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke)
     st = cast("implement_dispatch.DispatchState", SimpleNamespace(tmpdir=tmp_path))
 
-    implement_dispatch._append_warning(st=st, text="Step 7a.1 — could not read plan file for plan-file coverage: /p: boom")
+    implement_dispatch._append_warning(st=st, text="Step 7a.1 — plan coverage compute failed closed: /p: boom")
     implement_dispatch._append_warning(st=st, text="- **Step 7a.1 — 2 paths**: a, b")
 
-    assert captured[0] == "- Step 7a.1 — could not read plan file for plan-file coverage: /p: boom"
+    assert captured[0] == "- Step 7a.1 — plan coverage compute failed closed: /p: boom"
     assert captured[1] == "- **Step 7a.1 — 2 paths**: a, b"
 
     groups = exec_issue_detail.parse_markdown_execution_issues(log.read_text(encoding="utf-8"))
