@@ -430,4 +430,4 @@ The residual manifest covers kept hooks, bash-targeting linters, thin wrappers, 
 
 `python3 python/cli.py lint bg-wait-coverage` rejects `run_in_background: true` prose anywhere under `skills/**`. The allowlist is now empty; new rows must carry a reason and should be treated as temporary debt.
 
-`make test-bgjob` runs `scripts/test-bgjob.sh`, which exercises the Python bgjob start, wait, status, reap, result-env, timeout, orphan, and log-path contracts through `python/tests/bgjob`. It is assigned to the `test-harnesses-4` shard in the current Makefile; if shard balance changes, keep exactly one `test-harnesses-N` prerequisite for this target and verify with `make test-harness-shards-coverage`.
+`make test-bgjob` runs `scripts/test-bgjob.sh`, a real-process harness for bgjob start, wait, owner death, timeout, external daemon death, reap, and slug rejection. Python bgjob unit coverage remains under `python/tests/bgjob` and `make py-test`. The target is assigned to the `test-harnesses-4` shard in the current Makefile; if shard balance changes, keep exactly one `test-harnesses-N` prerequisite for this target and verify with `make test-harness-shards-coverage`.

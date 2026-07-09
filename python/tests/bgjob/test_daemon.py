@@ -12,7 +12,7 @@ import pytest
 
 from larch import io as larch_io
 from larch.bgjob import daemon, model, wait
-from larch.core import process_identity
+from larch.core import config, process_identity
 
 
 def _repo_cli() -> list[str]:
@@ -153,6 +153,32 @@ def test_owner_identity_from_env_fails_closed_without_session_pid(monkeypatch: p
 
     with pytest.raises(RuntimeError, match="missing session owner pid"):
         _ = daemon.owner_identity_from_env(None)
+
+
+def test_timing_overrides_default_to_production_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.ENV_TEST_BGJOB_OWNER_GRACE_S, raising=False)
+    monkeypatch.delenv(config.ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S, raising=False)
+    monkeypatch.setattr(daemon.config, "BGJOB_OWNER_GRACE_S", 12.5)
+    monkeypatch.setattr(daemon.config, "BGJOB_DAEMON_POLL_INTERVAL_S", 0.75)
+
+    assert daemon._owner_grace_s() == 12.5  # pyright: ignore[reportPrivateUsage]
+    assert daemon._daemon_poll_interval_s() == 0.75  # pyright: ignore[reportPrivateUsage]
+
+
+def test_timing_overrides_accept_valid_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(config.ENV_TEST_BGJOB_OWNER_GRACE_S, "0.25")
+    monkeypatch.setenv(config.ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S, "0")
+
+    assert daemon._owner_grace_s() == 0.25  # pyright: ignore[reportPrivateUsage]
+    assert daemon._daemon_poll_interval_s() == 0.0  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("raw_value", ["not-a-float", "-0.01", "nan", "inf"])
+def test_timing_overrides_reject_invalid_env(raw_value: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(config.ENV_TEST_BGJOB_OWNER_GRACE_S, raw_value)
+
+    with pytest.raises(RuntimeError, match=config.ENV_TEST_BGJOB_OWNER_GRACE_S):
+        _ = daemon._owner_grace_s()  # pyright: ignore[reportPrivateUsage]
 
 
 def test_monitor_uses_recorded_child_identity_on_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
