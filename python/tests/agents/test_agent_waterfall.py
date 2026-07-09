@@ -145,6 +145,30 @@ def _kv(stdout: str) -> dict[str, str]:
     return out
 
 
+def test_parse_args_forwards_difficulty(tmp_path: Path) -> None:
+    manifest, _ = _slot(tmp_path)
+
+    opts = agent_waterfall._parse_args(  # pyright: ignore[reportPrivateUsage]
+        [
+            "--slots-file",
+            str(manifest),
+            "--codex-present",
+            "true",
+            "--cursor-present",
+            "true",
+            "--mode",
+            "diff",
+            "--difficulty",
+            "TRIVIAL",
+        ],
+    )
+
+    assert isinstance(opts, agent_waterfall.Options)
+    assert opts.difficulty == "TRIVIAL"
+    common_args = agent_waterfall._common_args(opts)  # pyright: ignore[reportPrivateUsage]
+    assert common_args[common_args.index("--difficulty") + 1] == "TRIVIAL"
+
+
 def _record_collect_calls(monkeypatch: pytest.MonkeyPatch) -> list[list[str]]:
     calls: list[list[str]] = []
     real_run = proc_module.run

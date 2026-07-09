@@ -394,6 +394,8 @@ def _synthesize_dynamic_slots(*,
             str(findings_ledger.ledger_path(ledger_root)),
             "--payload-bytes-output",
             str(payload_sidecar),
+            "--difficulty",
+            tier,
         ]
         if session_env_path:
             render_args.extend(["--session-env-path", session_env_path])
@@ -894,6 +896,8 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         site,
         "--model-role",
         difficulty.codex_review_model_role(tier),
+        "--difficulty",
+        tier,
         "--no-fallback",
     ]
     if mode == "diff" and diff_file:

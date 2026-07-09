@@ -34,6 +34,7 @@ _USAGE = (
     "Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. "
     "--straggler-cutoff enables the adaptive reviewer straggler deadline for this dispatch. "
     "--model-role default|review|vote|fix forwards an explicit Codex model role to Codex launches. "
+    "--difficulty forwards the applied difficulty tier to prompt renderers. "
     "Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
 )
 _POSIX_CLASS_REPLACEMENTS = {
@@ -100,6 +101,7 @@ class Options:
     site: str = "review Step 2"
     session_env_path: str = ""
     model_role: str = ""
+    difficulty: str = ""
     claude_read_tools_add_dir: str = ""
     panel_artifact_dir: str = ""
 
@@ -191,6 +193,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "site": "review Step 2",
         "session_env_path": "",
         "model_role": "",
+        "difficulty": "",
         "claude_read_tools_add_dir": "",
         "panel_artifact_dir": "",
     }
@@ -215,6 +218,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
             "--site": "site",
             "--session-env-path": "session_env_path",
             "--model-role": "model_role",
+            "--difficulty": "difficulty",
             "--claude-read-tools-add-dir": "claude_read_tools_add_dir",
             "--panel-artifact-dir": "panel_artifact_dir",
         }
@@ -295,6 +299,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         site=site,
         session_env_path=str(values["session_env_path"]),
         model_role=model_role,
+        difficulty=str(values["difficulty"]),
         claude_read_tools_add_dir=str(values["claude_read_tools_add_dir"]),
         panel_artifact_dir=str(values["panel_artifact_dir"]),
     )
@@ -490,6 +495,7 @@ def _common_args(opts: Options) -> list[str]:
         ("--feature-file", opts.feature_file),
         ("--scope-files", opts.scope_files),
         ("--description-text", opts.description_text),
+        ("--difficulty", opts.difficulty),
     ]
     for flag, value in pairs:
         if value:

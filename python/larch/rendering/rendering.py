@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Iterable, Sequence
 
+from larch.calibration import difficulty
 from larch.core import architectural_guidelines
 from larch.review import findings_ledger
 from larch.git import gh
@@ -719,6 +720,7 @@ def _parse_specialist(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--findings-ledger-file", default="")
     parser.add_argument("--session-env-path", default="")
     parser.add_argument("--payload-bytes-output", default="")
+    parser.add_argument("--difficulty", default="")
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -820,9 +822,10 @@ def _architectural_entry_text(*, result: architectural_guidelines.ArchitecturalG
     return f"No parsed {noun} entries were present in {filename}."
 
 
-def _architectural_guidelines_review_section() -> str:
+def _architectural_guidelines_review_section(*, difficulty_value: str = "") -> str:
     invariants = architectural_guidelines.read_invariants()
-    guidelines = architectural_guidelines.read_guidelines()
+    include_guidelines = difficulty.normalize_tier(difficulty_value) != difficulty.TRIVIAL
+    guidelines = architectural_guidelines.read_guidelines() if include_guidelines else None
     blocks: list[str] = []
     if invariants.status == "present":
         blocks.append(
@@ -831,7 +834,7 @@ def _architectural_guidelines_review_section() -> str:
                 text=_architectural_entry_text(result=invariants, kind="invariant"),
             ).rstrip("\n"),
         )
-    if guidelines.status == "present":
+    if guidelines is not None and guidelines.status == "present":
         blocks.append(
             issue_wire.emit_untrusted_content_block(
                 tag="architectural_guidelines",
@@ -904,11 +907,13 @@ def _specialist_tagging(*, diff_mode: str, mode: str) -> str:
     return f"{table[diff_mode]}\n{_oos_proposal_instruction()}"
 
 
-def _specialist_payload_bytes(args: argparse.Namespace) -> int:
+def _specialist_payload_bytes(args: argparse.Namespace, *, architectural_guidelines_section: str = "") -> int:
     total = 0
     diff_mode = _effective_diff_mode(args)
     if args.mode == "description":
         total += _byte_len(args.description_text)
+    if architectural_guidelines_section:
+        total += _byte_len(architectural_guidelines_section)
     agent_base = Path(args.agent_file).stem
     include_context = _specialist_includes_context(agent_base=agent_base, args=args, diff_mode=diff_mode)
     if include_context:
@@ -980,7 +985,7 @@ def render_specialist_main(argv: list[str]) -> int:
     try:
         args = _parse_specialist(argv)
         effective_diff_mode = _effective_diff_mode(args)
-        architectural_guidelines_section = _architectural_guidelines_review_section()
+        architectural_guidelines_section = _architectural_guidelines_review_section(difficulty_value=args.difficulty)
         cache_dir = os.environ.get("LARCH_RENDER_CACHE_DIR", "")
         if cache_dir:
             try:
@@ -992,6 +997,7 @@ def render_specialist_main(argv: list[str]) -> int:
                         f"description_text={args.description_text}",
                         f"scope_files={args.scope_files}",
                         f"diff_mode={effective_diff_mode}",
+                        f"difficulty={args.difficulty}",
                         f"diff_file={args.diff_file}",
                         f"competition_notice={str(args.competition_notice).lower()}",
                         f"competition_notice_file_sha={_sha256_path(Path(args.competition_notice_file)) if args.competition_notice_file else ''}",
@@ -1006,19 +1012,28 @@ def render_specialist_main(argv: list[str]) -> int:
                 cache_file = Path(cache_dir) / f"r-{_sha256_text(key_input)}"
                 if cache_file.is_file():
                     _write_payload(_read_text(cache_file))
-                    _write_payload_bytes_sidecar(args.payload_bytes_output, _specialist_payload_bytes(args))
+                    _write_payload_bytes_sidecar(
+                        args.payload_bytes_output,
+                        _specialist_payload_bytes(args, architectural_guidelines_section=architectural_guidelines_section),
+                    )
                     return 0
                 text = _render_specialist_text(args, architectural_guidelines_section=architectural_guidelines_section)
                 cache_file.parent.mkdir(parents=True, exist_ok=True)
                 _write_text_atomic(path=cache_file, text=text)
                 _write_payload(text)
-                _write_payload_bytes_sidecar(args.payload_bytes_output, _specialist_payload_bytes(args))
+                _write_payload_bytes_sidecar(
+                    args.payload_bytes_output,
+                    _specialist_payload_bytes(args, architectural_guidelines_section=architectural_guidelines_section),
+                )
                 return 0
             except OSError:
                 pass
         text = _render_specialist_text(args, architectural_guidelines_section=architectural_guidelines_section)
         _write_payload(text)
-        _write_payload_bytes_sidecar(args.payload_bytes_output, _specialist_payload_bytes(args))
+        _write_payload_bytes_sidecar(
+            args.payload_bytes_output,
+            _specialist_payload_bytes(args, architectural_guidelines_section=architectural_guidelines_section),
+        )
         return 0
     except (UsageError, RenderError) as exc:
         _err(f"render-specialist-prompt.sh: {exc}")
@@ -1348,6 +1363,7 @@ def render_plan_review_main(argv: list[str]) -> int:
     parser.add_argument("--findings-ledger-file", default="")
     parser.add_argument("--payload-bytes-output", default="")
     parser.add_argument("--body-file-payload", action="store_true")
+    parser.add_argument("--difficulty", default="")
     try:
         args = parser.parse_args(argv)
         # Static slots pick a fixed role from _PLAN_REVIEW_ROLES; dynamic scout slots pass
@@ -1399,7 +1415,9 @@ def render_plan_review_main(argv: list[str]) -> int:
         ledger_section = _plan_ledger_section(path_value=args.findings_ledger_file, design_tmpdir=str(design_tmpdir), role="reviewer")
         if ledger_section:
             payload_bytes += _byte_len(ledger_section)
-        architectural_guidelines_section = _architectural_guidelines_review_section()
+        architectural_guidelines_section = _architectural_guidelines_review_section(difficulty_value=args.difficulty)
+        if architectural_guidelines_section:
+            payload_bytes += _byte_len(architectural_guidelines_section)
         architectural_guidelines_prompt = "\n".join(_section_lines(architectural_guidelines_section)) if architectural_guidelines_section else ""
         if args.vendor == "cursor":
             payload_bytes += _file_payload_bytes(plan_file)
