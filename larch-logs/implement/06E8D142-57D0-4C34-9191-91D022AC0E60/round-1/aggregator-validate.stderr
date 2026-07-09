@@ -1,0 +1,1 @@
+warning: fix text for slot 'dyn-dyn-hook-toctou' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add a variant that removes line 44 (and optionally line 59) while keeping line 4')

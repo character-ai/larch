@@ -1,0 +1,11 @@
+### OOS_1: [OUT_OF_SCOPE] residual TOCTOU windows around `chmod` and `mktemp`
+- **Reviewer(s)**: cursor-specialist-correctness, codex-specialist-correctness, dyn-dyn-hook-toctou
+- **Severity**: major
+- **Concern**: Validation still does not atomically bind `chmod` or `mktemp` to the vetted `state_dir`, so a same-UID swap after the checks can redirect side effects into attacker-controlled storage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness: Revalidate immediately before each mutating syscall, or use a verified directory fd if scope expands beyond this plan.
+  - From codex-specialist-correctness: close it with a stable directory handle or another atomic primitive
+  - From dyn-dyn-hook-toctou: Bind temp creation to a verified directory handle (open `O_DIRECTORY`, `mktemp` relative to that fd, or a trusted fixed root) so the target cannot change between validation and creation; keep fail-open exit 0 on validation failure.
+  - From dyn-dyn-hook-toctou: Revalidate immediately before `chmod`, or `chmod` through a directory fd opened and vetted after `mkdir` (with `fchmod`/`fchmodat` where available), exiting 0 if revalidation fails.
+
+

@@ -39,6 +39,7 @@ state_dir="${TMPDIR:-/tmp}/larch-read-poll"
 [ -L "$state_dir" ] && exit 0
 [ -e "$state_dir" ] && [ ! -d "$state_dir" ] && exit 0
 mkdir -p "$state_dir" 2>/dev/null || exit 0
+[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || exit 0
 chmod 700 "$state_dir" 2>/dev/null || true
 [ -d "$state_dir" ] && [ ! -L "$state_dir" ] || exit 0
 
@@ -67,6 +68,7 @@ if [ "$prev_path" = "$path_hash" ] && [ "$prev_offset" = "$offset" ] && [ $((now
 else
     count=1
 fi
+[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || exit 0
 tmp_state=$(mktemp "$state_dir/.${key}.tmp.XXXXXX" 2>/dev/null) || exit 0
 [ -d "$state_dir" ] && [ ! -L "$state_dir" ] || { rm -f "$tmp_state" 2>/dev/null || true; exit 0; }
 if [ -L "$state_file" ]; then
