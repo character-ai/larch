@@ -99,7 +99,7 @@ def test_missing_reason_forms_are_detected(
     ],
 )
 def test_reason_bearing_forms_pass(tmp_path: Path, comment: str) -> None:
-    assert _scan_comment(tmp_path, comment) == []
+    assert not _scan_comment(tmp_path, comment)
 
 
 def test_adjacent_preceding_reason_does_not_suppress_finding(tmp_path: Path) -> None:
@@ -138,10 +138,10 @@ def test_chained_suppressions_fail_without_individual_reasons(tmp_path: Path) ->
 
 
 def test_reason_may_mention_suppression_when_non_suppression_text_remains(tmp_path: Path) -> None:
-    assert _scan_comment(
+    assert not _scan_comment(
         tmp_path,
         "# pylint: disable=unused-argument  # pyright: ignore[reportUnusedParameter] is documented",
-    ) == []
+    )
 
 
 def test_chained_suppressions_pass_with_individual_reasons(tmp_path: Path) -> None:
@@ -150,7 +150,7 @@ def test_chained_suppressions_pass_with_individual_reasons(tmp_path: Path) -> No
         "# pylint: disable=unused-argument  # protocol shape # type: ignore[override]  # fixture override",
     )
 
-    assert findings == []
+    assert not findings
 
 
 def test_semicolon_delimited_comment_scans_later_suppressions(tmp_path: Path) -> None:
@@ -218,7 +218,7 @@ def test_baseline_row_suppresses_comma_separated_pyright_report_live_finding(
 
 
 def test_plain_comments_containing_suppression_words_are_ignored(tmp_path: Path) -> None:
-    assert _scan_comment(tmp_path, "# this comment explains why noqa exists") == []
+    assert not _scan_comment(tmp_path, "# this comment explains why noqa exists")
 
 
 def test_semicolon_suppression_inside_comment_token_is_detected(tmp_path: Path) -> None:
