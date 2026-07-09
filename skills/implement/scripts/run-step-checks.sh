@@ -74,7 +74,7 @@ try:
     path, entry = registry.read_for(tmpdir=Path(os.environ["IMPLEMENT_TMPDIR"]), step=os.environ["STEP_CHECKS_STEP"])
     if entry is None:
         raise SystemExit(1)
-    if registry.child_liveness(entry).live and registry.daemon_liveness(entry).live:
+    if registry.child_liveness(entry).live or registry.daemon_liveness(entry).live:
         print("live")
         raise SystemExit(0)
     registry.unlink_entry(path)
