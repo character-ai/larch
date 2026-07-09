@@ -14,6 +14,48 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
+    "file": "analysis/codex_role_costs.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "analysis/codex_role_costs.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "analysis/codex_role_costs.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 3,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "analysis/codex_role_costs.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage,reportArgumentType]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "analysis/codex_role_costs.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "analysis/codex_role_costs.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
     "file": "harness_ci_timing.py",
     "suppression_kind": "noqa",
     "text": "noqa: PLR2004",
@@ -134,6 +176,20 @@
   },
   {
     "file": "larch/agents/agent_voters.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/agents/agent_voters.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/agents/agent_voters.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false",
     "occurrence": 1,
@@ -143,6 +199,13 @@
     "file": "larch/agents/agent_waterfall.py",
     "suppression_kind": "noqa",
     "text": "noqa: SIM115",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/agents/agent_waterfall.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
@@ -158,6 +221,13 @@
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=consider-using-with",
     "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/agents/agent_waterfall.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -471,127 +541,127 @@
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush chunking and dedupe.",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush chunking and dedupe.",
     "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush chunking and dedupe.",
     "occurrence": 3,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush chunking and dedupe.",
     "occurrence": 4,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush redaction and append behavior.",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush redaction and append behavior.",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush redaction and append behavior.",
+    "occurrence": 3,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush warning dedupe.",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
+    "occurrence": 3,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
+    "occurrence": 4,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
     "occurrence": 5,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
     "occurrence": 6,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
     "occurrence": 7,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
     "occurrence": 8,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 9,
+    "text": "noqa: PLC0415 # lint-layering: ok validate-design-tmpdir must stay co-located with arg-parsing logic.",
+    "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 10,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 11,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 12,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 13,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 14,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 15,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 16,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 17,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 18,
+    "text": "noqa: PLC0415 # lint-layering: ok validator needs ship_guidelines constants",
+    "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -939,9 +1009,37 @@
   },
   {
     "file": "larch/design/design_log_publish_flow.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/design/design_log_publish_flow.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/design/design_log_publish_flow.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=consider-using-with",
     "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/design/design_log_publish_flow.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/design/design_log_publish_flow.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -1082,6 +1180,27 @@
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportUnusedCallResult]",
     "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -2319,7 +2438,7 @@
   {
     "file": "larch/implement/scope_disposition.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
+    "text": "noqa: PLC0415 # lint-layering: ok scope extraction lives in issue-wire",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
@@ -2467,6 +2586,34 @@
     "file": "larch/implement/step_7a.py",
     "suppression_kind": "noqa",
     "text": "noqa: S607",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/implement/step_7a.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
@@ -3305,9 +3452,30 @@
   },
   {
     "file": "larch/report/final_report.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/final_report.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/final_report.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/final_report.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 3,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -3354,6 +3522,20 @@
   },
   {
     "file": "larch/report/progress_report.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/progress_report.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=broad-except",
     "occurrence": 1,
@@ -3392,6 +3574,20 @@
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=unused-import",
     "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -3494,9 +3690,23 @@
   },
   {
     "file": "larch/report/run_log_flush.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 2,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/run_log_flush.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/report/run_log_flush.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -4474,6 +4684,20 @@
   },
   {
     "file": "larch/review/plan_review_panel.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportUnusedCallResult]",
     "occurrence": 1,
@@ -4620,6 +4844,20 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
+    "file": "larch/review/plan_review_tally.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/review/plan_review_tally.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
     "file": "larch/review/review_aggregate.py",
     "suppression_kind": "noqa",
     "text": "noqa: PLR0915,RUF100",
@@ -4670,8 +4908,22 @@
   },
   {
     "file": "larch/review/review_collect.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/review/review_collect.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=too-many-branches,too-many-statements,too-many-locals,unused-argument",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/review/review_collect.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
@@ -4957,8 +5209,22 @@
   },
   {
     "file": "larch/review/review_tally.py",
+    "suppression_kind": "noqa",
+    "text": "noqa: SLF001",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/review/review_tally.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=broad-except",
+    "occurrence": 1,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
