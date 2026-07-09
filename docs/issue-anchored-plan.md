@@ -356,3 +356,7 @@ Those concerns live in `skills/design/SKILL.md`, `skills/implement/references/pr
 - **`skills/implement/references/preflight-plan-audit.md`** — fixed Preflight plan adequacy rubric.
 - **`skills/implement/SKILL.md`** — **Preflight orchestration** (read block via `python/cli.py plan-block read`, `NEXT_ID`, `python/cli.py clarify comment-post` + `python/cli.py clarify label`, exit codes **2** vs **3**).
 - **`skills/design/SKILL.md`** — `/design`, `python/cli.py named-block write --marker plan`, and clarify **response** posting after plan updates.
+
+## /implement firm-heading coverage
+
+`/implement` coverage uses the Step 0 materialized plan, `$IMPLEMENT_TMPDIR/plan.txt`, as the source of truth. It counts firm `### NEW:`, `### UPDATED:`, and `### REWRITTEN:` entries. `### MAY_UPDATE:` remains optional and is excluded from the gate.

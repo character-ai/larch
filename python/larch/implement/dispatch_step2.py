@@ -46,6 +46,8 @@ from larch.implement.dispatch_helpers import (
     _SAFE_CODERS,
 )
 from larch.implement.dispatch_ship_seed import _clear_external_dispatch_seed
+from larch.implement import scope_disposition
+from larch.errors import ShipError
 from larch.implement.dispatch_manifest import (
     DispatchState,
     _clear_external_scout_state,
@@ -437,6 +439,15 @@ def _plan_coverage_uncovered_paths(*, st: DispatchState, touched: set[str] | Non
     return sorted(path for path in explicit if path not in touched)
 
 
+def _ensure_step2_baseline(tmpdir: Path) -> None:
+    baseline_file = tmpdir / "step2-baseline.txt"
+    if baseline_file.is_file():
+        return
+    head = _run([GIT_BIN, "rev-parse", "HEAD"])
+    if head.returncode == 0 and head.stdout.strip():
+        _write_text_atomic(path=baseline_file, text=head.stdout.strip() + "\n")
+
+
 def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement step2-dispatch")
@@ -496,6 +507,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         _err(f"implement step2-dispatch: --feature-file not found: {args.feature_file}")
         return 2
     if args.coder == "claude":
+        _ensure_step2_baseline(tmpdir)
         _clear_external_scout_state(tmpdir)
         _emit_kv(key="STATUS", value="claude_fallback")
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
@@ -506,11 +518,13 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     if not args.codex_binary_found:
         args.codex_binary_found = _binary_available(session_env=session_env, key="CODEX_BINARY_FOUND", binary="codex")
     if args.coder == "cursor" and args.cursor_binary_found != "true":
+        _ensure_step2_baseline(tmpdir)
         _clear_external_scout_state(tmpdir)
         _emit_kv(key="STATUS", value="claude_fallback")
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
         return 0
     if args.coder == "codex" and args.codex_binary_found != "true":
+        _ensure_step2_baseline(tmpdir)
         _clear_external_scout_state(tmpdir)
         _emit_kv(key="STATUS", value="claude_fallback")
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
@@ -653,6 +667,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
             return st.emit_bailed(reason)
         _normalize_scout(st)
 
+    plan_coverage: scope_disposition.PlanCoverage | None = None
     uncovered_plan_path_count = 0
     if status == "complete":
         invalid = _validate_manifest_paths(st=st, obj=raw_obj)
@@ -660,15 +675,25 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
             return st.emit_bailed(invalid)
         touched, touch_probe_failures = _working_tree_touched_paths_and_failures(repo_root)
         if touched is None:
-            _append_warning(st=st, text="Step 7a.1 — skipped working-tree touched-path diagnostics because git probe(s) failed: " + ", ".join(touch_probe_failures))
-        else:
-            # Diagnostic-only undeclared path warning.
-            declared = {item.get("path") for item in raw_obj.get("files_touched", []) if isinstance(item, dict)} | {p for p in raw_obj.get("tests_added_or_modified", []) if isinstance(p, str)}
-            missing = sorted(p for p in touched if p and p not in declared)
-            if missing:
-                _append_warning(st=st, text=f"- **Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5**: " + ", ".join(missing[:5]))
+            _append_warning(st=st, text="Step 7a.1 — plan coverage compute failed closed because git probe(s) failed: " + ", ".join(touch_probe_failures))
+            return st.emit_bailed("plan-coverage-compute-failed")
+        # Diagnostic-only undeclared path warning.
+        declared = {item.get("path") for item in raw_obj.get("files_touched", []) if isinstance(item, dict)} | {p for p in raw_obj.get("tests_added_or_modified", []) if isinstance(p, str)}
+        missing = sorted(p for p in touched if p and p not in declared)
+        if missing:
+            _append_warning(st=st, text=f"- **Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5**: " + ", ".join(missing[:5]))
         _write_step2_difficulty_record(st=st, manifest=raw_obj, changed_paths=touched)
-        uncovered = _plan_coverage_uncovered_paths(st=st, touched=touched)
+        try:
+            plan_coverage = scope_disposition.compute_and_write_coverage(
+                tmpdir=st.tmpdir,
+                repo_root=st.repo_root,
+                plan_file=st.plan_file,
+                manifest_path=st.manifest_path,
+            )
+        except ShipError as exc:
+            _append_warning(st=st, text=f"Step 7a.1 — plan coverage compute failed closed: {exc}")
+            return st.emit_bailed("plan-coverage-compute-failed")
+        uncovered = list(plan_coverage.untouched_paths)
         if uncovered:
             uncovered_plan_path_count = len(uncovered)
             _append_warning(st=st, text=f"- **Step 7a.1 — {len(uncovered)} explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: " + ", ".join(uncovered[:10]))
@@ -722,6 +747,18 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         if uncovered_plan_path_count:
             _emit_kv(key="WARN_PLAN_FILES_UNTOUCHED", value="true")
             _emit_kv(key="WARN_PLAN_FILES_UNTOUCHED_COUNT", value=uncovered_plan_path_count)
+        if plan_coverage is not None:
+            _emit_kv(key="PLAN_COVERAGE_TOTAL", value=plan_coverage.total)
+            _emit_kv(key="PLAN_COVERAGE_TOUCHED", value=plan_coverage.touched)
+            _emit_kv(key="PLAN_COVERAGE_UNTOUCHED", value=plan_coverage.untouched)
+            _emit_kv(key="PLAN_COVERAGE_UNTOUCHED_PERCENT", value=plan_coverage.untouched_percent)
+            _emit_kv(key="PLAN_COVERAGE_BAND", value=plan_coverage.band)
+            _emit_kv(key="PLAN_COVERAGE_FILE", value=plan_coverage.coverage_file)
+            _emit_kv(key="PLAN_COVERAGE_UNTOUCHED_FILE", value=plan_coverage.untouched_file)
+            _emit_kv(key="TODOS_LEFT_COUNT", value=plan_coverage.todos_left_count)
+            _emit_kv(key="TODOS_LEFT_FILE", value=plan_coverage.todos_file)
+            _emit_kv(key="PLAN_COVERAGE_DISPOSITION_REQUIRED", value=str(plan_coverage.disposition_required).lower())
+            _emit_kv(key="PLAN_FIDELITY_FORCED", value=str(plan_coverage.plan_fidelity_forced).lower())
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="forbidden")
     elif status == "needs_qa":
         _emit_kv(key="STATUS", value="needs_qa")

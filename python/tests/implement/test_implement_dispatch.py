@@ -171,6 +171,18 @@ def _clear_rater_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(key, raising=False)
 
 
+def _write_step2_baseline(tmpdir: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    (tmpdir / "step2-baseline.txt").write_text(f"{head}\n", encoding="utf-8")
+
+
 @pytest.mark.parametrize(
     (
         "case_name",
@@ -2116,6 +2128,7 @@ def test_ship_pre_driver_seed_failure_stops_before_oos(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = _session(tmp_path)
+    _write_step2_baseline(tmp)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     results = [
         subprocess.CompletedProcess(["guard"], 0, "", ""),
@@ -2144,6 +2157,7 @@ def test_ship_pre_driver_oos_failure_uses_distinct_action(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = _session(tmp_path)
+    _write_step2_baseline(tmp)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     results = [
         subprocess.CompletedProcess(["guard"], 0, "", ""),
@@ -2177,6 +2191,7 @@ def test_ship_pre_driver_security_sidecar_payload_routes_to_oos_pipeline(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = _session(tmp_path)
+    _write_step2_baseline(tmp)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     results = [
         subprocess.CompletedProcess(["guard"], 0, "", ""),
@@ -2215,6 +2230,7 @@ def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = _session(tmp_path)
+    _write_step2_baseline(tmp)
     (tmp / "ship-pr-state.sh").write_text("# comment\nPHASE=checks\n", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     results = [
@@ -2236,6 +2252,78 @@ def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
     assert captured.out == "NEXT_ACTION=ship\n"
     assert captured.err == '{"accepted":0}\n'
     assert calls == [["implement", "step-8-python-guard"], ["oos", "file", "--implement-tmpdir", str(tmp)]]
+
+
+def test_ship_pre_driver_validates_scope_before_seeding_and_halts_for_missing_disposition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        argv = list(args)
+        calls.append(argv)
+        if argv == ["implement", "step-8-python-guard"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return pytest.fail(f"unexpected CLI call: {argv}")
+
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(
+        dispatch_ship.scope_disposition,
+        "validate_disposition_for_ship",
+        lambda **_kwargs: dispatch_ship.scope_disposition.ValidationResult(
+            ok=False,
+            required=True,
+            reason="scope-disposition-missing",
+        ),
+    )
+
+    assert implement_dispatch.ship_pre_driver_main([]) == config.EXIT_NEEDS_USER_INPUT
+
+    captured = capsys.readouterr()
+    assert "needs_user_reason=scope-disposition" in captured.out
+    assert "NEXT_ACTION=halt-scope-disposition" in captured.out
+    assert calls == [["implement", "step-8-python-guard"]]
+
+
+def test_ship_pre_driver_scope_validation_hard_failure_stays_tool_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        argv = list(args)
+        calls.append(argv)
+        if argv == ["implement", "step-8-python-guard"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return pytest.fail(f"unexpected CLI call: {argv}")
+
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(
+        dispatch_ship.scope_disposition,
+        "validate_disposition_for_ship",
+        lambda **_kwargs: dispatch_ship.scope_disposition.ValidationResult(
+            ok=False,
+            required=True,
+            reason="coverage-recompute-failed: boom",
+        ),
+    )
+
+    assert implement_dispatch.ship_pre_driver_main([]) == 4
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "ship pre-driver: coverage-recompute-failed: boom" in captured.err
+    assert calls == [["implement", "step-8-python-guard"]]
 
 
 def test_recovery_paths_filters_tmpdir_and_detects_changed_predirty(repo: Path) -> None:
@@ -6207,9 +6295,8 @@ def test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched(
     assert rc == 0
     out = capsys.readouterr().out
     assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
-    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
-    assert "explicit plan-listed path" not in issues
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=false" in out
+    assert "PLAN_FIDELITY_FORCED=false" in out
 
 
 def test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope(
@@ -6244,10 +6331,11 @@ def test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope(
     assert rc == 0
     out = capsys.readouterr().out
     assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
-    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
-    assert "explicit plan-listed path" not in issues
-    assert "docs/optional.md" not in issues
+    assert "PLAN_COVERAGE_TOTAL=0" in out
+    assert "PLAN_COVERAGE_TOUCHED=0" in out
+    assert "PLAN_COVERAGE_UNTOUCHED=0" in out
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=false" in out
+    assert "PLAN_FIDELITY_FORCED=false" in out
 
 
 def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
@@ -6282,10 +6370,11 @@ def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
     assert rc == 0
     out = capsys.readouterr().out
     assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
-    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
-    assert "skills/design/SKILL.md" not in issues
-    assert "explicit plan-listed path" not in issues
+    assert "PLAN_COVERAGE_TOTAL=0" in out
+    assert "PLAN_COVERAGE_TOUCHED=0" in out
+    assert "PLAN_COVERAGE_UNTOUCHED=0" in out
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=false" in out
+    assert "PLAN_FIDELITY_FORCED=false" in out
 
 
 def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading(
@@ -6325,10 +6414,8 @@ def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrel
     assert rc == 0
     out = capsys.readouterr().out
     assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
-    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8") if (tmp / "execution-issues.md").is_file() else ""
-    assert "docs/expected.md" not in issues
-    assert "explicit plan-listed path" not in issues
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=false" in out
+    assert "PLAN_FIDELITY_FORCED=false" in out
 
 
 def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warnings(
@@ -6377,8 +6464,8 @@ def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warning
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
     assert "git probe(s) failed" in issues
     assert "git diff --name-only HEAD" in issues
@@ -6432,10 +6519,10 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
 
     assert rc == 0
     out = capsys.readouterr().out
-    assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED" not in out
+    assert "STATUS=bailed" in out
+    assert "REASON=plan-coverage-compute-failed" in out
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
-    assert "could not read plan file for plan-file coverage" in issues
+    assert "plan coverage compute failed closed" in issues
     assert "synthetic plan read failure" in issues
     assert "docs/expected.md" not in issues
     # Regression (#5219): the single-line plan-read-failure warning must be
@@ -6446,7 +6533,7 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     rendered = exec_issue_detail.render_issue_detail_block(
         exec_issue_detail.LoadResult(warn_groups, listing_degraded=False), assess=False
     )
-    assert "could not read plan file for plan-file coverage" in rendered
+    assert "plan coverage compute failed closed" in rendered
 
 
 def test_append_warning_normalizes_plain_text_for_final_summary(
@@ -6472,10 +6559,10 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
     monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke)
     st = cast("implement_dispatch.DispatchState", SimpleNamespace(tmpdir=tmp_path))
 
-    implement_dispatch._append_warning(st=st, text="Step 7a.1 — could not read plan file for plan-file coverage: /p: boom")
+    implement_dispatch._append_warning(st=st, text="Step 7a.1 — plan coverage compute failed closed: /p: boom")
     implement_dispatch._append_warning(st=st, text="- **Step 7a.1 — 2 paths**: a, b")
 
-    assert captured[0] == "- Step 7a.1 — could not read plan file for plan-file coverage: /p: boom"
+    assert captured[0] == "- Step 7a.1 — plan coverage compute failed closed: /p: boom"
     assert captured[1] == "- **Step 7a.1 — 2 paths**: a, b"
 
     groups = exec_issue_detail.parse_markdown_execution_issues(log.read_text(encoding="utf-8"))
@@ -6483,7 +6570,7 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
     rendered = exec_issue_detail.render_issue_detail_block(
         exec_issue_detail.LoadResult(groups, listing_degraded=False), assess=False
     )
-    assert "could not read plan file for plan-file coverage" in rendered
+    assert "plan coverage compute failed closed" in rendered
 
 
 def _materialize_dispatch_state(tmp_path: Path, observations: object) -> implement_dispatch.DispatchState:

@@ -30,6 +30,7 @@ from larch.core import redact
 from larch.report import report_tokens_cost
 from larch.report import tokens
 from larch.issue import tracking_issue
+from larch.implement import scope_disposition
 from larch.errors import ShipError
 from larch.core.proc import CommandResult, Runner
 
@@ -413,10 +414,17 @@ def compose_pr_body(
         parts.extend(["## Architectural guidelines", "", architectural_guidelines_note.strip(), ""])
     if mermaid.strip():
         parts.extend(["## Code Flow Diagram", "", "```mermaid", mermaid.strip(), "```", ""])
+    inventory = scope_disposition.disposition_deferred_inventory()
+    if inventory.strip():
+        parts.extend([inventory.rstrip(), ""])
     parts.extend(["## Test plan", "", test_plan.rstrip(), ""])
     body = "\n".join(parts) + "\n"
     if issue_number is not None:
-        body = tracking_issue.link_pr_closes(body=body, issue_number=issue_number)
+        body = tracking_issue.link_pr_for_disposition(
+            body=body,
+            issue_number=issue_number,
+            partial=scope_disposition.disposition_link_kind() == "part-of",
+        )
     mermaid_body = sanitize_fragment(body, from_md=True)
     if mermaid_body.status != "ok":
         msg = f"mermaid in PR body rejected: {','.join(mermaid_body.reason_tokens)}"
@@ -553,6 +561,11 @@ def _codex_cost_segment(kwargs: Mapping[str, object]) -> str:
     return f"Codex-5.5 {_fmt_money(_money_value(codex_5_5))}, Codex-mini {_fmt_money(_money_value(codex_mini))}"
 
 
+
+def _plan_coverage_summary_lines(kwargs: Mapping[str, object]) -> list[str]:
+    line = str(kwargs.get("plan_coverage_line") or "")
+    return [f"- **Plan coverage**: {line}"] if line else []
+
 def render_run_summary(**kwargs: object) -> str:
     skill = str(kwargs.get("skill") or "implement")
     outcome = str(kwargs.get("outcome") or "unknown")
@@ -602,7 +615,7 @@ def render_run_summary(**kwargs: object) -> str:
             "- **⚠ Merge downgraded**: requested `--merge`, but panel-failed "
             "recovery shipped a PR without merging. Manual review and merge required."
         )
-    lines.append(f"- **Plan review**: {kwargs.get('plan_review_line') or 'N/A'}")
+    lines.extend([f"- **Plan review**: {kwargs.get('plan_review_line') or 'N/A'}", *_plan_coverage_summary_lines(kwargs)])
     difficulty_line = str(kwargs.get("difficulty_line") or "")
     if difficulty_line:
         lines.append(f"- **Difficulty**: {difficulty_line}")
@@ -660,7 +673,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skill", required=True, choices=("implement", "design"))
     parser.add_argument("--outcome", required=True)
     parser.add_argument("--run-id", required=True)
-    for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "difficulty-line", "dynamic-archetypes-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded", "manifest-path", "larch-version", "main-model", "effort"):
+    for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "plan-coverage-line", "difficulty-line", "dynamic-archetypes-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded", "manifest-path", "larch-version", "main-model", "effort"):
         parser.add_argument(f"--{name}")
     parser.add_argument("--force-requested", choices=("true", "false"))
     parser.add_argument("--output-file")
@@ -711,6 +724,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
         pr_number=args.pr_number,
         pr_url=args.pr_url,
         plan_review_line=args.plan_review_line,
+        plan_coverage_line=args.plan_coverage_line,
         difficulty_line=args.difficulty_line,
         dynamic_archetypes_line=args.dynamic_archetypes_line,
         code_review_line=args.code_review_line,

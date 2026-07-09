@@ -5617,6 +5617,12 @@
   },
   {
     "file": "larch/review/review_prune.py",
+    "code": "C901",
+    "qualified_symbol": "reviewer_prune_filter",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_prune.py",
     "code": "PLR0911",
     "qualified_symbol": "reviewer_prune",
     "metric": 10

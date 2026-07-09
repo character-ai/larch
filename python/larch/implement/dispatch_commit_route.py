@@ -16,8 +16,10 @@ from typing import cast
 
 from larch.core import config
 from larch.core import redact
+from larch.errors import ShipError
 from larch.implement import checks
 from larch.implement import ship
+from larch.implement import scope_disposition
 from larch.implement.dispatch_helpers import (
     _current_cli_path,
     _emit_kv,
@@ -52,6 +54,54 @@ from larch.implement.dispatch_leg import (
 )
 from larch.implement.dispatch_helpers import _derive_pathspec_via_recovery_paths
 
+
+
+def _relay_scope_coverage(implement_tmpdir: Path) -> int:
+    plan_file = implement_tmpdir / "plan.txt"
+    baseline_file = implement_tmpdir / "step2-baseline.txt"
+    if not plan_file.is_file() or not baseline_file.is_file():
+        return 0
+    repo_root = _resolve_repo_root()
+    if repo_root is None:
+        print("scope-disposition: git rev-parse --show-toplevel failed", file=sys.stderr)
+        return 2
+    manifest_path = implement_tmpdir / "manifest.json"
+    if not manifest_path.is_file():
+        codex_manifest = implement_tmpdir / "codex-step2-out" / "manifest.json"
+        if codex_manifest.is_file():
+            manifest_path = codex_manifest
+    persisted_coverage = scope_disposition.load_coverage(implement_tmpdir)
+    try:
+        coverage = scope_disposition.compute_and_write_coverage(
+            tmpdir=implement_tmpdir,
+            repo_root=repo_root,
+            manifest_path=manifest_path,
+        )
+    except ShipError as exc:
+        if persisted_coverage is not None and not persisted_coverage.disposition_required:
+            scope_disposition._emit_coverage(persisted_coverage)  # noqa: SLF001
+            return 0
+        print(f"scope-disposition: coverage recompute failed: {exc}", file=sys.stderr)
+        return 4
+    _emit_kv(key="PLAN_COVERAGE_TOTAL", value=str(coverage.total))
+    _emit_kv(key="PLAN_COVERAGE_TOUCHED", value=str(coverage.touched))
+    _emit_kv(key="PLAN_COVERAGE_UNTOUCHED", value=str(coverage.untouched))
+    _emit_kv(key="PLAN_COVERAGE_UNTOUCHED_PERCENT", value=str(coverage.untouched_percent))
+    _emit_kv(key="PLAN_COVERAGE_BAND", value=coverage.band)
+    _emit_kv(key="PLAN_COVERAGE_FILE", value=coverage.coverage_file)
+    _emit_kv(key="PLAN_COVERAGE_UNTOUCHED_FILE", value=coverage.untouched_file)
+    _emit_kv(key="TODOS_LEFT_COUNT", value=str(coverage.todos_left_count))
+    _emit_kv(key="TODOS_LEFT_FILE", value=coverage.todos_file)
+    _emit_kv(key="PLAN_COVERAGE_DISPOSITION_REQUIRED", value=str(coverage.disposition_required).lower())
+    _emit_kv(key="PLAN_FIDELITY_FORCED", value=str(coverage.plan_fidelity_forced).lower())
+    invalidated = scope_disposition.invalidate_stale_disposition(
+        tmpdir=implement_tmpdir,
+        repo_root=repo_root,
+        manifest_path=manifest_path,
+    )
+    if invalidated.reason == "scope-disposition-stale":
+        _emit_kv(key="PLAN_COVERAGE_DISPOSITION_INVALIDATED", value="true")
+    return 0
 
 def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
     path = tmpdir / sentinel
@@ -438,6 +488,9 @@ def _commit_route_run(
                 ),
                 emit_next_action=emit_next_action,
             )
+    coverage_rc = _relay_scope_coverage(implement_tmpdir)
+    if coverage_rc != 0:
+        return coverage_rc if emit_next_action else "seed-failed"
     if not emit_next_action:
         _emit_kv(key="COMMIT_ROUTE_OUTCOME", value="continue")
         _relay_commit_kvs(commit_output, include_next_action=False)
@@ -843,7 +896,7 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C90
     return _checks_commit_route_main_impl(args, implement_tmpdir)
 
 
-def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,RUF100
+def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,PLR0912,RUF100
     args: argparse.Namespace, implement_tmpdir: Path
 ) -> int:
     captured, timed_out = _run_relevant_checks_for_site(
@@ -880,6 +933,9 @@ def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,RUF100
         if not commit_stdout.endswith("\n"):
             sys.stdout.write("\n")
     if outcome in {"continue", "noop"}:
+        coverage_rc = _relay_scope_coverage(implement_tmpdir)
+        if coverage_rc != 0:
+            return coverage_rc
         if args.commit_site == "step4" and args.rebase_checkpoint_4r:
             return _run_4r_rebase_checkpoint(args.forked_target)
         checkpoint_rc = 0

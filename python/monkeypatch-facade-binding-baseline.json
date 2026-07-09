@@ -4393,6 +4393,24 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_ship_pre_driver_scope_validation_hard_failure_stays_tool_failure",
+    "facade_module": "larch.implement.dispatch_ship",
+    "attribute": "_resolve_repo_root",
+    "defining_module": "larch.implement.dispatch_helpers",
+    "occurrence": 2,
+    "reason": "tests patching dispatch_ship internals for ship_pre_driver_main disposition validation; facade bindings needed to intercept before OOS filing"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_ship_pre_driver_scope_validation_hard_failure_stays_tool_failure",
+    "facade_module": "larch.implement.dispatch_ship",
+    "attribute": "_run_cli_capture",
+    "defining_module": "larch.implement.dispatch_leg",
+    "occurrence": 1,
+    "reason": "tests patching dispatch_ship internals for ship_pre_driver_main disposition validation; facade bindings needed to intercept before OOS filing"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_ship_pre_driver_security_sidecar_payload_routes_to_oos_pipeline",
     "facade_module": "larch.implement.dispatch_ship",
     "attribute": "_run_cli_capture",
@@ -4444,6 +4462,24 @@
     "defining_module": "larch.implement.dispatch_leg",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_ship_pre_driver_validates_scope_before_seeding_and_halts_for_missing_disposition",
+    "facade_module": "larch.implement.dispatch_ship",
+    "attribute": "_resolve_repo_root",
+    "defining_module": "larch.implement.dispatch_helpers",
+    "occurrence": 2,
+    "reason": "tests patching dispatch_ship internals for ship_pre_driver_main disposition validation; facade bindings needed to intercept before OOS filing"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_ship_pre_driver_validates_scope_before_seeding_and_halts_for_missing_disposition",
+    "facade_module": "larch.implement.dispatch_ship",
+    "attribute": "_run_cli_capture",
+    "defining_module": "larch.implement.dispatch_leg",
+    "occurrence": 1,
+    "reason": "tests patching dispatch_ship internals for ship_pre_driver_main disposition validation; facade bindings needed to intercept before OOS filing"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
