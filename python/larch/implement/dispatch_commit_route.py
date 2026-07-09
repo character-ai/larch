@@ -75,7 +75,7 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
         )
     except ShipError as exc:
         if persisted_coverage is not None and not persisted_coverage.disposition_required:
-            _emit_coverage(persisted_coverage)
+            scope_disposition._emit_coverage(persisted_coverage)  # noqa: SLF001
             return 0
         print(f"scope-disposition: coverage recompute failed: {exc}", file=sys.stderr)
         return 4

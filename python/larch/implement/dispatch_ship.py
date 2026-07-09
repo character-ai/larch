@@ -827,7 +827,7 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911
+def ship_pre_driver_main(argv: list[str] | None = None) -> int:  # noqa: PLR0911, C901, PLR0912
     argparse.ArgumentParser(prog="cli.py ship pre-driver").parse_args(argv)
     raw_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
     if not raw_tmpdir:

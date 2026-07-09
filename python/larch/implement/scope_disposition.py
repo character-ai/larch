@@ -138,15 +138,9 @@ def _git(runner: Runner, argv: Sequence[str], *, cwd: Path) -> CommandResult:
     return runner.run(["git", *argv], cwd=str(cwd))
 
 
-def _git_stdout(runner: Runner, argv: Sequence[str], *, cwd: Path) -> str:
-    result = _git(runner, argv, cwd=cwd)
-    if result.returncode != 0:
-        raise ShipError(f"git {' '.join(argv)} failed")
-    return result.stdout.strip()
-
-
 def _baseline_sha(*, tmpdir: Path, repo_root: Path, runner: Runner) -> str:
     _ = repo_root
+    _ = runner
     baseline_file = tmpdir / "step2-baseline.txt"
     if baseline_file.is_file() and not baseline_file.is_symlink():
         raw = baseline_file.read_text(encoding="utf-8", errors="replace").strip()
@@ -559,7 +553,7 @@ def record_disposition(  # noqa: PLR0913
     return record
 
 
-def validate_disposition_for_ship(
+def validate_disposition_for_ship(  # noqa: PLR0911
     *,
     tmpdir: Path,
     repo_root: Path,
