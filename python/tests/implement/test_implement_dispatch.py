@@ -881,7 +881,14 @@ def test_ship_route_exit_rc_file_wins_and_multiline_detail_uses_file(
     assert "ledger_ready=true" in env
 
 
-def _write_pre_fix_state(tmp: Path, *, forked: str = "false", repo: str = "owner/repo", run_id: str = "run-1") -> None:
+def _write_pre_fix_state(
+    tmp: Path,
+    *,
+    forked: str = "false",
+    repo: str = "owner/repo",
+    run_id: str = "run-1",
+    pr_closed: str = "false",
+) -> None:
     (tmp / "ship-pr-state.sh").write_text(
         "PHASE=ci-initial\n"
         "BRANCH_NAME=feature/pre-fix\n"
@@ -899,7 +906,7 @@ def _write_pre_fix_state(tmp: Path, *, forked: str = "false", repo: str = "owner
         "PR_NUMBER=44\n"
         "PR_URL=https://github.com/owner/repo/pull/44\n"
         "PR_TITLE=Implement feature\n"
-        "PR_CLOSED=false\n"
+        f"PR_CLOSED={pr_closed}\n"
         "DESIGN_ONLY_DONE=false\n"
         "DEFERRED=false\n"
         "DONE_RENAME_APPLIED=false\n"
@@ -1122,6 +1129,72 @@ def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
     assert rc == 0
     assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=skip\nNEXT_ACTION=continue\n"
     assert calls == ["branch", "repo", "probe"]
+    assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
+
+
+def test_ship_pre_fix_rebase_closed_pr_skips_physical_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp, pr_closed="true")
+    calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: calls.append("branch") or "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: calls.append("repo") or "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: calls.append("probe") or False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: pytest.fail("rebase should not run"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=skip\nNEXT_ACTION=continue\n"
+    assert calls == ["branch", "repo", "probe"]
+    assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
+    assert "REBASE_COUNT=2\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+
+
+def test_ship_pre_fix_rebase_closed_pr_does_not_override_conflict_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp, pr_closed="true")
+    with (tmp / "ship-pr-state.sh").open("a", encoding="utf-8") as handle:
+        handle.write(
+            "RESUME_PHASE=ship-pr-rrr-phase14\n"
+            "CALLER_KIND=ship_pr_pre_push\n"
+            "CONFLICT_FILES=python/a.py,docs/b.md\n"
+        )
+    (tmp / ".ship-route-exit-handoff.env").write_text("FAILED_RUN_ID=99\n", encoding="utf-8")
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: pytest.fail("rebase should not run"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=conflict\nNEXT_ACTION=conflict-fix\n"
+    state = (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert "PHASE=rebase\n" in state
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
+    assert "CALLER_KIND=ship_pr_pre_push\n" in state
+    assert "CONFLICT_FILES=python/a.py,docs/b.md\n" in state
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "FAILED_RUN_ID=99\n" in env
+    assert "NEXT_ACTION=conflict-fix\n" in env
     assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
 
 
