@@ -402,6 +402,24 @@ def read_active_run_id(repo_root: str | Path) -> str | None:
         os.close(clone_dir_fd)
 
 
+def deactivate_run(repo_root: str | Path) -> bool:
+    """Remove the active-run pointer for ``repo_root`` without deleting run logs."""
+    try:
+        clone_dir_fd: int = _open_existing_directory_fd(progress_clone_dir(repo_root))
+        try:
+            stat_result: os.stat_result = os.lstat(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+            if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISREG(stat_result.st_mode):
+                return False
+            if _read_active_run_id_from_dirfd(clone_dir_fd) is None:
+                return False
+            os.unlink(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+        finally:
+            os.close(clone_dir_fd)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
 def _read_active_run_id(clone_dir: Path) -> str | None:  # pyright: ignore[reportUnusedFunction]
     """Return the normalized ``current`` pointer written by ``activate_run``."""
     pointer_path = clone_dir / CURRENT_RUN_FILENAME

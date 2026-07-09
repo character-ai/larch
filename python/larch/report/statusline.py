@@ -9,7 +9,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from larch.bgjob import registry
 from larch import io as larch_io
@@ -21,6 +21,8 @@ RESET = "\033[0m"
 DEFAULT_STALE_AFTER_S = 300
 DEFAULT_HIDE_AFTER_S = 3600
 MAX_LINES = 3
+RESET_SESSION_SOURCES: Final[frozenset[str]] = frozenset({"startup", "clear"})
+STATUSLINE_DISABLE_ENV: Final[str] = "LARCH_STATUSLINE_DISABLE"
 
 
 def _positive_int(raw: str | None, *, default: int, max_value: int | None = None) -> int:
@@ -58,6 +60,11 @@ def _repo_from_payload(payload: dict[str, Any]) -> Path | None:
         return path.resolve()
     except OSError:
         return path
+
+
+def _session_source_from_payload(payload: dict[str, Any]) -> str | None:
+    source = payload.get("source")
+    return source if isinstance(source, str) else None
 
 
 def _tail_breadcrumbs(path: Path, *, count: int) -> list[str]:
@@ -119,6 +126,19 @@ def _active_progress_path(repo_root: Path) -> Path | None:
     return progress_file.run_progress_path(repo_root, run_id)
 
 
+def session_reset_progress(stdin_text: str, env: dict[str, str] | None = None) -> bool:
+    env_map = os.environ if env is None else env
+    if env_map.get(STATUSLINE_DISABLE_ENV) == "1":
+        return False
+    payload = _read_statusline_payload(stdin_text)
+    if _session_source_from_payload(payload) not in RESET_SESSION_SOURCES:
+        return False
+    repo_root = _repo_from_payload(payload)
+    if repo_root is None or _clone_has_live_bgjob(repo_root):
+        return False
+    return progress_file.deactivate_run(repo_root)
+
+
 def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> str:
     env_map = os.environ if env is None else env
     payload = _read_statusline_payload(stdin_text)
@@ -156,6 +176,17 @@ def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> 
     if columns:
         rendered = "\n".join(_truncate(row, columns=columns) for row in rendered.splitlines())
     return f"{YELLOW}{rendered}{RESET}\n"
+
+
+def session_reset_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress session-reset", add_help=True)
+    try:
+        _ = parser.parse_args(argv)
+        text = sys.stdin.read()
+        _ = session_reset_progress(text)
+    except Exception:  # pylint: disable=broad-except
+        return 0
+    return 0
 
 
 def statusline_main(argv: list[str] | None = None) -> int:
