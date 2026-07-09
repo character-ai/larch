@@ -2863,6 +2863,15 @@
   },
   {
     "file": "tests/git/test_pr.py",
+    "qualified_symbol": "test_body_update_main_scope_disposition_refusal_no_edit",
+    "facade_module": "larch.git.pr",
+    "attribute": "proc",
+    "defining_module": "larch.core",
+    "occurrence": 1,
+    "reason": "body_update_main uses module-level proc directly; patching consuming module binding is the correct injection point for scope-disposition guard tests"
+  },
+  {
+    "file": "tests/git/test_pr.py",
     "qualified_symbol": "test_body_update_missing_file",
     "facade_module": "larch.git.pr",
     "attribute": "proc",
@@ -2896,6 +2905,15 @@
     "defining_module": "larch.core",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/git/test_pr.py",
+    "qualified_symbol": "test_create_main_scope_disposition_refusal_needs_user_without_mutation",
+    "facade_module": "larch.git.pr",
+    "attribute": "proc",
+    "defining_module": "larch.core",
+    "occurrence": 1,
+    "reason": "create_main uses module-level proc directly; patching consuming module binding is the correct injection point for scope-disposition guard tests"
   },
   {
     "file": "tests/git/test_push.py",
