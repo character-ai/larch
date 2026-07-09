@@ -1,11 +1,11 @@
 {
   "applied_tier": "TRIVIAL",
-  "audit_evaluated": null,
+  "audit_evaluated": true,
   "audit_upgrade": null,
   "codex_model_role": "review",
   "confidence": "high",
   "design_tier": null,
-  "escalated_round": null,
+  "escalated_round": false,
   "escalations": [],
   "floors_applied": [],
   "implement_tier": "TRIVIAL",
