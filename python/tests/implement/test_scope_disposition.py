@@ -126,6 +126,33 @@ def test_compute_ignores_nonblocking_full_suite_validation_todo(
     assert coverage.disposition_required is False
 
 
+def test_compute_blocks_mutated_full_suite_validation_todo(
+    tmp_path: Path,
+) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text(
+        '{"todos_left":["make py-lint and make py-test (full suites) were not completed; remaining cleanup is needed"]}\n',
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        manifest_path=manifest,
+        runner=FakeRunner(diff_paths=["src/a.py"]),
+    )
+
+    assert coverage.todos_left_count == 1
+    assert coverage.todos_left == (
+        "make py-lint and make py-test (full suites) were not completed; remaining cleanup is needed",
+    )
+    assert coverage.disposition_required is True
+
+
 @pytest.mark.parametrize(
     "todo",
     [
