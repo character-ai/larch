@@ -1987,6 +1987,7 @@ def test_resume_branch_mismatch_safe_refuses_without_fresh_work(
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text("PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\n", encoding="utf-8")
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "other")
+    _forbid_pr_mutations(monkeypatch)
 
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("fresh work must not run after checkout mismatch")
@@ -5417,6 +5418,7 @@ def test_main_ensure_pr_stall_creates_finalize_state(
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    _forbid_pr_mutations(monkeypatch)
     monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("ensure-pr failed")))
     rc = ship.main(["--tmpdir", str(tmp_path), "--manifest-path", str(tmp_path / "manifest.json"), "--repo", "o/r"])
     assert rc == config.OUTCOME_EXIT_MAP[Outcome.STALLED]
@@ -5742,11 +5744,21 @@ def _patch_fresh_path_pre_pr_create(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
 
 
+def _forbid_pr_mutations(monkeypatch: pytest.MonkeyPatch) -> None:
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("PR mutation must not run before refusal")
+
+    monkeypatch.setattr(ship.push, "push_branch", forbidden)
+    monkeypatch.setattr(ship.gh, "pr_create", forbidden)
+    monkeypatch.setattr(ship.pr_body, "update_pr_body", forbidden)
+
+
 def test_oos_pending_exits_with_filing_reason_when_accepted_oos_present(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     _patch_fresh_path_pre_pr_create(monkeypatch)
+    _forbid_pr_mutations(monkeypatch)
     _ = (tmp_path / "oos-accepted-review.md").write_text(
         "### OOS_1: Some finding\nSome body.\n",
         encoding="utf-8",
@@ -5769,6 +5781,7 @@ def test_oos_pending_exits_with_filing_reason_when_security_sidecar_only(
     tmp_path: Path,
 ) -> None:
     _patch_fresh_path_pre_pr_create(monkeypatch)
+    _forbid_pr_mutations(monkeypatch)
     _ = (tmp_path / "security-oos-observations.md").write_text(
         "### OOS_1: Security item\n- **focus-area**: security\n",
         encoding="utf-8",
@@ -5785,6 +5798,7 @@ def test_oos_pending_false_skips_oos_check_despite_accepted_files(
     tmp_path: Path,
 ) -> None:
     _patch_fresh_path_pre_pr_create(monkeypatch)
+    _forbid_pr_mutations(monkeypatch)
     _ = (tmp_path / "oos-accepted-review.md").write_text(
         "### OOS_1: Some finding\nSome body.\n",
         encoding="utf-8",
@@ -5808,6 +5822,7 @@ def test_oos_check_skipped_when_forked(
     tmp_path: Path,
 ) -> None:
     _patch_fresh_path_pre_pr_create(monkeypatch)
+    _forbid_pr_mutations(monkeypatch)
     _ = (tmp_path / "oos-accepted-review.md").write_text(
         "### OOS_1: Some finding\nSome body.\n",
         encoding="utf-8",
@@ -5854,6 +5869,7 @@ def test_oos_check_no_signal_when_no_accepted_oos_files(
     tmp_path: Path,
 ) -> None:
     _patch_fresh_path_pre_pr_create(monkeypatch)
+    _forbid_pr_mutations(monkeypatch)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(
         ship.pr, "ensure_pr",
@@ -6829,6 +6845,7 @@ def test_open_pr_resume_guidelines_gate_write_failure_stalls_before_ensure_pr(
     tmp_path: Path,
 ) -> None:
     state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    _forbid_pr_mutations(monkeypatch)
     monkeypatch.setattr(
         ship,
         "load_or_prepare_guidelines_note",
@@ -6855,6 +6872,7 @@ def test_open_pr_resume_blank_head_sha_stalls_before_ensure_pr(
 ) -> None:
     state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "")
+    _forbid_pr_mutations(monkeypatch)
     monkeypatch.setattr(
         ship,
         "load_or_prepare_guidelines_note",
@@ -6922,6 +6940,7 @@ def test_open_pr_resume_guidelines_gate_needs_assessment_skips_flush_and_ensure_
     tmp_path: Path,
 ) -> None:
     state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    _forbid_pr_mutations(monkeypatch)
     monkeypatch.setattr(
         ship,
         "load_or_prepare_guidelines_note",
@@ -6950,6 +6969,7 @@ def test_open_pr_resume_guidelines_gate_dropped_outcome_stalls_before_compose_an
     tmp_path: Path,
 ) -> None:
     state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    _forbid_pr_mutations(monkeypatch)
     order: list[str] = []
 
     def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
@@ -7135,6 +7155,7 @@ def test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note(
         detail="architectural-guidelines assessment required before PR body compose",
     )
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", lambda **_kwargs: stale_gate)
+    _forbid_pr_mutations(monkeypatch)
     monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run before reassessment")))
 
     result = ship.run_ship(

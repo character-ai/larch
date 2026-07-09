@@ -103,26 +103,38 @@ def _safe_line(value: object, *, limit: int = 300) -> str:
     return text
 
 
+def _artifact_present(path: Path) -> bool:
+    return path.exists() or path.is_symlink()
+
+
 def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], int]:
     """Return (sanitized_display_items, raw_entry_count)."""
-    if manifest_path is None or not manifest_path.is_file():
+    if manifest_path is None:
         return (), 0
+    if not _artifact_present(manifest_path):
+        return (), 0
+    if not manifest_path.is_file():
+        raise ShipError(f"resolved manifest is not a regular file: {manifest_path}")
     try:
-        parsed: object = json.loads(
-            manifest_path.read_text(encoding="utf-8", errors="replace")
-        )
-    except (OSError, json.JSONDecodeError):
-        return (), 0
+        raw_text = manifest_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ShipError(f"resolved manifest unreadable: {manifest_path}") from exc
+    try:
+        parsed: object = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        raise ShipError(f"resolved manifest malformed: {manifest_path}") from exc
     if not isinstance(parsed, dict):
-        return (), 0
+        raise ShipError(f"resolved manifest schema-invalid: {manifest_path}")
     raw = cast("Mapping[str, object]", parsed).get("todos_left")
     if not isinstance(raw, list):
-        return (), 0
+        raise ShipError(f"resolved manifest schema-invalid: {manifest_path}")
     raw_items = cast("list[object]", raw)
     raw_count = len(raw_items)
     lines: list[str] = []
     budget = _MAX_TODO_CHARS
     for item in raw_items[:_MAX_TODO_ITEMS]:
+        if not isinstance(item, str):
+            raise ShipError(f"resolved manifest schema-invalid: {manifest_path}")
         line = _safe_line(item)
         if not line:
             continue
@@ -431,15 +443,14 @@ def resolve_implement_manifest(
 ) -> Path | None:
     if (
         manifest_path is not None
-        and manifest_path.is_file()
-        and not manifest_path.is_symlink()
+        and _artifact_present(manifest_path)
     ):
         return manifest_path
     for candidate in (
         tmpdir / "manifest.json",
         tmpdir / "codex-step2-out" / "manifest.json",
     ):
-        if candidate.is_file() and not candidate.is_symlink():
+        if _artifact_present(candidate):
             return candidate
     return None
 
@@ -449,7 +460,7 @@ def is_pr_mutation_gate_relevant(
 ) -> bool:
     return (
         any(
-            candidate.is_file() and not candidate.is_symlink()
+            _artifact_present(candidate)
             for candidate in (
                 tmpdir / "plan.txt",
                 coverage_path(tmpdir),

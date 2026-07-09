@@ -358,6 +358,36 @@ def test_manifest_alone_makes_pr_mutation_gate_relevant(
     assert calls == [manifest]
 
 
+def test_non_regular_reserved_artifact_still_makes_pr_mutation_gate_relevant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan_dir = tmp_path / "plan.txt"
+    plan_dir.mkdir()
+    calls: list[Path | None] = []
+
+    def fake_require(
+        *,
+        tmpdir: Path,
+        repo_root: Path,
+        manifest_path: Path | None = None,
+        runner: object = None,
+    ) -> None:
+        _ = tmpdir, repo_root, runner
+        calls.append(manifest_path)
+
+    monkeypatch.setattr(
+        scope_disposition, "require_valid_disposition_for_ship", fake_require
+    )
+
+    assert scope_disposition.is_pr_mutation_gate_relevant(tmpdir=tmp_path) is True
+    scope_disposition.require_pr_mutation_scope_disposition(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=FakeRunner(diff_paths=[]),
+    )
+    assert calls == [None]
+
+
 def test_validate_manifest_todos_require_disposition_without_persisted_coverage(
     tmp_path: Path,
 ) -> None:
@@ -380,6 +410,24 @@ def test_validate_manifest_todos_require_disposition_without_persisted_coverage(
     assert result.reason == "scope-disposition-missing"
     assert result.coverage is not None
     assert result.coverage.todos_left_count == 1
+
+
+def test_validate_manifest_todos_schema_invalid_fails_closed(tmp_path: Path) -> None:
+    _ = (tmp_path / "plan.txt").write_text(_plan(["a.py"]), encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"todos_left": "finish docs"}\n', encoding="utf-8")
+
+    result = scope_disposition.validate_disposition_for_ship(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        manifest_path=manifest,
+        runner=FakeRunner(diff_paths=["a.py"]),
+    )
+
+    assert result.ok is False
+    assert result.required is True
+    assert result.reason.startswith("coverage-recompute-failed")
 
 
 def test_pr_mutation_gate_required_coverage_missing_plan_raises(tmp_path: Path) -> None:
