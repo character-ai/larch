@@ -178,35 +178,53 @@ def _validate_dir_entry_name(name: str) -> None:
         raise ValueError(msg)
 
 
-def _ensure_directory(path: Path) -> None:
-    """Create ``path`` and its parents without following symlink swaps."""
+def _ensure_directory_fd(path: Path) -> int:
+    """Create ``path`` and its parents, returning a verified live directory fd."""
     target = path.expanduser()
     if not target.is_absolute():
         target = Path.cwd() / target
     if len(target.parts) == 1:
-        return
+        return _open_verified_dir(Path(target.anchor))
     current_fd = _open_verified_dir(Path(target.anchor))
     try:
         for part in target.parts[1:]:
-            _validate_dir_entry_name(part)
-            try:
-                next_fd = os.open(part, _dir_open_flags(), dir_fd=current_fd)
-            except FileNotFoundError:
-                with contextlib.suppress(FileExistsError):
-                    os.mkdir(part, 0o777, dir_fd=current_fd)
-                next_fd = os.open(part, _dir_open_flags(), dir_fd=current_fd)
-            try:
-                stat_result = os.fstat(next_fd)
-                if not stat.S_ISDIR(stat_result.st_mode):
-                    msg = f"refusing non-directory progress path: {target}"
-                    raise OSError(msg)
-            except OSError:
-                os.close(next_fd)
-                raise
-            os.close(current_fd)
+            next_fd = _open_or_create_subdir(current_fd, part)
+            old_fd = current_fd
             current_fd = next_fd
-    finally:
+            os.close(old_fd)
+    except (OSError, ValueError):
         os.close(current_fd)
+        raise
+    return current_fd
+
+
+def _ensure_directory(path: Path) -> None:
+    """Create ``path`` and its parents without following symlink swaps."""
+    dir_fd = _ensure_directory_fd(path)
+    try:
+        return
+    finally:
+        os.close(dir_fd)
+
+
+def _open_or_create_subdir(parent_fd: int, name: str) -> int:
+    """Open or create a verified directory entry under ``parent_fd``."""
+    _validate_dir_entry_name(name)
+    try:
+        child_fd = os.open(name, _dir_open_flags(), dir_fd=parent_fd)
+    except FileNotFoundError:
+        with contextlib.suppress(FileExistsError):
+            os.mkdir(name, 0o777, dir_fd=parent_fd)
+        child_fd = os.open(name, _dir_open_flags(), dir_fd=parent_fd)
+    try:
+        stat_result = os.fstat(child_fd)
+        if not stat.S_ISDIR(stat_result.st_mode):
+            msg = f"refusing non-directory progress path: {name}"
+            raise OSError(msg)
+    except OSError:
+        os.close(child_fd)
+        raise
+    return child_fd
 
 
 def _open_verified_dir(path: Path) -> int:
@@ -306,37 +324,30 @@ def _append_line_in_dir(dir_fd: int, name: str, line: str) -> None:
 def activate_run(repo_root: str | Path, run_id: str) -> None:
     safe_run_id = validate_run_id(run_id)
     clone_dir = progress_clone_dir(repo_root)
-    run_dir = run_progress_dir(repo_root, safe_run_id)
-    pointer_path = current_run_path(repo_root)
-    larch_io.assert_no_symlink_path_or_ancestors(clone_dir)
-    larch_io.assert_no_symlink_path_or_ancestors(run_dir)
-    larch_io.assert_no_symlink_path_or_ancestors(pointer_path)
-    _ensure_directory(clone_dir)
-    _ensure_directory(run_dir)
-    larch_io.assert_no_symlink_path_or_ancestors(clone_dir)
-    larch_io.assert_no_symlink_path_or_ancestors(run_dir)
-    larch_io.assert_no_symlink_path_or_ancestors(pointer_path)
-    dir_fd = _open_verified_dir(clone_dir)
+    clone_dir_fd = _ensure_directory_fd(clone_dir)
     try:
-        _atomic_write_in_dir(dir_fd, CURRENT_RUN_FILENAME, f"{safe_run_id}\n", mode=0o600, temp_prefix=".current.")
+        run_dir_fd = _open_or_create_subdir(clone_dir_fd, safe_run_id)
+        os.close(run_dir_fd)
+        _atomic_write_in_dir(clone_dir_fd, CURRENT_RUN_FILENAME, f"{safe_run_id}\n", mode=0o600, temp_prefix=".current.")
     finally:
-        os.close(dir_fd)
+        os.close(clone_dir_fd)
 
 
 def append_breadcrumb_for_run(repo_root: str | Path, run_id: str, skill: str, step: str, text: str) -> bool:
     """Append one run-scoped breadcrumb, returning ``False`` on best-effort failure."""
     try:
         line = breadcrumb_line(skill=skill, step=step, text=text)
-        run_dir = run_progress_dir(repo_root, run_id)
-        path = run_dir / RUN_BREADCRUMB_FILENAME
-        larch_io.assert_no_symlink_path_or_ancestors(path)
-        _ensure_directory(run_dir)
-        larch_io.assert_no_symlink_path_or_ancestors(path)
-        dir_fd = _open_verified_dir(run_dir)
+        safe_run_id = validate_run_id(run_id)
+        clone_dir = progress_clone_dir(repo_root)
+        clone_dir_fd = _ensure_directory_fd(clone_dir)
         try:
-            _append_line_in_dir(dir_fd, RUN_BREADCRUMB_FILENAME, line)
+            run_dir_fd = _open_or_create_subdir(clone_dir_fd, safe_run_id)
+            try:
+                _append_line_in_dir(run_dir_fd, RUN_BREADCRUMB_FILENAME, line)
+            finally:
+                os.close(run_dir_fd)
         finally:
-            os.close(dir_fd)
+            os.close(clone_dir_fd)
     except (OSError, TypeError, ValueError):
         return False
     return True
