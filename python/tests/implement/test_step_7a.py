@@ -145,17 +145,17 @@ def test_step7a_skips_run_log_commit_after_preterminal_commit_failed(
     monkeypatch.setattr(
         step_7a.run_logs,
         "_render_token_timing_batches",
-        lambda *_args, **_kwargs: None,
+        lambda *_args, **_kwargs: None,  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
     monkeypatch.setattr(
         step_7a.run_logs,
         "_stage_vendor_failure_diagnostics",
-        lambda *_args, **_kwargs: None,
+        lambda *_args, **_kwargs: None,  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
     monkeypatch.setattr(
         step_7a.run_logs,
         "flush_logs_pre",
-        lambda **_kwargs: RefreshSkip(
+        lambda **_kwargs: RefreshSkip(  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
             skipped=True,
             reason=config.REFRESH_SKIP_COMMIT_FAILED,
             error="pre-terminal label stalled",
@@ -164,7 +164,7 @@ def test_step7a_skips_run_log_commit_after_preterminal_commit_failed(
     monkeypatch.setattr(
         step_7a.subprocess,
         "run",
-        lambda *args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+        lambda *args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     status = step_7a._run_log_flush(  # pyright: ignore[reportPrivateUsage]
