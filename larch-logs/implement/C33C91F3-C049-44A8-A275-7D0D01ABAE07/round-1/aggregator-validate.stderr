@@ -1,0 +1,3 @@
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_6 not traceable to scoped input (first 80 chars: '`Add a fixture using larch.report.run_logs and run_log_flush asserting facade fl')
+warning: fix text for slot 'dyn-dyn-static-resolver' in FINDING_13 not traceable to scoped input (first 80 chars: '`Drop the filesystem fallback (return None after _imported_module_attribute fail')
+warning: fix text for slot 'dyn-dyn-static-resolver' in FINDING_14 not traceable to scoped input (first 80 chars: '`Use one policy everywhere (last binding matches runtime), ideally a shared help')
