@@ -464,9 +464,12 @@ def test_validate_non_gate_recompute_failure_keeps_nonrequired_coverage_advisory
     def fake_load(_tmpdir: Path) -> scope_disposition.PlanCoverage:
         return coverage
 
+    def fake_gate_relevant(**_kwargs: object) -> bool:
+        return False
+
     monkeypatch.setattr(scope_disposition, "load_coverage", fake_load)
     monkeypatch.setattr(
-        scope_disposition, "is_pr_mutation_gate_relevant", lambda **_kwargs: False
+        scope_disposition, "is_pr_mutation_gate_relevant", fake_gate_relevant
     )
 
     result = scope_disposition.validate_disposition_for_ship(

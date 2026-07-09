@@ -1142,9 +1142,9 @@ def test_pr_checks_json_accepts_non_blocking_buckets(bucket: str) -> None:
 
 @pytest.mark.parametrize("bucket", ["fail", "pending"])
 def test_pr_checks_json_blocks_fail_and_pending(bucket: str) -> None:
-    assert not gh._pr_checks_json_all_pass(
+    assert not gh._pr_checks_json_all_pass(  # pyright: ignore[reportPrivateUsage]
         json.dumps([{"name": "ci", "bucket": bucket}])
-    )  # pyright: ignore[reportPrivateUsage]
+    )
 
 
 def test_pr_checks_json_blocks_empty_rows() -> None:

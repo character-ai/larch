@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING
 
 from larch.git import git as git_module
 from larch.git import gh
@@ -13,10 +14,11 @@ from larch.core import config
 from larch.git import pr as pr_module
 from larch.errors import NeedsUserInput, ShipError
 from larch.core.proc import CommandResult, Runner
-from larch.core.run_context import RunContext
-
 
 from test_support import RecordingRunner, make_run_context
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 
 _PORCELAIN_CLEAN = CommandResult(
@@ -771,7 +773,7 @@ def test_push_open_pr_branch_refuses_before_push(
     runner = RecordingRunner(responses=[_PORCELAIN_CLEAN], strict=True)
 
     with pytest.raises(NeedsUserInput):
-        _ = pr_module._push_open_pr_branch(runner, branch="feat", cwd=None)
+        _ = pr_module._push_open_pr_branch(runner, branch="feat", cwd=None)  # pyright: ignore[reportPrivateUsage]
 
     assert _mutating_calls(runner) == []
 
