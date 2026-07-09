@@ -1,0 +1,22 @@
+F1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- plan already keeps tests under python/tests/report, so a repo-root test path is not required.
+F2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- compact statusline is already the plan; explicit ship-pr/design branches are an implementation choice, not a blocker.
+F3: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- the proposal does not require registry mutation during render, so the reap concern is speculative.
+F4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- no-clobber is already required; pinning ownership by exact realpath/marker is a refinement, not a necessary blocker.
+F5: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- the approved direction already says to prefer live registry/PID evidence before stale mtime ranking.
+F6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the JSON shape should be well-defined, but this contract detail is not required to deliver the feature.
+F7: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- stronger SECURITY.md wording is useful, but the feature does not depend on that documentation detail.
+F8: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- silent install failures are desirable, but this error-path behavior is not required for the progress feature itself.
+F9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+F10: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- the optional hook is already gated/dropped, so a wider matcher is not necessary for the shipped feature.
+F11: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- residual Bash manifest updates are lint hygiene, not feature correctness.
+F12: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- the harness exclusion is a tooling/lint concern, not a required part of the feature.
+F13: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+F14: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- the statusline verb can avoid quiet-init without needing a machine-stdout registry entry.
+F15: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- pointer-glob scale is a performance concern, and this statusline feature does not require that optimization.
+F16: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- always-on first-run installation is the approved direction, so explicit opt-in is a scope change rather than a missing fix.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- the optional PostToolUse hook is already deferred in the approved direction, so this is not a separate filed gap.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- it is a real alternative, but it duplicates the opt-in/install-scope concern already covered elsewhere.
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- manifest coverage is lint bookkeeping, not a feature-path defect.
+OOS_6: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- a post-render redact pass is a speculative hardening step, not a filing-worthy necessity here.

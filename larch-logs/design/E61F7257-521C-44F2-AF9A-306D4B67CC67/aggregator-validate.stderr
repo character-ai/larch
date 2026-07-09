@@ -1,0 +1,3 @@
+warning: fix text for slot 'Cursor-dyn-Statusline Security' in FINDING_4 not traceable to scoped input (first 80 chars: 'Define larch-owned as exact realpath equality with the canonical `~/.cache/larch')
+warning: fix text for slot 'Codex-dyn-Statusline Security' in FINDING_8 not traceable to scoped input (first 80 chars: 'Wrap install_statusline_main in except Exception returning 0 with no output; nev')
+warning: fix text for slot 'Codex-dyn-Statusline Security' in FINDING_14 not traceable to scoped input (first 80 chars: 'Add ("progress", "statusline") to `_MACHINE_STDOUT_KEYS`; forbid quiet_init insi')

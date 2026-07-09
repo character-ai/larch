@@ -1,0 +1,23 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Codex-Requirements	rejected					true	codex-validity	NO	false-positive	nit	adequate	false	codex-plan-fidelity	NO	false-positive	nit	no-fix	false	codex-pragmatism	major	in_scope
+FINDING_2	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements	rejected					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	partially-true	minor	adequate	false	codex-pragmatism	major	in_scope
+FINDING_3	Cursor-Arch	rejected					true	codex-validity	NO	false-positive	minor	adequate	false	codex-plan-fidelity	NO	false-positive	nit	no-fix	false	codex-pragmatism	major	in_scope
+FINDING_4	Cursor-Arch, Codex-Innovation, Cursor-dyn-Statusline Security	neutral					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	major	oos
+FINDING_5	Cursor-Innovation, Cursor-Requirements	neutral					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	major	oos
+FINDING_6	Cursor-Innovation	rejected					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	partially-true	minor	adequate	false	codex-pragmatism	minor	in_scope
+FINDING_7	Cursor-Innovation, Cursor-dyn-Statusline Security	rejected					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	partially-true	minor	adequate	false	codex-pragmatism	major	in_scope
+FINDING_8	Cursor-Pragmatic, Codex-dyn-Statusline Security	neutral					true	codex-validity	YES	true	major	good	false	codex-plan-fidelity	NO	partially-true	minor	adequate	false	codex-pragmatism	major	oos
+FINDING_9	Cursor-Pragmatic	neutral					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	minor	oos
+FINDING_10	Cursor-Pragmatic	rejected					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	partially-true	minor	adequate	false	codex-pragmatism	minor	in_scope
+FINDING_11	Codex-Requirements	rejected					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	false-positive	nit	no-fix	false	codex-pragmatism	minor	in_scope
+FINDING_12	Codex-Requirements	rejected					true	codex-validity	NO	false-positive	minor	adequate	false	codex-plan-fidelity	NO	false-positive	nit	no-fix	false	codex-pragmatism	major	in_scope
+FINDING_13	Cursor-dyn-Statusline Security, Codex-dyn-Statusline Security	accepted					true	codex-validity	YES	true	major	good	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	major	in_scope
+FINDING_14	Codex-dyn-Statusline Security	accepted					true	codex-validity	YES	true	minor	good	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	minor	in_scope
+FINDING_15	Cursor-Innovation	rejected					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	partially-true	minor	adequate	false	codex-pragmatism	major	in_scope
+FINDING_16	Codex-Pragmatic	rejected					true	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	partially-true	minor	adequate	false	codex-pragmatism	major	in_scope
+OOS_1	Cursor-Arch	accepted	YES	true	minor	good	false	codex-validity	YES	true	minor	good	false	codex-plan-fidelity	YES	true	minor	good	false	codex-pragmatism	minor	oos
+OOS_2	Cursor-Innovation	neutral	NO	false-positive	minor	no-fix	false	codex-validity	NO	false-positive	minor	adequate	false	codex-plan-fidelity	YES	true	minor	adequate	false	codex-pragmatism	minor	oos
+OOS_3	Cursor-Innovation	neutral	NO	partially-true	minor	adequate	false	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	YES	true	minor	good	false	codex-pragmatism	minor	oos
+OOS_4	Cursor-Pragmatic	accepted	YES	true	minor	good	false	codex-validity	YES	true	minor	good	false	codex-plan-fidelity	YES	true	minor	good	false	codex-pragmatism	minor	oos
+OOS_5	Cursor-Requirements	rejected	NO	false-positive	minor	no-fix	false	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	false-positive	nit	no-fix	false	codex-pragmatism	minor	oos
+OOS_6	Cursor-dyn-Statusline Security	rejected	NO	false-positive	minor	no-fix	false	codex-validity	NO	false-positive	minor	adequate	false	codex-plan-fidelity	NO	false-positive	nit	no-fix	false	codex-pragmatism	minor	oos

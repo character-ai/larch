@@ -1,0 +1,10 @@
+WARN=plan-size trigger (postplan rc=12) in continuation (round 1): proceeding as warning-only
+NEXT_ACTION=step3b
+LOOP_STATUS=zero-findings-degraded-panel
+TALLY_PLAN_REVIEW_STATUS=ok
+REVIEW_ROUND_COUNT=2
+ROUNDS_COMPLETED=2
+ACCEPTED_COUNT=0
+AGGREGATOR_STATUS=skipped-pruned-empty
+VOTING_TALLY_FILE=<TMPDIR>/voting-tally.md
+DEGRADED_PANEL=0

@@ -1,0 +1,17 @@
+{"type":"mark","step":"design Step 0: session setup","ts":"2026-07-08T19:22:08Z"}
+{"type":"vendor","vendor":"codex","input":137383,"output":8026,"cache_read":1187072,"cache_create":0,"total":1332481,"raw":"codex_plan_draft","ts":"2026-07-08T19:42:46Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":118524,"output":9582,"cache_read":1723508,"cache_create":0,"total":1851614,"raw":"cursor_review","ts":"2026-07-08T20:06:04Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":89060,"output":18198,"cache_read":507264,"cache_create":0,"total":614522,"raw":"codex_review","ts":"2026-07-08T20:06:15Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":83322,"output":19534,"cache_read":882304,"cache_create":0,"total":985160,"raw":"codex_review","ts":"2026-07-08T20:06:52Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":100548,"output":20883,"cache_read":1635968,"cache_create":0,"total":1757399,"raw":"codex_review","ts":"2026-07-08T20:07:04Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":112792,"output":8654,"cache_read":1673694,"cache_create":0,"total":1795140,"raw":"cursor_review","ts":"2026-07-08T20:07:30Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":117856,"output":12924,"cache_read":1480192,"cache_create":0,"total":1610972,"raw":"codex_review","ts":"2026-07-08T20:07:45Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":128875,"output":10805,"cache_read":1975210,"cache_create":0,"total":2114890,"raw":"cursor_review","ts":"2026-07-08T20:07:49Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":112709,"output":9548,"cache_read":1458905,"cache_create":0,"total":1581162,"raw":"cursor_review","ts":"2026-07-08T20:07:50Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":117946,"output":9552,"cache_read":1757965,"cache_create":0,"total":1885463,"raw":"cursor_review","ts":"2026-07-08T20:08:36Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":136022,"output":12406,"cache_read":3367296,"cache_create":0,"total":3515724,"raw":"codex_review","ts":"2026-07-08T20:09:16Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":12931,"output":18662,"cache_read":6528,"cache_create":0,"total":38121,"raw":"codex_review","ts":"2026-07-08T20:11:13Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":46664,"output":23278,"cache_read":373376,"cache_create":0,"total":443318,"raw":"codex_review","ts":"2026-07-08T20:14:14Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":48327,"output":21619,"cache_read":660352,"cache_create":0,"total":730298,"raw":"codex_review","ts":"2026-07-08T20:14:44Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"codex","input":33915,"output":27635,"cache_read":414720,"cache_create":0,"total":476270,"raw":"codex_review","ts":"2026-07-08T20:15:03Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":57127,"output":5944,"cache_read":353440,"cache_create":0,"total":416511,"raw":"cursor_review","ts":"2026-07-08T20:16:39Z","model":"composer-2.5"}

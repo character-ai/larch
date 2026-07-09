@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	38515	9629	13565	3392	24950	6238		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	24249	6063	13277	3320	10972	2743		0	0
+design Step 3	phase1	1	dyn-cursor-plan-statusline-security	plan-review	cursor	dyn-cursor-plan-statusline-security.txt	38771	9693	13431	3358	25340	6335		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	38530	9633	13580	3395	24950	6238		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	24264	6066	13292	3323	10972	2743		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	24262	6066	13290	3323	10972	2743		0	0
+design Step 3	phase1	1	dyn-codex-plan-statusline-security	plan-review	codex	dyn-codex-plan-statusline-security.txt	24505	6127	13143	3286	11362	2841		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	24240	6060	13268	3317	10972	2743		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	38528	9632	13578	3395	24950	6238		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	38506	9627	13556	3389	24950	6238		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	38437	9610	4613	1154	33824	8456	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	22654	5664	9143	2286	13511	3378		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	22654	5664	9143	2286	13511	3378		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	22654	5664	9143	2286	13511	3378		0	0

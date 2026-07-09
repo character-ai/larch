@@ -1,0 +1,25 @@
+# attributed_ballot_sha256=14484f94fc960483601e63c7ee2738dbee824ecad813de0ffd74c59421c7e4b5
+# neutral_ballot_sha256=05771e7a57947e7bb6e8529467d7c76f14203b39a8e220a37d2718f49b9f477a
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Arch, Codex-Requirements	- **Reviewer(s)**: Cursor-Arch, Codex-Requirements
+FINDING_2	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+FINDING_3	Cursor-Arch	- **Reviewer(s)**: Cursor-Arch
+FINDING_4	Cursor-Arch, Codex-Innovation, Cursor-dyn-Statusline Security	- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Cursor-dyn-Statusline Security
+FINDING_5	Cursor-Innovation, Cursor-Requirements	- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+FINDING_6	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_7	Cursor-Innovation, Cursor-dyn-Statusline Security	- **Reviewer(s)**: Cursor-Innovation, Cursor-dyn-Statusline Security
+FINDING_8	Cursor-Pragmatic, Codex-dyn-Statusline Security	- **Reviewer(s)**: Cursor-Pragmatic, Codex-dyn-Statusline Security
+FINDING_9	Cursor-Pragmatic	- **Reviewer(s)**: Cursor-Pragmatic
+FINDING_10	Cursor-Pragmatic	- **Reviewer(s)**: Cursor-Pragmatic
+FINDING_11	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
+FINDING_12	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
+FINDING_13	Cursor-dyn-Statusline Security, Codex-dyn-Statusline Security	- **Reviewer(s)**: Cursor-dyn-Statusline Security, Codex-dyn-Statusline Security
+FINDING_14	Codex-dyn-Statusline Security	- **Reviewer(s)**: Codex-dyn-Statusline Security
+FINDING_15	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_16	Codex-Pragmatic	- **Reviewer(s)**: Codex-Pragmatic
+OOS_1	Cursor-Arch	- **Reviewer**: Cursor-Arch
+OOS_2	Cursor-Innovation	- **Reviewer**: Cursor-Innovation
+OOS_3	Cursor-Innovation	- **Reviewer**: Cursor-Innovation
+OOS_4	Cursor-Pragmatic	- **Reviewer**: Cursor-Pragmatic
+OOS_5	Cursor-Requirements	- **Reviewer**: Cursor-Requirements
+OOS_6	Cursor-dyn-Statusline Security	- **Reviewer**: Cursor-dyn-Statusline Security
