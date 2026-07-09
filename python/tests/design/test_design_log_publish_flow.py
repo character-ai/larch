@@ -294,6 +294,42 @@ def test_log_publish_approved_missing_guideline_assessment_records_warning(
     assert "architectural-guideline-assessment.md" in issues
 
 
+def test_log_publish_approved_missing_guideline_assessment_does_not_follow_marker_symlink(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_guidelines(tmp_path, monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    protected = tmp_path / "protected-warning.txt"
+    _ = protected.write_text("keep\n", encoding="utf-8")
+    (design / ".missing-guideline-assessment-warning").symlink_to(protected)
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(
+        design_log_publish_flow,
+        "_publish_design_logs",
+        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    )
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    assert rc == 0
+    assert protected.read_text(encoding="utf-8") == "keep\n"
+
+
 def test_log_publish_guideline_assessment_present_suppresses_warning(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

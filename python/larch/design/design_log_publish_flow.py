@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.core import redact
 from larch.design import design_publish
 from larch.design.design_summary import resolve_summary_mode
@@ -542,9 +543,10 @@ def _record_missing_guideline_assessment_warning(
             ),
         )
     with contextlib.suppress(OSError):
-        _ = (design_tmpdir / ".missing-guideline-assessment-warning").write_text(
-            "",
-            encoding="utf-8",
+        larch_io.atomic_write(
+            path=design_tmpdir / ".missing-guideline-assessment-warning",
+            text="",
+            nofollow=True,
         )
 
 
