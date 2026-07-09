@@ -36,8 +36,8 @@ codex/pragmatism-vote    │                                        ████
 ## /implement run 9231D602-625A-4AD6-8170-6F09C7D8828F: shipping
 
 - **Outcome**: shipping
-- **Duration**: 01:13:21
-- **Cost**: 💰 TOTAL ~$12.52: Claude $5.72, Codex-5.5 $0.28, Codex-mini $1.83, Cursor $4.26, Claude (subprocess) $0.43  |  Tokens: 34191k
+- **Duration**: 01:13:46
+- **Cost**: 💰 TOTAL ~$12.88: Claude $5.72, Codex-5.5 $0.28, Codex-mini $1.83, Cursor $4.26, Claude (subprocess) $0.79  |  Tokens: 34405k
 - **Issue**: #6748: https://github.com/character-ai/larch/issues/6748
 - **Plan review**: N/A
 - **Plan coverage**: 12/12 firm headings; band: advisory; disposition: none; todos_left: 0
