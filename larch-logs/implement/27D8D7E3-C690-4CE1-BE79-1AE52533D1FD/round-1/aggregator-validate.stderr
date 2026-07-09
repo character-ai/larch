@@ -1,0 +1,3 @@
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: '"Split hooks.json matchers for startup|clear vs resume|compact, or document and ')
+warning: fix text for slot 'dyn-dyn-statusline-reset' in FINDING_1 not traceable to scoped input (first 80 chars: '"Split hooks.json into separate SessionStart matchers (`startup|clear` vs `resum')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_2 not traceable to scoped input (first 80 chars: '"Limit RESET_SESSION_SOURCES to {\\"startup\\"} only, or add active-run guard befo')
