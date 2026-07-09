@@ -269,16 +269,22 @@ def _python_scope_lines(*, source: str, lines: list[str], parent_map: dict[int, 
     return "\n".join(lines[max(start, 0) : min(len(lines), end)])
 
 
-def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
+def _python_write_scope_texts(source: str) -> list[str]:
+    """Return the enclosing-scope text for every write call in a Python source.
+
+    Parsing and scope extraction depend only on the file, not on any manifest
+    row, so callers compute this once per file and reuse it across all rows.
+    """
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return False
+        return []
     parent_map: dict[int, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):
             parent_map[id(child)] = parent
     lines = source.splitlines()
+    scope_texts: list[str] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
@@ -287,10 +293,8 @@ def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
             continue
         if name == "open" and not _literal_open_write_mode(node):
             continue
-        scope_text = _python_scope_lines(source=source, lines=lines, parent_map=parent_map, node=node)
-        if _mentions_artifact(scope_text, row):
-            return True
-    return False
+        scope_texts.append(_python_scope_lines(source=source, lines=lines, parent_map=parent_map, node=node))
+    return scope_texts
 
 
 def _shell_line_writes_artifact(line: str, row: ManifestRow) -> bool:
@@ -329,37 +333,53 @@ def _batch_artifacts(root: Path) -> set[str]:
     return artifacts
 
 
-def _count_readers(root: Path, row: ManifestRow) -> int:
-    return sum(1 for path in _iter_python_files(root, under_larch=True) if _mentions_artifact(_read_text(path), row))
-
-
-def _count_writers(root: Path, row: ManifestRow, *, batch_artifacts: set[str]) -> int:
+def _count_writers(
+    row: ManifestRow,
+    *,
+    batch_artifacts: set[str],
+    writer_scope_texts: list[list[str]],
+    shell_writer_lines: list[list[str]],
+) -> int:
     writers = 0
     artifact = row["artifact"]
     if row["kind"] == "basename" and artifact in batch_artifacts:
         writers += 1
-    for path in _iter_python_files(root, under_larch=False):
-        if _python_has_write_call(_read_text(path), row=row):
+    for scope_texts in writer_scope_texts:
+        if any(_mentions_artifact(text, row) for text in scope_texts):
             writers += 1
-    for path in _iter_shell_writer_files(root):
-        text = _read_text(path)
-        for line in text.splitlines():
-            stripped = line.lstrip()
-            if stripped.startswith("#"):
-                continue
-            if _shell_line_writes_artifact(line, row):
-                writers += 1
-                break
+    for lines in shell_writer_lines:
+        if any(_shell_line_writes_artifact(line, row) for line in lines):
+            writers += 1
     return writers
 
 
 def collect_findings(root: Path, manifest_rows: list[ManifestRow]) -> list[Finding]:
-    """Return manifest artifacts with reader evidence but no writer evidence."""
+    """Return manifest artifacts with reader evidence but no writer evidence.
+
+    File reads and AST parses are hoisted out of the per-row loop: each reader
+    file is read once and each writer file is parsed once, then every manifest
+    row is matched against the cached text. This turns an O(rows x files x parse)
+    scan into O(files x parse + rows x files x match), which was the dominant
+    cost of the CI python-lint job.
+    """
     batch_artifacts = _batch_artifacts(root)
+    reader_texts = [_read_text(path) for path in _iter_python_files(root, under_larch=True)]
+    writer_scope_texts = [
+        _python_write_scope_texts(_read_text(path)) for path in _iter_python_files(root, under_larch=False)
+    ]
+    shell_writer_lines = [
+        [line for line in _read_text(path).splitlines() if not line.lstrip().startswith("#")]
+        for path in _iter_shell_writer_files(root)
+    ]
     findings: list[Finding] = []
     for row in manifest_rows:
-        readers = _count_readers(root, row)
-        writers = _count_writers(root, row, batch_artifacts=batch_artifacts)
+        readers = sum(1 for text in reader_texts if _mentions_artifact(text, row))
+        writers = _count_writers(
+            row,
+            batch_artifacts=batch_artifacts,
+            writer_scope_texts=writer_scope_texts,
+            shell_writer_lines=shell_writer_lines,
+        )
         if readers > 0 and writers == 0:
             findings.append(Finding(row["kind"], row["artifact"], readers, writers))
     return sorted(findings, key=lambda finding: finding.key())

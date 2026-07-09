@@ -46,16 +46,23 @@ py-lint: py-lint-main py-typecheck
 py-lint-checks-fast:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-lint-checks-fast requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	cd python && ruff check .
-	$(PYTHON) python/cli.py lint complexity-baseline
-	$(PYTHON) python/cli.py lint keyword-only
-	$(PYTHON) python/cli.py lint subprocess-via-runner
-	$(PYTHON) python/cli.py lint wire-artifact-pairing
-	$(PYTHON) python/cli.py lint tempfile-dir
-	$(PYTHON) python/cli.py lint monkeypatch-facade-binding
-	$(PYTHON) python/cli.py lint env-via-config-constant
-	$(PYTHON) python/cli.py lint layering
-	$(PYTHON) python/cli.py lint flat-tests
+	@# ruff + the AST ratchet checks are independent read-only checks. Run them
+	@# concurrently (each to its own log) and aggregate exit codes so wall time is
+	@# the slowest single check, not the ~90s serial sum that dominated CI
+	@# python-lint shard 1. Logs replay in deterministic order after all finish,
+	@# so parallelism never muddies which check failed. POSIX sh only (CI /bin/sh
+	@# is dash): no pipefail, no arrays.
+	@tmp=$$(mktemp -d); rc=0; pids=""; \
+	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
+	for chk in complexity-baseline keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir monkeypatch-facade-binding env-via-config-constant layering flat-tests; do \
+		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
+	done; \
+	for entry in $$pids; do \
+		p=$${entry%%:*}; name=$${entry#*:}; \
+		if wait "$$p"; then cat "$$tmp/$$name.log"; else rc=1; printf '\n=== %s FAILED ===\n' "$$name"; cat "$$tmp/$$name.log"; fi; \
+	done; \
+	rm -rf "$$tmp"; \
+	exit "$$rc"
 
 # Local full Python lint: fast checks + pylint over the whole tree. pylint runs
 # with all cores when the host supports the required process-pool semaphore
