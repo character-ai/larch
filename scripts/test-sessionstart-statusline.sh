@@ -17,7 +17,7 @@ assert_empty() { if [ -z "$1" ]; then pass "$2"; else fail "$2 (expected empty s
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/larch-sessionstart-statusline.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 
-[ -x "$SCRIPT" ] && pass 'script executable' || fail 'script must be executable'
+if [ -x "$SCRIPT" ]; then pass 'script executable'; else fail 'script must be executable'; fi
 
 if jq -e '.hooks.SessionStart[]? | select(.matcher == "startup|resume|clear|compact") | .hooks[]? | select(.type == "command" and .command == "${CLAUDE_PLUGIN_ROOT}/scripts/sessionstart-statusline.sh" and .timeout == 5)' "$HOOKS_JSON" >/dev/null 2>&1; then
     pass 'hooks.json registers SessionStart statusline hook'

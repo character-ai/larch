@@ -65,22 +65,18 @@ from larch.core import proc
 from larch.git import push
 from larch.core import redact
 from larch.git import rebase
-from larch.report import progress_file
 from larch.report import run_logs
 from larch.errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 
-
-def _progress_note(*, step: str, text: str) -> None:
-    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
-
 # Re-exports from sibling modules — preserves `ship.X` access for callers and tests.
 from larch.implement.ship_state import (
     INITIAL_SHIP_STATE_KEYS,
     _PYTHON_TRANSIENT_STALL_ATTEMPT,
     _breadcrumb,
+    _progress_note,
     _patch_ship_state_keys,
     _state_file_kv,
     _state_file_under_tmpdir,
