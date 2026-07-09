@@ -1,0 +1,134 @@
+Reviewing the codebase to place the guard correctly and align the revised plan with accepted findings.
+## Plan
+
+## Approach
+
+Implement the approved outline with minimum scope, incorporating accepted plan-review findings on guard placement, RefreshSkip wiring, recovery-test updates, and the standalone flush entry point.
+
+1. Move the two entries:
+   - Remove `G-Orch-4` and `G-Obs-4` from `ARCHITECTURAL_GUIDELINES.md`.
+   - Do not renumber later `G-Orch-*` or `G-Obs-*` entries.
+   - Add `I-Slot-1` under a new `## Panel integrity` section in `ARCHITECTURAL_INVARIANTS.md`.
+   - Add `I-Outcome-1` under `## Run-log integrity`.
+
+2. Keep invariant entry shape consistent:
+   - Heading matches `INVARIANT_HEADING_RE`.
+   - Body includes the prose contract.
+   - Include `Evidence of violation:`.
+   - Include `Mechanical backing:`.
+   - For `I-Slot-1`, cite existing slot-drop backing, including `reviewer-prune-ledger.tsv`, `*-slots.ndjson`, dropped-slot sidecars, and tests in `python/tests/review/test_plan_review_round.py`, `python/tests/review/test_plan_review_panel.py`, and agent waterfall drop coverage.
+   - For `I-Outcome-1`, cite the new flush-time guard and `python/tests/report/test_run_log_flush.py` plus the updated recovery expectations in `python/tests/report/test_run_logs.py`.
+
+3. Add the pre-terminal label guard (shared, end-of-staging placement):
+   - Add `PRETERMINAL_FORBIDDEN_OUTCOME_LABELS: Final[frozenset[str]]` to `python/larch/core/config.py` with members `stalled`, `bailed`, and `bailed-needs-user-input` (per G-Cfg-1; protocol literals belong in config).
+   - In `python/larch/report/run_log_flush.py`, add:
+     - `_parse_preterminal_outcome_label(run_dir: Path) -> str | None` — when `final-summary.md` exists, parse only the canonical `## /...` heading label (support legacy `: ` and ` — ` separators); return `None` when the file is missing or no heading label is found.
+     - `_check_preterminal_outcome_label(outcome: str) -> None` — accept the already-parsed label (per G-Py-5; injectable for tests) and raise `ShipError` when `outcome` is in `config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS`.
+     - `_preterminal_outcome_refresh_skip(ctx: RunContext) -> RefreshSkip | None` — read the settled on-disk `final-summary.md` from `_run_log_dir(ctx)`; when a forbidden label is present, return `RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED, error=...)` naming the rejected label and pre-terminal context; otherwise return `None`.
+   - **Placement (FINDING_1):** never call the guard immediately after the first `_write_final_report()` inside `_stage_pre_commit()`. `_stage_pre_commit()` performs two final-report writes plus `_reconcile_stalled_summary_backstop()` between them; the guard must observe the post-reconciliation summary.
+   - In `flush_logs_pre()`, call `_preterminal_outcome_refresh_skip(ctx)` **once** after `_stage_pre_commit()` returns and after the manifest `update_manifest` block, **immediately before** `_commit_run()` (between the current post-staging checks and the commit call).
+   - In `larch_log_flush_main()`, call the same shared check after `_stage_pre_commit(..., mode="flush")` returns and before `_commit_run()`; on forbidden labels, skip commit and emit a bounded warning (do not raise through the CLI).
+   - **RefreshSkip envelope (FINDING_4):** do not let a forbidden pre-terminal label propagate as an uncaught `ShipError` from `flush_logs_pre()`. The refresh CLI (`refresh_run_logs_main`, Step 7a, ship refresh helpers) must continue to receive structured `RefreshSkip` / `REFRESH_*` output.
+   - **Terminal carve-out:** leave post-merge `flush_logs_post()`, finalize teardown `commit_larch_logs`, and other true terminal reconciliation commit paths unguarded so legitimately ended runs may still commit final `stalled` or `bailed` summaries.
+
+4. Add regression tests:
+   - In `python/tests/report/test_run_log_flush.py`:
+     - Unit-test `_check_preterminal_outcome_label` for `stalled`, `bailed`, `bailed-needs-user-input`, and allowed neutral labels.
+     - Unit-test `_parse_preterminal_outcome_label` for canonical and legacy heading punctuation.
+     - Cover `flush_logs_pre()` refusing commit when the settled `final-summary.md` contains `: stalled` or `: bailed`, asserting `skip.skipped` and `skip.reason == config.REFRESH_SKIP_COMMIT_FAILED` (not a raised `ShipError`).
+     - Cover an allowed neutral label such as `shipping` or `pr-created` still committing.
+     - Cover `larch_log_flush_main()` skipping commit when the settled summary has a forbidden label.
+   - In `python/tests/report/test_run_logs.py` (FINDING_2): rewrite `test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery` so the **first** `flush_logs_pre(..., strict_final_report=True)` returns `RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)` while the on-disk summary may still contain `: stalled` before recovery; keep the **second** refresh asserting recovery to `: pr-created` / neutral outcome after stall state clears.
+
+5. Sweep references:
+   - Run `rg "G-Orch-4|G-Obs-4" docs/ skills/ python/ README.md SECURITY.md .github/workflows ARCHITECTURAL_GUIDELINES.md ARCHITECTURAL_INVARIANTS.md`.
+   - Update any prose or fixtures that cite the old guideline IDs to `I-Slot-1` / `I-Outcome-1` where appropriate.
+   - Expected result after edits: no old IDs in `ARCHITECTURAL_GUIDELINES.md`; no old IDs in runtime docs, skills, or Python references unless a test fixture explicitly documents history.
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+Remove only the `G-Orch-4` and `G-Obs-4` entries.
+
+Leave `G-Orch-5`, `G-Orch-6`, and `G-Obs-5` headings unchanged. Do not renumber.
+
+### UPDATED: ARCHITECTURAL_INVARIANTS.md
+
+Add `I-Slot-1` under a new `## Panel integrity` section.
+
+Add `I-Outcome-1` under `## Run-log integrity`.
+
+Keep current invariant prose style. Include real mechanical backing for each entry.
+
+### UPDATED: python/larch/core/config.py
+
+Add `PRETERMINAL_FORBIDDEN_OUTCOME_LABELS: Final[frozenset[str]]` constant containing `stalled`, `bailed`, and `bailed-needs-user-input`.
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Add shared parse/check/enforcement helpers.
+
+Wire `_preterminal_outcome_refresh_skip(ctx)` into `flush_logs_pre()` after full `_stage_pre_commit()` staging completes and immediately before `_commit_run()`.
+
+Wire the same enforcement into `larch_log_flush_main()` immediately before `_commit_run()`.
+
+Return `RefreshSkip` for forbidden pre-terminal labels on the refresh path; reserve direct `ShipError` from `_check_preterminal_outcome_label` for unit tests and internal callers that translate to `RefreshSkip`.
+
+Do not change outcome normalization broadly unless needed for label parsing.
+
+### UPDATED: python/tests/report/test_run_log_flush.py
+
+Add focused unit and integration tests for parse, check, `flush_logs_pre()` RefreshSkip refusal, allowed neutral commit, and `larch_log_flush_main()` skip behavior.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Rewrite `test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery` (and any closely coupled assertions) so pre-terminal stalled summaries refuse the first commit under I-Outcome-1 while the existing two-phase recovery flow still commits `pr-created` after stall clears.
+
+## Edge cases
+
+- A summary heading may use legacy punctuation (`: stalled` or ` — stalled`). Parse only the canonical `## /...` heading label; fail closed only when the parsed label is clearly `stalled`, `bailed`, or `bailed-needs-user-input`.
+- `bailed-needs-user-input` is also a forbidden pre-terminal label.
+- Missing `final-summary.md` must not become a new failure in this guard. Existing completeness checks own missing artifacts; `_preterminal_outcome_refresh_skip` returns `None`.
+- `_reconcile_stalled_summary_backstop()` may rewrite manifest-only recoveries between the two final-report writes. The guard must run only after that reconciliation and the second write have settled.
+- Terminal post-merge reconciliation and finalize teardown must still allow final failure labels where the run has actually ended.
+- `larch_log_flush_main()` must not crash the standalone flush CLI; skip commit with a warning when the guard fires.
+
+## Failure modes
+
+- The guard runs before `_reconcile_stalled_summary_backstop()` or the second final-report write, rejecting recoverable runs or missing labels reintroduced by later staging.
+- The guard raises `ShipError` through `flush_logs_pre()` instead of returning `RefreshSkip`, breaking `python/cli.py run-log refresh` wire output.
+- The guard runs on terminal teardown paths and blocks legitimate final reports.
+- `larch_log_flush_main()` remains unguarded, allowing a standalone flush to commit forbidden pre-terminal labels.
+- Existing recovery tests still expect the first strict flush to commit `: stalled`, causing CI failure after the guard lands.
+- The invariant entry names a backstop that does not exist.
+- Reference sweep misses old IDs in fixtures or docs.
+
+## Testing strategy
+
+Run targeted checks only:
+
+```bash
+python3 python/cli.py architectural-invariants read
+```
+
+Verify it reports 6 entries including `I-Slot-1` and `I-Outcome-1`.
+
+```bash
+python3 -m pytest python/tests/report/test_run_log_flush.py python/tests/report/test_run_logs.py -k "preterminal or stalled_summary or flush_logs_pre_rewrites_stalled"
+```
+
+Run the reference sweep:
+
+```bash
+rg "G-Orch-4|G-Obs-4" docs/ skills/ python/ README.md SECURITY.md .github/workflows ARCHITECTURAL_GUIDELINES.md ARCHITECTURAL_INVARIANTS.md
+```
+
+If any panel-slot backing prose is changed or questioned, also run:
+
+```bash
+python3 -m pytest python/tests/review/test_plan_review_round.py python/tests/review/test_plan_review_panel.py python/tests/agents/test_agent_waterfall.py
+```
+
+difficulty: MODERATE
+diff_lines: 195
