@@ -249,10 +249,8 @@ def _open_tmp_root_fd() -> int:
 
 
 def _mkdir_state_dir(parent_fd: int) -> None:
-    try:
+    with suppress(FileExistsError):
         os.mkdir(STATE_DIR_NAME, 0o700, dir_fd=parent_fd)
-    except FileExistsError:
-        return
 
 
 def _assert_same_state_dir(*, parent_fd: int, state_fd: int) -> None:
