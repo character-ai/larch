@@ -112,6 +112,13 @@ def _truncate(text: str, *, columns: int) -> str:
     return text[: columns - 1] + "…"
 
 
+def _active_progress_path(repo_root: Path) -> Path | None:
+    run_id: str | None = progress_file.read_active_run_id(repo_root)
+    if run_id is None:
+        return None
+    return progress_file.run_progress_path(repo_root, run_id)
+
+
 def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> str:
     env_map = os.environ if env is None else env
     payload = _read_statusline_payload(stdin_text)
@@ -119,7 +126,9 @@ def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> 
     if repo_root is None:
         return ""
     line_count = _positive_int(env_map.get("LARCH_STATUSLINE_LINES"), default=1, max_value=MAX_LINES)
-    path = progress_file.progress_path(repo_root)
+    path = _active_progress_path(repo_root)
+    if path is None:
+        return ""
     rows = _tail_breadcrumbs(path, count=line_count)
     if not rows:
         return ""
