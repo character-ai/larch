@@ -714,13 +714,38 @@ def larch_log_commit_main(argv: list[str]) -> int:
     if not str(args.pre_scrub_violations).isdigit():
         return _larch_log_fail(code=1, message="invalid --pre-scrub-violations: expected non-negative integer")
     if args.skill == "implement":
-        from larch.report.run_log_flush import _preterminal_outcome_commit_blocked  # noqa: PLC0415 - avoid import cycle on run-log facade helpers
-
-        preterminal_block = _preterminal_outcome_commit_blocked(
-            _run_dir(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id),
-        )
-        if preterminal_block is not None:
-            print(f"WARN: larch-log commit skipped: {preterminal_block}", file=sys.stderr)
+        # Inline preterminal outcome check to avoid a cyclic import with run_log_flush.
+        # Mirrors _preterminal_outcome_commit_blocked / _parse_preterminal_outcome_label.
+        _preterminal_block: str | None = None
+        _preterminal_run_dir = _run_dir(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id)
+        _summary_path = _preterminal_run_dir / "final-summary.md"
+        try:
+            if _summary_path.is_file():
+                _summary_text = _summary_path.read_text(encoding="utf-8", errors="replace")
+                _outcome_label: str | None = None
+                for _raw_line in _summary_text.splitlines():
+                    _fsline = _raw_line.strip()
+                    if not _fsline.startswith("## /"):
+                        continue
+                    _colon_i = _fsline.rfind(": ")
+                    _dash_i = _fsline.rfind(" — ")
+                    _sep_i = max(_colon_i, _dash_i)
+                    if _sep_i < 0:
+                        continue
+                    _sep_len = 3 if _dash_i > _colon_i else 2
+                    _outcome_label = (_fsline[_sep_i + _sep_len:].strip().lower()) or None
+                    break
+                if _outcome_label is not None and _outcome_label in config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS:
+                    _raw_msg = (
+                        f"refusing pre-terminal run-log commit with terminal outcome label {_outcome_label!r};"
+                        " commit only neutral in-progress labels before terminal reconciliation"
+                    )
+                    _preterminal_block = " ".join(_raw_msg.split())[:300]
+        except OSError as _exc:
+            _raw_msg = f"pre-terminal outcome check failed: {_exc}"
+            _preterminal_block = " ".join(_raw_msg.split())[:300]
+        if _preterminal_block is not None:
+            print(f"WARN: larch-log commit skipped: {_preterminal_block}", file=sys.stderr)
             return 3
     try:
         result = _commit_run(
