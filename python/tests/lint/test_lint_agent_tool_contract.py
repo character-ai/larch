@@ -58,6 +58,22 @@ def test_readless_inline_tool_list_with_read_intent_is_detected(
     assert ".claude/agents/grep-only.md:5: " + latc.FINDING_MESSAGE in stdout
 
 
+def test_readless_inline_tool_list_with_use_read_intent_is_detected(
+    tmp_path: Path, capsys: CaptureFixture
+) -> None:
+    _write_agent(
+        tmp_path,
+        "agents/use-read.md",
+        frontmatter="name: use-read\ntools: [Grep]\n",
+        body="Use Read for any referenced evidence.\n",
+    )
+
+    code, stdout, _stderr = _run_lint(tmp_path, capsys)
+
+    assert code == 1
+    assert "agents/use-read.md:5: " + latc.FINDING_MESSAGE in stdout
+
+
 def test_inline_read_tool_with_read_intent_is_clean(tmp_path: Path, capsys: CaptureFixture) -> None:
     _write_agent(
         tmp_path,
