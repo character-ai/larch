@@ -15,10 +15,13 @@ from typing import Any, cast
 
 from larch.core import config
 from larch.core.run_context import RunContext
+from larch.report import exec_issue_detail
 from larch.report import tokens
 from larch.errors import ShipError
 
 from larch.report.run_log_batch import (
+    _EXECUTION_ISSUE_CATEGORIES,
+    _LARCH_LOG_BATCHES,
     _atomic_write,
     _read_kv_file,
     _read_state_kv,
@@ -26,6 +29,7 @@ from larch.report.run_log_batch import (
     _run_dir,
     validate_run_id_slug,
 )
+from larch.report.run_log_tolerance import terminal_bail_skip_signal
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -175,6 +179,28 @@ class RefreshSkip:
 
 
 @dataclass(frozen=True)
+class RequiredArtifact:
+    slug: str
+    relative_path: str
+    skill: str
+    condition: str
+
+
+@dataclass(frozen=True)
+class _CommittedIssue:
+    category: str
+    body: str
+
+
+@dataclass(frozen=True)
+class _ReachabilityContext:
+    run_dir: Path
+    manifest_data: Manifest
+    manifest_status: str
+    manifest_pr_number: str
+
+
+@dataclass(frozen=True)
 class ManifestRecovery:
     manifest: Manifest
     recovery_ok: bool
@@ -215,6 +241,396 @@ def _read_manifest_v2(path: Path) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise TypeError("manifest must be a JSON object")
     return cast("dict[str, Any]", data)
+
+
+def _manifest_field(*, manifest: Manifest, key: str) -> str:
+    value = manifest.reserved.get(key) if key in _V2_RESERVED_KEYS else None
+    if value is None and manifest.extra:
+        value = manifest.extra.get(key)
+    if key == "pr_number":
+        if isinstance(value, bool):
+            return ""
+        if isinstance(value, int):
+            return str(value)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return ""
+    if key == "status":
+        return manifest.status
+    return ""
+
+
+def _manifest_steps_ran_empty(manifest: Manifest) -> bool:
+    return len(manifest.steps_ran) == 0
+
+
+def _final_summary_bail_signal_without_pr_evidence(
+    *,
+    run_dir: Path,
+    manifest_pr_number: str,
+    manifest_data: Manifest | None = None,
+) -> bool:
+    manifest_obj: object | None = manifest_data.to_json(existing=None) if manifest_data is not None else None
+    if manifest_obj is None and manifest_pr_number.strip().isdigit():
+        manifest_obj = {"pr_number": int(manifest_pr_number)}
+    pr = int(manifest_pr_number) if manifest_pr_number.strip().isdigit() else 0
+    return terminal_bail_skip_signal(run_dir=run_dir, manifest=manifest_obj, pr=pr)
+
+
+def _verify_has_file(*, run_dir: Path, relative_path: str) -> bool:
+    return (run_dir / relative_path).is_file()
+
+
+def _step5_reached(ctx: _ReachabilityContext) -> bool:
+    return (
+        _verify_has_file(run_dir=ctx.run_dir, relative_path="code-review-tally.json")
+        or _verify_has_file(run_dir=ctx.run_dir, relative_path="review-findings-full.jsonl")
+        or _condition_reached(ctx=ctx, condition="step7a")
+    )
+
+
+def _step7a_reached(ctx: _ReachabilityContext) -> bool:
+    has_step7a_file = (
+        _verify_has_file(run_dir=ctx.run_dir, relative_path="token-report.json")
+        or _verify_has_file(run_dir=ctx.run_dir, relative_path="timing-report.json")
+        or _verify_has_file(run_dir=ctx.run_dir, relative_path="execution-issues.ndjson")
+        or _verify_has_file(run_dir=ctx.run_dir, relative_path="session-transcript.jsonl")
+    )
+    if (
+        _manifest_steps_ran_empty(ctx.manifest_data)
+        and _final_summary_bail_signal_without_pr_evidence(
+            run_dir=ctx.run_dir,
+            manifest_pr_number=ctx.manifest_pr_number,
+            manifest_data=ctx.manifest_data,
+        )
+        and not has_step7a_file
+    ):
+        return False
+    return has_step7a_file or _condition_reached(ctx=ctx, condition="step8")
+
+
+def _step8_reached(ctx: _ReachabilityContext) -> bool:
+    has_version_bump = _verify_has_file(run_dir=ctx.run_dir, relative_path="version-bump-reasoning.md")
+    if (
+        _manifest_steps_ran_empty(ctx.manifest_data)
+        and _final_summary_bail_signal_without_pr_evidence(
+            run_dir=ctx.run_dir,
+            manifest_pr_number=ctx.manifest_pr_number,
+            manifest_data=ctx.manifest_data,
+        )
+        and not has_version_bump
+    ):
+        return False
+    return (
+        has_version_bump
+        or _verify_has_file(run_dir=ctx.run_dir, relative_path="final-summary.md")
+        or _condition_reached(ctx=ctx, condition="step9a1", chain=True)
+    )
+
+
+def _step9a1_bail_skip(ctx: _ReachabilityContext) -> bool:
+    return _final_summary_bail_signal_without_pr_evidence(
+        run_dir=ctx.run_dir,
+        manifest_pr_number=ctx.manifest_pr_number,
+        manifest_data=ctx.manifest_data,
+    )
+
+
+def _step9a1_reached(ctx: _ReachabilityContext, *, chain: bool) -> bool:
+    has_stats = _verify_has_file(run_dir=ctx.run_dir, relative_path="run-statistics.md")
+    if _manifest_step9a1_explicitly_skipped(ctx.manifest_data):
+        return False
+    if _manifest_step9a1_explicitly_ran(ctx.manifest_data):
+        return True
+    if _manifest_steps_ran_empty(ctx.manifest_data) and _step9a1_bail_skip(ctx) and not has_stats:
+        return False
+    if _step9a1_bail_skip(ctx) and not has_stats and _manifest_steps_ran_nonempty_without_step9a1(ctx.manifest_data):
+        return False
+    return has_stats if chain else True
+
+
+def _execution_issue_text(run_dir: Path) -> str:
+    path = run_dir / "execution-issues.ndjson"
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _condition_reached(ctx: _ReachabilityContext, *, condition: str, chain: bool = False) -> bool:
+    reached: bool | None = None
+    if condition == "always":
+        reached = True
+    elif condition == "step5":
+        reached = _step5_reached(ctx)
+    elif condition == "step7a":
+        reached = _step7a_reached(ctx)
+    elif condition == "step8":
+        reached = _step8_reached(ctx)
+    elif condition == "step9a1":
+        reached = _step9a1_reached(ctx, chain=chain)
+    elif condition == "exn-agg-validate-fail":
+        reached = "merged output failed validation" in _execution_issue_text(ctx.run_dir)
+    elif condition == "exn-agg-dispatch-fail":
+        text = _execution_issue_text(ctx.run_dir)
+        reached = any(
+            needle in text
+            for needle in (
+                "dispatch-with-waterfall exited non-zero",
+                "agent dispatch-waterfall exited non-zero",
+                "DISPATCH_OK=false",
+            )
+        )
+    if reached is not None:
+        return reached
+    msg = f"unsupported manifest condition: {condition}"
+    raise ValueError(msg)
+
+
+def _verify_condition_reached(  # noqa: PLR0913 - shared wrapper preserves the existing verify-completeness call shape.
+    *,
+    condition: str,
+    run_dir: Path,
+    manifest_data: Manifest,
+    manifest_status: str,
+    manifest_pr_number: str,
+    chain: bool = False,
+) -> bool:
+    ctx = _ReachabilityContext(
+        run_dir=run_dir,
+        manifest_data=manifest_data,
+        manifest_status=manifest_status,
+        manifest_pr_number=manifest_pr_number,
+    )
+    return _condition_reached(ctx=ctx, condition=condition, chain=chain)
+
+
+def _design_plan_review_round_dirs(run_dir: Path) -> list[Path]:
+    root = run_dir / "plan-review"
+    if not root.is_dir():
+        return []
+    return sorted(path for path in root.glob("round-*") if path.is_dir())
+
+
+def _design_plan_review_reached(run_dir: Path) -> bool:
+    return bool(_design_plan_review_round_dirs(run_dir))
+
+
+def _design_publish_reached(run_dir: Path) -> bool:
+    completed = run_dir / ".completed"
+    publish_markers = (
+        completed / "step-5c",
+        completed / "step-5c-terminal",
+        completed / "step-final-summary",
+    )
+    return (run_dir / "manifest.json").is_file() and (
+        (run_dir / "session-transcript.jsonl").is_file()
+        or any(marker.is_file() for marker in publish_markers)
+    )
+
+
+def _design_transcript_capture_reached(run_dir: Path) -> bool:
+    return _design_publish_reached(run_dir) or (run_dir / "session-transcript.jsonl").is_file()
+
+
+def _implement_code_review_voting_reached(run_dir: Path) -> bool:
+    return _verify_has_file(run_dir=run_dir, relative_path="code-review-tally.json")
+
+
+def _load_run_manifest(run_dir: Path) -> Manifest | None:
+    manifest_path = run_dir / "manifest.json"
+    if not manifest_path.is_file():
+        return None
+    try:
+        return Manifest.from_json(_read_manifest_v2(manifest_path))
+    except (OSError, json.JSONDecodeError, TypeError):
+        return None
+
+
+def _required_implement_artifacts(*, run_dir: Path, manifest: Manifest) -> list[RequiredArtifact]:
+    manifest_status = _manifest_field(manifest=manifest, key="status")
+    manifest_pr_number = _manifest_field(manifest=manifest, key="pr_number")
+    rows: list[RequiredArtifact] = []
+    if _verify_condition_reached(
+        condition="step7a",
+        run_dir=run_dir,
+        manifest_data=manifest,
+        manifest_status=manifest_status,
+        manifest_pr_number=manifest_pr_number,
+    ):
+        rows.append(RequiredArtifact(
+            slug=config.RUN_LOG_BATCH_SESSION_TRANSCRIPT,
+            relative_path="session-transcript.jsonl",
+            skill="implement",
+            condition="step7a",
+        ))
+    if _verify_condition_reached(
+        condition="step8",
+        run_dir=run_dir,
+        manifest_data=manifest,
+        manifest_status=manifest_status,
+        manifest_pr_number=manifest_pr_number,
+    ):
+        rows.append(RequiredArtifact(
+            slug="final-summary",
+            relative_path="final-summary.md",
+            skill="implement",
+            condition="step8",
+        ))
+    if _implement_code_review_voting_reached(run_dir):
+        rows.append(RequiredArtifact(
+            slug="review-findings-full",
+            relative_path="review-findings-full.jsonl",
+            skill="implement",
+            condition="code-review-vote",
+        ))
+    return rows
+
+
+def _required_design_artifacts(run_dir: Path) -> list[RequiredArtifact]:
+    rows: list[RequiredArtifact] = []
+    if _design_publish_reached(run_dir):
+        rows.append(RequiredArtifact(
+            slug="final-summary",
+            relative_path="final-summary.md",
+            skill="design",
+            condition="design-publish",
+        ))
+    if _design_transcript_capture_reached(run_dir):
+        rows.append(RequiredArtifact(
+            slug=config.RUN_LOG_BATCH_SESSION_TRANSCRIPT,
+            relative_path="session-transcript.jsonl",
+            skill="design",
+            condition="design-transcript",
+        ))
+    if _design_plan_review_reached(run_dir):
+        for round_dir in _design_plan_review_round_dirs(run_dir):
+            relative_path = (round_dir / "findings-classification.tsv").relative_to(run_dir).as_posix()
+            rows.append(RequiredArtifact(
+                slug=f"plan-review-{round_dir.name}",
+                relative_path=relative_path,
+                skill="design",
+                condition="design-plan-review",
+            ))
+    return rows
+
+
+def required_artifacts_for_run(*, run_dir: Path, skill: str, manifest: Manifest) -> list[RequiredArtifact]:
+    if skill == "implement":
+        return _required_implement_artifacts(run_dir=run_dir, manifest=manifest)
+    if skill == "design":
+        return _required_design_artifacts(run_dir)
+    return []
+
+
+def _committed_execution_issues_path(run_dir: Path, skill: str) -> Path:
+    if skill == "design":
+        return run_dir / "execution-issues.md"
+    return run_dir / "execution-issues.ndjson"
+
+
+def _flush_markdown_issue(
+    *,
+    issues: list[_CommittedIssue],
+    category: str,
+    body_lines: list[str],
+) -> None:
+    body = "\n".join(body_lines).strip()
+    if category in _EXECUTION_ISSUE_CATEGORIES and body:
+        issues.append(_CommittedIssue(category=category, body=body))
+
+
+def _load_committed_markdown_execution_issues(path: Path) -> tuple[_CommittedIssue, ...]:
+    issues: list[_CommittedIssue] = []
+    category = ""
+    body_lines: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("### "):
+            _flush_markdown_issue(issues=issues, category=category, body_lines=body_lines)
+            category = line.removeprefix("### ").strip()
+            body_lines = []
+            continue
+        body_lines.append(line)
+    _flush_markdown_issue(issues=issues, category=category, body_lines=body_lines)
+    return tuple(issues)
+
+
+def _load_committed_ndjson_execution_issues(path: Path) -> tuple[_CommittedIssue, ...]:
+    issues: list[_CommittedIssue] = []
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not raw.strip():
+            continue
+        try:
+            row_obj: object = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row_obj, dict):
+            continue
+        row = cast("dict[str, object]", row_obj)
+        category_obj = row.get("category")
+        body_obj = row.get("body")
+        if isinstance(category_obj, str) and isinstance(body_obj, str):
+            issues.append(_CommittedIssue(category=category_obj, body=body_obj))
+    return tuple(issues)
+
+
+def _load_committed_execution_issues(run_dir: Path, skill: str) -> tuple[_CommittedIssue, ...]:
+    path = _committed_execution_issues_path(run_dir, skill)
+    if not path.is_file():
+        return ()
+    if skill == "design":
+        return _load_committed_markdown_execution_issues(path)
+    return _load_committed_ndjson_execution_issues(path)
+
+
+def _artifact_match_tokens(artifact: RequiredArtifact) -> tuple[str, ...]:
+    tokens: list[str] = [artifact.relative_path]
+    if artifact.slug:
+        tokens.append(artifact.slug)
+    if "plan-review/round-" not in artifact.relative_path:
+        tokens.append(Path(artifact.relative_path).name)
+        batch = _LARCH_LOG_BATCHES.get(artifact.slug)
+        if batch is not None:
+            tokens.append(f"{artifact.slug}{batch.extension}")
+    return tuple(dict.fromkeys(token.lower() for token in tokens if token))
+
+
+def _issue_body_names_artifact(*, category: str, body: str, artifact: RequiredArtifact) -> bool:
+    tokens = _artifact_match_tokens(artifact)
+    text_parts = [body]
+    text_parts.extend(exec_issue_detail.structured_body_dedupe_keys(body, category))
+    normalized = "\n".join(text_parts).lower()
+    return any(token in normalized for token in tokens)
+
+
+def artifact_present_or_waived(*, run_dir: Path, artifact: RequiredArtifact, execution_issues_path: Path) -> bool:
+    if _verify_has_file(run_dir=run_dir, relative_path=artifact.relative_path):
+        return True
+    expected_path = _committed_execution_issues_path(run_dir, artifact.skill)
+    if execution_issues_path.resolve(strict=False) != expected_path.resolve(strict=False):
+        return False
+    for issue in _load_committed_execution_issues(run_dir, artifact.skill):
+        if issue.category not in _EXECUTION_ISSUE_CATEGORIES:
+            continue
+        if _issue_body_names_artifact(category=issue.category, body=issue.body, artifact=artifact):
+            return True
+    return False
+
+
+def verify_run_log_completeness(*, run_dir: Path, skill: str) -> tuple[bool, list[str]]:
+    manifest = _load_run_manifest(run_dir)
+    if manifest is None:
+        return False, ["manifest.json"]
+    execution_issues_path = _committed_execution_issues_path(run_dir, skill)
+    missing = [
+        f"{artifact.slug}:{artifact.relative_path}"
+        for artifact in required_artifacts_for_run(run_dir=run_dir, skill=skill, manifest=manifest)
+        if not artifact_present_or_waived(
+            run_dir=run_dir,
+            artifact=artifact,
+            execution_issues_path=execution_issues_path,
+        )
+    ]
+    return not missing, missing
 
 
 def _write_manifest_v2(*, path: Path, data: dict[str, Any]) -> None:

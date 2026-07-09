@@ -41,6 +41,7 @@ from larch.report.run_log_manifest import (
     _resolve_consumer_repo_root,
     _update_manifest_v2,
     effective_run_id,
+    verify_run_log_completeness,
 )
 
 _VOLATILE_REFRESH_BASENAMES = frozenset({
@@ -389,6 +390,29 @@ def _copy_tree_to_repo(
     return rels, dest, scrub_violations, None
 
 
+def _copy_tree_to_repo_after_completeness(
+    *,
+    log_root: Path,
+    repo_root: Path,
+    skill: str,
+    run_id: str,
+) -> tuple[list[str], Path, int, str | None, int]:
+    src = _run_dir(log_root=log_root, skill=skill, run_id=run_id)
+    dest = _repo_run_dir(repo_root=repo_root, skill=skill, run_id=run_id)
+    if src.is_dir():
+        complete, missing = verify_run_log_completeness(run_dir=src, skill=skill)
+        if not complete:
+            detail = ", ".join(missing)
+            return [], dest, 0, f"run-log incomplete: {detail}", config.RUN_LOG_INCOMPLETE_RC
+    rels, copied_dest, scrub_violations, scrub_error = _copy_tree_to_repo(
+        log_root=log_root,
+        repo_root=repo_root,
+        skill=skill,
+        run_id=run_id,
+    )
+    return rels, copied_dest, scrub_violations, scrub_error, 1
+
+
 def _git_stdout(argv: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, cwd=str(cwd), text=True, capture_output=True, check=False)
 
@@ -438,10 +462,15 @@ def _commit_run(*, log_root: Path, skill: str, run_id: str, cwd: str | None, pre
         return CommandResult(("true",), 0, "", "", 0.0)
     manifest = _manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
     _update_commit_manifest_with_warning(manifest)
-    rels, dest, copy_tree_violations, scrub_error = _copy_tree_to_repo(log_root=log_root, repo_root=repo_root, skill=skill, run_id=run_id)
+    rels, dest, copy_tree_violations, scrub_error, error_rc = _copy_tree_to_repo_after_completeness(
+        log_root=log_root,
+        repo_root=repo_root,
+        skill=skill,
+        run_id=run_id,
+    )
     violations = pre_scrub_violations + copy_tree_violations
     if scrub_error:
-        return CommandResult(("run-log", "commit"), 1, "", f"{scrub_error}\n", 0.0)
+        return CommandResult(("run-log", "commit"), error_rc, "", f"{scrub_error}\n", 0.0)
     if not rels:
         return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
     _publish_breadcrumbs_with_warning(log_root=log_root, dest=dest)

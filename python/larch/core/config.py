@@ -30,6 +30,9 @@ EXIT_BEHIND_COUNT_USAGE: Final = 2
 EXIT_PHANTOM_PROBE_USAGE: Final = 2
 EXIT_GH_RUN_LOGS_IN_PROGRESS: Final = 3
 EXIT_GH_RUN_LOGS_HEALTH_BAIL: Final = 5
+# run-log commit refuses to publish a run tree whose required artifacts are
+# absent without committed execution-issue evidence.
+RUN_LOG_INCOMPLETE_RC: Final = 7
 # report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
 EXIT_BAIL: Final = 4
 EXIT_TIMEOUT: Final = 124
@@ -808,6 +811,7 @@ REFRESH_SKIP_NO_RUN_ID: Final = "no-run-id"
 REFRESH_SKIP_INVALID_RUN_ID: Final = "invalid-run-id"
 REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
 REFRESH_SKIP_COMMIT_FAILED: Final = "commit-failed"
+REFRESH_SKIP_RUN_LOG_INCOMPLETE: Final = "run-log-incomplete"
 REFRESH_SKIP_VOLATILE_ONLY: Final = "volatile-only"
 # Pre-merge flush skips merge_pr may continue past (bash refresh-run-logs || true).
 REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
