@@ -182,19 +182,22 @@ def _is_excluded_relative_path(relative: Path) -> bool:
     return bool(EXCLUDED_DIRS.intersection(relative.parts)) or _is_exempt_name(relative.name)
 
 
+def _invalid_normalized_parts(normalized: str, parts: list[str]) -> bool:
+    return (
+        normalized.startswith("/")
+        or not normalized.endswith(".py")
+        or _bad_path_parts(parts)
+        or bool(EXCLUDED_DIRS.intersection(parts))
+        or _is_exempt_name(parts[-1])
+    )
+
+
 def _validate_normalized_file(value: object, *, source: Path, index: int) -> str:
     if not isinstance(value, str) or not value:
         raise BaselineError(f"{source}: record {index} has invalid file")
     normalized: str = normalize_file_path(value)
     parts: list[str] = normalized.split("/")
-    if (
-        normalized != value
-        or normalized.startswith("/")
-        or not normalized.endswith(".py")
-        or _bad_path_parts(parts)
-        or bool(EXCLUDED_DIRS.intersection(parts))
-        or _is_exempt_name(parts[-1])
-    ):
+    if normalized != value or _invalid_normalized_parts(normalized, parts):
         raise BaselineError(f"{source}: record {index} has invalid file")
     return normalized
 
