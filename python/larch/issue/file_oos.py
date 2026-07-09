@@ -32,7 +32,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.report import run_logs
 from larch.review import voting
-from larch.issue.issue_create import ParsedItem, parse_issue_input
+from larch.issue.issue_create import ParsedItem, parse_issue_input, _balanced_fence_line_indices
 from larch.core.redact import redact
 
 
@@ -755,10 +755,16 @@ def _validate_issue_cap_input(text: str) -> list[ParsedItem]:
     if not text.strip():
         return []
     items, _mode = parse_issue_input(text)
-    if items and not re.search(r"^### OOS_\d+:", text, re.MULTILINE):
+    lines = text.splitlines()
+    fenced_lines = _balanced_fence_line_indices(lines)
+    heading_count = sum(
+        1
+        for index, line in enumerate(lines)
+        if index not in fenced_lines and re.match(r"^### OOS_\d+:", line)
+    )
+    if items and heading_count == 0:
         msg = "input is not OOS-shaped (no '### OOS_<N>:' headings)"
         raise ValueError(msg)
-    heading_count = len(re.findall(r"^### OOS_\d+:", text, re.MULTILINE))
     if heading_count and len(items) != heading_count:
         msg = f"ITEMS_TOTAL ({len(items)}) != raw '### OOS_<N>:' heading count ({heading_count})"
         raise ValueError(msg)

@@ -724,6 +724,23 @@ def test_issue_cap_parser_heading_parity_mismatch(tmp_path: Path, cap: str) -> N
     assert not out.exists()
 
 
+def test_issue_cap_ignores_fenced_heading_like_text_in_description(tmp_path: Path) -> None:
+    src = make_issue_cap_input(tmp_path, "fenced-heading")
+    append_oos(
+        src,
+        1,
+        "First",
+        "Body one before fence\n```markdown\n### OOS_99: Not a real item\n```\nBody one after fence",
+    )
+    append_oos(src, 2, "Second", "Body two")
+    out = tmp_path / "fenced-heading" / "out.md"
+
+    result = run_issue_cap(src, out, {"OOS_ISSUES_PER_RUN_CAP": "5"})
+
+    assert result.returncode == 0
+    assert out.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
+
+
 def test_issue_cap_non_oos_input_rejected(tmp_path: Path) -> None:
     src = make_issue_cap_input(tmp_path, "non-oos")
     _ = src.write_text("### Generic first\nBody one\n### Generic second\nBody two\n", encoding="utf-8")
