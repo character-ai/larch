@@ -182,6 +182,147 @@ def test_parse_input_oos_body_without_field_labels_is_captured(tmp_path: Path, c
     assert _body_file_contents(out, 1) == "First body line under the heading.\nSecond body line."
 
 
+def test_parse_input_generic_fenced_heading_stays_body(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### Fixture item: one intended item with a fenced payload\n"
+        "Intro line before the fence.\n"
+        "\n"
+        "```markdown\n"
+        "### G-Fake-1: fenced heading that is payload, not a boundary\n"
+        "- Why: this line is verbatim payload inside a fenced block.\n"
+        "```\n"
+        "\n"
+        "Trailing line after the fence.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    assert _kv_value(out, "ITEM_1_TITLE") == "Fixture item: one intended item with a fenced payload"
+    expected = (
+        "Intro line before the fence.\n"
+        "\n"
+        "```markdown\n"
+        "### G-Fake-1: fenced heading that is payload, not a boundary\n"
+        "- Why: this line is verbatim payload inside a fenced block.\n"
+        "```\n"
+        "\n"
+        "Trailing line after the fence."
+    )
+    assert _body_file_contents(out, 1) == expected
+
+
+def test_parse_input_generic_fenced_oos_heading_stays_generic(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### Generic item with fenced OOS payload\n"
+        "Before fence.\n"
+        "~~~markdown\n"
+        "### OOS_42: fenced heading that must stay payload\n"
+        "Fenced OOS-shaped body.\n"
+        "~~~\n"
+        "After fence.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    assert _kv_value(out, "ITEM_1_TITLE") == "Generic item with fenced OOS payload"
+    assert "ITEM_2_TITLE=" not in out
+    expected = (
+        "Before fence.\n"
+        "~~~markdown\n"
+        "### OOS_42: fenced heading that must stay payload\n"
+        "Fenced OOS-shaped body.\n"
+        "~~~\n"
+        "After fence."
+    )
+    assert _body_file_contents(out, 1) == expected
+
+
+def test_parse_input_unclosed_fence_does_not_protect_later_boundary(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### First item with unclosed fence\n"
+        "```markdown\n"
+        "Plain text before the next real boundary.\n"
+        "### Second item after unclosed fence\n"
+        "Second body.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "2"
+    assert _kv_value(out, "ITEM_1_TITLE") == "First item with unclosed fence"
+    assert _kv_value(out, "ITEM_2_TITLE") == "Second item after unclosed fence"
+    assert _body_file_contents(out, 1) == "```markdown\nPlain text before the next real boundary."
+    assert _body_file_contents(out, 2) == "Second body."
+
+
+def test_parse_input_oos_description_fenced_heading_and_field_stay_body(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### OOS_1: Fenced payload in description\n"
+        "- **Description**: Before fence.\n"
+        "```markdown\n"
+        "### Fenced heading stays payload\n"
+        "- **Description**: fenced field-looking line stays body\n"
+        "```\n"
+        "- **Reviewer**: Codex\n"
+        "- **Vote tally**: YES=1, NO=0\n"
+        "- **Phase**: review\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "1"
+    assert _kv_value(out, "ITEM_1_REVIEWER") == "Codex"
+    expected = (
+        "Before fence.\n"
+        "```markdown\n"
+        "### Fenced heading stays payload\n"
+        "- **Description**: fenced field-looking line stays body\n"
+        "```"
+    )
+    assert _body_file_contents(out, 1) == expected
+
+
+def test_parse_input_closed_fence_then_real_boundary_splits(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### First item with closed fence\n"
+        "```\n"
+        "### Payload heading inside fence\n"
+        "```\n"
+        "### Second item after fence\n"
+        "Second body.\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "2"
+    assert _kv_value(out, "ITEM_1_TITLE") == "First item with closed fence"
+    assert _kv_value(out, "ITEM_2_TITLE") == "Second item after fence"
+    assert _body_file_contents(out, 1) == "```\n### Payload heading inside fence\n```"
+    assert _body_file_contents(out, 2) == "Second body."
+
+
+def test_parse_input_fence_closer_is_not_reopened_to_swallow_boundary(tmp_path: Path, capsys: Any) -> None:
+    rc, out, _out_dir = _parse_input_fixture(
+        tmp_path,
+        capsys,
+        "### First item with closed fence\n"
+        "```markdown\n"
+        "### Payload heading inside fence\n"
+        "```\n"
+        "### Second item must remain a boundary\n"
+        "Second body.\n"
+        "```\n",
+    )
+    assert rc == 0
+    assert _kv_value(out, "ITEMS_TOTAL") == "2"
+    assert _kv_value(out, "ITEM_1_TITLE") == "First item with closed fence"
+    assert _kv_value(out, "ITEM_2_TITLE") == "Second item must remain a boundary"
+    assert _body_file_contents(out, 1) == "```markdown\n### Payload heading inside fence\n```"
+    assert _body_file_contents(out, 2) == "Second body.\n```"
+
+
 def test_allocate_candidates_union_credit() -> None:
     rows = (
         "CAND 1 10 dup high\n"

@@ -26,6 +26,7 @@ CONF_FIELD_COUNT = 4
 THIRD_ATTEMPT = 2
 OOS_HEADING_RE = re.compile(r"^###[ \t]+OOS_[0-9]+:[ \t]+(.+)$")
 PLAIN_HEADING_RE = re.compile(r"^###[ \t]+(.+)$")
+FENCE_MARKER_RE = re.compile(r"^(`{3,}|~{3,})(.*)$")
 DESC_RE = re.compile(r"^-[ \t]+\*\*Description\*\*:[ \t]*(.*)$")
 # FINDING-block OOS (review pipeline) uses `**Concern**` for the body and
 # `**Reviewer(s)**` for attribution; treat them as Description/Reviewer
@@ -195,10 +196,35 @@ class ParseState:
         return False
 
 
+def _balanced_fence_line_indices(lines: list[str]) -> set[int]:
+    fenced_lines: set[int] = set()
+    stack: list[tuple[int, str, int]] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        match = FENCE_MARKER_RE.match(stripped)
+        if not match:
+            continue
+        marker = match.group(1)
+        marker_char = marker[0]
+        marker_len = len(marker)
+        suffix = match.group(2)
+        if not stack:
+            stack.append((index, marker_char, marker_len))
+            continue
+        top_index, top_char, top_len = stack[-1]
+        if marker_char == top_char and marker_len >= top_len and suffix.strip() == "":
+            stack.pop()
+            fenced_lines.update(range(top_index + 1, index))
+    return fenced_lines
+
+
 def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
     state = ParseState()
-    for line in text.splitlines():
-        if match := OOS_HEADING_RE.match(line):
+    lines = text.splitlines()
+    fenced_lines = _balanced_fence_line_indices(lines)
+    for index, line in enumerate(lines):
+        in_fence = index in fenced_lines
+        if not in_fence and (match := OOS_HEADING_RE.match(line)):
             if state.current_mode == "generic" and state.in_body and state.current_body.strip():
                 state.current_body += "\n" + line
             else:
@@ -213,7 +239,7 @@ def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
                 state.in_body = True
                 state.current_mode = "oos"
                 state.parse_mode = "oos"
-        elif match := PLAIN_HEADING_RE.match(line):
+        elif not in_fence and (match := PLAIN_HEADING_RE.match(line)):
             if state.current_mode == "oos" and state.in_body:
                 if not state.pending_heading:
                     state.pending_heading = line
@@ -226,7 +252,7 @@ def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
                 state.current_title = match.group(1)
                 state.in_body = True
                 state.current_mode = "generic"
-        elif state.current_mode == "oos" and state.consume_oos_field(line):
+        elif not in_fence and state.current_mode == "oos" and state.consume_oos_field(line):
             pass
         elif state.in_body:
             if state.pending_heading:
