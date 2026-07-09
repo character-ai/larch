@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of prior-round FINDING_8; real error-precedence tweak, but not necessary for the scope-disposition feature.
