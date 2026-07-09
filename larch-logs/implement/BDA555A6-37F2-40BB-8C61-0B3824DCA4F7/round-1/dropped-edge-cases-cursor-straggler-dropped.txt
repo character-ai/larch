@@ -1,0 +1,13 @@
+===== launch-stderr =====
+⏳ cursor agent: still running (1m elapsed)
+⏳ cursor agent: still running (2m elapsed)
+⏳ cursor agent: still running (3m elapsed)
+⏳ cursor agent: still running (4m elapsed)
+⏳ cursor agent: still running (5m elapsed)
+⏳ cursor agent: still running (6m elapsed)
+⏳ cursor agent: still running (7m elapsed)
+⏳ cursor agent: still running (8m elapsed)
+⏳ cursor agent: still running (9m elapsed)
+⏳ cursor agent: still running (10m elapsed)
+⏳ cursor agent: still running (11m elapsed)
+⏳ cursor agent: still running (12m elapsed)
