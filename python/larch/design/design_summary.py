@@ -31,6 +31,9 @@ _VALID_OUTCOMES = frozenset({
     "publish-skipped", "paused",
 })
 _OOS_FILE_MAP_FIELD_COUNT = 3
+_MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING = (
+    "**⚠ Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**"
+)
 
 
 def _plugin_root() -> Path:
@@ -496,6 +499,25 @@ def _append_render_warning(*, design_tmpdir: Path, message: str) -> None:
             _ = fh.write(f"\n### Warnings\n- **design-summary**: {message}\n")
 
 
+def _prefix_missing_guideline_assessment_warning(*, design_tmpdir: Path, out_file: Path) -> None:
+    marker = design_tmpdir / ".missing-guideline-assessment-warning"
+    if not marker.exists() or marker.is_symlink():
+        return
+    if out_file.is_symlink() or not out_file.is_file():
+        return
+    try:
+        body = out_file.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if body.startswith(_MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING):
+        return
+    with contextlib.suppress(OSError):
+        _ = out_file.write_text(
+            f"{_MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING}\n\n{body}",
+            encoding="utf-8",
+        )
+
+
 def render_final_summary_for_request(request: FinalSummaryRenderRequest) -> bool:
     """Render an enriched final summary, returning success without raising."""
     out_file = request.design_tmpdir / "final-summary.md"
@@ -670,9 +692,11 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
             fh.write(f"- **Warnings**: {warnings}\n")  # pyright: ignore[reportUnusedCallResult]
 
     if phase == "pre":
+        _prefix_missing_guideline_assessment_warning(design_tmpdir=design_tmpdir, out_file=out_file)
         return 0
 
     exit_rc = _write_enriched_post_publish_summary(design_tmpdir=design_tmpdir, out_file=out_file, load_result=load_result)
+    _prefix_missing_guideline_assessment_warning(design_tmpdir=design_tmpdir, out_file=out_file)
     write_ok = exit_rc == 0
     summary_written = write_ok and out_file.is_file() and out_file.stat().st_size > 0
 

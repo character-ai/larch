@@ -400,7 +400,11 @@ def _copy_tree_to_repo_after_completeness(
     src = _run_dir(log_root=log_root, skill=skill, run_id=run_id)
     dest = _repo_run_dir(repo_root=repo_root, skill=skill, run_id=run_id)
     if src.is_dir():
-        complete, missing = verify_run_log_completeness(run_dir=src, skill=skill)
+        complete, missing = verify_run_log_completeness(
+            run_dir=src,
+            skill=skill,
+            repo_root=repo_root,
+        )
         if not complete:
             detail = ", ".join(missing)
             return [], dest, 0, f"run-log incomplete: {detail}", config.RUN_LOG_INCOMPLETE_RC

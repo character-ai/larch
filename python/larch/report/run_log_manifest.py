@@ -13,7 +13,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, cast
 
-from larch.core import config
+from larch.core import architectural_guidelines, config
 from larch.core.run_context import RunContext
 from larch.report import exec_issue_detail
 from larch.report import tokens
@@ -485,7 +485,43 @@ def _required_implement_artifacts(*, run_dir: Path, manifest: Manifest) -> list[
     return rows
 
 
-def _required_design_artifacts(run_dir: Path) -> list[RequiredArtifact]:
+def _design_run_approved(run_dir: Path) -> bool:
+    summary = run_dir / "final-summary.md"
+    if not summary.is_file() or summary.is_symlink():
+        return False
+    try:
+        for line in summary.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.startswith("## /design run ") or ":" not in line:
+                continue
+            outcome = line.rsplit(":", 1)[1].strip()
+            return outcome in {"approved", "approved-partition"}
+    except OSError:
+        return False
+    return False
+
+
+def _derive_consumer_repo_root_from_run_dir(run_dir: Path) -> Path | None:
+    try:
+        if run_dir.parent.name != "design":
+            return None
+        log_root = run_dir.parent.parent
+        if log_root.name != "larch-logs":
+            return None
+        return log_root.parent
+    except IndexError:
+        return None
+
+
+def _guideline_assessment_required(*, run_dir: Path, repo_root: Path | None) -> bool:
+    if not _design_run_approved(run_dir):
+        return False
+    resolved_repo_root = repo_root or _derive_consumer_repo_root_from_run_dir(run_dir)
+    if resolved_repo_root is None:
+        return False
+    return architectural_guidelines.read_guidelines(repo_root=resolved_repo_root).status == "present"
+
+
+def _required_design_artifacts(run_dir: Path, *, repo_root: Path | None = None) -> list[RequiredArtifact]:
     rows: list[RequiredArtifact] = []
     if _design_publish_reached(run_dir):
         rows.append(RequiredArtifact(
@@ -510,14 +546,27 @@ def _required_design_artifacts(run_dir: Path) -> list[RequiredArtifact]:
                 skill="design",
                 condition="design-plan-review",
             ))
+    if _guideline_assessment_required(run_dir=run_dir, repo_root=repo_root):
+        rows.append(RequiredArtifact(
+            slug="guideline-assessment",
+            relative_path=architectural_guidelines.DESIGN_ASSESSMENT,
+            skill="design",
+            condition="design-guideline-assessment",
+        ))
     return rows
 
 
-def required_artifacts_for_run(*, run_dir: Path, skill: str, manifest: Manifest) -> list[RequiredArtifact]:
+def required_artifacts_for_run(
+    *,
+    run_dir: Path,
+    skill: str,
+    manifest: Manifest,
+    repo_root: Path | None = None,
+) -> list[RequiredArtifact]:
     if skill == "implement":
         return _required_implement_artifacts(run_dir=run_dir, manifest=manifest)
     if skill == "design":
-        return _required_design_artifacts(run_dir)
+        return _required_design_artifacts(run_dir, repo_root=repo_root)
     return []
 
 
@@ -615,14 +664,24 @@ def artifact_present_or_waived(*, run_dir: Path, artifact: RequiredArtifact, exe
     return False
 
 
-def verify_run_log_completeness(*, run_dir: Path, skill: str) -> tuple[bool, list[str]]:
+def verify_run_log_completeness(
+    *,
+    run_dir: Path,
+    skill: str,
+    repo_root: Path | None = None,
+) -> tuple[bool, list[str]]:
     manifest = _load_run_manifest(run_dir)
     if manifest is None:
         return False, ["manifest.json"]
     execution_issues_path = _committed_execution_issues_path(run_dir, skill)
     missing = [
         f"{artifact.slug}:{artifact.relative_path}"
-        for artifact in required_artifacts_for_run(run_dir=run_dir, skill=skill, manifest=manifest)
+        for artifact in required_artifacts_for_run(
+            run_dir=run_dir,
+            skill=skill,
+            manifest=manifest,
+            repo_root=repo_root,
+        )
         if not artifact_present_or_waived(
             run_dir=run_dir,
             artifact=artifact,

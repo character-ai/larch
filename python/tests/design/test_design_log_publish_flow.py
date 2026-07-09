@@ -77,6 +77,18 @@ def _operator_repo_with_remote(tmp_path: Path) -> Path:
     return repo
 
 
+def _operator_repo_with_guidelines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    repo = _operator_repo_with_remote(tmp_path)
+    _ = (repo / "ARCHITECTURAL_GUIDELINES.md").write_text(
+        "### G-Test-1: Test\n- Why: test.\n",
+        encoding="utf-8",
+    )
+    _git("add", "ARCHITECTURAL_GUIDELINES.md", cwd=repo)
+    _git("commit", "-q", "-m", "guidelines", cwd=repo)
+    monkeypatch.chdir(repo)
+    return repo
+
+
 def _run_publish(
     repo: Path,
     design: Path,
@@ -262,6 +274,116 @@ def test_log_publish_capture_failure_skips_publish(
     assert rc == 0
     assert not published
     assert "PUBLISH_OK=false" in capsys.readouterr().out
+
+
+def test_log_publish_approved_missing_guideline_assessment_records_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_guidelines(tmp_path, monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    published = False
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+        nonlocal published
+        published = True
+        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+
+    monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert published
+    assert (design / ".missing-guideline-assessment-warning").is_file()
+    assert "guideline-assessment" in issues
+    assert "architectural-guideline-assessment.md" in issues
+
+
+def test_log_publish_approved_missing_guideline_assessment_does_not_follow_marker_symlink(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_guidelines(tmp_path, monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    protected = tmp_path / "protected-warning.txt"
+    _ = protected.write_text("keep\n", encoding="utf-8")
+    (design / ".missing-guideline-assessment-warning").symlink_to(protected)
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(
+        design_log_publish_flow,
+        "_publish_design_logs",
+        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    )
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    assert rc == 0
+    assert protected.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_log_publish_guideline_assessment_present_suppresses_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_guidelines(tmp_path, monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "architectural-guideline-assessment.md").write_text("clean\n", encoding="utf-8")
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(
+        design_log_publish_flow,
+        "_publish_design_logs",
+        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    )
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    assert rc == 0
+    assert not (design / ".missing-guideline-assessment-warning").exists()
 
 
 def test_log_publish_capture_skip_still_publishes_pause(
@@ -1263,3 +1385,4 @@ def test_spawn_detached_admin_merge_swallows_launch_failure(
     design_log_publish_flow._spawn_detached_admin_merge(
         cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo"
     )
+# pyright: reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
