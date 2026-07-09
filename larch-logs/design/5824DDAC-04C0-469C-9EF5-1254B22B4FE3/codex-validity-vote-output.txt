@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Real gap in test coverage, but the feature ships correctly once the indexer is aligned to the existing reader grammar; a separate reader-side INV rejection test is optional, not necessary to deliver the fix.

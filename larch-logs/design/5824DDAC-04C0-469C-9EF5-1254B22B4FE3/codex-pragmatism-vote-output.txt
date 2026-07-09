@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already requires a regression test that checks both parser surfaces and a cross-parser guard in `python/tests/issue/test_learn_from_bugs.py`, so this is not a missing deliverable.

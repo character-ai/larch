@@ -1,0 +1,78 @@
+## Final Design Plan
+
+## Approach
+
+- Keep the canonical invariant ID shape as `I-*`.
+- Narrow `_INVARIANT_ID_RE` in `python/larch/issue/learn_from_bugs.py` from `(?:INV|I)-...` to `I-...`.
+- Do not widen `_INVARIANT_HEADING_RE`.
+- Add a regression test that checks both parser surfaces:
+  - `coverage_index()` indexes `### I-Test-1: ...`.
+  - `coverage_index()` does not index `### INV-Test-1: ...`.
+  - `parse_invariant_entries()` or `read_invariants()` accepts the same `I-*` shape and rejects `INV-*`.
+- Keep the test local and explicit. Avoid adding a shared parser abstraction unless the edit proves necessary.
+
+## Files to modify/create
+
+### UPDATED: python/larch/issue/learn_from_bugs.py
+
+Change `_INVARIANT_ID_RE` to accept only `I-[A-Za-z0-9-]+-\d+` invariant IDs at `##` through `####` heading depths.
+
+Preserve the existing `CoverageIndex` shape and `coverage_index()` behavior. The only behavior change is that `INV-*` headings stop counting as indexed invariants.
+
+### UPDATED: python/tests/issue/test_learn_from_bugs.py
+
+Add targeted coverage for invariant ID grammar in `coverage_index()`.
+
+Suggested test shape:
+- Write `ARCHITECTURAL_INVARIANTS.md` with an `### I-Test-1: Canonical` heading.
+- Assert `coverage_index(tmp_path).invariants == (("I-Test-1", "Canonical"),)`.
+- Write or parametrize an `### INV-Test-1: Noncanonical` heading.
+- Assert the coverage index returns no invariants for that heading.
+
+Add a cross-parser guard here if clean:
+- Import `larch.core.architectural_guidelines as ag`.
+- Parametrize sample headings and expected acceptance.
+- Compare `learn_from_bugs.coverage_index()` with `ag.parse_invariant_entries()` so `I-*` is accepted by both and `INV-*` is rejected by both.
+
+### MAY_UPDATE: python/tests/core/test_architectural_guidelines.py
+
+Only change this file if the cross-parser guard reads better beside the invariant reader tests.
+
+If used, add one focused test near `test_invariants_present_file_emits_normalized_entries` that documents `INV-*` remains non-canonical and is not emitted by `parse_invariant_entries()`.
+
+Do not duplicate equivalent assertions in both test files.
+
+## Edge cases
+
+- `I-Sec-1`, `I-Py-2`, and `I-Test-1` must still index and read.
+- `INV-Gate-1` must not index after this change.
+- Missing `ARCHITECTURAL_INVARIANTS.md` must still yield an empty invariant tuple.
+- Guideline, Python lint, and script lint scanning must stay unchanged.
+
+## Failure modes
+
+- A too-narrow regex could reject existing IDs like `I-Gate-1` or `I-Py-2`.
+- A test that only checks `coverage_index()` could miss future drift against `parse_invariant_entries()`.
+- A test that imports private regex constants would overfit implementation. Prefer public helpers where practical.
+
+## Testing strategy
+
+Run targeted tests for changed Python surfaces:
+
+```bash
+cd python && python3 -m pytest -q tests/issue/test_learn_from_bugs.py tests/core/test_architectural_guidelines.py
+```
+
+Run changed-file lint/type checks if available in the implementer environment:
+
+```bash
+cd python && ruff check larch/issue/learn_from_bugs.py tests/issue/test_learn_from_bugs.py tests/core/test_architectural_guidelines.py
+```
+
+If `python/tests/core/test_architectural_guidelines.py` is not changed, it may still be useful to include it in pytest because the regression spans both parsers.
+
+difficulty: MODERATE
+diff_added: 25
+diff_deleted: 1
+mechanical_churn: false
+diff_lines: 32
