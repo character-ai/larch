@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch.bgjob import registry
+from larch import io as larch_io
 from larch.git.repo_roots import consumer_repo_root
 from larch.report import progress_file
 
@@ -60,6 +61,10 @@ def _repo_from_payload(payload: dict[str, Any]) -> Path | None:
 
 
 def _tail_breadcrumbs(path: Path, *, count: int) -> list[str]:
+    try:
+        larch_io.assert_no_symlink_path_or_ancestors(path)
+    except OSError:
+        return []
     if path.is_symlink() or not path.is_file():
         return []
     try:
@@ -127,6 +132,10 @@ def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> 
         hide_after_s=_positive_int(env_map.get("LARCH_STATUSLINE_HIDE_AFTER_S"), default=DEFAULT_HIDE_AFTER_S),
     )
     if suffix is None:
+        return ""
+    try:
+        larch_io.assert_no_symlink_path_or_ancestors(path)
+    except OSError:
         return ""
     try:
         stamp = time.strftime("%H:%M", time.localtime(path.stat().st_mtime))

@@ -88,8 +88,25 @@ def _launcher_text(*, plugin_root: Path, user_command: str) -> str:
         "set -uo pipefail\n"
         "INPUT=$(cat 2>/dev/null || true)\n"
         f"USER_STATUSLINE_CMD={quoted_user}\n"
+        "_larch_timeout_prefix=()\n"
+        'if command -v timeout >/dev/null 2>&1; then\n'
+        '  _larch_timeout_prefix=(timeout 2s)\n'
+        "fi\n"
+        "_larch_run_user_statusline() {\n"
+        '  if [ -z "$USER_STATUSLINE_CMD" ]; then\n'
+        "    return 0\n"
+        "  fi\n"
+        '  case "$USER_STATUSLINE_CMD" in\n'
+        '    (*[!A-Za-z0-9_./:-]*)\n'
+        '      printf \'%s\' "$INPUT" | "${_larch_timeout_prefix[@]}" sh -c "$USER_STATUSLINE_CMD" 2>/dev/null || true\n'
+        "      ;;\n"
+        "    (*)\n"
+        '      printf \'%s\' "$INPUT" | "${_larch_timeout_prefix[@]}" "$USER_STATUSLINE_CMD" 2>/dev/null || true\n'
+        "      ;;\n"
+        "  esac\n"
+        "}\n"
         'if [ -n "$USER_STATUSLINE_CMD" ]; then\n'
-        '  printf \'%s\' "$INPUT" | sh -c "$USER_STATUSLINE_CMD" 2>/dev/null || true\n'
+        "  _larch_run_user_statusline\n"
         'fi\n'
         "if command -v python3 >/dev/null 2>&1; then\n"
         f"  printf '%s' \"$INPUT\" | python3 {shlex.quote(str(plugin_root / 'python' / 'cli.py'))} progress statusline 2>/dev/null || true\n"

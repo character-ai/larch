@@ -1605,6 +1605,9 @@ def run_ship(
                 _bail_ctx = working
                 _bail_detail_log = ""
                 _bail_step = monitor.result.detail or "ci-monitor"
+                if (monitor.result.detail or "").startswith("ci-fix-exhausted:"):
+                    first_line = (monitor.result.detail or "").splitlines()[0]
+                    _progress_note(step="8", text=first_line)
                 if (
                     monitor.result.outcome is Outcome.NEEDS_USER_INPUT
                     and (monitor.result.detail or "").startswith("ci-fix-exhausted")

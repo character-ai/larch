@@ -59,6 +59,9 @@ def _reject_line_part(value: object, *, label: str) -> str:
     if "\t" in text or any(ch in text for ch in _NEWLINE_CHARS):
         msg = f"{label} must be one line without tabs"
         raise ValueError(msg)
+    if any(ord(ch) < 32 or ord(ch) == 127 or 0x80 <= ord(ch) <= 0x9F for ch in text):
+        msg = f"{label} must not contain control characters"
+        raise ValueError(msg)
     if label == "text" and "://" in text:
         msg = "text must identify entities by number, not URL"
         raise ValueError(msg)
@@ -79,6 +82,7 @@ def append_breadcrumb(repo_root: str | Path, skill: str, step: str, text: str) -
         path = progress_path(repo_root)
         larch_io.assert_no_symlink_path_or_ancestors(path)
         path.parent.mkdir(parents=True, exist_ok=True)
+        larch_io.assert_no_symlink_path_or_ancestors(path)
         flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW

@@ -42,10 +42,30 @@ def test_append_breadcrumb_rejects_tabs_and_newlines(tmp_path: Path, monkeypatch
     assert progress_file.append_breadcrumb(repo, "implement", "5", "reviewers 7/12 done")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "bad\nrow")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "bad\ttab")
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "bad\x1b[31mrow")
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "bad\x9b31mrow")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "see https://example.test")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "osc \x1b]8;;https://example.test\x07 link")
 
     assert progress_file.progress_path(repo).read_text(encoding="utf-8") == "[implement 5] reviewers 7/12 done\n"
+
+
+def test_append_breadcrumb_rechecks_after_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    calls = 0
+
+    def fake_assert(path: Path) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("swapped ancestor")
+
+    monkeypatch.setattr(progress_file.larch_io, "assert_no_symlink_path_or_ancestors", fake_assert)
+
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "reviewers 7/12 done")
+    assert calls == 2
 
 
 def test_progress_path_uses_consumer_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -103,6 +123,24 @@ def test_statusline_renders_yellow_line_and_is_calm(tmp_path: Path, monkeypatch:
     assert first.startswith("\033[33mlarch ")
     assert "[implement 5] review round 1 running" in first
     assert first.endswith("\033[0m\n")
+
+
+def test_statusline_refuses_symlinked_progress_ancestors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cache = tmp_path / "cache"
+    cache_target = tmp_path / "cache-target"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cache_target.mkdir()
+    (cache / "larch").parent.mkdir(parents=True, exist_ok=True)
+    (cache / "larch").symlink_to(cache_target)
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(cache))
+    path = progress_file.progress_path(repo)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[implement 5] review round 1 running\n", encoding="utf-8")
+
+    rendered = statusline.render_statusline(stdin_text=json.dumps({"cwd": str(repo)}))
+
+    assert rendered == ""
 
 
 def test_statusline_stale_and_far_stale(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -257,7 +295,28 @@ def test_install_statusline_chains_user_scope_statusline(tmp_path: Path, monkeyp
     launcher = (home / ".cache" / "larch" / "statusline.sh").read_text(encoding="utf-8")
     assert "printf user" in launcher
     assert "progress statusline" in launcher
+    assert "timeout 2s" in launcher
     assert "bash -lc" not in launcher
+
+
+def test_install_statusline_prefers_direct_exec_for_single_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    plugin = tmp_path / "plugin"
+    (home / ".claude").mkdir(parents=True)
+    (repo / ".claude").mkdir(parents=True)
+    (plugin / "python").mkdir(parents=True)
+    _ = (home / ".claude" / "settings.json").write_text(
+        json.dumps({"statusLine": {"type": "command", "command": "/bin/true"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("HOME", str(home))
+
+    assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+
+    launcher = (home / ".cache" / "larch" / "statusline.sh").read_text(encoding="utf-8")
+    assert "timeout 2s" in launcher
+    assert ' "$USER_STATUSLINE_CMD" 2>/dev/null || true' in launcher
 
 
 def test_install_statusline_skips_symlinked_user_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

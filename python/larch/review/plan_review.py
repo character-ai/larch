@@ -511,6 +511,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 _step3_emit_cap_reached(review_count=review_count)
                 step3_loop_persist_envelope(design_tmpdir=tmpdir, status="cap-hit", round_num=review_count + 1, rounds_completed=review_count, final_round=review_count + 1, values=values)
                 return 0
+            _progress_note(step="3", text=f"round {round_num} launched")
             _write_count(tmpdir=tmpdir, count=round_num)
             _body_rc, values = _run_round_body(tmpdir=tmpdir, round_num=round_num)
             rounds_done = _read_count(tmpdir)
@@ -535,6 +536,7 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 values = _merge_step3_round_carry_warnings(values=values, carry=degraded_values)
                 accepted = _count_accepted(tmpdir) or int(values.get("ACCEPTED_COUNT", "0") or "0")
                 values["ACCEPTED_COUNT"] = str(accepted)
+                _progress_note(step="3", text=f"round {round_num} complete with {accepted} accepted")
                 for key in _STEP3_ROUND_CARRY_KEYS:
                     if values.get(key):
                         degraded_values[key] = values[key]

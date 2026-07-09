@@ -865,6 +865,7 @@ def _review_core_body(
         + ((("PRUNED_COMBOS", dispatch["PRUNED_COMBOS"]),) if dispatch.get("PRUNED_COMBOS") else ())
         + (("PANEL_PRUNED_EMPTY", panel_pruned_empty),)
     )
+    _progress_note(step="5", text=f"launching {intended_slots} reviewers")
     if panel_pruned_empty == "true" and prune_status == "pruned-empty":
         _snapshot_oos(review_tmpdir=review_tmpdir, stem="prune-skipped", session_env_path=session_env_path)
         for name in ("findings.md", "accepted-findings.md", "rejected-findings.md", "oos.md", "oos-accepted-review.md"):
@@ -890,7 +891,7 @@ def _review_core_body(
         collect_args.append("--claude-output-files")
         collect_args.extend(claude_array)
     logging_util.diagnostic("→ review: consolidating findings")
-    _progress_note(step="5", text="collecting reviewer outputs")
+    _progress_note(step="5", text=f"collecting reviewer outputs from {launched_slots} reviewers")
     collect_result = _call_maybe_override(command=commands.collect, review_name="collect-findings", args=collect_args)
     collect_out = review_tmpdir / "review-core-collect.env"
     _write_text(path=collect_out, text=collect_result.stdout)
@@ -918,6 +919,7 @@ def _review_core_body(
     if external_array or claude_array:
         threshold_args.append("--reviewer-output-files")
         threshold_args.extend(external_array + claude_array)
+    _progress_note(step="5", text=f"reviewers {_collector_success_count(collector_results)}/{launched_slots} done")
     _progress_note(step="5", text="checking reviewer failure threshold")
     threshold_result = _call_maybe_override(command=commands.threshold, review_name="check-reviewer-failure-threshold", args=threshold_args)
     threshold_out = review_tmpdir / "review-core-threshold.env"
@@ -1085,7 +1087,7 @@ def _review_core_body(
         voter_args.extend(["--diff-file", diff_file])
     if _get(parsed=parsed, key="--plan-file"):
         voter_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
-    _progress_note(step="5", text="dispatching voters")
+    _progress_note(step="5", text="dispatching 3 voters")
     voters_result = _run_command_string(command=commands.dispatch_voters, args=voter_args) if commands.dispatch_voters else _run_python_cli(["agent", "dispatch-voters", *voter_args])
     voters = _kv_parse(voters_result.stdout)
     _write_text(path=review_tmpdir / "review-core-voters.env", text=voters_result.stdout)
@@ -1152,6 +1154,11 @@ def _review_core_body(
     accepted_file = Path(tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")))
     tally_file = tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env"))
     emit_args = ["--tally-file", tally_file, "--accepted-findings-file", str(accepted_file), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
+    accepted_total = sum(
+        _parse_nonnegative_int(value, default=0)
+        for value in (accepted, rejected, exonerated, neutral)
+    )
+    _progress_note(step="5", text=f"voting done {accepted}/{accepted_total} accepted")
     _progress_note(step="5", text="post-fix checks running")
     _emit_tally_with_context(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-emit.env", session_env_path=session_env_path)
     _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
