@@ -80,7 +80,7 @@ def render_gantt(
     if not filtered:
         return ""
 
-    label_width = max(len(row.label) for row in rows)
+    label_width = max(len(row.label) for row, *_ in filtered)
     duration_width = max(len(f"{duration}s") for _, _, _, duration in filtered)
     if use_default_width:
         width = min(width, max(10, 90 - label_width - duration_width - 4))

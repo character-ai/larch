@@ -237,6 +237,18 @@ def _write_round_timing(
         )
 
 
+def _write_over_cap_plain_codex_review_rows(ledger: Path) -> tuple[int, str]:
+    over_cap = progress_report.PROGRESS_GANTT_ROW_CAP + 2
+    for index in range(over_cap):
+        _write_vendor_timing(
+            ledger,
+            f"codex-specialist-row-{index}-output.txt",
+            100 + index,
+            150,
+        )
+    return over_cap, f"codex/row-{over_cap - 1}"
+
+
 _MINIMAL_ROUND_META = (
     '{"tally":{"ACCEPTED_COUNT":"0","REJECTED_COUNT":"0","EXONERATED_COUNT":"0",'
     '"NEUTRAL_COUNT":"0","OOS_ACCEPTED_COUNT":"0","OOS_REJECTED_COUNT":"0"},'
@@ -3112,6 +3124,20 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     assert "█" in rendered
     assert "30s" in rendered
     assert "No reviewer timing tasks overlapped this round." not in rendered
+
+
+def test_render_phase_detail_gantt_shows_all_rows_when_over_cap(tmp_path: Path) -> None:
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
+    over_cap, latest_label = _write_over_cap_plain_codex_review_rows(timing)
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
+
+    assert "### Round 1 reviewer timing" in rendered
+    assert latest_label in rendered
+    assert sum(1 for line in rendered.splitlines() if "│" in line and "█" in line) >= over_cap
 
 
 def test_render_phase_detail_design_gantt_labels_gate_b_apply(tmp_path: Path) -> None:
