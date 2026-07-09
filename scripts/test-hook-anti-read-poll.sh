@@ -60,11 +60,143 @@ assert_silent() {
     local out="$1" label="$2"
     if [ -z "$out" ]; then pass "$label"; else fail "$label (got: $out)"; fi
 }
+dir_mode() {
+    local path="$1" mode
+    mode=$(stat -f '%OLp' "$path" 2>/dev/null) || mode=$(stat -c '%a' "$path" 2>/dev/null) || return 1
+    printf '%s' "$mode"
+}
+assert_no_hook_state() {
+    local dir="$1" label="$2" tmp_count state_count
+    tmp_count=$(find "$dir" -name '.*.tmp.*' -print | wc -l | tr -d ' ')
+    state_count=$(find "$dir" -name '*.state' -print | wc -l | tr -d ' ')
+    if [ "$tmp_count" = "0" ] && [ "$state_count" = "0" ]; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
+assert_some_hook_state() {
+    local dir="$1" label="$2" tmp_count state_count
+    tmp_count=$(find "$dir" -name '.*.tmp.*' -print | wc -l | tr -d ' ')
+    state_count=$(find "$dir" -name '*.state' -print | wc -l | tr -d ' ')
+    if [ "$tmp_count" != "0" ] || [ "$state_count" != "0" ]; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
 
 if jq -e --arg cmd 'hook-anti-read-poll.sh' '.hooks.PostToolUse[]? | select(.matcher == "Read|Bash") | .hooks[]? | select(.command | test($cmd))' "$HOOKS_JSON" >/dev/null 2>&1; then
     pass 'hooks.json registers hook-anti-read-poll.sh under matcher Read|Bash'
 else
     fail 'hooks.json must register hook-anti-read-poll.sh under matcher Read|Bash'
+fi
+
+chmod_guardless_hook="$TMP/hook-anti-read-poll-chmod-guardless.sh"
+swap_after_mkdir_hook="$TMP/hook-anti-read-poll-swap-after-mkdir.sh"
+fully_guardless_hook="$TMP/hook-anti-read-poll-fully-guardless.sh"
+deep_guardless_hook="$TMP/hook-anti-read-poll-deep-guardless.sh"
+if python3 - "$HOOK" "$chmod_guardless_hook" "$swap_after_mkdir_hook" "$fully_guardless_hook" "$deep_guardless_hook" <<'PY'
+from pathlib import Path
+import sys
+
+src = Path(sys.argv[1])
+chmod_dst = Path(sys.argv[2])
+swap_dst = Path(sys.argv[3])
+fully_dst = Path(sys.argv[4])
+deep_dst = Path(sys.argv[5])
+text = src.read_text()
+lines = text.splitlines()
+pre_mkdir_symlink_needle = '[ -L "$state_dir" ] && exit 0'
+pre_mkdir_nondir_needle = '[ -e "$state_dir" ] && [ ! -d "$state_dir" ] && exit 0'
+state_dir_guard = '[ -d "$state_dir" ] && [ ! -L "$state_dir" ] || exit 0'
+state_dir_predicate = '[ -d "$state_dir" ] && [ ! -L "$state_dir" ]'
+mkdir_needle = 'mkdir -p "$state_dir" 2>/dev/null || exit 0'
+mktemp_needle = 'tmp_state=$(mktemp "$state_dir/.${key}.tmp.XXXXXX" 2>/dev/null) || exit 0'
+
+
+def find_line(needle: str, *, after: int = -1) -> int:
+    for idx, line in enumerate(lines):
+        if idx > after and needle in line:
+            return idx
+    raise SystemExit(f"line not found: {needle}")
+
+
+mkdir_idx = find_line(mkdir_needle)
+next_code_idx = next(
+    (
+        idx
+        for idx in range(mkdir_idx + 1, len(lines))
+        if lines[idx].strip() and not lines[idx].strip().startswith("#")
+    ),
+    -1,
+)
+if next_code_idx < 0 or lines[next_code_idx].strip() != state_dir_guard:
+    raise SystemExit("post-mkdir state_dir guard is not the next code line")
+chmod_idx = find_line('chmod 700 "$state_dir"', after=mkdir_idx)
+if not any(line.strip() == state_dir_guard for line in lines[mkdir_idx + 1 : chmod_idx]):
+    raise SystemExit("post-mkdir state_dir guard missing before chmod")
+mktemp_idx = find_line(mktemp_needle)
+prev_idx = mktemp_idx - 1
+while prev_idx >= 0 and not lines[prev_idx].strip():
+    prev_idx -= 1
+if prev_idx < 0 or lines[prev_idx].strip() != state_dir_guard:
+    raise SystemExit("pre-mktemp state_dir guard missing")
+if any(line.strip() for line in lines[prev_idx + 1 : mktemp_idx]):
+    raise SystemExit("pre-mktemp state_dir guard must be separated only by blank lines")
+
+chmod_text = text
+for needle in (pre_mkdir_symlink_needle, pre_mkdir_nondir_needle):
+    if needle not in chmod_text:
+        raise SystemExit(f"pre-mkdir needle not found: {needle}")
+    chmod_text = chmod_text.replace(needle + "\n", "", 1)
+if pre_mkdir_symlink_needle in chmod_text or pre_mkdir_nondir_needle in chmod_text:
+    raise SystemExit("pre-mkdir needles remain in chmod guardless variant")
+chmod_dst.write_text(chmod_text)
+
+swap_replacement = "\n".join(
+    (
+        mkdir_needle,
+        'rm -rf "$state_dir" 2>/dev/null || exit 0',
+        'ln -s "$HOOK_SWAP_REDIRECT" "$state_dir" 2>/dev/null || exit 0',
+    )
+)
+if text.count(mkdir_needle) != 1:
+    raise SystemExit("expected exactly one mkdir state_dir line")
+swap_dst.write_text(text.replace(mkdir_needle, swap_replacement, 1))
+
+fully_text = chmod_text
+fully_lines = [
+    line
+    for line in fully_text.splitlines()
+    if not line.strip().startswith(state_dir_predicate + " ||")
+]
+fully_text = "\n".join(fully_lines) + "\n"
+if pre_mkdir_symlink_needle in fully_text or pre_mkdir_nondir_needle in fully_text:
+    raise SystemExit("pre-mkdir needles remain in fully guardless variant")
+if any(line.strip().startswith(state_dir_predicate + " ||") for line in fully_text.splitlines()):
+    raise SystemExit("state_dir guard remains in fully guardless variant")
+fully_dst.write_text(fully_text)
+
+if mktemp_needle not in fully_text:
+    raise SystemExit("mktemp needle not found in fully guardless variant")
+deep_text = fully_text.replace(mktemp_needle, state_dir_guard + "\n" + mktemp_needle, 1)
+deep_lines = deep_text.splitlines()
+guard_indexes = [idx for idx, line in enumerate(deep_lines) if line.strip() == state_dir_guard]
+mktemp_idx = next(
+    (idx for idx, line in enumerate(deep_lines) if line.strip() == mktemp_needle),
+    -1,
+)
+if len(guard_indexes) != 1 or guard_indexes[0] != mktemp_idx - 1:
+    raise SystemExit("deep guardless state_dir guard must appear once immediately before mktemp")
+deep_dst.write_text(deep_text)
+PY
+then
+    chmod +x "$chmod_guardless_hook" "$swap_after_mkdir_hook" "$fully_guardless_hook" "$deep_guardless_hook"
+    pass 'production hook revalidates state_dir and guardless variants are exact'
+else
+    fail 'production hook guard shape or guardless variant construction failed'
+    exit 1
 fi
 
 assert_silent "$(run_hook 0 /tmp/file.md 0 /proj generic)" 'call 1 silent'
@@ -147,6 +279,82 @@ printf '%s\t%s\t2\t%s\n' "$negative_path_hash" "$negative_offset" 1995 >"$negati
 ln -s "$negative_poison_target" "$negative_state_path"
 negative_out=$(run_hook_with_hook "$guardless_hook" "$negative_now" "$negative_path" "$negative_offset" "$negative_cwd" "$negative_session")
 assert_reminder "$negative_out" 'negative control shows symlink read guard is load-bearing'
+
+rm -rf "$TMPDIR/larch-read-poll"
+chmod_redirect="$TMP/chmod-redirect"
+mkdir -p "$chmod_redirect"
+ln -s "$chmod_redirect" "$TMPDIR/larch-read-poll"
+set +e
+chmod_out=$(run_hook_with_hook "$chmod_guardless_hook" 3100 /tmp/chmod-target.md 0 /proj/chmod chmod-session)
+chmod_rc=$?
+set -e
+assert_silent "$chmod_out" 'chmod guardless leaf state-dir symlink exits without reminder'
+if [ "$chmod_rc" -eq 0 ]; then
+    pass 'chmod guardless leaf state-dir symlink hook exits 0'
+else
+    fail "chmod guardless leaf state-dir symlink hook must exit 0 (got: $chmod_rc)"
+fi
+assert_no_hook_state "$chmod_redirect" 'chmod guardless redirect receives no hook state'
+if [ -L "$TMPDIR/larch-read-poll" ]; then
+    pass 'chmod guardless leaf symlink remains a symlink'
+else
+    fail 'chmod guardless leaf symlink must not become a regular state file'
+fi
+
+rm -rf "$TMPDIR/larch-read-poll"
+swap_redirect="$TMP/swap-redirect"
+mkdir -p "$swap_redirect"
+chmod 755 "$swap_redirect"
+swap_mode_before=$(dir_mode "$swap_redirect")
+set +e
+swap_out=$(mk_payload /tmp/swap-target.md 0 /proj/swap swap-session | HOOK_ANTI_READ_POLL_NOW=3200 HOOK_SWAP_REDIRECT="$swap_redirect" "$swap_after_mkdir_hook")
+swap_rc=$?
+set -e
+assert_silent "$swap_out" 'swap-after-mkdir exits without reminder'
+if [ "$swap_rc" -eq 0 ]; then
+    pass 'swap-after-mkdir hook exits 0'
+else
+    fail "swap-after-mkdir hook must exit 0 (got: $swap_rc)"
+fi
+assert_no_hook_state "$swap_redirect" 'swap-after-mkdir redirect receives no hook state'
+swap_mode_after=$(dir_mode "$swap_redirect")
+if [ "$swap_mode_after" = "$swap_mode_before" ]; then
+    pass 'swap-after-mkdir redirect mode unchanged'
+else
+    fail "swap-after-mkdir redirect mode changed from $swap_mode_before to $swap_mode_after"
+fi
+
+rm -rf "$TMPDIR/larch-read-poll"
+fully_redirect="$TMP/fully-redirect"
+mkdir -p "$fully_redirect"
+ln -s "$fully_redirect" "$TMPDIR/larch-read-poll"
+set +e
+fully_out=$(run_hook_with_hook "$fully_guardless_hook" 3300 /tmp/fully-target.md 0 /proj/fully fully-session)
+fully_rc=$?
+set -e
+assert_silent "$fully_out" 'fully guardless leaf state-dir symlink stays silent on first write'
+if [ "$fully_rc" -eq 0 ]; then
+    pass 'fully guardless hook exits 0'
+else
+    fail "fully guardless hook must exit 0 (got: $fully_rc)"
+fi
+assert_some_hook_state "$fully_redirect" 'fully guardless redirect receives hook state'
+
+rm -rf "$TMPDIR/larch-read-poll"
+deep_redirect="$TMP/deep-redirect"
+mkdir -p "$deep_redirect"
+ln -s "$deep_redirect" "$TMPDIR/larch-read-poll"
+set +e
+deep_out=$(run_hook_with_hook "$deep_guardless_hook" 3400 /tmp/deep-target.md 0 /proj/deep deep-session)
+deep_rc=$?
+set -e
+assert_silent "$deep_out" 'deep guardless pre-mktemp guard exits without reminder'
+if [ "$deep_rc" -eq 0 ]; then
+    pass 'deep guardless hook exits 0'
+else
+    fail "deep guardless hook must exit 0 (got: $deep_rc)"
+fi
+assert_no_hook_state "$deep_redirect" 'deep guardless redirect receives no hook state'
 
 rm -rf "$TMPDIR/larch-read-poll"
 parent_cwd="/proj/parent-symlink"
