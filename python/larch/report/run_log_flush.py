@@ -651,6 +651,73 @@ def _refresh_skip_for_commit_result(commit_result: CommandResult) -> RefreshSkip
     return RefreshSkip(skipped=True, reason=reason, error=err)
 
 
+_PRETERMINAL_BLOCK_MESSAGE_MAX_CHARS = 300
+
+
+def _parse_preterminal_outcome_label(text: str) -> str | None:
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line.startswith("## /"):
+            continue
+        colon_index = line.rfind(": ")
+        dash_index = line.rfind(" — ")
+        separator_index = max(colon_index, dash_index)
+        if separator_index < 0:
+            continue
+        separator_len = 3 if dash_index > colon_index else 2
+        label = line[separator_index + separator_len:].strip().lower()
+        return label or None
+    return None
+
+
+def _parse_preterminal_outcome_label_from_run_dir(run_dir: Path) -> str | None:
+    summary = run_dir / "final-summary.md"
+    if not summary.is_file():
+        return None
+    return _parse_preterminal_outcome_label(summary.read_text(encoding="utf-8", errors="replace"))
+
+
+def _check_preterminal_outcome_label(outcome: str) -> None:
+    label = outcome.strip().lower()
+    if label in config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS:
+        msg = (
+            "refusing pre-terminal run-log commit with terminal outcome "
+            f"label {label!r}"
+        )
+        raise ShipError(msg)
+
+
+def _bounded_preterminal_message(message: str) -> str:
+    return " ".join(message.split())[:_PRETERMINAL_BLOCK_MESSAGE_MAX_CHARS]
+
+
+def _preterminal_outcome_commit_blocked(run_dir: Path) -> str | None:
+    try:
+        outcome = _parse_preterminal_outcome_label_from_run_dir(run_dir)
+    except OSError as exc:
+        return _bounded_preterminal_message(f"pre-terminal outcome check failed: {exc}")
+    if outcome is None:
+        return None
+    try:
+        _check_preterminal_outcome_label(outcome)
+    except ShipError as exc:
+        return _bounded_preterminal_message(
+            f"{exc}; commit only neutral in-progress labels before terminal reconciliation"
+        )
+    return None
+
+
+def _preterminal_outcome_refresh_skip(ctx: RunContext) -> RefreshSkip | None:
+    blocked = _preterminal_outcome_commit_blocked(_run_log_dir(ctx))
+    if blocked is None:
+        return None
+    return RefreshSkip(
+        skipped=True,
+        reason=config.REFRESH_SKIP_COMMIT_FAILED,
+        error=blocked,
+    )
+
+
 def flush_logs_pre(
     *, runner: Runner,
     ctx: RunContext,
@@ -695,6 +762,9 @@ def flush_logs_pre(
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     if cwd is None:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_REPO_CWD)
+    preterminal_skip = _preterminal_outcome_refresh_skip(ctx)
+    if preterminal_skip is not None:
+        return preterminal_skip
     try:
         commit_result = _commit_run(log_root=log_root, skill="implement", run_id=effective_run_id(ctx), cwd=cwd)
     except (OSError, ShipError) as exc:
@@ -896,6 +966,13 @@ def capture_transcript_main(argv: list[str]) -> int:
         return 0
     issues_log = Path(args.execution_issues_log) if args.execution_issues_log else None
     log_root = Path(args.log_root)
+    if not validate_run_id_slug(args.run_id):
+        return _capture_transcript_emit(
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="invalid-run-id",
+            message="run-id was invalid; transcript capture skipped.",
+        )
     existing_transcript = log_root / args.skill / args.run_id / "session-transcript.jsonl"
     source = Path(args.source_file) if args.source_file else None
     transcript_path: Path | None = None
@@ -996,6 +1073,18 @@ def capture_transcript_main(argv: list[str]) -> int:
     if args.defer_commit == "true":
         print("SESSION_TRANSCRIPT_STATUS=captured")
         return 0
+    preterminal_block = (
+        _preterminal_outcome_commit_blocked(log_root / args.skill / args.run_id)
+        if args.skill == "implement"
+        else None
+    )
+    if preterminal_block is not None:
+        return _capture_transcript_emit(
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="commit-failed",
+            message=preterminal_block,
+        )
     commit = _commit_run(log_root=log_root, skill=args.skill, run_id=args.run_id, cwd=str(Path.cwd()))
     if commit.returncode != 0:
         err = (commit.stderr or "larch-log commit failed").strip().replace("\n", " ")
@@ -1136,6 +1225,11 @@ def larch_log_flush_main(argv: list[str]) -> int:
     )
     try:
         _stage_pre_commit(runner=proc, ctx=ctx, log_root=log_root, cwd=str(Path.cwd()), mode="flush")
+        preterminal_skip = _preterminal_outcome_refresh_skip(ctx)
+        if preterminal_skip is not None:
+            warning = preterminal_skip.error or "pre-terminal outcome label refused"
+            print(f"WARN: larch-log flush skipped: {warning}", file=sys.stderr)
+            return 0
         result = _commit_run(log_root=log_root, skill="implement", run_id=run_id, cwd=str(Path.cwd()))
         flush_rc = _emit_flush_failure_warning(result)
         for line in result.stdout.splitlines():

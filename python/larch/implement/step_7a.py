@@ -148,6 +148,14 @@ def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
         entry=f"- **Step 7a — code flow diagram**: {message}"    )
 
 
+def _refresh_skip_blocks_direct_commit(refresh: run_logs.RefreshSkip) -> bool:
+    error: str = refresh.error.lower() if refresh.error else ""
+    return (
+        refresh.skipped
+        and refresh.reason == config.REFRESH_SKIP_COMMIT_FAILED
+        and "pre-terminal" in error
+    )
+
 
 def _run_log_flush(
     implement_tmpdir: Path,
@@ -236,20 +244,21 @@ def _run_log_flush(
         refresh = run_logs.flush_logs_pre(runner=run_logs.proc, ctx=with_context, cwd=str(Path.cwd()))
         if refresh.skipped and refresh.reason not in {"no-repo-cwd", "no-logs-commit", "volatile-only"}:
             log_flush_status = "degraded"
-        commit = _run_cli(
-            "run-log",
-            "commit",
-            "--log-root",
-            str(log_root),
-            "--tmpdir",
-            str(implement_tmpdir),
-            "--skill",
-            "implement",
-            "--run-id",
-            run_id,
-        )
-        if commit.returncode != 0:
-            log_flush_status = "degraded"
+        if not _refresh_skip_blocks_direct_commit(refresh):
+            commit = _run_cli(
+                "run-log",
+                "commit",
+                "--log-root",
+                str(log_root),
+                "--tmpdir",
+                str(implement_tmpdir),
+                "--skill",
+                "implement",
+                "--run-id",
+                run_id,
+            )
+            if commit.returncode != 0:
+                log_flush_status = "degraded"
     elif log_flush_status == "ok":
         log_flush_status = "skipped-no-logs-commit"
     return log_flush_status

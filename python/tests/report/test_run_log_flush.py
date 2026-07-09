@@ -3,15 +3,12 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import pytest
-
-    from larch.core.proc import CommandResult
-
+import pytest
 from larch.calibration import difficulty
 from larch.core import config
+from larch.core.proc import CommandResult
+from larch.errors import ShipError
 from larch.report import run_log_commit
 from larch.report import run_log_flush
 from larch.report.run_log_manifest import RefreshSkip
@@ -210,6 +207,95 @@ def test_run_log_commit_step7a_without_code_review_does_not_require_full_finding
     assert copied == ["implement/run-abc"]
 
 
+def test_preterminal_outcome_label_check_rejects_terminal_labels() -> None:
+    for label in ("stalled", "bailed", "bailed-needs-user-input"):
+        with pytest.raises(ShipError, match="pre-terminal"):
+            run_log_flush._check_preterminal_outcome_label(label)  # pyright: ignore[reportPrivateUsage]
+
+    for label in ("shipping", "in-progress", "pr-created"):
+        run_log_flush._check_preterminal_outcome_label(label)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_parse_preterminal_outcome_label_targets_run_heading() -> None:
+    assert (
+        run_log_flush._parse_preterminal_outcome_label(  # pyright: ignore[reportPrivateUsage]
+            "# Prelude\n\n## /implement final summary: stalled\n",
+        )
+        == "stalled"
+    )
+    assert (
+        run_log_flush._parse_preterminal_outcome_label(  # pyright: ignore[reportPrivateUsage]
+            "## /implement final summary — bailed-needs-user-input\n",
+        )
+        == "bailed-needs-user-input"
+    )
+    assert (
+        run_log_flush._parse_preterminal_outcome_label(  # pyright: ignore[reportPrivateUsage]
+            "## Architectural notes: stalled\n\n## /implement final summary: shipping\n",
+        )
+        == "shipping"
+    )
+    assert (
+        run_log_flush._parse_preterminal_outcome_label(  # pyright: ignore[reportPrivateUsage]
+            "## /implement final summary\n\n## /implement final summary: stalled\n",
+        )
+        == "stalled"
+    )
+
+
+def test_flush_logs_pre_refuses_preterminal_forbidden_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _write_manifest(run_dir)
+    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: stalled\n", encoding="utf-8")
+    ctx = make_run_context(
+        run_id="run-abc",
+        tmpdir=str(tmp_path),
+        manifest_path=str(run_dir / "manifest.json"),
+    )
+    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+
+    def fail_commit(**_kwargs: object) -> CommandResult:
+        raise AssertionError("pre-terminal guard should skip commit")
+
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
+
+    skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
+
+    assert skip.skipped is True
+    assert skip.reason == config.REFRESH_SKIP_COMMIT_FAILED
+    assert "stalled" in skip.error
+
+
+def test_flush_logs_pre_allows_neutral_preterminal_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _write_manifest(run_dir)
+    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: shipping\n", encoding="utf-8")
+    ctx = make_run_context(
+        run_id="run-abc",
+        tmpdir=str(tmp_path),
+        manifest_path=str(run_dir / "manifest.json"),
+    )
+    commits: list[str] = []
+    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+
+    def fake_commit(**_kwargs: object) -> CommandResult:
+        commits.append("commit")
+        return CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0)
+
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
+
+    skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
+
+    assert skip.skipped is False
+    assert commits == ["commit"]
+
+
 def test_flush_logs_pre_maps_incomplete_commit_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _write_manifest(run_dir)
@@ -265,6 +351,29 @@ def test_larch_log_flush_main_returns_incomplete_rc(
 
     assert rc == config.RUN_LOG_INCOMPLETE_RC
     assert "session-transcript.jsonl" in capsys.readouterr().err
+
+
+def test_larch_log_flush_main_skips_preterminal_forbidden_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _write_manifest(run_dir)
+    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: bailed\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-abc\n", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda **_kwargs: None)
+
+    def fail_commit(**_kwargs: object) -> CommandResult:
+        raise AssertionError("pre-terminal guard should skip commit")
+
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
+
+    rc = run_log_flush.larch_log_flush_main([])
+
+    assert rc == 0
+    assert "pre-terminal" in capsys.readouterr().err
 
 
 def test_run_log_commit_missing_run_dir_preserves_noop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

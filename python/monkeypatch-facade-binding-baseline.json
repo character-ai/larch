@@ -7110,6 +7110,33 @@
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
+    "file": "tests/implement/test_step_7a.py",
+    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_commit_failed",
+    "facade_module": "larch.report.run_logs",
+    "attribute": "_render_token_timing_batches",
+    "defining_module": "larch.report.run_log_flush",
+    "occurrence": 2,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+  },
+  {
+    "file": "tests/implement/test_step_7a.py",
+    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_commit_failed",
+    "facade_module": "larch.report.run_logs",
+    "attribute": "_stage_vendor_failure_diagnostics",
+    "defining_module": "larch.report.run_log_flush",
+    "occurrence": 3,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+  },
+  {
+    "file": "tests/implement/test_step_7a.py",
+    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_commit_failed",
+    "facade_module": "larch.report.run_logs",
+    "attribute": "flush_logs_pre",
+    "defining_module": "larch.report.run_log_flush",
+    "occurrence": 4,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+  },
+  {
     "file": "tests/issue/test_analyze_issues.py",
     "qualified_symbol": "test_run_main_continues_after_corrupt_issue_dump",
     "facade_module": "larch.issue.analyze_issues",
@@ -7876,6 +7903,33 @@
   },
   {
     "file": "tests/report/test_run_log_flush.py",
+    "qualified_symbol": "test_flush_logs_pre_allows_neutral_preterminal_label",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "_commit_run",
+    "defining_module": "larch.report.run_log_commit",
+    "occurrence": 2,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+  },
+  {
+    "file": "tests/report/test_run_log_flush.py",
+    "qualified_symbol": "test_flush_logs_pre_refuses_preterminal_forbidden_label",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "_commit_run",
+    "defining_module": "larch.report.run_log_commit",
+    "occurrence": 2,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+  },
+  {
+    "file": "tests/report/test_run_log_flush.py",
+    "qualified_symbol": "test_larch_log_flush_main_skips_preterminal_forbidden_label",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "_commit_run",
+    "defining_module": "larch.report.run_log_commit",
+    "occurrence": 2,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+  },
+  {
+    "file": "tests/report/test_run_log_flush.py",
     "qualified_symbol": "test_refresh_difficulty_record_merges_resolution_fields",
     "facade_module": "larch.report.run_log_flush",
     "attribute": "_write_batch",
@@ -7909,6 +7963,24 @@
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/report/test_run_logs.py",
+    "qualified_symbol": "test_capture_transcript_main_refuses_preterminal_stalled_summary",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "_commit_run",
+    "defining_module": "larch.report.run_log_commit",
+    "occurrence": 2,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+  },
+  {
+    "file": "tests/report/test_run_logs.py",
+    "qualified_symbol": "test_capture_transcript_main_refuses_preterminal_stalled_summary",
+    "facade_module": "larch.report.run_log_flush",
+    "attribute": "_write_batch",
+    "defining_module": "larch.report.run_log_batch",
+    "occurrence": 1,
+    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
   },
   {
     "file": "tests/report/test_run_logs.py",
