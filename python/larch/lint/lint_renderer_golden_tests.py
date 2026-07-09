@@ -104,7 +104,7 @@ def _read_source(path: Path, *, python_dir: Path) -> str:
     normalized: str = path.relative_to(python_dir).as_posix()
     try:
         return path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise BaselineError(f"{normalized}: cannot read source: {exc}") from exc
 
 
@@ -179,7 +179,7 @@ def _validate_record(item: object, *, index: int, source: Path) -> Record:
     file_name: str = _validate_normalized_file(record["file"], source=source, index=index)
     function_name: object = record["function_name"]
     reason: object = record["reason"]
-    if not isinstance(function_name, str) or not _candidate_name(function_name):
+    if not isinstance(function_name, str) or not function_name:
         raise BaselineError(f"{source}: record {index} has invalid function_name")
     if not isinstance(reason, str) or not reason.strip():
         raise BaselineError(f"{source}: record {index} has invalid reason")
@@ -199,7 +199,7 @@ def load_baseline(path: Path) -> list[Record]:
     """Load and validate the committed baseline."""
     try:
         data: object = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise BaselineError(f"{path}: invalid JSON: {exc}") from exc

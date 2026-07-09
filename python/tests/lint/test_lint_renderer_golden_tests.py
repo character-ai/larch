@@ -163,6 +163,19 @@ def test_stale_baseline_row_fails(tmp_path: Path, capsys: pytest.CaptureFixture[
     assert "stale baseline row: larch/report/missing.py:_render_missing" in capsys.readouterr().err
 
 
+def test_stale_baseline_function_name_fails(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/report/progress_report.py": _report_function()},
+        baseline=[_record(function_name="helper")],
+    )
+
+    assert lrgt.main(["--root", str(tmp_path)]) == 1
+    assert "stale baseline row: larch/report/progress_report.py:helper" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize(
     "baseline",
     [
@@ -170,7 +183,7 @@ def test_stale_baseline_row_fails(tmp_path: Path, capsys: pytest.CaptureFixture[
         [_record(extra="bad")],
         [_record(), _record()],
         [_record(file="../escape.py")],
-        [_record(function_name="helper")],
+        [_record(function_name="")],
     ],
 )
 def test_malformed_baseline_rows_fail_exit_2(tmp_path: Path, baseline: object) -> None:
@@ -213,6 +226,33 @@ def test_scope_ignores_nested_non_report_test_symlink_and_non_matching_functions
     assert "linked.py" not in [path.name for path in lrgt.iter_report_files(report_dir)]
 
 
+def test_non_utf8_test_source_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/report/progress_report.py": _report_function(),
+            "tests/report/test_progress_report.py": _report_function(),
+        },
+        baseline=[],
+    )
+    _ = (tmp_path / "python" / "tests" / "report" / "test_progress_report.py").write_bytes(b"\xff\xfe")
+
+    assert lrgt.main(["--root", str(tmp_path)]) == 2
+    assert "cannot read source" in capsys.readouterr().err
+
+
+def test_non_utf8_baseline_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/report/progress_report.py": _report_function()},
+        baseline=[],
+    )
+    _ = (tmp_path / "python" / lrgt.BASELINE_FILENAME).write_bytes(b"\xff\xfe")
+
+    assert lrgt.main(["--root", str(tmp_path)]) == 2
+    assert "cannot read baseline" in capsys.readouterr().err
+
+
 def test_whole_identifier_matching_is_required(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
@@ -237,6 +277,24 @@ def test_identifier_boundary_reference_is_enough(tmp_path: Path) -> None:
     )
 
     assert lrgt.main(["--root", str(tmp_path)]) == 0
+
+
+def test_write_fails_when_new_rows_lack_reasons(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/report/progress_report.py": _report_function(),
+            "larch/report/timing.py": _report_function("_render_timing"),
+        },
+        baseline=[_record(reason="kept")],
+    )
+
+    assert lrgt.main(["--root", str(tmp_path), "--write"]) == 2
+    err: str = capsys.readouterr().err
+    assert "missing baseline reasons" in err
+    assert "larch/report/timing.py:_render_timing" in err
 
 
 def test_parse_failure_exits_2(tmp_path: Path) -> None:

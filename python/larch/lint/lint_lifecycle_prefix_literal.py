@@ -392,10 +392,11 @@ def scan_file(
     path: Path, *, larch_dir: Path, token_infos: Mapping[str, TokenInfo]
 ) -> list[Finding]:
     """Return lifecycle-prefix literal findings for one source file."""
+    normalized_file: str = path.relative_to(larch_dir.parent).as_posix()
     try:
         source: str = path.read_text(encoding="utf-8")
-    except OSError:
-        return []
+    except (OSError, UnicodeDecodeError) as exc:
+        raise BaselineError(f"{normalized_file}: cannot read source: {exc}") from exc
     try:
         tree: ast.Module = ast.parse(source)
     except SyntaxError:
@@ -404,7 +405,7 @@ def scan_file(
     _collect_scope(
         tree.body,
         prefix=(),
-        normalized_file=path.relative_to(larch_dir.parent).as_posix(),
+        normalized_file=normalized_file,
         token_infos=token_infos,
         findings=findings,
     )
@@ -477,7 +478,7 @@ def load_baseline(path: Path) -> list[Record]:
     """Load and validate the committed baseline."""
     try:
         data: object = json.loads(path.read_text(encoding="utf-8"))
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise BaselineError(f"{path}: cannot read baseline: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
@@ -543,8 +544,8 @@ def _collect_all(
         normalized: str = path.relative_to(larch_dir.parent).as_posix()
         try:
             source: str = path.read_text(encoding="utf-8")
-        except OSError:
-            source = ""
+        except (OSError, UnicodeDecodeError) as exc:
+            raise BaselineError(f"{normalized}: cannot read source: {exc}") from exc
         source_lines_by_file[normalized] = tuple(source.splitlines())
         comment_tokens_by_file[normalized] = _comment_tokens_by_line(source)
         findings.extend(scan_file(path, larch_dir=larch_dir, token_infos=token_infos))
