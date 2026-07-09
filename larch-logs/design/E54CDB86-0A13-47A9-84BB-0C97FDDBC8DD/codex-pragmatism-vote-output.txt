@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier rejected timing-kind concern; the plan still functions even if these forced aliases are added later.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate scope-reduction concern from the prior round; collapsing attribution plumbing is optional, not required for the feature to ship correctly.
