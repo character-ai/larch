@@ -1,0 +1,44 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-correctness, cursor-specialist-plan-fidelity-auto, dyn-dyn-step5-recovery
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+`step5_canonical_result_env_state` can treat a `BGJOB_RC=0` envelope as complete even when the recorded Step 5 status is stalled, so cached stall envelopes may be reused instead of being cleared for a fresh relaunch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness: Address the concern above.
+  - From cursor-specialist-plan-fidelity-auto: Address the concern above.
+  - From dyn-dyn-step5-recovery: `step5_canonical_result_env_state` labels a result env `complete` whenever `BGJOB_RC=0` and all required Step 5 keys are present, without requiring `STEP5_REVIEW_STATUS=complete` or rejecting `STEP5_REVIEW_STATUS=stall`. A canonical env with `BGJOB_RC=0` plus a stall envelope would take the reuse branch at `step-5-review.sh:212-214` instead of the stall-clearing path, reproducing the cached-stall replay this change is meant to eliminate. Today’s panel-failed child usually exits non-zero, so this is latent rather than observed, but the classifier is fail-open on an integrity-sensitive boundary. **Suggested fix:** Tighten the `complete` predicate to require `STEP5_REVIEW_STATUS=complete` (or explicitly `!= stall`), and add a harness case that seeds `BGJOB_RC=0` with `STEP5_REVIEW_STATUS=stall` and asserts a fresh start, not `bgjob wait` reuse.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Require `STEP5_REVIEW_STATUS=complete` (not just truthy) in the `step5_canonical_result_env_state` classifier when `BGJOB_RC=0`, so a stall envelope with `BGJOB_RC=0` is never classified as complete.
+- Add a test case that seeds `BGJOB_RC=0` + `STEP5_REVIEW_STATUS=stall` (all required keys) and asserts a fresh bgjob start, not reuse.
+
+### Non-goals
+- Not touching the live-registry clearing path beyond what the classifier fix already covers.
+- Not changing behavior for `BGJOB_RC != 0` stall envelopes (already handled correctly).
+- Not modifying other bgjob state classifiers.
+
+### Approach sketch
+- One-line fix in `step5_canonical_result_env_state`: change `status and` to `status == "complete" and` on the `BGJOB_RC=0` predicate.
+- Add a new stall-env fixture (or inline seed) in `test-step-5-review.sh` with `BGJOB_RC=0`.
+- Assert `bgjob-start-argv.txt` exists and `implement-step5-review.result.env` is cleared after the wrapper runs.
+
+### Surfaces in scope
+- `skills/implement/scripts/step-5-review.sh`
+- `skills/implement/scripts/test-step-5-review.sh`
+
+### Open questions
+- None.
