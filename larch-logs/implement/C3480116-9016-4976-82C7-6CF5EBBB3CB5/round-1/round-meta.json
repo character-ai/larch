@@ -1,0 +1,35 @@
+{
+  "tally": {
+    "ACCEPTED_COUNT": "3",
+    "REJECTED_COUNT": "4",
+    "EXONERATED_COUNT": "0",
+    "NEUTRAL_COUNT": "0",
+    "OOS_PROPOSED_COUNT": "4",
+    "OOS_ACCEPTED_COUNT": "0",
+    "OOS_REJECTED_COUNT": "2"
+  },
+  "summary": {
+    "panel": {
+      "total_slot_count": 9
+    }
+  },
+  "collector": "",
+  "difficulty": {
+    "tier_in_effect": null,
+    "ceiling_in_effect": null,
+    "escalations": [],
+    "scout": {
+      "status": "absent"
+    }
+  },
+  "tally_canonical": {
+    "ACCEPTED_COUNT": "3",
+    "REJECTED_COUNT": "4",
+    "EXONERATED_COUNT": "0",
+    "NEUTRAL_COUNT": "0",
+    "OOS_PROPOSED_COUNT": "4",
+    "OOS_ACCEPTED_COUNT": "0",
+    "OOS_REJECTED_COUNT": "2"
+  },
+  "nit_pruned_count": "0"
+}
