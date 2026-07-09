@@ -1,8 +1,8 @@
 ## /implement run BDA555A6-37F2-40BB-8C61-0B3824DCA4F7: shipping
 
 - **Outcome**: shipping
-- **Duration**: 01:20:58
-- **Cost**: 💰 TOTAL ~$23.84: Claude $2.63, Codex-5.5 $11.44, Codex-mini $2.68, Cursor $5.13, Claude (subprocess) $1.96  |  Tokens: 43960k
+- **Duration**: 01:21:29
+- **Cost**: 💰 TOTAL ~$24.16: Claude $2.63, Codex-5.5 $11.44, Codex-mini $2.68, Cursor $5.13, Claude (subprocess) $2.28  |  Tokens: 44098k
 - **Issue**: #6673: https://github.com/character-ai/larch/issues/6673
 - **Plan review**: N/A
 - **Plan coverage**: 7/7 firm headings; band: advisory; disposition: none; todos_left: 0
