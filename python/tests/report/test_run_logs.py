@@ -1638,7 +1638,6 @@ def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
         return None
 
     monkeypatch.setattr(run_logs, "_scrub_run_tree", fail_scrub)
-    monkeypatch.setattr(run_logs, "_update_commit_manifest_with_warning", noop_update)
     monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", noop_update)  # type: ignore[arg-type]
 
     result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]

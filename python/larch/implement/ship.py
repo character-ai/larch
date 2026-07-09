@@ -268,6 +268,9 @@ def _flush_guideline_outcome_before_pr(
             detail=f"guideline outcome refresh skipped: {reason} (outcome cannot be committed)",
         )
         return
+    if refresh.reason == config.REFRESH_SKIP_RUN_LOG_INCOMPLETE:
+        _breadcrumb(step="warning", detail=f"guideline outcome refresh skipped: {reason}")
+        return
     if refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY and _committed_guideline_outcome_matches(ctx=ctx, cwd=cwd):
         _breadcrumb(step="warning", detail="guideline outcome refresh skipped: volatile-only with matching committed artifact")
         return
@@ -315,6 +318,9 @@ def _flush_invariant_outcome_before_pr(  # type: ignore[reportUnusedFunction]
             step="warning",
             detail=f"invariant outcome refresh skipped: {reason} (outcome cannot be committed)",
         )
+        return
+    if refresh.reason == config.REFRESH_SKIP_RUN_LOG_INCOMPLETE:
+        _breadcrumb(step="warning", detail=f"invariant outcome refresh skipped: {reason}")
         return
     if refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY and _committed_invariant_outcome_matches(ctx=ctx, cwd=cwd):
         _breadcrumb(step="warning", detail="invariant outcome refresh skipped: volatile-only with matching committed artifact")
