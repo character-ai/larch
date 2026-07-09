@@ -117,6 +117,13 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: one shared code for an audit refusal, a flag or plan error, a stall handoff, and a scrub failure hides why a run stopped. larch separates them: `/implement` Preflight refusal exit 3, flag or plan error exit 2, pre-push conflict handoff exit 4, scrub failure rc 5.
 - Deviate when: a library helper with a single failure mode and no caller that branches on the code.
 
+## Execution roots
+
+### G-Root-1: Resolve the repository root from persisted run state, never from ambient cwd
+- Why: skill steps execute from varying working directories, such as the plugin cache, sibling clones, and session tmpdirs, so code that derives the repo root or a search root from the process cwd breaks away from the operator clone; the postplan validator and plan-review loop failed from plugin-cache cwd (#4490, #4509), and baseline computations differed between plugin-cache and working-repo invocations (#6049).
+- Guidance: read the root from the run's source env (`REPO_ROOT`), an explicit `--repo-root` flag, or `CLAUDE_PROJECT_DIR` resolved once at the trust boundary; treat any cwd fallback as a last resort that logs its use; never compose repo-relative paths from cwd in prompt-side Bash.
+- Deviate when: an interactive, user-invoked helper is documented to operate on the repo the operator is standing in, or a test controls its own cwd.
+
 ## Security
 
 ### G-Sec-1: Validate untrusted strings (git refs, remotes, refspecs) against an allowlist regex before they enter a subprocess argv
