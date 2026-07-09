@@ -163,16 +163,24 @@ def _static_coverage_reason(*,
     success: set[str] = set()
     collector_success: set[str] = set()
     rejected: set[str] = set()
+    returned_statuses_by_slug: dict[str, list[str]] = {}
     for record in _collector_records(collector):
         base = Path(record.get("REVIEWER_FILE", "")).name
         slug = _static_slug_for_file(base)
         if not slug:
             continue
-        if record.get("STATUS") in {"OK", "cap_hit"}:
+        status = record.get("STATUS", "")
+        returned_statuses_by_slug.setdefault(slug, []).append(status)
+        if status in {"OK", "cap_hit"}:
             collector_success.add(slug)
             success.add(slug)
         else:
             rejected.add(_norm_base(base))
+    not_substantive_covered: set[str] = {
+        slug
+        for slug, statuses in returned_statuses_by_slug.items()
+        if statuses and all(status == "NOT_SUBSTANTIVE" for status in statuses)
+    }
     from larch.review.review_threshold import _output_file_success  # noqa: PLC0415
     for output in outputs:
         base = Path(output).name
@@ -193,7 +201,7 @@ def _static_coverage_reason(*,
     excused = _straggler_excused_static_slugs(dropped_path) if dropped_path else set()
     if dropped_path:
         excused |= _tool_absent_excused_static_slugs(dropped_file=dropped_path, collector_success=collector_success)
-    missing = sorted((expected - success) - excused)
+    missing = sorted((expected - success - not_substantive_covered) - excused)
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 
 

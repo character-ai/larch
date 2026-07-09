@@ -239,11 +239,11 @@ pass 'Step 5 wrapper reuses canonical completed result envs without relaunching'
 IMPL="$D/canonical-stall-result"
 make_impl "$IMPL" "$FAKE"
 seed_stall_result_env "$IMPL"
-STEP5_REGISTRY_MODE=missing STEP5_WAIT_MODE=done-stall CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "canonical stall result rejoin wrapper failed: $(cat "$IMPL/stderr.log")"
-grep -Fq 'BGJOB_STATUS=DONE' "$IMPL/stdout.log" || fail 'canonical stall result env must rejoin through bgjob wait'
-grep -Fq 'BGJOB_RC=2' "$IMPL/stdout.log" || fail 'canonical stall result env must preserve non-zero rc'
-[ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail 'canonical stall result env must not relaunch bgjob'
-pass 'Step 5 wrapper reuses canonical stall result envs without relaunching'
+STEP5_REGISTRY_MODE=missing STEP5_WAIT_MODE=done-stall CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "canonical stall result recovery wrapper failed: $(cat "$IMPL/stderr.log")"
+[ "$(cat "$IMPL/stdout.log")" = 'BGJOB_STATUS=STARTED STEP=implement-step5-review PGID=12345' ] || fail 'cached canonical stall result env must start a fresh bgjob'
+[ -f "$IMPL/bgjob-start-argv.txt" ] || fail 'cached canonical stall result env must relaunch bgjob'
+[ ! -f "$IMPL/bgjob/implement-step5-review.result.env" ] || fail 'cached canonical stall result env must be cleared before fresh start'
+pass 'Step 5 wrapper clears cached canonical stall result envs before relaunching'
 
 IMPL="$D/stale-result"
 make_impl "$IMPL" "$FAKE"
@@ -264,6 +264,15 @@ grep -Fq 'BGJOB_STATUS=WAIT' "$IMPL/stdout.log" || fail 'live registry re-entry 
 [ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail 'live registry re-entry must not launch a second bgjob'
 [ ! -f "$IMPL/registry-unlinked" ] || fail 'live registry row must not be cleared'
 pass 'Step 5 wrapper rejoins live registry rows without duplicate launch'
+
+IMPL="$D/live-registry-stall-cache"
+make_impl "$IMPL" "$FAKE"
+seed_stall_result_env "$IMPL"
+STEP5_REGISTRY_MODE=live CLAUDE_PLUGIN_ROOT="$FAKE" IMPLEMENT_TMPDIR="$IMPL" "$WRAPPER" >"$IMPL/stdout.log" 2>"$IMPL/stderr.log" || fail "live rejoin with cached stall failed: $(cat "$IMPL/stderr.log")"
+grep -Fq 'BGJOB_STATUS=WAIT' "$IMPL/stdout.log" || fail 'live registry with cached stall must still rejoin bgjob wait'
+[ ! -f "$IMPL/bgjob-start-argv.txt" ] || fail 'live registry with cached stall must not launch a second bgjob'
+[ ! -f "$IMPL/bgjob/implement-step5-review.result.env" ] || fail 'live registry with cached stall must clear non-complete canonical result env before wait'
+pass 'Step 5 wrapper clears cached stall envs before live registry rejoin'
 
 for mode in dead done-timeout done-orphaned; do
   IMPL="$D/$mode-live"
