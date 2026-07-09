@@ -1,0 +1,61 @@
+# [BUG] Gantt chart cut off in final report: inflight row cap and all-rows label_width applied to committed final-summary
+
+## Summary
+
+The `## Review Phase Detail` Gantt chart in the `/implement` and `/design` final report can appear cut off at the bottom. Two code-level root causes: (1) `_progress_vendor_rows` applies `PROGRESS_GANTT_ROW_CAP = 25` to both the live inflight chart and the committed final-report chart, silently dropping late-starting rows when a round has more than 25 reviewer timing entries; (2) `render_gantt` computes `label_width` from all rows—including rows filtered out of the window—making bars narrower than necessary when out-of-window rows have longer labels.
+
+## Original report
+
+User observed the Gantt chart being cut off in the final report and asked for the root cause.
+
+## Reproduction scenario
+
+1. Run `/implement` on a HARD tier issue that produces a round with more than 25 timing entries in the ledger (many dynamic archetypes, vendor-fallback rows, apply rows, voters, aggregator—all counted toward the cap).
+2. Inspect `larch-logs/implement/<run-id>/final-summary.md` under `### Round N reviewer timing`.
+3. Count the rows in the chart and compare to the rows in `timing-ledger.tsv` for that window. Late-starting reviewer rows are absent from the chart even though they appear in the ledger.
+
+For the narrower-bars variant: use a round that has any out-of-window timing row with a label longer than all visible rows' labels.
+
+## Expected behavior
+
+The committed `final-summary.md` Gantt chart for each round should show every reviewer timing row that falls within the round window, not just the first 25.
+
+Bar width should be computed from the visible (in-window) rows only, not from all rows including filtered-out ones.
+
+## Observed behavior
+
+For rounds with more than 25 timing entries: the chart ends abruptly after 25 rows (cap fills with reserved rows first; non-reserved reviewer rows are trimmed to fit the remaining budget). Late-starting voter, aggregator, and supplemental reviewer rows disappear without a warning.
+
+For rounds where an out-of-window row has a longer label: `label_width` is set to the longer-label row's length, the bar-track width shrinks correspondingly (`min(56, max(10, 90 − label_width − duration_width − 4))`), and the visible chart appears compressed on the right side.
+
+## Root cause analysis
+
+**Root cause 1 (row cap in final report)**: `_progress_vendor_rows` in `progress_report.py` (line 1101–1103) calls `_cap_gantt_rows_reserving_apply(rows, cap=PROGRESS_GANTT_ROW_CAP)` with `PROGRESS_GANTT_ROW_CAP = 25`. This cap was introduced for the live/inflight chart (issue #5264) to prevent very long live progress displays. The same function is used by `_render_phase_gantt` (lines 711–718) which generates the committed final-report chart. The cap is too aggressive for the final report context, where all rows should be shown for auditability.
+
+**Root cause 2 (label_width uses all rows)**: `render_gantt` in `rendering/gantt.py` (line 83) computes `label_width = max(len(row.label) for row in rows)`, using all passed rows including those that will be filtered out because they don't overlap the window. The test `test_label_width_uses_all_rows_not_just_filtered` documents this as intentional for border-alignment purposes, but it causes the bar track to be narrower than necessary when filtered-out rows happen to have longer labels—making the right side of the chart look cut off.
+
+## Evidence
+
+- `python/larch/report/progress_report.py:56`: `PROGRESS_GANTT_ROW_CAP = 25`
+- `python/larch/report/progress_report.py:1102`: `capped = _cap_gantt_rows_reserving_apply(rows, cap=PROGRESS_GANTT_ROW_CAP)` — same cap for inflight and final report
+- `python/larch/report/progress_report.py:711–718`: `_render_phase_gantt` calls `_progress_vendor_rows` (which applies the cap)
+- `python/larch/rendering/gantt.py:83`: `label_width = max(len(row.label) for row in rows)` — uses all rows, not just filtered
+- `python/tests/rendering/test_gantt.py:119`: `test_label_width_uses_all_rows_not_just_filtered` — documents this behavior as intentional but doesn't verify it doesn't compress bars unfairly
+- Large run logs (e.g., `larch-logs/implement/BC8DDA64-*/final-summary.md`) with Round 1 charts exceeding 25 rows show the cap does NOT always trigger because reserved rows (fallback) inflate the kept set; runs where reserved rows are fewer and non-reserved rows are many would trigger silent truncation
+
+## Affected files
+
+- `python/larch/report/progress_report.py` — `_progress_vendor_rows` applies the inflight cap to the final report path; `_render_phase_gantt` uses the same capped helper
+- `python/larch/rendering/gantt.py` — `render_gantt` uses all rows for `label_width`
+- `python/tests/rendering/test_gantt.py` — test documents the all-rows label-width behavior as intentional
+
+## Suggested fix(es)
+
+**Fix 1 (row cap)**: In `_render_phase_gantt`, pass all rows to `render_gantt` without the inflight cap. Either introduce a separate `render_phase_gantt_rows` function that skips the cap, or add a `cap=None` parameter to `_progress_vendor_rows` that the final-report path can use.
+
+**Fix 2 (label_width)**: In `render_gantt`, compute `label_width` only from rows that will appear in the chart (`filtered`), not from `rows`. Align the border at `label_width` of visible rows. If border alignment with filtered-out rows is still desired for some reason, add a `use_filtered_label_width: bool = True` parameter so callers can choose.
+
+## Open questions
+
+- Is the border-alignment rationale for using all-rows label_width still valid after issue #5264 reworked the inflight cap? If the inflight chart never shows filtered-out rows, their labels don't need to anchor the border.
+- Should the row cap be removed entirely from the final-report path, or raised to a higher value (e.g., 50 or unlimited)?
