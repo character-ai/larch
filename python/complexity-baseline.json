@@ -2613,7 +2613,7 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 59
+    "metric": 57
   },
   {
     "file": "larch/implement/ship.py",
@@ -2631,25 +2631,25 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "run_ship",
-    "metric": 29
+    "metric": 27
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 64
+    "metric": 62
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0913",
     "qualified_symbol": "_guidelines_gate_before_pr",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0913",
     "qualified_symbol": "_invariants_gate_before_pr",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/implement/ship.py",
@@ -2661,7 +2661,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 200
+    "metric": 196
   },
   {
     "file": "larch/implement/ship_merge.py",

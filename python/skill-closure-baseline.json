@@ -37,8 +37,8 @@
     "closure_content_estimated_tokens": 44323,
     "closure_estimated_tokens": 44441,
     "closure_lines": 1312,
-    "conditional_content_estimated_tokens": 26509,
-    "conditional_estimated_tokens": 26576,
+    "conditional_content_estimated_tokens": 26833,
+    "conditional_estimated_tokens": 26899,
     "conditional_files": [
       "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
@@ -54,7 +54,7 @@
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 793,
+    "conditional_lines": 799,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
