@@ -126,7 +126,7 @@ def test_compute_ignores_nonblocking_full_suite_validation_todo(
     )
 
     assert coverage.todos_left_count == 0
-    assert coverage.todos_left == ()
+    assert not coverage.todos_left
     assert coverage.disposition_required is False
 
 
