@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 from larch.core.proc import CommandResult
 from larch.issue import analyze_bugs
 from test_support import RecordingRunner, run_cli
+
+
+EVIDENCE_TOKEN = "token-123"
 
 
 def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
@@ -17,6 +21,24 @@ def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
 
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_bundle(path: Path, *, proof: str = EVIDENCE_TOKEN) -> None:
+    path.write_text(f"# Bundle\nevidence_token: {proof}\n\nbody\n", encoding="utf-8")
+
+
+def _triage_row(issue: int, verdict: str = "FIXED_CLEAR", *, proof: str = EVIDENCE_TOKEN, reason: str = "clear", needs_deep: bool = False) -> str:
+    return json.dumps(
+        {
+            "issue": issue,
+            "verdict": verdict,
+            "missing_items": [],
+            "reason": reason,
+            "needs_deep": needs_deep,
+            "evidence_token": proof,
+        },
+        sort_keys=True,
+    ) + "\n"
 
 
 def _issue(number: int, title: str, *, state: str = "CLOSED", reason: str = "COMPLETED", body: str = "body") -> dict[str, object]:
@@ -30,6 +52,49 @@ def _issue(number: int, title: str, *, state: str = "CLOSED", reason: str = "COM
         "closedAt": "2026-01-01T00:00:00Z",
         "closedByPullRequestsReferences": [],
     }
+
+
+def _single_manifest(run_dir: Path, *, issue: int = 1, cache_key: str = "k1", bundle_path: Path | None = None, mechanical: str = "") -> dict[str, object]:
+    resolved_bundle_path = bundle_path or (run_dir / f"issue-{issue}-bundle.md")
+    return {
+        "schema_version": "1",
+        "repo": "o/r",
+        "run_id": "run-1",
+        "run_dir": str(run_dir),
+        "evidence_ref": "origin/main",
+        "bugs_requested": 1,
+        "bugs_selected": 1,
+        "generated_at": 1,
+        "ledger_path": str(run_dir / "ledger.jsonl"),
+        "triage_batch_paths": [],
+        "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
+        "issues": [
+            {
+                "issue_number": issue,
+                "title": f"[BUG] {issue}",
+                "state": "CLOSED",
+                "state_reason": "COMPLETED",
+                "url": f"https://github.com/o/r/issues/{issue}",
+                "body_path": str(run_dir / f"issue-{issue}-body.md"),
+                "bundle_path": str(resolved_bundle_path),
+                "fix_sha": "sha",
+                "fix_source": "git-log",
+                "touched_files": [],
+                "later_history_hash": "later",
+                "mechanical_verdict": mechanical,
+                "mechanical_reason": mechanical,
+                "cache_key": cache_key,
+                "sampled": False,
+            }
+        ],
+    }
+
+
+def _single_manifest_issue(run_dir: Path, *, issue: int = 1, cache_key: str = "k1", mechanical: str = "") -> dict[str, object]:
+    raw_issues = _single_manifest(run_dir, issue=issue, cache_key=cache_key, mechanical=mechanical)["issues"]
+    if not isinstance(raw_issues, list) or not raw_issues:
+        raise AssertionError("helper manifest lacks issue rows")
+    return cast("dict[str, object]", raw_issues[0])
 
 
 def test_fetch_filters_bug_prefix_and_uses_paginated_gh_api() -> None:
@@ -225,8 +290,14 @@ def test_prefetch_emits_manifest_and_handoff_paths(tmp_path: Path) -> None:
 
     assert manifest.bugs_requested == 1
     assert manifest.bugs_selected == 1
-    assert Path(manifest.run_dir, "manifest.json").is_file()
-    assert manifest.triage_batch_paths
+    manifest_text = Path(manifest.run_dir, "manifest.json").read_text(encoding="utf-8")
+    bundle_text = Path(manifest.issues[0].bundle_path).read_text(encoding="utf-8")
+    triage_batch_text = Path(manifest.triage_batch_paths[0]).read_text(encoding="utf-8")
+    token = analyze_bugs._extract_evidence_token(bundle_text)  # pyright: ignore[reportPrivateUsage]
+    assert token
+    assert f"evidence_token: {token}" in bundle_text
+    assert token not in manifest_text
+    assert token not in triage_batch_text
     assert Path(manifest.deep_queue_path).is_file()
 
 
@@ -244,7 +315,7 @@ def test_ledger_ingest_rejects_duplicate_and_unknown_verdict(tmp_path: Path) -> 
                 "state_reason": "COMPLETED",
                 "url": "u",
                 "body_path": "b",
-                "bundle_path": "bundle",
+                "bundle_path": str(run_dir / "bundle.md"),
                 "fix_sha": "abc",
                 "fix_source": "git-log",
                 "touched_files": [],
@@ -256,11 +327,12 @@ def test_ledger_ingest_rejects_duplicate_and_unknown_verdict(tmp_path: Path) -> 
         ],
     }
     (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _write_bundle(run_dir / "bundle.md")
     batch = run_dir / "triage.jsonl"
     batch.write_text(
-        '{"issue":1,"verdict":"FIXED_CLEAR","missing_items":[],"reason":"clear","needs_deep":false}\n'
-        '{"issue":1,"verdict":"FIXED_LIKELY","missing_items":[],"reason":"dup","needs_deep":false}\n'
-        '{"issue":2,"verdict":"BOGUS","missing_items":[],"reason":"bad","needs_deep":false}\n',
+        _triage_row(1, "FIXED_CLEAR")
+        + _triage_row(1, "FIXED_LIKELY", reason="dup")
+        + _triage_row(2, "BOGUS", reason="bad"),
         encoding="utf-8",
     )
 
@@ -319,10 +391,7 @@ def test_ledger_ingest_rejects_issue_not_in_active_batch(tmp_path: Path) -> None
         encoding="utf-8",
     )
     batch = run_dir / "triage.jsonl"
-    batch.write_text(
-        '{"issue":2,"verdict":"FIXED_CLEAR","missing_items":[],"reason":"off-task","needs_deep":false}\n',
-        encoding="utf-8",
-    )
+    batch.write_text(_triage_row(2, reason="off-task"), encoding="utf-8")
 
     payload = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=tmp_path / "ledger.jsonl", manifest_path=run_dir / "manifest.json", triage_path=batch, deep_path=None)
 
@@ -372,7 +441,7 @@ def test_ledger_ingest_refresh_triage_clears_stale_deep_verdict(tmp_path: Path) 
         },
     )
     _ = body_path.write_text("body\n", encoding="utf-8")
-    _ = bundle_path.write_text("bundle\n", encoding="utf-8")
+    _write_bundle(bundle_path)
     ledger = tmp_path / "ledger.jsonl"
     ledger.write_text(
         json.dumps(
@@ -385,6 +454,7 @@ def test_ledger_ingest_refresh_triage_clears_stale_deep_verdict(tmp_path: Path) 
                 "triage_reason": "old triage",
                 "triage_missing_items": [],
                 "triage_needs_deep": False,
+                "triage_evidence_verified": True,
                 "deep_verdict": "CONFIRMED_FIXED",
                 "deep_reason": "stale deep verdict",
                 "sampled": False,
@@ -397,10 +467,7 @@ def test_ledger_ingest_refresh_triage_clears_stale_deep_verdict(tmp_path: Path) 
         encoding="utf-8",
     )
     batch = run_dir / "triage.jsonl"
-    batch.write_text(
-        '{"issue":1,"verdict":"FIXED_CLEAR","missing_items":[],"reason":"refresh","needs_deep":false}\n',
-        encoding="utf-8",
-    )
+    batch.write_text(_triage_row(1, reason="refresh"), encoding="utf-8")
 
     payload = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=batch, deep_path=None)
 
@@ -408,6 +475,7 @@ def test_ledger_ingest_refresh_triage_clears_stale_deep_verdict(tmp_path: Path) 
     updated = json.loads(ledger.read_text(encoding="utf-8").splitlines()[-1])
     assert updated["deep_verdict"] == ""
     assert updated["deep_reason"] == ""
+    assert updated["triage_evidence_verified"] is True
     assert "deep" not in updated["stages_complete"]
 
 
@@ -445,7 +513,7 @@ def test_deep_queue_priority_cap_and_model_alias(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     issues = []
-    for number, cache_key, mechanical in [(1, "k1", "NEEDS_DEEP"), (2, "k2", ""), (3, "k3", "")]:
+    for number, cache_key, mechanical in [(1, "k1", "NEEDS_DEEP"), (2, "k2", ""), (3, "k3", ""), (4, "k4", ""), (5, "k5", "")]:
         issues.append(
             {
                 "issue_number": number,
@@ -468,7 +536,9 @@ def test_deep_queue_priority_cap_and_model_alias(tmp_path: Path) -> None:
     ledger = tmp_path / "ledger.jsonl"
     ledger.write_text(
         json.dumps({"cache_key": "k2", "issue": 2, "fix_sha": "abc", "later_history_hash": "h2", "triage_verdict": "SUSPECT", "stages_complete": ["triage"]}) + "\n"
-        + json.dumps({"cache_key": "k3", "issue": 3, "fix_sha": "abc", "later_history_hash": "h3", "triage_verdict": "FIXED_CLEAR", "stages_complete": ["triage"]}) + "\n",
+        + json.dumps({"cache_key": "k3", "issue": 3, "fix_sha": "abc", "later_history_hash": "h3", "triage_verdict": "FIXED_CLEAR", "stages_complete": ["triage"]}) + "\n"
+        + json.dumps({"cache_key": "k4", "issue": 4, "fix_sha": "abc", "later_history_hash": "h4", "triage_verdict": "SUSPECT", "triage_evidence_verified": True, "stages_complete": ["triage"]}) + "\n"
+        + json.dumps({"cache_key": "k5", "issue": 5, "fix_sha": "abc", "later_history_hash": "h5", "triage_verdict": "FIXED_CLEAR", "triage_evidence_verified": True, "stages_complete": ["triage"]}) + "\n",
         encoding="utf-8",
     )
 
@@ -477,7 +547,7 @@ def test_deep_queue_priority_cap_and_model_alias(tmp_path: Path) -> None:
     assert summary["DEEP_MODEL"] == "claude-fable-5"
     assert summary["DEEP_CAP_TRUNCATED"] == "true"
     queue = [json.loads(line) for line in (run_dir / "deep-queue.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert [row["issue"] for row in queue] == [1, 2]
+    assert [row["issue"] for row in queue] == [1, 4]
 
 
 def test_ledger_compute_keeps_no_fix_deep_candidates_pending(tmp_path: Path) -> None:
@@ -718,6 +788,115 @@ def test_render_report_surfaces_deep_verdict_after_mechanical_needs_deep(tmp_pat
     assert "| Needs deep | 0 |" in report
     assert "| [#1](https://github.com/o/r/issues/1) | sha1 | CONFIRMED_FIXED | deep verifier found the fix |  |" in report
     assert "no exact Fixes reference" not in report
+
+
+def test_extract_evidence_token_accepts_only_canonical_near_top_line() -> None:
+    assert analyze_bugs._extract_evidence_token("# Bundle\nevidence_token: abc123\n") == "abc123"  # pyright: ignore[reportPrivateUsage]
+    assert analyze_bugs._extract_evidence_token("evidence_token: \n") is None  # pyright: ignore[reportPrivateUsage]
+    assert analyze_bugs._extract_evidence_token(" evidence_token: abc123\n") is None  # pyright: ignore[reportPrivateUsage]
+    assert analyze_bugs._extract_evidence_token("evidence_token: abc123 extra\n") is None  # pyright: ignore[reportPrivateUsage]
+    assert analyze_bugs._extract_evidence_token("\n".join(["x"] * 20 + ["evidence_token: late"])) is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_ledger_ingest_accepts_correct_evidence_token(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    bundle_path = run_dir / "issue-1-bundle.md"
+    _write_bundle(bundle_path)
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, bundle_path=bundle_path))
+    batch = run_dir / "triage.jsonl"
+    batch.write_text(_triage_row(1), encoding="utf-8")
+    ledger = tmp_path / "ledger.jsonl"
+
+    payload = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=batch, deep_path=None)
+
+    assert payload["INGEST_ACCEPTED"] == 1
+    row = json.loads(ledger.read_text(encoding="utf-8"))
+    assert row["triage_evidence_verified"] is True
+
+
+def test_ledger_ingest_rejects_missing_wrong_and_unreadable_evidence_tokens(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    bundle_path = run_dir / "issue-1-bundle.md"
+    _write_bundle(bundle_path)
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, bundle_path=bundle_path))
+    ledger = tmp_path / "ledger.jsonl"
+
+    missing_token = run_dir / "missing-token.jsonl"
+    missing_token.write_text('{"issue":1,"verdict":"FIXED_CLEAR","missing_items":[],"reason":"clear","needs_deep":false}\n', encoding="utf-8")
+    wrong_token = run_dir / "wrong-token.jsonl"
+    wrong_token.write_text(_triage_row(1, proof="wrong-token"), encoding="utf-8")
+
+    payload_missing = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=missing_token, deep_path=None)
+    payload_wrong = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=wrong_token, deep_path=None)
+
+    assert payload_missing["INGEST_ACCEPTED"] == 0
+    assert payload_wrong["INGEST_ACCEPTED"] == 0
+
+    bundle_path.write_text("# Bundle without token\n", encoding="utf-8")
+    no_bundle_token = run_dir / "no-bundle-token.jsonl"
+    no_bundle_token.write_text(_triage_row(1), encoding="utf-8")
+    payload_no_bundle_token = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=no_bundle_token, deep_path=None)
+    assert payload_no_bundle_token["INGEST_ACCEPTED"] == 0
+
+    bundle_path.unlink()
+    missing_bundle = run_dir / "missing-bundle.jsonl"
+    missing_bundle.write_text(_triage_row(1), encoding="utf-8")
+    payload_missing_bundle = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=missing_bundle, deep_path=None)
+    assert payload_missing_bundle["INGEST_ACCEPTED"] == 0
+    assert not ledger.exists()
+
+
+def test_ledger_ingest_rejects_unexpected_triage_keys(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    bundle_path = run_dir / "issue-1-bundle.md"
+    _write_bundle(bundle_path)
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, bundle_path=bundle_path))
+    batch = run_dir / "triage.jsonl"
+    row = json.loads(_triage_row(1))
+    row["extra"] = "field"
+    batch.write_text(json.dumps(row) + "\n", encoding="utf-8")
+
+    payload = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=tmp_path / "ledger.jsonl", manifest_path=run_dir / "manifest.json", triage_path=batch, deep_path=None)
+
+    assert payload["INGEST_ACCEPTED"] == 0
+    assert payload["INGEST_REJECTED"] == 1
+
+
+def test_legacy_unverified_triage_requeues_and_does_not_drive_report_or_deep(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    issues: list[dict[str, object]] = [
+        _single_manifest_issue(run_dir, issue=1, cache_key="k1"),
+        _single_manifest_issue(run_dir, issue=2, cache_key="k2", mechanical="NEEDS_DEEP"),
+    ]
+    _write_json(run_dir / "manifest.json", {"schema_version": "1", "repo": "o/r", "issues": issues})
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "k1", "issue": 1, "fix_sha": "sha", "later_history_hash": "later", "triage_verdict": "FIXED_CLEAR", "stages_complete": ["triage"]}) + "\n"
+        + json.dumps({"cache_key": "k2", "issue": 2, "fix_sha": "sha", "later_history_hash": "later", "triage_verdict": "SUSPECT", "stages_complete": ["triage"]}) + "\n",
+        encoding="utf-8",
+    )
+
+    summary = analyze_bugs.ledger_compute(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", refresh=False, sample=1, deep_max=10, deep_model="sonnet", batch_size=10)
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    assert summary["TRIAGE_PENDING"] == 1
+    triage_pending = [json.loads(line) for line in (run_dir / "triage-pending-1.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [row["issue"] for row in triage_pending] == [1]
+    deep_queue = [json.loads(line) for line in (run_dir / "deep-queue.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [row["issue"] for row in deep_queue] == [2]
+    assert "FIXED_CLEAR" not in report
+    assert "not yet triaged" in report
+
+
+def test_bug_fix_triage_agent_grants_read_tool() -> None:
+    agent = (Path(__file__).resolve().parents[3] / ".claude/agents/bug-fix-triage.md").read_text(encoding="utf-8")
+
+    assert "tools: [Read]" in agent
+    assert "tools: []" not in agent
 
 
 def test_cli_dispatches_analyze_bugs_help() -> None:
