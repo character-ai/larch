@@ -1,8 +1,8 @@
 """Shared shell-style ``KEY=value`` env-file parser.
 
-Single source of truth for the lenient env-file reader used by ``cleanup_skill``
-and ``progress_report``; keeping one copy avoids re-introducing a duplicate-code
-run (pylint R0801) across those modules.
+Single source of truth for the lenient env-file reader used by ``cleanup_skill``;
+keeping it isolated avoids re-introducing duplicate parser code when new readers
+need the same shell-style grammar.
 """
 
 from __future__ import annotations

@@ -622,13 +622,6 @@ ignore = [
 "proc.py" = [
     "PLR0913",
 ]
-"_progress_report_live.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "progress_report.py" = [
     "C901",
     "PLR0911",
