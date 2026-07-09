@@ -1,0 +1,71 @@
+# [BUG] Invariant-ID regex mismatch: INV-* headings counted by learn-from-bugs coverage indexer but dropped by architectural-invariants read
+
+## Summary
+
+`ARCHITECTURAL_INVARIANTS.md` is parsed by two different regexes that disagree on the accepted invariant-ID shape. The learn-from-bugs coverage indexer (`_INVARIANT_ID_RE`) accepts both `INV-*` and `I-*`, but the reader that folds invariants into `/design` and `/implement` drafting (`_INVARIANT_HEADING_RE` → `read_invariants` → `architectural-invariants read`/`present-note`) accepts only `I-*`. An `### INV-<Area>-<n>:` heading is therefore counted as an indexed invariant yet is invisible to the reader — recorded and counted, but functionally dead, with no warning to the author.
+
+## Original report
+
+Discovered while running `/design` on issue #6621 ("Seed ARCHITECTURAL_INVARIANTS.md with INV-Gate-1 and INV-Pause-1"). That issue mandated `INV-*` heading IDs byte-for-byte and pinned its acceptance to the learn-from-bugs coverage indexer only. A plan-review reviewer (Codex-Innovation) flagged that the `INV-*` entries would not be parsed by the invariant read path; the panel vote rejected the finding, but it was correct. Verifying the two regexes confirmed the divergence: coverage-index would report 2 invariants (acceptance "passes") while `architectural-invariants read` returns present-but-empty, so the seeded invariants would never surface during design/implement. The #6621 plan was revised to the `I-*` shape (accepted by both regexes) to work around this. The mismatch itself is a latent trap for any future invariant author and is filed here.
+
+## Reproduction scenario
+
+Read-only demonstration (no repo edit), run from repo root:
+
+```
+python3 - <<'PY'
+import re
+inv_id = re.compile(r"^#{2,4}\s+((?:INV|I)-[A-Za-z0-9]*-?\d+):\s*(.+?)\s*$", re.MULTILINE)  # learn_from_bugs.py:63
+inv_heading = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")                    # architectural_guidelines.py:55
+h = "### INV-Gate-1: A gate never disarms on data authored by the gated entity"
+print("coverage _INVARIANT_ID_RE :", bool(inv_id.match(h)))       # True
+print("reader   _INVARIANT_HEADING_RE:", bool(inv_heading.match(h)))  # False
+PY
+```
+
+Full pipeline repro (would require a scratch edit, not run here to avoid touching the repo): add `### INV-Test-1: sample` with a body line to `ARCHITECTURAL_INVARIANTS.md`, then `python3 python/cli.py learn-from-bugs coverage-index --root .` reports 1 indexed invariant while `python3 python/cli.py architectural-invariants read` returns present-but-empty.
+
+## Expected behavior
+
+The two parsers of `ARCHITECTURAL_INVARIANTS.md` should agree on which invariant-ID shapes are valid. An invariant that the coverage indexer counts as "indexed/covered" should also be readable by `architectural-invariants read` (and vice versa), so a seeded invariant that passes the coverage check is guaranteed to be surfaced to `/design` and `/implement`. If a non-canonical ID shape is written, the author should get a signal, not a silent drop.
+
+## Observed behavior
+
+`### INV-Gate-1:` matches the coverage indexer `_INVARIANT_ID_RE` (True) but not the reader `_INVARIANT_HEADING_RE` (False). `parse_invariant_entries` builds entries only from `_INVARIANT_HEADING_RE` matches, so a file whose invariants use only `INV-*` yields empty reader content while the coverage index still reports a non-zero count. The divergence is silent — no warning is emitted at either site.
+
+## Root cause analysis
+
+Multi-consumer grammar drift (G-Wire-1 / G-Md-2 shape). Two regexes parse the same file with different accepted ID prefixes:
+
+- `python/larch/issue/learn_from_bugs.py:63` — `_INVARIANT_ID_RE = re.compile(r"^#{2,4}\s+((?:INV|I)-[A-Za-z0-9]*-?\d+):\s*(.+?)\s*$", re.MULTILINE)` accepts `INV-*` and `I-*`; used by `coverage_index()` (~line 243) to populate `INVARIANTS_INDEXED`. Introduced 2026-07-05 in #6465 (the /learn-from-bugs skill), with the `(?:INV|I)` alternation.
+- `python/larch/core/architectural_guidelines.py:55` — `_INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")` accepts only `I-*`; used by `parse_invariant_entries()` (~line 292) → `read_invariants()` (~line 356) → the `architectural-invariants read` / `present-note` verbs that `/design` (Step 1d.7 and Gate C presentation) and `/implement` consume.
+
+`### INV-Gate-1:` fails `_INVARIANT_HEADING_RE` because the alternative `I-` requires the second character to be `-`, but in `INV-...` it is `N`. The newer coverage indexer was written to accept `INV-*` while the pre-existing reader was never widened (or the indexer should never have accepted `INV-*`). The canonical larch shape is `I-*` — every existing invariant and every test in `python/tests/core/test_architectural_guidelines.py` uses `I-*`.
+
+## Evidence
+
+- Verified on branch `main`, HEAD `453be2b91`, larch 52.5.10.
+- `learn_from_bugs.py:63`: `_INVARIANT_ID_RE: Final = re.compile(r"^#{2,4}\s+((?:INV|I)-[A-Za-z0-9]*-?\d+):\s*(.+?)\s*$", re.MULTILINE)`.
+- `architectural_guidelines.py:55`: `_INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")`.
+- Match demonstration with the exact source regexes: `### INV-Gate-1: ...` → coverage `True`, reader `False`; `### I-Gate-1: ...` → coverage `True`, reader `True`.
+- `parse_invariant_entries` (architectural_guidelines.py:287-310) constructs entries solely from `_INVARIANT_HEADING_RE.match` results, so `INV-*`-only content produces empty parsed output.
+- Existing invariant fixtures use `I-*` (e.g. `### I-Sec-1:`, `### I-Py-2:`, `### I-Test-1:` in `python/tests/core/test_architectural_guidelines.py`).
+
+## Affected files
+
+- `python/larch/issue/learn_from_bugs.py` — `_INVARIANT_ID_RE` (line 63) and `coverage_index()`; the lenient side of the mismatch.
+- `python/larch/core/architectural_guidelines.py` — `_INVARIANT_HEADING_RE` (line 55), `parse_invariant_entries()` (~292), `read_invariants()` (~356); the strict side and the actual consumer path.
+- `python/tests/core/test_architectural_guidelines.py` and `python/tests/issue/` — where a shared regression test should assert both parsers accept the same ID shapes.
+
+## Suggested fix(es)
+
+Make the two regexes agree on the canonical shape, then lock it with a test:
+
+1. Preferred: narrow `_INVARIANT_ID_RE` to `I-*` only (drop the `INV|` alternation) so the coverage indexer stops counting IDs the reader cannot surface. This matches the reader and all existing entries/tests.
+2. Alternative: widen `_INVARIANT_HEADING_RE` to accept `INV-*` if `INV-*` is meant to be a valid larch shape (then also update the docs and existing convention).
+3. Either way, add a shared or parametrized test asserting both parsers accept the same set of ID shapes, so the grammar cannot drift again. Optionally have `coverage_index` warn when it counts a heading the reader would drop.
+
+## Open questions
+
+- Is the `(?:INV|I)-` leniency in `_INVARIANT_ID_RE` intentional (to support other repos' invariant-ID conventions per the learn-from-bugs skill's "target repo's invariant-ID pattern" language), or an oversight? This decides whether to narrow the indexer or widen the reader.
+- Should the canonical larch invariant-ID shape be documented explicitly (e.g. in the learn-from-bugs SKILL or `ARCHITECTURAL_INVARIANTS.md` header) so authors do not reach for `INV-*`?
