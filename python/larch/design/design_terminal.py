@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from collections.abc import Callable, Iterable, Sequence
 
+from larch import io as larch_io
 from larch.core import config, logging_util
 from larch.core.ctx import Ctx
 from larch.state import stall_recovery
@@ -95,28 +96,13 @@ def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, 
         if "\n" in value or "\r" in value:
             raise ValueError(f"result env value contains newline: {key}")
         rows.append((key, value))
-
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    tmp = dest.with_name(f".{dest.name}.{os.getpid()}.tmp")
-    fd = -1
-    try:
-        if tmp.exists() or tmp.is_symlink():
-            tmp.unlink()
-        fd = os.open(tmp, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            fd = -1
-            for key, value in rows:
-                handle.write(f"{key}={value}\n")  # pyright: ignore[reportUnusedCallResult]
-        if dest.is_symlink():
-            raise OSError(f"refusing to replace symlink result env: {dest}")
-        tmp.replace(dest)  # pyright: ignore[reportUnusedCallResult]
-    finally:
-        if fd >= 0:
-            os.close(fd)
-        with contextlib.suppress(FileNotFoundError):
-            tmp.unlink()
+    larch_io.atomic_write(
+        path=dest,
+        text=larch_io.format_kvs(rows),
+        create_parent=True,
+        nofollow=True,
+        mode=0o600,
+    )
 
 
 def phase_driver_recreate_result_env(*, path: str | Path, design_tmpdir: str | Path) -> None:
@@ -139,8 +125,6 @@ def phase_driver_recreate_result_env(*, path: str | Path, design_tmpdir: str | P
         raise OSError(f"result env cannot be resolved: {dest}") from exc
     if resolved_dest != resolved_root and resolved_root not in resolved_dest.parents:
         raise OSError(f"result env escapes DESIGN_TMPDIR: {dest}")
-    if dest.parent.is_symlink() or not dest.parent.is_dir():
-        raise OSError(f"result env parent is not a regular directory: {dest.parent}")
     phase_driver_write_result_env(path=dest, kvs=[])
 
 

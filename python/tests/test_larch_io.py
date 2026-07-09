@@ -124,6 +124,17 @@ def test_atomic_write_exclusive_fixed_temp_unlinks_stale(tmp_path: Path) -> None
     assert not temp.exists()
 
 
+def test_atomic_write_nofollow_rejects_symlinked_ancestor(tmp_path: Path) -> None:
+    real_parent = tmp_path / "real-parent"
+    real_parent.mkdir()
+    ancestor = tmp_path / "ancestor"
+    ancestor.symlink_to(real_parent, target_is_directory=True)
+    path = ancestor / "out.txt"
+    with pytest.raises(OSError, match="symlink"):
+        larch_io.atomic_write(path=path, text="x", nofollow=True)
+    assert not (real_parent / "out.txt").exists()
+
+
 def test_text_helpers(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "file.txt"
     assert larch_io.read_text(path, default="") == ""

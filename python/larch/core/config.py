@@ -180,6 +180,10 @@ STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys(
     "all-vendors-failed",
 )))
 
+# Shared state for /learn-from-bugs backlog nudges.
+LEARN_FROM_BUGS_NUDGE_THRESHOLD: Final = 25
+LEARN_FROM_BUGS_STATE_RELPATH: Final = "larch-logs/shared/learn-from-bugs-state.json"
+
 # Transient retry defaults shared with python/retry.py.
 TRANSIENT_RETRY_MAX_ATTEMPTS: Final = 3
 TRANSIENT_RETRY_BACKOFF_SEC: Final = (2, 4)

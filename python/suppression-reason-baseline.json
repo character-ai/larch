@@ -1702,20 +1702,6 @@
   },
   {
     "file": "larch/design/design_terminal.py",
-    "suppression_kind": "pyright-ignore",
-    "text": "pyright: ignore[reportUnusedCallResult]",
-    "occurrence": 10,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "suppression_kind": "pyright-ignore",
-    "text": "pyright: ignore[reportUnusedCallResult]",
-    "occurrence": 11,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/design/design_terminal.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false, reportUnusedFunction=false, reportPrivateUsage=false",
     "occurrence": 1,

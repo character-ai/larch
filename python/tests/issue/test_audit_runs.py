@@ -84,6 +84,238 @@ def test_pacific_timestamp_main_rejects_unknown_argv(capsys):
     assert "unexpected argument" in captured.err
 
 
+def _write_learn_from_bugs_state(
+    root: Path,
+    *,
+    run_date: str = "2026-07-09T00:00:00Z",
+    scan_started_at: str | None = "2026-07-09T01:00:00Z",
+) -> None:
+    marker = root / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker.parent.mkdir(parents=True)
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "run_date": run_date,
+        "repo": "o/r",
+        "search": "[BUG] in:title",
+        "state": "closed",
+        "selected_count": 5,
+        "highest_closed_issue_number_scanned": 99,
+    }
+    if scan_started_at is not None:
+        payload["scan_started_at"] = scan_started_at
+    marker.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+
+def _gh_issue_rows(count: int, *, title: str = "[BUG] fixed", closed_at: str = "2026-07-09T02:00:00Z") -> str:
+    return json.dumps([{"number": n + 1, "title": title, "closedAt": closed_at} for n in range(count)])
+
+
+def test_bugs_backlog_nudge_missing_marker_prints_never_run_without_gh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        raise AssertionError(f"unexpected gh call: {argv}")
+
+    monkeypatch.setattr(audit_runs.proc, "run", fail_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+
+    assert "never run" in capsys.readouterr().out
+
+
+def test_bugs_backlog_nudge_symlink_marker_is_unusable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker.parent.mkdir(parents=True)
+    marker.symlink_to(tmp_path / "target.json")
+
+    def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        raise AssertionError(f"unexpected gh call: {argv}")
+
+    monkeypatch.setattr(audit_runs.proc, "run", fail_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+
+    assert "never run" in capsys.readouterr().out
+
+
+def test_bugs_backlog_nudge_different_repo_marker_is_unusable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+
+    def fail_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        raise AssertionError(f"unexpected gh call: {argv}")
+
+    monkeypatch.setattr(audit_runs.proc, "run", fail_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "other/repo", "--root", str(tmp_path)]) == 0
+
+    assert "never run" in capsys.readouterr().out
+
+
+def test_bugs_backlog_nudge_below_threshold_stays_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 0, _gh_issue_rows(config.LEARN_FROM_BUGS_NUDGE_THRESHOLD - 1), "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_bugs_backlog_nudge_exact_threshold_stays_silent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 0, _gh_issue_rows(config.LEARN_FROM_BUGS_NUDGE_THRESHOLD), "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_bugs_backlog_nudge_threshold_plus_one_prints_suggestion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+    count = config.LEARN_FROM_BUGS_NUDGE_THRESHOLD + 1
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 0, _gh_issue_rows(count), "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+
+    out = capsys.readouterr().out
+    assert str(count) in out
+    assert "/learn-from-bugs" in out
+
+
+def test_bugs_backlog_nudge_filters_raw_github_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+    rows = [
+        {"number": n + 1, "title": "plain task", "closedAt": "2026-07-09T02:00:00Z"}
+        for n in range(config.LEARN_FROM_BUGS_NUDGE_THRESHOLD + 10)
+    ]
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 0, json.dumps(rows), "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_bugs_backlog_nudge_accepts_lifecycle_prefixed_bug_titles(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+    count = config.LEARN_FROM_BUGS_NUDGE_THRESHOLD + 1
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 0, _gh_issue_rows(count, title="[DONE] [BUG] fixed"), "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert str(count) in capsys.readouterr().out
+
+
+def test_bugs_backlog_nudge_excludes_rows_at_or_before_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path, scan_started_at="2026-07-09T01:00:00Z")
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(
+            tuple(argv),
+            0,
+            _gh_issue_rows(config.LEARN_FROM_BUGS_NUDGE_THRESHOLD + 1, closed_at="2026-07-09T01:00:00Z"),
+            "",
+            0.01,
+        )
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_bugs_backlog_nudge_uses_scan_started_at_when_present(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_learn_from_bugs_state(
+        tmp_path, run_date="2026-07-01T00:00:00Z", scan_started_at="2026-07-09T01:00:00Z"
+    )
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        calls.append(argv)
+        return CommandResult(tuple(argv), 0, "[]", "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert any("closed:>2026-07-09T01:00:00Z" in token for token in calls[0])
+
+
+def test_bugs_backlog_nudge_falls_back_to_run_date_for_prior_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_learn_from_bugs_state(tmp_path, run_date="2026-07-01T00:00:00Z", scan_started_at=None)
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        calls.append(argv)
+        return CommandResult(tuple(argv), 0, "[]", "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert any("closed:>2026-07-01T00:00:00Z" in token for token in calls[0])
+
+
+def test_bugs_backlog_nudge_fails_clearly_on_gh_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 1, "", "boom", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 1
+    assert "gh issue list failed" in capsys.readouterr().err
+
+
+def test_bugs_backlog_nudge_fails_clearly_on_malformed_gh_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_learn_from_bugs_state(tmp_path)
+
+    def fake_run(argv: list[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 0, "{bad-json", "", 0.01)
+
+    monkeypatch.setattr(audit_runs.proc, "run", fake_run)
+
+    assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 1
+    assert "invalid JSON" in capsys.readouterr().err
+
+
 def test_scan_run_rejects_skill_root(tmp_path: Path, capsys):
     root = tmp_path / "larch-logs" / "implement"
     root.mkdir(parents=True, exist_ok=True)
