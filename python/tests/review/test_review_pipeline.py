@@ -1333,6 +1333,96 @@ def test_static_coverage_reason_excuses_tool_absent_static_slot(tmp_path: Path) 
     )
 
 
+def test_static_coverage_reason_accepts_all_not_substantive_static_slot(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    correctness = tmp_path / "codex-specialist-correctness-output.txt"
+    _ = correctness.write_text("STATUS=NOT_SUBSTANTIVE\n", encoding="utf-8")
+    _ = collector.write_text(
+        f"REVIEWER_FILE={correctness}\n"
+        "TOOL=codex\n"
+        "STATUS=NOT_SUBSTANTIVE\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.ndjson"
+    _ = manifest.write_text(
+        json.dumps(
+            {
+                "slot": "correctness",
+                "tool": "codex",
+                "output": str(correctness),
+                "agent": "agents/reviewer-correctness.md",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    from larch.review import review_pipeline  # noqa: PLC0415
+
+    assert (
+        review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+            collector=collector,
+            manifest=manifest,
+            outputs=[str(correctness)],
+        )
+        == ""
+    )
+
+
+def test_static_coverage_reason_rejects_mixed_not_substantive_and_failure(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    failed_codex = tmp_path / "codex-specialist-correctness-output.txt"
+    thin_cursor = tmp_path / "cursor-specialist-correctness-output.txt"
+    _ = failed_codex.write_text("ERROR\n", encoding="utf-8")
+    _ = thin_cursor.write_text("STATUS=NOT_SUBSTANTIVE\n", encoding="utf-8")
+    _ = collector.write_text(
+        f"REVIEWER_FILE={failed_codex}\n"
+        "TOOL=codex\n"
+        "STATUS=ERROR\n"
+        "EXIT_CODE=1\n\n"
+        f"REVIEWER_FILE={thin_cursor}\n"
+        "TOOL=cursor\n"
+        "STATUS=NOT_SUBSTANTIVE\n"
+        "EXIT_CODE=0\n\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.ndjson"
+    _ = manifest.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "slot": "correctness",
+                        "tool": "codex",
+                        "output": str(failed_codex),
+                        "agent": "agents/reviewer-correctness.md",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "slot": "correctness",
+                        "tool": "cursor",
+                        "output": str(thin_cursor),
+                        "agent": "agents/reviewer-correctness.md",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    from larch.review import review_pipeline  # noqa: PLC0415
+
+    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+        collector=collector,
+        manifest=manifest,
+        outputs=[str(failed_codex), str(thin_cursor)],
+    )
+    assert reason == "no successful static reviewer for archetype(s): correctness"
+
+
 def test_static_coverage_reason_does_not_excuse_tool_absent_when_surviving_vendor_failed(tmp_path: Path) -> None:
     collector = tmp_path / "collector-results.env"
     arch = tmp_path / "codex-specialist-arch-output.txt"

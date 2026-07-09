@@ -203,17 +203,17 @@ if [ "$result_env_rc" -eq 2 ]; then
     exit 2
 fi
 if [ "$registry_state" = live ]; then
-    if [ "$result_env_state" != complete ] && [ "$result_env_state" != stall ]; then
+    if [ "$result_env_state" != complete ]; then
         rm -f "$RESULT_ENV" 2>/dev/null || true
     fi
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
     exit $?
 fi
-if [ "$result_env_state" = complete ] || [ "$result_env_state" = stall ]; then
+if [ "$result_env_state" = complete ]; then
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step implement-step5-review --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0
     exit $?
 fi
-if [ "$result_env_state" = stale ]; then
+if [ "$result_env_state" = stale ] || [ "$result_env_state" = stall ]; then
     rm -f "$RESULT_ENV" 2>/dev/null || true
 fi
 MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/.step5-review-result.env"
