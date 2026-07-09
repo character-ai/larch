@@ -218,19 +218,32 @@ def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
 ) -> None:
     upsert_bodies = _install_final_summary_env(tmp_path, monkeypatch)
     _write_design_round_fixture(tmp_path, with_timing=True)
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Warnings\n- plan review warning\n",
+        encoding="utf-8",
+    )
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved", "--repo", "o/r"])
 
     assert rc == 0
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
+    assert "<!-- larch:run-summary v=1 -->" in body
     assert "## Review Phase Detail" in body
+    assert "## Exec Issues and Warnings" in body
+    assert body.index("## Review Phase Detail") < body.index("## Exec Issues and Warnings")
+    assert body.index("## Exec Issues and Warnings") < body.index("<!-- larch:run-summary v=1 -->")
     assert "| 1 | 4 | 2 | 1 | 0 | 1m 05s | N/A | 1 |" in body
     assert "### Round 1 reviewer timing" in body
     assert "```\n" in body
+    assert "<!-- larch:run-summary v=1 -->" in stdout
     assert "## Review Phase Detail" in stdout
+    assert stdout.index("## Review Phase Detail") < stdout.index("## Exec Issues and Warnings")
+    assert stdout.index("## Exec Issues and Warnings") < stdout.index("<!-- larch:run-summary v=1 -->")
     assert upsert_bodies
     assert "## Review Phase Detail" in upsert_bodies[0]
+    assert upsert_bodies[0].index("## Review Phase Detail") < upsert_bodies[0].index("## Exec Issues and Warnings")
+    assert upsert_bodies[0].index("## Exec Issues and Warnings") < upsert_bodies[0].index("<!-- larch:run-summary v=1 -->")
 
 
 def test_render_final_summary_pre_phase_counts_without_detail(
@@ -302,7 +315,9 @@ def test_render_final_summary_appends_exec_warning_detail(
     assert rc == 0
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
+    assert "<!-- larch:run-summary v=1 -->" in body
     assert "## Exec Issues and Warnings" in body
+    assert body.index("## Exec Issues and Warnings") < body.index("<!-- larch:run-summary v=1 -->")
     assert "Exec Issues (1):" in body
     assert "Warnings (3):" in body
     assert "warn: duplicate \u00d72" in body
@@ -311,8 +326,10 @@ def test_render_final_summary_appends_exec_warning_detail(
     assert raw_secret not in body
     assert "<REDACTED-TOKEN>" in body
     assert "## Exec Issues and Warnings" in stdout
+    assert stdout.index("## Exec Issues and Warnings") < stdout.index("<!-- larch:run-summary v=1 -->")
     assert upsert_bodies
     assert "Warnings (3):" in upsert_bodies[0]
+    assert upsert_bodies[0].index("## Exec Issues and Warnings") < upsert_bodies[0].index("<!-- larch:run-summary v=1 -->")
 
 
 def test_render_final_summary_missing_timing_keeps_table_without_gantt(

@@ -292,19 +292,29 @@ def _append_issue_detail(*, body: str, load_result: exec_issue_detail.LoadResult
     return body.rstrip("\n") + "\n\n" + detail_block.strip("\n") + "\n"
 
 
+def _join_prefixed_summary(*, prefix_sections: Sequence[str], summary_body: str) -> str:
+    sections: list[str] = [section.strip("\n") for section in prefix_sections if section.strip()]
+    if not sections:
+        return summary_body
+    return "\n\n".join([*sections, summary_body.strip("\n")]) + "\n"
+
+
 def _write_enriched_post_publish_summary(
     *, design_tmpdir: Path,
     out_file: Path,
     load_result: exec_issue_detail.LoadResult,
 ) -> int:
     try:
-        body = out_file.read_text(encoding="utf-8")
-        body = _append_issue_detail(body=body, load_result=load_result)
+        summary_body = out_file.read_text(encoding="utf-8")
+        issue_detail = exec_issue_detail.build_issue_detail_section(load_result)
         try:
             detail = review_phase_detail.render_design_review_detail(design_tmpdir)
         except Exception:
             detail = ""
-        body = review_phase_detail.append_review_phase_detail(body=body, detail=detail)
+        body = _join_prefixed_summary(
+            prefix_sections=(detail, issue_detail),
+            summary_body=summary_body,
+        )
         _ = out_file.write_text(body, encoding="utf-8")
         sys.stdout.write(body)  # pyright: ignore[reportUnusedCallResult]
         if not body.endswith("\n"):

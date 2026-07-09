@@ -693,6 +693,13 @@ def _append_issue_detail(*, body: str, load_result: exec_issue_detail.LoadResult
     return body.rstrip("\n") + "\n\n" + detail_block.strip("\n") + "\n"
 
 
+def _join_prefixed_summary(*, prefix_sections: Sequence[str], summary_body: str) -> str:
+    sections: list[str] = [section.strip("\n") for section in prefix_sections if section.strip()]
+    if not sections:
+        return summary_body
+    return "\n\n".join([*sections, summary_body.strip("\n")]) + "\n"
+
+
 def _reconcile_manifest_for_terminal_report(
     implement_tmpdir: Path,
     *,
@@ -796,7 +803,7 @@ def write_final_report(
         ship=ship,
         final=final,
     )
-    body = pr_body.render_run_summary(
+    summary_body = pr_body.render_run_summary(
         skill="implement",
         outcome=outcome,
         run_id=run_id or "unknown",
@@ -826,13 +833,16 @@ def write_final_report(
         manifest_path=str(run_dir / "manifest.json"),
         **cost_fields,
     )
-    body = _append_issue_detail(body=body, load_result=load_result)
     try:
-        detail = review_phase_detail.render_implement_review_detail(implement_tmpdir=implement_tmpdir, run_id=run_id or "unknown")
+        review_detail = review_phase_detail.render_implement_review_detail(implement_tmpdir=implement_tmpdir, run_id=run_id or "unknown")
     except Exception:
-        detail = ""
-    body = review_phase_detail.append_review_phase_detail(body=body, detail=detail)
-    body = _append_architectural_knowledge(body, implement_tmpdir)
+        review_detail = ""
+    issue_detail = exec_issue_detail.build_issue_detail_section(load_result)
+    architectural_detail = _append_architectural_knowledge("", implement_tmpdir)
+    body = _join_prefixed_summary(
+        prefix_sections=(review_detail, issue_detail, architectural_detail),
+        summary_body=summary_body,
+    )
     summary = implement_tmpdir / "summary-final.md"
     try:
         summary.write_text(body, encoding="utf-8")
