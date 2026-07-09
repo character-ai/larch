@@ -4,6 +4,8 @@
 === larch-quiet-cli.py-73868.log ===
 === larch-quiet-cli.py-93747.log ===
 === larch-quiet-read-session-env-key.sh-1002.log ===
+=== larch-quiet-read-session-env-key.sh-27832.log ===
+read-session-env-key.sh: --file is required
 === larch-quiet-read-session-env-key.sh-54254.log ===
 === larch-quiet-read-session-env-key.sh-54282.log ===
 === larch-quiet-read-session-env-key.sh-54285.log ===
@@ -24,6 +26,8 @@
 === larch-quiet-sessionstart-health.sh-2209.log ===
 === larch-quiet-sessionstart-health.sh-22543.log ===
 === larch-quiet-sessionstart-health.sh-23734.log ===
+=== larch-quiet-sessionstart-health.sh-28721.log ===
+=== larch-quiet-sessionstart-health.sh-29310.log ===
 === larch-quiet-sessionstart-health.sh-43677.log ===
 === larch-quiet-sessionstart-health.sh-5320.log ===
 === larch-quiet-sessionstart-health.sh-9651.log ===
