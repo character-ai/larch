@@ -1,0 +1,4 @@
+warning: fix text for slot 'Cursor-Pragmatic' in FINDING_1 not traceable to scoped input (first 80 chars: 'In `render_plan_review_main()`, call `_architectural_guidelines_review_section(d')
+warning: fix text for slot 'Cursor-Requirements' in FINDING_1 not traceable to scoped input (first 80 chars: 'In `render_plan_review_main()`, pass `args.difficulty` into `_architectural_guid')
+warning: fix text for slot 'Codex-Pragmatic' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add an explicit `render_plan_review_main` step to call `_architectural_guideline')
+warning: fix text for slot 'Codex-Requirements' in FINDING_1 not traceable to scoped input (first 80 chars: 'Call `_architectural_guidelines_review_section(difficulty_value=args.difficulty)')

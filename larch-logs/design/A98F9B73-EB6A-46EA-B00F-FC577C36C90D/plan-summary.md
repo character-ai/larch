@@ -1,0 +1,1 @@
+Plan: gate architectural guidelines out of review prompts for TRIVIAL and low-code specialist diff modes, thread `--difficulty` through review render dispatch, preserve fail-open inclusion, update cache/sentinel state, and add renderer coverage.
