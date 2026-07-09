@@ -163,6 +163,9 @@ def _static_slot_rows(
             )
             row["model_role"] = role
             row["resolved_model"] = _resolved_model_for_row(slot.tool, role)
+        elif slot.cursor_model:
+            row["cursor_model"] = slot.cursor_model
+            row["resolved_model"] = slot.cursor_model
         rows.append(row)
     generic = _generic_plan_codex_row(
         design=design,
@@ -395,6 +398,9 @@ def _dynamic_slot_rows(
             role = "review"
             row["model_role"] = role
             row["resolved_model"] = _resolved_model_for_row(tool, role)
+        elif tool == "cursor":
+            row["cursor_model"] = config.CURSOR_AUTO_MODEL
+            row["resolved_model"] = config.CURSOR_AUTO_MODEL
         rows.append(row)
     return rows, failures
 

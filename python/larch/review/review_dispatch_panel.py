@@ -284,9 +284,8 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
     for slot in external_defaults.slot_defaults("review.panel"):
         if slot.slot == "generalist":
             continue
-        is_additive_plan_fidelity = slot.slot == "plan-fidelity-auto" and slot.tool == "cursor"
         if tier == difficulty.TRIVIAL:
-            if codex_slots_available and slot.tool != "codex" and not is_additive_plan_fidelity:
+            if codex_slots_available and slot.tool != "codex":
                 continue
             if not codex_slots_available and cursor_slots_available and slot.tool != "cursor":
                 continue
@@ -304,7 +303,6 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
             row["focus_area"] = slot.focus_area
         if slot.cursor_model:
             row["cursor_model"] = slot.cursor_model
-        if is_additive_plan_fidelity:
             row["resolved_model"] = slot.cursor_model
         if slot.tool == "codex":
             row["model_role"] = difficulty.codex_review_model_role_for_archetype(
@@ -349,12 +347,12 @@ def _append_forced_plan_fidelity_row(*, manifest: Path, review_tmpdir: Path, cod
         "prune_exempt": True,
     }
     if tool == "cursor":
-        row["cursor_model"] = "auto"
-        row["resolved_model"] = "auto"
+        row["cursor_model"] = config.CURSOR_AUTO_MODEL
+        row["resolved_model"] = config.CURSOR_AUTO_MODEL
     else:
         row["model_role"] = difficulty.codex_review_model_role_for_archetype(
             "review.panel",
-            "plan-fidelity-auto",
+            "testing",
             tier,
         )
     _append_manifest_row(manifest=manifest, row=row)
@@ -425,7 +423,17 @@ def _synthesize_dynamic_slots(*,
             cursor_out = review_tmpdir / f"dyn-{name}-output.txt"
             _append_manifest_row(
                 manifest=manifest,
-                row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "payload_bytes": payload_bytes, "weight": weight, "focus_area": focus_area}
+                row={
+                    "slot": f"dyn-{name}",
+                    "tool": "cursor",
+                    "output": str(cursor_out),
+                    "prompt_file": str(rendered_prompt),
+                    "payload_bytes": payload_bytes,
+                    "weight": weight,
+                    "focus_area": focus_area,
+                    "cursor_model": config.CURSOR_AUTO_MODEL,
+                    "resolved_model": config.CURSOR_AUTO_MODEL,
+                }
             )
             count += 1
         if codex_available and tier != difficulty.TRIVIAL:

@@ -295,7 +295,7 @@ def _static_focus_area(slug: str) -> str:
         "security": "security",
         "edge-cases": "correctness",
         "plan-fidelity": "architecture",
-        "plan-fidelity-auto": "architecture",
+        "plan-fidelity-forced": "architecture",
     }.get(slug, "code-quality")
 
 

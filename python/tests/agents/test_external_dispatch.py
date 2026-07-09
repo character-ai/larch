@@ -368,7 +368,7 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
 def test_agent_waterfall_cursor_model_row_validation_and_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cursor_row = json.dumps(
         {
-            "slot": "plan-fidelity-auto",
+            "slot": "correctness",
             "tool": "cursor",
             "output": str(tmp_path / "out.txt"),
             "prompt_file": str(tmp_path / "prompt.txt"),
@@ -447,7 +447,14 @@ def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest
 
 def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     slots = (
-        config.SlotDefault(slot="cursor-plan-sentinel", tool="cursor", output="cursor-sentinel.out", focus_area="sentinel", archetype="sentinel"),
+        config.SlotDefault(
+            slot="cursor-plan-sentinel",
+            tool="cursor",
+            output="cursor-sentinel.out",
+            focus_area="sentinel",
+            archetype="sentinel",
+            cursor_model=config.CURSOR_AUTO_MODEL,
+        ),
         config.SlotDefault(slot="codex-plan-generic", tool="codex", output="generic.out", focus_area="generic", archetype="generic"),
     )
     seen_slots: list[str] = []
@@ -478,6 +485,8 @@ def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: p
     )
 
     assert [row["slot"] for row in rows] == ["cursor-plan-sentinel"]
+    assert rows[0]["cursor_model"] == "auto"
+    assert rows[0]["resolved_model"] == "auto"
     assert seen_slots == ["design.plan_review_panel"]
     assert seen_policy == ["design.plan_review_panel"]
 
@@ -487,7 +496,14 @@ def test_plan_review_panel_static_rows_zero_payload_on_render_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     slots = (
-        config.SlotDefault(slot="cursor-plan-sentinel", tool="cursor", output="cursor-sentinel.out", focus_area="sentinel", archetype="sentinel"),
+        config.SlotDefault(
+            slot="cursor-plan-sentinel",
+            tool="cursor",
+            output="cursor-sentinel.out",
+            focus_area="sentinel",
+            archetype="sentinel",
+            cursor_model=config.CURSOR_AUTO_MODEL,
+        ),
     )
     calls = {"count": 0}
 
@@ -531,7 +547,11 @@ def test_plan_review_panel_static_rows_zero_payload_on_render_failure(
     )
 
     assert first[0]["payload_bytes"] == 41
+    assert first[0]["cursor_model"] == "auto"
+    assert first[0]["resolved_model"] == "auto"
     assert second[0].get("payload_bytes", 0) == 0
+    assert second[0]["cursor_model"] == "auto"
+    assert second[0]["resolved_model"] == "auto"
     assert (tmp_path / "render-plan-cursor-sentinel.prompt").read_text(encoding="utf-8") == (
         "Review the design plan with a sentinel lens."
     )
