@@ -1,0 +1,181 @@
+## Approach
+
+Implement the narrow reset path from the approved outline.
+
+- Add a best-effort `deactivate_run(repo_root)` helper in `progress_file.py`.
+- Add a `progress session-reset` CLI path in `statusline.py`.
+- Wire `scripts/sessionstart-statusline.sh` to run reset before install.
+- Reset only for SessionStart payload `source` values `startup` and `clear`.
+- Skip reset for `resume` and `compact`.
+- Skip reset when `_clone_has_live_bgjob(repo_root)` reports a live bgjob for the clone.
+- Delete only `~/.cache/larch/progress/<clone-hash>/current`.
+- Keep run directories and `breadcrumbs.log` files untouched.
+- Keep `activate_run`, `append_breadcrumb`, `progress note --run-id`, cleanup, retention, and staleness rendering unchanged.
+- Keep the reset fail-silent so Claude startup is never blocked.
+
+Security policy note: do not update `SECURITY.md` unless implementation broadens deletion beyond the single clone-local pointer. The planned change preserves the existing symlink-refusal posture and does not change the public security policy.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/progress_file.py
+
+Add `deactivate_run(repo_root: str | Path) -> bool`.
+
+Implementation guidance:
+
+- Use `progress_clone_dir(repo_root)` and `_open_existing_directory_fd`.
+- Do not create the progress root or clone directory.
+- Use fd-relative `os.lstat(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)`.
+- If `current` is missing, invalid, symlinked, or non-regular, fail silent and leave it alone.
+- If it is a regular file, remove it with fd-relative `os.unlink`.
+- Catch `OSError`, `TypeError`, and `ValueError`.
+- Close all directory fds in `finally`.
+- Do not touch run directories or breadcrumb logs.
+
+### UPDATED: python/larch/report/statusline.py
+
+Add the SessionStart reset core and CLI entry.
+
+Implementation guidance:
+
+- Import `Final`.
+- Add a constant such as `RESET_SESSION_SOURCES: Final[frozenset[str]] = frozenset({"startup", "clear"})`.
+- Reuse `_read_statusline_payload`, `_repo_from_payload`, and `_clone_has_live_bgjob`.
+- Add a small source extractor that reads `payload["source"]` only when it is a string.
+- Add `session_reset_progress(stdin_text: str, env: dict[str, str] | None = None) -> bool`.
+  - Return without mutation when `LARCH_STATUSLINE_DISABLE=1`.
+  - Return without mutation when payload parsing fails.
+  - Return without mutation when `source` is absent or not `startup|clear`.
+  - Return without mutation when repo root cannot be resolved.
+  - Return without mutation when `_clone_has_live_bgjob(repo_root)` is true.
+  - Otherwise call `progress_file.deactivate_run(repo_root)`.
+- Add `session_reset_main(argv: list[str] | None = None) -> int`.
+  - Parse no functional args.
+  - Read stdin once.
+  - Catch broad exceptions and return 0.
+  - Emit no stdout or stderr.
+
+### UPDATED: python/larch/cli.py
+
+Register the new verb:
+
+- Add `("progress", "session-reset"): ("larch.report.statusline", "session_reset_main")`.
+- Do not add it to `_MACHINE_STDOUT_KEYS`, since it emits no machine stdout.
+
+Update the CLI registration test in `python/tests/report/test_progress_statusline.py`.
+
+### UPDATED: scripts/sessionstart-statusline.sh
+
+Run the reset before install.
+
+Implementation guidance:
+
+- Keep the script fail-silent.
+- Keep the single stdin capture as `INPUT`.
+- Honor `LARCH_STATUSLINE_DISABLE=1` before any reset or install call.
+- After `CLI` validation, pipe `INPUT` to:
+  - `python3 "$CLI" progress session-reset`
+  - then `python3 "$CLI" progress install-statusline --plugin-root "$PLUGIN_ROOT"`
+- Send both calls to `/dev/null 2>&1 || true`.
+- Preserve exit 0 on every path.
+
+### UPDATED: scripts/sessionstart-statusline.md
+
+Update the hook contract.
+
+Mention:
+
+- The hook clears stale active-run pointers only on `startup` and `clear`.
+- It skips `resume` and `compact`.
+- It skips reset when a live larch bgjob exists for the clone.
+- It deletes only the `current` pointer.
+- It does not delete run directories or breadcrumb logs.
+- It still honors `LARCH_STATUSLINE_DISABLE=1`.
+
+### UPDATED: docs/progress-reporting.md
+
+Document the reset behavior in the storage or staleness section.
+
+Include:
+
+- Fresh Claude session starts clear the active `current` pointer for that clone.
+- This prevents stale prior-run breadcrumbs from appearing before a new run starts.
+- The first visible larch statusline entry after a fresh session should come from the new run’s first breadcrumb.
+- Resume and compact events preserve the pointer to avoid hiding active work.
+- Live bgjobs protect their breadcrumbs from SessionStart reset.
+
+### UPDATED: python/tests/report/test_progress_statusline.py
+
+Add unit coverage for the new behavior.
+
+Suggested tests:
+
+- `deactivate_run` removes `current` and leaves the run directory plus `breadcrumbs.log`.
+- `deactivate_run` does not create progress state when the clone directory is absent.
+- `deactivate_run` refuses a symlinked `current` pointer and does not remove the symlink target.
+- `deactivate_run` refuses a symlinked clone directory and does not touch the outside target.
+- `session_reset_progress` clears stale statusline output for `source=startup`.
+- `session_reset_progress` clears stale statusline output for `source=clear`.
+- `session_reset_progress` skips `source=resume` and `source=compact`.
+- `session_reset_progress` skips when `source` is missing.
+- `session_reset_progress` skips when `LARCH_STATUSLINE_DISABLE=1`.
+- `session_reset_progress` skips when `_clone_has_live_bgjob` is monkeypatched to return true.
+- CLI registry includes `("progress", "session-reset")` and excludes it from `_MACHINE_STDOUT_KEYS`.
+
+### UPDATED: scripts/test-sessionstart-statusline.sh
+
+Update the offline hook harness.
+
+Implementation guidance:
+
+- Change the stub `cli.py` recorder to append one argv line per call.
+- Assert the normal path calls `progress session-reset` before `progress install-statusline --plugin-root`.
+- Keep the stdout-empty assertions.
+- Add or update an opt-out case where `LARCH_STATUSLINE_DISABLE=1` produces no CLI invocation.
+- Keep the existing hook registration assertion.
+
+## Edge cases
+
+- Missing or malformed SessionStart JSON must no-op.
+- Payloads with no repo path must no-op.
+- Relative repo paths must no-op through existing `_repo_from_payload` behavior.
+- `source=resume` and `source=compact` must preserve `current`.
+- A live bgjob in the same clone must preserve `current`, even when the source is `startup` or `clear`.
+- Missing `current` must not create any progress files.
+- Symlinked progress roots, clone dirs, pointer files, and non-regular pointer files must fail silent.
+- Old run logs must remain available for retention cleanup.
+- New runs must still become visible through the existing `progress activate` then breadcrumb path.
+
+## Failure modes when non-trivial
+
+- Reset runs on `resume` or `compact`: active breadcrumbs vanish during a real continuation.
+- Reset ignores live bgjobs: a background larch run loses its visible progress during session start.
+- Reset deletes a run directory: retention and audit evidence are corrupted.
+- Reset follows a symlink: a same-user symlink swap can delete an arbitrary file.
+- Hook reads stdin twice: the second Python call receives an empty payload and reset silently misses.
+- Hook exits non-zero: Claude startup can be blocked by a cosmetic statusline feature.
+- CLI is added to machine stdout keys: prompt-side callers may treat an empty reset command as a machine envelope.
+
+## Testing strategy
+
+Run only changed-file checks.
+
+- `python3 -m pytest python/tests/report/test_progress_statusline.py -q`
+- `bash scripts/test-sessionstart-statusline.sh`
+- `python3 python/cli.py progress session-reset --help`
+- `python3 python/cli.py progress statusline --help`
+- If the changed-file check runner is available and the tree contains only these edits, run `python3 python/cli.py checks run-relevant`.
+
+Manual smoke test:
+
+1. Create a temp repo.
+2. Activate an old run and append one breadcrumb.
+3. Render statusline and confirm the old row appears.
+4. Pipe `{"source":"startup","cwd":"<repo>"}` into `python3 python/cli.py progress session-reset`.
+5. Render statusline again and confirm it is empty.
+6. Activate a new run, append its first breadcrumb, and confirm only the new row appears.
+
+difficulty: MODERATE
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 300

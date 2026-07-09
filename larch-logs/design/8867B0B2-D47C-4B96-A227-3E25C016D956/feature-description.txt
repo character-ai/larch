@@ -1,0 +1,5 @@
+# [BUG] larch left-over status breadcrumb shows up immediately when claude is started in a clone where larch skill was run before
+
+e.g.: `larch 15:05: [design 2b] design Step 2b: plan started (stale 5m)`
+1. when claude starts, there should be no large log at all
+2. the first time larch log entry shows up, it should be the new skill run 1st breadcrumb, not the old run's left-over bread-crumb
