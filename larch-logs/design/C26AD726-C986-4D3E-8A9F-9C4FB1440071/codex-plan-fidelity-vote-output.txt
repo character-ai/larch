@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of the earlier stale companion-doc issue; this doc cleanup is not required for the feature to ship.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real inventory drift, but trimming agent-lint.toml is cleanup rather than a necessary feature fix.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true -- the harness may need retargeting if the grepped wording changes, but the plan does not clearly require that wording change, so this is speculative.
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of the same companion-doc token issue as Finding 1; the SCOPE-REDUCTION tag does not make it necessary here.
