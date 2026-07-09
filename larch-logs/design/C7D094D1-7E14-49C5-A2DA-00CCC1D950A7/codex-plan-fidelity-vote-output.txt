@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The false-pass concern is plausible, but strengthening the test fixture is not necessary for the feature to ship correctly; it is a test-quality improvement, not an in-scope correctness defect.

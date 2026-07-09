@@ -1,0 +1,63 @@
+## Approach
+
+- Keep `PROGRESS_GANTT_ROW_CAP` for live inflight progress output.
+- Let committed final reports render every vendor timing row that overlaps each round window.
+- Compute `render_gantt` label width from filtered, visible rows.
+- Update the test that currently pins the all-rows label-width behavior.
+- Add a regression test that proves `render_phase_detail` does not cap final-report Gantt rows.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/progress_report.py
+
+- Add a keyword-only cap parameter to `_progress_vendor_rows`, for example `cap: int | None = PROGRESS_GANTT_ROW_CAP`.
+- Apply `_cap_gantt_rows_reserving_apply` only when `cap is not None`.
+- Leave existing callers unchanged so inflight progress keeps the 25-row cap.
+- In `_render_phase_gantt`, call `_progress_vendor_rows(..., cap=None)` so final-report charts include all rows in the attempt window.
+
+### UPDATED: python/larch/rendering/gantt.py
+
+- Change `label_width` to use only rows in `filtered`.
+- Keep filtering behavior unchanged.
+- Keep explicit `width=` behavior unchanged except for the visible-label left column.
+- Keep the default width formula unchanged, but feed it the visible label width.
+
+### UPDATED: python/tests/report/test_progress_report.py
+
+- Add a final-report regression test near existing `render_phase_detail` Gantt tests.
+- Build one round with more than `PROGRESS_GANTT_ROW_CAP` overlapping vendor rows.
+- Assert the rendered `### Round 1 reviewer timing` chart includes every row, including rows that would have been dropped by the capped helper.
+- Keep existing `_progress_vendor_rows` cap tests as inflight/default behavior coverage.
+
+### UPDATED: python/tests/rendering/test_gantt.py
+
+- Replace `test_label_width_uses_all_rows_not_just_filtered` with a test that asserts out-of-window labels do not set the border column.
+- Add or extend coverage for default-width behavior so an out-of-window long label does not shrink the visible bar track.
+- Keep edge alignment assertions for visible rows.
+
+## Edge cases
+
+- If every row is outside the window, `render_gantt` still returns `""`.
+- If visible labels are long, default-width charts still shrink to stay under the existing width target.
+- Final-report attempt splitting stays unchanged. Each attempt gets all rows for its own tight window.
+- Inflight charts still reserve apply and fallback rows under the cap.
+
+## Failure modes
+
+- A caller may accidentally pass `cap=None` for live progress and produce a long terminal chart. Avoid changing inflight call sites.
+- A test that counts labels may be brittle if label derivation changes. Prefer counting rendered row lines or use unique fixture labels through existing manifest support when practical.
+- Long final-report charts may be verbose, but this is intended for auditability.
+
+## Testing strategy
+
+- Run targeted pytest:
+  - `cd python && pytest tests/rendering/test_gantt.py tests/report/test_progress_report.py`
+- If time permits, run lint for changed Python files:
+  - `cd python && ruff check larch/report/progress_report.py larch/rendering/gantt.py tests/report/test_progress_report.py tests/rendering/test_gantt.py`
+  - `cd python && pyright larch/report/progress_report.py larch/rendering/gantt.py tests/report/test_progress_report.py tests/rendering/test_gantt.py`
+
+difficulty: MODERATE
+diff_added: 70
+diff_deleted: 15
+mechanical_churn: false
+diff_lines: 85
