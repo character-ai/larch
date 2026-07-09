@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch import io as larch_io
+from larch.git.repo_roots import consumer_repo_root
 
 ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
 LOCAL_SETTINGS = Path(".claude") / "settings.local.json"
@@ -64,7 +65,12 @@ def _statusline_command(settings: dict[str, Any]) -> str:
 
 
 def _read_user_statusline() -> str:
-    settings = _read_json_object(Path.home() / ".claude" / "settings.json")
+    settings_path = Path.home() / ".claude" / "settings.json"
+    try:
+        larch_io.assert_no_symlink_path_or_ancestors(settings_path)
+    except OSError:
+        return ""
+    settings = _read_json_object(settings_path)
     if settings is None:
         return ""
     command = _statusline_command(settings)
@@ -82,15 +88,8 @@ def _launcher_text(*, plugin_root: Path, user_command: str) -> str:
         "set -uo pipefail\n"
         "INPUT=$(cat 2>/dev/null || true)\n"
         f"USER_STATUSLINE_CMD={quoted_user}\n"
-        'if [ -n "$USER_STATUSLINE_CMD" ] && command -v python3 >/dev/null 2>&1; then\n'
-        "  STATUSLINE_INPUT=\"$INPUT\" python3 - \"$USER_STATUSLINE_CMD\" <<'PY' 2>/dev/null || true\n"
-        'import os\n'
-        'import subprocess\n'
-        'import sys\n'
-        'cmd = sys.argv[1]\n'
-        'if cmd:\n'
-        '    subprocess.run(["bash", "-lc", cmd], input=os.environ.get("STATUSLINE_INPUT", ""), text=True, timeout=1, check=False)\n'
-        'PY\n'
+        'if [ -n "$USER_STATUSLINE_CMD" ]; then\n'
+        '  printf \'%s\' "$INPUT" | sh -c "$USER_STATUSLINE_CMD" 2>/dev/null || true\n'
         'fi\n'
         "if command -v python3 >/dev/null 2>&1; then\n"
         f"  printf '%s' \"$INPUT\" | python3 {shlex.quote(str(plugin_root / 'python' / 'cli.py'))} progress statusline 2>/dev/null || true\n"
@@ -106,7 +105,7 @@ def install_statusline(*, repo_root: Path, plugin_root: Path, notice: bool = Fal
     if os.environ.get("LARCH_STATUSLINE_DISABLE") == "1":
         return False
     try:
-        repo = repo_root.expanduser().resolve()
+        repo = consumer_repo_root(repo_root.expanduser()) or repo_root.expanduser().resolve()
         plugin = plugin_root.expanduser().resolve()
         settings_path = repo / LOCAL_SETTINGS
         larch_io.assert_no_symlink_path_or_ancestors(settings_path)
@@ -151,8 +150,11 @@ def install_statusline_main(argv: list[str] | None = None) -> int:
         return int(exc.code) if isinstance(exc.code, int) else 2
     if os.environ.get("LARCH_STATUSLINE_DISABLE") == "1":
         return 0
-    stdin_text = sys.stdin.read()
-    repo_raw = args.repo_root or _payload_repo_root(stdin_text)
+    stdin_text = ""
+    repo_raw = args.repo_root
+    if not repo_raw:
+        stdin_text = sys.stdin.read()
+        repo_raw = _payload_repo_root(stdin_text)
     plugin_raw = args.plugin_root or os.environ.get(ENV_CLAUDE_PLUGIN_ROOT, "")
     if not repo_raw or not plugin_raw:
         return 0

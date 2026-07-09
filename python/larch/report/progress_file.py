@@ -7,8 +7,12 @@ import argparse
 import contextlib
 import hashlib
 import os
+import stat
 import time
 from pathlib import Path
+
+from larch.git.repo_roots import consumer_repo_root
+from larch import io as larch_io
 
 
 PROGRESS_DIRNAME = "progress"
@@ -41,7 +45,8 @@ def _canonical_repo_root(repo_root: str | Path) -> Path:
 
 def progress_path(repo_root: str | Path) -> Path:
     """Return the clone-scoped breadcrumb path for ``repo_root``."""
-    canonical = str(_canonical_repo_root(repo_root))
+    canonical_root = consumer_repo_root(Path(repo_root).expanduser()) or _canonical_repo_root(repo_root)
+    canonical = str(canonical_root)
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:_HASH_HEX_CHARS]
     return progress_root() / f"{digest}{PROGRESS_SUFFIX}"
 
@@ -72,9 +77,23 @@ def append_breadcrumb(repo_root: str | Path, skill: str, step: str, text: str) -
     try:
         line = breadcrumb_line(skill=skill, step=step, text=text)
         path = progress_path(repo_root)
+        larch_io.assert_no_symlink_path_or_ancestors(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            _ = handle.write(line)
+        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(path, flags, 0o600)
+        try:
+            stat_result = os.fstat(fd)
+            if not stat.S_ISREG(stat_result.st_mode):
+                raise OSError(f"refusing non-regular breadcrumb target: {path}")
+            with os.fdopen(fd, "a", encoding="utf-8") as handle:
+                fd = -1
+                _ = handle.write(line)
+        finally:
+            if fd >= 0:
+                with contextlib.suppress(OSError):
+                    os.close(fd)
         with contextlib.suppress(OSError):
             path.chmod(0o600)
     except (OSError, TypeError, ValueError):

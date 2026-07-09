@@ -95,7 +95,7 @@ def _cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedP
 
 
 def _install_statusline_best_effort() -> None:
-    _ = _cli(
+    result = _cli(
         "progress",
         "install-statusline",
         "--plugin-root",
@@ -104,6 +104,8 @@ def _install_statusline_best_effort() -> None:
         str(Path.cwd()),
         "--notice",
     )
+    if result.stdout:
+        sys.stdout.write(result.stdout)
 
 
 def _parse_kv(text: str) -> dict[str, str]:

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch.bgjob import registry
+from larch.git.repo_roots import consumer_repo_root
 from larch.report import progress_file
 
 YELLOW = "\033[33m"
@@ -43,12 +44,15 @@ def _repo_from_payload(payload: dict[str, Any]) -> Path | None:
     workspace_map = cast("dict[str, Any]", workspace) if isinstance(workspace, dict) else {}
     current_dir = workspace_map.get("current_dir")
     cwd = payload.get("cwd")
-    raw = current_dir if isinstance(current_dir, str) and current_dir else cwd if isinstance(cwd, str) else os.environ.get("PWD", "")
+    raw = current_dir if isinstance(current_dir, str) and current_dir else cwd if isinstance(cwd, str) else ""
     if not raw:
         return None
     path = Path(raw).expanduser()
     if not path.is_absolute():
         return None
+    repo_root = consumer_repo_root(path)
+    if repo_root is not None:
+        return repo_root
     try:
         return path.resolve()
     except OSError:
@@ -124,7 +128,10 @@ def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> 
     )
     if suffix is None:
         return ""
-    stamp = time.strftime("%H:%M", time.localtime(now))
+    try:
+        stamp = time.strftime("%H:%M", time.localtime(path.stat().st_mtime))
+    except OSError:
+        stamp = time.strftime("%H:%M", time.localtime(now))
     text_rows = [f"larch {stamp}: {row}{suffix}" for row in rows]
     rendered = "\n".join(text_rows)
     columns = _positive_int(env_map.get("COLUMNS"), default=0)

@@ -1750,6 +1750,7 @@ def run_ship(
                     continue
             if merged.result == config.MERGE_RESULT_MAIN_ADVANCED:
                 ci_not_ready_guard.reset()
+                _progress_note(step="8", text="CI-fix rebase running")
                 rebase_phase = _ship_rebase_phase(
                     runner=runner,
                     working=working,
@@ -1850,6 +1851,7 @@ def run_ship(
                     merge_result=merged.result,
                     detail=merge_stall_detail,
                 )
+            _progress_note(step="8", text=f"merged PR #{working.pr_number}" if working.pr_number else "merged")
             return _ship_postmerge_phase(
                 runner=runner,
                 working=working,

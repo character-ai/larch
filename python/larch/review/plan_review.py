@@ -25,6 +25,7 @@ from pathlib import Path
 
 from larch.core import logging_util
 from larch.core import config
+from larch.report import progress_file
 from larch.design.design_lifecycle import (
     json_get_bool_main as design_json_get_bool_main,
     phase_driver_read_result_env,
@@ -99,6 +100,10 @@ from larch.review.plan_review_normalize import (
 # Tests can patch plan_review._run_command to intercept all facade subprocess calls.
 
 
+def _progress_note(*, step: str, text: str) -> None:
+    _ = progress_file.append_breadcrumb(Path.cwd(), "design", step, text)
+
+
 def _exec_pause_save(tmpdir: Path) -> int:
     issue = os.environ.get("ISSUE_NUMBER", "")
     cmd = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "pause-save", "--design-tmpdir", str(tmpdir)]
@@ -118,9 +123,11 @@ def _run_post_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> 
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "postplan-emit"]
+    _progress_note(step="3", text="plan-review post-apply running")
     proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=consumer_repo_root())
     rc = proc.returncode
     if rc == 0:
+        _progress_note(step="3", text="plan-review awaiting continuation")
         _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
     if rc == POSTPLAN_RC_PAUSE:
@@ -198,6 +205,7 @@ def _run_dedup(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-review", "gate-b-dedup"]
+    _progress_note(step="3", text="plan-review dedup running")
     proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--snapshot-trailers"])
     rc = proc.returncode
     if rc == 0:

@@ -80,6 +80,9 @@ def _handle_merge_ci_not_ready(
     counters: _MergeLoopCounters,
     guard: _CiNotReadyGuard,
 ) -> tuple[int, ShipResult | None]:
+    from larch.implement.ship import _progress_note  # noqa: PLC0415
+
+    _progress_note(step="8", text="checks still running")
     ci_not_ready_detail = gh.pr_checks_not_ready_detail(
         runner,
         working.pr_number or 0,
@@ -157,6 +160,9 @@ def _ship_rebase_phase(
     variant: ShipRebaseVariant,
 ) -> ShipRebasePhaseResult:
     _ = variant
+    from larch.implement.ship import _progress_note  # noqa: PLC0415
+
+    _progress_note(step="8", text="rebase+merge running")
     _write_ship_state(
         working,
         phase="rebase",
@@ -234,6 +240,9 @@ def _ship_phase14_rebase(
     last_monitored_head: str | None,
 ) -> int:
     try:
+        from larch.implement.ship import _progress_note  # noqa: PLC0415
+
+        _progress_note(step="8", text="CI-fix rebase running")
         result = rebase.rebase_and_push(
             runner=runner,
             repo=working.repo,

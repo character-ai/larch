@@ -43,8 +43,21 @@ def test_append_breadcrumb_rejects_tabs_and_newlines(tmp_path: Path, monkeypatch
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "bad\nrow")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "bad\ttab")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "see https://example.test")
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "osc \x1b]8;;https://example.test\x07 link")
 
     assert progress_file.progress_path(repo).read_text(encoding="utf-8") == "[implement 5] reviewers 7/12 done\n"
+
+
+def test_progress_path_uses_consumer_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cache = tmp_path / "cache"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subdir = repo / "nested" / "leaf"
+    subdir.mkdir(parents=True)
+    _ = subprocess.run(["git", "init"], cwd=repo, check=False, capture_output=True, text=True)
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(cache))
+
+    assert progress_file.progress_path(subdir) == progress_file.progress_path(repo)
 
 
 def test_cleanup_old_progress_files(tmp_path: Path) -> None:
@@ -64,10 +77,14 @@ def test_cleanup_old_progress_files(tmp_path: Path) -> None:
 
 def test_statusline_fail_silent_empty_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
 
     assert statusline.render_statusline(stdin_text="") == ""
     assert statusline.render_statusline(stdin_text="not json") == ""
     assert statusline.render_statusline(stdin_text=json.dumps({"cwd": str(tmp_path)})) == ""
+    assert statusline.render_statusline(stdin_text="not json", env={"PWD": str(repo)}) == ""
 
 
 def test_statusline_renders_yellow_line_and_is_calm(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -80,7 +97,7 @@ def test_statusline_renders_yellow_line_and_is_calm(tmp_path: Path, monkeypatch:
     env = {"LARCH_TEST_STATUSLINE_NOW": "1700000000", "LARCH_STATUSLINE_STALE_AFTER_S": "999999"}
 
     first = statusline.render_statusline(stdin_text=payload, env=env)
-    second = statusline.render_statusline(stdin_text=payload, env=env)
+    second = statusline.render_statusline(stdin_text=payload, env={**env, "LARCH_TEST_STATUSLINE_NOW": "1700000061"})
 
     assert first == second
     assert first.startswith("\033[33mlarch ")
@@ -163,6 +180,7 @@ def test_install_statusline_creates_settings_and_launcher(tmp_path: Path, monkey
     assert settings["statusLine"]["command"].endswith("/.cache/larch/statusline.sh")
     launcher = home / ".cache" / "larch" / "statusline.sh"
     assert "progress statusline" in launcher.read_text(encoding="utf-8")
+    assert "sh -c" in launcher.read_text(encoding="utf-8")
 
 
 def test_install_statusline_preserves_local_non_larch_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -239,6 +257,39 @@ def test_install_statusline_chains_user_scope_statusline(tmp_path: Path, monkeyp
     launcher = (home / ".cache" / "larch" / "statusline.sh").read_text(encoding="utf-8")
     assert "printf user" in launcher
     assert "progress statusline" in launcher
+    assert "bash -lc" not in launcher
+
+
+def test_install_statusline_skips_symlinked_user_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    plugin = tmp_path / "plugin"
+    settings_target = tmp_path / "settings-target.json"
+    (home / ".claude").mkdir(parents=True)
+    (repo / ".claude").mkdir(parents=True)
+    (plugin / "python").mkdir(parents=True)
+    _ = settings_target.write_text(json.dumps({"statusLine": {"type": "command", "command": "printf user"}}), encoding="utf-8")
+    (home / ".claude" / "settings.json").symlink_to(settings_target)
+    monkeypatch.setenv("HOME", str(home))
+
+    assert statusline_install.install_statusline(repo_root=repo, plugin_root=plugin)
+
+    launcher = (home / ".cache" / "larch" / "statusline.sh").read_text(encoding="utf-8")
+    assert "printf user" not in launcher
+    assert "progress statusline" in launcher
+
+
+def test_install_statusline_main_skips_stdin_when_roots_supplied(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    repo = tmp_path / "repo"
+    plugin = tmp_path / "plugin"
+    (repo / ".claude").mkdir(parents=True)
+    (plugin / "python").mkdir(parents=True)
+    _ = (plugin / "python" / "cli.py").write_text("", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(statusline_install.sys.stdin, "read", lambda: (_ for _ in ()).throw(AssertionError("stdin should not be read")))
+
+    assert statusline_install.install_statusline_main(["--repo-root", str(repo), "--plugin-root", str(plugin)]) == 0
 
 def test_sessionstart_statusline_harness() -> None:
     result = subprocess.run(

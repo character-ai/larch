@@ -14,6 +14,7 @@ from pathlib import Path
 
 from larch.core import config, logging_util, proc
 from larch.calibration import difficulty
+from larch.report import progress_file
 from larch.review.review_pipeline_shared import (
     ReviewCommands,
     ReviewCoreBranchContext,
@@ -50,6 +51,10 @@ def _review_commands() -> ReviewCommands:
         prune_nits=os.environ.get("REVIEW_CORE_PRUNE_NITS_SH", ""),
         dispatch_voters=os.environ.get("REVIEW_CORE_DISPATCH_VOTERS_SH", ""),
     )
+
+
+def _progress_note(*, step: str, text: str) -> None:
+    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
 
 
 def _copy_to_parent(*, file: Path, name: str, session_env_path: str) -> None:
@@ -825,6 +830,7 @@ def _review_core_body(
     competition = review_tmpdir / "competition-notice.md"
     if competition.is_file():
         dispatch_args.extend(["--competition-notice-file", str(competition)])
+    _progress_note(step="5", text="reviewer panel dispatch running")
     dispatch_result = _call_maybe_override(command=commands.dispatch, review_name="dispatch-panel", args=dispatch_args)
     dispatch_out = review_tmpdir / "review-core-dispatch.env"
     _write_text(path=dispatch_out, text=dispatch_result.stdout)
@@ -884,6 +890,7 @@ def _review_core_body(
         collect_args.append("--claude-output-files")
         collect_args.extend(claude_array)
     logging_util.diagnostic("→ review: consolidating findings")
+    _progress_note(step="5", text="collecting reviewer outputs")
     collect_result = _call_maybe_override(command=commands.collect, review_name="collect-findings", args=collect_args)
     collect_out = review_tmpdir / "review-core-collect.env"
     _write_text(path=collect_out, text=collect_result.stdout)
@@ -911,6 +918,7 @@ def _review_core_body(
     if external_array or claude_array:
         threshold_args.append("--reviewer-output-files")
         threshold_args.extend(external_array + claude_array)
+    _progress_note(step="5", text="checking reviewer failure threshold")
     threshold_result = _call_maybe_override(command=commands.threshold, review_name="check-reviewer-failure-threshold", args=threshold_args)
     threshold_out = review_tmpdir / "review-core-threshold.env"
     _write_text(path=threshold_out, text=threshold_result.stdout)
@@ -1022,6 +1030,7 @@ def _review_core_body(
         aggregate_args.extend(["--diff-file", diff_file])
     if _get(parsed=parsed, key="--plan-file"):
         aggregate_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
+    _progress_note(step="5", text="aggregating reviewer findings")
     aggregate_result = _run_command_string(command=commands.aggregate, args=aggregate_args) if commands.aggregate else _call_maybe_override(command="", review_name="aggregate-findings", args=aggregate_args)
     aggregate_out = review_tmpdir / "review-core-aggregate.env"
     _write_text(path=aggregate_out, text=aggregate_result.stdout)
@@ -1076,6 +1085,7 @@ def _review_core_body(
         voter_args.extend(["--diff-file", diff_file])
     if _get(parsed=parsed, key="--plan-file"):
         voter_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
+    _progress_note(step="5", text="dispatching voters")
     voters_result = _run_command_string(command=commands.dispatch_voters, args=voter_args) if commands.dispatch_voters else _run_python_cli(["agent", "dispatch-voters", *voter_args])
     voters = _kv_parse(voters_result.stdout)
     _write_text(path=review_tmpdir / "review-core-voters.env", text=voters_result.stdout)
@@ -1105,6 +1115,7 @@ def _review_core_body(
     if not_substantive:
         tally_args.extend(["--not-substantive-count", str(not_substantive)])
     tally_args.extend(["--voter-files", *voter_files, "--voter-tools", *voter_tools])
+    _progress_note(step="5", text="tallying votes")
     tally_result = _run_command_string(command=commands.tally, args=tally_args) if commands.tally else _call_maybe_override(command="", review_name="tally-code-votes", args=tally_args)
     tally = _kv_parse(tally_result.stdout)
     _write_text(path=review_tmpdir / "review-core-tally.env", text=tally_result.stdout)
@@ -1126,6 +1137,7 @@ def _review_core_body(
     if tally.get("TALLY_STATUS") == "main-agent-vote-required":
         _write_text(path=review_tmpdir / "rejected-findings.md", text="")
         emit_args = ["--tally-file", tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env")), "--accepted-findings-file", tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
+        _progress_note(step="5", text="post-fix checks running")
         _emit_tally_with_context(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-main-agent-emit.env", session_env_path=session_env_path)
         _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
         rows.extend(_core_common_rows(status="main-agent-vote-required", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0")))
@@ -1140,6 +1152,7 @@ def _review_core_body(
     accepted_file = Path(tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")))
     tally_file = tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env"))
     emit_args = ["--tally-file", tally_file, "--accepted-findings-file", str(accepted_file), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
+    _progress_note(step="5", text="post-fix checks running")
     _emit_tally_with_context(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-emit.env", session_env_path=session_env_path)
     _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
     _copy_to_parent(file=review_tmpdir / "oos-accepted-review.md", name="oos-accepted-review.md", session_env_path=session_env_path)
