@@ -901,6 +901,12 @@ exclude = [
   "scripts/test-implement-anti-halt.md",
   "scripts/test-references-headers.sh",
   "scripts/test-subskill-anchors.sh",
+  # scripts/test-extinct-notification-stack.sh is the regression harness that
+  # keeps the retired notification guard stack tokens absent (companion to
+  # "Remove obsolete notification guard stack"). Referenced only from Makefile
+  # (test-extinct-notification-stack target), matching the same Makefile-only
+  # pattern as the other test-* harnesses above.
+  "scripts/test-extinct-notification-stack.sh",
   "scripts/test-orchestrator-scope-sync.sh",
   "scripts/test-quick-mode-docs-sync.sh",
   "scripts/test-research-structure.sh",
