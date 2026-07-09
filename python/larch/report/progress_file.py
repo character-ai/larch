@@ -7,9 +7,14 @@ import argparse
 import contextlib
 import hashlib
 import os
+import re
+import shutil
 import stat
+import sys
 import time
+import uuid
 from pathlib import Path
+from typing import Final
 
 from larch.git.repo_roots import consumer_repo_root
 from larch import io as larch_io
@@ -17,12 +22,16 @@ from larch import io as larch_io
 
 PROGRESS_DIRNAME = "progress"
 PROGRESS_SUFFIX = ".log"
+CURRENT_RUN_FILENAME = "current"
+RUN_BREADCRUMB_FILENAME = "breadcrumbs.log"
 _HASH_HEX_CHARS = 16
 _NEWLINE_CHARS = "\n\r"
 _PRINTABLE_ASCII_MIN = 32
 _ASCII_DELETE = 127
 _C1_CONTROL_MIN = 0x80
 _C1_CONTROL_MAX = 0x9F
+_RUN_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9._-]+")
+_CLONE_HASH_PATTERN: Final[re.Pattern[str]] = re.compile(r"[0-9a-f]{16}")
 
 
 def _cache_home() -> Path:
@@ -53,6 +62,37 @@ def progress_path(repo_root: str | Path) -> Path:
     canonical = str(canonical_root)
     digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:_HASH_HEX_CHARS]
     return progress_root() / f"{digest}{PROGRESS_SUFFIX}"
+
+
+def validate_run_id(run_id: str) -> str:
+    """Return a safe run ID, reserving ``current`` for the active-run pointer."""
+    if not run_id:
+        msg = "run ID must be non-empty"
+        raise ValueError(msg)
+    if run_id in {".", "..", CURRENT_RUN_FILENAME}:
+        msg = f"reserved run ID: {run_id}"
+        raise ValueError(msg)
+    if _RUN_ID_PATTERN.fullmatch(run_id) is None:
+        msg = "run ID must contain only letters, digits, dot, underscore, or dash"
+        raise ValueError(msg)
+    return run_id
+
+
+def progress_clone_dir(repo_root: str | Path) -> Path:
+    """Return the clone-scoped progress directory for ``repo_root``."""
+    return progress_path(repo_root).with_suffix("")
+
+
+def current_run_path(repo_root: str | Path) -> Path:
+    return progress_clone_dir(repo_root) / CURRENT_RUN_FILENAME
+
+
+def run_progress_dir(repo_root: str | Path, run_id: str) -> Path:
+    return progress_clone_dir(repo_root) / validate_run_id(run_id)
+
+
+def run_progress_path(repo_root: str | Path, run_id: str) -> Path:
+    return run_progress_dir(repo_root, run_id) / RUN_BREADCRUMB_FILENAME
 
 
 def _reject_line_part(value: object, *, label: str) -> str:
@@ -109,26 +149,279 @@ def append_breadcrumb(repo_root: str | Path, skill: str, step: str, text: str) -
     return True
 
 
-def cleanup_old_progress_files(*, retention_days: int, root: Path | None = None, now: float | None = None) -> int:
-    progress_dir = progress_root() if root is None else root
-    if retention_days <= 0 or not progress_dir.is_dir() or progress_dir.is_symlink():
-        return 0
-    cutoff = (time.time() if now is None else now) - (retention_days * 86400)
-    removed = 0
-    for entry in progress_dir.glob(f"*{PROGRESS_SUFFIX}"):
+def _dir_open_flags() -> int:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    return flags
+
+
+def _nofollow_file_flags(*, append: bool) -> int:
+    flags = os.O_WRONLY | os.O_CREAT
+    if append:
+        flags |= os.O_APPEND
+    else:
+        flags |= os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    return flags
+
+
+def _validate_dir_entry_name(name: str) -> None:
+    if not name or name in {".", ".."} or "/" in name or "\\" in name:
+        msg = f"unsafe directory entry name: {name!r}"
+        raise ValueError(msg)
+
+
+def _open_verified_dir(path: Path) -> int:
+    larch_io.assert_no_symlink_path_or_ancestors(path)
+    fd = os.open(path, _dir_open_flags())
+    try:
+        stat_result = os.fstat(fd)
+        if not stat.S_ISDIR(stat_result.st_mode):
+            msg = f"refusing non-directory progress path: {path}"
+            raise OSError(msg)
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _assert_safe_destination(dir_fd: int, name: str) -> None:
+    try:
+        stat_result = os.lstat(name, dir_fd=dir_fd)
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISREG(stat_result.st_mode):
+        msg = f"refusing unsafe progress target: {name}"
+        raise OSError(msg)
+
+
+def _atomic_write_once(dir_fd: int, name: str, text: str, *, mode: int, temp_name: str) -> None:
+    fd = os.open(temp_name, _nofollow_file_flags(append=False), mode, dir_fd=dir_fd)
+    replaced = False
+    try:
+        stat_result = os.fstat(fd)
+        if not stat.S_ISREG(stat_result.st_mode):
+            msg = f"refusing non-regular temporary progress target: {temp_name}"
+            raise OSError(msg)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            _ = handle.write(text)
+            handle.flush()
+            os.fchmod(handle.fileno(), mode)
+        _assert_safe_destination(dir_fd, name)
+        os.replace(temp_name, name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        replaced = True
+    finally:
+        if fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        if not replaced:
+            with contextlib.suppress(OSError):
+                os.unlink(temp_name, dir_fd=dir_fd)
+
+
+def _atomic_write_in_dir(dir_fd: int, name: str, text: str, *, mode: int = 0o600, temp_prefix: str = ".current.") -> None:
+    _validate_dir_entry_name(name)
+    _validate_dir_entry_name(temp_prefix.rstrip("."))
+    last_error: FileExistsError | None = None
+    for _attempt in range(100):
+        temp_name = f"{temp_prefix}{uuid.uuid4().hex}"
         try:
-            if entry.is_symlink() or not entry.is_file() or entry.stat().st_mtime >= cutoff:
+            _atomic_write_once(dir_fd, name, text, mode=mode, temp_name=temp_name)
+        except FileExistsError as exc:
+            last_error = exc
+            continue
+        return
+    msg = f"could not create unique temporary progress file for {name}"
+    raise OSError(msg) from last_error
+
+
+def _append_line_in_dir(dir_fd: int, name: str, line: str) -> None:
+    _validate_dir_entry_name(name)
+    fd = os.open(name, _nofollow_file_flags(append=True), 0o600, dir_fd=dir_fd)
+    try:
+        stat_result = os.fstat(fd)
+        if not stat.S_ISREG(stat_result.st_mode):
+            msg = f"refusing non-regular breadcrumb target: {name}"
+            raise OSError(msg)
+        with os.fdopen(fd, "a", encoding="utf-8") as handle:
+            fd = -1
+            _ = handle.write(line)
+            handle.flush()
+            with contextlib.suppress(OSError):
+                os.fchmod(handle.fileno(), 0o600)
+    finally:
+        if fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+
+
+def activate_run(repo_root: str | Path, run_id: str) -> None:
+    safe_run_id = validate_run_id(run_id)
+    clone_dir = progress_clone_dir(repo_root)
+    run_dir = run_progress_dir(repo_root, safe_run_id)
+    pointer_path = current_run_path(repo_root)
+    larch_io.assert_no_symlink_path_or_ancestors(clone_dir)
+    larch_io.assert_no_symlink_path_or_ancestors(run_dir)
+    larch_io.assert_no_symlink_path_or_ancestors(pointer_path)
+    clone_dir.mkdir(parents=True, exist_ok=True)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    larch_io.assert_no_symlink_path_or_ancestors(clone_dir)
+    larch_io.assert_no_symlink_path_or_ancestors(run_dir)
+    larch_io.assert_no_symlink_path_or_ancestors(pointer_path)
+    dir_fd = _open_verified_dir(clone_dir)
+    try:
+        _atomic_write_in_dir(dir_fd, CURRENT_RUN_FILENAME, f"{safe_run_id}\n", mode=0o600, temp_prefix=".current.")
+    finally:
+        os.close(dir_fd)
+
+
+def append_breadcrumb_for_run(repo_root: str | Path, run_id: str, skill: str, step: str, text: str) -> bool:
+    """Append one run-scoped breadcrumb, returning ``False`` on best-effort failure."""
+    try:
+        line = breadcrumb_line(skill=skill, step=step, text=text)
+        run_dir = run_progress_dir(repo_root, run_id)
+        path = run_dir / RUN_BREADCRUMB_FILENAME
+        larch_io.assert_no_symlink_path_or_ancestors(path)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        larch_io.assert_no_symlink_path_or_ancestors(path)
+        dir_fd = _open_verified_dir(run_dir)
+        try:
+            _append_line_in_dir(dir_fd, RUN_BREADCRUMB_FILENAME, line)
+        finally:
+            os.close(dir_fd)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def _cutoff_timestamp(retention_days: int, now: float | None) -> float:
+    return (time.time() if now is None else now) - (retention_days * 86400)
+
+
+def _entry_mtime_for_cleanup(entry_path: Path, *, log_path: Path | None = None) -> float | None:
+    try:
+        if log_path is not None and not log_path.is_symlink() and log_path.is_file():
+            return log_path.stat().st_mtime
+        return entry_path.stat().st_mtime
+    except OSError:
+        return None
+
+
+def _read_active_run_id(clone_dir: Path) -> str | None:
+    """Return the normalized ``current`` pointer written by ``activate_run``."""
+    pointer_path = clone_dir / CURRENT_RUN_FILENAME
+    try:
+        if pointer_path.is_symlink() or not pointer_path.is_file():
+            return None
+        with pointer_path.open("r", encoding="utf-8") as handle:
+            first_line = handle.readline()
+    except (OSError, UnicodeError):
+        return None
+    normalized = first_line.rstrip()
+    if not normalized:
+        return None
+    try:
+        return validate_run_id(normalized)
+    except ValueError:
+        return None
+
+
+def _remove_run_dir(run_dir: Path) -> bool:
+    try:
+        if run_dir.is_symlink() or not run_dir.is_dir():
+            return False
+        shutil.rmtree(run_dir)
+    except OSError:
+        return False
+    return True
+
+
+def _is_clone_hash_name(name: str) -> bool:
+    return _CLONE_HASH_PATTERN.fullmatch(name) is not None
+
+
+def _cleanup_flat_progress_files(progress_dir: Path, *, cutoff: float) -> tuple[int, set[Path]]:
+    removed = 0
+    clone_dirs: set[Path] = set()
+    for entry in progress_dir.glob(f"*{PROGRESS_SUFFIX}"):
+        clone_name = entry.name.removesuffix(PROGRESS_SUFFIX)
+        if _is_clone_hash_name(clone_name):
+            clone_dirs.add(progress_dir / clone_name)
+        try:
+            if entry.is_symlink() or not entry.is_file():
+                continue
+            mtime = _entry_mtime_for_cleanup(entry)
+            if mtime is None or mtime >= cutoff:
                 continue
             entry.unlink()
             removed += 1
         except OSError:
             continue
+    return removed, clone_dirs
+
+
+def _clone_dirs_under(progress_dir: Path) -> set[Path]:
+    clone_dirs: set[Path] = set()
+    try:
+        entries = list(progress_dir.iterdir())
+    except OSError:
+        return clone_dirs
+    for entry in entries:
+        try:
+            if _is_clone_hash_name(entry.name) and not entry.is_symlink() and entry.is_dir():
+                clone_dirs.add(entry)
+        except OSError:
+            continue
+    return clone_dirs
+
+
+def _cleanup_run_dirs_for_clone(clone_dir: Path, *, cutoff: float) -> int:
+    try:
+        if clone_dir.is_symlink() or not clone_dir.is_dir():
+            return 0
+        children = list(clone_dir.iterdir())
+        active_run_id = _read_active_run_id(clone_dir)
+    except OSError:
+        return 0
+    removed = 0
+    for child in children:
+        if child.name == CURRENT_RUN_FILENAME:
+            continue
+        try:
+            run_id = validate_run_id(child.name)
+            if run_id == active_run_id or child.is_symlink() or not child.is_dir():
+                continue
+            mtime = _entry_mtime_for_cleanup(child, log_path=child / RUN_BREADCRUMB_FILENAME)
+            if mtime is None or mtime >= cutoff:
+                continue
+            if _remove_run_dir(child):
+                removed += 1
+        except (OSError, ValueError):
+            continue
+    return removed
+
+
+def cleanup_old_progress_files(*, retention_days: int, root: Path | None = None, now: float | None = None) -> int:
+    progress_dir = progress_root() if root is None else root
+    if retention_days <= 0 or not progress_dir.is_dir() or progress_dir.is_symlink():
+        return 0
+    cutoff = _cutoff_timestamp(retention_days, now)
+    removed, clone_dirs = _cleanup_flat_progress_files(progress_dir, cutoff=cutoff)
+    clone_dirs.update(_clone_dirs_under(progress_dir))
+    for clone_dir in sorted(clone_dirs):
+        removed += _cleanup_run_dirs_for_clone(clone_dir, cutoff=cutoff)
     return removed
 
 
 def progress_note_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py progress note")
     _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
+    _ = parser.add_argument("--run-id")
     _ = parser.add_argument("--skill", required=True)
     _ = parser.add_argument("--step", required=True)
     _ = parser.add_argument("text", nargs="+")
@@ -136,5 +429,25 @@ def progress_note_main(argv: list[str] | None = None) -> int:
         args = parser.parse_args(argv)
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
-    _ = append_breadcrumb(args.repo_root, args.skill, args.step, " ".join(args.text))
+    text = " ".join(args.text)
+    if args.run_id is None:
+        _ = append_breadcrumb(args.repo_root, args.skill, args.step, text)
+    else:
+        _ = append_breadcrumb_for_run(args.repo_root, args.run_id, args.skill, args.step, text)
+    return 0
+
+
+def progress_activate_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress activate")
+    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
+    _ = parser.add_argument("--run-id", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    try:
+        activate_run(args.repo_root, args.run_id)
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"progress activate failed: {exc}", file=sys.stderr)
+        return 2
     return 0
