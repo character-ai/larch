@@ -333,6 +333,14 @@ repos:
         always_run: true
         files: ^python/.*\.py$
 
+      - id: lint-suppression-reason
+        name: Lint suppression comments in python/
+        entry: python3 python/cli.py lint suppression-reason
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^(python/.*\.py|python/suppression-reason-baseline\.json)$
+
       - id: lint-bash32
         name: Lint Bash 3.2 portability of shell scripts
         entry: bash scripts/lint-bash32.sh

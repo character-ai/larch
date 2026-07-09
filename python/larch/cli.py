@@ -446,6 +446,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "lifecycle-prefix-literal"): ("larch.lint.lint_lifecycle_prefix_literal", "main"),
     ("lint", "shared-convention-regex"): ("larch.lint.lint_shared_convention_regex", "main"),
     ("lint", "renderer-golden-tests"): ("larch.lint.lint_renderer_golden_tests", "main"),
+    ("lint", "suppression-reason"): ("larch.lint.lint_suppression_reason", "main"),
     ("lint", "guidelines-note-wrapper-bypass"): ("larch.lint.lint_guidelines_note_wrapper_bypass", "main"),
     ("lint", "layering"): ("larch.lint.lint_layering", "main"),
     ("lint", "pylint-shard"): ("larch.lint.pylint_sharding", "main"),
