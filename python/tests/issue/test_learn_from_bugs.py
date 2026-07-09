@@ -292,7 +292,7 @@ def test_state_missing_and_malformed_markers_are_unusable(tmp_path: Path) -> Non
     marker.write_text(json.dumps({"schema_version": 1, "repo": "o/r"}), encoding="utf-8")
     assert learn_from_bugs.read_state(marker) is None
 
-    marker.write_bytes(b"{\"schema_version\":1,\"run_date\":\"2026-07-09T12:00:00Z\",\"repo\":\"o/r\",\"search\":\"x\",\"state\":\"closed\",\"selected_count\":1,\"highest_closed_issue_number_scanned\":0}\xff")
+    marker.write_bytes(b'{"schema_version":1,"run_date":"2026-07-09T12:00:00Z","repo":"o/r","search":"x","state":"closed","selected_count":1,"highest_closed_issue_number_scanned":0}\xff')
     assert learn_from_bugs.read_state(marker) is None
 
 
