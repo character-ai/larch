@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import pytest
 
+    from larch.core.proc import CommandResult
+
 from larch.calibration import difficulty
 from larch.core import config
-from larch.core.proc import CommandResult
 from larch.report import run_log_commit
 from larch.report import run_log_flush
 from larch.report.run_log_manifest import RefreshSkip
