@@ -1,8 +1,8 @@
-## /implement run AF4B5053-000D-4EEC-A142-A7CDA7200B34: stalled
+## /implement run AF4B5053-000D-4EEC-A142-A7CDA7200B34: pr-created
 
-- **Outcome**: ❌ STALLED
+- **Outcome**: ✅ DONE
 - **Duration**: 01:55:51
-- **Cost**: 💰 TOTAL ~$81.78: Claude $13.83, Codex-5.5 $39.54, Codex-mini $4.20, Cursor $22.63, Claude (subprocess) $1.58  |  Tokens: 153890k
+- **Cost**: 💰 TOTAL ~$96.19: Claude $28.24, Codex-5.5 $39.54, Codex-mini $4.20, Cursor $22.63, Claude (subprocess) $1.58  |  Tokens: 166429k
 - **Issue**: #6516: https://github.com/character-ai/larch/issues/6516
 - **PR**: #6706: https://github.com/character-ai/larch/pull/6706
 - **Plan review**: N/A
@@ -10,7 +10,7 @@
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/7 accepted
-- **Lines (PR diff)**: code +637/-6967, larch-logs +1481/-0
+- **Lines (PR diff)**: code +634/-6964, larch-logs +1483/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6705
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -91,3 +91,11 @@ codex/apply                 │                                            █�
 6. dynamic/dyn-bgjob-routing: 2
 
 **Reviewer slot failures**: 0
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
