@@ -1,8 +1,8 @@
-## /implement run C3480116-9016-4976-82C7-6CF5EBBB3CB5: stalled
+## /implement run C3480116-9016-4976-82C7-6CF5EBBB3CB5: pr-created
 
-- **Outcome**: ❌ STALLED
+- **Outcome**: ✅ DONE
 - **Duration**: 01:13:21
-- **Cost**: 💰 TOTAL ~$36.27: Claude $2.58, Codex-5.5 $18.36, Codex-mini $2.48, Cursor $11.23, Claude (subprocess) $1.62  |  Tokens: 65405k
+- **Cost**: 💰 TOTAL ~$40.51: Claude $6.82, Codex-5.5 $18.36, Codex-mini $2.48, Cursor $11.23, Claude (subprocess) $1.62  |  Tokens: 75757k
 - **Issue**: #6643: https://github.com/character-ai/larch/issues/6643
 - **PR**: #6682: https://github.com/character-ai/larch/pull/6682
 - **Plan review**: N/A
@@ -10,7 +10,7 @@
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/10 accepted
-- **Lines (PR diff)**: code +1249/-238, larch-logs +1177/-0
+- **Lines (PR diff)**: code +1267/-238, larch-logs +1171/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -83,3 +83,11 @@ codex/apply               │                                                █
 5. cursor/plan-fidelity-auto: 2
 
 **Reviewer slot failures**: 0
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
