@@ -42,6 +42,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -100,6 +105,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -145,6 +155,10 @@ jobs:
           # silently disabling Mermaid CI coverage (closes #1426
           # follow-up D — round-2 review).
           fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -211,6 +225,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -245,6 +264,11 @@ jobs:
         shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         id: setup-python
         with:
@@ -289,6 +313,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       # The zhupanov/agent-lint action installs this same release asset via
       # single-shot curl. Install the pinned CLI directly so CI can cache it
       # and retry transient GitHub release-asset failures.
@@ -347,6 +376,11 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -403,14 +437,18 @@ jobs:
           gitleaks detect --source . --redact --no-banner --log-opts "${BASE}..HEAD"
 
 
-  # fetch-depth: 0 is required by trufflehog; the other steps are unaffected.
+  # Generator and local metadata drift checks. Uses a sparse checkout because
+  # committed run logs are not part of the generated runtime surface.
   agent-sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -509,6 +547,16 @@ jobs:
 
           rm -f /tmp/hits
           exit "$exit_code"
+
+  # Full-checkout verified secret scan. Kept separate from `agent-sync` so
+  # generated-file checks can use sparse checkout without weakening scan scope.
+  trufflehog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       # Trufflehog verified-only scan. Independent of gitleaks — catches
       # credentials that authenticate against a live provider API even if
       # gitleaks' regex rules miss them. Action pinned to commit SHA
@@ -538,6 +586,7 @@ jobs:
           version: 3.82.13
           path: ./
           extra_args: --only-verified
+
   # pylint is ~90% of the Python lint wall time and CI already runs it with all
   # cores, so the remaining lever is parallelism across runners. The matrix
   # shards pylint by file basename (python/pylint_sharding.py); shard 1 also runs
@@ -556,6 +605,11 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -587,6 +641,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -616,6 +675,11 @@ jobs:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
@@ -656,6 +720,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/
+          sparse-checkout-cone-mode: false
       - name: Syntax-check all scripts under bash 3.2
         run: |
           set -euo pipefail
