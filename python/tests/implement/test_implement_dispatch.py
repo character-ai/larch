@@ -2270,7 +2270,6 @@ def test_ship_pre_driver_validates_scope_before_seeding_and_halts_for_missing_di
             return subprocess.CompletedProcess(argv, 0, "", "")
         return pytest.fail(f"unexpected CLI call: {argv}")
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
@@ -2307,7 +2306,6 @@ def test_ship_pre_driver_scope_validation_hard_failure_stays_tool_failure(
             return subprocess.CompletedProcess(argv, 0, "", "")
         return pytest.fail(f"unexpected CLI call: {argv}")
 
-    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
