@@ -57,6 +57,10 @@ from larch.implement.dispatch_helpers import _derive_pathspec_via_recovery_paths
 
 
 def _relay_scope_coverage(implement_tmpdir: Path) -> int:
+    plan_file = implement_tmpdir / "plan.txt"
+    baseline_file = implement_tmpdir / "step2-baseline.txt"
+    if not plan_file.is_file() or not baseline_file.is_file():
+        return 0
     repo_root = _resolve_repo_root()
     if repo_root is None:
         print("scope-disposition: git rev-parse --show-toplevel failed", file=sys.stderr)
