@@ -1,0 +1,122 @@
+## Final Design Plan
+
+## Plan
+
+## Approach
+
+Add a small two-pass fence gate around the existing `/issue` batch parser. Pass 1 must be **stateful**, not an independent opener/closer pairing scan.
+
+1. In `parse_issue_input`, split once into `lines` via `text.splitlines()`.
+2. **Pass 1 — stateful balanced-fence scan** (mirror `skills/design/scripts/dedup-plan-lines.py` Pass 1, extended for tildes):
+   - Single forward pass with a stack of `(opener_index, marker_char, marker_len)`.
+   - Fence marker regex: stripped line starts with three or more backticks **or** tildes, captured as `(marker_char, marker_len, suffix)`.
+   - On a marker line when the stack is **empty**: push `(i, marker_char, marker_len)`.
+   - On a marker line when the stack is **non-empty**: try to close only — **do not** push a new opener. Pop when `marker_char` matches the stack top, `marker_len >= top_len`, and `suffix.strip() == ""`. On successful pop, add **strictly interior** indices `range(top_i + 1, i)` to `fenced_lines`.
+   - Failed closer: leave the stack unchanged (plain-text semantics for that line).
+   - Unclosed stack entries at EOF add **no** indices (the unclosed opener degrades to plain text; later real `### ` boundaries still split).
+   - Backtick and tilde fences never cross-close.
+3. **Pass 2 — existing parser state machine**, indexed:
+   - `for index, line in enumerate(lines):` (replace the current bare `for line in text.splitlines()` loop).
+   - When `index in fenced_lines`, skip `OOS_HEADING_RE`, `PLAIN_HEADING_RE`, and `consume_oos_field`; append via the existing `in_body` path (including `pending_heading` / `pending_body` handling).
+   - Fence marker lines (opener/closer) are outside `fenced_lines` but do not match heading/field regexes; they continue to append as body content unchanged.
+   - Do not change unfenced `### ` behavior or the `parse-input:` breadcrumb.
+4. Keep this surgical. Do not add flags, parser modes, or a broad Markdown parser.
+
+## Files to modify/create
+
+### UPDATED: python/larch/issue/issue_create.py
+
+Add a module-level fence marker regex near the parser constants, for example:
+
+```python
+FENCE_MARKER_RE = re.compile(r"^([`~]{3,})(.*)$")
+```
+
+Add a private helper just above `parse_issue_input`, for example `_balanced_fence_line_indices(lines: list[str]) -> set[int]`:
+
+- Initialize `fenced_lines: set[int] = set()` and `stack: list[tuple[int, str, int]] = []`.
+- Walk `enumerate(lines)` once.
+- For each line, `stripped = line.strip()`; if `FENCE_MARKER_RE` does not match `stripped`, continue.
+- Parse `marker_char = match.group(1)[0]`, `marker_len = len(match.group(1))`, `suffix = match.group(2)`.
+- If stack empty: `stack.append((i, marker_char, marker_len))`.
+- Else: read `(top_i, top_char, top_len) = stack[-1]`. If `marker_char == top_char` and `marker_len >= top_len` and `suffix.strip() == ""`: pop, then `fenced_lines.update(range(top_i + 1, i))`. Otherwise leave stack unchanged.
+- Return `fenced_lines`. Unclosed stack entries contribute nothing.
+
+In `parse_issue_input`:
+
+- Compute `lines = text.splitlines()` and `fenced_lines = _balanced_fence_line_indices(lines)` once before the loop.
+- Replace the loop with `for index, line in enumerate(lines):`.
+- Gate the three boundary/field entry points with `index not in fenced_lines`:
+  - `OOS_HEADING_RE.match(line)`
+  - `PLAIN_HEADING_RE.match(line)`
+  - `state.current_mode == "oos" and state.consume_oos_field(line)`
+- When `index in fenced_lines`, fall through to the existing `in_body` append branch (do not call `consume_oos_field` even for field-shaped lines inside a fence).
+- Preserve existing `ParseState` methods and malformed-item behavior.
+
+### UPDATED: python/tests/issue/test_issue_create.py
+
+Add parser regressions near the existing #129 / #131 / #132 / #138 parser tests.
+
+Cover:
+
+- **Verified reproduction**: generic item with a fenced `### G-Fake-1:` payload parses as one item (`ITEMS_TOTAL=1`); body is byte-exact below the title line, including full fence and payload heading.
+- Generic item with a fenced `### OOS_42: ...` payload stays one generic item (not OOS mode).
+- Unclosed fence at EOF followed by a real `### ` boundary: opener remains plain body text for the first item; boundary still splits into a second item.
+- OOS item whose Description carries a fenced `### ` line stays one item; include a field-looking line inside the fence (for example `- **Description**: ...`) so `consume_oos_field` gating is pinned.
+- A real `### ` boundary after a properly closed fence still splits into two items.
+- **Stateful pass-1 pin**: input with a closed fence whose closer line must not be reinterpreted as a new opener that pairs with a later marker and swallows an intervening real `### ` boundary (the failure shape from FINDING_2 / #3153). Assert `ITEMS_TOTAL` and per-item bodies match the intended split.
+
+Use the existing `_parse_input_fixture`, `_kv_value`, and `_body_file_contents` helpers. Keep expected bodies exact under the parser's current newline semantics.
+
+### UPDATED: skills/issue/SKILL.md
+
+Narrow the "Authoring caution (generic fallback)" block:
+
+- Say unfenced generic body lines must not start with `### `.
+- Say balanced fenced code blocks (backtick or tilde) may contain byte-exact `### ` payload headings.
+- Say unclosed fences do not protect later `### ` boundaries.
+- Keep the `--dry-run` guidance and `▶ parse-input:` breadcrumb text unchanged.
+- Correct the adjacent parser-test path sentence to `python/tests/issue/test_issue_create.py`.
+
+## Edge cases
+
+- A longer closer closes a shorter opener (` ``` ` closed by ` ``````` `).
+- Backtick and tilde fences do not cross-close.
+- A marker-only opener can be closed by the next marker-only line of the same character and sufficient length.
+- While the stack is non-empty, marker lines are closers only — never new openers — so a successful closer cannot immediately reopen and absorb later `### ` boundaries.
+- Unclosed opener at EOF does not swallow later boundaries.
+- Fenced OOS metadata-looking bullets stay body text while inside the fence interior.
+- Unfenced `### ` lines keep the documented #2152 split behavior.
+
+## Failure modes
+
+- Independent opener/closer pairing (without stack discipline) can reinterpret a closing fence as a new opener and swallow later real `### ` boundaries into one item.
+- Gating only `PLAIN_HEADING_RE` can still let OOS headings or `consume_oos_field` corrupt fenced payloads.
+- Pushing a new opener while the stack is non-empty can nest or mis-pair fences and widen `fenced_lines` incorrectly.
+- Changing final-newline behavior can break existing body-file expectations.
+
+## Testing strategy
+
+Run focused tests first:
+
+```bash
+python3 -m pytest python/tests/issue/test_issue_create.py -q
+
+Run lint for changed Python:
+
+cd python && ruff check larch/issue/issue_create.py tests/issue/test_issue_create.py
+
+If available before merge, run the broader Python targets:
+
+make py-lint
+make py-test
+
+Manual acceptance check:
+
+- Re-run the verified reproduction through `python3 python/cli.py issue parse-input --input-file <fixture> --output-dir <dir>`.
+- Confirm `ITEMS_TOTAL=1`.
+- Confirm the body file contains the full fenced payload and no bogus second item.
+
+difficulty: MODERATE
+mechanical_churn: false
+diff_lines: 175
