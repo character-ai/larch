@@ -1,0 +1,86 @@
+Partition piece 4 of 4 split from #6667.
+
+**Scope**: `python/larch/report/progress_file.py`, `python/larch/report/statusline.py`, `python/tests/report/test_progress_statusline.py`, and `docs/progress-reporting.md`. Change default appends to require valid `current`, tail only `<run-id>/breadcrumbs.log`, ignore legacy flat logs, preserve fail-silent symlink and corruption behavior, and document the final per-run contract.
+
+**Firm headings**: python/larch/report/progress_file.py, python/larch/report/statusline.py, python/tests/report/test_progress_statusline.py, docs/progress-reporting.md
+
+**Acceptance**:
+
+Tests prove a new run starts empty, older same-clone runs never render, missing or invalid `current` makes appends return `False` and statusline empty, legacy flat logs are ignored by the reader, active-run mtime drives stale display, and symlinked pointer/log ancestors fail silent.
+
+**Dependencies (from panel)**: blocked-by Piece 1, Piece 2, Piece 3
+
+```
+```
+
+**Original feature context (excerpt)**:
+
+# Scope progress breadcrumbs per run ID so each run starts with empty statusline
+
+## Problem
+
+The statusline feature landed via #6624 (PR #6664) with deliberate per-clone scoping. This issue upgrades that scoping decision after live operator experience.
+
+The statusline breadcrumb log is scoped per clone but shared across runs. The path is `~/.cache/larch/progress/<sha256(clone-root)[:16]>.log`. Writes are append-only. No run start ever resets the file.
+
+Result: when the operator starts a new `/design` or `/implement`, the statusline tails the previous run's final breadcrumb. Example: `larch 21:12: [implement 5] reviewers 7/12 done (stale 41m)`. A fresh run at Step 0 renders as if it were mid-review. The stale state survives Claude Code restarts because it lives on disk, keyed by clone path.
+
+Worse: the live-bgjob bypass in `_age_suffix` (`python/larch/report/statusline.py:92-104`; the bgjob check at lines 99-100 runs before the hide threshold) strips the `(stale Nm)` marker as soon as the new run spawns its first background job. Prior-run leftovers then render as live progress.
+
+## Requirements (operator, hard)
+
+1. The breadcrumb log must be private to the unique run ID within a particular clone. Different run IDs in the same clone must not share a log. Different clones already do not share one.
+2. Each run's log starts empty. This follows from requirement 1.
+3. Layout: the breadcrumb file lives under a unique run-id subdirectory. No flat clone-level log file.
+
+## Current mechanics
+
+- Writers call `append_breadcrumb(Path.cwd(), skill, step, text)`. Call sites: `python/larch/review/review_core_body.py`, `python/larch/review/review_and_fix.py`, `python/larch/review/plan_review.py`, `python/larch/implement/ship_merge.py`, and ship_state. The path comes from `progress_file.progress_path` (`python/larch/report/progress_file.py:50-55`) via `consumer_repo_root`.
+- Reader: `cli.py progress statusline` (`python/larch/report/statusline.py`) resolves the session cwd from the Claude Code stdin payload and tails the clone-hash file. Installed launcher: `~/.cache/larch/statusline.sh`, refreshInterval 2.
+- Cleanup: day-scale retention only (`cleanup_old_progress_files`; `/cleanup` skill).
+
+## Proposed design (for /design to vet)
+
+Prefer the explicit-key option over mtime heuristics.
+
+- New layout: `~/.cache/larch/progress/<clone-hash>/<run-id>/breadcrumbs.log`. Each run owns a subdirectory; the log lives inside it. Future per-run progress artifacts can join it, and removing one directory cleans a whole run.
+- Add a per-clone pointer file `~/.cache/larch/progress/<clone-hash>/current` holding the active run ID. Write it atomically (temp file plus rename) at run start in Step 0 of `/design` and `/implement`. The run ID already exists there (session-env / tmpdir key).
+- Writers keep their signature. `append_breadcrumb` resolves the clone-hash dir from cwd, follows the pointer, and appends inside the active run-id subdirectory. Missing pointer: best-effort no-op. This preserves the fail-silent contract and needs no run-id plumbing through review or ship call sites.
+- Reader follows the pointer to `<clone-hash>/<run-id>/breadcrumbs.log`. Missing pointer, subdirectory, or file renders nothing. Keep file-mtime age and the clone-filtered bgjob liveness check. Both become run-scoped because prior runs' files are never selected.
+- `cli.py progress note` gains an optional `--run-id` override for pointer-independent writes.
+- Update the retention sweep to reap aged run-id subdirectories. The reader ignores legacy flat `<clone-hash>.log` files; retention reaps them too.
+- Rejected alternative: storing the log in the run's session tmpdir. That reintroduces tmpdir discovery in the reader, the #4661 bug class that #6624 deliberately retired.
+- Update `docs/progress-reporting.md`, `python/tests/report/test_progress_statusline.py`, and the sessionstart/bootstrap install tests as needed.
+
+## Open question for /design
+
+Behavior if `/design` and `/implement` eve
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Flip the DEFAULT progress writer (`append_breadcrumb`) to follow the per-clone `current` pointer and append into `<clone-hash>/<run-id>/breadcrumbs.log`.
+- Flip the statusline reader (`render_statusline` / `_age_suffix`) to follow the same pointer, so a fresh run starts empty and prior same-clone runs never render.
+- Ignore legacy flat `<clone-hash>.log` in the reader; document the final per-run contract.
+
+### Non-goals
+- No changes to `activate_run`, cleanup/retention, or `progress note --run-id` (all landed in pieces 1–3).
+- No concurrency guarding — one job per clone is a hard larch rule (single active run).
+- No run-id plumbing through review/ship call sites; writers keep their signature.
+
+### Approach sketch
+- `append_breadcrumb`: resolve `current` via the existing pointer reader; valid pointer -> append via the run-scoped path; missing/invalid -> return `False` (fail-silent no-op).
+- Reuse existing helpers (`_read_active_run_id` / `run_progress_path`), finally consuming the currently-unused `_read_active_run_id`.
+- Reader: resolve the run-scoped log via the pointer; feed that path to `_tail_breadcrumbs` and `_age_suffix`; render nothing when pointer/subdir/file absent.
+- Preserve symlink-safety (`assert_no_symlink_path_or_ancestors`, `O_NOFOLLOW`) and corruption fail-silent behavior.
+
+### Surfaces in scope
+- `python/larch/report/progress_file.py` (writer flip)
+- `python/larch/report/statusline.py` (reader flip)
+- `python/tests/report/test_progress_statusline.py` (acceptance tests)
+- `docs/progress-reporting.md` (per-run contract)
+
+### Open questions
+- None. (Concurrency resolved: one job per clone.)
