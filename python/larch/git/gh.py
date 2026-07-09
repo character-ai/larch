@@ -10,13 +10,14 @@ Mutating helpers return the last ``CommandResult`` without retry.
 
 from __future__ import annotations
 
+import importlib
 import json
 import re
 import tempfile
 from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
 from datetime import datetime
-from typing import Final, cast
+from typing import Final, Protocol, cast
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -25,9 +26,13 @@ import argparse
 import sys
 from larch.core import config
 from larch.core import redact
-from larch.errors import ShipError, TransientNetworkError
+from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
 from larch.core.proc import CommandResult, Runner
-from larch.core.retry import RetryResult, is_transient_net_signature, with_transient_retry
+from larch.core.retry import (
+    RetryResult,
+    is_transient_net_signature,
+    with_transient_retry,
+)
 from larch.core import proc
 
 
@@ -98,6 +103,21 @@ class BodyUpdateResult:
     exit_code: int
 
 
+class _ScopeDispositionModule(Protocol):
+    def require_pr_mutation_scope_disposition(
+        self,
+        *,
+        tmpdir: Path | None,
+        repo_root: Path,
+        runner: Runner,
+    ) -> None: ...
+
+
+def _scope_disposition_module() -> _ScopeDispositionModule:
+    module = importlib.import_module("larch.implement.scope_disposition")
+    return cast("_ScopeDispositionModule", module)
+
+
 def _gh(
     runner: Runner,
     argv: Sequence[str],
@@ -125,6 +145,17 @@ def _ensure_success(result: CommandResult) -> CommandResult:
         msg = f"gh command failed ({result.returncode}): {' '.join(result.argv)}"
         raise ShipError(msg)
     return result
+
+
+def _require_scope_disposition_for_pr_mutation(
+    *, runner: Runner, cwd: str | None
+) -> None:
+    repo_root = Path(cwd or ".").resolve()
+    _scope_disposition_module().require_pr_mutation_scope_disposition(
+        tmpdir=None,
+        repo_root=repo_root,
+        runner=runner,
+    )
 
 
 def _raise_read_failure(result: CommandResult) -> None:
@@ -223,8 +254,12 @@ def _fail_closed_redacted(text: str, *, context: str) -> str:
 
 
 @contextmanager
-def _body_file_args(body: str, *, redact_body: bool = True) -> Generator[tuple[str, str], None, None]:
-    redacted = _fail_closed_redacted(body, context="gh body file") if redact_body else body
+def _body_file_args(
+    body: str, *, redact_body: bool = True
+) -> Generator[tuple[str, str], None, None]:
+    redacted = (
+        _fail_closed_redacted(body, context="gh body file") if redact_body else body
+    )
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
@@ -320,7 +355,9 @@ def pr_view(
         raise GhReadTimeout(msg)
     if result.returncode != 0:
         _raise_read_failure(result)
-    data = _as_json_object(_loads_json(result.stdout, context="pr view"), context="pr view")
+    data = _as_json_object(
+        _loads_json(result.stdout, context="pr view"), context="pr view"
+    )
     return _pull_request_from_json(data, context="pr view")
 
 
@@ -340,7 +377,9 @@ def pr_view_body(
     if result.returncode != 0:
         return None
     try:
-        data = _as_json_object(_loads_json(result.stdout, context="pr view body"), context="pr view body")
+        data = _as_json_object(
+            _loads_json(result.stdout, context="pr view body"), context="pr view body"
+        )
     except ShipError:
         return None
     body = data.get("body")
@@ -491,7 +530,10 @@ def _repo_matches_pr_url(*, repo: str | None, url: str) -> bool:
     repo_parts = repo.split("/")
     if len(repo_parts) != _REPO_SLUG_PARTS:
         return False
-    return parts[0].lower() == repo_parts[0].lower() and parts[1].lower() == repo_parts[1].lower()
+    return (
+        parts[0].lower() == repo_parts[0].lower()
+        and parts[1].lower() == repo_parts[1].lower()
+    )
 
 
 def _candidate_from_pr_url(url: str, *, branch: str) -> PullRequest | None:
@@ -797,7 +839,9 @@ def _pr_checks_json_rows(stdout: str) -> list[dict[str, object]] | None:
             _loads_json(stdout or "[]", context="pr checks"),
             context="pr checks",
         )
-        return [_as_json_object(row_obj, context="pr checks row") for row_obj in rows_obj]
+        return [
+            _as_json_object(row_obj, context="pr checks row") for row_obj in rows_obj
+        ]
     except ShipError:
         return None
 
@@ -807,11 +851,15 @@ def _pr_check_bucket(row: Mapping[str, object]) -> str:
 
 
 def _pr_check_name(row: Mapping[str, object]) -> str:
-    name = _compact_pr_checks_detail(str(row.get("name") or "unnamed check"), max_length=80)
+    name = _compact_pr_checks_detail(
+        str(row.get("name") or "unnamed check"), max_length=80
+    )
     return name or "unnamed check"
 
 
-def _compact_pr_checks_detail(text: str, *, max_length: int = _PR_CHECKS_DETAIL_MAX_LENGTH) -> str:
+def _compact_pr_checks_detail(
+    text: str, *, max_length: int = _PR_CHECKS_DETAIL_MAX_LENGTH
+) -> str:
     compact = re.sub(r"\s+", " ", _redact_gh_scalar(text)).strip()
     if len(compact) <= max_length:
         return compact
@@ -924,7 +972,10 @@ def pr_review_decision(
     if result.returncode != 0:
         return ""
     try:
-        data = _as_json_object(_loads_json(result.stdout, context="pr reviewDecision"), context="pr reviewDecision")
+        data = _as_json_object(
+            _loads_json(result.stdout, context="pr reviewDecision"),
+            context="pr reviewDecision",
+        )
         value = data.get("reviewDecision")
         return str(value) if value else ""
     except ShipError:
@@ -961,6 +1012,7 @@ def pr_edit_body(
     repo: str,
     cwd: str | None = None,
 ) -> CommandResult:
+    _require_scope_disposition_for_pr_mutation(runner=runner, cwd=cwd)
     with _body_file_args(body) as (body_flag, body_path):
         return _gh(
             runner,
@@ -1115,7 +1167,9 @@ def run_view(
     result = run_view_read(runner, run_id, repo=repo, cwd=cwd)
     if result.returncode != 0:
         _raise_read_failure(result)
-    data = _as_json_object(_loads_json(result.stdout, context="run view"), context="run view")
+    data = _as_json_object(
+        _loads_json(result.stdout, context="run view"), context="run view"
+    )
     return _workflow_run_from_json(data, context="run view")
 
 
@@ -1281,7 +1335,9 @@ def run_log_read(
     cwd: str | None = None,
 ) -> CommandResult:
     """Download the full combined log for a workflow run (gh run view --log)."""
-    return _retry_read(runner, ["run", "view", str(run_id), "--log", "--repo", repo], cwd=cwd)
+    return _retry_read(
+        runner, ["run", "view", str(run_id), "--log", "--repo", repo], cwd=cwd
+    )
 
 
 def run_list_successful_read(
@@ -1464,16 +1520,16 @@ def find_issue_comment_id_by_marker(
     if result.returncode != 0:
         msg = f"gh api comments fetch failed ({result.returncode})"
         raise ShipError(msg)
-    rows_obj = _loads_json_paginated_list(result.stdout or "[]", context="issue comments")
+    rows_obj = _loads_json_paginated_list(
+        result.stdout or "[]", context="issue comments"
+    )
     ids: list[int] = []
     for row_obj in rows_obj:
         row = _as_json_object(row_obj, context="issue comment row")
         body_obj = row.get("body")
         body = body_obj if isinstance(body_obj, str) else str(body_obj or "")
         first_line = (
-            body.split("\n", 1)[0].removeprefix("\ufeff").rstrip("\r")
-            if body
-            else ""
+            body.split("\n", 1)[0].removeprefix("\ufeff").rstrip("\r") if body else ""
         )
         if first_line == marker:
             ids.append(_as_int(row["id"], context="issue comments", field="id"))
@@ -1536,7 +1592,6 @@ def issue_comment_patch(
         Path(path).unlink(missing_ok=True)
 
 
-
 def issue_create(
     runner: Runner,
     *,
@@ -1552,6 +1607,7 @@ def issue_create(
     with _body_file_args(body, redact_body=redact_body) as (body_flag, body_path):
         argv.extend([body_flag, body_path])
         return _gh(runner, argv, cwd=cwd)
+
 
 def issue_comment(
     runner: Runner,
@@ -1607,7 +1663,9 @@ def issue_labels_list(
         cwd=cwd,
     )
     if result.returncode != 0:
-        raise ShipError(_combined(result) or f"gh issue labels failed ({result.returncode})")
+        raise ShipError(
+            _combined(result) or f"gh issue labels failed ({result.returncode})"
+        )
     return [line for line in result.stdout.splitlines() if line]
 
 
@@ -1675,7 +1733,6 @@ def label_create(
     )
 
 
-
 def issue_view_body(
     runner: Runner,
     issue: str,
@@ -1691,7 +1748,9 @@ def issue_view_body(
     if result.returncode != 0:
         msg = _combined(result) or f"gh issue view failed ({result.returncode})"
         raise ShipError(msg)
-    data = _as_json_object(_loads_json(result.stdout, context="issue view body"), context="issue view body")
+    data = _as_json_object(
+        _loads_json(result.stdout, context="issue view body"), context="issue view body"
+    )
     body = data.get("body")
     if body is None:
         return ""
@@ -1701,7 +1760,9 @@ def issue_view_body(
     raise ShipError(msg)
 
 
-def repo_name_with_owner_read(runner: Runner, *, cwd: str | None = None) -> CommandResult:
+def repo_name_with_owner_read(
+    runner: Runner, *, cwd: str | None = None
+) -> CommandResult:
     return _retry_read(
         runner,
         ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
@@ -1734,6 +1795,7 @@ def issue_edit_body_with_retry(
         _ = handle.write(redacted_body)
         path = handle.name
     try:
+
         def attempt() -> tuple[CommandResult, int, str]:
             result = _gh(
                 runner,
@@ -1745,7 +1807,9 @@ def issue_edit_body_with_retry(
         retried: RetryResult[CommandResult] = with_transient_retry(attempt)
         result = retried.value
         if result.returncode != 0:
-            raise ShipError(_combined(result) or f"gh issue edit failed ({result.returncode})")
+            raise ShipError(
+                _combined(result) or f"gh issue edit failed ({result.returncode})"
+            )
         return result
     finally:
         Path(path).unlink(missing_ok=True)
@@ -1826,7 +1890,18 @@ def pr_edit_body_file(
     cwd: str | None = None,
 ) -> BodyUpdateResult:
     if not Path(body_file).is_file():
-        return BodyUpdateResult(updated=False, error=f"body file not found: {body_file}", exit_code=2)
+        return BodyUpdateResult(
+            updated=False, error=f"body file not found: {body_file}", exit_code=2
+        )
+
+    try:
+        _require_scope_disposition_for_pr_mutation(runner=runner, cwd=cwd)
+    except NeedsUserInput:
+        return BodyUpdateResult(
+            updated=False,
+            error="scope-disposition required",
+            exit_code=config.EXIT_NEEDS_USER_INPUT,
+        )
 
     argv = ["gh", "pr", "edit", pr_number]
     if repo:
@@ -1882,7 +1957,10 @@ def run_logs_failed(
         text += combined
         if not combined.endswith("\n"):
             text += "\n"
-    if result.returncode != 0 and "is still in progress; logs will be available" in combined:
+    if (
+        result.returncode != 0
+        and "is still in progress; logs will be available" in combined
+    ):
         return text, 3
     if result.returncode != 0:
         return text, 1
@@ -1917,7 +1995,10 @@ def resolve_repo_main(argv: list[str]) -> int:
         return 1
     repo = resolve_repo(proc)
     if not repo:
-        print("ERROR=could not resolve repo (gh repo view + git remote both failed)", file=sys.stderr)
+        print(
+            "ERROR=could not resolve repo (gh repo view + git remote both failed)",
+            file=sys.stderr,
+        )
         return 1
     print(repo)
     return 0
