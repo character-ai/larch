@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- raw_todos_count already uses len(raw_items), so display truncation does not affect TODOS_LEFT_COUNT or disposition_required.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this code never filters validation todos, so the described omission-path is not present.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the stale check really runs before the no-disposition return, but stale dispositions are already treated as blocking, so this is a policy change rather than a required fix.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- there is no blocking-classifier pre-check in this path, so the claimed fail-open miss cannot occur.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_2.
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

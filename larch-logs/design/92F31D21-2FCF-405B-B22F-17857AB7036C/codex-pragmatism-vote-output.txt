@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- current code counts the full raw todos list, not the display window, so the undercount scenario is not real.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- there is no filtered validation-todo path here; the omission suffix logic is not doing what this concern describes.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the stale-record ordering is real, but it is an edge-case policy choice rather than a required fix for this feature.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the referenced blocking classifier/helper is not present in the touched path, so this is speculative.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_2.
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

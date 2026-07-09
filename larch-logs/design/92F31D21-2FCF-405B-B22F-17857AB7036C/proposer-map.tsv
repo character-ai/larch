@@ -1,0 +1,9 @@
+# attributed_ballot_sha256=1ab44d465c12ceee229ac3653deecdf570a74e9bfe884c1dab9a9ed6ff3a0d43
+# neutral_ballot_sha256=1443aeb18261395ee0b18cfb4be6fd78c2d50768894c047b990b1275e2413d4b
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Arch	- **Reviewer(s)**: Cursor-Arch
+FINDING_2	Cursor-Arch	- **Reviewer(s)**: Cursor-Arch
+FINDING_3	Cursor-Pragmatic	- **Reviewer(s)**: Cursor-Pragmatic
+FINDING_4	Cursor-dyn-Scope Gate Reviewer	- **Reviewer(s)**: Cursor-dyn-Scope Gate Reviewer
+OOS_1	Cursor-Pragmatic	- **Reviewer**: Cursor-Pragmatic
+OOS_2	Cursor-dyn-Scope Gate Reviewer	- **Reviewer**: Cursor-dyn-Scope Gate Reviewer
