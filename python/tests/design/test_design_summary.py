@@ -580,9 +580,9 @@ def test_render_final_summary_write_failure_rebuilds_fallback_with_detail_first(
         if args[:2] == ("render", "run-summary"):
             out_file = Path(args[args.index("--output-file") + 1])
             with out_file.open("w", encoding="utf-8") as fh:
-                fh.write("## /design run design-run-1: approved\n\n")
-                fh.write("- **Outcome**: ✅ DONE\n")
-                fh.write("<!-- larch:run-summary v=1 -->\n")
+                _ = fh.write("## /design run design-run-1: approved\n\n")
+                _ = fh.write("- **Outcome**: ✅ DONE\n")
+                _ = fh.write("<!-- larch:run-summary v=1 -->\n")
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
     def fake_gate(**_kw: object) -> None:
@@ -599,7 +599,7 @@ def test_render_final_summary_write_failure_rebuilds_fallback_with_detail_first(
         if self == tmp_path / "final-summary.md" and write_calls == 0:
             write_calls += 1
             raise OSError("simulated write failure")
-        return original_write_text(self, *args, **kwargs)
+        return original_write_text(self, *args, **kwargs)  # type: ignore[reportArgumentType]
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
     monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
