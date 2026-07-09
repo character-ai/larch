@@ -29,7 +29,7 @@ codex/testing                   │      █████████████
 
 - **Outcome**: shipping
 - **Duration**: 00:07:11
-- **Cost**: 💰 TOTAL ~$1.82: Claude $0.31, Codex-5.5 $1.08, Codex-mini $0.17, Cursor $0.11, Claude (subprocess) $0.15  |  Tokens: 2770k
+- **Cost**: 💰 TOTAL ~$2.82: Claude $1.31, Codex-5.5 $1.08, Codex-mini $0.17, Cursor $0.11, Claude (subprocess) $0.15  |  Tokens: 4891k
 - **Issue**: #6755: https://github.com/character-ai/larch/issues/6755
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
