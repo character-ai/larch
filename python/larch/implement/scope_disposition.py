@@ -12,7 +12,7 @@ import sys
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Final, Literal, cast
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -34,6 +34,39 @@ DEFERRED_INVENTORY = "deferred-plan-inventory.md"
 _MAX_TODO_ITEMS = 20
 _MAX_TODO_CHARS = 4000
 _MAX_UNTOUCHED_INVENTORY = 80
+_FULL_SUITE_TOKENS: Final[frozenset[str]] = frozenset({"suite", "suites"})
+_UNRUN_VALIDATION_TOKENS: Final[frozenset[str]] = frozenset(
+    {"incomplete", "skipped", "uncompleted", "unexecuted", "unrun"}
+)
+_NEGATED_VALIDATION_ACTION_TOKENS: Final[frozenset[str]] = frozenset(
+    {"completed", "executed", "finished", "ran", "run"}
+)
+_VALIDATION_BLOCKER_TOKENS: Final[frozenset[str]] = frozenset(
+    {
+        "add",
+        "added",
+        "broken",
+        "error",
+        "errors",
+        "fail",
+        "failed",
+        "failing",
+        "fails",
+        "failure",
+        "fixed",
+        "fixes",
+        "finish",
+        "fix",
+        "missing",
+        "unimplemented",
+        "write",
+        "writing",
+    }
+)
+_VALIDATION_COMMAND_TOKENS: Final[tuple[tuple[str, ...], ...]] = (
+    ("make", "py", "lint"),
+    ("make", "py", "test"),
+)
 
 
 @dataclass(frozen=True)
@@ -127,19 +160,68 @@ def _load_manifest_todos_raw(manifest_path: Path) -> list[object]:
     return cast("list[object]", raw)
 
 
+def _word_tokens(value: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"[a-z0-9]+", value.lower()))
+
+
+def _contains_token_sequence(
+    tokens: tuple[str, ...], sequence: tuple[str, ...]
+) -> bool:
+    sequence_len = len(sequence)
+    return any(
+        tokens[index : index + sequence_len] == sequence
+        for index in range(len(tokens) - sequence_len + 1)
+    )
+
+
+def _mentions_full_suite_validation(tokens: tuple[str, ...]) -> bool:
+    return (
+        "full" in tokens
+        and any(token in _FULL_SUITE_TOKENS for token in tokens)
+        and any(
+            _contains_token_sequence(tokens, sequence)
+            for sequence in _VALIDATION_COMMAND_TOKENS
+        )
+    )
+
+
+def _mentions_unrun_validation(tokens: tuple[str, ...]) -> bool:
+    if any(token in _UNRUN_VALIDATION_TOKENS for token in tokens):
+        return True
+    for index, token in enumerate(tokens):
+        if token not in _NEGATED_VALIDATION_ACTION_TOKENS:
+            continue
+        prior_tokens = tokens[max(0, index - 3) : index]
+        if "not" in prior_tokens or "never" in prior_tokens:
+            return True
+    return False
+
+
+def _is_nonblocking_full_suite_validation_todo(value: str) -> bool:
+    tokens = _word_tokens(value)
+    return (
+        not any(token in _VALIDATION_BLOCKER_TOKENS for token in tokens)
+        and _mentions_full_suite_validation(tokens)
+        and _mentions_unrun_validation(tokens)
+    )
+
+
 def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], int]:
-    """Return (sanitized_display_items, raw_entry_count)."""
+    """Return (sanitized_display_items, blocking_entry_count)."""
     if manifest_path is None:
         return (), 0
     if not _artifact_present(manifest_path):
         return (), 0
     raw_items = _load_manifest_todos_raw(manifest_path)
-    raw_count = len(raw_items)
-    lines: list[str] = []
-    budget = _MAX_TODO_CHARS
-    for item in raw_items[:_MAX_TODO_ITEMS]:
+    blocking_items: list[str] = []
+    for item in raw_items:
         if not isinstance(item, str):
             raise ShipError(f"resolved manifest schema-invalid: {manifest_path}")
+        if not _is_nonblocking_full_suite_validation_todo(item):
+            blocking_items.append(item)
+    lines: list[str] = []
+    budget = _MAX_TODO_CHARS
+    for item in blocking_items[:_MAX_TODO_ITEMS]:
         line = _safe_line(item)
         if not line:
             continue
@@ -147,9 +229,11 @@ def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], i
             break
         lines.append(line)
         budget -= len(line) + 1
-    if len(raw_items) > len(lines):
-        lines.append(f"… {len(raw_items) - len(lines)} more todo item(s) omitted")
-    return tuple(lines), raw_count
+    if len(blocking_items) > len(lines):
+        lines.append(
+            f"… {len(blocking_items) - len(lines)} more todo item(s) omitted"
+        )
+    return tuple(lines), len(blocking_items)
 
 
 def _git(runner: Runner, argv: Sequence[str], *, cwd: Path) -> CommandResult:
@@ -274,7 +358,7 @@ def compute_coverage(
     touched_count = total - untouched
     percent = int((untouched * 100) / total) if total > 0 else 0
     band = _coverage_band(total=total, untouched=untouched)
-    todos_left, raw_todos_count = _read_manifest_todos(manifest_path)
+    todos_left, blocking_todos_count = _read_manifest_todos(manifest_path)
     fingerprint = _fingerprint(
         plan_paths=plan_paths, touched_paths=touched, todos_left=todos_left
     )
@@ -287,10 +371,10 @@ def compute_coverage(
         plan_paths=plan_paths,
         touched_paths=touched,
         untouched_paths=untouched_paths,
-        todos_left_count=raw_todos_count,
+        todos_left_count=blocking_todos_count,
         todos_left=todos_left,
         fingerprint=fingerprint,
-        disposition_required=band == "high" or raw_todos_count > 0,
+        disposition_required=band == "high" or blocking_todos_count > 0,
         plan_fidelity_forced=band in {"middle", "high"},
         coverage_file=str(coverage_path(tmpdir)),
         untouched_file=str(tmpdir / UNTOUCHED_PATHS),

@@ -58,6 +58,8 @@
 
 Optional fields MAY be present in the non-`complete` statuses but are not required and are not consumed by downstream SKILL.md steps.
 
+`todos_left[]` is for actionable deferred implementation work only. It excludes validation-only notes about unrun full suites, including full `make py-lint` / `make py-test`, when `/implement` intentionally runs focused relevant checks and CI owns broad validation on the green path.
+
 `architectural_acknowledgment` is required only when Step 2 launch supplied valid architectural knowledge from `ARCHITECTURAL_INVARIANTS.md` and/or `ARCHITECTURAL_GUIDELINES.md`. The launcher records that decision in `$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env` as `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true|false`; the dispatcher treats a well-formed snapshot as authoritative and falls back to the shared reader predicate only when the snapshot is absent or malformed. Missing or empty acknowledgment on `status=complete` or `status=needs_qa` is a non-recoverable `STATUS=bailed REASON=architectural-acknowledgment-missing` result, with no `RECOVERY_FROM=` fallback and no dispatcher commit. `status=bailed` is exempt because the coder may have stopped before reading all context. This field proves visible acknowledgment only; reviewers enforce semantic compliance.
 
 ## Validation rules (dispatcher applies via `jq -e`)
