@@ -1634,9 +1634,12 @@ def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
     def fail_scrub(_directory: Path) -> tuple[int, int]:
         raise AssertionError("same-tree run-log commit must not re-scrub")
 
+    def noop_update(_manifest: Path) -> None:
+        return None
+
     monkeypatch.setattr(run_logs, "_scrub_run_tree", fail_scrub)
-    monkeypatch.setattr(run_logs, "_update_commit_manifest_with_warning", lambda _manifest: None)
-    monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", lambda _manifest: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_logs, "_update_commit_manifest_with_warning", noop_update)
+    monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", noop_update)  # type: ignore[arg-type]
 
     result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
         log_root=repo / "larch-logs",
