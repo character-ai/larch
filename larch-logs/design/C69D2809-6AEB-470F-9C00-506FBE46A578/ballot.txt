@@ -1,0 +1,25 @@
+### FINDING_1:
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Focus area**: correctness
+- **Location**: ARCHITECTURAL_GUIDELINES.md
+- **Concern**: Testing strategy never verifies the required Guidance bullet exists in the source file. Scenario: `parse_guideline_entries` omits `- Guidance:` from `architectural-guidelines read`, so the planned acceptance command can pass even if implement drops the Guidance line while Why and Deviate when remain
+- **Proposed resolution**: Add one post-edit check on the file itself (for example `rg -n '### G-Root-1:' -A5 ARCHITECTURAL_GUIDELINES.md` and confirm a `- Guidance:` line under that heading), since the issue required change and plan insert list both mandate Guidance but the read CLI cannot detect its absence
+
+### OOS_1: [SCOPE-REDUCTION] A new `## Execution roots` section adds structure beyond the minimum needed for one entry
+- **Description**: [SCOPE-REDUCTION] A new `## Execution roots` section adds structure beyond the minimum needed for one entry. Scenario: One extra top-level section increases doc surface and ordering constraints for a single guideline; `## CLI surface` already covers runtime entry and path resolution concerns
+- **Reviewer**: anonymous
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: ARCHITECTURAL_GUIDELINES.md
+- **Phase**: design
+
+
+
+### OOS_2: Doc-only G-Root-1 will not stop recurrence of the #4490 / #4509 / #6049 failure class by itself
+- **Description**: Doc-only G-Root-1 will not stop recurrence of the #4490 / #4509 / #6049 failure class by itself. Scenario: Aspirational text that `architectural-guidelines read` further strips of Guidance is easy for agents to miss during /design and /implement; the cited bugs needed code-path fixes, not just documentation
+- **Reviewer**: anonymous
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/larch/core/architectural_guidelines.py:257-288
+- **Phase**: design
