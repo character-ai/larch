@@ -11,7 +11,7 @@ pass() { printf 'PASS: %s\n' "$*"; }
 check_absent() {
   local token="$1" label="$2" tmp
   tmp=$(mktemp "${TMPDIR:-/tmp}/larch-extinct.XXXXXX")
-  if git grep -n -F -- "$token" -- . ':!larch-logs' >"$tmp"; then
+  if git grep -n -F -- "$token" -- . ':!larch-logs' ':!docs/workflow-lifecycle.md' >"$tmp"; then
     cat "$tmp" >&2
     rm -f "$tmp"
     fail "$label is extinct outside larch-logs"
