@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dead-code/test cleanup after mid-run removal; not necessary for feature correctness
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same scope-reduction cleanup; feature still ships without removing this extra helper surface
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- shipped prose/docs sync is useful but not required for the feature to work

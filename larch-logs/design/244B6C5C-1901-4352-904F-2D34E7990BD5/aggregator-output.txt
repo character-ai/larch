@@ -1,0 +1,28 @@
+### FINDING_1: Retained Gantt tests are missing from the migration list
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+- **Severity**: major
+- **Concern**: The rewrite uses `test_render_phase_detail_no_rounds` as a delete boundary, but retained pre-boundary tests that still exercise `render_phase_detail` Gantt helpers are not all listed for migration, so important unit coverage can be dropped by a literal line-based delete.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Replace the line-number boundary with an explicit live-only delete manifest; add `test_progress_label_fallbacks_and_manifest_precedence` and the three non-cap `test_progress_vendor_rows_*` tests to the required migration list (keep cap-reservation rows on the delete list per OOS_1)
+  - From Cursor-Requirements: Add those four tests to the explicit migration list (or state that every pre-boundary test targeting symbols still referenced by `render_phase_detail`/round-meta must move), and narrow the rewrite delete rule to live/mid-run tests only—not blanket deletion above the `test_render_phase_detail_no_rounds` line.
+
+### FINDING_2: Mid-run helpers in `progress_report.py` are not fully covered by Step 2 deletion and verification
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: major
+- **Concern**: The Step 2 delete manifest and post-delete `rg` only cover the live-discovery import surface, but several mid-run wrappers and design freshness helpers already defined in `progress_report.py` can survive as unreachable dead code after the live import block is removed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend Step 2 with those wrappers/helpers on the delete manifest; broaden post-delete verification to `rg '_render_implement|_render_design|_render_step5|_render_design_plan_review|_render_inflight_gantt|_render_review_detail|_render_design_review_detail|LiveRun|_discover_live_run|_report\(' python/larch/report/progress_report.py` and require zero matches
+  - From Cursor-Innovation: Add those symbols to the Step 2 delete inventory and extend post-removal verification with an rg pass that asserts they are absent from progress_report.py (not only that the live import block is gone)
+  - From Cursor-Pragmatic: Add those wrappers (and the design freshness helpers they call) to the explicit Step 2 delete list, drop `_call_render_phase_detail` with them, and extend the post-delete `rg` audit to match `_render_(review|design_review)_detail|_call_render_phase_detail|_prior_immediate_round_end_s`.
+
+### FINDING_3: The import audit needs the repository Python path
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: minor
+- **Concern**: The post-removal import audit is run from the repo root without `PYTHONPATH=python` or a `python/` working directory, so it can fail before it actually imports `larch.report.progress_report`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Change the command to set PYTHONPATH=python, or run it from the python/ directory, before importing larch.report.progress_report
+
+### OOS_1: Optional cap machinery cleanup [OUT_OF_SCOPE]
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Concern**: After inflight removal, `_cap_gantt_rows_reserving_apply` and the default `PROGRESS_GANTT_ROW_CAP` branch in `_progress_vendor_rows` are only exercised by deleted `_render_inflight_gantt`, so pruning that cap machinery would shrink the module further but is optional cleanup once final-report Gantt tests stay green.

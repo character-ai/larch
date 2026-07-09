@@ -1,0 +1,258 @@
+## Plan
+
+Retire the live progress report code path, not the breadcrumb statusline.
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so this plan is based on direct repo inspection. I found no `discussion-round1.md`, approved outline, or `brainstorm.md` files in the checkout.
+
+Keep these supported surfaces:
+
+- `python3 python/cli.py progress render-phase-detail`
+- `python3 python/cli.py progress write-design-round-meta`
+- `python3 python/cli.py progress write-implement-round-meta`
+- `python/larch/report/statusline.py` and `progress_file.py`
+
+Remove these retired surfaces:
+
+- `python/larch/report/_progress_report_live.py`
+- `progress_report._report`
+- `_discover_live_run`, `LiveRun`, pointer scanning, and session live-run ranking
+- Step 5 and design Step 3 live/mid-run renderers
+- legacy `_report` and `_discover_live_run` tests
+
+## Approach
+
+Delete order is strict: relocate every symbol still referenced by retained surfaces into `progress_report.py` **before** removing `_progress_report_live.py`. Do not delete the live module until a post-migration `rg` audit shows zero unresolved imports from it.
+
+**Mechanical helper migration rule.** After removing the `_progress_report_live` import block, relocate into `progress_report.py` every symbol still referenced by `render_phase_detail`, `_render_phase_detail_best_effort`, `_call_render_phase_detail`, `write_design_round_meta`, `write_implement_round_meta`, or their local helpers. Do not rely on a hand-picked keep list alone; use it as a checklist and extend it with anything `rg` still finds.
+
+**Pre-delete audit checklist (minimum explicit symbols).** Before deleting `_progress_report_live.py`, move at least:
+
+- `_PhaseRound`
+- `_add_round_vendor_cost_row`
+- `_round_vendor_cost_argv`
+- `_round_vendor_cost`
+- `_strip_md_for_terminal` (used by `_call_render_phase_detail`)
+- `_as_int`, `_nested_dict`, `_read_json_object`, `_read_lines_best_effort`
+- `_round_number`
+- `_fmt_hms`
+- `_timing_round_windows`, `_timing_round_attempt_windows`
+
+Also move any additional helpers `rg` shows are still referenced after the import block is removed (for example shared timing/token parsing used only through the live import today).
+
+**Post-removal verification.** After deleting the import block and before deleting the file:
+
+```bash
+rg '_progress_report_live|LiveRun|_discover_live_run|_report\(' python/larch/report/progress_report.py
+rg 'progress_report\._round_vendor_cost|progress_report\._PhaseRound' python/
+python3 -c 'from larch.report import progress_report; progress_report.render_phase_detail'
+```
+
+Confirm `_round_vendor_cost` and `_PhaseRound` resolve from `progress_report.py` with no live-module import.
+
+**Test migration order.** Migrate fixtures and retained-surface tests into `test_review_phase_detail.py` and confirm pytest collection passes **before** deleting or gutting `test_progress_report.py`. Do not delete `test_progress_report.py` until the migrated block is self-contained.
+
+Do not preserve compatibility re-exports for live-run symbols. The feature target is removal, not another shim.
+
+## Files to modify/create
+
+### REWRITTEN: python/larch/report/_progress_report_live.py
+
+Remove this file from the repo only **after** the helper migration in `progress_report.py` completes and the `rg` audit passes.
+
+Before deleting it, audit each helper imported by `progress_report.py`. Move every symbol still needed by `render_phase_detail`, `_render_phase_detail_best_effort`, `_call_render_phase_detail`, and the round-meta writers into `progress_report.py`.
+
+Do not preserve compatibility re-exports for live-run symbols.
+
+### UPDATED: python/larch/report/progress_report.py
+
+**Step 1 — relocate retained helpers.** Copy the pre-delete checklist symbols (and any additional `rg`-discovered dependents) from `_progress_report_live.py` into `progress_report.py`. Place them near existing phase-detail / round-meta code. Resolve duplicate constants or regexes by keeping one definition.
+
+**Step 2 — delete live/mid-run code.** Remove the `_progress_report_live` import block and all live/mid-run code that depends on it:
+
+- `LiveRun`
+- `_discover_live_run`
+- `_design_candidate`
+- `_implement_candidate`
+- `_render_implement`
+- `_render_design`
+- `_render_step5`
+- `_render_design_plan_review`
+- `_render_inflight_gantt`
+- `_render_generic`
+- `_render_ship_pr`
+- `_report`
+- freshness, manifest, pointer, and current-round helpers used only by those functions (for example `_current_round_dir`, `_review_rounds_root`, `_all_round_dirs_inflight`, `_latest_timing_mark`, `_latest_token_ledger` when only live renderers reference them)
+
+**Step 3 — keep retained surfaces intact.** Keep the phase-detail and round-meta implementation intact. Keep local helper functions needed by those paths, including:
+
+- `_round_number`
+- `_round_dirs` only if still referenced after live-path deletion; otherwise drop
+- `_count_lines` only if still referenced after live-path deletion; otherwise drop
+- `_read_json_object`, `_as_int`, `_nested_dict`, `_read_lines_best_effort`
+- `_timing_round_windows`, `_timing_round_attempt_windows`
+- `_round_vendor_cost`, `_add_round_vendor_cost_row`, `_round_vendor_cost_argv`
+- `_PhaseRound`
+- `_fmt_hms`
+- `_strip_md_for_terminal`
+- `_fallback_label_remap` and its existing local helpers
+
+After removal, clean imports and constants. Remove `time`, `Callable`, and other imports only used by the deleted live/mid-run path.
+
+Update comments that say `_render_phase_detail_best_effort` serves live callers. It should describe final-summary and wrapper callers only.
+
+**Step 4 — delete live module.** Delete `_progress_report_live.py` only after Steps 1–3 and verification pass.
+
+### UPDATED: python/tests/report/test_review_phase_detail.py
+
+Expand this file to own all retained `progress_report` coverage currently living in `test_progress_report.py`.
+
+**Fixture migration (required before deleting `test_progress_report.py`).** Copy or re-localize these helpers from `test_progress_report.py` into `test_review_phase_detail.py` (or a small sibling module imported only by retained report tests):
+
+- `_write_slot_manifest`
+- `_write_vendor_timing`
+- `_write_round_timing`
+- `_write_round_meta`
+- `_write_over_cap_plain_codex_review_rows` (for over-cap Gantt coverage)
+
+Keep helpers local and small. Do not import deleted live-run helpers (`_write_implement_pointer`, `_write_design_pointer`, `_sessions_root`, `_write_mark`, etc.).
+
+**Test migration.** Move surviving tests from `test_progress_report.py` into this file before any deletion:
+
+- `_round_vendor_cost_*` tests
+- `_fallback_label_remap_*` tests
+- `test_strip_md_for_terminal`
+- all `test_render_phase_detail_*` tests
+- `test_render_phase_detail_best_effort_timeout` (keep `threading` import)
+- `test_write_round_meta_helpers`
+- all `test_write_design_round_meta_*` and `test_write_implement_round_meta_*` tests
+- `test_parse_classification_tsv_counts_neutral_oos`
+- `test_top_reviewers_*`
+- `test_design_failure_label_resolves_real_slot_end_to_end`
+- `test_materialize_design_panel_manifest_keeps_model_fields`
+
+Include coverage for:
+
+- empty completed rounds
+- phase detail table rows
+- OOS proposed versus fileable split
+- reviewer attribution
+- dropped reviewer rows
+- canonical decomposition footnote
+- timing Gantt rows
+- attempt split rendering
+- token ledger cost windows
+- `_render_phase_detail_best_effort` timeout behavior
+- `write_implement_round_meta` edge cases (difficulty, canonical decomposition, review-tally env preference)
+- `write_design_round_meta` edge cases (security OOS, OOS split, collector from real records, panel manifest)
+
+After migration, run `python3 -m pytest python/tests/report/test_review_phase_detail.py --collect-only` and confirm collection succeeds with no imports from deleted live helpers.
+
+Do not delete `test_progress_report.py` until this file is self-contained.
+
+### REWRITTEN: python/tests/report/test_progress_report.py
+
+**Only after** `test_review_phase_detail.py` migration is self-contained and collects cleanly:
+
+- Delete this file entirely, or rewrite it down to zero live-report coverage if the test runner requires the path to remain.
+
+Delete tests for:
+
+- `progress_report._report`
+- `_discover_live_run`
+- design and implement pointer selection
+- stale session pointer ranking
+- `_render_step5`
+- `_render_design`
+- `_render_design_plan_review`
+- live in-flight Gantt rendering
+- all other live/mid-run renderer and pointer tests above the migrated `test_render_phase_detail_no_rounds` boundary
+
+Do not leave skipped tests for retired behavior.
+
+### MAY_UPDATE: python/complexity-baseline.json
+
+Update only if `make py-lint-main` or `python3 python/cli.py lint complexity-baseline` reports stale rows after function deletion.
+
+Expected cleanup may include rows for:
+
+- `larch/report/_progress_report_live.py`
+- deleted `progress_report.py` live renderer functions
+
+### MAY_UPDATE: python/ruff.toml
+
+Update only if complexity per-file ignores become stale after deleting `_progress_report_live.py` or simplifying `progress_report.py`.
+
+Remove the `_progress_report_live.py` per-file ignore entry when the file is deleted.
+
+Keep `progress_report.py` ignores only if live violations remain.
+
+### MAY_UPDATE: docs/progress-reporting.md
+
+Change only if a final grep finds stale public prose that claims live-discovery, typed `progress`, or mid-run report behavior still ships.
+
+Current inspected prose already says the old typed `p` / `progress` prompt hook and `progress report` command are retired, so no docs edit may be needed.
+
+## Edge cases
+
+- Do not break final-summary review detail. `review_phase_detail.py` calls `progress_report._render_phase_detail_best_effort`.
+- Do not remove round-meta writer helpers used by `plan_review.py` and `round_runner.py`.
+- Keep `render_phase_detail_main` CLI output byte-compatible.
+- Preserve tolerant parsing for old `round-meta.json` shapes.
+- Remove compatibility for deleted live-run private functions. Tests should not pin private retired names.
+- Deleting `_progress_report_live.py` before relocating `_PhaseRound` and the `_round_vendor_cost` helper chain breaks phase-detail rendering and round-meta writers.
+- Moving `test_render_phase_detail_*` without `_write_slot_manifest`, `_write_round_timing`, `_write_vendor_timing`, and `_write_round_meta` breaks pytest collection.
+
+## Failure modes
+
+- A helper moved out of `_progress_report_live.py` may be missed, causing import failure.
+- Tests may still monkeypatch deleted private functions.
+- Deleting `test_progress_report.py` before fixture migration drops retained-surface coverage and can break collection.
+- Complexity baseline may fail with stale deleted-function rows.
+- A too-broad cleanup could remove Gantt helper code still used by final reports.
+- Leaving `_progress_report_live.py` in place would miss the acceptance target.
+
+## Testing strategy
+
+**Phase 1 — migrate tests before deletion:**
+
+```bash
+python3 -m pytest python/tests/report/test_review_phase_detail.py --collect-only
+python3 -m pytest python/tests/report/test_review_phase_detail.py
+```
+
+**Phase 2 — after `test_progress_report.py` live-test removal:**
+
+```bash
+python3 -m pytest python/tests/report/test_review_phase_detail.py
+python3 -m pytest python/tests/report/test_final_report.py
+python3 -m pytest python/tests/review/test_plan_review.py -k write_design_round_meta
+python3 -m pytest python/tests/review/test_review_and_fix.py -k round_meta
+```
+
+Explicit retained-surface commands for round-meta writers:
+
+```bash
+python3 -m pytest python/tests/report/test_review_phase_detail.py -k 'write_round_meta or write_design_round_meta or write_implement_round_meta'
+python3 -m pytest python/tests/report/test_review_phase_detail.py -k 'round_vendor_cost or fallback_label_remap or render_phase_detail'
+```
+
+Then run lint for changed Python files:
+
+```bash
+make py-lint-main
+python3 python/cli.py checks run-relevant
+```
+
+If baselines change, run the specific baseline check after editing:
+
+```bash
+python3 python/cli.py lint complexity-baseline
+```
+
+## Confidence
+
+High. The direct consumer audit found the active CLI registry only uses `render-phase-detail` and round-meta writer entry points. The old live-report path is private test coverage plus the `_progress_report_live.py` re-export block. The revised helper migration rule and ordered test fixture migration address the accepted review gaps.
+
+difficulty: MODERATE
+oversize_override: operator
+diff_lines: 4200

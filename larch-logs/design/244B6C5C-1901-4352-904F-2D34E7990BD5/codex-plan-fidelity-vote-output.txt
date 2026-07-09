@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- `_strip_md_for_terminal` is optional cleanup; the feature still ships without pruning it.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- keeping a dead helper is suboptimal, but it does not block retiring the live/mid-run feature.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- stale prose in `write-final-report.md` is not required to complete the runtime retirement feature.

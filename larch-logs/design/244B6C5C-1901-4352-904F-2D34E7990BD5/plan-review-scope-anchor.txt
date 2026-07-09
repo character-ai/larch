@@ -1,0 +1,22 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-correctness, codex-specialist-correctness, cursor-specialist-edge-cases, codex-specialist-edge-cases, codex-specialist-testing, cursor-specialist-plan-fidelity-auto
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+The live-discovery module, mid-run renderers, and legacy report tests are still present, so the plan’s acceptance target to fully retire live discovery and mid-run machinery is not met.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness: Delete _progress_report_live.py, strip mid-run paths from progress_report.py, and remove _report/_discover_live_run tests.
+  - From codex-specialist-correctness: Delete _progress_report_live.py, remove re-exports and mid-run renderers, and keep only phase-detail and round-meta surfaces.
+  - From cursor-specialist-edge-cases: Delete _progress_report_live.py, mid-run renderers, and legacy _report tests; keep only render-phase-detail and round-meta surfaces.
+  - From codex-specialist-edge-cases: Finish the consumer audit, delete _progress_report_live.py and the remaining legacy tests, and keep only render-phase-detail plus the round-meta verbs.
+  - From codex-specialist-testing: delete _progress_report_live.py, remove the live-report re-exports and _report/mid-run renderers from progress_report.py, and move any surviving phase-detail coverage into the dedicated review-phase-detail test file.
+  - From cursor-specialist-plan-fidelity-auto: Delete _progress_report_live.py after consumer audit; strip mid-run code from progress_report.py; remove live-discovery tests from test_progress_report.py; keep render_phase_detail and round-meta writers.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
