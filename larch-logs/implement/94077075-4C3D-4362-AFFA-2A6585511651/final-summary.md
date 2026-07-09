@@ -1,8 +1,8 @@
-## /implement run 94077075-4C3D-4362-AFFA-2A6585511651: stalled
+## /implement run 94077075-4C3D-4362-AFFA-2A6585511651: pr-created
 
-- **Outcome**: ❌ STALLED
+- **Outcome**: ✅ DONE
 - **Duration**: 00:20:54
-- **Cost**: 💰 TOTAL ~$9.41: Claude $1.02, Codex-5.5 $1.73, Codex-mini $1.43, Cursor $4.94, Claude (subprocess) $0.29  |  Tokens: 22356k
+- **Cost**: 💰 TOTAL ~$11.14: Claude $2.75, Codex-5.5 $1.73, Codex-mini $1.43, Cursor $4.94, Claude (subprocess) $0.29  |  Tokens: 26460k
 - **Issue**: #6650: https://github.com/character-ai/larch/issues/6650
 - **PR**: #6661: https://github.com/character-ai/larch/pull/6661
 - **Plan review**: N/A
@@ -10,7 +10,7 @@
 - **Difficulty**: predicted MODERATE; applied MODERATE; override operator
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0 findings
-- **Lines (PR diff)**: code +135/-9, larch-logs +674/-0
+- **Lines (PR diff)**: code +136/-10, larch-logs +668/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -64,3 +64,11 @@ codex/pragmatism-vote           │                                             
 
 **Reviewer slot failures**: 1
 - codex/correctness: 1
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
