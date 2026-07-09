@@ -273,8 +273,9 @@ def _manifest_bail_signal(*, run_dir: Path, manifest: object | None, pr: int = 0
     if not fs.is_file():
         return False
     for line in fs.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.strip():
-            return bool(_TERMINAL_RE.search(line.strip()))
+        heading = line.strip()
+        if heading.startswith("## /") and _TERMINAL_RE.search(heading):
+            return True
     return False
 
 

@@ -172,6 +172,10 @@ def test_write_final_report_includes_review_timing_gantt(tmp_path: Path, monkeyp
         "v1\tvendor\t150\timplement\t-\tcodex\tcodex-review\t120\t150\t30\tcodex-output.txt\t0\tsignal\n",
         encoding="utf-8",
     )
+    (tmp_path / "execution-issues.md").write_text(
+        "### Warnings\n- review run warning\n",
+        encoding="utf-8",
+    )
     _stub_cost_and_assessment(monkeypatch)
 
     rc, url, err = final_report.write_final_report(
@@ -185,6 +189,10 @@ def test_write_final_report_includes_review_timing_gantt(tmp_path: Path, monkeyp
     assert "codex/codex-review" in summary
     assert "█" in summary
     assert "│ 30s" in summary
+    assert "<!-- larch:run-summary v=1 -->" in summary
+    assert "## Exec Issues and Warnings" in summary
+    assert summary.index("## Review Phase Detail") < summary.index("## Exec Issues and Warnings")
+    assert summary.index("## Exec Issues and Warnings") < summary.index("<!-- larch:run-summary v=1 -->")
     assert "No review rounds completed." not in summary
     assert "No reviewer timing tasks overlapped this round." not in summary
     assert "No reviewer timing tasks overlapped" not in summary
@@ -213,7 +221,9 @@ def test_write_final_report_includes_uncapped_review_timing_gantt(tmp_path: Path
     ]
     for summary_path in summary_paths:
         body = summary_path.read_text(encoding="utf-8")
+        assert "<!-- larch:run-summary v=1 -->" in body
         assert "### Round 1 reviewer timing" in body
+        assert body.index("## Review Phase Detail") < body.index("<!-- larch:run-summary v=1 -->")
         assert "```" in body
         assert "█" in body
         assert latest_label in body
@@ -435,7 +445,9 @@ def test_write_final_report_appends_exec_warning_detail_to_summary_and_run_log(
     summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
     run_summary = (tmp_path / "larch-logs" / "implement" / "run1" / "final-summary.md").read_text(encoding="utf-8")
     for body in (summary, run_summary):
+        assert "<!-- larch:run-summary v=1 -->" in body
         assert "## Exec Issues and Warnings" in body
+        assert body.index("## Exec Issues and Warnings") < body.index("<!-- larch:run-summary v=1 -->")
         assert "Exec Issues (1):" in body
         assert "step: failed with suffix" in body
         assert "Warnings (1):" in body
@@ -792,7 +804,9 @@ def test_architectural_guidelines_section_current_note_does_not_invalidate(
 
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
     assert (rc, err) == (0, "")
-    assert "note" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "note" in body
+    assert body.index("## Architectural guidelines") < body.index("<!-- larch:run-summary v=1 -->")
 
 
 def test_write_final_report_warn_count_dynamic_drop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

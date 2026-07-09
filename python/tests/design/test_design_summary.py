@@ -1,5 +1,7 @@
 """Unit coverage for /design final-summary helpers, plus CLI-port smoke re-export."""
 
+# pyright: reportUnusedCallResult=false, reportArgumentType=false
+
 from __future__ import annotations
 
 import subprocess
@@ -218,19 +220,32 @@ def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
 ) -> None:
     upsert_bodies = _install_final_summary_env(tmp_path, monkeypatch)
     _write_design_round_fixture(tmp_path, with_timing=True)
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Warnings\n- plan review warning\n",
+        encoding="utf-8",
+    )
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved", "--repo", "o/r"])
 
     assert rc == 0
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
+    assert "<!-- larch:run-summary v=1 -->" in body
     assert "## Review Phase Detail" in body
+    assert "## Exec Issues and Warnings" in body
+    assert body.index("## Review Phase Detail") < body.index("## Exec Issues and Warnings")
+    assert body.index("## Exec Issues and Warnings") < body.index("<!-- larch:run-summary v=1 -->")
     assert "| 1 | 4 | 2 | 1 | 0 | 1m 05s | N/A | 1 |" in body
     assert "### Round 1 reviewer timing" in body
     assert "```\n" in body
+    assert "<!-- larch:run-summary v=1 -->" in stdout
     assert "## Review Phase Detail" in stdout
+    assert stdout.index("## Review Phase Detail") < stdout.index("## Exec Issues and Warnings")
+    assert stdout.index("## Exec Issues and Warnings") < stdout.index("<!-- larch:run-summary v=1 -->")
     assert upsert_bodies
     assert "## Review Phase Detail" in upsert_bodies[0]
+    assert upsert_bodies[0].index("## Review Phase Detail") < upsert_bodies[0].index("## Exec Issues and Warnings")
+    assert upsert_bodies[0].index("## Exec Issues and Warnings") < upsert_bodies[0].index("<!-- larch:run-summary v=1 -->")
 
 
 def test_render_final_summary_pre_phase_counts_without_detail(
@@ -302,7 +317,9 @@ def test_render_final_summary_appends_exec_warning_detail(
     assert rc == 0
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
+    assert "<!-- larch:run-summary v=1 -->" in body
     assert "## Exec Issues and Warnings" in body
+    assert body.index("## Exec Issues and Warnings") < body.index("<!-- larch:run-summary v=1 -->")
     assert "Exec Issues (1):" in body
     assert "Warnings (3):" in body
     assert "warn: duplicate \u00d72" in body
@@ -311,8 +328,10 @@ def test_render_final_summary_appends_exec_warning_detail(
     assert raw_secret not in body
     assert "<REDACTED-TOKEN>" in body
     assert "## Exec Issues and Warnings" in stdout
+    assert stdout.index("## Exec Issues and Warnings") < stdout.index("<!-- larch:run-summary v=1 -->")
     assert upsert_bodies
     assert "Warnings (3):" in upsert_bodies[0]
+    assert upsert_bodies[0].index("## Exec Issues and Warnings") < upsert_bodies[0].index("<!-- larch:run-summary v=1 -->")
 
 
 def test_render_final_summary_missing_timing_keeps_table_without_gantt(
@@ -545,6 +564,58 @@ def test_render_final_summary_write_failure_skips_upsert(
 
     assert rc == 1
     assert not upsert_calls
+
+
+def test_render_final_summary_write_failure_rebuilds_fallback_with_detail_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "design-run-1")
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Warnings\n- warn1\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("render", "run-summary"):
+            out_file = Path(args[args.index("--output-file") + 1])
+            with out_file.open("w", encoding="utf-8") as fh:
+                _ = fh.write("## /design run design-run-1: approved\n\n")
+                _ = fh.write("- **Outcome**: ✅ DONE\n")
+                _ = fh.write("<!-- larch:run-summary v=1 -->\n")
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    def fake_gate(**_kw: object) -> None:
+        return
+
+    def fake_render_design_review_detail(_design_tmpdir: Path) -> str:
+        return "## Review Phase Detail\n- recovered review\n"
+
+    original_write_text = Path.write_text
+    write_calls = 0
+
+    def flaky_write_text(self: Path, *args: object, **kwargs: object) -> int:
+        nonlocal write_calls
+        if self == tmp_path / "final-summary.md" and write_calls == 0:
+            write_calls += 1
+            raise OSError("simulated write failure")
+        return original_write_text(self, *args, **kwargs)  # type: ignore[reportArgumentType]
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
+    monkeypatch.setattr(design_summary.review_phase_detail, "render_design_review_detail", fake_render_design_review_detail)
+    monkeypatch.setattr(design_summary.Path, "write_text", flaky_write_text)
+
+    rc = design_summary.render_final_summary_main(["--outcome", "approved", "--repo", "o/r"])
+
+    assert rc == 1
+    assert write_calls == 1
+    body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert body.index("## Review Phase Detail") < body.index("## Exec Issues and Warnings")
+    assert body.index("## Exec Issues and Warnings") < body.index("## /design run design-run-1: approved")
+    assert body.index("## /design run design-run-1: approved") < body.index("<!-- larch:run-summary v=1 -->")
 
 
 def test_difficulty_summary_line_prefers_record(tmp_path: Path) -> None:

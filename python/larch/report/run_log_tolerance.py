@@ -35,8 +35,14 @@ def manifest_pr_evidence_matches(*, manifest: object | None, pr: int) -> bool:
 
 
 def stale_bail_heading_with_pr_evidence(*, run_dir: Path, manifest: object | None, pr: int) -> bool:
-    heading = first_nonempty_line(run_dir / "final-summary.md")
-    return bool(_STALE_BAIL_HEADING_RE.search(heading) and manifest_pr_evidence_matches(manifest=manifest, pr=pr))
+    summary = run_dir / "final-summary.md"
+    if not summary.is_file():
+        return False
+    for line in summary.read_text(encoding="utf-8", errors="replace").splitlines():
+        heading = line.strip()
+        if heading.startswith("## /") and _STALE_BAIL_HEADING_RE.search(heading):
+            return manifest_pr_evidence_matches(manifest=manifest, pr=pr)
+    return False
 
 
 def final_summary_terminal_heading(run_dir: Path) -> bool:
@@ -44,8 +50,9 @@ def final_summary_terminal_heading(run_dir: Path) -> bool:
     if not summary.is_file():
         return False
     for line in summary.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.strip():
-            return bool(_TERMINAL_OUTCOME_SUFFIX.search(line.rstrip("\r\n")))
+        heading = line.strip()
+        if heading.startswith("## /") and _TERMINAL_OUTCOME_SUFFIX.search(heading):
+            return True
     return False
 
 
