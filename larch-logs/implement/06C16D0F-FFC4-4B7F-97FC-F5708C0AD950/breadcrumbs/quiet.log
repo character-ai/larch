@@ -6,6 +6,8 @@
 === larch-quiet-read-session-env-key.sh-1002.log ===
 === larch-quiet-read-session-env-key.sh-27832.log ===
 read-session-env-key.sh: --file is required
+=== larch-quiet-read-session-env-key.sh-36171.log ===
+read-session-env-key.sh: --file is required
 === larch-quiet-read-session-env-key.sh-54254.log ===
 === larch-quiet-read-session-env-key.sh-54282.log ===
 === larch-quiet-read-session-env-key.sh-54285.log ===
@@ -30,6 +32,8 @@ read-session-env-key.sh: --file is required
 === larch-quiet-sessionstart-health.sh-29310.log ===
 === larch-quiet-sessionstart-health.sh-32637.log ===
 === larch-quiet-sessionstart-health.sh-33479.log ===
+=== larch-quiet-sessionstart-health.sh-38047.log ===
+=== larch-quiet-sessionstart-health.sh-39161.log ===
 === larch-quiet-sessionstart-health.sh-43677.log ===
 === larch-quiet-sessionstart-health.sh-5320.log ===
 === larch-quiet-sessionstart-health.sh-9651.log ===
