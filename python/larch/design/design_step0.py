@@ -163,7 +163,6 @@ def step0_session_main(argv: Sequence[str]) -> int:
     plugin_root = require_plugin_root(ns.plugin_root)
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
-    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
     bootstrap._install_statusline_best_effort()
     setup = subprocess.run(
         _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
@@ -197,6 +196,23 @@ def step0_session_main(argv: Sequence[str]) -> int:
     rc = subprocess.run(wdce, check=False).returncode
     if rc != 0:
         return rc
+    active_run_id = parsed.get("run_id", "") or session_id
+    _run_best_effort(
+        command=_cli_cmd(
+            plugin_root,
+            "progress",
+            "activate",
+            "--repo-root",
+            str(repo_root),
+            "--run-id",
+            active_run_id,
+        ),
+        env=env,
+    )
+    _run_best_effort(
+        command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"),
+        env={**env, "LARCH_TIMING_SKILL": "design"},
+    )
     gate = subprocess.run(
         _cli_cmd(
             plugin_root,

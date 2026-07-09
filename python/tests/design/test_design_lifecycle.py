@@ -60,6 +60,18 @@ def _fake_parse_none(*_args: object, **_kwargs: object) -> tuple[int, dict[str, 
     )
 
 
+def _fake_parse_with_run_id(run_id: str) -> Callable[..., tuple[int, dict[str, str], str]]:
+    def fake_parse(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:
+        rc, parsed, stderr = _fake_parse_none()
+        return rc, {**parsed, "run_id": run_id}, stderr
+
+    return fake_parse
+
+
+def _cmd_arg(cmd: Sequence[str], flag: str) -> str:
+    return cmd[cmd.index(flag) + 1]
+
+
 def _fake_read_json_issue_title(*_args: object, **_kwargs: object) -> tuple[str, str, str]:
     return ("Title", "body", "false")
 
@@ -493,7 +505,7 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
     assert "--check-reviewers" in setup_cmds[0]
 
 
-def test_step0_session_threads_repo_root_to_design_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step0_session_threads_repo_root_to_design_env_and_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     home.mkdir()
     design = tmp_path / "design"
@@ -523,6 +535,9 @@ def test_step0_session_threads_repo_root_to_design_env(tmp_path: Path, monkeypat
         if "write-design-env" in joined:
             captured.append(cmd)
             return subprocess.CompletedProcess(cmd, 0, "", "")
+        if cmd[2:4] == ["progress", "activate"]:
+            captured.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
         return subprocess.CompletedProcess(cmd, 0, "", "")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
@@ -530,9 +545,70 @@ def test_step0_session_threads_repo_root_to_design_env(tmp_path: Path, monkeypat
 
     assert design_lifecycle.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]) == 0
     assert captured
-    write_cmd = captured[0]
+    write_cmd = next(cmd for cmd in captured if cmd[2:4] == ["session", "write-design-env"])
+    progress_cmd = next(cmd for cmd in captured if cmd[2:4] == ["progress", "activate"])
     assert "--repo-root" in write_cmd
-    assert write_cmd[write_cmd.index("--repo-root") + 1] == str(repo.resolve())
+    assert _cmd_arg(write_cmd, "--repo-root") == str(repo.resolve())
+    assert _cmd_arg(progress_cmd, "--repo-root") == _cmd_arg(write_cmd, "--repo-root")
+    assert _cmd_arg(progress_cmd, "--run-id") == "run-1"
+
+
+def test_step0_session_progress_activate_uses_parsed_run_id_before_timing_and_fails_soft(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    commands: list[list[str]] = []
+
+    def fake_setup(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            "SESSION_TMPDIR="
+            + str(design)
+            + "\nSESSION_ID=session-fallback\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n",
+            "",
+        )
+
+    def fake_gate(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "DEGRADED=false\nBOTH_DOWN=false\n", "")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(list(cmd))
+        joined = " ".join(cmd)
+        if cmd[2:4] == ["session", "setup"]:
+            return fake_setup(cmd, **kwargs)
+        if "degraded-tools-gate" in joined:
+            return fake_gate(cmd, **kwargs)
+        if cmd[2:4] == ["progress", "activate"]:
+            return subprocess.CompletedProcess(cmd, 7, "", "activate failed")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_with_run_id("explicit-run"))
+
+    buf = StringIO()
+    with redirect_stdout(buf):
+        rc = design_lifecycle.step0_session_main(
+            ["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]
+        )
+    assert rc == 0
+    assert "STEP0_STATUS=ok" in buf.getvalue()
+    progress_idx = next(
+        index for index, cmd in enumerate(commands) if cmd[2:4] == ["progress", "activate"]
+    )
+    timing_idx = next(
+        index
+        for index, cmd in enumerate(commands)
+        if cmd[2:5] == ["timing", "mark", "design Step 0: session setup"]
+    )
+    progress_cmd = commands[progress_idx]
+    assert _cmd_arg(progress_cmd, "--run-id") == "explicit-run"
+    assert progress_idx < timing_idx
 
 
 def test_init_runparams_refresh_preserves_step0_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
