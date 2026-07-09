@@ -1860,7 +1860,7 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
             round_cap = min(round_cap, difficulty.tier_ceiling(panel_tier))
         escalations = record.get("escalations")
         object_data.update(
-            {
+            {  # type: ignore[reportUnknownArgumentType]
                 "tier_in_effect": panel_tier or object_data.get("tier_in_effect"),
                 "ceiling_in_effect": round_cap if round_cap is not None else object_data.get("ceiling_in_effect"),
                 "applied_tier": str(record.get("applied_tier") or ""),
