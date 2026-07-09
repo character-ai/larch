@@ -1,0 +1,4 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements	accepted	YES	true	major	good	false	codex-validity	YES	true	major	good	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	major	in_scope
+FINDING_2	Cursor-Arch, Codex-Arch, Cursor-Innovation, Cursor-Requirements, Codex-Requirements	accepted	YES	true	major	excellent	false	codex-validity	YES	true	major	excellent	false	codex-plan-fidelity	YES	true	major	excellent	false	codex-pragmatism	major	in_scope
+FINDING_3	Cursor-Innovation	rejected	NO	true	nit	good	false	codex-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	NO	true	nit	adequate	false	codex-pragmatism	minor	in_scope

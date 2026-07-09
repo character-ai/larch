@@ -1,0 +1,98 @@
+## Scope
+
+Fix the triage fabrication class, not only the observed run. Use direct path-based evidence reads, then make ingest reject schema-valid rows that lack proof that the bundle content was read.
+
+## Files to modify/create
+
+### UPDATED: .claude/agents/bug-fix-triage.md
+
+- Change `tools: []` to a narrow Read-only tool list.
+- Update the prompt contract:
+  - The Task prompt gives one triage batch path.
+  - Read the batch file.
+  - Read each `bundle_path` listed in that batch.
+  - Never judge a bundle whose file could not be read.
+  - For unreadable or malformed bundles, emit `NEEDS_DEEP`, `needs_deep: true`, and a reason that names the read failure.
+  - Do not invent file contents, tool transcripts, or missing bundle evidence.
+- Add the new required JSONL field:
+  - `evidence_token`
+- Instruct the agent to echo the exact token from the bundle content for each issue.
+
+### UPDATED: .claude/skills/analyze-bugs/SKILL.md
+
+- Replace the infeasible Stage 1 inline-bundle instruction.
+- Tell the orchestrator to launch `bug-fix-triage` with only the triage batch path and explicit instructions to read batch and bundle files.
+- Keep output saved under `$RUN_DIR/triage-results-N.jsonl`.
+- State that the batch JSONL must not include the evidence token.
+- State that `analyze-bugs ledger --ingest-triage` rejects missing or mismatched `evidence_token` rows.
+- Keep the workflow report-only and approval-gated for follow-up filing.
+
+### UPDATED: python/larch/issue/analyze_bugs.py
+
+- Add an `evidence_token` field to `BundleRecord`, with tolerant loading for older manifests that lack it.
+- Generate a fresh high-entropy token when building each bundle.
+  - Use a coordinator-authored value, not model output.
+  - Embed it in the bundle markdown near the top.
+  - Store it in the manifest record.
+  - Do not write it into `triage-batch-*.jsonl` or `triage-pending-*.jsonl`.
+- Extend `TriageIngest` and `_parse_triage_row` to require exactly these fields:
+  - `issue`
+  - `verdict`
+  - `missing_items`
+  - `reason`
+  - `needs_deep`
+  - `evidence_token`
+- During triage ingest, compare `parsed.evidence_token` with the manifest bundle token.
+  - Reject the row when the token is missing, empty, or wrong.
+  - Reject triage rows for old manifests whose bundle record has no token.
+  - Count and warn like the existing rejected-row paths.
+- Preserve deep-ingest behavior and existing ledger read tolerance.
+- Keep cache-key logic unchanged, unless tests show token inclusion is needed. The token proves this run's read, not stable issue identity.
+
+### UPDATED: python/tests/issue/test_analyze_bugs.py
+
+- Update existing triage JSONL fixtures to include `evidence_token` where they should be accepted.
+- Add a test that generated bundles contain an evidence token and pending triage batch JSONL does not expose it.
+- Add a test that `ledger_ingest(..., triage_path=...)` accepts a row with the correct token.
+- Add tests that ingest rejects:
+  - missing `evidence_token`
+  - wrong `evidence_token`
+  - a manifest bundle with no token
+- Add or update one static regression check that `.claude/agents/bug-fix-triage.md` grants `Read` and does not contain `tools: []`.
+
+### UPDATED: docs/skills.md
+
+- Update the `/analyze-bugs` summary to say Stage 1 passes batch paths to a Read-capable Haiku triage agent.
+- Mention that triage ingest requires the bundle evidence token echoed from file content.
+
+## Approach
+
+1. Make the agent capable of reading evidence.
+2. Make the skill dispatch contract executable at current bundle caps by passing paths, not inline bundle content.
+3. Add a coordinator-authored proof-of-read token inside each bundle.
+4. Require that token at ingest.
+5. Keep the token out of the batch file so a path-only or batch-only agent cannot satisfy the gate.
+6. Keep the change local to `/analyze-bugs`. Do not resize batches unless a later performance issue requires it.
+
+## Edge cases
+
+- Old manifests without `evidence_token` should not accept new triage rows. Fail closed and route the operator toward rerunning prefetch.
+- `NEEDS_DEEP` rows still need the correct token. An unreadable bundle row without a token must be rejected, not trusted.
+- Duplicate issue rows should still be rejected before or after token validation with clear warnings.
+- Deep verifier ingest must remain compatible with its existing three-field JSONL contract.
+- Existing ledger rows should remain readable so old reports do not break.
+
+## Failure modes
+
+- If the triage agent cannot read a bundle, it may emit `NEEDS_DEEP`, but ingest will reject it unless it read enough bundle content to echo the token. That is intentional. It prevents an unread agent from authoring data that disarms the gate.
+- If an orchestrator accidentally inlines bundle content including the token, the token gate cannot prove tool use. The skill prompt must therefore forbid inlining and require path-only dispatch.
+- If token generation is deterministic from fields visible in the batch JSONL, a model could infer it. Use a random high-entropy token.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/issue/test_analyze_bugs.py`.
+- Run the relevant Markdown and agent config lint for the changed agent and skill files, for example through `python3 python/cli.py checks run-relevant` after edits.
+- If relevant checks are too broad for the implementation turn, run the scoped pre-commit hooks for `.claude/agents/bug-fix-triage.md`, `.claude/skills/analyze-bugs/SKILL.md`, and `docs/skills.md`.
+
+difficulty: HARD
+diff_lines: 190
