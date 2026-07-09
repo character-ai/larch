@@ -1,0 +1,188 @@
+## Scope
+
+Implement the bgjob acceptance leftovers without editing PR #6706. Record the Section E table in the new PR as committed docs.
+
+## Files to modify/create
+
+### UPDATED: scripts/test-bgjob.sh
+
+Rewrite the current pytest wrapper into one Bash 3.2-compatible real-process harness.
+
+Cover these scenarios:
+
+1. `bgjob start` prints exactly one line:
+   `BGJOB_STATUS=STARTED STEP=<name> PGID=<n>`
+2. Owner death:
+   - start a live owner process
+   - start a long child with `--owner-pid <owner-pid>`
+   - kill the owner
+   - wait for `BGJOB_RC=orphaned`
+3. Budget expiry:
+   - start a long child with `--budget-s 1`
+   - wait for `BGJOB_RC=timeout`
+4. External daemon kill:
+   - start a long child
+   - read the daemon PID from the registry row
+   - kill only the daemon
+   - assert `bgjob wait` reports `BGJOB_STATUS=DEAD` within one short wait interval
+5. `bgjob reap` synthetic recycled-PID row:
+   - create a registry row with valid paths
+   - point the child PID at a live process, but use mismatched recorded identity data
+   - run `bgjob reap`
+   - assert the row is removed
+   - assert the live PID still exists
+6. Bad step names:
+   - assert names with `..`, `/`, and `\` reject with rc 2 and `BGJOB_ERROR`.
+
+Harness details:
+
+- Use a private `mktemp -d` root.
+- Set `LARCH_BGJOB_REGISTRY_ROOT` under that root.
+- Set the new test-only timing env vars only inside this script.
+- Use cleanup traps to kill any live child, owner, or leftover process group that the test started.
+- Add a probe at the top that verifies `ps` identity capture works. If the sandbox blocks it, print a clear `SKIP: ...` line and exit 0.
+- Do not call `python3 -m pytest python/tests/bgjob -q` from this script. Pytest coverage stays in `make py-test`.
+
+### UPDATED: python/larch/core/config.py
+
+Add config constants for test-only bgjob timing overrides.
+
+Suggested names:
+
+- `ENV_TEST_BGJOB_OWNER_GRACE_S: Final = "LARCH_TEST_BGJOB_OWNER_GRACE_S"`
+- `ENV_TEST_BGJOB_DAEMON_POLL_INTERVAL_S: Final = "LARCH_TEST_BGJOB_DAEMON_POLL_INTERVAL_S"`
+
+Keep production defaults unchanged:
+
+- `BGJOB_OWNER_GRACE_S = 120`
+- `BGJOB_DAEMON_POLL_INTERVAL_S = 1.0`
+
+### UPDATED: python/larch/bgjob/daemon.py
+
+Route the monitor timing through small helpers that read the new config constants.
+
+Implementation shape:
+
+- Add a narrow float parser for the two test-only env vars.
+- Empty or unset env means the production constant.
+- Invalid, negative, NaN, or infinite values should fail closed with a clear error.
+- Use the resolved grace value in `_check_owner_validation`.
+- Use the resolved poll interval in `_monitor`.
+- Do not change daemon lifecycle, wait, registry, result-env, or process-signaling semantics.
+
+Keep the helper private to bgjob. Do not document it as a user-facing knob.
+
+### UPDATED: python/tests/bgjob/test_daemon.py
+
+Add or update focused tests for the timing override parser.
+
+Cover:
+
+- unset env returns production defaults
+- valid env returns the override
+- invalid env raises a clear error
+- existing monkeypatch-based owner-grace tests keep working
+
+### NEW: python/tests/bgjob/test_reap.py
+
+Add pytest coverage for `cli.reap_main`.
+
+Cover:
+
+1. Stale dead row is removed.
+   - fake `registry.iter_entries`
+   - child and daemon liveness both false
+   - assert `registry.unlink_entry` was called
+   - assert `BGJOB_REAPED=1`
+2. Identity-mismatched recycled PID is not signaled.
+   - expired entry path
+   - fake `terminate_validated_process_group` to return a mismatch verdict
+   - assert the call used the recorded child identity
+   - assert no direct kill helper is invoked by reap
+   - assert the row is unlinked
+3. Live identity-valid row is preserved.
+   - child and daemon liveness true
+   - not expired
+   - assert no unlink and no terminate
+   - assert `BGJOB_REAPED=0`
+4. Invalid registry rows are removed.
+   - include one `(path, None)` row
+   - assert unlink and count
+
+Keep these as unit tests. The real-process recycled-PID behavior belongs in `scripts/test-bgjob.sh`.
+
+### UPDATED: python/env-via-config-constant-baseline.json
+
+Regenerate with:
+
+`make regen-env-via-config-constant-baseline`
+
+Do not hand-edit.
+
+Expected effect:
+
+- remove the stale `_bg_wait_marker_context` row
+- preserve existing reasons for still-live rows
+- fail closed if a new unreasoned env literal appears
+
+### UPDATED: docs/workflow-lifecycle.md
+
+Add a compact subsection under “Bgjob completion artifacts” for the #6516 Section E sentinel disposition record.
+
+State that this record replaces editing the already-merged PR #6706. Include the table from the issue exactly in committed docs, with decisions unchanged.
+
+Keep it short. Do not turn it into new runtime guidance beyond the recorded KEEP/DELETE dispositions.
+
+### UPDATED: docs/linting.md
+
+Update the `make test-bgjob` row.
+
+It should say that `scripts/test-bgjob.sh` is now a real-process harness for bgjob start, wait, owner death, timeout, external daemon death, reap, and slug rejection. It should also say that Python bgjob unit coverage remains under `python/tests/bgjob` and `make py-test`.
+
+## Approach
+
+1. Add timing override constants first.
+2. Add daemon helper tests and make `_monitor` use the helpers.
+3. Add `reap_main` unit tests.
+4. Rewrite `scripts/test-bgjob.sh`.
+5. Add the Section E table to `docs/workflow-lifecycle.md`.
+6. Regenerate the env baseline with the make target.
+7. Update `docs/linting.md`.
+
+## Edge cases
+
+- `ps` may be blocked or non-standard in a sandbox. The harness must skip loudly, not fail with confusing process-identity errors.
+- A killed daemon can leave the child process alive. The harness cleanup must terminate only processes it started.
+- PID reuse tests must not signal the live recycled PID. Validate by keeping a live process alive after reap.
+- Owner death depends on consecutive identity failures. Use both grace and poll overrides to keep the test fast.
+- Registry rows must use valid tmpdir, log_dir, stdout, stderr, and result-env paths or `read_entry` will discard them before the test reaches reap logic.
+
+## Failure modes
+
+- A malformed registry fixture can produce a false pass by making `reap` treat the row as invalid. Build the fixture with real valid paths and only corrupt identity fields.
+- A too-small timeout can make CI flaky on busy runners. Use bounded loops with clear diagnostics and a small but nonzero slack.
+- Invalid override parsing could make production daemon startup fail if an operator accidentally exports the test env var. Fail closed with an explicit `BGJOB_ERROR`.
+- If the Bash harness uses Bash 4 features, macOS contributors will fail. Keep arrays simple and avoid associative arrays, `mapfile`, namerefs, and case conversion.
+
+## Testing strategy
+
+Run focused checks first:
+
+- `python3 -m pytest python/tests/bgjob -q`
+- `bash scripts/test-bgjob.sh`
+- `python3 python/cli.py lint env-via-config-constant`
+- `make test-bgjob`
+- `make test-harness-shards-coverage`
+
+Then run full required gates:
+
+- `make py-lint`
+- `make py-test`
+- `make test-harness-shards-coverage`
+
+Record if `scripts/test-bgjob.sh` skips because process identity probes are blocked. A skip is acceptable only for that sandbox condition.
+
+difficulty: HARD
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 520

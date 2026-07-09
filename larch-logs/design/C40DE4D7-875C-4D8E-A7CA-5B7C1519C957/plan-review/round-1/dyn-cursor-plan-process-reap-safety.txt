@@ -1,0 +1,39 @@
+Reviewing bgjob reap, PID reuse safety, and harness cleanup by reading the implementation files named in the plan.
+The plan targets post-PR state; I'll read the existing bgjob and process-identity code the plan builds on to validate its safety claims.
+Checking reap branch ordering and whether the plan's unit-test contract matches `reap_main`.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	minor	correctness	python/tests/bgjob/test_reap.py (planned §2)	test_reap item 2 does not pin liveness fixtures for the expire→terminate branch	With current reap_main ordering at python/larch/bgjob/cli.py:122-125, identity-mismatched child plus dead daemon hits the both-dead unlink path and never calls terminate_validated_process_group; item 2 assertions that terminate was invoked with entry.child will fail or force a misleading test rewrite	In item 2, specify daemon_liveness live=True and child_liveness live=False (identity mismatch) on an expired entry so reap reaches python/larch/bgjob/cli.py:126-132; keep the bash harness scenario 5 on the both-dead unlink path
+1	in_scope	minor	correctness	python/larch/bgjob/daemon.py (planned timing helpers)	Failure-mode startup fail is not wired to implementation shape	Plan failure modes require accidental LARCH_TEST_BGJOB_* exports to fail closed with BGJOB_ERROR before production work runs, but the shape only routes overrides into _check_owner_validation/_monitor after Popen; invalid values can leave a started child running until trap cleanup	Pin one pre-Popen resolve/validate call in _daemon_child (or start_daemon) that rejects invalid overrides with the same BGJOB_ERROR surface used elsewhere; keep per-call reads from config.BGJOB_* when env is unset so test_daemon.py monkeypatches at python/tests/bgjob/test_daemon.py:233 and :296 keep working
+
+## Findings
+
+### 1. correctness — `python/tests/bgjob/test_reap.py` (planned §2) vs `python/larch/bgjob/cli.py:122-132`
+
+The planned unit test for identity-mismatched recycled PIDs assumes `reap_main` always reaches `terminate_validated_process_group` on expired rows. Current reap logic unlinks first when both `child_liveness` and `daemon_liveness` are false:
+
+```122:125:python/larch/bgjob/cli.py
+        if result or (not child_live.live and not daemon_live.live):
+            registry.unlink_entry(path)
+            count += 1
+            continue
+```
+
+Identity mismatch already yields `child_live.live=False` via `validate_process_identity` in `registry.child_liveness` (`python/larch/bgjob/registry.py:162-166`). The real-process harness scenario 5 (dead daemon, live decoy PID, mismatched `CHILD_*` fields) correctly exercises the safe unlink-only path and satisfies “live PID still exists.”
+
+Item 2 targets a different branch (expired, daemon still live, child identity stale). The plan lists terminate-call assertions but does not require `daemon_liveness` to stay true. Without that fixture, item 2 fights the both-dead fast path instead of testing terminate’s no-signal mismatch handling.
+
+**Suggested revision:** In item 2, explicitly fixture `daemon_liveness` → live and `child_liveness` → false on an expired entry. Leave the bash harness on the both-dead path.
+
+### 2. correctness — planned `python/larch/bgjob/daemon.py` timing helpers
+
+Plan failure modes say invalid `LARCH_TEST_BGJOB_*` values should fail closed at startup with `BGJOB_ERROR` so accidental exports cannot change production timing mid-run (`daemon.py` still reads hardcoded `config.BGJOB_OWNER_GRACE_S` / `config.BGJOB_DAEMON_POLL_INTERVAL_S` today at lines 195 and 226). The proposed shape only applies overrides inside `_check_owner_validation` and `_monitor`, which run after `subprocess.Popen` in `_daemon_child` (`python/larch/bgjob/daemon.py:255-284`).
+
+An invalid override can therefore start the long child, then die on the first monitor tick, relying on harness traps for cleanup rather than the documented startup refusal.
+
+**Suggested revision:** Add one pre-`Popen` resolve/validate step in `_daemon_child` (or `start_daemon`) that emits `BGJOB_ERROR=...` and exits before spawning the child. Keep per-call env reads defaulting to `config.BGJOB_*` when unset so existing monkeypatch tests keep working.
+
+---
+
+**PID reuse safety (plan + current code):** No planned change to signaling semantics. Recycled live PIDs are not signaled on the harness path because mismatch makes `child_liveness` false and reap unlinks without calling `terminate_validated_process_group`. When terminate is called, `terminate_validated_process_group` returns without `killpg`/`kill` on non-`missing-pid` mismatches (`python/larch/core/process_identity.py:277-278`). Production defaults stay at `BGJOB_OWNER_GRACE_S = 120` and `BGJOB_DAEMON_POLL_INTERVAL_S = 1.0` (`python/larch/core/config.py:194-196`) unless the test env vars are explicitly set inside the harness.
+
+**Harness cleanup:** Plan edge cases already require killing only harness-started children after external daemon kill; recording PIDs/PGIDs at `bgjob start` (not re-reading stale registry rows for trap targets) is implied but not spelled out in the harness section. That gap is operational, not a signaling-safety defect, given per-scenario step slugs under one private registry root.

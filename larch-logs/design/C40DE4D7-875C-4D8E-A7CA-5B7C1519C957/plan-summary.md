@@ -1,0 +1,1 @@
+Plan: add a fast real-process bgjob Bash harness, add `reap_main` pytest coverage, add test-only bgjob timing env overrides through config constants, record the Section E sentinel table in committed docs, and regenerate the env baseline.
