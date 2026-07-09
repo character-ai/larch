@@ -1,13 +1,7 @@
 # pyright: reportUnusedCallResult=false
 """Per-clone progress breadcrumb writer for larch statuslines."""
 
-# ruff: noqa: PLR2004
 from __future__ import annotations
-
-ASCII_CONTROL_END = 32
-ASCII_DELETE = 127
-C1_CONTROL_START = 0x80
-C1_CONTROL_END = 0x9F
 
 import argparse
 import contextlib
