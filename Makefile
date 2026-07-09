@@ -54,6 +54,7 @@ py-lint-checks-fast:
 	$(PYTHON) python/cli.py lint tempfile-dir
 	$(PYTHON) python/cli.py lint monkeypatch-facade-binding
 	$(PYTHON) python/cli.py lint env-via-config-constant
+	$(PYTHON) python/cli.py lint lifecycle-prefix-literal
 	$(PYTHON) python/cli.py lint layering
 	$(PYTHON) python/cli.py lint flat-tests
 
@@ -77,7 +78,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-layering-baseline regen-skill-closure-baseline
+.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-lifecycle-prefix-literal-baseline regen-layering-baseline regen-skill-closure-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -135,6 +136,16 @@ regen-env-via-config-constant-baseline:
 		$(PYTHON) python/cli.py lint env-via-config-constant --write; \
 	else \
 		$(PYTHON) python/cli.py lint env-via-config-constant --write --initial-reason 'grandfathered bare env literal pre-G-Cfg-2 ratchet'; \
+	fi
+
+regen-lifecycle-prefix-literal-baseline:
+	# Regenerate python/lifecycle-prefix-literal-baseline.json from live AST scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/lifecycle-prefix-literal-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint lifecycle-prefix-literal --write; \
+	else \
+		$(PYTHON) python/cli.py lint lifecycle-prefix-literal --write --initial-reason 'grandfathered lifecycle prefix literal pre-lifecycle-prefix ratchet'; \
 	fi
 
 regen-layering-baseline:
