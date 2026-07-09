@@ -1,0 +1,4 @@
+### G-IO-1: fd-anchored atomic write is hand-rolled in progress_file.py instead of larch_io.atomic_write
+- Where: `activate_run`, `_atomic_write_in_dir`, `_append_line_in_dir` in `python/larch/report/progress_file.py`.
+- Deviation: the plan adds module-local dir-fd-anchored temp+replace/append helpers rather than routing the `current` pointer write through `larch_io.atomic_write`.
+- Rationale: `larch_io.atomic_write` is path-based (no `dir_fd` support), so it cannot close the clone-dir-swap TOCTOU window the round-2 security findings required. Extending `larch.io` would touch a fourth file beyond this 3-file dormant partition. Deliberate, reviewed tradeoff favoring G-Sec-4 (TOCTOU-closed symlink-safe writes) over G-IO-1 centralization. A later piece can promote the fd-anchored helper into `larch.io`.
