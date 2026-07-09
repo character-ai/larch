@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the cited pragma regex does not match a bare `ok -->`, so the empty-reason suppression claim does not hold
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- speculative coverage gap; no concrete Readless agent case was shown for this scan surface
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of FINDING_1; the stream mismatch is real but not a separate acceptance-worthy change
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- legitimate code-quality concern, but the plan already permits a local parser if the helper is unavailable
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

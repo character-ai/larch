@@ -1,0 +1,236 @@
+# Prevention bundle from /learn-from-bugs: one lint, one invariant, two guidelines
+
+## Origin and intent
+
+A `/learn-from-bugs -n 20` run on 2026-07-09 mined the last 15 closed `[BUG]` issues and deduplicated every implied principle against the existing guidelines, invariants, Python lints, and script lints. Four residual preventions survived. This issue bundles all four as one work item.
+
+Backing evidence: #6671 (toolless triage agent fabricated JSONL verdicts; inlining assumption failed at configured caps), #6604 and #6618 (bug-title selection wrong in both directions), #6263 (silent transcript-capture loss, context for the fail-closed theme).
+
+This issue is self-contained. Every addition below is full text and paste-ready. Do not shorten, reword, or "improve" the quoted blocks; land them byte-for-byte except where a stated placeholder requires substitution.
+
+Scope guard: do not modify any existing agent definition, skill, or lint. The new lint must pass on the current tree unchanged.
+
+---
+
+## Deliverable A: new lint `lint_agent_tool_contract`
+
+### Rule
+
+Flag every agent definition file that satisfies ALL three conditions:
+
+1. The YAML frontmatter has a `tools:` key whose value is an explicit list (inline flow form like `tools: [Read]` or block-sequence form with `- Name` lines).
+2. That list is empty, or it does not contain `Read`.
+3. The prompt body (all text after the closing frontmatter fence) contains an imperative read instruction (patterns below).
+
+Everything else passes. In particular:
+
+- No `tools:` key at all: PASS. The agent inherits the full tool set, so `Read` is available.
+- `tools:` with a scalar wildcard value such as `*` or `all`: PASS. Treat any non-list scalar as unrestricted.
+- Declared list contains `Read`: PASS.
+- Empty or Read-less list with no read-intent language in the body: PASS. A toolless pure-reasoning agent is legitimate.
+
+### Why
+
+#6671: `.claude/agents/bug-fix-triage.md` declared `tools: []` while its prompt demanded strict JSONL verdicts about bundles it was told to read. With no tools and a mandatory output format, the model play-acted tool calls and fabricated well-formed verdicts. The instance fix (`tools: [Read]`) landed; nothing prevents the next agent definition from shipping with the same contradiction. This lint is the class fix.
+
+### Scan surface
+
+- `agents/*.md` (shipped agents)
+- `.claude/agents/*.md` (dev-only agents)
+
+Non-recursive; both directories relative to the repo root. Skip files with no frontmatter fence.
+
+### Frontmatter parsing
+
+Stdlib only (no pyyaml; `python/` is stdlib-only by policy). Parse manually:
+
+- Frontmatter is the block between a leading `---` line and the next `---` line.
+- Find the `tools:` key at the top level of that block.
+- Inline flow form: `tools: [Read]`, `tools: [Read, Grep]`, `tools: []`. Split on commas inside the brackets; strip whitespace and quotes.
+- Block-sequence form: `tools:` on its own line followed by indented `- Name` lines until the next non-list line.
+- Scalar form: `tools: *` or `tools: all` or any other non-list value; treat as unrestricted (PASS).
+
+Precedent: `python/larch/lint/lint_skill_description_length.py` and `python/larch/lint/lint_skill_invocations.py` already parse markdown frontmatter with stdlib code. Reuse their approach or helper if one is importable; otherwise write a small local parser with the semantics above.
+
+### Read-intent detection (body scan)
+
+Case-insensitive regex over the body. Starter pattern set:
+
+- `\bread\s+(?:the|each|every|all|any|its|their|this|that)\b[^.\n]{0,60}\b(?:file|files|bundle|bundles|path|paths|diff|diffs|body|bodies|artifact|artifacts|markdown|log|logs)\b`
+- `\bopen\s+(?:the|each|every)\s+(?:file|bundle)\b`
+- `\buse\s+(?:the\s+)?Read\b`
+
+These are a starting point, not a frozen contract. The binding requirements are: (a) zero findings on the current unmodified tree, and (b) the fixture test matrix below classifies correctly. Tune the pattern list inside that envelope. Keep the final list as module-level compiled constants with a short comment per pattern.
+
+### Suppression
+
+HTML-comment pragma anywhere in the agent file, reason required (G-Py-11):
+
+```
+<!-- lint-agent-tool-contract: ok <reason> -->
+```
+
+Match with a regex equivalent to: `<!--\s*lint-agent-tool-contract:\s*ok\s+(\S[^>]*?)\s*-->`. A pragma with no reason text does not match and does not suppress.
+
+### Baseline policy
+
+Hard ban; no baseline file. Verified on 2026-07-09: the current tree has zero violations (`bug-fix-triage` declares `tools: [Read]`; every other agent file either lists `Read`, lists no `tools:` key, or has no read-intent language). If your scan finds a genuine violation that cannot be fixed in this change, follow G-Enf-2: add a reason-bearing baseline JSON in the style of `python/lifecycle-prefix-literal-baseline.json` and make it shrink-only. Do not weaken the rule instead.
+
+### Explicit non-goals for v1
+
+- Do NOT implement the advisory second check discussed in the mining report (flagging machine-parsed-only output mandates that lack a fail-closed clause). It is a low-precision text heuristic. Mention it in the module docstring as a possible follow-up, nothing more.
+- Do NOT lint skill files, hooks, or external-agent prompts. Agent definition files only.
+
+### Files to create or modify
+
+1. CREATE `python/larch/lint/lint_agent_tool_contract.py`
+   - Module docstring first, in the style of the sibling lints (see `python/larch/lint/lint_shared_convention_regex.py`).
+   - Expose module-level `main(argv) -> int` per G-CLI-1.
+   - Exit codes per G-CLI-2: `0` clean, findings nonzero, tool failure distinct. Copy the exact exit-code contract and the `TOOL_FAILURE_EXIT = 2` convention from `lint_shared_convention_regex.py`; mirror its `Finding` dataclass and its stdout finding format (`<path>:<line>: <message>`).
+   - Finding message text: `agent declares tools without Read but its prompt instructs reading files; add Read, drop the instruction, or suppress with lint-agent-tool-contract: ok <reason>`.
+2. MODIFY `python/larch/cli.py`
+   - Add one registry row next to the other lint rows, exactly in their style: `("lint", "agent-tool-contract"): ("larch.lint.lint_agent_tool_contract", "main"),`
+3. MODIFY `Makefile`
+   - In the `py-lint` recipe, add `agent-tool-contract` to the existing `for chk in complexity-baseline keyword-only ... flat-tests` loop list.
+4. CREATE `python/tests/lint/test_lint_agent_tool_contract.py`
+   - Mirror the structure of `python/tests/lint/test_lint_shared_convention_regex.py` (tmp-tree fixtures, invoke `main`, assert exit code and stdout).
+   - Wire into the test harness exactly the way the sibling lint tests are wired; change nothing else about sharding.
+5. MODIFY `docs/linting.md`
+   - Add a section for the new lint in the file's existing per-lint format: what it flags, the scan surface, the pragma with required reason, and the no-baseline policy.
+
+Do not touch `python/larch/issue/learn_from_bugs.py`: its coverage indexer discovers lint modules automatically.
+
+### Test matrix (all mandatory)
+
+| # | Frontmatter | Body | Expected |
+|---|---|---|---|
+| 1 | `tools: []` | read-intent sentence | finding |
+| 2 | `tools: [Grep]` | read-intent sentence | finding |
+| 3 | `tools: [Read]` | read-intent sentence | clean |
+| 4 | block sequence containing `- Read` | read-intent sentence | clean |
+| 5 | no `tools:` key | read-intent sentence | clean |
+| 6 | `tools: []` | no read-intent language | clean |
+| 7 | `tools: []` | read-intent sentence plus `<!-- lint-agent-tool-contract: ok fixture reason -->` | clean (suppressed) |
+| 8 | `tools: []` | read-intent sentence plus pragma missing the reason | finding |
+| 9 | scalar `tools: *` | read-intent sentence | clean |
+
+Plus one live-tree test or manual verification step: running the lint against the real repo root yields exit 0 and no findings.
+
+---
+
+## Deliverable B: append invariant I-Agent-1
+
+File: `ARCHITECTURAL_INVARIANTS.md`.
+
+Placement: append at the end of the file, as a new `## Agent contracts` section after the existing `## Run-log integrity` section. Keep one blank line between the previous entry and the new section heading, matching the file's spacing.
+
+The ID shape `I-Agent-1` was validated against `INVARIANT_HEADING_RE` in `python/larch/core/architectural_guidelines.py`, so both the reader and the learn-from-bugs coverage indexer will pick it up. Do not change the ID.
+
+Append exactly this text:
+
+```markdown
+## Agent contracts
+
+### I-Agent-1: A machine-ingested agent verdict is backed by evidence the agent actually read
+
+An agent whose output is machine-parsed (JSONL verdicts, vote rows, manifests)
+must either read its evidence through its own tools or emit the designated
+cannot-read outcome for that item. It must never emit well-formed output for
+evidence it could not open. A dispatch that inlines evidence must fit the
+worst case computed from the owning cap constants; when it cannot, it passes
+paths and grants a Read tool. Evidence of violation: a toolless triage agent
+play-acted tool calls and fabricated JSONL verdicts, and the dispatching
+skill's inlining assumption failed at the configured caps (#6671). Mechanical
+backing: `python3 python/cli.py lint agent-tool-contract` over agent
+frontmatter, plus fail-closed prompt language in the triage agent definition.
+```
+
+---
+
+## Deliverable C: append guideline G-Ext-3
+
+File: `ARCHITECTURAL_GUIDELINES.md`.
+
+Placement: inside the `## External tools` section, immediately after the `### G-Ext-2` entry and before the `## Documentation and Markdown` heading. Keep one blank line before the new `###` heading, matching the file's spacing.
+
+Append exactly this text:
+
+```markdown
+### G-Ext-3: Treat GitHub search as a recall filter; re-apply the shared normalized predicate locally before consuming results
+- Why: GitHub search tokenizes bracketed terms, so `[BUG] in:title` also matches any title containing "bug", and prefix-only local matching missed retitled `[DONE] [BUG]` issues; both directions corrupted bug-mining selection (#6604, #6618).
+- Guidance: after any `gh` search or list call, filter the result set through `larch.issue.title_match`, or the surface's shared predicate, before spending tokens or verdicts on it; never treat the raw search result as the selection.
+- Deviate when: the consumer tolerates recall noise by design and says so where the search is issued.
+```
+
+---
+
+## Deliverable D: append guideline G-Orch-6
+
+File: `ARCHITECTURAL_GUIDELINES.md`.
+
+Placement: inside the `## Orchestration and panels` section, immediately after the `### G-Orch-5` entry and before the `## Observability and telemetry` heading. Keep one blank line before the new `###` heading, matching the file's spacing.
+
+Append exactly this text:
+
+```markdown
+### G-Orch-6: Size inlined agent payloads from the owning cap constants, not from an observed run
+- Why: an inlining design that worked on one small observed run failed at the configured worst case near 700KB per batch, and the toolless agent downstream fabricated verdicts instead of failing (#6671).
+- Guidance: when a skill or dispatcher inlines payloads into an agent prompt, compute the worst case from the cap constants that own the payload (diff cap, body cap, batch size) and check that it fits the transport; when it cannot, pass paths and grant the agent a Read tool.
+- Deviate when: the payload is bounded small by construction, such as a fixed-format single record; note the bound where the dispatch is defined.
+```
+
+---
+
+## Acceptance criteria
+
+All must hold before the PR merges:
+
+1. `python3 python/cli.py lint agent-tool-contract` exits 0 on the unmodified live tree, with no baseline file present.
+2. `python/tests/lint/test_lint_agent_tool_contract.py` passes and covers the full test matrix above, including the suppression and missing-reason cases.
+3. `make py-lint` runs the new check as part of its loop and passes.
+4. `ARCHITECTURAL_INVARIANTS.md` contains the `## Agent contracts` section and the `### I-Agent-1:` entry byte-identical to Deliverable B.
+5. `ARCHITECTURAL_GUIDELINES.md` contains `### G-Ext-3:` and `### G-Orch-6:` byte-identical to Deliverables C and D, in the stated sections.
+6. `docs/linting.md` documents the new lint.
+7. No existing agent definition file is modified.
+8. Lint and test only the changed files locally; CI runs the full sweep.
+
+## Conventions that bind this work
+
+- New logic lives in `python/` behind `python3 python/cli.py` (AGENTS.md); stdlib only.
+- G-CLI-1 registration, G-CLI-2 exit codes, G-Py-11 suppression reasons, G-Enf-2 baseline policy if a violation surfaces.
+- User-facing prose follows `skills/shared/readability-style.md`; no em dashes.
+- Reference code by symbol, not line number, in any prose this change adds (G-Md-1).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `lint_agent_tool_contract` to catch agent definitions that declare a restricted tool list without `Read` but instruct file reading in the prompt body.
+- Document the prevention as invariant I-Agent-1, guideline G-Ext-3, and guideline G-Orch-6 in the repo knowledge files.
+- Wire the new lint into `make py-lint` and cover it with a mandatory test matrix.
+
+### Non-goals
+- Do not modify any existing agent definition file.
+- Do not lint skill files, hooks, or external-agent prompts.
+- Do not implement the advisory second check (machine-parsed-only output without fail-closed clause).
+
+### Approach sketch
+- Create `python/larch/lint/lint_agent_tool_contract.py`: stdlib frontmatter parser, compiled read-intent regexes, suppression pragma, `main(argv) -> int`, exit-code contract mirroring `lint_shared_convention_regex.py`.
+- Register in `python/larch/cli.py` lint dispatch table and add to the `for chk in ...` loop in `Makefile`.
+- Create `python/tests/lint/test_lint_agent_tool_contract.py` covering all 9 fixture cases plus the live-tree zero-finding check.
+- Append I-Agent-1 to `ARCHITECTURAL_INVARIANTS.md` under a new `## Agent contracts` section.
+- Append G-Ext-3 inside `## External tools` and G-Orch-6 inside `## Orchestration and panels` in `ARCHITECTURAL_GUIDELINES.md`.
+- Add a per-lint section in `docs/linting.md`.
+
+### Surfaces in scope
+- `python/larch/lint/lint_agent_tool_contract.py` (new)
+- `python/tests/lint/test_lint_agent_tool_contract.py` (new)
+- `python/larch/cli.py`
+- `Makefile`
+- `ARCHITECTURAL_INVARIANTS.md`
+- `ARCHITECTURAL_GUIDELINES.md`
+- `docs/linting.md`
+
+### Open questions
+- None.

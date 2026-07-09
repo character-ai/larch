@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stdout vs stderr is a convention issue, but it is not required for the lint to work.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the cited regex does not match a bare `ok -->`, so the missing-reason case still remains a finding.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- offset math is worth matching sibling lints, but the feature can still ship without this refinement.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- extra phrasing coverage is optional here; the stated matrix does not require exhaustive read-intent NLP.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same stream-convention concern as finding 1, and still not necessary for feature completeness.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan explicitly allows a small local parser when a helper is not being reused.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates the frontmatter-parser preference already raised in finding 6.
