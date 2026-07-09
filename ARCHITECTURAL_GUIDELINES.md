@@ -182,11 +182,6 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: at every agent-output boundary (reviewer, voter, aggregator, validator, tally, self-review), represent empty-success with an explicit typed sentinel or status distinct from failure, and never let a consumer infer health or failure from emptiness alone.
 - Deviate when: the boundary already returns a machine-typed status that separates the two; never deviate by adding a new emptiness heuristic.
 
-### G-Orch-4: Record a per-slot diagnostic before any panel slot disappears
-- Why: silent slot drops hid systemic reviewer loss for weeks, and the coverage gates downstream could not see drops that were never persisted (#3392, #3423, #5047, #5529).
-- Guidance: when a reviewer or voter slot is dropped, substituted, pruned, format-rejected, or excused, append a per-slot record naming the slot, the stage, and the reason to the execution-issues log or the slot manifest before removing it from accounting; an aggregate count or generic warning does not satisfy this.
-- Deviate when: never; when volume is a concern, bound the record size, not its existence.
-
 ### G-Orch-5: Key destructive watchers to structured error events, not aggregated output
 - Why: the codex policy-rejection watcher regex-scanned the raw events tail, matched historical design-log text quoted by a successful grep, and killed a healthy voter (#6577).
 - Guidance: a watcher that kills, retries, or fails over an agent must match the stream's structured error events or a dedicated error channel, never raw aggregated output that can quote arbitrary bytes such as grep results over committed logs; before acting destructively, record the matched evidence and its provenance to the run diagnostics.
@@ -210,11 +205,6 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ### G-Obs-3: Record every skill-execution error or noteworthy failure to the run's category-keyed execution-issues log, so it flushes into the committed run logs for later analysis
 - Why: a failure that lives only in the session tmpdir vanishes at cleanup, so audits, calibration skills, and follow-up filing never see it. larch appends tool failures, reviewer issues, CI issues, and warnings to `execution-issues.ndjson` as the durable audit trail.
 - Deviate when: a run that produces no committed logs at all, like `repo_unavailable`, where the tmpdir `execution-issues.md` is the only possible trail.
-
-### G-Obs-4: Commit only neutral in-progress outcome labels for runs that are still in flight; reconcile the terminal outcome at the last allowed commit window
-- Why: pre-terminal snapshots froze merged runs as bailed or stalled in the committed logs, corrupting every downstream outcome census (#5646, #5676, #5970, #4900).
-- Guidance: a pre-terminal run-log snapshot says `shipping` or `in-progress`, never `stalled` or `bailed`, and a stalled-then-recovered run must not stay committed as stalled.
-- Deviate when: never for failure words; a neutral label is always available.
 
 ### G-Obs-5: Give report renderers a golden test with hostile-width and fallback-shaped fixtures
 - Why: the /design Gantt corrupted alignment on long slot names twice (#5587, #5753), and the round timing chart silently omitted the vendor-fallback runs that did the round's actual work (#6578).

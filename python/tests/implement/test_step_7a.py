@@ -4,7 +4,9 @@ import subprocess
 
 import pytest
 
+from larch.core import config
 from larch.implement import step_7a
+from larch.report.run_log_manifest import RefreshSkip
 
 
 def test_step7a_bgjob_result_capture_includes_checkpoint_and_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,6 +128,54 @@ def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "DIAGRAM_STATUS=" in out
     assert "LOG_FLUSH_STATUS=" in out
     assert (tmp_path / "code-flow-diagram.md").is_file()
+
+
+def test_step7a_skips_run_log_commit_after_preterminal_commit_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    _ = (tmp_path / "execution-issues.md").write_text("", encoding="utf-8")
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(step_7a, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(
+        step_7a.run_logs,
+        "_render_token_timing_batches",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        step_7a.run_logs,
+        "_stage_vendor_failure_diagnostics",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        step_7a.run_logs,
+        "flush_logs_pre",
+        lambda **_kwargs: RefreshSkip(
+            skipped=True,
+            reason=config.REFRESH_SKIP_COMMIT_FAILED,
+            error="pre-terminal label stalled",
+        ),
+    )
+    monkeypatch.setattr(
+        step_7a.subprocess,
+        "run",
+        lambda *args, **_kwargs: subprocess.CompletedProcess(args, 0, "", ""),
+    )
+
+    status = step_7a._run_log_flush(  # pyright: ignore[reportPrivateUsage]
+        tmp_path,
+        run_id="run-1",
+        no_logs_commit=False,
+        claude_source_file="",
+    )
+
+    assert status == "degraded"
+    assert ("run-log", "commit") not in [call[:2] for call in calls]
 
 
 def test_step7a_main_rejects_unknown_flags(capsys: pytest.CaptureFixture[str]) -> None:

@@ -14,6 +14,7 @@ FAIL=0
 TMP_PARENT="${TMPDIR:-/tmp}"
 TMP_PARENT="${TMP_PARENT%/}"
 TMP_ROOT="$(mktemp -d "$TMP_PARENT/test-step-7a.XXXXXX")"
+TMP_ROOT="$(cd "$TMP_ROOT" && pwd -P)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
 
 pass() {
@@ -774,6 +775,54 @@ assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure emits degraded
 assert_file_not_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "flush-failure uses Python flush path"
 if [ ! -s "$CASE_DIR/flush-count" ]; then pass "flush-failure does not use shell flush stub"; else fail "flush-failure does not use shell flush stub"; fi
 assert_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure still runs commit"
+
+new_case preterminal-refresh-refusal
+set +e
+out=$(CASE_TMP="$CASE_DIR/tmp" CALLS_LOG="$CASE_DIR/calls.log" PYTHONPATH="$TMP_ROOT/plugin/python" python3 <<'PY'
+import os
+import subprocess
+from pathlib import Path
+
+from larch.core import config
+from larch.implement import step_7a
+from larch.report.run_log_manifest import RefreshSkip
+
+tmp = Path(os.environ["CASE_TMP"])
+calls_log = Path(os.environ["CALLS_LOG"])
+(tmp / "execution-issues.md").write_text("", encoding="utf-8")
+
+def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+    with calls_log.open("a", encoding="utf-8") as handle:
+        handle.write(" ".join(args) + "\n")
+    return subprocess.CompletedProcess(args, 0, "", "")
+
+def fake_flush_logs_pre(**_kwargs: object) -> RefreshSkip:
+    return RefreshSkip(
+        skipped=True,
+        reason=config.REFRESH_SKIP_COMMIT_FAILED,
+        error="pre-terminal label stalled",
+    )
+
+step_7a._run_cli = fake_run_cli
+step_7a.run_logs._render_token_timing_batches = lambda **_kwargs: None
+step_7a.run_logs._stage_vendor_failure_diagnostics = lambda **_kwargs: None
+step_7a.run_logs.flush_logs_pre = fake_flush_logs_pre
+step_7a.subprocess.run = lambda *args, **_kwargs: subprocess.CompletedProcess(args, 0, "", "")
+
+status = step_7a._run_log_flush(
+    tmp,
+    run_id="run-001",
+    no_logs_commit=False,
+    claude_source_file="",
+)
+print(f"LOG_FLUSH_STATUS={status}")
+PY
+)
+rc=$?
+set -e
+assert_equals 0 "$rc" "preterminal-refresh-refusal exits 0"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "preterminal-refresh-refusal emits degraded"
+assert_not_contains "run-log commit" "$(cat "$CASE_DIR/calls.log")" "preterminal-refresh-refusal skips commit"
 
 new_case flush-failure-no-logs-commit
 set +e

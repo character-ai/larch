@@ -713,6 +713,15 @@ def larch_log_commit_main(argv: list[str]) -> int:
         return _larch_log_fail(code=1, message="invalid commit arguments")
     if not str(args.pre_scrub_violations).isdigit():
         return _larch_log_fail(code=1, message="invalid --pre-scrub-violations: expected non-negative integer")
+    if args.skill == "implement":
+        from larch.report.run_log_flush import _preterminal_outcome_commit_blocked  # noqa: PLC0415 - avoid import cycle on run-log facade helpers
+
+        preterminal_block = _preterminal_outcome_commit_blocked(
+            _run_dir(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id),
+        )
+        if preterminal_block is not None:
+            print(f"WARN: larch-log commit skipped: {preterminal_block}", file=sys.stderr)
+            return 3
     try:
         result = _commit_run(
             log_root=args.log_root_path,

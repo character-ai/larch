@@ -1089,7 +1089,8 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
 
     skip1 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
-    assert not skip1.skipped
+    assert skip1.skipped
+    assert skip1.reason == config.REFRESH_SKIP_COMMIT_FAILED
     stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert ": stalled" in stalled_summary
     assert "- **Outcome**: ❌ STALLED" in stalled_summary
@@ -2065,6 +2066,31 @@ def test_larch_log_commit_accepts_tmpdir_flag(
     )
 
     assert rc == 0
+
+
+def test_larch_log_commit_main_refuses_preterminal_stalled_summary(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: stalled\n", encoding="utf-8")
+
+    rc = run_logs.larch_log_commit_main(
+        [
+            "--log-root",
+            str(tmp_path / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-abc",
+        ]
+    )
+
+    captured = capsys.readouterr()
+    assert rc != 0
+    assert "pre-terminal" in captured.err
+    assert "LARCH_LOG_COMMIT_SHA" not in captured.out
 
 
 def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
@@ -3299,6 +3325,8 @@ def test_capture_transcript_main_defer_commit_no_warning(
                 str(source),
                 "--log-root",
                 str(log_root),
+                "--tmpdir",
+                str(tmp_path),
                 "--skill",
                 "implement",
                 "--run-id",
@@ -3314,6 +3342,73 @@ def test_capture_transcript_main_defer_commit_no_warning(
     assert rc == 0
     assert "SESSION_TRANSCRIPT_STATUS=captured" in buf.getvalue()
     assert "session transcript was written; commit deferred" not in issues_log.read_text(encoding="utf-8")
+
+
+def test_capture_transcript_main_refuses_preterminal_stalled_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcript = tmp_path / "transcript.jsonl"
+    _ = transcript.write_text('{"type":"message"}\n', encoding="utf-8")
+    source = tmp_path / "source.txt"
+    _ = source.write_text(f"TRANSCRIPT_PATH={transcript}\n", encoding="utf-8")
+    log_root = tmp_path / "larch-logs"
+    issues_log = tmp_path / "execution-issues.md"
+    _ = issues_log.write_text("", encoding="utf-8")
+    run_dir = log_root / "implement" / "run-1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: stalled\n", encoding="utf-8")
+
+    def _fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        output = Path(args[args.index("--output") + 1])
+        _ = output.write_text('{"type":"stub"}\n', encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    def fail_commit(**_kwargs: object) -> CommandResult:
+        raise AssertionError("pre-terminal guard should skip transcript commit")
+
+    def fake_write_batch(
+        *,
+        log_root: Path,
+        skill: str,
+        run_id: str,
+        batch: str,
+        input_file: str,
+    ) -> tuple[Path, bool, bool]:
+        target = log_root / skill / run_id / f"{batch}.jsonl"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(Path(input_file).read_text(encoding="utf-8"), encoding="utf-8")
+        return target, True, False
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.capture_transcript_main(
+            [
+                "--source-file",
+                str(source),
+                "--log-root",
+                str(log_root),
+                "--tmpdir",
+                str(tmp_path),
+                "--skill",
+                "implement",
+                "--run-id",
+                "run-1",
+                "--no-logs-commit",
+                "false",
+                "--execution-issues-log",
+                str(issues_log),
+            ]
+        )
+
+    assert rc == 0
+    captured = buf.getvalue()
+    assert "SESSION_TRANSCRIPT_STATUS=commit-failed" in captured
+    assert "pre-terminal" in issues_log.read_text(encoding="utf-8")
 
 
 def test_capture_transcript_main_uses_explicit_tmpdir_for_render_path(

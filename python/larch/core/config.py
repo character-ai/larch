@@ -808,6 +808,11 @@ REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
 REFRESH_SKIP_COMMIT_FAILED: Final = "commit-failed"
 REFRESH_SKIP_RUN_LOG_INCOMPLETE: Final = "run-log-incomplete"
 REFRESH_SKIP_VOLATILE_ONLY: Final = "volatile-only"
+PRETERMINAL_FORBIDDEN_OUTCOME_LABELS: Final[frozenset[str]] = frozenset({
+    "stalled",
+    "bailed",
+    "bailed-needs-user-input",
+})
 # Pre-merge flush skips merge_pr may continue past (bash refresh-run-logs || true).
 REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
     REFRESH_SKIP_NO_REPO_CWD,

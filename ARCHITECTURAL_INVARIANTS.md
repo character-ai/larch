@@ -54,6 +54,40 @@ a post-flush manifest completeness check that asserts the expected artifact set,
 or its recorded execution-issue entries, before the run-log commit, with
 regression tests in `python/tests/report/test_run_log_flush.py`.
 
+### I-Outcome-1: A committed outcome label for an in-flight run is neutral
+
+A pre-terminal run-log snapshot commits only neutral in-progress labels such as
+`shipping` or `in-progress`, never terminal failure words such as `stalled`,
+`bailed`, or `bailed-needs-user-input`, and a stalled-then-recovered run must
+not stay committed as stalled. The terminal outcome is reconciled at the last
+allowed commit window. Evidence of violation: pre-terminal snapshots froze
+merged runs as bailed or stalled in the committed logs, corrupting every
+downstream outcome census (#5646, #5676, #5970, #4900). Mechanical backing: the
+shared pre-terminal label guard in `python/larch/report/run_log_flush.py`
+blocks forbidden labels in refresh, `run-log flush`, `run-log commit`, and
+`capture-transcript` direct-commit paths, with regression tests in
+`python/tests/report/test_run_log_flush.py`, recovery expectations in
+`python/tests/report/test_run_logs.py`, and Step 7a bypass coverage in
+`python/tests/implement/test_step_7a.py` plus
+`skills/implement/scripts/test-step-7a.sh`.
+
+## Panel integrity
+
+### I-Slot-1: A panel slot never disappears without a per-slot record
+
+When a reviewer or voter slot is dropped, substituted, pruned,
+format-rejected, or excused, the orchestration layer appends a per-slot record
+naming the slot, the stage, and the reason to the execution-issues log or the
+slot manifest before the slot leaves accounting. An aggregate count or generic
+warning does not satisfy this. When record volume is a concern, bound the
+record size, never its existence. Evidence of violation: silent slot drops hid
+systemic reviewer loss for weeks, and downstream coverage gates could not see
+drops that were never persisted (#3392, #3423, #5047, #5529). Mechanical
+backing: per-slot prune ledgers and manifests such as
+`reviewer-prune-ledger.tsv`, `*-slots.ndjson`, and dropped-slot sidecars, plus
+drop-path coverage in `python/tests/review/test_plan_review_round.py`,
+`python/tests/review/test_plan_review_panel.py`, and the agent waterfall tests.
+
 ## Agent contracts
 
 ### I-Agent-1: A machine-ingested agent verdict is backed by evidence the agent actually read
