@@ -1,0 +1,5 @@
+# [BUG] /design (and likely /implement and /review) review phase does not log individual breadcrumbs for progress report on status line
+
+I got this status line:
+larch 21:32: [design 3] round 1 launched
+and by 9:44PM it is still up, whereas I am sure steps happened inside review phase.  I want each step in the phase, e.g., launch of reviewers, launch of aggregator, etc., to show individual status lines.
