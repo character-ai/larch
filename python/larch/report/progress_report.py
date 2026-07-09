@@ -715,6 +715,7 @@ def _render_phase_gantt(
                 label_map=label_map,
                 skip_ci=True,
                 require_complete_status=False,
+                cap=None,
             )
             chart = render_gantt(window_start_s=start_s, window_end_s=end_s, rows=rows) if rows else ""
             if chart:
@@ -1060,6 +1061,7 @@ def _progress_vendor_rows(
     label_map: dict[str, str] | None = None,
     skip_ci: bool = False,
     require_complete_status: bool = True,
+    cap: int | None = PROGRESS_GANTT_ROW_CAP,
 ) -> list[GanttRow]:
     if window_end_s <= window_start_s:
         return []
@@ -1099,7 +1101,7 @@ def _progress_vendor_rows(
             _is_chart_vendor_fallback_output(output),
         ))
     rows.sort(key=lambda row: (row[0], row[1], row[2]))
-    capped = _cap_gantt_rows_reserving_apply(rows, cap=PROGRESS_GANTT_ROW_CAP)
+    capped = rows if cap is None else _cap_gantt_rows_reserving_apply(rows, cap=cap)
     return [GanttRow(label, start_s, end_s) for start_s, end_s, label, _, _ in capped]
 
 
