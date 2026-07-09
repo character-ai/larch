@@ -861,6 +861,45 @@ def _install_execute_round_fake(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
 
 
+def test_execute_round_records_progress_breadcrumb_sequence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design = tmp_path
+    plan_file = design / "plan.txt"
+    feature_file = design / "feature.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    breadcrumbs: list[tuple[str, str, str]] = []
+
+    def fake_append_breadcrumb(repo_root: str | Path, skill: str, step: str, text: str) -> bool:
+        assert isinstance(repo_root, Path)
+        breadcrumbs.append((skill, step, text))
+        return True
+
+    _install_execute_round_fake(monkeypatch, design)
+    monkeypatch.setattr(plan_review_round.progress_file, "append_breadcrumb", fake_append_breadcrumb)
+
+    rc, values = plan_review_round.execute_round(
+        design=design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "complete"
+    assert breadcrumbs == [
+        ("design", "3", "launching reviewers"),
+        ("design", "3", "collecting reviewer outputs"),
+        ("design", "3", "aggregating reviewer findings"),
+        ("design", "3", "dispatching 3 voters"),
+        ("design", "3", "tallying votes"),
+    ]
+
+
 def test_execute_round_records_plan_review_prune_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path
     plan_file = design / "plan.txt"

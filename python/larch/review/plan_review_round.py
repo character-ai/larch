@@ -16,6 +16,7 @@ from typing import cast
 from larch.agents import collect_results
 from larch import io as larch_io
 from larch.core import logging_util
+from larch.report import progress_file
 from larch.review import review_aggregate
 from larch.review import voting
 from larch.review.plan_review_common import resolve_plan_review_tier
@@ -35,6 +36,10 @@ def _emit(*, key: str, value: object = "") -> None:
     print(f"{key}={value}")
 
 
+def _progress_note(*, step: str, text: str) -> None:
+    _ = progress_file.append_breadcrumb(Path.cwd(), "design", step, text)
+
+
 def _parse_kv(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
@@ -52,6 +57,17 @@ def _run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subproces
         check=False,
         env=merged,
     )
+
+
+def _run_cli_with_progress(
+    argv: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    step: str,
+    text: str,
+) -> subprocess.CompletedProcess[str]:
+    _progress_note(step=step, text=text)
+    return _run_cli(argv=argv, env=env)
 
 
 # (slot-name prefix, human-label prefix, nominal vendor). Order matters: the
@@ -862,7 +878,12 @@ def execute_round(
         "--escalated-round",
         "true" if resolution.escalated_round else "false",
     ]
-    panel = _run_cli(argv=panel_args, env={"LARCH_QUIET_DISABLE": "1"})
+    panel = _run_cli_with_progress(
+        argv=panel_args,
+        env={"LARCH_QUIET_DISABLE": "1"},
+        step="3",
+        text="launching reviewers",
+    )
     out_lines.append(panel.stdout)
     if panel.returncode != 0:
         # Do not swallow the panel dispatcher's stderr (issue #4747): re-surface it so
@@ -911,7 +932,7 @@ def execute_round(
     collect_out = ""
     collect_rc = 0
     if paths_path.is_file() and paths_path.stat().st_size > 0:
-        collect = _run_cli(
+        collect = _run_cli_with_progress(
             argv=[
                 "agent",
                 "collect-results",
@@ -923,6 +944,8 @@ def execute_round(
                 str(paths_path),
             ],
             env={"LARCH_QUIET_DISABLE": "1"},
+            step="3",
+            text="collecting reviewer outputs",
         )
         collect_out = collect.stdout
         collect_rc = collect.returncode
@@ -962,7 +985,7 @@ def execute_round(
     in_scope = findings_path.read_text(encoding="utf-8", errors="replace") if findings_path.is_file() else ""
     oos_md = oos_path.read_text(encoding="utf-8", errors="replace") if oos_path.is_file() else ""
 
-    agg = _run_cli(
+    agg = _run_cli_with_progress(
         argv=[
             "review",
             "aggregate-findings",
@@ -986,6 +1009,8 @@ def execute_round(
             str(design / "plan-review" / f"round-{round_num}"),
         ],
         env={"LARCH_QUIET_DISABLE": "1"},
+        step="3",
+        text="aggregating reviewer findings",
     )
     agg_kv = _parse_kv(agg.stdout)
     agg_status = _aggregator_status_from_kv(agg_kv=agg_kv, returncode=agg.returncode)
@@ -1060,7 +1085,7 @@ def execute_round(
             _emit(key=k, value=v)
         return 0, values
 
-    voter = _run_cli(
+    voter = _run_cli_with_progress(
         argv=[
             "plan-review",
             "voter-dispatch",
@@ -1076,6 +1101,8 @@ def execute_round(
             str(round_num),
         ],
         env={"LARCH_QUIET_DISABLE": "1"},
+        step="3",
+        text="dispatching 3 voters",
     )
     out_lines.append(voter.stdout)
     voter_kv = _parse_kv(voter.stdout)
@@ -1115,7 +1142,12 @@ def execute_round(
     classification.parent.mkdir(parents=True, exist_ok=True)
     voter_args.extend(["--findings-classification-out", str(classification)])
 
-    tally = _run_cli(argv=voter_args, env={"LARCH_QUIET_DISABLE": "1"})
+    tally = _run_cli_with_progress(
+        argv=voter_args,
+        env={"LARCH_QUIET_DISABLE": "1"},
+        step="3",
+        text="tallying votes",
+    )
     out_lines.append(tally.stdout)
     tally_kv = _parse_kv(tally.stdout)
     values.update(tally_kv)
