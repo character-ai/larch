@@ -61,11 +61,19 @@ codex/apply                         │                                   ██
 
 **Reviewer slot failures**: 0
 
-## /implement run A13BF2D8-D2F7-4075-8AF4-7DB8C0D5CF34: stalled
+## Architectural invariants
 
-- **Outcome**: ❌ STALLED
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
+## /implement run A13BF2D8-D2F7-4075-8AF4-7DB8C0D5CF34: pr-created
+
+- **Outcome**: ✅ DONE
 - **Duration**: 01:00:32
-- **Cost**: 💰 TOTAL ~$18.15: Claude $2.92, Codex-5.5 $5.40, Codex-mini $3.24, Cursor $6.20, Claude (subprocess) $0.39  |  Tokens: 42133k
+- **Cost**: 💰 TOTAL ~$20.49: Claude $5.26, Codex-5.5 $5.40, Codex-mini $3.24, Cursor $6.20, Claude (subprocess) $0.39  |  Tokens: 47896k
 - **Issue**: #6756: https://github.com/character-ai/larch/issues/6756
 - **PR**: #6781: https://github.com/character-ai/larch/pull/6781
 - **Plan review**: N/A
@@ -73,7 +81,7 @@ codex/apply                         │                                   ██
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 3/16 accepted
-- **Lines (PR diff)**: code +898/-42, larch-logs +1463/-0
+- **Lines (PR diff)**: code +898/-56, larch-logs +1457/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
