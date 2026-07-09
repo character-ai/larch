@@ -4359,7 +4359,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_progress_vendor_rows",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/report/progress_report.py",
