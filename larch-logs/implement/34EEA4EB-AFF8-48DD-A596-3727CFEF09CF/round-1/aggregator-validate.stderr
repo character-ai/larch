@@ -1,0 +1,6 @@
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_5 not traceable to scoped input (first 80 chars: 'Reject symlinked ancestors before mkdir/open, or route the append through a nofo')
+warning: fix text for slot 'dyn-dyn-statusline-security' in FINDING_5 not traceable to scoped input (first 80 chars: 'Before append, resolve progress_path(repo_root), run assert_no_symlink_path_or_a')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_8 not traceable to scoped input (first 80 chars: 'Add a shared sanitizer that strips or rejects all C0 controls except optional sp')
+warning: fix text for slot 'dyn-dyn-statusline-security' in FINDING_8 not traceable to scoped input (first 80 chars: 'Add a shared sanitizer that strips or rejects all C0 controls except optional sp')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_10 not traceable to scoped input (first 80 chars: 'Relay only the bounded first-install notice from Step 0 or expose a machine flag')
+warning: fix text for slot 'dyn-dyn-statusline-security' in FINDING_14 not traceable to scoped input (first 80 chars: 'Call assert_no_symlink_path_or_ancestors on Path.home() / ".claude" / "settings.')
