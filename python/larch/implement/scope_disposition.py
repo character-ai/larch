@@ -107,12 +107,8 @@ def _artifact_present(path: Path) -> bool:
     return path.exists() or path.is_symlink()
 
 
-def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], int]:
-    """Return (sanitized_display_items, raw_entry_count)."""
-    if manifest_path is None:
-        return (), 0
-    if not _artifact_present(manifest_path):
-        return (), 0
+def _load_manifest_todos_raw(manifest_path: Path) -> list[object]:
+    """Read, parse, and validate manifest; return raw todos_left list."""
     if not manifest_path.is_file():
         raise ShipError(f"resolved manifest is not a regular file: {manifest_path}")
     try:
@@ -128,7 +124,16 @@ def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], i
     raw = cast("Mapping[str, object]", parsed).get("todos_left")
     if not isinstance(raw, list):
         raise ShipError(f"resolved manifest schema-invalid: {manifest_path}")
-    raw_items = cast("list[object]", raw)
+    return cast("list[object]", raw)
+
+
+def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], int]:
+    """Return (sanitized_display_items, raw_entry_count)."""
+    if manifest_path is None:
+        return (), 0
+    if not _artifact_present(manifest_path):
+        return (), 0
+    raw_items = _load_manifest_todos_raw(manifest_path)
     raw_count = len(raw_items)
     lines: list[str] = []
     budget = _MAX_TODO_CHARS
