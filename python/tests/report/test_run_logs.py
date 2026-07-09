@@ -3218,7 +3218,7 @@ def test_copy_tree_to_repo_completeness_uses_consumer_repo_root_for_guidelines(
         run_id="RUN1",
     )
 
-    assert rels == []
+    assert not rels
     assert rc == config.RUN_LOG_INCOMPLETE_RC
     assert error == "run-log incomplete: guideline-assessment:architectural-guideline-assessment.md"
     assert not (repo / "larch-logs" / "design" / "RUN1").exists()
