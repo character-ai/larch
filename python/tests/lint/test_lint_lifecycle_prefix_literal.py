@@ -324,6 +324,30 @@ def test_malformed_json_exits_2(tmp_path: Path) -> None:
     assert llpll.main(["--root", str(tmp_path)]) == 2
 
 
+def test_non_utf8_source_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/mod.py": _source('    title.startswith("[DONE]")\n')},
+        baseline=[],
+    )
+    _ = (tmp_path / "python" / "larch" / "mod.py").write_bytes(b"\xff\xfe")
+
+    assert llpll.main(["--root", str(tmp_path)]) == 2
+    assert "cannot read source" in capsys.readouterr().err
+
+
+def test_non_utf8_baseline_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/mod.py": _source('    title.startswith("[DONE]")\n')},
+        baseline=[],
+    )
+    _ = (tmp_path / "python" / llpll.BASELINE_FILENAME).write_bytes(b"\xff\xfe")
+
+    assert llpll.main(["--root", str(tmp_path)]) == 2
+    assert "cannot read baseline" in capsys.readouterr().err
+
+
 def test_write_preserves_reasons_and_shrinks_obsolete_rows(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
