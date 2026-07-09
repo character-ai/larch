@@ -2,7 +2,7 @@
 
 - **Outcome**: shipping
 - **Duration**: 01:38:44
-- **Cost**: 💰 TOTAL ~$48.18: Claude $10.23, Codex-5.5 $22.59, Codex-mini $3.09, Cursor $10.15, Claude (subprocess) $2.12  |  Tokens: 74670k
+- **Cost**: 💰 TOTAL ~$52.20: Claude $14.25, Codex-5.5 $22.59, Codex-mini $3.09, Cursor $10.15, Claude (subprocess) $2.12  |  Tokens: 80225k
 - **Issue**: #6624: https://github.com/character-ai/larch/issues/6624
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -11,7 +11,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6662
 - **Exec issues**: 0
-- **Warnings**: 2
+- **Warnings**: 5
 - **Run logs**: `larch-logs/implement/34EEA4EB-AFF8-48DD-A596-3727CFEF09CF/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
@@ -21,9 +21,12 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (2):
+Warnings (5):
   1. Step 7a.1 — 8 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: docs/configuration-and-permissions.md, docs/installation-and-setup.md, docs/workfl...
   2. Step 5 — code review hit the 2-round HARD tier cap without converging. Fixes were applied across both rounds; proceeding.
+  3. Deviations from ARCHITECTURAL_GUIDELINES.md:
+  4. G-Py-11 (every lint or type suppression carries an inline reason): the Step 3/6 check-repair cleared lint by suppressing rather than removing dead code, and the new suppressions carry no reason. `p...
+  5. Retirement is partial, which is the cause of the G-Py-11 hits: the plan retires the mid-run renderers and live discovery (REWRITTEN `progress_report.py`, delete `_progress_report_live.py`). The dif...
 
 ## Review Phase Detail
 
@@ -91,3 +94,14 @@ codex/apply                        │                                ███�
 7. cursor/plan-fidelity-auto: 7
 
 **Reviewer slot failures**: 0
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Deviations from ARCHITECTURAL_GUIDELINES.md:
+
+- G-Py-11 (every lint or type suppression carries an inline reason): the Step 3/6 check-repair cleared lint by suppressing rather than removing dead code, and the new suppressions carry no reason. `python/larch/report/progress_report.py` keeps the now-unused `_report` behind `# type: ignore[reportUnusedFunction]` and adds inline `# type: ignore[reportUnnecessaryIsInstance]` and `[reportUnknownArgumentType]`; `python/larch/design/design_step0.py` adds a file-level `# ruff: noqa: SLF001`; `python/larch/report/progress_file.py` adds a file-level `# pyright: reportUnusedCallResult=false`. Each needs a `# CODE - reason` note or removal.
+- Retirement is partial, which is the cause of the G-Py-11 hits: the plan retires the mid-run renderers and live discovery (REWRITTEN `progress_report.py`, delete `_progress_report_live.py`). The diff removes the `progress report` verb, `report_main`, and the `UserPromptSubmit` hook, but leaves `_report`, the `_render_*` helpers, and `_progress_report_live.py` as dead code reachable only from the removed entry point. The typed surface is retired for users; the internal cleanup is not. A follow-up should delete the dead paths and drop the suppressions.
