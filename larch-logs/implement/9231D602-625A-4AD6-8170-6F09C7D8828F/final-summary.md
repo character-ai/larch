@@ -33,26 +33,19 @@ codex/pragmatism-vote    │                                        ████
 
 **Reviewer slot failures**: 0
 
-## Architectural invariants
+## /implement run 9231D602-625A-4AD6-8170-6F09C7D8828F: stalled
 
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
-
-## /implement run 9231D602-625A-4AD6-8170-6F09C7D8828F: shipping
-
-- **Outcome**: shipping
+- **Outcome**: ❌ STALLED
 - **Duration**: 01:13:46
-- **Cost**: 💰 TOTAL ~$14.03: Claude $6.87, Codex-5.5 $0.28, Codex-mini $1.83, Cursor $4.26, Claude (subprocess) $0.79  |  Tokens: 37745k
+- **Cost**: 💰 TOTAL ~$14.10: Claude $6.94, Codex-5.5 $0.28, Codex-mini $1.83, Cursor $4.26, Claude (subprocess) $0.79  |  Tokens: 37947k
 - **Issue**: #6748: https://github.com/character-ai/larch/issues/6748
+- **PR**: #6780: https://github.com/character-ai/larch/pull/6780
 - **Plan review**: N/A
 - **Plan coverage**: 12/12 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 0/7 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +513/-135, larch-logs +859/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
