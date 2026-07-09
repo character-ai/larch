@@ -1,0 +1,1 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: Filed\n- **Filed URL**: https://github.com/character-ai/larch/issues/6702\n- **Title**: [OUT_OF_SCOPE] Run-scoped writes still need fully fd-pinned parent-chain handling\n- **Stable ID**: oos-accepted-review:OOS_1\n"}
