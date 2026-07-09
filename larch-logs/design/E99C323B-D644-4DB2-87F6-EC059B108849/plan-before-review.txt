@@ -1,0 +1,117 @@
+## Approach
+
+Use the existing run-log commit path as the enforcement point. Validate the staged run directory before it is copied and committed. Do not backfill old logs.
+
+Add a small completeness model:
+
+- Required artifacts are derived from current run evidence, not hardcoded as a flat filename list.
+- Required implement artifacts:
+  - `session-transcript.jsonl` once Step 7a-level evidence exists.
+  - `final-summary.md` once terminal summary evidence exists or Step 8-level evidence exists.
+  - `review-findings-full.jsonl` when code review voting ran.
+- Required design artifacts:
+  - `final-summary.md` for design log publish.
+  - `session-transcript.jsonl`, unless transcript capture recorded an execution issue.
+  - `review-findings-full.jsonl` when plan-review voting ran.
+- Optional telemetry, including token and timing reports, stays fail-soft.
+
+For each missing required artifact, accept only a committed execution-issues record that names the missing artifact or its canonical slug. Accept `execution-issues.ndjson` for implement logs and `execution-issues.md` for design logs. Do not accept session-local status strings such as `SESSION_TRANSCRIPT_STATUS=write-failed` unless they were rendered into a committed execution-issues artifact.
+
+Return a distinct run-log incompleteness exit code from `run-log commit`. Preserve `run-log refresh` as an envelope-producing command, but report a distinct skip reason and error text when the commit gate rejects the run.
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_INVARIANTS.md
+
+Append the requested `## Run-log integrity` section after `## Workflow integrity`.
+
+Keep the text byte-identical to the feature description.
+
+### UPDATED: python/larch/core/config.py
+
+Add a named exit code for required run-log artifact omissions.
+
+Add a named refresh skip reason such as `REFRESH_SKIP_RUN_LOG_INCOMPLETE`.
+
+Do not add the new skip reason to the merge-OK sets unless the caller truly may continue without committing the missing-artifact record.
+
+### UPDATED: python/larch/report/run_log_manifest.py
+
+Add the read-only completeness helpers here to avoid import cycles with `run_logs.py`.
+
+Suggested shape:
+
+- A frozen dataclass for a required artifact row.
+- A helper that loads the manifest and derives required artifacts for `skill`.
+- Small predicates for implement/design condition reachability.
+- A helper that checks whether an execution-issues artifact records the omission.
+
+Keep schema evolution additive. Missing optional artifacts must not fail.
+
+### UPDATED: python/larch/report/run_log_commit.py
+
+Call the completeness helper inside `_commit_run` before `_copy_tree_to_repo`.
+
+On failure, return a `CommandResult` with the new exit code and a terse stderr diagnostic listing missing artifacts.
+
+Keep placeholder run-id, default-branch refusal, and secret scrub behavior unchanged.
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Thread the new commit result through `flush_logs_pre`, `refresh_run_logs_main`, and `larch_log_flush_main`.
+
+For `flush_logs_pre`, return `RefreshSkip(skipped=True, reason=REFRESH_SKIP_RUN_LOG_INCOMPLETE, error=...)`.
+
+For `larch_log_flush_main`, print a loud warning with the new exit code. Preserve existing best-effort caller expectations unless tests prove a non-zero `flush` exit is safe.
+
+### UPDATED: python/larch/report/run_logs.py
+
+If condition predicates move out of this module, rewire `verify_completeness_main` to use the shared helpers.
+
+Keep its current stdout grammar: `OK` or `MISSING=...`.
+
+### UPDATED: python/tests/report/test_run_log_flush.py
+
+Add focused regression coverage:
+
+1. Green path: required artifacts are present, commit path proceeds unchanged.
+2. Recorded omission: `session-transcript.jsonl` is missing, `execution-issues.ndjson` records the capture failure, and commit proceeds.
+3. Silent omission: `session-transcript.jsonl` is missing with no execution issue, and commit fails with the new exit code.
+4. #6263-shaped path: `SESSION_TRANSCRIPT_STATUS=write-failed` exists only in session-local state, and the check still fails.
+
+Use monkeypatches for git commit/copy seams. Do not perform real git mutations.
+
+### MAY_UPDATE: python/tests/report/test_run_logs.py
+
+Update only if shared condition helpers require import or expectation changes for existing `verify_completeness_main` tests.
+
+## Edge cases
+
+- A missing artifact with an execution issue that does not name the artifact must fail.
+- Empty or malformed execution-issues files must not satisfy the check.
+- Prior committed logs are not scanned or backfilled.
+- Optional token/timing telemetry must not become required by accident.
+- Design logs may use `execution-issues.md`; implement logs should prefer `execution-issues.ndjson`.
+
+## Failure modes
+
+- Import cycles can occur if `run_log_commit.py` calls helpers that import `run_logs.py`. Keep shared logic below both callers.
+- Over-broad required-artifact detection can block legitimate early bailouts. Gate artifacts only when existing run evidence says the corresponding phase ran.
+- Over-loose omission matching can turn a status string into a false pass. Require a category-keyed execution issue and artifact-specific text.
+- Changing `run-log refresh` exit behavior can break callers that parse its stdout envelope. Prefer a new reason over a new refresh process rc unless tests prove safety.
+
+## Testing strategy
+
+Run focused tests only:
+
+- `python3 -m pytest python/tests/report/test_run_log_flush.py`
+- `python3 -m pytest python/tests/report/test_run_logs.py -k verify_completeness`
+
+Then run changed-file lint if Python lint is available:
+
+- `make py-lint`
+
+Do not run broad harnesses unless the implementation touches shell or skill prompts.
+
+difficulty: HARD
+diff_lines: 420

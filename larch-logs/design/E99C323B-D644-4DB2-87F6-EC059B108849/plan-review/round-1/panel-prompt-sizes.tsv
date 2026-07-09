@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	24984	6246	13553	3389	11431	2858		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	24999	6250	13568	3392	11431	2858		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	18964	4741	13280	3320	5684	1421		0	0
+design Step 3	phase1	1	dyn-cursor-plan-run-log-integrity	plan-review	cursor	dyn-cursor-plan-run-log-integrity.txt	25316	6329	13419	3355	11897	2975		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18949	4738	13265	3317	5684	1421		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	18962	4741	13278	3320	5684	1421		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	24975	6244	13544	3386	11431	2858		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	24997	6250	13566	3392	11431	2858		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	18940	4735	13256	3314	5684	1421		0	0
+design Step 3	phase1	1	dyn-codex-plan-run-log-integrity	plan-review	codex	dyn-codex-plan-run-log-integrity.txt	19281	4821	13131	3283	6150	1538		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	28721	7181	4601	1151	24120	6030	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	16450	4113	9131	2283	7319	1830		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	16450	4113	9131	2283	7319	1830		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	16450	4113	9131	2283	7319	1830		0	0

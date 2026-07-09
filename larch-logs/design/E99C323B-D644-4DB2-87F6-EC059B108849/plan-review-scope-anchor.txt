@@ -1,0 +1,91 @@
+Source: /learn-from-bugs mining run, 2026-07-08. This issue combines a new `ARCHITECTURAL_INVARIANTS.md` entry with its mechanical backing. The invariants-file header requires mechanical backing where possible, so the entry and the check land together.
+
+## Context and motivation
+
+Committed run logs are the audit surface for every /design and /implement run. /analyze-bugs, /audit-runs, /report-tokens, and post-hoc adjudication all read them. Two closed bugs show the flush pipeline can lose required artifacts with no loud failure anywhere:
+
+- #6263: every /implement run after the capture migration failed to capture `session-transcript.jsonl`. `capture_transcript_main` (`python/larch/report/run_log_flush.py`) rendered the transcript into a `tempfile.mkstemp` path in the system `$TMPDIR`. `_write_batch` (`python/larch/report/run_log_batch.py`) passed that absolute path through `_rebase_under_tmpdir`, which re-anchored it into a nonexistent path under `IMPLEMENT_TMPDIR`. The read failed with ENOENT, capture recorded `SESSION_TRANSCRIPT_STATUS=write-failed` in session-local state only, no transcript was committed, and runs kept completing green for weeks until a manual investigation noticed.
+- #6027: committed run logs preserved vote outcomes but not the bodies of rejected and neutral findings, so post-hoc adjudication could not judge whether a rejection was sound. Per that issue's analysis, either the round flush allowlist excluded the artifacts, or the tally writer recorded pointers into session-tmpdir files that were never staged. Nothing recorded the omission.
+
+Shared failure shape: the flush layer treats a missing artifact as a status string or a silent skip. Status values inside the session tmpdir are invisible to every audit surface. Existing guidelines state the principles (G-Py-4 fail loudly; G-Obs-3 record execution issues; G-Idem-2 completion marker only after its postcondition artifact verifies), but no never-violate statement ties flush success to committed bytes, and no code enforces the tie.
+
+## Work item 1: append invariant I-Flush-1
+
+Append the following to `ARCHITECTURAL_INVARIANTS.md`, verbatim, as a new section after the existing `## Workflow integrity` section:
+
+```markdown
+## Run-log integrity
+
+### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string
+
+Every run-log flush must either commit the run's required artifact set (session
+transcript, voted-finding bodies, final report) or record the omission as a
+category-keyed execution issue that flushes into the committed run log. A
+capture failure that exists only as a status value inside the session tmpdir is
+invisible to every audit surface and is a defect of the flush, not acceptable
+drift. Evidence of violation: every post-migration /implement run recorded
+`SESSION_TRANSCRIPT_STATUS=write-failed` with no execution issue while runs
+completed green (#6263), and rejected and neutral finding bodies were absent
+from committed logs with nothing recorded anywhere (#6027). Mechanical backing:
+a post-flush manifest completeness check that asserts the expected artifact set,
+or its recorded execution-issue entries, before the run-log commit, with
+regression tests in `python/tests/report/test_run_log_flush.py`.
+```
+
+## Work item 2: implement the completeness check
+
+Add a verification that runs before the run-log commit. The natural seam is the flush path in `python/larch/report/run_log_flush.py` (where `flush_logs_pre` and the terminal flush assemble the commit batch) or the manifest layer in `python/larch/report/run_log_manifest.py`; /design picks the exact hook point after reading both.
+
+1. Define the required artifact set per run kind (design, implement). At minimum: the session transcript, the final report, and the voted-finding bodies for each review round that voted. Derive the set from the existing manifest and ledger machinery instead of hardcoding filenames the manifest already knows (G-Md-1, G-Cfg-1).
+2. For each required artifact missing from the staged commit set, require a matching category-keyed execution-issues entry (the G-Obs-3 log). A missing artifact with no recorded execution issue fails the flush loudly, with a distinct documented exit code (G-CLI-2).
+3. Keep the check additive for schema evolution: a newly introduced optional artifact must not fail runs recorded under the prior shape (G-Wire-2). Never backfill historical committed logs.
+4. The check gates only required artifacts; absent optional telemetry stays fail-soft (G-Obs-1).
+
+## Work item 3: regression tests
+
+Extend `python/tests/report/test_run_log_flush.py`:
+
+- Green path: all required artifacts present; flush succeeds; behavior unchanged.
+- Recorded-omission path: transcript missing, an execution-issues entry records the capture failure; flush succeeds and the committed log contains the entry.
+- Silent-omission path: transcript missing, no execution-issues entry; flush fails with the new exit code.
+- #6263-shaped fixture: capture status `write-failed` present only in session-local state; assert that alone does not satisfy the check.
+
+## Acceptance criteria
+
+- The invariant text appears in `ARCHITECTURAL_INVARIANTS.md` byte-identical to work item 1.
+- A run missing a required artifact cannot commit its run log without an execution-issue record; the silent-omission test proves it.
+- Complete runs see no behavior change; the green-path test proves it.
+
+## Backing issues
+
+#6263, #6027. Related principles: G-Py-4, G-Obs-3, G-Idem-2.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Anchor the flush-integrity requirement in `ARCHITECTURAL_INVARIANTS.md` as `I-Flush-1`.
+- Add a post-flush completeness check: a missing required artifact without a matching execution-issue entry fails the flush with a distinct exit code.
+- Prove all three paths with regression tests.
+
+### Non-goals
+- Backfilling historical committed run logs.
+- Changing the artifact schema or adding new artifact types.
+- Modifying readers (`/analyze-bugs`, `/audit-runs`, `/report-tokens`).
+
+### Approach sketch
+- Append the `## Run-log integrity` section to `ARCHITECTURAL_INVARIANTS.md` verbatim (work item 1).
+- Identify the required artifact set per run kind using existing manifest/ledger machinery in `run_log_manifest.py` or `run_log_flush.py`.
+- Add a pre-commit check gate: iterate required artifacts; for each missing one, verify a matching category-keyed execution-issue entry exists; fail loudly with a new exit code if not.
+- Keep optional artifacts fail-soft; the check is additive for schema evolution.
+- Extend `python/tests/report/test_run_log_flush.py` with four scenarios.
+
+### Surfaces in scope
+- `ARCHITECTURAL_INVARIANTS.md`
+- `python/larch/report/run_log_flush.py`
+- `python/larch/report/run_log_manifest.py` (possibly, for artifact enumeration)
+- `python/tests/report/test_run_log_flush.py`
+
+### Open questions
+- Exact hook seam: pre-commit validator inside `flush_logs_pre` vs. a dedicated function in `run_log_manifest.py`. /design resolves after reading both files.
