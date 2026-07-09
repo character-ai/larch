@@ -1,0 +1,99 @@
+Source: surfaced during the 2026-07-08 /learn-from-bugs follow-up filing (#6672 through #6675). The batch input carried fenced verbatim payloads; the orchestrator hand-masked them to avoid corruption. This issue makes the parser fence-aware so that workaround is never needed again.
+
+## Context and motivation
+
+Two larch conventions collide:
+
+1. Prevention issues must carry full append-ready wording. #6474 and #6475 established that proposed guideline and invariant entries appear verbatim, inside fenced code blocks, at their real heading depth (`### G-<Area>-<n>: ...`, `### I-<Area>-<n>: ...`). Changing the depth corrupts the deliverable.
+2. /learn-from-bugs Step 5 and other batch callers file such bodies through /issue batch mode (`--input-file`), whose generic-fallback parser treats every line starting with `### ` as an item boundary, with no fence awareness.
+
+Any batch item whose body carries an append-ready entry therefore splits at the fenced heading. The /issue SKILL.md "Authoring caution (generic fallback)" documents the constraint and suggests `####` or deeper for subsections, but that workaround is unusable for byte-exact payloads.
+
+#2152 hit the unfenced variant of this class in 2026-05 (a batch authored with `### A.` subsection headers parsed as 12 items instead of 2) and deliberately resolved it as documented behavior: it added the `parse-input:` stderr breadcrumb and the authoring caution, reasoning that the generic path has "no reliable disambiguator" for in-body `### ` lines. For fenced content that reasoning no longer holds. Fence state is a reliable disambiguator, and the fenced case is exactly the one where #2152's author-side workaround (demote the heading to `####`) cannot be applied. This issue supersedes the #2152 decision for fenced content only; unfenced in-body `### ` lines stay documented-behavior.
+
+The failure is silent. Parse succeeds, `ITEMS_TOTAL` is simply wrong, and the corrupted fragments would file to GitHub as real issues. In the 2026-07-08 batch, items 2 and 3 of 4 carried fenced `### I-Flush-1:` and `### G-Mig-1:` lines; an unmasked parse yields 6 items, two of them bogus fragments. The batch filed correctly only because the orchestrator masked the fenced lines before parsing and byte-restored the parser's output body files afterward, a workaround a less careful operator or model would not know to apply.
+
+## Verified reproduction (2026-07-08, larch 52.5.15)
+
+Input file, one intended item:
+
+````markdown
+### Fixture item: one intended item with a fenced payload
+Intro line before the fence.
+
+```markdown
+### G-Fake-1: fenced heading that is payload, not a boundary
+- Why: this line is verbatim payload inside a fenced block.
+```
+
+Trailing line after the fence.
+````
+
+Command: `python3 python/cli.py issue parse-input --input-file <fixture> --output-dir <dir>`
+
+Observed output:
+
+```
+parse-input: 2 items parsed (mode=generic): 1=Fixture item: ..., 2=G-Fake-1: fenced heading that is payload, not a boundary
+ITEMS_TOTAL=2
+```
+
+Observed body files: item 1's body ends with a dangling unclosed opener line (three backticks plus `markdown`); item 2 is titled from the payload line and starts with the orphaned `- Why:` bullet followed by the stray closing fence. Both bodies render broken.
+
+## Root cause
+
+`parse_issue_input` (`python/larch/issue/issue_create.py`) iterates `text.splitlines()` and tests each line against `OOS_HEADING_RE` and `PLAIN_HEADING_RE` with no fence state. In generic mode, a `PLAIN_HEADING_RE` match unconditionally calls `state.emit_current()` and starts a new item. The generic-mode guard that absorbs OOS headings into an in-progress generic body has no counterpart for plain `### ` headings. A search of the module confirms it contains no fence handling of any kind.
+
+The OOS mode path is likely affected too: a fenced `### ` line inside an OOS Description routes into the `pending_heading` ambiguous-boundary machinery from #138. That part is inference; verify while fixing.
+
+## Work items
+
+1. Make `parse_issue_input` fence-aware with the balanced two-pass approach #3153 established for the /design plan-review dedup. Pass 1 walks the lines and records the line-index ranges of balanced fence pairs: an opener is a line whose stripped form starts with three or more backticks (or tildes), optionally followed by an info string such as `markdown`; a closer needs at least the opener's marker length and no suffix; an opener that never closes is treated as plain text, not as fencing the rest of the file. Pass 2 runs the existing state machine unchanged, except that for any line inside a balanced fence range it skips the `OOS_HEADING_RE`, `PLAIN_HEADING_RE`, and `consume_oos_field` checks and appends the line as body content.
+2. The balanced-pair rule is load-bearing. With a naive open/close toggle, one unclosed fence would absorb every later real `### ` boundary into a single item, which is the exact failure shape #3153 fixed in the dedup pipeline (an unclosed trailing fence disabled later Constraints protection). With balanced pairs, an unclosed opener degrades to plain text and later boundaries still split.
+3. Regression tests in `python/test_issue_create.py`, alongside the existing #129 / #131 / #132 / #138 coverage:
+   - a generic item with a fenced `### ` line parses as one item with a byte-exact body including the full fence;
+   - a generic item with a fenced OOS-style heading stays one item;
+   - an unclosed fence at EOF followed by a real `### ` boundary: the opener degrades to plain text and the boundary still splits;
+   - an OOS item whose Description carries a fenced `### ` line;
+   - a real `### ` boundary after a properly closed fence still splits into two items.
+4. Update the /issue SKILL.md "Authoring caution (generic fallback)" block in the same change (G-Md-2): fenced `### ` lines become safe, so the caution narrows to unfenced `### ` lines only. Keep the #2152 breadcrumb behavior unchanged.
+
+## Acceptance criteria
+
+- The verified reproduction above parses as `ITEMS_TOTAL=1` with the body byte-identical to the input below the title line.
+- The 2026-07-08 batch shape (four items, two carrying fenced `### I-...` / `### G-...` payloads) parses as 4 items with byte-exact bodies and no masking.
+- All existing parser tests keep passing; unfenced `### ` boundaries behave exactly as before.
+
+## Backing references
+
+- Convention side: #6474, #6475 (append-ready verbatim entries); the /learn-from-bugs Step 5 filing contract.
+- Parser lineage: #129, #131, #132, #138 (prior boundary and field defects); #2152 (the unfenced variant, resolved as documented behavior with the breadcrumb and the authoring caution); #3153 (fence-tracking precedent and the balanced-pair rule).
+- Trigger batch: #6672, #6673, #6674, #6675 (filed 2026-07-08 with the manual masking workaround).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Make `parse_issue_input` fence-aware so a `### ` line inside a fenced code block is body content, not an item boundary.
+- The verified reproduction parses as `ITEMS_TOTAL=1` with a byte-exact body; the 2026-07-08 four-item batch parses as 4 items with no masking.
+- Fix the whole fence-unaware class — both the generic path and the OOS Description path — not just the generic reproduction (G-Fix-1).
+
+### Non-goals
+- No change to unfenced in-body `### ` behavior; #2152's split-boundary rule and its `parse-input:` breadcrumb stay exactly as-is.
+- No rewrite or refactor of the existing state machine beyond inserting the two-pass fence gate.
+- No new CLI flags, config, or fence syntax beyond backtick/tilde fences.
+
+### Approach sketch
+- Pass 1: a small helper scans `text.splitlines()` and records the line indices covered by *balanced* fence pairs (opener = stripped line of ≥3 backticks/tildes + optional info string; closer = same marker char, length ≥ opener, no suffix; an unclosed opener degrades to plain text).
+- Pass 2: the existing `parse_issue_input` loop runs unchanged, except the three heading/field checks (`OOS_HEADING_RE`, `PLAIN_HEADING_RE`, `consume_oos_field`) are gated on "this line index is not fenced"; fenced lines fall through to the existing body-append branch.
+- Add the five enumerated regression tests in `python/test_issue_create.py`.
+- Narrow the `/issue` SKILL.md "Authoring caution (generic fallback)" to unfenced `### ` only; keep the #2152 breadcrumb unchanged.
+
+### Surfaces in scope
+- `python/larch/issue/issue_create.py` — new balanced-fence helper + fence-gated checks in `parse_issue_input`.
+- `python/test_issue_create.py` — regression tests.
+- `skills/issue/SKILL.md` — authoring-caution narrowing.
+
+### Open questions
+- None.

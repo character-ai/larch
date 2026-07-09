@@ -1,0 +1,98 @@
+## Approach
+
+Add a small two-pass fence gate around the existing `/issue` batch parser.
+
+1. In `parse_issue_input`, split once into `lines`.
+2. Pass 1 records only balanced fenced-code ranges.
+   - Opener: `line.strip()` starts with at least three backticks or tildes.
+   - Opener may have an info string, such as `markdown`.
+   - Closer: same marker character, marker length at least the opener length, and no suffix after stripping.
+   - Unclosed openers do not create a range. They degrade to plain text.
+3. Pass 2 keeps the current parser state machine.
+   - For fenced line indices, skip `OOS_HEADING_RE`, `PLAIN_HEADING_RE`, and `consume_oos_field`.
+   - Let fenced lines append as body content for the active item.
+   - Do not change unfenced `### ` behavior or the `parse-input:` breadcrumb.
+4. Keep this surgical. Do not add flags, parser modes, or a broad Markdown parser.
+
+## Files to modify/create
+
+### UPDATED: python/larch/issue/issue_create.py
+
+Add a private helper near the parser constants or just above `parse_issue_input`, for example `_balanced_fence_line_indices(lines: list[str]) -> set[int]`.
+
+Implementation notes:
+- Track marker character and opener length.
+- Scan forward from each opener until a valid closer appears.
+- If no closer appears, advance one line from the opener and keep scanning.
+- Add opener through closer indices to the fenced set.
+- Use type annotations for locals where useful.
+- In `parse_issue_input`, compute `fenced_lines` once, then gate the three boundary/field checks with `index not in fenced_lines`.
+- Preserve existing `ParseState` methods and malformed-item behavior.
+
+### UPDATED: python/tests/issue/test_issue_create.py
+
+Add parser regressions near the existing #129 / #131 / #132 / #138 parser tests.
+
+Cover:
+- Generic item with a fenced `### ` payload parses as one item. Assert body content includes the full fence and payload heading.
+- Generic item with a fenced `### OOS_...` payload stays one generic item.
+- Unclosed fence followed by a real `### ` boundary still splits. Assert the opener remains plain body text for the first item.
+- OOS item whose Description carries a fenced `### ` line stays one item. Include a field-looking line inside the fence if practical, so `consume_oos_field` is also pinned.
+- A real `### ` boundary after a properly closed fence still splits into two items.
+
+Use the existing `_parse_input_fixture`, `_kv_value`, and `_body_file_contents` helpers. Keep expected bodies exact under the parser's current newline semantics.
+
+### UPDATED: skills/issue/SKILL.md
+
+Narrow the "Authoring caution (generic fallback)" block:
+- Say unfenced generic body lines must not start with `### `.
+- Say balanced fenced code blocks may contain byte-exact `### ` payload headings.
+- Say unclosed fences do not protect later `### ` boundaries.
+- Keep the `--dry-run` guidance and `▶ parse-input:` breadcrumb text unchanged.
+- If touching the adjacent parser-test path sentence, correct it to the current path `python/tests/issue/test_issue_create.py`.
+
+## Edge cases
+
+- A longer closer closes a shorter opener.
+- Backtick and tilde fences do not cross-close each other.
+- A marker-only opener can be closed by the next marker-only line of the same character and sufficient length.
+- Unclosed opener at EOF does not swallow later boundaries.
+- Fenced OOS metadata-looking bullets stay body text while inside the fence.
+- Unfenced `### ` lines keep the documented #2152 split behavior.
+
+## Failure modes
+
+- Naive toggle logic can merge later real issues into one item after an unclosed fence.
+- Gating only `PLAIN_HEADING_RE` can still let OOS headings or OOS fields corrupt fenced payloads.
+- Treating every marker-only line as a closer outside an active fence can miss a valid fence opener.
+- Changing final-newline behavior can break existing body-file expectations.
+
+## Testing strategy
+
+Run focused tests first:
+
+```bash
+python3 -m pytest python/tests/issue/test_issue_create.py -q
+```
+
+Run lint for changed Python:
+
+```bash
+cd python && ruff check larch/issue/issue_create.py tests/issue/test_issue_create.py
+```
+
+If available before merge, run the broader Python targets:
+
+```bash
+make py-lint
+make py-test
+```
+
+Manual acceptance check:
+- Re-run the verified reproduction through `python3 python/cli.py issue parse-input --input-file <fixture> --output-dir <dir>`.
+- Confirm `ITEMS_TOTAL=1`.
+- Confirm the body file contains the full fenced payload and no bogus second item.
+
+difficulty: MODERATE
+mechanical_churn: false
+diff_lines: 150
