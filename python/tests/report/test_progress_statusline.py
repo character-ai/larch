@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import shutil
 import subprocess
 import time
 from pathlib import Path
@@ -115,61 +114,85 @@ def test_validate_run_id_rejects_unsafe_values(run_id: str) -> None:
         progress_file.validate_run_id(run_id)
 
 
+@pytest.mark.parametrize("run_id", ["", "current"])
+def test_append_breadcrumb_for_run_rejects_invalid_run_id_before_creating_dirs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_id: str
+) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    clone_dir = progress_file.progress_clone_dir(repo)
+
+    assert not progress_file.append_breadcrumb_for_run(repo, run_id, "design", "3", "reviewers done")
+    assert not clone_dir.exists()
+
+
 def test_activate_run_writes_current_with_fd_anchored_helpers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
     repo.mkdir()
     run_id = "implement-20260708.1"
-    open_calls: list[Path] = []
+    ensure_calls: list[Path] = []
+    subdir_calls: list[str] = []
     write_calls: list[tuple[str, str, int, str]] = []
-    original_open = progress_file._open_verified_dir
+    original_ensure = progress_file._ensure_directory_fd
+    original_subdir = progress_file._open_or_create_subdir
     original_write = progress_file._atomic_write_in_dir
 
-    def traced_open(path: Path) -> int:
-        open_calls.append(path)
-        return original_open(path)
+    def traced_ensure(path: Path) -> int:
+        ensure_calls.append(path)
+        return original_ensure(path)
+
+    def traced_subdir(parent_fd: int, name: str) -> int:
+        subdir_calls.append(name)
+        return original_subdir(parent_fd, name)
 
     def traced_write(dir_fd: int, name: str, text: str, *, mode: int = 0o600, temp_prefix: str = ".current.") -> None:
         write_calls.append((name, text, mode, temp_prefix))
         original_write(dir_fd, name, text, mode=mode, temp_prefix=temp_prefix)
 
-    monkeypatch.setattr(progress_file, "_open_verified_dir", traced_open)
+    monkeypatch.setattr(progress_file, "_ensure_directory_fd", traced_ensure)
+    monkeypatch.setattr(progress_file, "_open_or_create_subdir", traced_subdir)
     monkeypatch.setattr(progress_file, "_atomic_write_in_dir", traced_write)
 
     progress_file.activate_run(repo, run_id)
 
     assert progress_file.current_run_path(repo).read_text(encoding="utf-8") == f"{run_id}\n"
     assert progress_file.run_progress_dir(repo, run_id).is_dir()
-    assert Path("/") in open_calls
-    assert progress_file.progress_clone_dir(repo) in open_calls
+    assert ensure_calls == [progress_file.progress_clone_dir(repo)]
+    assert subdir_calls[-1] == run_id
     assert write_calls == [(progress_file.CURRENT_RUN_FILENAME, f"{run_id}\n", 0o600, ".current.")]
 
 
-def test_activate_run_refuses_clone_dir_swap_before_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_activate_run_pins_clone_dir_after_fd_acquisition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
     repo.mkdir()
+    run_id = "design-20260708.1"
     clone_dir = progress_file.progress_clone_dir(repo)
-    pointer_path = progress_file.current_run_path(repo)
+    real_clone_dir = tmp_path / "real-clone"
     target = tmp_path / "outside"
     target.mkdir()
-    original_assert = progress_file.larch_io.assert_no_symlink_path_or_ancestors
+    original_subdir = progress_file._open_or_create_subdir
     swapped = False
 
-    def swapping_assert(path: Path) -> None:
+    def swapping_subdir(parent_fd: int, name: str) -> int:
         nonlocal swapped
-        original_assert(path)
-        if not swapped and path == pointer_path and clone_dir.is_dir():
-            shutil.rmtree(clone_dir)
+        fd = original_subdir(parent_fd, name)
+        if not swapped and name == run_id and clone_dir.is_dir():
+            clone_dir.rename(real_clone_dir)
             clone_dir.symlink_to(target, target_is_directory=True)
             swapped = True
+        return fd
 
-    monkeypatch.setattr(progress_file.larch_io, "assert_no_symlink_path_or_ancestors", swapping_assert)
+    monkeypatch.setattr(progress_file, "_open_or_create_subdir", swapping_subdir)
 
-    with pytest.raises(OSError, match="symlink"):
-        progress_file.activate_run(repo, "design-20260708.1")
+    progress_file.activate_run(repo, run_id)
+
     assert swapped
     assert not (target / progress_file.CURRENT_RUN_FILENAME).exists()
+    assert (real_clone_dir / progress_file.CURRENT_RUN_FILENAME).read_text(encoding="utf-8") == f"{run_id}\n"
+    assert (real_clone_dir / run_id).is_dir()
 
 
 def test_activate_run_uses_anchored_directory_creation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -322,7 +345,9 @@ def test_append_breadcrumb_for_run_uses_nonblocking_open_on_fifo(
     assert open_flags
 
 
-def test_append_breadcrumb_for_run_refuses_parent_swap_before_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_append_breadcrumb_for_run_pins_run_dir_after_fd_acquisition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
     target = tmp_path / "outside-run"
@@ -330,23 +355,25 @@ def test_append_breadcrumb_for_run_refuses_parent_swap_before_open(tmp_path: Pat
     target.mkdir()
     run_id = "design-20260708.1"
     run_dir = progress_file.run_progress_dir(repo, run_id)
-    log_path = progress_file.run_progress_path(repo, run_id)
-    original_assert = progress_file.larch_io.assert_no_symlink_path_or_ancestors
-    checked_once = False
+    real_run_dir = tmp_path / "real-run"
+    original_subdir = progress_file._open_or_create_subdir
+    swapped = False
 
-    def swapping_assert(path: Path) -> None:
-        nonlocal checked_once
-        original_assert(path)
-        if checked_once and path == log_path and run_dir.is_dir():
-            run_dir.rmdir()
+    def swapping_subdir(parent_fd: int, name: str) -> int:
+        nonlocal swapped
+        fd = original_subdir(parent_fd, name)
+        if not swapped and name == run_id and run_dir.is_dir():
+            run_dir.rename(real_run_dir)
             run_dir.symlink_to(target, target_is_directory=True)
-        if path == log_path:
-            checked_once = True
+            swapped = True
+        return fd
 
-    monkeypatch.setattr(progress_file.larch_io, "assert_no_symlink_path_or_ancestors", swapping_assert)
+    monkeypatch.setattr(progress_file, "_open_or_create_subdir", swapping_subdir)
 
-    assert not progress_file.append_breadcrumb_for_run(repo, run_id, "design", "3", "reviewers done")
+    assert progress_file.append_breadcrumb_for_run(repo, run_id, "design", "3", "reviewers done")
+    assert swapped
     assert not (target / progress_file.RUN_BREADCRUMB_FILENAME).exists()
+    assert (real_run_dir / progress_file.RUN_BREADCRUMB_FILENAME).read_text(encoding="utf-8") == "[design 3] reviewers done\n"
 
 
 def test_activate_run_refuses_symlinked_run_dir_and_current(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -361,13 +388,15 @@ def test_activate_run_refuses_symlinked_run_dir_and_current(tmp_path: Path, monk
     clone_dir.mkdir(parents=True)
     progress_file.run_progress_dir(repo, "design-20260708.1").symlink_to(target_dir, target_is_directory=True)
 
-    with pytest.raises(OSError, match="symlink"):
+    with pytest.raises(OSError, match=r"refusing|symbolic links|symlink|not a directory|Not a directory"):
         progress_file.activate_run(repo, "design-20260708.1")
+    assert not (target_dir / progress_file.CURRENT_RUN_FILENAME).exists()
 
     progress_file.run_progress_dir(repo, "design-20260708.1").unlink()
     progress_file.current_run_path(repo).symlink_to(target_file)
-    with pytest.raises(OSError, match="symlink"):
+    with pytest.raises(OSError, match=r"refusing|symbolic links|symlink|not a directory|Not a directory"):
         progress_file.activate_run(repo, "design-20260708.1")
+    assert target_file.read_text(encoding="utf-8") == ""
 
 
 def test_cleanup_old_progress_files_reaps_run_dirs_and_legacy_logs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
