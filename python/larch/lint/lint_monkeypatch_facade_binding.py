@@ -136,7 +136,7 @@ class ModuleResolver:
         imported = self._imported_module_attribute(tree, ref, attribute)
         if imported is not None:
             return imported
-        return self.source_for_module(f"{ref.name}.{attribute}")
+        return None
 
     def import_source_for_attribute(self, ref: ModuleRef, attribute: str) -> str | None:
         tree = self.parse_module(ref)
@@ -169,11 +169,12 @@ class ModuleResolver:
         current: ModuleRef,
         attribute: str,
     ) -> ModuleRef | None:
+        resolved: ModuleRef | None = None
         for statement in tree.body:
             imported = self._module_ref_from_import(statement, current=current, attribute=attribute)
             if imported is not None:
-                return imported
-        return None
+                resolved = imported
+        return resolved
 
     def _module_ref_from_import(
         self,

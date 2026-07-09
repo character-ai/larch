@@ -52,6 +52,17 @@ def _base_files(test_source: str, *, facade_source: str = "from larch.defs impor
     }
 
 
+def _report_files(test_source: str, *, ship_source: str | None = None) -> dict[str, str]:
+    files: dict[str, str] = {
+        "larch/report/run_log_flush.py": "def _commit_run():\n    return None\n",
+        "larch/report/run_logs.py": "from larch.report.run_log_flush import _commit_run\n",
+        "test_facade.py": test_source,
+    }
+    if ship_source is not None:
+        files["larch/ship.py"] = ship_source
+    return files
+
+
 def _scan_single(root: Path) -> list[lmfb.Finding]:
     python_dir = root / "python"
     resolver = lmfb.ModuleResolver(python_dir)
@@ -100,6 +111,37 @@ def test_attribute_chain_on_imported_module_is_flagged(tmp_path: Path) -> None:
 
     assert findings == [
         lmfb.Finding("test_facade.py", "test_patch", "larch.facade", "target", "larch.defs", 1, 5)
+    ]
+
+
+def test_run_logs_facade_and_defining_module_shape_is_flagged(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files=_report_files(
+            """
+            from larch.report import run_logs
+            from larch.report import run_log_flush
+
+            def test_patch(monkeypatch):
+                monkeypatch.setattr(run_logs, "_commit_run", lambda: None)
+                monkeypatch.setattr(run_log_flush, "_commit_run", lambda: None)
+            """
+        ),
+        baseline=[],
+    )
+
+    findings = _scan_single(tmp_path)
+
+    assert findings == [
+        lmfb.Finding(
+            "test_facade.py",
+            "test_patch",
+            "larch.report.run_logs",
+            "_commit_run",
+            "larch.report.run_log_flush",
+            1,
+            6,
+        )
     ]
 
 
@@ -232,6 +274,58 @@ def test_non_repo_modules_and_unresolved_chains_are_skipped(tmp_path: Path) -> N
     )
 
     assert _scan_single(tmp_path) == []
+
+
+def test_unbound_package_child_chain_is_skipped(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/ship.py": "# parent intentionally does not import child\n",
+            "larch/ship/child.py": "def target():\n    return 'real'\n",
+            "test_facade.py": """
+            from larch import ship
+
+            def test_patch(monkeypatch):
+                monkeypatch.setattr(ship.child, "target", lambda: None)
+            """,
+        },
+        baseline=[],
+    )
+
+    assert _scan_single(tmp_path) == []
+
+
+def test_duplicate_import_alias_uses_last_binding(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files=_report_files(
+            """
+            from larch import ship
+
+            def test_patch(monkeypatch):
+                monkeypatch.setattr(ship.run_logs, "_commit_run", lambda: None)
+            """,
+            ship_source="""
+            from larch.report import run_log_flush as run_logs
+            from larch.report import run_logs as run_logs
+            """,
+        ),
+        baseline=[],
+    )
+
+    findings = _scan_single(tmp_path)
+
+    assert findings == [
+        lmfb.Finding(
+            "test_facade.py",
+            "test_patch",
+            "larch.report.run_logs",
+            "_commit_run",
+            "larch.report.run_log_flush",
+            1,
+            5,
+        )
+    ]
 
 
 def test_same_line_suppression_with_reason_suppresses(tmp_path: Path) -> None:
