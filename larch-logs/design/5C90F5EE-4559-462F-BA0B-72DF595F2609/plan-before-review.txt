@@ -1,0 +1,60 @@
+## Approach
+
+Keep the hook advisory and fail-open. Do not change warning thresholds, state fields, hook registration, or the Bash-only surface.
+
+## Files to modify/create
+
+### UPDATED: scripts/hook-anti-read-poll.sh
+
+- Guard the state-file read:
+  - Read only when `$state_file` is readable, not a symlink, and a regular file.
+  - If the path is a symlink, directory, FIFO, or other non-regular entry, skip prior state and continue with `prev_count=0`.
+- Replace the direct truncate write with a temp-and-promote flow:
+  - Create a temp file with `mktemp` under `$state_dir`.
+  - Write the tab-separated state row into the temp file.
+  - Cleanup the temp file on write or promote failure.
+  - Promote with same-directory replacement so a symlink at `$state_file` is not opened for truncation.
+- Preserve exit-0 behavior on all failure paths.
+- Keep Bash 3.2-compatible syntax.
+
+### UPDATED: scripts/test-hook-anti-read-poll.sh
+
+- Add a helper to compute the expected state path from cwd and session id, using the same `cksum` inputs as the hook.
+- Add a symlink-poisoning regression:
+  - Create `$TMPDIR/larch-read-poll/<key>.state` as a symlink to a writable target file.
+  - Seed the target with state that would produce a third-read warning if followed.
+  - Run the hook for the matching path, offset, cwd, and session.
+  - Assert exit 0, no reminder output, target content unchanged, and the state path is not left as a symlink if the hook writes replacement state.
+- Keep the existing pass/fail counter style.
+
+### UPDATED: SECURITY.md
+
+- Update the existing “Plugin-shipped hooks (generic repeated reads)” or “Read-poll reminder output” note.
+- State that the read-poll hook treats its temp state file as untrusted local state and does not follow symlinked state files for read or write.
+
+## Edge cases
+
+- Missing `jq`, malformed hook JSON, invalid time, missing `mktemp`, or unwritable temp dir still exit 0.
+- Existing non-regular state entries do not block tool use.
+- A symlinked state path must not cause target-file truncation.
+- A stale symlinked state file must not be trusted as prior counter state.
+- Directory-like destination behavior should fail open rather than moving the temp file into an attacker-chosen directory.
+
+## Failure modes
+
+- If temp creation, state-row write, or promotion fails, remove the temp file best-effort and exit 0.
+- If the state path changes between checks, prefer losing the reminder state over following an unsafe path.
+- If the regression cannot safely assert replacement shape on a platform, keep the invariant assertion focused on “target unchanged” and “no symlink content was trusted.”
+
+## Testing strategy
+
+- Run `bash scripts/test-hook-anti-read-poll.sh`.
+- Run `make test-hook-anti-read-poll`.
+- Run `make shellcheck` or the scoped pre-commit shellcheck path for the changed shell files if available.
+- Run `make lint-bash32` if the implementation changes shell control flow or redirection shape.
+
+difficulty: MODERATE
+diff_added: 45
+diff_deleted: 8
+mechanical_churn: false
+diff_lines: 53

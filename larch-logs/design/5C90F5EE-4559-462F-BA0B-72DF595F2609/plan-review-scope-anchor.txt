@@ -1,0 +1,43 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: codex-specialist-edge-cases
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+The hook writes through a predictable tmp-state path and follows symlinks there, so same-user symlink tricks can redirect truncation to another writable file.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From codex-specialist-edge-cases: Use a mktemp file plus symlink/non-regular checks and atomic replace, with temp cleanup on failure.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Prevent same-user symlink tricks from redirecting the predictable state-file write in `hook-anti-read-poll.sh` to another writable file.
+- Guard the state-file read against symlink-poisoned content.
+
+### Non-goals
+- Changes to other hook scripts (siblings use PID-qualified paths or already guard with `[ ! -L ]`).
+- Changing hook warning thresholds, state format, or observable behavior.
+- Adding Python or `larch.io` helper paths (hook is Bash-only; state file has no wire contract).
+
+### Approach sketch
+- Before reading `$state_file`: skip the read if `[ -L "$state_file" ]` (symlink guard, fail open).
+- Replace the direct `>"$state_file"` write with: `mktemp` in the same `$state_dir`, write to the temp file, then `mv -f tmp "$state_file"` (atomic rename; replaces any symlink entry without following it).
+- Cleanup the temp file on write or rename failure; exit 0 (fail-open contract preserved).
+- Add one test case to `test-hook-anti-read-poll.sh`: place a symlink at the state-file path; verify the hook exits 0 and does not write through the symlink.
+
+### Surfaces in scope
+- `scripts/hook-anti-read-poll.sh`
+- `scripts/test-hook-anti-read-poll.sh`
+
+### Open questions
+- None.

@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	17336	4334	13553	3389	3783	946		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	13988	3497	13265	3317	723	181		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	17351	4338	13568	3392	3783	946		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	13979	3495	13256	3314	723	181		0	0
+design Step 3	phase1	1	dyn-codex-plan-hook-security	plan-review	codex	dyn-codex-plan-hook-security.txt	14283	3571	13131	3283	1152	288		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	17327	4332	13544	3386	3783	946		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	14001	3501	13278	3320	723	181		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	17349	4338	13566	3392	3783	946		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	14003	3501	13280	3320	723	181		0	0
+design Step 3	phase1	1	dyn-cursor-plan-hook-security	plan-review	cursor	dyn-cursor-plan-hook-security.txt	17631	4408	13419	3355	4212	1053		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	17897	4475	4462	1116	13435	3359	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	11284	2821	9134	2284	2150	538		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	11284	2821	9134	2284	2150	538		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	11284	2821	9134	2284	2150	538		0	0

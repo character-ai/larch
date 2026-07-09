@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- broader pre-mutation ordering is outside the plan's required symlink-write fix; the directory check already happens before temp creation/promotion.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- useful test hygiene, but not necessary for the feature; the symlink regression can be isolated with a fresh temp root.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- negative-control bypass is optional harness complexity, not a required feature-path fix.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same over-broad pre-mutation concern as FINDING_1, not a necessary part of this fix.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- removing the negative-control path would only trim coverage, not fix an incomplete or broken feature.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- duplicate of the pre-mutation directory-check concern already covered elsewhere.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the extra doc note is not required by the approved scope.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- duplicate doc-note request, outside the required file list.
