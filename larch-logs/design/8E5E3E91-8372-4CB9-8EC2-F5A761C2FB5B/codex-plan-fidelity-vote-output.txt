@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- live-registry rejoin is already a distinct documented path; the extra mixed live-registry+stall case is optional and not required for the stale-stall recovery fix.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the current coverage gate does not treat NOT_SUBSTANTIVE as coverage success, so the claimed all-NOT_SUBSTANTIVE over-acceptance is not present.

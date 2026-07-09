@@ -1,0 +1,1 @@
+Plan: adjust Step 5 review coverage so all-`NOT_SUBSTANTIVE` static archetypes satisfy coverage without changing the >50% threshold, and make cached Step 5 stall result envs clear and relaunch on `step5-review` recovery.

@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Step 5 already distinguishes live-registry rejoin from cached-stall restart, and the current harness covers the live registry path and canonical stall reuse.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- This is a corner-case hardening of the proposed NOT_SUBSTANTIVE coverage tweak, not a necessary part of the step-5 stall fix.

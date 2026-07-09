@@ -1,0 +1,32 @@
+---LARCH-REJECTED-BEGIN---
+## Considered Plan Review Suggestions (Not Adopted)
+
+These reviewer suggestions were considered but not adopted. Some may already be addressed by the current plan; they are not automatically unimplemented gaps.
+
+### [Plan Review] FINDING_1
+
+### FINDING_1: Step 5 live-registry recovery contract is inconsistent and under-tested
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Pragmatic, Codex-Requirements, Codex-dyn-Step5 Recovery Contract
+- **Severity**: major
+- **Concern**: Step 5 recovery currently conflates live-registry rejoin with cached-stall restart, and the plan, skill contract, and harness do not yet prove the intended behavior for valid stall envelopes versus malformed or partial result envs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add a live-registry case that seeds a canonical stall result env, runs the wrapper with `STEP5_REGISTRY_MODE=live`, and asserts the result env is removed and `bgjob wait` is invoked without a fresh `bgjob start`; drop the keep-unchanged instruction for live-registry tests
+  - From Codex-Arch: Add `### UPDATED: skills/implement/SKILL.md` and rewrite the Step 5 prose to distinguish live-registry rejoin from cached-stall fresh start.
+  - From Codex-Arch: Add a dedicated `skills/implement/scripts/test-step-5-review.sh` case that seeds a valid stall result env with a live registry row and asserts the canonical result env is removed before rejoin.
+  - From Codex-Pragmatic: Preserve valid stall envelopes when `registry_state=live`. Only delete malformed or partial result envs that lack the stall or completion KVs.
+  - From Codex-Pragmatic: Add one live-registry case that seeds a valid stall canonical result env and verifies the wrapper still reaches bgjob wait without deleting that env.
+  - From Codex-Requirements: Add one live-registry case that seeds a valid stall result env, asserts it is removed or ignored before `bgjob wait`, and confirms the wrapper reuses the live bgjob without starting a second daemon
+  - From Codex-dyn-Step5 Recovery Contract: Keep one test that drives `STEP5_WAIT_MODE=done-stall` and asserts the stall envelope is consumed; add a separate fresh-start cached-stall test instead of replacing it.
+  - From Codex-dyn-Step5 Recovery Contract: Add a live-registry fixture that seeds a stall canonical result env, asserts it is removed, and still sees the wrapper rejoin via `bgjob wait` without spawning a second daemon.
+
+
+### [Plan Review] FINDING_2
+
+### FINDING_2: All-NOT_SUBSTANTIVE coverage gate misses dropped genuine failures
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: minor
+- **Concern**: The archetype coverage gate can still count a slug as covered from NOT_SUBSTANTIVE collector output even when a dropped-file genuine failure exists for the same slug, so the all-NOT_SUBSTANTIVE success set is too broad.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Before adding a slug to all-NOT_SUBSTANTIVE coverage, exclude any slug present in dropped-file genuine-failure sets (same rule as `_straggler_excused_static_slugs`); extend the negative unit test with NOT_SUBSTANTIVE in collector plus dropped genuine failure for the same archetype
+
+---LARCH-REJECTED-END---

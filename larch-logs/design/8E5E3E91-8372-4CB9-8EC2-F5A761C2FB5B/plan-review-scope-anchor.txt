@@ -1,0 +1,73 @@
+<!-- larch-stall:signature=fd186b426d4c103aae40f321336a6c0fe799384629d130f65fab2b0a315a7cc2 -->
+## Report metadata
+- **Report kind**: `terminal-failure`
+- **Failure class**: `transient-infra`
+- **Step**: `5`
+- **Bail reason**: `redacted`
+- **Run ID**: `8818DFC3-3782-4399-A604-2C4A84AB2757`
+- **Branch**: `unknown`
+- **PR URL**: `unknown`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=high
+summary=Step 5 panel-failed because the TRIVIAL single correctness reviewer returned NOT_SUBSTANTIVE and tripped the coverage gate, and step5-review recovery replays the cached stall so retries cannot progress
+
+## What happened
+
+The implementation for issue #6620 was correct and trivial. Codex appended four guideline entries (G-Py-15, G-Cfg-3, G-Orch-5, G-Obs-5) to ARCHITECTURAL_GUIDELINES.md, +20/-0, exactly as the plan specified. Step 3 relevant checks passed (RELEVANT_CHECKS_OK=true).
+
+## Root cause 1: coverage gate false-positive on a trivial change
+
+Step 5 ran at PANEL_TIER=TRIVIAL with PANEL_SHAPE=singles (one reviewer per archetype). Evidence in round-1/review-core-threshold.env: INTENDED_SLOTS=5, SUCCEEDED_SLOTS=4, THRESHOLD_OK=true, but COVERAGE_GATE_OK=false with COVERAGE_GATE_REASON "no successful static reviewer for archetype(s): correctness".
+
+round-1/collector-results.env shows the single correctness reviewer (codex-specialist-correctness) returned STATUS=NOT_SUBSTANTIVE, FAILURE_REASON "body too thin: 10/30 words after stripping fenced code", NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN. The other four reviewers (edge-cases, testing, plan-fidelity, dyn-guidelines) returned STATUS=OK.
+
+Inference: for a trivial exact-text markdown append, the correctness reviewer legitimately has little to say, so its body falls below the substantiveness word threshold even after the not-substantive retry. In singles shape the correctness archetype has exactly one reviewer, so one NOT_SUBSTANTIVE output leaves that archetype with zero substantive coverage. That trips the coverage gate and yields STEP5_REVIEW_STATUS=stall, STALL_REASON=panel-failed (round-1/review-core.env: REVIEW_CORE_STATUS=panel-failed).
+
+## Root cause 2: step5-review recovery replays the cached stall
+
+Step 18a classified the stall as FAILURE_CLASS=transient-infra, RESUME_HINT=step5-review, MATCHED_CLASSIFIER_PATTERN=transient-output (retry cap 4). Re-dispatching Step 5 through the normal current-run sequence did not re-run the review. It returned the identical cached result instantly, with BGJOB_ELAPSED_S=200 unchanged from the first run.
+
+skills/implement/scripts/step-5-review.sh consumes a valid STEP5_REVIEW_STATUS=stall result env with `bgjob wait --max-wait-s 0` on re-entry (the result-env-state branch near lines 212-214) and only starts a fresh review when that result env is absent or stale (near lines 216-225). So the transient-infra retry is a no-op replay, and recovery cannot make progress on a step5 panel-failed.
+
+## Impact
+
+A correct, trivial, designed change cannot land. The run stalls at Step 5 with no PR created. This pattern can recur for any trivial change whose single correctness reviewer has nothing substantive to report.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| `1` | `transient-infra` | `step5-review` | `failed` | `unknown` |
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Treat NOT_SUBSTANTIVE as coverage-satisfied for the archetype coverage gate when all reviewers in that archetype returned NOT_SUBSTANTIVE.
+- Clear a stale stall result env before starting a fresh review on step5-review recovery so retries make progress.
+
+### Non-goals
+- Do not change the threshold gate (NOT_SUBSTANTIVE stays "failed" for the >50% slot-failure check).
+- Do not change MAV, main-agent-vote, or other stall branches.
+- Do not add new flags, tiers, or per-tier carve-outs; the fix applies to any panel tier/shape.
+
+### Approach sketch
+- In `_static_coverage_reason` (`review_core_body.py`): add NOT_SUBSTANTIVE to the set of statuses that mark a slug as "covered" for the archetype coverage gate (without adding it to `collector_success`, which is used only for tool-absent excusal).
+- In `step-5-review.sh`: remove `stall` from the "return cached result" branch; merge it into the "stale → clear and restart" branch instead.
+- Update `test-step-5-review.sh`: the existing "stall result is reused" test must become a "stall result triggers fresh start" test.
+- Add a Python unit test for `_static_coverage_reason` with an all-NOT_SUBSTANTIVE archetype.
+
+### Surfaces in scope
+- `python/larch/review/review_core_body.py`
+- `python/tests/review/test_review_pipeline.py`
+- `skills/implement/scripts/step-5-review.sh`
+- `skills/implement/scripts/test-step-5-review.sh`
+- `skills/implement/scripts/test-step-5-review.md`
+
+### Open questions
+- None.

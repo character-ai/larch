@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- live-registry handling/test coverage is a nice-to-have, but not required to fix the cached-stall replay bug.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is a corner-case hardening of the coverage gate, not a necessary part of the stall-recovery fix.
