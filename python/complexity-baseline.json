@@ -1623,7 +1623,7 @@
     "file": "larch/design/design_step5c.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 92
+    "metric": 86
   },
   {
     "file": "larch/design/design_step6.py",
@@ -4550,12 +4550,6 @@
   {
     "file": "larch/report/run_logs.py",
     "code": "C901",
-    "qualified_symbol": "_verify_condition_reached",
-    "metric": 15
-  },
-  {
-    "file": "larch/report/run_logs.py",
-    "code": "C901",
     "qualified_symbol": "larch_log_write_round_main",
     "metric": 26
   },
@@ -4568,20 +4562,8 @@
   {
     "file": "larch/report/run_logs.py",
     "code": "PLR0911",
-    "qualified_symbol": "_verify_condition_reached",
-    "metric": 14
-  },
-  {
-    "file": "larch/report/run_logs.py",
-    "code": "PLR0911",
     "qualified_symbol": "verify_completeness_main",
     "metric": 11
-  },
-  {
-    "file": "larch/report/run_logs.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_verify_condition_reached",
-    "metric": 14
   },
   {
     "file": "larch/report/run_logs.py",
@@ -4594,12 +4576,6 @@
     "code": "PLR0912",
     "qualified_symbol": "verify_completeness_main",
     "metric": 17
-  },
-  {
-    "file": "larch/report/run_logs.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_verify_condition_reached",
-    "metric": 6
   },
   {
     "file": "larch/report/run_logs.py",
@@ -5115,7 +5091,7 @@
     "file": "larch/review/plan_review_normalize.py",
     "code": "C901",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "larch/review/plan_review_normalize.py",
@@ -5127,13 +5103,13 @@
     "file": "larch/review/plan_review_normalize.py",
     "code": "PLR0912",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 16
+    "metric": 15
   },
   {
     "file": "larch/review/plan_review_normalize.py",
     "code": "PLR0915",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 67
+    "metric": 65
   },
   {
     "file": "larch/review/plan_review_panel.py",
@@ -6111,7 +6087,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_phase_infra",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6183,7 +6159,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "_phase_infra",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6225,7 +6201,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_phase_infra",
-    "metric": 77
+    "metric": 79
   },
   {
     "file": "larch/state/bootstrap.py",
