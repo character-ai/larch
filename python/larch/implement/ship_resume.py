@@ -398,7 +398,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             repo=state_repo,
             detail="cannot verify gh-skipped resume PR identity anchor",
         )
-    if pr_number is None and state_phase in {"invariants-assessment", "guidelines-assessment"}:
+    if pr_number is None and state_phase in {"assessments", "invariants-assessment", "guidelines-assessment"}:
         return _resume_from_state(
             start="pre-pr-compose",
             counters=counters,

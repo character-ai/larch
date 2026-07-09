@@ -543,6 +543,7 @@ def test_ship_route_exit_reships_no_checks_when_phase14_flag_pending(
         (0, {"outcome": "OK"}, "complete"),
         (0, {"outcome": "NEEDS_USER_INPUT"}, "reship"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"}, "oos-pipeline"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-assessments"}, "assessments"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-invariants-assessment"}, "invariants-assessment"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-invariants-violation"}, "ci-fix"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-guidelines-assessment"}, "guidelines-assessment"),
@@ -574,6 +575,31 @@ def test_ship_route_exit_classifies_driver_sidecars(
     assert exit_rc == 0
     assert out == f"NEXT_ACTION={action}\n"
     assert f"NEXT_ACTION={action}\n" in (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+
+
+def test_ship_route_exit_preserves_combined_assessment_detail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+
+    exit_rc, out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        3,
+        {
+            "outcome": "NEEDS_USER_INPUT",
+            "needs_user_reason": "architectural-assessments",
+            "detail": "invariants,guidelines",
+        },
+    )
+
+    assert exit_rc == 0
+    assert out == "NEXT_ACTION=assessments\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "DETAIL=invariants,guidelines\n" in env
 
 
 @pytest.mark.parametrize(

@@ -59,6 +59,28 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
+def _pre_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_resume.ResumePlan:
+    return ship_resume.ResumePlan(
+        start="pre-pr-compose",
+        iteration=1,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+        pr_number=None,
+        pr_url="",
+        merge_result="",
+        branch_name=branch_name,
+        repo=repo,
+        durable=run_logs.DurableFlags(
+            repo_unavailable=False,
+            forked_target=False,
+            forked=False,
+            merge=True,
+            draft=False,
+        ),
+    )
+
+
 def _pin_guidelines_note_text(
     *,
     implement_tmpdir: str,
@@ -6016,6 +6038,143 @@ def test_load_or_prepare_guidelines_note_requests_compose_assessment(
     assert result.detail == "architectural-guidelines assessment required before PR body compose"
 
 
+def test_compose_assessment_gate_materializes_both_from_single_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    session = tmp_path / "session"
+    repo.mkdir()
+    session.mkdir()
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    git("init")
+    git("config", "user.name", "Larch Test")
+    git("config", "user.email", "larch@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    (repo / ship.architectural_guidelines.INVARIANTS_FILENAME).write_text(
+        "### I-Test-1: Keep evidence shared\n",
+        encoding="utf-8",
+    )
+    (repo / ship.architectural_guidelines.GUIDELINES_FILENAME).write_text(
+        "### G-Test-1: Keep diffs shared\n- Why: avoid drift.\n- Deviate when: never.\n",
+        encoding="utf-8",
+    )
+    git("add", ".")
+    git("commit", "-m", "base")
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nimplementation\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "implementation")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_args, **_kwargs: git("rev-parse", "HEAD"))
+
+    _gates, result = ship._compose_assessment_gate_before_pr(
+        runner=RecordingRunner(),
+        pr_context=_ctx(session, branch="feature", branch_name="feature", repo="o/r"),
+        repo_root=str(repo),
+        base_ref="main",
+        resume=_pre_pr_resume_plan(branch_name="feature", repo="o/r"),
+    )
+
+    assert result is not None
+    assert result.needs_user_reason == "architectural-assessments"
+    assert result.detail == "invariants,guidelines"
+    invariant_diff = session / ship.architectural_guidelines.INVARIANT_MATERIALIZED_DIFF
+    guideline_diff = session / ship.architectural_guidelines.MATERIALIZED_DIFF
+    assert invariant_diff.read_text(encoding="utf-8") == guideline_diff.read_text(encoding="utf-8")
+    invariant_env = ship.architectural_guidelines._read_env(
+        session / ship.architectural_guidelines.INVARIANT_MATERIALIZE_ENV
+    )
+    guideline_env = ship.architectural_guidelines._read_env(
+        session / ship.architectural_guidelines.MATERIALIZE_ENV
+    )
+    assert invariant_env["HEAD_SHA"] == guideline_env["HEAD_SHA"]
+    assert invariant_env["BASE_REF"] == guideline_env["BASE_REF"] == "origin/main"
+    assert invariant_env["DIFF_FINGERPRINT"] == guideline_env["DIFF_FINGERPRINT"]
+
+
+@pytest.mark.parametrize(
+    ("invariants_needs", "guidelines_needs", "expected_detail"),
+    [
+        (True, False, "invariants"),
+        (False, True, "guidelines"),
+    ],
+)
+def test_compose_assessment_gate_single_kind_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invariants_needs: bool,
+    guidelines_needs: bool,
+    expected_detail: str,
+) -> None:
+    monkeypatch.setattr(
+        ship,
+        "_invariants_gate_before_pr",
+        lambda **_kwargs: ship.InvariantsGateResult(needs_assessment=invariants_needs),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_guidelines_gate_before_pr",
+        lambda **_kwargs: ship.GuidelinesGateResult(needs_assessment=guidelines_needs),
+    )
+
+    _gates, result = ship._compose_assessment_gate_before_pr(
+        runner=RecordingRunner(),
+        pr_context=_ctx(tmp_path),
+        repo_root=str(tmp_path),
+        base_ref="main",
+        resume=_pre_pr_resume_plan(),
+    )
+
+    assert result is not None
+    assert result.needs_user_reason == "architectural-assessments"
+    assert result.detail == expected_detail
+
+
+def test_compose_assessment_gate_invariant_violation_short_circuits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        ship,
+        "_invariants_gate_before_pr",
+        lambda **_kwargs: ship.InvariantsGateResult(
+            note="violated I-Test-1",
+            assessment_kind="violation",
+        ),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_guidelines_gate_before_pr",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("guidelines gate must not run")),
+    )
+
+    _gates, result = ship._compose_assessment_gate_before_pr(
+        runner=RecordingRunner(),
+        pr_context=_ctx(tmp_path),
+        repo_root=str(tmp_path),
+        base_ref="main",
+        resume=_pre_pr_resume_plan(),
+    )
+
+    assert result is not None
+    assert result.needs_user_reason == "architectural-invariants-violation"
+    assert result.detail == "violated I-Test-1"
+
+
 def test_load_or_prepare_guidelines_note_drops_on_redaction_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6608,8 +6767,8 @@ def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
     )
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == "architectural-guidelines-assessment"
-    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+    assert result.needs_user_reason == "architectural-assessments"
+    assert result.detail == "guidelines"
     assert head_after_postbump
     assert head_after_merge_rebase
     assert head_after_postbump != head_after_merge_rebase
@@ -6959,8 +7118,8 @@ def test_open_pr_resume_guidelines_gate_needs_assessment_skips_flush_and_ensure_
     )
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == "architectural-guidelines-assessment"
-    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+    assert result.needs_user_reason == "architectural-assessments"
+    assert result.detail == "guidelines"
     assert not (tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).exists()
 
 
@@ -7165,17 +7324,19 @@ def test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note(
     )
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == "architectural-guidelines-assessment"
-    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+    assert result.needs_user_reason == "architectural-assessments"
+    assert result.detail == "guidelines"
 
 
-def test_guidelines_assessment_resume_without_pr_number_uses_pre_pr_compose(
+@pytest.mark.parametrize("phase", ["assessments", "guidelines-assessment"])
+def test_assessment_resume_without_pr_number_uses_pre_pr_compose(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    phase: str,
 ) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     state_file.write_text(
-        "PHASE=guidelines-assessment\nBRANCH_NAME=feat\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        f"PHASE={phase}\nBRANCH_NAME=feat\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "feat")

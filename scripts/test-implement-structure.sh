@@ -19,6 +19,10 @@ def require_text(text, needle, label):
     if needle not in text:
         checks.append(f'{label}: missing {needle!r}')
 
+def require_any_text(text, needles, label):
+    if not any(needle in text for needle in needles):
+        checks.append(f'{label}: missing one of {needles!r}')
+
 def forbid(path, needle, label):
     text = Path(path).read_text()
     if needle in text:
@@ -738,10 +742,14 @@ if ci_fix_ref.is_file():
         'BAIL_CLASS=github-log-failure',
         'BAIL_CLASS=write-failure',
         'Do not rerun architectural-guidelines Phase A',
-        'NEXT_ACTION=guidelines-assessment',
         're-invoke `step-8-ship.sh`',
     ]:
         require_text(ci_fix_text, needle, 'ship-pr-ci-fix.md CI-fix body')
+    require_any_text(
+        ci_fix_text,
+        ['NEXT_ACTION=assessments', 'NEXT_ACTION=guidelines-assessment'],
+        'ship-pr-ci-fix.md compose reassessment route',
+    )
     for section in [
         '## Kill switch: `LARCH_CI_FIXER=0`',
         '## Default fixer path',

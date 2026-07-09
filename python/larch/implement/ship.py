@@ -45,7 +45,9 @@ import argparse
 import os
 import re
 import traceback
+from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -145,6 +147,12 @@ from larch.implement.ship_seed import (
     build_seed_initial_state_parser,
     seed_initial_state_main,
 )
+
+
+@dataclass(frozen=True)
+class _AssessmentGatePair:
+    invariants: InvariantsGateResult
+    guidelines: GuidelinesGateResult
 
 
 def _invalid_context_result(ctx: RunContext) -> ShipResult | None:
@@ -364,6 +372,7 @@ def _invariants_gate_before_pr(
     base_ref: str,
     resume: ResumePlan,
     flush_outcome: bool = True,
+    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
 ) -> InvariantsGateResult:
     compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
     compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
@@ -382,6 +391,7 @@ def _invariants_gate_before_pr(
             base_ref=compose_base_ref,
             repo_root=repo_root,
             forked_target=pr_context.forked or pr_context.forked_target,
+            compose_snapshot_factory=compose_snapshot_factory,
         )
     if result.needs_assessment:
         return result
@@ -435,6 +445,7 @@ def _guidelines_gate_before_pr(
     base_ref: str,
     resume: ResumePlan,
     flush_outcome: bool = True,
+    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
 ) -> GuidelinesGateResult:
     compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
     compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
@@ -445,6 +456,7 @@ def _guidelines_gate_before_pr(
         base_ref=compose_base_ref,
         repo_root=repo_root,
         forked_target=pr_context.forked or pr_context.forked_target,
+        compose_snapshot_factory=compose_snapshot_factory,
     )
     if result.needs_assessment:
         return result
@@ -494,6 +506,107 @@ def _guidelines_gate_before_pr(
     return result
 
 
+def _compose_snapshot_factory(
+    *,
+    runner: Runner,
+    pr_context: RunContext,
+    repo_root: str,
+) -> Callable[[], architectural_guidelines.ComposeAssessmentSnapshot]:
+    snapshot: architectural_guidelines.ComposeAssessmentSnapshot | None = None
+    snapshot_error: str = ""
+    expected_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
+    forked_target = pr_context.forked or pr_context.forked_target
+
+    def materialize() -> architectural_guidelines.ComposeAssessmentSnapshot:
+        nonlocal snapshot, snapshot_error
+        if snapshot is not None:
+            return snapshot
+        if snapshot_error:
+            raise RuntimeError(snapshot_error)
+        try:
+            snapshot = architectural_guidelines.materialize_compose_assessment_snapshot(
+                repo_root=repo_root,
+                forked_target=forked_target,
+                expected_head_sha=expected_head_sha,
+            )
+        except (OSError, RuntimeError) as exc:
+            snapshot_error = str(exc).replace("\n", " ")
+            raise RuntimeError(snapshot_error) from exc
+        return snapshot
+
+    return materialize
+
+
+def _combined_assessment_result(
+    *,
+    gates: _AssessmentGatePair,
+    pr_context: RunContext,
+) -> ShipResult | None:
+    if gates.invariants.assessment_kind == "violation":
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason="architectural-invariants-violation",
+            detail=gates.invariants.note or gates.invariants.detail,
+            pr_number=pr_context.pr_number,
+            pr_url=pr_context.pr_url,
+        )
+    assessment_kinds: list[str] = []
+    if gates.invariants.needs_assessment:
+        assessment_kinds.append(config.ASSESSMENT_KIND_INVARIANTS)
+    if gates.guidelines.needs_assessment:
+        assessment_kinds.append(config.ASSESSMENT_KIND_GUIDELINES)
+    if not assessment_kinds:
+        return None
+    return ShipResult(
+        Outcome.NEEDS_USER_INPUT,
+        needs_user_reason=config.NEEDS_USER_ARCHITECTURAL_ASSESSMENTS,
+        detail=",".join(assessment_kinds),
+        pr_number=pr_context.pr_number,
+        pr_url=pr_context.pr_url,
+    )
+
+
+def _compose_assessment_gate_before_pr(
+    *,
+    runner: Runner,
+    pr_context: RunContext,
+    repo_root: str,
+    base_ref: str,
+    resume: ResumePlan,
+) -> tuple[_AssessmentGatePair, ShipResult | None]:
+    compose_snapshot_factory = _compose_snapshot_factory(
+        runner=runner,
+        pr_context=pr_context,
+        repo_root=repo_root,
+    )
+    invariants_gate = _invariants_gate_before_pr(
+        runner=runner,
+        pr_context=pr_context,
+        repo_root=repo_root,
+        base_ref=base_ref,
+        resume=resume,
+        flush_outcome=True,
+        compose_snapshot_factory=compose_snapshot_factory,
+    )
+    if invariants_gate.assessment_kind == "violation":
+        gates = _AssessmentGatePair(
+            invariants=invariants_gate,
+            guidelines=GuidelinesGateResult(),
+        )
+        return gates, _combined_assessment_result(gates=gates, pr_context=pr_context)
+    guidelines_gate = _guidelines_gate_before_pr(
+        runner=runner,
+        pr_context=pr_context,
+        repo_root=repo_root,
+        base_ref=base_ref,
+        resume=resume,
+        flush_outcome=True,
+        compose_snapshot_factory=compose_snapshot_factory,
+    )
+    gates = _AssessmentGatePair(invariants=invariants_gate, guidelines=guidelines_gate)
+    return gates, _combined_assessment_result(gates=gates, pr_context=pr_context)
+
+
 def _refresh_guidelines_gate_after_rebase(
     *,
     runner: Runner,
@@ -504,50 +617,27 @@ def _refresh_guidelines_gate_after_rebase(
 ) -> ShipResult | None:
     if pr_context.pr_number is None:
         return None
-    invariants_gate = _invariants_gate_before_pr(
+    _write_ship_state(
+        pr_context,
+        phase=config.SHIP_ROUTE_ACTION_ASSESSMENTS,
+        iteration=resume.iteration,
+        rebase_count=resume.rebase_count,
+        fix_attempts=resume.fix_attempts,
+        transient_retries=resume.transient_retries,
+    )
+    gates, assessment_result = _compose_assessment_gate_before_pr(
         runner=runner,
         pr_context=pr_context,
         repo_root=repo_root,
         base_ref=base_ref,
         resume=resume,
-        flush_outcome=True,
     )
-    if invariants_gate.needs_assessment:
-        return ShipResult(
-            Outcome.NEEDS_USER_INPUT,
-            needs_user_reason="architectural-invariants-assessment",
-            detail=invariants_gate.detail,
-            pr_number=pr_context.pr_number,
-            pr_url=pr_context.pr_url,
-        )
-    if invariants_gate.assessment_kind == "violation":
-        return ShipResult(
-            Outcome.NEEDS_USER_INPUT,
-            needs_user_reason="architectural-invariants-violation",
-            detail=invariants_gate.note or invariants_gate.detail,
-            pr_number=pr_context.pr_number,
-            pr_url=pr_context.pr_url,
-        )
-    guidelines_gate = _guidelines_gate_before_pr(
-        runner=runner,
-        pr_context=pr_context,
-        repo_root=repo_root,
-        base_ref=base_ref,
-        resume=resume,
-        flush_outcome=True,
-    )
-    if guidelines_gate.needs_assessment:
-        return ShipResult(
-            Outcome.NEEDS_USER_INPUT,
-            needs_user_reason="architectural-guidelines-assessment",
-            detail=guidelines_gate.detail,
-            pr_number=pr_context.pr_number,
-            pr_url=pr_context.pr_url,
-        )
+    if assessment_result is not None:
+        return assessment_result
     body = _compose_pr_body_for_pr_create(
         pr_context=pr_context,
-        architectural_invariants_note=invariants_gate.note,
-        architectural_guidelines_note=guidelines_gate.note,
+        architectural_invariants_note=gates.invariants.note,
+        architectural_guidelines_note=gates.guidelines.note,
     )
     title = _pr_title(ctx=pr_context, runner=runner, cwd=repo_root)
     _ = pr.ensure_pr(
@@ -1364,60 +1454,21 @@ def run_ship(
 
         _write_ship_state(
             pr_context,
-            phase="invariants-assessment",
+            phase=config.SHIP_ROUTE_ACTION_ASSESSMENTS,
             iteration=resume.iteration,
             rebase_count=resume.rebase_count,
             fix_attempts=resume.fix_attempts,
             transient_retries=resume.transient_retries,
         )
-        invariants_gate = _invariants_gate_before_pr(
+        gates, assessment_result = _compose_assessment_gate_before_pr(
             runner=runner,
             pr_context=pr_context,
             repo_root=repo_root,
             base_ref=base_ref,
             resume=resume,
-            flush_outcome=True,
         )
-        if invariants_gate.needs_assessment:
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason="architectural-invariants-assessment",
-                detail=invariants_gate.detail,
-                pr_number=pr_context.pr_number,
-                pr_url=pr_context.pr_url,
-            )
-        if invariants_gate.assessment_kind == "violation":
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason="architectural-invariants-violation",
-                detail=invariants_gate.note or invariants_gate.detail,
-                pr_number=pr_context.pr_number,
-                pr_url=pr_context.pr_url,
-            )
-        _write_ship_state(
-            pr_context,
-            phase="guidelines-assessment",
-            iteration=resume.iteration,
-            rebase_count=resume.rebase_count,
-            fix_attempts=resume.fix_attempts,
-            transient_retries=resume.transient_retries,
-        )
-        guidelines_gate = _guidelines_gate_before_pr(
-            runner=runner,
-            pr_context=pr_context,
-            repo_root=repo_root,
-            base_ref=base_ref,
-            resume=resume,
-            flush_outcome=True,
-        )
-        if guidelines_gate.needs_assessment:
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason="architectural-guidelines-assessment",
-                detail=guidelines_gate.detail,
-                pr_number=pr_context.pr_number,
-                pr_url=pr_context.pr_url,
-            )
+        if assessment_result is not None:
+            return assessment_result
         _write_ship_state(
             pr_context,
             phase="pr-create",
@@ -1430,8 +1481,8 @@ def run_ship(
         _progress_note(step="8", text="creating PR")
         body = _compose_pr_body_for_pr_create(
             pr_context=pr_context,
-            architectural_invariants_note=invariants_gate.note,
-            architectural_guidelines_note=guidelines_gate.note,
+            architectural_invariants_note=gates.invariants.note,
+            architectural_guidelines_note=gates.guidelines.note,
         )
         title = _pr_title(ctx=pr_context, runner=runner, cwd=repo_root)
         ensured: pr.PrResult = pr.ensure_pr(runner=runner, ctx=pr_context, body=body, title=title, cwd=repo_root, base=base_ref)

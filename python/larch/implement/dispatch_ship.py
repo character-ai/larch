@@ -236,6 +236,8 @@ def _classify_ship_needs_user_reason(reason: str) -> str:
         action = config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION
     elif reason == "oos-filing":
         action = "oos-pipeline"
+    elif reason == config.NEEDS_USER_ARCHITECTURAL_ASSESSMENTS:
+        action = config.SHIP_ROUTE_ACTION_ASSESSMENTS
     elif reason == "architectural-invariants-assessment":
         action = "invariants-assessment"
     elif reason == "architectural-invariants-violation":

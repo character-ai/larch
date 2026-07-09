@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -485,13 +486,14 @@ def _prepared_guidelines_result(
     )
 
 
-def load_or_prepare_guidelines_note(
+def load_or_prepare_guidelines_note(  # noqa: PLR0913 - snapshot factory is an optional compose-time seam on the existing gate contract.
     *,
     implement_tmpdir: str,
     head_sha: str,
     base_ref: str,
     repo_root: str | None = None,
     forked_target: bool = False,
+    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
 ) -> GuidelinesGateResult:
     """Return the current durable note or prepare compose-time assessment input."""
     if not implement_tmpdir or not head_sha:
@@ -515,6 +517,7 @@ def load_or_prepare_guidelines_note(
         repo_root=repo_root,
         forked_target=forked_target,
         expected_head_sha=head_sha,
+        compose_snapshot_factory=compose_snapshot_factory,
     )
     return _prepared_guidelines_result(
         prepared=prepared,
@@ -638,13 +641,14 @@ def _prepared_invariant_result(
     )
 
 
-def load_or_prepare_invariants_note(
+def load_or_prepare_invariants_note(  # noqa: PLR0913 - snapshot factory is an optional compose-time seam on the existing gate contract.
     *,
     implement_tmpdir: str,
     head_sha: str,
     base_ref: str,
     repo_root: str | None = None,
     forked_target: bool = False,
+    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
 ) -> InvariantsGateResult:
     """Return the current durable invariant note or prepare compose-time assessment input."""
     if not implement_tmpdir or not head_sha:
@@ -668,6 +672,7 @@ def load_or_prepare_invariants_note(
         repo_root=repo_root,
         forked_target=forked_target,
         expected_head_sha=head_sha,
+        compose_snapshot_factory=compose_snapshot_factory,
     )
     return _prepared_invariant_result(
         prepared=prepared,
