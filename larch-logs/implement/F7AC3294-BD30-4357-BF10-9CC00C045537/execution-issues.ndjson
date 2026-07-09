@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"cd83d332504b27c4b6a811d63db6b65466802c166f9ae488c195415ea2e4f502","body":"\n- **code-review panel (round 1)**: dynamic reviewer slot drop/failure detected (failed=1, dropped=0, stragglers=0); review continued with the remaining panel output.\n"}

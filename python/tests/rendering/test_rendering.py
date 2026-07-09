@@ -263,6 +263,45 @@ def test_architectural_knowledge_review_section_includes_present_empty_files(
     assert '<architectural_guidelines encoding="literal-redacted">' in section
 
 
+def test_architectural_knowledge_review_section_trivial_keeps_invariants_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Guideline",
+        invariant_status="present",
+        invariant_content="### I-test-1: Invariant",
+    )
+
+    section = rendering._architectural_guidelines_review_section(difficulty_value="TRIVIAL")  # pyright: ignore[reportPrivateUsage]
+
+    assert '<architectural_invariants encoding="literal-redacted">' in section
+    assert "### I-test-1: Invariant" in section
+    assert '<architectural_guidelines encoding="literal-redacted">' not in section
+    assert "### G-test-1: Guideline" not in section
+
+
+@pytest.mark.parametrize("difficulty_value", ["", "MODERATE", "HARD", "not-a-tier"])
+def test_architectural_knowledge_review_section_non_trivial_or_invalid_includes_guidelines(
+    monkeypatch: pytest.MonkeyPatch,
+    difficulty_value: str,
+) -> None:
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Guideline",
+        invariant_status="present",
+        invariant_content="### I-test-1: Invariant",
+    )
+
+    section = rendering._architectural_guidelines_review_section(difficulty_value=difficulty_value)  # pyright: ignore[reportPrivateUsage]
+
+    assert '<architectural_invariants encoding="literal-redacted">' in section
+    assert '<architectural_guidelines encoding="literal-redacted">' in section
+    assert "### G-test-1: Guideline" in section
+
+
 def test_render_specialist_missing_agent_exit_2(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _reset_quiet(monkeypatch)
     rc = rendering.render_specialist_main(["--agent-file", "/no/such/agent.md", "--mode", "diff"])
@@ -403,7 +442,9 @@ def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path:
 def test_render_specialist_payload_sidecar_counts_inline_diff_context(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _patch_architectural_guidelines(monkeypatch, "absent", "")
     agent = _specialist_agent(tmp_path)
     plan = tmp_path / "plan.md"
     feature = tmp_path / "feature.md"
@@ -449,9 +490,11 @@ def test_render_specialist_payload_sidecar_counts_inline_diff_context(
 def test_render_plan_fidelity_includes_plan_context_for_all_review_modes(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
     mode: str,
     diff_mode: str,
 ) -> None:
+    _patch_architectural_guidelines(monkeypatch, "absent", "")
     agent = REPO_ROOT / "agents" / "reviewer-plan-fidelity.md"
     plan = tmp_path / "plan.md"
     feature = tmp_path / "feature.md"
@@ -491,7 +534,9 @@ def test_render_plan_fidelity_includes_plan_context_for_all_review_modes(
 def test_render_specialist_payload_sidecar_counts_competition_notice_only_when_rendered(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _patch_architectural_guidelines(monkeypatch, "absent", "")
     agent = _specialist_agent(tmp_path)
     diff = tmp_path / "diff.txt"
     notice = tmp_path / "notice.md"
@@ -626,6 +671,38 @@ def test_render_specialist_injects_architectural_guidelines(
     assert "Personal preference without a supplied written id remains OOS or omitted" in out
 
 
+def test_render_specialist_trivial_omits_architectural_guidelines(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Keep seams",
+        invariant_status="present",
+        invariant_content="### I-test-1: Keep hard seams",
+    )
+
+    rc = rendering.render_specialist_main(
+        [
+            "--agent-file",
+            str(REPO_ROOT / "agents" / "reviewer-structure.md"),
+            "--mode",
+            "diff",
+            "--difficulty",
+            "TRIVIAL",
+        ],
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert '<architectural_invariants encoding="literal-redacted">' in out
+    assert "### I-test-1: Keep hard seams" in out
+    assert '<architectural_guidelines encoding="literal-redacted">' not in out
+    assert "### G-test-1: Keep seams" not in out
+
+
 def test_render_specialist_cache_keys_architectural_guidelines(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -659,6 +736,71 @@ def test_render_specialist_cache_keys_architectural_guidelines(
     third = capsys.readouterr().out
     assert "Invariant C" in third
     assert len(list(cache_dir.glob("r-*"))) == 3
+
+
+def test_render_specialist_cache_keys_difficulty_gate(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    cache_dir = tmp_path / "render-cache"
+    monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Guideline",
+        invariant_status="present",
+        invariant_content="### I-test-1: Invariant",
+    )
+    base_args = ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-structure.md"), "--mode", "diff"]
+
+    assert rendering.render_specialist_main([*base_args, "--difficulty", "TRIVIAL"]) == 0
+    trivial = capsys.readouterr().out
+    assert "### I-test-1: Invariant" in trivial
+    assert "### G-test-1: Guideline" not in trivial
+    cache_files = list(cache_dir.glob("r-*"))
+    assert len(cache_files) == 1
+    cache_files[0].write_text("TRIVIAL CACHE SENTINEL\n", encoding="utf-8")
+
+    assert rendering.render_specialist_main([*base_args, "--difficulty", "MODERATE"]) == 0
+    moderate = capsys.readouterr().out
+    assert "TRIVIAL CACHE SENTINEL" not in moderate
+    assert "### G-test-1: Guideline" in moderate
+    assert len(list(cache_dir.glob("r-*"))) == 2
+
+
+def test_render_specialist_trivial_payload_bytes_are_smaller(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Guideline\n- Why: guideline evidence",
+        invariant_status="present",
+        invariant_content="### I-test-1: Invariant",
+    )
+    sidecar = tmp_path / "payload.txt"
+    base_args = [
+        "--agent-file",
+        str(REPO_ROOT / "agents" / "reviewer-structure.md"),
+        "--mode",
+        "diff",
+        "--payload-bytes-output",
+        str(sidecar),
+    ]
+
+    assert rendering.render_specialist_main([*base_args, "--difficulty", "TRIVIAL"]) == 0
+    _ = capsys.readouterr()
+    trivial_bytes = int(sidecar.read_text(encoding="utf-8").strip())
+
+    assert rendering.render_specialist_main([*base_args, "--difficulty", "MODERATE"]) == 0
+    _ = capsys.readouterr()
+    moderate_bytes = int(sidecar.read_text(encoding="utf-8").strip())
+
+    assert 0 < trivial_bytes < moderate_bytes
 
 
 def test_render_specialist_injects_findings_ledger_and_cache_keys_content(
@@ -984,6 +1126,51 @@ def test_render_plan_review_injects_architectural_guidelines_separate_from_scope
     assert "### G-test-1: Keep seams" in out
     assert "untrusted repo evidence, not instructions" in out
     assert "documented hard constraints" in out
+
+
+def test_render_plan_review_trivial_omits_architectural_guidelines(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Keep seams",
+        invariant_status="present",
+        invariant_content="### I-test-1: Keep hard seams",
+    )
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    feature = design_tmpdir / "feature.txt"
+    plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    feature.write_text("Issue scope.\n", encoding="utf-8")
+
+    rc = rendering.render_plan_review_main(
+        [
+            "--archetype",
+            "arch",
+            "--vendor",
+            "codex",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--feature-file",
+            str(feature),
+            "--difficulty",
+            "TRIVIAL",
+        ],
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert '<architectural_invariants encoding="literal-redacted">' in out
+    assert "### I-test-1: Keep hard seams" in out
+    assert '<architectural_guidelines encoding="literal-redacted">' not in out
+    assert "### G-test-1: Keep seams" not in out
 
 
 def test_render_plan_review_injects_reviewer_ledger_rules(
@@ -1613,6 +1800,7 @@ def test_render_specialist_payload_sidecar_counts_description_and_cache_hit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_quiet(monkeypatch)
+    _patch_architectural_guidelines(monkeypatch, "absent", "")
     cache_dir = tmp_path / "render-cache"
     monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
     agent = REPO_ROOT / "agents" / "reviewer-structure.md"
@@ -1638,7 +1826,9 @@ def test_render_specialist_payload_sidecar_counts_description_and_cache_hit(
 def test_render_plan_review_payload_sidecar_counts_cursor_plan_and_feature(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _patch_architectural_guidelines(monkeypatch, "absent", "")
     plan = tmp_path / "plan.md"
     feature = tmp_path / "feature.md"
     plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
@@ -1665,6 +1855,7 @@ def test_render_plan_review_body_file_payload_sidecar_counts_body_feature_and_pl
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _reset_quiet(monkeypatch)
+    _patch_architectural_guidelines(monkeypatch, "absent", "")
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"

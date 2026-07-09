@@ -139,6 +139,8 @@ def _static_slot_rows(
                 str(findings_ledger.ledger_path(design)),
                 "--payload-bytes-output",
                 str(payload_sidecar),
+                "--difficulty",
+                tier,
             ],
             cwd=str(_REPO_ROOT),
             text=True,
@@ -219,6 +221,8 @@ def _generic_plan_codex_row(
             str(findings_ledger.ledger_path(design)),
             "--payload-bytes-output",
             str(payload_sidecar),
+            "--difficulty",
+            tier,
         ],
         cwd=str(_REPO_ROOT),
         text=True,
@@ -348,7 +352,6 @@ def _dynamic_slot_rows(
     feature_file: str,
     tier: str = difficulty.MODERATE,
 ) -> tuple[list[dict[str, object]], list[tuple[str, str, int]]]:
-    _ = tier
     # Route dynamic scout slots through the same `render plan-review` scaffold as static
     # slots (#4841). Before the fix the raw scout prompt_body was the entire prompt, so
     # dynamic reviewers had no plan-file path (they grepped the repo and reviewed an
@@ -381,6 +384,8 @@ def _dynamic_slot_rows(
                 str(findings_ledger.ledger_path(design)),
                 "--payload-bytes-output",
                 str(payload_sidecar),
+                "--difficulty",
+                tier,
                 "--body-file-payload",
             ],
             cwd=str(_REPO_ROOT),
@@ -622,6 +627,8 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "design Step 3",
             "--model-role",
             difficulty.codex_review_model_role(tier),
+            "--difficulty",
+            tier,
             "--no-fallback",
         ],
         cwd=str(_REPO_ROOT),

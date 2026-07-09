@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import re
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
+from contextlib import redirect_stdout
 from pathlib import Path
 
 from larch.core import config
@@ -15,6 +17,7 @@ import pytest
 from larch.review import coder_runner
 from larch.review import review_pipeline
 from larch.review import review_core_body
+from larch.rendering import rendering
 import review_test_support as rts
 from larch.review import voting
 
@@ -2634,6 +2637,8 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
     review_tmpdir = tmp_path / "review"
     review_tmpdir.mkdir()
     manifest = review_tmpdir / "panel-manifest.ndjson"
+    diff_file = tmp_path / "diff.txt"
+    diff_file.write_text("diff --git a/a b/a\n", encoding="utf-8")
     calls: list[list[str]] = []
 
     class Runner:
@@ -2657,7 +2662,7 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
         review_tmpdir=review_tmpdir,
         manifest=manifest,
         mode="diff",
-        context={"diff_file": str(tmp_path / "diff.txt")},
+        context={"diff_file": str(diff_file)},
         codex_available=False,
         runner=Runner()
     )
@@ -2666,6 +2671,7 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
     render_call = next(call for call in calls if call[2:4] == ["render", "specialist"])
     assert "--findings-ledger-file" in render_call
     assert render_call[render_call.index("--findings-ledger-file") + 1] == str(review_tmpdir / "findings-ledger.tsv")
+    assert render_call[render_call.index("--difficulty") + 1] == "MODERATE"
 
 
 def test_dynamic_agent_body_preserves_generated_prompt_contract() -> None:
@@ -2740,6 +2746,89 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
     render_call = next(call for call in calls if call[2:4] == ["render", "specialist"])
     assert render_call[render_call.index("--findings-ledger-file") + 1] == str(impl / "findings-ledger.tsv")
     assert render_call[render_call.index("--session-env-path") + 1] == str(session_env)
+    assert render_call[render_call.index("--difficulty") + 1] == "MODERATE"
+
+
+def test_synthesize_dynamic_slots_difficulty_trivial_prerender_omits_guidelines(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def read_guidelines() -> rendering.architectural_guidelines.ArchitecturalGuidelinesResult:
+        return rendering.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "present",
+            ROOT,
+            ROOT / "ARCHITECTURAL_GUIDELINES.md",
+            "### G-test-1: Guideline",
+        )
+
+    def read_invariants() -> rendering.architectural_guidelines.ArchitecturalGuidelinesResult:
+        return rendering.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "present",
+            ROOT,
+            ROOT / "ARCHITECTURAL_INVARIANTS.md",
+            "### I-test-1: Invariant",
+        )
+
+    monkeypatch.setattr(rendering.architectural_guidelines, "read_guidelines", read_guidelines)
+    monkeypatch.setattr(rendering.architectural_guidelines, "read_invariants", read_invariants)
+    scout_manifest = tmp_path / "scout.json"
+    scout_manifest.write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "contract",
+                        "focus_area": "correctness",
+                        "weight": 1,
+                        "rationale": "Contract risk.",
+                        "prompt_body": "Check contract.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    review_tmpdir = tmp_path / "review"
+    review_tmpdir.mkdir()
+    manifest = review_tmpdir / "panel-manifest.ndjson"
+    diff_file = tmp_path / "diff.txt"
+    diff_file.write_text("diff --git a/a b/a\n", encoding="utf-8")
+
+    class Runner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> proc.CommandResult:
+            _ = timeout, cwd, env, check, stdout, stderr
+            if list(argv)[2:4] != ["render", "specialist"]:
+                return proc.CommandResult(tuple(str(item) for item in argv), 99, "", "unexpected command", 0.0)
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                rc = rendering.render_specialist_main([str(item) for item in argv][4:])
+            return proc.CommandResult(tuple(str(item) for item in argv), rc, buffer.getvalue(), "", 0.0)
+
+    count = review_pipeline._synthesize_dynamic_slots(  # pyright: ignore[reportPrivateUsage]
+        scout_manifest=scout_manifest,
+        review_tmpdir=review_tmpdir,
+        manifest=manifest,
+        mode="diff",
+        context={"diff_file": str(diff_file)},
+        codex_available=False,
+        tier="TRIVIAL",
+        runner=Runner(),
+    )
+
+    assert count == 1
+    prompt = (review_tmpdir / "dynamic-archetypes" / "dyn-contract-prompt.md").read_text(encoding="utf-8")
+    assert "### I-test-1: Invariant" in prompt
+    assert "### G-test-1: Guideline" not in prompt
 
 
 def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:

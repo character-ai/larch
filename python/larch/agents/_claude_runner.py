@@ -17,7 +17,6 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from larch.core import config
-from larch.review import findings_ledger
 from larch.git import git
 from larch.core import logging_util
 from larch.core import proc
@@ -60,7 +59,7 @@ from larch.agents._run_external import (
     _under,
 )
 from larch.agents._review_launcher import (
-    _review_session_env_path,
+    _review_specialist_render_args,
 )
 
 def _panel_payload_bytes_from_env() -> int:
@@ -476,6 +475,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--feature-file", default="")
     parser.add_argument("--session-env-path", default="")
+    parser.add_argument("--difficulty", default="")
     parser.add_argument("--timeout", default="1800")
     parser.add_argument("--timing-task-kind", default="claude-review")
     args = parser.parse_args(argv)
@@ -494,34 +494,15 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         _write(path=temp_prompt, text=args.prompt)
         prompt_file = temp_prompt
     elif args.agent_file:
+        render_ns = argparse.Namespace(**vars(args))
+        render_ns.mode = args.mode or "diff"
         render_args = [
             sys.executable,
             str(_PY_CLI),
             "render",
             "specialist",
-            "--agent-file",
-            args.agent_file,
-            "--mode",
-            args.mode or "diff",
+            *_review_specialist_render_args(render_ns),
         ]
-        if args.mode == "description":
-            render_args.extend(["--description-text", args.description_text, "--scope-files", args.scope_files])
-        else:
-            if args.diff_file:
-                render_args.extend(["--diff-file", args.diff_file])
-            if args.commit_count:
-                render_args.extend(["--commit-count", args.commit_count])
-        if args.plan_file:
-            render_args.extend(["--plan-file", args.plan_file])
-        if args.feature_file:
-            render_args.extend(["--feature-file", args.feature_file])
-        session_env_path = _review_session_env_path(args)
-        ledger_file = findings_ledger.ledger_path(
-            findings_ledger.ledger_root(Path(args.output).parent, session_env_path=session_env_path)
-        )
-        render_args.extend(["--findings-ledger-file", str(ledger_file)])
-        if session_env_path:
-            render_args.extend(["--session-env-path", session_env_path])
         fd, payload_sidecar_name = tempfile.mkstemp(prefix=".larch-render-payload.", dir=str(prompt_tmpdir))
         os.close(fd)
         payload_sidecar = Path(payload_sidecar_name)

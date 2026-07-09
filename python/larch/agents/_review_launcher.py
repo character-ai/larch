@@ -113,6 +113,7 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--site", default="review Step 2")
     parser.add_argument("--model-role", choices=("default", "review", "vote", "fix"), default="default")
     parser.add_argument("--cursor-model", default=None)
+    parser.add_argument("--difficulty", default="")
     return parser
 
 
@@ -180,6 +181,7 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
             ("FEATURE_FILE", "--feature-file"),
             ("FINDINGS_LEDGER_FILE", "--findings-ledger-file"),
             ("SESSION_ENV_PATH", "--session-env-path"),
+            ("DIFFICULTY", "--difficulty"),
         )
         for key, flag in mapping:
             if sentinel.get(key):
@@ -196,12 +198,13 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
         ("commit_count", "--commit-count"),
         ("plan_file", "--plan-file"),
         ("feature_file", "--feature-file"),
+        ("difficulty", "--difficulty"),
     ):
-        value = getattr(args, attr)
+        value = getattr(args, attr, "")
         if value:
             render_args.extend([flag, value])
-        if args.competition_notice:
-            render_args.append("--competition-notice")
+    if getattr(args, "competition_notice", False):
+        render_args.append("--competition-notice")
     session_env_path = _review_session_env_path(args)
     if getattr(args, "output", ""):
         ledger_file = findings_ledger.ledger_path(
@@ -359,6 +362,9 @@ def _review_write_codex_prompt_sidecar(*, output: Path, prompt: str, args: argpa
             lines.append(f"FINDINGS_LEDGER_FILE={ledger_file}")
         if session_env_path and "\n" not in session_env_path:
             lines.append(f"SESSION_ENV_PATH={session_env_path}")
+        difficulty = getattr(args, "difficulty", "")
+        if difficulty and "\n" not in difficulty and "\r" not in difficulty:
+            lines.append(f"DIFFICULTY={difficulty}")
         _write(path=sidecar, text="\n".join(lines) + "\n")
     else:
         _write(path=sidecar, text=prompt)

@@ -116,6 +116,7 @@ def test_codex_agent_file_writes_and_replays_compact_sentinel(tmp_path: Path, mo
         commit_count="2",
         plan_file="",
         feature_file="",
+        difficulty="TRIVIAL",
     )
     output = tmp_path / "out.txt"
     prompt = "rendered specialist"
@@ -124,7 +125,10 @@ def test_codex_agent_file_writes_and_replays_compact_sentinel(tmp_path: Path, mo
     assert "LARCH_PROMPT_SENTINEL=1" in text
     assert "KIND=specialist" in text
     assert "HASH=" in text
+    assert "DIFFICULTY=TRIVIAL" in text
     def fake_render(*_args: object, **_kwargs: object) -> object:
+        argv = [str(item) for item in cast("list[object]", _args[0])]
+        assert argv[argv.index("--difficulty") + 1] == "TRIVIAL"
         return type("R", (), {"stdout": prompt, "returncode": 0})()
 
     monkeypatch.setattr(agents.proc, "run", fake_render)
@@ -614,6 +618,7 @@ def test_codex_sentinel_replays_with_ns_retry_header_prefix(tmp_path: Path, monk
         commit_count="2",
         plan_file="",
         feature_file="",
+        difficulty="TRIVIAL",
     )
     output = tmp_path / "out.txt"
     prompt = "rendered specialist"
