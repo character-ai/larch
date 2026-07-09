@@ -1,0 +1,58 @@
+Source: /learn-from-bugs mining run, 2026-07-08. Docs-only append; small diff.
+
+## Context and motivation
+
+Two platform migrations each broke a distant feature that depended on an execution-environment property the migration changed, not on any code line it edited. Review could not catch either regression because the victim surface appeared nowhere in the migration diff:
+
+- #6263 (Python flush port): moving transcript rendering into Python relocated the rendered file into the system `$TMPDIR`. The path helper `_rebase_under_tmpdir` assumed inputs live under `IMPLEMENT_TMPDIR` and corrupted the new absolute path. Every subsequent /implement transcript capture failed silently.
+- #6624 (bgjob transport migration): replacing turn-ending `run_in_background` waits with chunked foreground `bgjob wait` fences removed idle prompt time during phases. The typed `p` / `progress` zero-cost progress surface fired from `UserPromptSubmit` at an idle prompt, so the feature became unreachable during exactly the phases it existed for. The hook machinery itself kept working; its trigger channel disappeared.
+
+Existing guidelines cover adjacent classes but not this one: G-Wire-1 covers machine-consumed grammars; G-Md-2 covers renames and their prose consumers. Nothing directs a migration author to inventory consumers of environment properties (temp-file location, idle and turn structure, process lifetime, notification timing).
+
+## Work item
+
+Append the following to `ARCHITECTURAL_GUIDELINES.md`, verbatim, as a new section inserted immediately before the `## Enforcement philosophy` section:
+
+```markdown
+## Migration discipline
+
+### G-Mig-1: Inventory environmental assumptions before a platform migration
+- Why: two platform migrations broke distant features that depended on properties the migration changed rather than on any code it edited; the Python flush port moved rendered files into the system `$TMPDIR` and corrupted every subsequent transcript capture (#6263), and the bgjob transport removed the idle prompt that the typed `p`/`progress` surface required to fire at all (#6624), and neither victim surface appeared in the migration diffs, so review could not catch them.
+- Guidance: before landing a migration that changes an execution-environment property, such as temp-file location, process lifetime, turn or idle structure, working directory, or notification timing, enumerate the features keyed on that property by searching for its consumers (env-var reads, hook trigger channels, path derivations), and verify or migrate each consumer in the same change or a linked tracking issue.
+- Deviate when: the changed property provably has no consumer outside the migration's edit surface; say so in the PR description and name the search you ran.
+```
+
+## Acceptance criteria
+
+- The entry appears byte-identical to the block above, in a new `## Migration discipline` section placed immediately before `## Enforcement philosophy`.
+- Existing entries are untouched; the change is insert-only.
+- The repository lint sweep passes. The entry follows the file's established bullet shape (`Why`, `Guidance`, `Deviate when`), matching the G-Fix-1 precedent.
+
+## Backing issues
+
+#6263, #6624.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Append a new `## Migration discipline` section with `G-Mig-1` to `ARCHITECTURAL_GUIDELINES.md`.
+- Place the section immediately before `## Enforcement philosophy`.
+- Match content byte-for-byte with the issue-specified block.
+
+### Non-goals
+- No changes to any skill, script, or non-guideline file.
+- No reformatting or editing of existing guideline entries.
+- No changes to linting infrastructure.
+
+### Approach sketch
+- Read `ARCHITECTURAL_GUIDELINES.md` to confirm insertion point.
+- Insert the `## Migration discipline` block verbatim before `## Enforcement philosophy`.
+- Verify the file renders cleanly and existing entries are untouched.
+
+### Surfaces in scope
+- `ARCHITECTURAL_GUIDELINES.md` (insert-only)
+
+### Open questions
+- None.
