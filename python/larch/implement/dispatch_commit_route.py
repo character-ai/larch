@@ -93,7 +93,7 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
     invalidated = scope_disposition.invalidate_stale_disposition(
         tmpdir=implement_tmpdir,
         repo_root=repo_root,
-        manifest_path=implement_tmpdir / "manifest.json",
+        manifest_path=manifest_path,
     )
     if invalidated.reason == "scope-disposition-stale":
         _emit_kv(key="PLAN_COVERAGE_DISPOSITION_INVALIDATED", value="true")

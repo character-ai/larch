@@ -104,19 +104,21 @@ def _safe_line(value: object, *, limit: int = 300) -> str:
     return text
 
 
-def _read_manifest_todos(manifest_path: Path | None) -> tuple[str, ...]:
+def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], int]:
+    """Return (sanitized_display_items, raw_entry_count)."""
     if manifest_path is None or not manifest_path.is_file():
-        return ()
+        return (), 0
     try:
         parsed: object = json.loads(manifest_path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
-        return ()
+        return (), 0
     if not isinstance(parsed, dict):
-        return ()
+        return (), 0
     raw = cast("Mapping[str, object]", parsed).get("todos_left")
     if not isinstance(raw, list):
-        return ()
+        return (), 0
     raw_items = cast("list[object]", raw)
+    raw_count = len(raw_items)
     lines: list[str] = []
     budget = _MAX_TODO_CHARS
     for item in raw_items[:_MAX_TODO_ITEMS]:
@@ -129,7 +131,7 @@ def _read_manifest_todos(manifest_path: Path | None) -> tuple[str, ...]:
         budget -= len(line) + 1
     if len(raw_items) > len(lines):
         lines.append(f"… {len(raw_items) - len(lines)} more todo item(s) omitted")
-    return tuple(lines)
+    return tuple(lines), raw_count
 
 
 def _git(runner: Runner, argv: Sequence[str], *, cwd: Path) -> CommandResult:
@@ -233,7 +235,7 @@ def compute_coverage(
     touched_count = total - untouched
     percent = int((untouched * 100) / total) if total > 0 else 0
     band = _coverage_band(total=total, untouched=untouched)
-    todos_left = _read_manifest_todos(manifest_path)
+    todos_left, raw_todos_count = _read_manifest_todos(manifest_path)
     fingerprint = _fingerprint(plan_paths=plan_paths, touched_paths=touched, todos_left=todos_left)
     return PlanCoverage(
         total=total,
@@ -244,10 +246,10 @@ def compute_coverage(
         plan_paths=plan_paths,
         touched_paths=touched,
         untouched_paths=untouched_paths,
-        todos_left_count=len(todos_left),
+        todos_left_count=raw_todos_count,
         todos_left=todos_left,
         fingerprint=fingerprint,
-        disposition_required=band == "high" or bool(todos_left),
+        disposition_required=band == "high" or raw_todos_count > 0,
         plan_fidelity_forced=band in {"middle", "high"},
         coverage_file=str(coverage_path(tmpdir)),
         untouched_file=str(tmpdir / UNTOUCHED_PATHS),

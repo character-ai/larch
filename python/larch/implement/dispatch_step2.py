@@ -439,6 +439,15 @@ def _plan_coverage_uncovered_paths(*, st: DispatchState, touched: set[str] | Non
     return sorted(path for path in explicit if path not in touched)
 
 
+def _ensure_step2_baseline(tmpdir: Path) -> None:
+    baseline_file = tmpdir / "step2-baseline.txt"
+    if baseline_file.is_file():
+        return
+    head = _run([GIT_BIN, "rev-parse", "HEAD"])
+    if head.returncode == 0 and head.stdout.strip():
+        _write_text_atomic(path=baseline_file, text=head.stdout.strip() + "\n")
+
+
 def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement step2-dispatch")
@@ -498,6 +507,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         _err(f"implement step2-dispatch: --feature-file not found: {args.feature_file}")
         return 2
     if args.coder == "claude":
+        _ensure_step2_baseline(tmpdir)
         _clear_external_scout_state(tmpdir)
         _emit_kv(key="STATUS", value="claude_fallback")
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
@@ -508,11 +518,13 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     if not args.codex_binary_found:
         args.codex_binary_found = _binary_available(session_env=session_env, key="CODEX_BINARY_FOUND", binary="codex")
     if args.coder == "cursor" and args.cursor_binary_found != "true":
+        _ensure_step2_baseline(tmpdir)
         _clear_external_scout_state(tmpdir)
         _emit_kv(key="STATUS", value="claude_fallback")
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
         return 0
     if args.coder == "codex" and args.codex_binary_found != "true":
+        _ensure_step2_baseline(tmpdir)
         _clear_external_scout_state(tmpdir)
         _emit_kv(key="STATUS", value="claude_fallback")
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")

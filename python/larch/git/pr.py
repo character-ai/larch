@@ -92,13 +92,7 @@ def ensure_pr(
             partial=scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) == "part-of",
         )
         remote_body = gh.pr_view_body(runner, existing.number, repo=ctx.repo, cwd=cwd)
-        guidelines_changed = remote_body is not None and pr_body.architectural_guidelines_section(
-            remote_body
-        ) != pr_body.architectural_guidelines_section(linked)
-        invariants_changed = remote_body is not None and pr_body.architectural_invariants_section(
-            remote_body
-        ) != pr_body.architectural_invariants_section(linked)
-        if linked != body or guidelines_changed or invariants_changed:
+        if remote_body is None or remote_body.rstrip() != linked.rstrip():
             pr_body.update_pr_body(
                 runner=runner,
                 number=existing.number,
