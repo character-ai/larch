@@ -1603,7 +1603,7 @@ def _render_design(run: LiveRun) -> str:
     return _render_generic(skill="design", step_label=step_label, start_s=start_s, tmpdir=run.tmpdir)
 
 
-def _report(cwd: str) -> str:
+def _report(cwd: str) -> str:  # type: ignore[reportUnusedFunction]
     run = _discover_live_run(cwd)
     if run is None:
         return ""
@@ -1823,7 +1823,7 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
     raw = round_dir / difficulty.SCOUT_RAW_RATING_BASENAME
     rating = difficulty.read_rating_file(raw)
     record = _read_json_object(round_dir / difficulty.DIFFICULTY_RECORD_BASENAME)
-    if not isinstance(record, dict):
+    if not isinstance(record, dict):  # type: ignore[reportUnnecessaryIsInstance]
         record = {}
     if rating is None and not record:
         return {
@@ -1839,7 +1839,7 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
         "scout": {"status": "absent"},
     }
     if rating is not None:
-        object_data.update(
+        object_data.update(  # type: ignore[reportUnknownArgumentType]
             {
                 "tier_in_effect": rating.adjusted_tier,
                 "ceiling_in_effect": rating.adjusted_tier,

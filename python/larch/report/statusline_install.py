@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from larch import io as larch_io
 
+ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
 LOCAL_SETTINGS = Path(".claude") / "settings.local.json"
 LARCH_COMMAND_MARKER = ".cache/larch/statusline.sh"
 
@@ -141,7 +142,7 @@ def install_statusline(*, repo_root: Path, plugin_root: Path, notice: bool = Fal
 
 def install_statusline_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py progress install-statusline")
-    _ = parser.add_argument("--plugin-root", default=os.environ.get("CLAUDE_PLUGIN_ROOT", ""))
+    _ = parser.add_argument("--plugin-root", default=os.environ.get(ENV_CLAUDE_PLUGIN_ROOT, ""))
     _ = parser.add_argument("--repo-root", default="")
     _ = parser.add_argument("--notice", action="store_true")
     try:
@@ -152,7 +153,7 @@ def install_statusline_main(argv: list[str] | None = None) -> int:
         return 0
     stdin_text = sys.stdin.read()
     repo_raw = args.repo_root or _payload_repo_root(stdin_text)
-    plugin_raw = args.plugin_root or os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+    plugin_raw = args.plugin_root or os.environ.get(ENV_CLAUDE_PLUGIN_ROOT, "")
     if not repo_raw or not plugin_raw:
         return 0
     _ = install_statusline(repo_root=Path(repo_raw), plugin_root=Path(plugin_raw), notice=args.notice)
