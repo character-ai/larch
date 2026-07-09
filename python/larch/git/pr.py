@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
+import argparse
 import re
+import sys
 from dataclasses import dataclass
 
-import argparse
-import sys
 from larch.git import gh
 from larch.git import git
 from larch.git import pr_body
@@ -15,10 +15,11 @@ from larch.git import push
 from larch.issue import tracking_issue
 from larch.implement import scope_disposition
 from pathlib import Path
-from larch.errors import ShipError
+from larch.errors import NeedsUserInput, ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.retry import with_transient_retry
 from larch.core.run_context import RunContext
+from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 
@@ -53,20 +54,28 @@ def _issue_number(issue: str) -> int:
     return int(issue)
 
 
+def _repo_root_from_cwd(cwd: str | None) -> Path:
+    return Path(cwd or ".").resolve()
 
-def _require_scope_disposition(*, ctx: RunContext, cwd: str | None) -> None:
-    if not ctx.tmpdir:
-        return
-    tmpdir = Path(ctx.tmpdir)
-    if not (tmpdir / "plan.txt").is_file():
-        return
-    repo_root = Path(cwd or ".").resolve()
-    scope_disposition.require_valid_disposition_for_ship(
-        tmpdir=tmpdir,
-        repo_root=repo_root,
+
+def _require_scope_disposition(
+    *, ctx: RunContext, cwd: str | None, runner: Runner = proc
+) -> None:
+    scope_disposition.require_pr_mutation_scope_disposition(
+        tmpdir=Path(ctx.tmpdir) if ctx.tmpdir else None,
+        repo_root=_repo_root_from_cwd(cwd),
         manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
-        runner=proc,
+        runner=runner,
     )
+
+
+def _require_env_scope_disposition(*, cwd: str | None, runner: Runner = proc) -> None:
+    scope_disposition.require_pr_mutation_scope_disposition(
+        tmpdir=None,
+        repo_root=_repo_root_from_cwd(cwd),
+        runner=runner,
+    )
+
 
 def ensure_pr(
     *,
@@ -81,7 +90,7 @@ def ensure_pr(
     if ctx.repo_unavailable:
         return PrResult(number=0, url="", status="local-only")
     issue_num = _issue_number(ctx.issue)
-    _require_scope_disposition(ctx=ctx, cwd=cwd)
+    _require_scope_disposition(ctx=ctx, cwd=cwd, runner=runner)
     push.assert_clean_worktree(runner, cwd=cwd)
     existing = gh.pr_for_branch(runner, ctx.branch, repo=ctx.repo, cwd=cwd)
     if existing is not None and existing.state == "OPEN":
@@ -89,7 +98,10 @@ def ensure_pr(
         linked = tracking_issue.link_pr_for_disposition(
             body=body,
             issue_number=issue_num,
-            partial=scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) == "part-of",
+            partial=scope_disposition.disposition_link_kind(
+                Path(ctx.tmpdir) if ctx.tmpdir else None
+            )
+            == "part-of",
         )
         remote_body = gh.pr_view_body(runner, existing.number, repo=ctx.repo, cwd=cwd)
         if remote_body is None or remote_body.rstrip() != linked.rstrip():
@@ -112,7 +124,10 @@ def ensure_pr(
     linked_body = tracking_issue.link_pr_for_disposition(
         body=body,
         issue_number=issue_num,
-        partial=scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) == "part-of",
+        partial=scope_disposition.disposition_link_kind(
+            Path(ctx.tmpdir) if ctx.tmpdir else None
+        )
+        == "part-of",
     )
     created, was_created = gh.pr_create(
         runner,
@@ -134,8 +149,9 @@ def _push_existing_pr(
     ctx: RunContext,
     cwd: str | None = None,
 ) -> None:
-    _require_scope_disposition(ctx=ctx, cwd=cwd)
+    _require_scope_disposition(ctx=ctx, cwd=cwd, runner=runner)
     remote = push.select_push_remote(_runner=runner, _ctx=ctx, cwd=cwd)
+
     def attempt() -> tuple[object, int, str]:
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
         combined = result.stdout + result.stderr
@@ -155,7 +171,9 @@ def _derive_user_prefix(runner: Runner, *, cwd: str | None) -> str:
     raw = result.stdout.strip() if result.returncode == 0 else ""
     if not raw:
         return "dev"
-    sanitized = re.sub(r"[^a-z0-9-]", "", raw.lower().replace(" ", "-"))[:20].rstrip("-")
+    sanitized = re.sub(r"[^a-z0-9-]", "", raw.lower().replace(" ", "-"))[:20].rstrip(
+        "-"
+    )
     return sanitized or "dev"
 
 
@@ -199,6 +217,7 @@ def create_branch(
         return CreateBranchResult("invalid", branch, base, exit_code=2)
     if git.local_branch_exists(runner, branch, cwd=cwd):
         return CreateBranchResult("exists", branch, base, exit_code=1)
+
     def attempt_fetch() -> tuple[CommandResult, int, str]:
         result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
         return result, result.returncode, result.stdout + result.stderr
@@ -255,6 +274,7 @@ def _push_open_pr_branch(
         push.assert_clean_worktree(runner, cwd=cwd)
     except ShipError:
         return False
+    _require_env_scope_disposition(cwd=cwd, runner=runner)
     push_result = runner.run(["git", "push", "-u", "origin", "HEAD"], cwd=cwd)
     if push_result.returncode == 0:
         return True
@@ -291,6 +311,7 @@ def create_pr_parity(
         push.assert_clean_worktree(runner, cwd=cwd)
     except ShipError:
         return PrResult(0, "", "push_failed", title, exit_code=1)
+    _require_env_scope_disposition(cwd=cwd, runner=runner)
     existing = gh.pr_for_branch(runner, branch, repo=repo, cwd=cwd)
     if existing is not None and existing.state.upper() == "OPEN":
         if not _push_open_pr_branch(runner, branch=branch, cwd=cwd):
@@ -351,7 +372,9 @@ def _emit_kv(*, key: str, value: object) -> None:
     logging_util.emit_kv(key=key, value=str(value))
 
 
-def _parse(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
+def _parse(
+    *, parser: argparse.ArgumentParser, argv: list[str]
+) -> argparse.Namespace | None:
     try:
         return parser.parse_args(argv)
     except SystemExit:
@@ -427,7 +450,9 @@ def create_main(argv: list[str]) -> int:
     except OSError as exc:
         print(f"create-pr.sh: cannot read body file: {exc}", file=sys.stderr)
         return 2
+    needs_scope_disposition = False
     try:
+        _require_env_scope_disposition(cwd=None, runner=proc)
         result = create_pr_parity(
             proc,
             repo=repo,
@@ -436,6 +461,15 @@ def create_main(argv: list[str]) -> int:
             body=body,
             base=args.base,
             draft=args.draft,
+        )
+    except NeedsUserInput:
+        needs_scope_disposition = True
+        result = PrResult(
+            number=0,
+            url="",
+            status="needs-user",
+            title=args.title,
+            exit_code=config.EXIT_NEEDS_USER_INPUT,
         )
     except Exception as exc:  # pylint: disable=broad-except
         _emit_kv(key="PR_STATUS", value="error")
@@ -448,6 +482,11 @@ def create_main(argv: list[str]) -> int:
     _emit_kv(key="PR_URL", value=result.url)
     _emit_kv(key="PR_TITLE", value=result.title)
     _emit_kv(key="PR_STATUS", value=result.status)
+    if needs_scope_disposition:
+        _emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
+        _emit_kv(
+            key="NEXT_ACTION", value=config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION
+        )
     return result.exit_code
 
 
@@ -466,6 +505,11 @@ def body_update_main(argv: list[str]) -> int:
     result = gh.pr_edit_body_file(proc, args.pr, args.body_file, repo=args.repo)
     _emit_kv(key="UPDATED", value=str(result.updated).lower())
     _emit_kv(key="ERROR", value=result.error)
+    if result.exit_code == config.EXIT_NEEDS_USER_INPUT:
+        _emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
+        _emit_kv(
+            key="NEXT_ACTION", value=config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION
+        )
     return result.exit_code
 
 

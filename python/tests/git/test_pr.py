@@ -11,7 +11,7 @@ import pytest
 
 from larch.core import config
 from larch.git import pr as pr_module
-from larch.errors import ShipError
+from larch.errors import NeedsUserInput, ShipError
 from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
 
@@ -43,7 +43,9 @@ def _ctx(**kwargs: object) -> RunContext:
 def test_ensure_pr_invalid_issue_raises() -> None:
     runner = RecordingRunner()
     with pytest.raises(ShipError, match="invalid issue"):
-        _ = pr_module.ensure_pr(runner=runner, ctx=_ctx(issue=""), body="body", title="t")
+        _ = pr_module.ensure_pr(
+            runner=runner, ctx=_ctx(issue=""), body="body", title="t"
+        )
 
 
 def test_ensure_pr_repo_unavailable() -> None:
@@ -219,7 +221,9 @@ def test_ensure_pr_force_push_recovery_on_existing_open(
     runner = RecordingRunner(
         responses=[
             _PORCELAIN_CLEAN,
-            CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "rejected", 0.01),
+            CommandResult(
+                ("git", "push", "-u", "origin", "HEAD"), 1, "", "rejected", 0.01
+            ),
         ],
     )
     existing = gh.PullRequest(7, "http://u", "OPEN", "feat")
@@ -270,13 +274,25 @@ def test_ensure_pr_threads_base_to_create() -> None:
             _HEAD_FEAT,
             CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            CommandResult(("gh", "pr", "create"), 0, "https://github.com/o/r/pull/10\n", "", 0.01),
-            CommandResult(("gh", "pr", "list"), 0, '[{"number":10,"url":"u","state":"OPEN","headRefName":"feat"}]', "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"), 0, "https://github.com/o/r/pull/10\n", "", 0.01
+            ),
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":10,"url":"u","state":"OPEN","headRefName":"feat"}]',
+                "",
+                0.01,
+            ),
         ],
     )
-    result = pr_module.ensure_pr(runner=runner, ctx=_ctx(), body="body", title="t", base="main")
+    result = pr_module.ensure_pr(
+        runner=runner, ctx=_ctx(), body="body", title="t", base="main"
+    )
     assert result.number == 10
-    create_call = next(call for call in runner.calls if call[:3] == ["gh", "pr", "create"])
+    create_call = next(
+        call for call in runner.calls if call[:3] == ["gh", "pr", "create"]
+    )
     assert "--base" in create_call
     assert "main" in create_call
 
@@ -364,7 +380,9 @@ def test_create_pr_parity_omits_repo_when_unresolved() -> None:
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
             CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            CommandResult(("gh", "pr", "create"), 0, "https://github.com/o/r/pull/9\n", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"), 0, "https://github.com/o/r/pull/9\n", "", 0.01
+            ),
             CommandResult(
                 ("gh", "pr", "list"),
                 0,
@@ -478,7 +496,9 @@ def test_create_branch_ignores_tag_with_same_name() -> None:
                 "",
                 0.01,
             ),
-            CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
+            CommandResult(
+                ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
+            ),
             CommandResult(
                 ("git", "checkout", "-b", branch, "origin/main"),
                 0,
@@ -513,8 +533,12 @@ def test_create_branch_retries_transient_fetch(monkeypatch: pytest.MonkeyPatch) 
                 "fatal: Could not resolve host",
                 0.01,
             ),
-            CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
-            CommandResult(("git", "checkout", "-b", branch, "origin/main"), 0, "", "", 0.01),
+            CommandResult(
+                ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
+            ),
+            CommandResult(
+                ("git", "checkout", "-b", branch, "origin/main"), 0, "", "", 0.01
+            ),
         ],
     )
     result = pr_module.create_branch(runner, branch=branch)
@@ -523,33 +547,53 @@ def test_create_branch_retries_transient_fetch(monkeypatch: pytest.MonkeyPatch) 
 
 
 # CLI contract tests migrated from test_pr_cli.py.
-def test_closes_issue_from_body_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_closes_issue_from_body_file(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     body = tmp_path / "body.md"
     _ = body.write_text("Hello\n\nCloses #3670\n", encoding="utf-8")
     assert pr_module.closes_issue_main(["--body-file", str(body)]) == 0
     assert capsys.readouterr().out.strip() == "3670"
 
 
-def test_closes_issue_default_repo_failure_empty_stdout(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[CommandResult(("gh", "repo", "view"), 1, "", "no repo", 0.01)])
+def test_closes_issue_default_repo_failure_empty_stdout(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "repo", "view"), 1, "", "no repo", 0.01)]
+    )
     monkeypatch.setattr(pr_module, "proc", runner)
     assert pr_module.closes_issue_main([]) == 0
     assert capsys.readouterr().out == "\n"
 
 
-def test_closes_issue_default_current_pr_success(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[
-        CommandResult(("gh", "repo", "view"), 0, "owner/repo\n", "", 0.01),
-        CommandResult(("gh", "pr", "view"), 0, "Body\n\nCloses #1234\nCloses #5678\n", "", 0.01),
-    ])
+def test_closes_issue_default_current_pr_success(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 0, "owner/repo\n", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view"),
+                0,
+                "Body\n\nCloses #1234\nCloses #5678\n",
+                "",
+                0.01,
+            ),
+        ]
+    )
     monkeypatch.setattr(pr_module, "proc", runner)
     assert pr_module.closes_issue_main([]) == 0
     assert capsys.readouterr().out.strip() == "1234"
 
 
-def test_body_update_missing_file(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_body_update_missing_file(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     monkeypatch.setattr(pr_module, "proc", RecordingRunner())
-    assert pr_module.body_update_main(["--pr", "1", "--body-file", "/no/such/file"]) == 2
+    assert (
+        pr_module.body_update_main(["--pr", "1", "--body-file", "/no/such/file"]) == 2
+    )
     out = capsys.readouterr().out
     assert "UPDATED=false" in out
     assert "body file not found" in out
@@ -561,9 +605,21 @@ def test_create_main_invalid_repo_stderr_prefix(
 ) -> None:
     body = tmp_path / "body.md"
     _ = body.write_text("body", encoding="utf-8")
-    assert pr_module.create_main(
-        ["--title", "t", "--body-file", str(body), "--repo", "not-valid", "--branch", "feat"],
-    ) == 2
+    assert (
+        pr_module.create_main(
+            [
+                "--title",
+                "t",
+                "--body-file",
+                str(body),
+                "--repo",
+                "not-valid",
+                "--branch",
+                "feat",
+            ],
+        )
+        == 2
+    )
     err = capsys.readouterr().err
     assert err.startswith(
         "create-pr.sh: --repo must be OWNER/REPO using GitHub owner/repo characters",
@@ -587,10 +643,15 @@ def test_create_main_detached_head_stderr_prefix(
     assert err.strip() == "create-pr.sh: not on a branch (detached HEAD)"
 
 
-def test_create_main_missing_body_file_stderr_prefix(capsys: pytest.CaptureFixture[str]) -> None:
-    assert pr_module.create_main(
-        ["--title", "t", "--body-file", "/no/such/body-file", "--branch", "feat"],
-    ) == 2
+def test_create_main_missing_body_file_stderr_prefix(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert (
+        pr_module.create_main(
+            ["--title", "t", "--body-file", "/no/such/body-file", "--branch", "feat"],
+        )
+        == 2
+    )
     err = capsys.readouterr().err
     assert err.startswith("create-pr.sh: cannot read body file:")
 
@@ -624,3 +685,113 @@ def test_create_branch_main_no_kvs_on_non_success(
     out = capsys.readouterr().out
     assert "BRANCH_NAME" not in out
     assert "ACTION" not in out
+
+
+def _write_required_coverage(tmp_path: Path) -> None:
+    coverage = pr_module.scope_disposition.PlanCoverage(
+        total=1,
+        touched=0,
+        untouched=1,
+        untouched_percent=100,
+        band="high",
+        plan_paths=("a.py",),
+        touched_paths=(),
+        untouched_paths=("a.py",),
+        todos_left_count=0,
+        todos_left=(),
+        fingerprint="fp-required",
+        disposition_required=True,
+        plan_fidelity_forced=True,
+        coverage_file=str(tmp_path / "plan-coverage.json"),
+        untouched_file=str(tmp_path / "untouched.txt"),
+        todos_file=str(tmp_path / "todos.txt"),
+    )
+    pr_module.scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
+
+
+def _mutating_calls(runner: RecordingRunner) -> list[list[str]]:
+    return [
+        call
+        for call in runner.calls
+        if call[:3]
+        in (["git", "push", "-u"], ["gh", "pr", "create"], ["gh", "pr", "edit"])
+    ]
+
+
+def test_create_main_scope_disposition_refusal_needs_user_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_required_coverage(tmp_path)
+    body = tmp_path / "body.md"
+    _ = body.write_text("body", encoding="utf-8")
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+
+    rc = pr_module.create_main(
+        ["--title", "t", "--body-file", str(body), "--repo", "o/r", "--branch", "feat"]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == config.EXIT_NEEDS_USER_INPUT
+    assert "PR_STATUS=needs-user" in out
+    assert "needs_user_reason=scope-disposition" in out
+    assert "NEXT_ACTION=halt-scope-disposition" in out
+    assert "PR_STATUS=error" not in out
+
+
+def test_create_pr_parity_manifest_only_refuses_before_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "manifest.json").write_text(
+        '{"todos_left":["finish"]}\n', encoding="utf-8"
+    )
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    runner = RecordingRunner(responses=[_HEAD_FEAT, _PORCELAIN_CLEAN], strict=True)
+
+    with pytest.raises(NeedsUserInput):
+        _ = pr_module.create_pr_parity(
+            runner,
+            repo="o/r",
+            branch="feat",
+            title="t",
+            body="body",
+        )
+
+    assert _mutating_calls(runner) == []
+
+
+def test_push_open_pr_branch_refuses_before_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_required_coverage(tmp_path)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    runner = RecordingRunner(responses=[_PORCELAIN_CLEAN], strict=True)
+
+    with pytest.raises(NeedsUserInput):
+        _ = pr_module._push_open_pr_branch(runner, branch="feat", cwd=None)
+
+    assert _mutating_calls(runner) == []
+
+
+def test_body_update_main_scope_disposition_refusal_no_edit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_required_coverage(tmp_path)
+    body = tmp_path / "body.md"
+    _ = body.write_text("body", encoding="utf-8")
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+
+    rc = pr_module.body_update_main(
+        ["--pr", "5", "--repo", "o/r", "--body-file", str(body)]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == config.EXIT_NEEDS_USER_INPUT
+    assert "UPDATED=false" in out
+    assert "needs_user_reason=scope-disposition" in out
+    assert "NEXT_ACTION=halt-scope-disposition" in out

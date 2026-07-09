@@ -11,7 +11,8 @@ import pytest
 
 from larch.core import config
 from larch.git import gh
-from larch.errors import ShipError, TransientNetworkError
+from larch.implement import scope_disposition
+from larch.errors import NeedsUserInput, ShipError, TransientNetworkError
 from larch.core.proc import CommandResult
 
 from test_support import RecordingRunner as _RecordingRunner
@@ -73,7 +74,9 @@ def test_pr_view_parses_json() -> None:
 def test_pr_view_timeout_raises_gh_read_timeout() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("gh", "pr", "view", "1"), config.EXIT_TIMEOUT, "", "", 120.0),
+            CommandResult(
+                ("gh", "pr", "view", "1"), config.EXIT_TIMEOUT, "", "", 120.0
+            ),
         ],
     )
     with pytest.raises(gh.GhReadTimeout):
@@ -90,8 +93,6 @@ def test_pr_view_exit_timeout_without_timeout_arg_raises_gh_read_timeout() -> No
         _ = gh.pr_view(runner, 1, repo="o/r")
 
 
-
-
 def test_retry_read_applies_default_and_explicit_timeouts() -> None:
     default_runner = TimeoutRecordingRunner(
         responses=[CommandResult(("gh", "repo", "view"), 0, "o/r\n", "", 0.01)],
@@ -100,7 +101,15 @@ def test_retry_read_applies_default_and_explicit_timeouts() -> None:
     assert default_runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC]
 
     explicit_runner = TimeoutRecordingRunner(
-        responses=[CommandResult(("gh", "pr", "view", "1"), 0, '{"number":1,"url":"u","state":"OPEN","headRefName":"b"}', "", 0.01)],
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"b"}',
+                "",
+                0.01,
+            )
+        ],
     )
     _ = gh.pr_view(explicit_runner, 1, repo="o/r", timeout=5.0)
     assert explicit_runner.timeouts == [5.0]
@@ -410,7 +419,9 @@ def test_pr_create_success_without_url_does_not_use_current_branch_pr_view() -> 
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            CommandResult(("gh", "pr", "create"), 0, "Created pull request\n", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"), 0, "Created pull request\n", "", 0.01
+            ),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
         ],
     )
@@ -510,7 +521,9 @@ def test_pr_create_success_without_resolvable_pr_raises_ship_error() -> None:
 
 
 def test_pr_create_recorded_gh_transcript_no_json_flag() -> None:
-    transcript_stdout = (Path(__file__).resolve().parents[2] / "fixtures" / "gh-pr-create-success.txt").read_text(
+    transcript_stdout = (
+        Path(__file__).resolve().parents[2] / "fixtures" / "gh-pr-create-success.txt"
+    ).read_text(
         encoding="utf-8",
     )
     runner = RecordingRunner(
@@ -632,12 +645,16 @@ def test_run_list_filtered_builds_filters_and_parses_head_sha_event() -> None:
 def test_run_list_filtered_raises_on_malformed_row() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("gh", "run", "list"), 0, '[{"status":"completed"}]', "", 0.01),
+            CommandResult(
+                ("gh", "run", "list"), 0, '[{"status":"completed"}]', "", 0.01
+            ),
         ],
     )
 
     with pytest.raises(ShipError, match="databaseId"):
-        _ = gh.run_list_filtered(runner, gh.WorkflowRunListFilters(repo="o/r", branch="main"))
+        _ = gh.run_list_filtered(
+            runner, gh.WorkflowRunListFilters(repo="o/r", branch="main")
+        )
 
 
 def test_mutating_helpers_build_argv_without_retry() -> None:
@@ -1069,20 +1086,33 @@ def test_pr_edit_body_file_retries_and_threads_repo(
     _ = body_file.write_text("hello", encoding="utf-8")
     runner = RecordingRunner(
         responses=[
-            CommandResult(("gh", "pr", "edit", "4"), 1, "", "fatal: Could not resolve host", 0.01),
+            CommandResult(
+                ("gh", "pr", "edit", "4"), 1, "", "fatal: Could not resolve host", 0.01
+            ),
             CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01),
         ],
     )
     result = gh.pr_edit_body_file(runner, "4", str(body_file), repo="o/r")
     assert result.updated
     assert len(runner.calls) == 2
-    assert runner.calls[0] == ["gh", "pr", "edit", "4", "--repo", "o/r", "--body-file", str(body_file)]
+    assert runner.calls[0] == [
+        "gh",
+        "pr",
+        "edit",
+        "4",
+        "--repo",
+        "o/r",
+        "--body-file",
+        str(body_file),
+    ]
 
 
 def test_pr_edit_body_file_omits_repo_when_absent(tmp_path: Path) -> None:
     body_file = tmp_path / "body.md"
     _ = body_file.write_text("hello", encoding="utf-8")
-    runner = RecordingRunner(responses=[CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01)])
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01)]
+    )
     result = gh.pr_edit_body_file(runner, "4", str(body_file), repo=None)
     assert result.updated
     assert runner.calls[0] == ["gh", "pr", "edit", "4", "--body-file", str(body_file)]
@@ -1112,7 +1142,9 @@ def test_pr_checks_json_accepts_non_blocking_buckets(bucket: str) -> None:
 
 @pytest.mark.parametrize("bucket", ["fail", "pending"])
 def test_pr_checks_json_blocks_fail_and_pending(bucket: str) -> None:
-    assert not gh._pr_checks_json_all_pass(json.dumps([{"name": "ci", "bucket": bucket}]))  # pyright: ignore[reportPrivateUsage]
+    assert not gh._pr_checks_json_all_pass(
+        json.dumps([{"name": "ci", "bucket": bucket}])
+    )  # pyright: ignore[reportPrivateUsage]
 
 
 def test_pr_checks_json_blocks_empty_rows() -> None:
@@ -1158,7 +1190,10 @@ def test_pr_checks_not_ready_detail_reports_json_blockers() -> None:
         ],
     )
 
-    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking checks: lint=pending"
+    assert (
+        gh.pr_checks_not_ready_detail(runner, 1, repo="o/r")
+        == "blocking checks: lint=pending"
+    )
 
 
 def test_pr_checks_not_ready_detail_reports_empty_json() -> None:
@@ -1168,18 +1203,29 @@ def test_pr_checks_not_ready_detail_reports_empty_json() -> None:
         ],
     )
 
-    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "no PR checks returned"
+    assert (
+        gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "no PR checks returned"
+    )
 
 
 def test_pr_checks_not_ready_detail_reports_text_blocking_line() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "pr", "checks", "1"), 0, "not-json", "", 0.01),
-            CommandResult(("gh", "pr", "checks", "1"), 0, "lint\tqueued\t0\t0\nunit\tpass\t0\t0\n", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "checks", "1"),
+                0,
+                "lint\tqueued\t0\t0\nunit\tpass\t0\t0\n",
+                "",
+                0.01,
+            ),
         ],
     )
 
-    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking check line: lint queued 0 0"
+    assert (
+        gh.pr_checks_not_ready_detail(runner, 1, repo="o/r")
+        == "blocking check line: lint queued 0 0"
+    )
 
 
 def test_pr_checks_not_ready_detail_reports_text_generic_message() -> None:
@@ -1190,18 +1236,26 @@ def test_pr_checks_not_ready_detail_reports_text_generic_message() -> None:
         ],
     )
 
-    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "unable to read PR checks"
+    assert (
+        gh.pr_checks_not_ready_detail(runner, 1, repo="o/r")
+        == "unable to read PR checks"
+    )
 
 
 def test_pr_checks_not_ready_detail_reports_text_blocking_on_nonzero_exit() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "pr", "checks", "1"), 0, "not-json", "", 0.01),
-            CommandResult(("gh", "pr", "checks", "1"), 1, "lint\tpending\t0\t0\n", "boom", 0.01),
+            CommandResult(
+                ("gh", "pr", "checks", "1"), 1, "lint\tpending\t0\t0\n", "boom", 0.01
+            ),
         ],
     )
 
-    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking check line: lint pending 0 0"
+    assert (
+        gh.pr_checks_not_ready_detail(runner, 1, repo="o/r")
+        == "blocking check line: lint pending 0 0"
+    )
 
 
 def test_pr_checks_not_ready_detail_reports_json_blockers_on_nonzero_exit() -> None:
@@ -1217,7 +1271,10 @@ def test_pr_checks_not_ready_detail_reports_json_blockers_on_nonzero_exit() -> N
         ],
     )
 
-    assert gh.pr_checks_not_ready_detail(runner, 1, repo="o/r") == "blocking checks: lint=pending"
+    assert (
+        gh.pr_checks_not_ready_detail(runner, 1, repo="o/r")
+        == "blocking checks: lint=pending"
+    )
 
 
 def test_find_issue_comment_id_by_marker() -> None:
@@ -1304,7 +1361,9 @@ def test_issue_create_adds_repo_and_surfaces_failure() -> None:
     assert "o/r" in runner.calls[0]
 
 
-def test_run_logs_main_in_progress_exit_three(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_logs_main_in_progress_exit_three(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(
@@ -1321,8 +1380,12 @@ def test_run_logs_main_in_progress_exit_three(monkeypatch: pytest.MonkeyPatch, c
     assert "Full log: https://github.com/o/r/actions/runs/7" in capsys.readouterr().out
 
 
-def test_run_logs_main_failure_exit_one(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[CommandResult(("gh", "run", "view", "7"), 1, "", "boom", 0.01)])
+def test_run_logs_main_failure_exit_one(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "run", "view", "7"), 1, "", "boom", 0.01)]
+    )
     monkeypatch.setattr(gh, "proc", runner)
     assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 1
     assert "boom" in capsys.readouterr().out
@@ -1335,7 +1398,9 @@ def test_run_logs_main_keeps_full_failed_log(
     raw_lines += ["job-middle-marker"] + [f"line-{idx}" for idx in range(60, 120)]
     raw_lines += ["job-end-marker"]
     raw = "\n".join(raw_lines)
-    runner = RecordingRunner(responses=[CommandResult(("gh", "run", "view", "7"), 0, raw, "", 0.01)])
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "run", "view", "7"), 0, raw, "", 0.01)]
+    )
     monkeypatch.setattr(gh, "proc", runner)
     assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 0
     out = capsys.readouterr().out
@@ -1383,7 +1448,9 @@ def test_parse_job_durations_raises_on_missing_jobs_key() -> None:
 def test_job_durations_reads_jobs_api() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("gh", "run", "view", "11"), 0, _JOBS_DURATIONS_PAYLOAD, "", 0.01),
+            CommandResult(
+                ("gh", "run", "view", "11"), 0, _JOBS_DURATIONS_PAYLOAD, "", 0.01
+            ),
         ],
     )
     assert gh.job_durations(runner, 11, repo="o/r") == {1: 60.0, 2: 45.0}
@@ -1395,3 +1462,75 @@ def test_job_durations_raises_on_failed_read() -> None:
     )
     with pytest.raises(ShipError):
         _ = gh.job_durations(runner, 11, repo="o/r")
+
+
+def _write_scope_required_coverage(tmp_path: Path) -> None:
+    coverage = scope_disposition.PlanCoverage(
+        total=1,
+        touched=0,
+        untouched=1,
+        untouched_percent=100,
+        band="high",
+        plan_paths=("a.py",),
+        touched_paths=(),
+        untouched_paths=("a.py",),
+        todos_left_count=0,
+        todos_left=(),
+        fingerprint="fp-required",
+        disposition_required=True,
+        plan_fidelity_forced=True,
+        coverage_file=str(tmp_path / "plan-coverage.json"),
+        untouched_file=str(tmp_path / "untouched.txt"),
+        todos_file=str(tmp_path / "todos.txt"),
+    )
+    scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
+
+
+def test_pr_edit_body_file_scope_refusal_no_edit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_scope_required_coverage(tmp_path)
+    body = tmp_path / "body.md"
+    _ = body.write_text("body", encoding="utf-8")
+    runner = RecordingRunner(strict=True)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+
+    result = gh.pr_edit_body_file(runner, "7", str(body), repo="o/r")
+
+    assert result.exit_code == config.EXIT_NEEDS_USER_INPUT
+    assert result.updated is False
+    assert result.error == "scope-disposition required"
+    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []
+
+
+def test_pr_edit_body_scope_refusal_raises_no_edit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_scope_required_coverage(tmp_path)
+    runner = RecordingRunner(strict=True)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+
+    with pytest.raises(NeedsUserInput):
+        _ = gh.pr_edit_body(runner, 7, "body", repo="o/r")
+
+    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []
+
+
+def test_pr_edit_body_file_manifest_only_todos_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "manifest.json").write_text(
+        '{"todos_left":["finish"]}\n', encoding="utf-8"
+    )
+    body = tmp_path / "body.md"
+    _ = body.write_text("body", encoding="utf-8")
+    runner = RecordingRunner(strict=True)
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+
+    result = gh.pr_edit_body_file(runner, "7", str(body), repo="o/r")
+
+    assert result.exit_code == config.EXIT_NEEDS_USER_INPUT
+    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []
