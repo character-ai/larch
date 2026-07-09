@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- current parser already ignores non-Why bullets; the plan only adds Mechanized handling.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already requires an unmarked byte-stability regression test; a Guidance-specific fixture is optional, not necessary for acceptance.

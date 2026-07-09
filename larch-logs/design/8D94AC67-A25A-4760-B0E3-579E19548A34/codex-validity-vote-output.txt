@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- parser already ignores non-matching bullets; clarifying that behavior is optional, not a required fix for this feature.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Guidance-bearing unmarked coverage is an extra test for pre-existing behavior, not a new risk-bearing path introduced by this feature.
