@@ -503,7 +503,7 @@ def _cleanup_run_dirs_for_clone(clone_dir: Path, *, cutoff: float) -> int:
     try:
         active_run_id = _read_active_run_id_from_dirfd(dir_fd)
         try:
-            children = list(os.listdir(dir_fd))  # noqa: PTH208
+            children = list(os.listdir(dir_fd))  # noqa: PTH208 - dir_fd-based listdir required; Path.iterdir() does not accept an fd
         except OSError:
             return 0
         for child_name in children:
