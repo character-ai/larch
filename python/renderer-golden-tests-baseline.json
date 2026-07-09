@@ -1,0 +1,72 @@
+[
+  {
+    "file": "larch/report/exec_issue_detail.py",
+    "function_name": "_parse_ndjson_structured_rows",
+    "reason": "matches broad renderer-name predicate but is not an operator-facing renderer"
+  },
+  {
+    "file": "larch/report/exec_issue_detail.py",
+    "function_name": "_render_category",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/final_report.py",
+    "function_name": "_state_file_has_rows",
+    "reason": "matches broad renderer-name predicate but is not an operator-facing renderer"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "function_name": "_oos_result_rows",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "function_name": "_render_phase_gantt",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/progress_report.py",
+    "function_name": "_tsv_has_data_rows",
+    "reason": "matches broad renderer-name predicate but is not an operator-facing renderer"
+  },
+  {
+    "file": "larch/report/report_tokens_scan.py",
+    "function_name": "_phase_rows",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/timing.py",
+    "function_name": "_parse_rows",
+    "reason": "matches broad renderer-name predicate but is not an operator-facing renderer"
+  },
+  {
+    "file": "larch/report/timing.py",
+    "function_name": "_render_markdown",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "function_name": "_ranked_cache_run_rows",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "function_name": "_ranked_cache_step_rows",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "function_name": "_read_transcript_rows",
+    "reason": "matches broad renderer-name predicate but is not an operator-facing renderer"
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "function_name": "_render_checks_digest_savings_report",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "function_name": "_vendor_rows",
+    "reason": "grandfathered current report helper before renderer golden-test coverage ratchet"
+  }
+]
