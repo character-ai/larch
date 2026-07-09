@@ -366,6 +366,7 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
     design.mkdir()
     _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
     _ = (design / "final-summary.md").write_text("STALE-SENTINEL\n", encoding="utf-8")
+    _ = (design / "session-transcript.jsonl").write_text("{}\n", encoding="utf-8")
     bin_dir = tmp_path / "bin"
     _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
@@ -826,6 +827,9 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     pr_round = design / "plan-review" / "round-1"
     pr_round.mkdir(parents=True)
     _ = (pr_round / "findings.md").write_text("NF", encoding="utf-8")
+    _ = (pr_round / "findings-classification.tsv").write_text(
+        "id\tstatus\n", encoding="utf-8"
+    )
     _ = (pr_round / "codex-vote-output.txt").write_text("VOTE", encoding="utf-8")
     _ = (pr_round / "panel-prompt-sizes.tsv").write_text(
         "site\tslot\n", encoding="utf-8"
@@ -1144,6 +1148,9 @@ def test_log_publish_drops_github_redundant_top_level_keeps_subtree(
     pr_round.mkdir(parents=True)
     _ = (pr_round / "panel-manifest.ndjson").write_text(
         '{"tool":"codex"}', encoding="utf-8"
+    )
+    _ = (pr_round / "findings-classification.tsv").write_text(
+        "id\tstatus\n", encoding="utf-8"
     )
     _ = (pr_round / "architecture-diagram.md").write_text("CURATED", encoding="utf-8")
     _ = (pr_round / "architecture-diagram.candidate.md").write_text(

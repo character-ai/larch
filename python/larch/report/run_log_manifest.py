@@ -416,15 +416,14 @@ def _design_plan_review_reached(run_dir: Path) -> bool:
 
 
 def _design_publish_reached(run_dir: Path) -> bool:
-    completed = run_dir / ".completed"
-    publish_markers = (
-        completed / "step-5c",
-        completed / "step-5c-terminal",
-        completed / "step-final-summary",
-    )
-    return (run_dir / "manifest.json").is_file() and (
-        (run_dir / "session-transcript.jsonl").is_file()
-        or any(marker.is_file() for marker in publish_markers)
+    if not (run_dir / "manifest.json").is_file():
+        return False
+    return any(
+        (run_dir / name).is_file()
+        for name in (
+            "final-summary.md",
+            "version-bump-reasoning.md",
+        )
     )
 
 

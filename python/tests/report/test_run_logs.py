@@ -1597,6 +1597,7 @@ def test_commit_run_reports_copy_tree_scrub_count(
     log_root = tmp_path / "larch-logs"
     src = log_root / "implement" / "run-abc"
     src.mkdir(parents=True)
+    _ = (src / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
     _ = (src / "artifact.txt").write_text("clean\n", encoding="utf-8")
 
     def fake_scrub(_directory: Path) -> tuple[int, int]:
@@ -1625,6 +1626,7 @@ def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
     _init_git_repo_on_feature(repo)
     run_dir = repo / "larch-logs" / "design" / "run-abc"
     run_dir.mkdir(parents=True)
+    _ = (run_dir / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
     _ = (run_dir / "artifact.txt").write_text("clean\n", encoding="utf-8")
     _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
@@ -1633,6 +1635,8 @@ def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
         raise AssertionError("same-tree run-log commit must not re-scrub")
 
     monkeypatch.setattr(run_logs, "_scrub_run_tree", fail_scrub)
+    monkeypatch.setattr(run_logs, "_update_commit_manifest_with_warning", lambda _manifest: None)
+    monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", lambda _manifest: None)  # type: ignore[arg-type]
 
     result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
         log_root=repo / "larch-logs",
@@ -3076,15 +3080,30 @@ def test_design_plan_review_multi_round_requires_each_classification(tmp_path: P
     assert missing == ["plan-review-round-2:plan-review/round-2/findings-classification.tsv"]
 
 
-def test_design_publish_transcript_requires_final_summary(tmp_path: Path) -> None:
+def test_design_final_summary_requires_session_transcript(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
     _write_run_manifest(run_dir, skill="design")
-    _ = (run_dir / "session-transcript.jsonl").write_text("{}\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("summary\n", encoding="utf-8")
 
     ok, missing = run_log_manifest.verify_run_log_completeness(run_dir=run_dir, skill="design")
 
     assert ok is False
-    assert missing == ["final-summary:final-summary.md"]
+    assert missing == ["session-transcript:session-transcript.jsonl"]
+
+
+def test_design_publish_transcript_waived_by_committed_execution_issue(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    _ = (run_dir / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _ = (run_dir / "execution-issues.md").write_text(
+        "### Warnings\n- design Step 5c session-transcript write-failed: source file disappeared\n",
+        encoding="utf-8",
+    )
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(run_dir=run_dir, skill="design")
+
+    assert ok is True
+    assert missing == []
 
 
 def test_design_completed_step3_without_plan_review_does_not_reach_round_requirements(tmp_path: Path) -> None:
