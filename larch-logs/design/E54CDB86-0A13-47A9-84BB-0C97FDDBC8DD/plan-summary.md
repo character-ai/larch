@@ -1,0 +1,1 @@
+Swap Cursor reviewer rows to per-slot `auto`, remove the one-off `plan-fidelity-auto` lane, keep `plan-fidelity-forced`, and add focused tests for manifest model attribution. Keep `CURSOR_DEFAULT_MODEL`, voters, coders, and fixers on Composer 2.5.

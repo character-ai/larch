@@ -1,0 +1,2 @@
+1	the plan does not explicitly update the generic codex static-slot-count tests that still encode the removed additive lane, so a narrow change can land with failing coverage around `static_slot_count`.
+1	the retained `plan-fidelity-forced` row has no focus-area mapping, so the supported fallback lane can be misbucketed as code-quality instead of architecture in yield/classification output.

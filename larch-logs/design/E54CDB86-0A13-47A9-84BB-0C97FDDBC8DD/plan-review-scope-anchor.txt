@@ -1,0 +1,58 @@
+Replace Cursor/Composer 2.5 with Cursor/auto for all reviewers
+
+## Goal
+
+Run every Cursor reviewer on the `auto` model instead of `composer-2.5`, across `/design` plan review and `/implement` code review. This gathers full-scale quality and cost evidence on Cursor/auto faster than re-running a controlled A/B.
+
+## Scope
+
+1. Remove the one-off Cursor/auto plan-fidelity lane added in #6553. Drop the `plan-fidelity-auto` slot from `review.panel` in `python/larch/core/config.py` and its per-slot model plumbing. Decide the fate of the related `plan-fidelity-forced` auto row in `python/larch/review/review_dispatch_panel.py`, which shares the profile and the `auto` model.
+
+2. Swap Composer 2.5 to `auto` for the Cursor reviewer lanes only, in `/design` and `/implement`:
+   - Code-review panel (`review.panel`): correctness, edge-cases, testing, and dynamic Cursor lanes.
+   - Plan-review panel (`design.plan_review_panel`): arch, innovation, pragmatic, requirements, and dynamic Cursor lanes.
+
+   Apply `auto` as a per-slot override on these reviewer lanes. Do NOT change the shared `CURSOR_DEFAULT_MODEL = "composer-2.5"` in `python/larch/core/config.py`: voters and the coder path read that default and must stay on Composer 2.5.
+
+## Out of scope (do not touch)
+
+- Voter slots (`review.voters`, `design.plan_voters`). Voters are a separate role from reviewers and stay on Composer 2.5.
+- Cursor coder/implementer/fixer roles (`implement.step2_coder`, `review.fix_coder`, and peers).
+
+## Rationale
+
+The risk of drastically worse review quality looks low. In the #6553 lane (confounded, single archetype), Cursor/auto matched or beat the Composer lanes on finding precision and ran heavily major-severity, at roughly 1.3x cheaper on the cache-read-dominated review token mix. Auto avoids the `$0.25/M` Teams cache-read surcharge that pinned Composer 2.5 pays. Flipping the Cursor reviewers to `auto` produces broad, real-run evidence quickly, which the one-lane A/B could not.
+
+## Cost tracking
+
+Run-log token reports already split Cursor usage by model (`BUCKETS_cursor_by_model`), so before/after cost and finding-acceptance comparisons stay possible after the swap.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Run every Cursor **reviewer** lane on `auto` (not `composer-2.5`) across `/design` plan review and `/implement` code review.
+- Remove the one-off `plan-fidelity-auto` (#6553) additive lane and its per-slot plumbing.
+- Keep `BUCKETS_cursor_by_model` cost attribution intact so before/after comparison stays possible.
+
+### Non-goals
+- Do NOT change `CURSOR_DEFAULT_MODEL = "composer-2.5"`.
+- Do NOT touch voter slots (`review.voters`, `design.plan_voters`) or Cursor coder/implementer/fixer roles.
+- Do NOT remove the `plan-fidelity-forced` low-coverage safeguard (keep it; it already runs on `auto`).
+
+### Approach sketch
+- Set `cursor_model=CURSOR_AUTO_MODEL` as a per-slot override on the Cursor reviewer `SlotDefault`s in `config.py` (code-review: correctness/edge-cases/testing; plan-review: arch/innovation/pragmatic/requirements).
+- Propagate `cursor_model` (+ matching `resolved_model`) into plan-review manifest rows in `plan_review_panel.py` (currently dropped), and set `resolved_model` on code-review rows so display attribution matches the launched model.
+- Set dynamic Cursor lanes to `auto` in both panels' dynamic-slot synthesis.
+- Drop the `plan-fidelity-auto` slot + its `is_additive_plan_fidelity` special-casing; repoint the `plan-fidelity-forced` codex-fallback archetype reference off the deleted name.
+
+### Surfaces in scope
+- `python/larch/core/config.py` — Cursor reviewer `SlotDefault`s (both panels); remove `plan-fidelity-auto`.
+- `python/larch/review/review_dispatch_panel.py` — code-review rows, additive special-case, forced-lane reference.
+- `python/larch/review/plan_review_panel.py` — plan-review static + dynamic Cursor rows.
+- `python/larch/review/review_tally.py`, `python/larch/report/timing.py` — orphaned `plan-fidelity-auto` references.
+- Tests: `test_external_role_defaults.py`, `test_external_dispatch.py`, `test_review_pipeline.py` (+ targeted new coverage).
+
+### Open questions
+- None. (`plan-fidelity-forced` fate resolved in Round 1: keep, stays on `auto`.)
