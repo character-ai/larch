@@ -185,6 +185,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: a watcher that kills, retries, or fails over an agent must match the stream's structured error events or a dedicated error channel, never raw aggregated output that can quote arbitrary bytes such as grep results over committed logs; before acting destructively, record the matched evidence and its provenance to the run diagnostics.
 - Deviate when: the vendor emits no structured error framing; then anchor the match to the vendor's own event delimiters and keep the kill path non-silent so a false positive stays diagnosable.
 
+### G-Orch-6: Size inlined agent payloads from the owning cap constants, not from an observed run
+- Why: an inlining design that worked on one small observed run failed at the configured worst case near 700KB per batch, and the toolless agent downstream fabricated verdicts instead of failing (#6671).
+- Guidance: when a skill or dispatcher inlines payloads into an agent prompt, compute the worst case from the cap constants that own the payload (diff cap, body cap, batch size) and check that it fits the transport; when it cannot, pass paths and grant the agent a Read tool.
+- Deviate when: the payload is bounded small by construction, such as a fixed-format single record; note the bound where the dispatch is defined.
+
 ## Observability and telemetry
 
 ### G-Obs-1: Keep telemetry writes best-effort, count-only, and fail-soft; a write failure skips the metric without failing the parent, and telemetry never stores prompt or payload text
@@ -255,6 +260,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: an asynchronous rollup counter read back zero immediately after a successful dependency write and produced a false "may already exist" warning (#3701); inferring merge state from unrelated output fields misreported a PR (#4025).
 - Guidance: after a GraphQL write, verify with a GraphQL read of the same relationship; never verify through a denormalized or eventually-consistent rollup, and when only an eventually-consistent read exists, poll it with bounded retries and label the wait.
 - Deviate when: no same-surface read exists; then bound the retries and record the residual uncertainty.
+
+### G-Ext-3: Treat GitHub search as a recall filter; re-apply the shared normalized predicate locally before consuming results
+- Why: GitHub search tokenizes bracketed terms, so `[BUG] in:title` also matches any title containing "bug", and prefix-only local matching missed retitled `[DONE] [BUG]` issues; both directions corrupted bug-mining selection (#6604, #6618).
+- Guidance: after any `gh` search or list call, filter the result set through `larch.issue.title_match`, or the surface's shared predicate, before spending tokens or verdicts on it; never treat the raw search result as the selection.
+- Deviate when: the consumer tolerates recall noise by design and says so where the search is issued.
 
 ## Documentation and Markdown
 

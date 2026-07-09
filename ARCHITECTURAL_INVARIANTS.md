@@ -46,3 +46,18 @@ from committed logs with nothing recorded anywhere (#6027). Mechanical backing:
 a post-flush manifest completeness check that asserts the expected artifact set,
 or its recorded execution-issue entries, before the run-log commit, with
 regression tests in `python/tests/report/test_run_log_flush.py`.
+
+## Agent contracts
+
+### I-Agent-1: A machine-ingested agent verdict is backed by evidence the agent actually read
+
+An agent whose output is machine-parsed (JSONL verdicts, vote rows, manifests)
+must either read its evidence through its own tools or emit the designated
+cannot-read outcome for that item. It must never emit well-formed output for
+evidence it could not open. A dispatch that inlines evidence must fit the
+worst case computed from the owning cap constants; when it cannot, it passes
+paths and grants a Read tool. Evidence of violation: a toolless triage agent
+play-acted tool calls and fabricated JSONL verdicts, and the dispatching
+skill's inlining assumption failed at the configured caps (#6671). Mechanical
+backing: `python3 python/cli.py lint agent-tool-contract` over agent
+frontmatter, plus fail-closed prompt language in the triage agent definition.
