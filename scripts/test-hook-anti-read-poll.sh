@@ -90,8 +90,16 @@ leaf_poison_target="$TMP/leaf-poison-target"
 leaf_poison_before=$(printf '%s\t%s\t2\t%s\n' "$leaf_path_hash" "$leaf_offset" 995)
 printf '%s' "$leaf_poison_before" >"$leaf_poison_target"
 ln -s "$leaf_poison_target" "$leaf_state_path"
+set +e
 leaf_out=$(run_hook "$leaf_now" "$leaf_path" "$leaf_offset" "$leaf_cwd" "$leaf_session")
+leaf_rc=$?
+set -e
 assert_silent "$leaf_out" 'leaf state symlink poison does not trigger reminder'
+if [ "$leaf_rc" -eq 0 ]; then
+    pass 'leaf state symlink hook exits 0'
+else
+    fail "leaf state symlink hook must exit 0 (got: $leaf_rc)"
+fi
 leaf_poison_after=$(cat "$leaf_poison_target")
 if [ "$leaf_poison_after" = "$leaf_poison_before" ]; then
     pass 'leaf state symlink poison target unchanged'
@@ -155,8 +163,16 @@ mkdir -p "$parent_redirect"
 ln -s "$parent_redirect" "$parent_state_dir"
 parent_poison_before=$(printf '%s\t%s\t2\t%s\n' "$parent_path_hash" "$parent_offset" 2995)
 printf '%s' "$parent_poison_before" >"$parent_redirect/$parent_state_base"
+set +e
 parent_out=$(run_hook "$parent_now" "$parent_path" "$parent_offset" "$parent_cwd" "$parent_session")
+parent_rc=$?
+set -e
 assert_silent "$parent_out" 'parent state-dir symlink exits without reminder'
+if [ "$parent_rc" -eq 0 ]; then
+    pass 'parent state-dir symlink hook exits 0'
+else
+    fail "parent state-dir symlink hook must exit 0 (got: $parent_rc)"
+fi
 parent_poison_after=$(cat "$parent_redirect/$parent_state_base")
 if [ "$parent_poison_after" = "$parent_poison_before" ]; then
     pass 'parent state-dir symlink poison target unchanged'
