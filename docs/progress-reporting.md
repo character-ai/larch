@@ -20,6 +20,8 @@ Default writers require a valid `current` pointer. When the clone progress direc
 
 The reader follows `current` through a no-create fd-relative clone-directory traversal and tails only the active run log. Legacy flat `<clone-hash>.log` files are ignored. A fresh run starts empty because `activate_run` points `current` at a new run directory.
 
+Fresh Claude session starts clear the clone's active `current` pointer before statusline installation. This prevents stale prior-run breadcrumbs from appearing before a new run starts. The first visible larch statusline entry after a fresh session should come from the new run's first breadcrumb. Resume and compact events preserve `current` to avoid hiding active work, and live bgjobs protect their breadcrumbs from SessionStart reset. The reset deletes only `current`; run directories and `breadcrumbs.log` files remain available for cleanup and audit.
+
 Larch assumes one active larch run per clone. It does not add concurrency semantics for simultaneous `/design` and `/implement` runs in the same checkout.
 
 ## Installation and opt out

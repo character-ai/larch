@@ -44,26 +44,34 @@ chmod +x "$tmp/plugin-ok/scripts/sessionstart-statusline.sh"
 cat > "$tmp/plugin-ok/python/cli.py" <<'PY'
 #!/usr/bin/env python3
 from __future__ import annotations
-import pathlib, sys
-pathlib.Path(sys.argv[1]).write_text(' '.join(sys.argv[2:]) + '\n', encoding='utf-8') if sys.argv[1].endswith('.txt') else None
-PY
-# Replace the stub with an argv recorder that keeps the real argv shape.
-cat > "$tmp/plugin-ok/python/cli.py" <<'PY'
-#!/usr/bin/env python3
-from __future__ import annotations
 import os
 import pathlib
 import sys
-pathlib.Path(os.environ['ARG_FILE']).write_text(' '.join(sys.argv[1:]) + '\n', encoding='utf-8')
+with pathlib.Path(os.environ['ARG_FILE']).open('a', encoding='utf-8') as handle:
+    _ = handle.write(' '.join(sys.argv[1:]) + '\n')
 PY
 chmod +x "$tmp/plugin-ok/python/cli.py"
 arg_file="$tmp/args.txt"
 out=$(ARG_FILE="$arg_file" PATH="$tmp/bin:/bin:/usr/bin" CLAUDE_PLUGIN_ROOT="$tmp/plugin-ok" "$tmp/plugin-ok/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
 assert_empty "$out" 'normal path is silent'
-if grep -Fq -- 'progress install-statusline --plugin-root' "$arg_file"; then
-    pass 'stub cli receives progress install-statusline --plugin-root'
+expected_args="$tmp/expected-args.txt"
+cat > "$expected_args" <<EOF
+progress session-reset
+progress install-statusline --plugin-root $tmp/plugin-ok
+EOF
+if cmp -s "$expected_args" "$arg_file"; then
+    pass 'stub cli receives reset before install-statusline'
 else
     fail "stub cli argv mismatch: $(cat "$arg_file" 2>/dev/null || true)"
+fi
+
+: > "$arg_file"
+out=$(LARCH_STATUSLINE_DISABLE=1 ARG_FILE="$arg_file" PATH="$tmp/bin:/bin:/usr/bin" CLAUDE_PLUGIN_ROOT="$tmp/plugin-ok" "$tmp/plugin-ok/scripts/sessionstart-statusline.sh" <<<'{"cwd":"/tmp/repo"}')
+assert_empty "$out" 'statusline opt out is silent'
+if [ ! -s "$arg_file" ]; then
+    pass 'statusline opt out skips cli invocations'
+else
+    fail "statusline opt out should skip cli invocations: $(cat "$arg_file" 2>/dev/null || true)"
 fi
 
 if [ "$FAIL" -ne 0 ]; then

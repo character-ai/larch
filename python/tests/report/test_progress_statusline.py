@@ -259,6 +259,76 @@ def test_read_active_run_id_missing_clone_dir_is_no_create(tmp_path: Path, monke
     assert not clone_dir.exists()
 
 
+def test_deactivate_run_removes_current_and_preserves_run_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    run_dir = progress_file.run_progress_dir(repo, run_id)
+    log_path = progress_file.run_progress_path(repo, run_id)
+
+    assert progress_file.deactivate_run(repo)
+
+    assert not progress_file.current_run_path(repo).exists()
+    assert run_dir.is_dir()
+    assert log_path.read_text(encoding="utf-8") == "[implement 5] review round 1 running\n"
+
+
+def test_deactivate_run_missing_clone_dir_is_no_create(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    clone_dir = progress_file.progress_clone_dir(repo)
+
+    assert not progress_file.deactivate_run(repo)
+    assert not clone_dir.exists()
+
+
+def test_deactivate_run_refuses_symlinked_current(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    target = tmp_path / "outside-current"
+    repo.mkdir()
+    target.write_text("implement-20260708.1\n", encoding="utf-8")
+    clone_dir = progress_file.progress_clone_dir(repo)
+    clone_dir.mkdir(parents=True)
+    progress_file.current_run_path(repo).symlink_to(target)
+
+    assert not progress_file.deactivate_run(repo)
+
+    assert progress_file.current_run_path(repo).is_symlink()
+    assert target.read_text(encoding="utf-8") == "implement-20260708.1\n"
+
+
+def test_deactivate_run_refuses_invalid_current(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    clone_dir = progress_file.progress_clone_dir(repo)
+    clone_dir.mkdir(parents=True)
+    current_path = progress_file.current_run_path(repo)
+    current_path.write_text("bad run id\n", encoding="utf-8")
+
+    assert not progress_file.deactivate_run(repo)
+    assert current_path.read_text(encoding="utf-8") == "bad run id\n"
+
+
+def test_deactivate_run_refuses_symlinked_clone_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    outside_clone = tmp_path / "outside-clone"
+    repo.mkdir()
+    outside_clone.mkdir()
+    progress_file.progress_clone_dir(repo).parent.mkdir(parents=True)
+    progress_file.progress_clone_dir(repo).symlink_to(outside_clone, target_is_directory=True)
+    (outside_clone / progress_file.CURRENT_RUN_FILENAME).write_text("implement-20260708.1\n", encoding="utf-8")
+
+    assert not progress_file.deactivate_run(repo)
+    assert (outside_clone / progress_file.CURRENT_RUN_FILENAME).read_text(encoding="utf-8") == "implement-20260708.1\n"
+
+
 def test_read_active_run_id_from_dirfd_is_best_effort_on_invalid_utf8_and_fifo(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -792,9 +862,106 @@ def test_statusline_columns_truncation(tmp_path: Path, monkeypatch: pytest.Monke
 def test_statusline_cli_registered_as_machine_stdout() -> None:
     assert ("progress", "statusline") in cli._REGISTRY
     assert ("progress", "statusline") in cli._MACHINE_STDOUT_KEYS
+    assert ("progress", "session-reset") in cli._REGISTRY
+    assert ("progress", "session-reset") not in cli._MACHINE_STDOUT_KEYS
     assert ("progress", "activate") in cli._REGISTRY
     assert ("progress", "activate") not in cli._MACHINE_STDOUT_KEYS
     assert ("progress", "report") not in cli._REGISTRY
+
+
+def test_session_reset_progress_clears_startup_statusline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+    payload = json.dumps({"source": "startup", "cwd": str(repo)})
+    env = {"LARCH_TEST_STATUSLINE_NOW": "1700000000", "LARCH_STATUSLINE_STALE_AFTER_S": "999999"}
+    progress_file.activate_run(repo, run_id)
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "old run row")
+    assert "old run row" in statusline.render_statusline(stdin_text=payload, env=env)
+
+    assert statusline.session_reset_progress(payload)
+
+    assert statusline.render_statusline(stdin_text=payload, env=env) == ""
+    assert progress_file.run_progress_path(repo, run_id).read_text(encoding="utf-8") == "[implement 5] old run row\n"
+
+
+def test_session_reset_progress_clears_clear_statusline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    payload = json.dumps({"source": "clear", "cwd": str(repo)})
+    progress_file.activate_run(repo, "implement-20260708.1")
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "old run row")
+
+    assert statusline.session_reset_progress(payload)
+    assert progress_file.read_active_run_id(repo) is None
+
+
+@pytest.mark.parametrize("source", ["resume", "compact"])
+def test_session_reset_progress_skips_resume_and_compact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source: str
+) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+
+    assert not statusline.session_reset_progress(json.dumps({"source": source, "cwd": str(repo)}))
+    assert progress_file.read_active_run_id(repo) == run_id
+
+
+def test_session_reset_progress_skips_missing_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+
+    assert not statusline.session_reset_progress(json.dumps({"cwd": str(repo)}))
+    assert progress_file.read_active_run_id(repo) == run_id
+
+
+def test_session_reset_progress_skips_malformed_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+
+    assert not statusline.session_reset_progress("not json")
+    assert progress_file.read_active_run_id(repo) == run_id
+
+
+def test_session_reset_progress_skips_opt_out(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+
+    assert not statusline.session_reset_progress(
+        json.dumps({"source": "startup", "cwd": str(repo)}),
+        env={"LARCH_STATUSLINE_DISABLE": "1"},
+    )
+    assert progress_file.read_active_run_id(repo) == run_id
+
+
+def test_session_reset_progress_skips_live_bgjob(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+
+    def clone_has_live_bgjob(_repo_root: Path) -> bool:
+        return True
+
+    monkeypatch.setattr(statusline, "_clone_has_live_bgjob", clone_has_live_bgjob)
+
+    assert not statusline.session_reset_progress(json.dumps({"source": "startup", "cwd": str(repo)}))
+    assert progress_file.read_active_run_id(repo) == run_id
 
 
 def test_timing_mark_appends_progress_breadcrumb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

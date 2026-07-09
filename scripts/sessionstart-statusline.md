@@ -5,9 +5,12 @@ SessionStart hook registered in `hooks/hooks.json` to idempotently install the l
 ## Contract
 
 - Caller: Claude Code `SessionStart` for `startup|resume|clear|compact`.
-- Writes only `~/.cache/larch/statusline.sh`, `<repo>/.claude/settings.local.json`, and `~/.cache/larch/progress/` breadcrumbs written by the Python runtime.
+- Clears stale active-run pointers only on `startup` and `clear`; `resume` and `compact` preserve the pointer.
+- Skips reset when a live larch bgjob exists for the clone.
+- Deletes only `~/.cache/larch/progress/<clone-hash>/current`; run directories and `breadcrumbs.log` files remain intact.
+- Mutates only `~/.cache/larch/statusline.sh`, `<repo>/.claude/settings.local.json`, and the clone-local `current` pointer described above.
 - Honors `LARCH_STATUSLINE_DISABLE=1`.
-- Refuses symlinked target paths or ancestors through the Python installer.
+- Refuses symlinked target paths or ancestors through the Python runtime.
 - Performs no network calls and exits 0 with no stdout/stderr on every missing-tool or failure path.
 
 ## Harness
