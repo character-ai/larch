@@ -17,7 +17,7 @@ from larch.git import push
 from larch.git import rebase
 from larch.outcomes import Outcome
 from larch.report import run_logs
-from larch.implement.ship_state import _write_ship_state, _breadcrumb
+from larch.implement.ship_state import _write_ship_state, _breadcrumb, _progress_note
 from larch.implement.ship_result import ShipResult
 from larch.implement.ship_pr import _write_terminal_state, _publish_post_pr_terminal_snapshot
 
@@ -80,6 +80,7 @@ def _handle_merge_ci_not_ready(
     counters: _MergeLoopCounters,
     guard: _CiNotReadyGuard,
 ) -> tuple[int, ShipResult | None]:
+    _progress_note(step="8", text="checks still running")
     ci_not_ready_detail = gh.pr_checks_not_ready_detail(
         runner,
         working.pr_number or 0,
@@ -157,6 +158,7 @@ def _ship_rebase_phase(
     variant: ShipRebaseVariant,
 ) -> ShipRebasePhaseResult:
     _ = variant
+    _progress_note(step="8", text="rebase+merge running")
     _write_ship_state(
         working,
         phase="rebase",
@@ -234,6 +236,7 @@ def _ship_phase14_rebase(
     last_monitored_head: str | None,
 ) -> int:
     try:
+        _progress_note(step="8", text="CI-fix rebase running")
         result = rebase.rebase_and_push(
             runner=runner,
             repo=working.repo,

@@ -94,6 +94,20 @@ def _cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedP
     return _run([sys.executable, str(_PY_CLI), *args], env=env)
 
 
+def _install_statusline_best_effort() -> None:
+    result = _cli(
+        "progress",
+        "install-statusline",
+        "--plugin-root",
+        str(_REPO_ROOT),
+        "--repo-root",
+        str(Path.cwd()),
+        "--notice",
+    )
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+
+
 def _parse_kv(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text, skip_comments=True, cr_strip="rstrip")
 
@@ -481,6 +495,7 @@ def _phase_infra(st: BootstrapState) -> None:
         _cli("token", "mark", "Step 0 — preflight")
         env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
         _cli("timing", "mark", "Step 0 — preflight", env=env)
+    _install_statusline_best_effort()
     if st.implement_tmpdir and not _write_larch_run_sh(st.implement_tmpdir):
         st.emit_step_failed("larch-run")
     pid = os.environ.get("LARCH_CLAUDE_PID", "")

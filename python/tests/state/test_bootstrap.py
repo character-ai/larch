@@ -126,6 +126,19 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
     assert "/*|*..*)" in text
 
 
+def test_install_statusline_best_effort_relays_notice(monkeypatch, capsys) -> None:
+    def fake_cli(*args: str, env=None):
+        _ = args, env
+        return subprocess.CompletedProcess(["cli"], 0, "larch: installed progress statusline (set LARCH_STATUSLINE_DISABLE=1 to opt out)\n", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+
+    bootstrap._install_statusline_best_effort()  # pyright: ignore[reportPrivateUsage]
+
+    out = capsys.readouterr().out
+    assert "installed progress statusline" in out
+
+
 def test_invoke_main_resume_recovers_implement_tmpdir_from_pointer(tmp_path, monkeypatch) -> None:
     home = tmp_path / "home"
     pointer = home / ".cache" / "larch" / "sessions" / "current-implement-env-123.sh"

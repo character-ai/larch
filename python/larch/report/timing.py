@@ -675,6 +675,30 @@ def _ledger_from_args(args: list[str]) -> tuple[list[str], str | None]:
     return out, ledger
 
 
+def _progress_step_from_label(label: str) -> str:
+    match = re.search(r"\bStep\s+([0-9]+(?:\.[0-9a-z]+)?[a-z]?)\b", label, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    match = re.search(r"\b([0-9]+[a-z](?:\.[0-9a-z]+)?)\b", label, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return "?"
+
+
+def _append_progress_mark(*, skill: str, label: str) -> None:
+    try:
+        from larch.report import progress_file
+
+        _ = progress_file.append_breadcrumb(
+            Path.cwd(),
+            skill,
+            _progress_step_from_label(label),
+            f"{label} started",
+        )
+    except Exception:
+        return
+
+
 def timing_mark_main(argv: list[str] | None = None) -> int:
     args, raw_ledger = _ledger_from_args(list(argv if argv is not None else sys.argv[1:]))
     if_latest_differs = "--if-latest-differs" in args
@@ -695,14 +719,16 @@ def timing_mark_main(argv: list[str] | None = None) -> int:
         skill_marks = [m for m in _parse_rows(ledger)[0] if m.skill == skill]
         if skill_marks and skill_marks[-1].step == args[0]:
             return 0
+    skill = os.environ.get("LARCH_TIMING_SKILL", "implement")
     try:
-        TimingLedger(ledger, skill=os.environ.get("LARCH_TIMING_SKILL", "implement")).mark(args[0])
+        TimingLedger(ledger, skill=skill).mark(args[0])
     except ValueError as exc:
         print(f"timing mark: {exc}", file=sys.stderr)
         return 1
     except OSError as exc:
         print(f"timing mark: WARNING: ledger write skipped: {exc}", file=sys.stderr)
         return 0
+    _append_progress_mark(skill=skill, label=args[0])
     return 0
 
 

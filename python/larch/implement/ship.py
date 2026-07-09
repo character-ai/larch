@@ -76,6 +76,7 @@ from larch.implement.ship_state import (
     INITIAL_SHIP_STATE_KEYS,
     _PYTHON_TRANSIENT_STALL_ATTEMPT,
     _breadcrumb,
+    _progress_note,
     _patch_ship_state_keys,
     _state_file_kv,
     _state_file_under_tmpdir,
@@ -1420,6 +1421,7 @@ def run_ship(
             transient_retries=resume.transient_retries,
         )
         _breadcrumb(step="pr-create", detail="PR")
+        _progress_note(step="8", text="creating PR")
         body = _compose_pr_body_for_pr_create(
             pr_context=pr_context,
             architectural_invariants_note=invariants_gate.note,
@@ -1433,6 +1435,8 @@ def run_ship(
             pr_title=title,
             pr_closed=False,
         )
+        if working.pr_number:
+            _progress_note(step="8", text=f"PR #{working.pr_number} created")
         _write_ship_state(
             working,
             phase="ci-initial" if working.merge and not working.draft else "done",
@@ -1441,6 +1445,8 @@ def run_ship(
             fix_attempts=resume.fix_attempts,
             transient_retries=resume.transient_retries,
         )
+        if working.merge and not working.draft and working.pr_number:
+            _progress_note(step="8", text=f"CI running for PR #{working.pr_number}")
         if resume.start == "fresh":
             try:
                 run_logs.write_final_report_comment(runner=runner, ctx=working)
@@ -1595,6 +1601,9 @@ def run_ship(
                 _bail_ctx = working
                 _bail_detail_log = ""
                 _bail_step = monitor.result.detail or "ci-monitor"
+                if (monitor.result.detail or "").startswith("ci-fix-exhausted:"):
+                    first_line = (monitor.result.detail or "").splitlines()[0]
+                    _progress_note(step="8", text=first_line)
                 if (
                     monitor.result.outcome is Outcome.NEEDS_USER_INPUT
                     and (monitor.result.detail or "").startswith("ci-fix-exhausted")
@@ -1740,6 +1749,7 @@ def run_ship(
                     continue
             if merged.result == config.MERGE_RESULT_MAIN_ADVANCED:
                 ci_not_ready_guard.reset()
+                _progress_note(step="8", text="CI-fix rebase running")
                 rebase_phase = _ship_rebase_phase(
                     runner=runner,
                     working=working,
@@ -1840,6 +1850,7 @@ def run_ship(
                     merge_result=merged.result,
                     detail=merge_stall_detail,
                 )
+            _progress_note(step="8", text=f"merged PR #{working.pr_number}" if working.pr_number else "merged")
             return _ship_postmerge_phase(
                 runner=runner,
                 working=working,

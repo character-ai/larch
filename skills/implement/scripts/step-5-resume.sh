@@ -157,8 +157,6 @@ run_resume_worker() {
           ;;
       esac
     fi
-    printf '%s
-' 'progress: type p (or progress) at any time'
     difficulty_override=$(read_run_flag_key DIFFICULTY_OVERRIDE "")
     case "$difficulty_override" in ""|TRIVIAL|MODERATE|HARD) ;; *) difficulty_override="" ;; esac
     if [ -n "$difficulty_override" ]; then
