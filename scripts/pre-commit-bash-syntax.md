@@ -23,7 +23,7 @@ developers. On Linux the system bash (5.x) catches generic syntax errors.
 ## Edit-in-sync rules
 
 - Keep the `xargs -P` / `-n 1` pattern in sync with `scripts/pre-commit-shellcheck.sh`.
-- The CI `bash32-check` job (macOS runner) is the authoritative bash 3.2 gate; this hook gives developers the same check at commit time.
+- The CI `bash32-check` job (Linux runner, pinned bash 3.2.57 Docker image) is the authoritative bash 3.2 gate; this hook gives developers the same check at commit time.
 
 ## E3 residual scope
 

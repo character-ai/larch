@@ -46,17 +46,23 @@ py-lint: py-lint-main py-typecheck
 py-lint-checks-fast:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
 		|| (printf '%s\n' "ERROR: make py-lint-checks-fast requires Python 3.11 or newer (PYTHON=$(PYTHON))" >&2; exit 1)
-	cd python && ruff check .
-	$(PYTHON) python/cli.py lint complexity-baseline
-	$(PYTHON) python/cli.py lint keyword-only
-	$(PYTHON) python/cli.py lint subprocess-via-runner
-	$(PYTHON) python/cli.py lint wire-artifact-pairing
-	$(PYTHON) python/cli.py lint tempfile-dir
-	$(PYTHON) python/cli.py lint monkeypatch-facade-binding
-	$(PYTHON) python/cli.py lint env-via-config-constant
-	$(PYTHON) python/cli.py lint lifecycle-prefix-literal
-	$(PYTHON) python/cli.py lint layering
-	$(PYTHON) python/cli.py lint flat-tests
+	@# ruff + the AST ratchet checks are independent read-only checks. Run them
+	@# concurrently (each to its own log) and aggregate exit codes so wall time is
+	@# the slowest single check, not the ~90s serial sum that dominated CI
+	@# python-lint shard 1. Logs replay in deterministic order after all finish,
+	@# so parallelism never muddies which check failed. POSIX sh only (CI /bin/sh
+	@# is dash): no pipefail, no arrays.
+	@tmp=$$(mktemp -d); rc=0; pids=""; \
+	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
+	for chk in complexity-baseline keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal layering flat-tests; do \
+		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
+	done; \
+	for entry in $$pids; do \
+		p=$${entry%%:*}; name=$${entry#*:}; \
+		if wait "$$p"; then cat "$$tmp/$$name.log"; else rc=1; printf '\n=== %s FAILED ===\n' "$$name"; cat "$$tmp/$$name.log"; fi; \
+	done; \
+	rm -rf "$$tmp"; \
+	exit "$$rc"
 
 # Local full Python lint: fast checks + pylint over the whole tree. pylint runs
 # with all cores when the host supports the required process-pool semaphore
@@ -265,15 +271,15 @@ lint-awk-multibyte-regex:
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 
-test-harnesses-1: test-fluff-analysis-corpus test-token-vendor-scrapers test-fluff-analysis test-cache-root-validation test-step-8-ship test-pipe-sigpipe-safety test-references-headers test-architectural-guidelines-step test-check-stale-plugin test-quick-mode-docs-sync test-implement-step2-routing test-legacy-title-prefix-literals-scope test-synthesis-subagent test-anti-improvised-wakeup
+test-harnesses-1: test-write-final-report test-voter-calibration test-hook-no-progress-guard test-design-step3-review test-step-8-ship test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-hook-clone-ownership-parity test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-design-step3-review test-hook-anti-read-poll test-file-failure-report-cross-repo test-lint-literal-counts test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-lint-bare-grep-probe test-lint-no-raw-stderr-after-quiet-init test-render-cost-line-callsites test-lint-renderer-substitution-safety test-audit-edit-write test-rejected-analysis test-implement-step8-exit3-first-fixer test-orchestrator-scope-sync test-implement-relevant-checks-anti-halt
+test-harnesses-2: test-harness-shards-coverage test-hook-bg-poll-guard test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-research-structure test-lint-no-raw-stderr-after-quiet-init test-implement-structure test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-bug-structure test-effort-prose
 
-test-harnesses-3: test-step-5-review test-design-step3-mav test-hook-bg-poll-guard test-hook-clone-ownership-parity test-prompt-template-invariants test-design-multi-round-integration test-hook-stop-fail-close test-hook-no-progress-guard test-design-structure test-voter-calibration test-research-structure test-cache-key-discipline test-plan-adequacy-audit test-implement-structure test-design-clarify test-alias-structure test-anti-halt test-bug-structure test-effort-prose
+test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-implement-review-token-propagation test-sessionstart test-step-5-review test-cache-root-validation test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt
 
-test-harnesses-4: test-harness-shards-coverage test-step3-orchestrator-fence test-gate-b-apply-mode test-read-result-env test-sessionstart test-check-topology-rule-paths test-block-submodule test-lint-bash32 test-deny-edit-write test-pause-skill test-implement-timing-rehydration test-subskill-anchors test-research-angle-prompts test-brainstorm-prompts test-implement-cleanup-roundtrip test-hook-deny-run-in-background test-bgjob
+test-harnesses-4: test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-design-structure test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-implement-anti-polling-rule test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts
 
-test-harnesses-5: test-findings-classification test-step3-review-cap test-step-18 test-implement-review-token-propagation test-design-step3-entry test-sweep-design-logs test-cleanup-sessionstart test-external-tool-registry test-flush-vendor-failure-diagnostics test-review-structure test-implement-anti-polling-rule test-implement-fence-shape test-sessionstart-statusline test-implement-anti-halt test-step-8-oos-checkpoint test-implement-rebase-macro test-implement-positional-issue test-write-final-report
+test-harnesses-5: test-step3-review-cap test-findings-classification test-step-18 test-design-step3-entry test-file-failure-report-cross-repo test-check-topology-rule-paths test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-review-structure test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-alias-structure test-anti-halt test-implement-cleanup-roundtrip
 
 test-pipe-sigpipe-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
