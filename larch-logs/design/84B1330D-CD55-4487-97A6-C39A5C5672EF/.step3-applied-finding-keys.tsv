@@ -1,0 +1,8 @@
+1	`publish_core` rc 4 with `publish_refuse_reason=missing-guideline-assessment` still falls into the review-provenance / validator-autofix paths, so operators get sent back to step 3 or composed-plan override instead of gate c re-entry.
+1	reusing the generic publish refusal envelope for missing-guideline-assessment would stamp the validator-defect shape that existing step 5c logic already interprets as review-provenance or validator failure, so the wrong recovery path can win before the new branch is reached.
+1	the run-log completeness rule cannot be correct unless it knows both whether the run was actually approved and which consumer repo root to inspect; otherwise placeholder roots and non-approved terminal summaries will produce false requirements or false misses.
+1	the assessment gate must not be tied only to the validate-success path; if `--skip-validate` bypasses the check, approved publishes can still ship without the required assessment.
+2	the current step 5c rc=4 test hard-codes `validator-defects`, which conflicts with the new `missing-guideline-assessment` refusal path and will fail once that refusal is routed outside the validator-defect bucket.
+2	the main commit path calls completeness verification without the consumer repo root, so the new guideline-assessment requirement can be skipped when the run is staged from the ephemeral tmpdir source tree.
+2	the new `guideline-assessment` rows depend on a present `architectural_guidelines.md` at the derived consumer root, but the planned tests can remain vacuous if they never seed that fixture.
+2	a missing-guideline refusal can still leave `.completed/step-5c` behind, which makes step 6 and downstream orchestration treat the run as cleanly completed instead of fail-closed.

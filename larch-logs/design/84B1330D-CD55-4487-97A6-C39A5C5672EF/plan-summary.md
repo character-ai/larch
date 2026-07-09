@@ -1,0 +1,1 @@
+Add a mechanical design publish guard for missing `architectural-guideline-assessment.md`. Normal Step 5c publish fails before writing the plan block. Degraded direct log-publish records a warning artifact and execution issue, then commits the warning.
