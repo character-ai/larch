@@ -1,0 +1,2 @@
+warning: fix text for slot 'Codex-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add evidence_token to TriageIngest and the allowed triage fields, or move token ')
+warning: fix text for slot 'Cursor-Innovation' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add evidence_token to the `TriageIngest` / `_parse_triage_row` required-field li')

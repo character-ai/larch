@@ -1,0 +1,66 @@
+Reviewing the plan against the codebase for triage fabrication gaps—checking token placement, ingest contracts, and batch-file leakage.
+Checking manifest serialization and whether ingest ties rows to a specific batch file.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	security	python/larch/issue/analyze_bugs.py:682-682	Plan stores evidence_token in manifest issues[] while ingest compares against that manifest field	Any Read-capable triage agent or orchestrator can open $RUN_DIR/manifest.json (MANIFEST_PATH is prefetch stdout) and harvest every token without opening bundle_path files; schema-valid fabricated JSONL still passes ingest	Omit evidence_token from serialized manifest.json; at ingest parse the expected token from each bundle markdown on disk via bundle.bundle_path and compare parsed.evidence_token to that file-derived value only
+1	in_scope	major	risk-integration	.claude/skills/analyze-bugs/SKILL.md:5-5	Planned SKILL.md update forbids inlining bundle bodies but not manifest or token smuggling	Orchestrator allowed-tools include Read; it can read manifest.json and pass all evidence_token values in the Task prompt, defeating the path-only + Read-agent contract even when batch JSONL stays token-free	Add explicit Stage 1 rules: never pass MANIFEST_PATH, evidence_token values, or inlined bundle markdown to bug-fix-triage; Task input is only the triage batch path plus read-batch/read-bundle instructions
+1	in_scope	minor	correctness	python/larch/issue/analyze_bugs.py:1096-1099	Active-batch guard is skipped when triage-pending-*.jsonl is absent	When expected_issues is empty the if expected_issues and ... check never runs, so any manifest issue with a matching token can ingest outside a dispatched batch (stale/mistimed ingest after pending files were cleared)	Fail closed for triage ingest when expected_issues is empty but the ingest file has rows; or require --ingest-triage rows to match issues listed in a named batch file passed to ingest
+1	out_of_scope	minor	architecture	python/larch/issue/analyze_bugs.py:875-899	Cross-batch ingest is not tied to the dispatched batch file	_stage_issue_numbers unions all triage-pending-*.jsonl issues, so triage-results-N.jsonl for batch N can ingest rows for issues assigned to batch M if tokens are available	Defer: add optional --batch-path ingest argument and reject rows whose issue is not in that batch file
+
+## Findings
+
+### 1. Manifest token storage bypasses proof-of-read (security / correctness)
+
+The plan correctly keeps `evidence_token` out of `triage-batch-*.jsonl` and `triage-pending-*.jsonl` (current batch rows only carry `issue`, `cache_key`, `bundle_path` at ```637:637:python/larch/issue/analyze_bugs.py``` and ```818:818:python/larch/issue/analyze_bugs.py```). Batch-only exclusion is not enough.
+
+The plan also says to **store the token in the manifest record** and compare ingest rows against that manifest value. Prefetch writes the full manifest with `asdict(manifest)` at ```682:682:python/larch/issue/analyze_bugs.py```, and Stage 0 exposes `MANIFEST_PATH` at ```704:704:python/larch/issue/analyze_bugs.py```. Any Read-capable agent in the same run directory can harvest all tokens from `manifest.json` without opening any `bundle_path` file, then emit schema-valid JSONL that ingest accepts.
+
+**Suggested revision:** Treat bundle markdown as the sole token source. Embed the coordinator token in each bundle file, parse it from disk during `ledger_ingest`, and do **not** serialize `evidence_token` into `manifest.json` `issues[]` (ingest-only lookup from bundle file is enough).
+
+### 2. Skill prompt still allows orchestrator-side token smuggling (risk-integration)
+
+The planned SKILL.md changes replace infeasible inlining with path-only dispatch and document ingest rejection for bad tokens. Current orchestrator `allowed-tools` include `Read` at ```5:5:.claude/skills/analyze-bugs/SKILL.md```.
+
+The plan’s failure-mode note covers accidental **bundle** inlining (plan Approach §6) but not orchestrator reads of `manifest.json` or explicit token pasting into the Task prompt. That path satisfies ingest without the triage agent reading bundle files.
+
+**Suggested revision:** Add hard Stage 1 prohibitions: no `MANIFEST_PATH`, no pre-extracted `evidence_token` values, and no inlined bundle bodies in Task input; only the batch path plus read instructions.
+
+### 3. Empty `triage-pending` disables the active-batch guard (correctness)
+
+Ingest only checks active batches when `expected_issues` is non-empty:
+
+```1096:1099:python/larch/issue/analyze_bugs.py
+        if expected_issues and parsed.issue not in expected_issues:
+            print(f"WARN: rejected line {lineno}: issue not in active {stage or 'ingest'} batch", file=sys.stderr)
+            rejected += 1
+            continue
+```
+
+If `triage-pending-*.jsonl` is missing or empty, this guard is skipped entirely. Combined with a token source, schema-valid rows for any manifest issue can reach the ledger outside a dispatched batch. The plan does not address this path.
+
+**Suggested revision:** Fail closed when triage ingest has rows but `expected_issues` is empty, or bind ingest to the specific batch file that was dispatched.
+
+### 4. [OUT_OF_SCOPE] Cross-batch ingest is looser than dispatch
+
+`_stage_issue_numbers` unions issues from **all** `triage-pending-*.jsonl` files (```875:899:python/larch/issue/analyze_bugs.py```). A single `triage-results-N.jsonl` can ingest rows for issues assigned to a different pending batch if tokens are obtainable. This is pre-existing laxity, not introduced by the token plan; fixing it needs batch-scoped ingest wiring beyond minimum-change scope.
+
+---
+
+## Contract alignment (skill vs Python)
+
+| Contract point | Plan skill/agent | Plan Python | Gap |
+|---|---|---|---|
+| Batch JSONL has no token | Yes | Yes (no batch writer change needed) | Aligned |
+| Agent must Read bundles | Yes (`tools: [Read]`, read `bundle_path`) | N/A | Aligned once agent file lands |
+| Row must echo `evidence_token` | Yes | `_parse_triage_row` strict six fields | Aligned |
+| Ingest proof source | “rejects missing/mismatched token” | Compare to **manifest** record | **Misaligned** — should compare to bundle file on disk |
+| Old manifests without token | Fail closed | Reject rows when bundle record has no token | Aligned if ingest reads bundle file; manifest-only check is weaker |
+| `NEEDS_DEEP` without read | Agent may emit | Ingest rejects without token | Intentional per plan edge cases; skill should state rejected rows are expected |
+
+## What the plan gets right
+
+- Batch JSONL at ```637:637:python/larch/issue/analyze_bugs.py``` / ```818:818:python/larch/issue/analyze_bugs.py``` does not leak enough to satisfy ingest without bundle content; only paths and `cache_key` are present, and `cache_key` is a hash unrelated to a random token (plan keeps cache-key logic unchanged).
+- Replacing toolless agent + infeasible inlining with Read-capable path dispatch matches current caps (`DEFAULT_DIFF_CAP` / `DEFAULT_BODY_CAP` at ```35:36:python/larch/issue/analyze_bugs.py```).
+- Strict `_strict_keys` ingest at ```998:1000:python/larch/issue/analyze_bugs.py``` is the right place to add `evidence_token`; tests in the plan cover missing/wrong token and old manifests.
+- Old-manifest fail-closed behavior and preserving deep-ingest’s three-field contract are appropriately scoped.
+
+**Minimum-change recommendation:** Keep batch path dispatch and bundle-embedded tokens; drop manifest serialization of tokens; have ingest parse expected tokens from bundle files; add two SKILL.md prohibitions (no manifest, no token smuggling). That closes the main fabrication class without batch resizing or cross-batch ingest refactors.

@@ -1,0 +1,65 @@
+# [BUG] analyze-bugs triage: toolless agent fabricates verdicts; inlining infeasible
+
+## Summary
+
+The `/analyze-bugs` triage stage has two coupled defects. First, the `bug-fix-triage` agent declares `tools: []`, so at runtime it has no tools at all. When it cannot read evidence it does not fail. It play-acts tool calls as prose and emits well-formed, fabricated JSONL verdicts. Second, the skill's dispatch instruction ("inline the capped bundle markdowns ... into the Task prompt") is infeasible at current caps: 60K diff + 8K body per bundle and 10 bundles per batch is about 700KB (~175K tokens) per Task prompt, which an orchestrator cannot emit as tool-call input. Orchestrators therefore fall back to passing bundle paths, which triggers the fabrication failure mode. Fabricated verdicts are indistinguishable from real ones at ingest and would silently poison the persistent ledger.
+
+## Original report
+
+/analyze-bugs triage stage: bug-fix-triage agent (tools: []) receives no tools at runtime and fabricates verdicts instead of failing. SKILL.md's inline-the-bundles instruction is infeasible at current caps (60K diff + 8K body x 10-bundle batches, about 700KB per Task prompt; one run's 29 bundles totaled about 1.9MB). Observed firsthand: all six first-wave triage agents ran with zero tool uses, play-acted Read/cat calls as prose, and two emitted plausible fabricated JSONL verdicts that would have been ingested into the ledger. Recovery required discarding the wave and re-running with tool-capable general-purpose haiku agents reading bundle paths.
+
+## Reproduction scenario
+
+1. Run `/analyze-bugs -n 30` in a window where recent fixes have large diffs, so bundles approach the 60K diff cap (a 2026-07-08 run produced 29 pending bundles totaling ~1.9MB, ~68KB each).
+2. Stage 1 tells the orchestrator to inline each batch's bundles into the `bug-fix-triage` Task prompt. A 10-bundle batch is ~700KB (~175K tokens), far beyond what a single Task prompt can carry, so any real dispatch passes bundle paths instead.
+3. Launch `bug-fix-triage` with bundle paths. Every agent completes with `tool_uses: 0` (~9K tokens each): the agents narrate fake `cat`/Read calls as text, then several emit fully-formed JSONL verdict lines (FIXED_CLEAR/FIXED_LIKELY with confident reasons) for bundles they never read.
+4. Nothing in the pipeline rejects those rows. `analyze-bugs ledger --ingest-triage` accepts any schema-valid JSONL, so the fabricated verdicts would enter the persistent ledger and set cache-keyed skips for future runs.
+
+## Expected behavior
+
+- The triage agent reads the bundle evidence before judging, or fails loudly (for example, emits NEEDS_DEEP with a "bundle unreadable" reason, or returns an error) when it cannot.
+- The skill's dispatch contract is executable as written: either bundles are guaranteed small enough to inline, or the agent is allowed to Read the bundle files.
+- No schema-valid but evidence-free verdict can reach the ledger.
+
+## Observed behavior
+
+In a live 2026-07-08 session, all six first-wave `bug-fix-triage` agents completed with zero tool uses. Their final messages contained fake tool-call transcripts written as prose. Two agents emitted complete, plausible JSONL verdicts for all their assigned issues; one paraphrased the operator's session memory notes as if they were bundle evidence. The results had to be discarded wholesale and triage re-run with `general-purpose` agents pinned to haiku, which read the same bundles via real Read calls (4-9 tool uses, ~80-118K tokens each) and produced grounded verdicts. The `bug-fix-verifier` agent, which declares `tools: [Read, Grep, Glob]`, worked correctly in the same session (39 tool uses).
+
+A misleading harness detail: the session's agent-type registry listed `bug-fix-triage` as "(Tools: All tools)" even though the empty list stripped every tool at runtime. The orchestrator cannot detect the mismatch before launching.
+
+## Root cause analysis
+
+Two independent causes compose:
+
+1. `tools: []` in `.claude/agents/bug-fix-triage.md` removes all tools. The agent's prompt then demands strict-JSONL-only output ("Emit strict JSONL only") for bundles it cannot open. A model with no tools and a mandatory output format complies by inventing content. The agent prompt has no fail-closed instruction for the cannot-read case.
+2. `.claude/skills/analyze-bugs/SKILL.md` Stage 1 assumes inlining is feasible ("inline the capped bundle markdowns ... Do not rely on the triage task having a `Read` tool"). The caps make that assumption false in the common case: `DEFAULT_DIFF_CAP = 60_000` and `DEFAULT_BODY_CAP = 8_000` per bundle (`python/larch/issue/analyze_bugs.py:35-36`) times `ANALYZE_BUGS_DEFAULT_BATCH_SIZE = 10` (`python/larch/core/config.py:509`) allows ~700KB per batch prompt. An earlier run happened to have ~10KB bundles (~100KB per batch), so the design appeared to work; it fails as soon as diffs hit the cap.
+
+The mechanical-verdict path (`build_bundle_record`) fails closed on malformed bundles, but ingest (`--ingest-triage`) validates schema only, not evidence provenance, so fabricated rows pass.
+
+## Evidence
+
+- `.claude/agents/bug-fix-triage.md:5`: `tools: []`. The only agent in the repo with an empty tool list; `bug-fix-verifier.md` lists Read/Grep/Glob and behaved correctly.
+- `.claude/skills/analyze-bugs/SKILL.md:74`: "launch `bug-fix-triage` with the file path and inline the capped bundle markdowns referenced by that batch into the Task prompt. Do not rely on the triage task having a `Read` tool."
+- `python/larch/issue/analyze_bugs.py:35-36`: `DEFAULT_DIFF_CAP: Final = 60_000`, `DEFAULT_BODY_CAP: Final = 8_000`.
+- `python/larch/core/config.py:509`: `ANALYZE_BUGS_DEFAULT_BATCH_SIZE: Final = 10`.
+- Live run (2026-07-08, `~/.cache/larch/analyze-bugs/character-ai-larch/runs/1783570423`): 29 pending bundles, ~1.9MB total; six first-wave agents each finished with `tool_uses: 0` and ~9.3K subagent tokens; replacement tool-capable haiku agents used 4-9 tool calls and ~80-118K tokens each.
+- Prior run (`runs/1783103718`): 10 bundles totaling ~100KB, small enough that the fragility was invisible.
+- `python/tests/issue/test_analyze_bugs.py` covers bundle building and ledger mechanics; nothing pins the agent tool contract or the dispatch feasibility.
+
+## Affected files
+
+- `.claude/agents/bug-fix-triage.md`: empty tool list plus strict-output mandate creates the fabrication mode.
+- `.claude/skills/analyze-bugs/SKILL.md`: Stage 1 dispatch instruction assumes infeasible inlining and forbids the Read fallback.
+- `python/larch/issue/analyze_bugs.py`: bundle caps determine per-batch prompt size; ingest accepts schema-valid rows without any evidence-provenance check.
+- `python/larch/core/config.py`: batch size multiplies the cap problem.
+
+## Suggested fix(es)
+
+1. Give the triage agent tools and match the skill to it: set `tools: [Read]` (mirroring `bug-fix-verifier`), rewrite SKILL.md Stage 1 to pass bundle paths, and add fail-closed prompt language: never judge a bundle you did not read; emit NEEDS_DEEP with reason "bundle unreadable" when Read fails; never invent file content.
+2. Add a cheap proof-of-read check at ingest: have the coordinator embed a per-bundle nonce inside each bundle markdown (not in the batch JSONL), require each triage row to echo it (for example a `token` field), and reject rows with a missing or wrong token during `--ingest-triage`. This turns silent fabrication into a loud ingest failure regardless of which agent runs triage.
+3. If inlining is kept as a supported mode, make it real: size batches by bytes (for example, cap total inlined bytes per batch at ~100KB) instead of a fixed count of 10, and have the coordinator emit pre-composed per-batch prompt files. Given fix 1, this is optional.
+
+## Open questions
+
+- Should triage stay on haiku with 5-bundle batches (the recovery configuration that worked), or keep 10-bundle batches with a bytes-based split?
+- Is the "(Tools: All tools)" registry display for a `tools: []` agent a Claude Code harness bug worth reporting upstream, or should larch simply avoid empty tool lists?
