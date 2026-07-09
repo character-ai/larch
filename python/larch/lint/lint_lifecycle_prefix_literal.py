@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
 import json
 import re
 import sys
@@ -17,6 +18,7 @@ from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+import tokenize
 from typing import TypedDict, cast
 
 from larch.core import config
@@ -155,8 +157,12 @@ def iter_source_files(larch_dir: Path) -> list[Path]:
     return result
 
 
+def _rstrip_spaces(value: str) -> str:
+    return value.rstrip(" ")
+
+
 def _normalized_token(value: str) -> str:
-    return value.rstrip().casefold()
+    return _rstrip_spaces(value).casefold()
 
 
 def build_token_map() -> dict[str, TokenInfo]:
@@ -166,7 +172,7 @@ def build_token_map() -> dict[str, TokenInfo]:
         normalized: str = _normalized_token(value)
         if not normalized:
             raise BaselineError(f"empty lifecycle token for {constant}")
-        token: str = value.rstrip()
+        token: str = _rstrip_spaces(value)
         existing: TokenInfo | None = tokens.get(normalized)
         if existing is not None and existing.constant != constant:
             raise BaselineError(
@@ -229,7 +235,7 @@ def _literal_matches(value: str, *, token_infos: Mapping[str, TokenInfo]) -> lis
     info: TokenInfo | None = token_infos.get(normalized)
     if info is None:
         return []
-    token: str = value.rstrip()
+    token: str = _rstrip_spaces(value)
     return [LiteralMatch(token=token, constant=info.constant)]
 
 
@@ -489,34 +495,57 @@ def load_baseline(path: Path) -> list[Record]:
     return records
 
 
-def _source_lines(path: Path) -> tuple[str, ...]:
-    try:
-        return tuple(path.read_text(encoding="utf-8").splitlines())
-    except OSError:
-        return ()
+def _comment_tokens_by_line(source: str) -> dict[int, tuple[tuple[int, str], ...]]:
+    comments: dict[int, list[tuple[int, str]]] = {}
+    for token in tokenize.generate_tokens(io.StringIO(source).readline):
+        if token.type == tokenize.COMMENT:
+            comments.setdefault(token.start[0], []).append((token.start[1], token.string))
+    return {line: tuple(tokens) for line, tokens in comments.items()}
 
 
 def _has_inline_pragma(
-    finding: Finding, *, source_lines_by_file: Mapping[str, tuple[str, ...]]
+    finding: Finding,
+    *,
+    source_lines_by_file: Mapping[str, tuple[str, ...]],
+    comment_tokens_by_file: Mapping[str, dict[int, tuple[tuple[int, str], ...]]],
 ) -> bool:
+    comments_by_line: dict[int, tuple[tuple[int, str], ...]] = comment_tokens_by_file.get(
+        finding.file, {}
+    )
     lines: tuple[str, ...] = source_lines_by_file.get(finding.file, ())
-    index: int = finding.lineno - 1
-    if 0 <= index < len(lines) and PRAGMA_RE.search(lines[index]):
-        return True
-    previous: int = index - 1
-    return 0 <= previous < len(lines) and STANDALONE_PRAGMA_RE.match(lines[previous]) is not None
+    for _comment_column, comment in comments_by_line.get(finding.lineno, ()):
+        if PRAGMA_RE.search(comment):
+            return True
+    previous_line_number: int = finding.lineno - 1
+    if previous_line_number < 1 or previous_line_number > len(lines):
+        return False
+    previous_line: str = lines[previous_line_number - 1]
+    for comment_column, comment in comments_by_line.get(previous_line_number, ()):
+        if STANDALONE_PRAGMA_RE.match(comment) and previous_line[:comment_column].strip() == "":
+            return True
+    return False
 
 
 def _collect_all(
     larch_dir: Path, *, token_infos: Mapping[str, TokenInfo]
-) -> tuple[list[Finding], dict[str, tuple[str, ...]]]:
+) -> tuple[
+    list[Finding],
+    dict[str, tuple[str, ...]],
+    dict[str, dict[int, tuple[tuple[int, str], ...]]],
+]:
     findings: list[Finding] = []
     source_lines_by_file: dict[str, tuple[str, ...]] = {}
+    comment_tokens_by_file: dict[str, dict[int, tuple[tuple[int, str], ...]]] = {}
     for path in iter_source_files(larch_dir):
         normalized: str = path.relative_to(larch_dir.parent).as_posix()
-        source_lines_by_file[normalized] = _source_lines(path)
+        try:
+            source: str = path.read_text(encoding="utf-8")
+        except OSError:
+            source = ""
+        source_lines_by_file[normalized] = tuple(source.splitlines())
+        comment_tokens_by_file[normalized] = _comment_tokens_by_line(source)
         findings.extend(scan_file(path, larch_dir=larch_dir, token_infos=token_infos))
-    return findings, source_lines_by_file
+    return findings, source_lines_by_file, comment_tokens_by_file
 
 
 def _check_duplicate_live(findings: list[Finding]) -> str | None:
@@ -529,12 +558,19 @@ def _check_duplicate_live(findings: list[Finding]) -> str | None:
 
 
 def _filter_suppressed(
-    findings: list[Finding], *, source_lines_by_file: Mapping[str, tuple[str, ...]]
+    findings: list[Finding],
+    *,
+    source_lines_by_file: Mapping[str, tuple[str, ...]],
+    comment_tokens_by_file: Mapping[str, dict[int, tuple[tuple[int, str], ...]]],
 ) -> list[Finding]:
     return [
         finding
         for finding in findings
-        if not _has_inline_pragma(finding, source_lines_by_file=source_lines_by_file)
+        if not _has_inline_pragma(
+            finding,
+            source_lines_by_file=source_lines_by_file,
+            comment_tokens_by_file=comment_tokens_by_file,
+        )
     ]
 
 
@@ -591,13 +627,18 @@ def _run_write(
     initial_reason: str | None,
 ) -> int:
     try:
-        all_findings, source_lines_by_file = _collect_all(larch_dir, token_infos=token_infos)
+        (
+            all_findings,
+            source_lines_by_file,
+            comment_tokens_by_file,
+        ) = _collect_all(larch_dir, token_infos=token_infos)
         duplicate: str | None = _check_duplicate_live(all_findings)
         if duplicate is not None:
             raise BaselineError(duplicate)
         findings: list[Finding] = _filter_suppressed(
             all_findings,
             source_lines_by_file=source_lines_by_file,
+            comment_tokens_by_file=comment_tokens_by_file,
         )
         records: list[Record] = _records_for_write(
             findings,
@@ -623,7 +664,11 @@ def _run_check(
 ) -> int:
     try:
         baseline_records: list[Record] = load_baseline(baseline_path)
-        all_findings, source_lines_by_file = _collect_all(larch_dir, token_infos=token_infos)
+        (
+            all_findings,
+            source_lines_by_file,
+            comment_tokens_by_file,
+        ) = _collect_all(larch_dir, token_infos=token_infos)
         duplicate: str | None = _check_duplicate_live(all_findings)
         if duplicate is not None:
             raise BaselineError(duplicate)
@@ -636,6 +681,7 @@ def _run_check(
     live_findings: list[Finding] = _filter_suppressed(
         all_findings,
         source_lines_by_file=source_lines_by_file,
+        comment_tokens_by_file=comment_tokens_by_file,
     )
     new_findings: list[Finding] = []
     warned: list[Finding] = []

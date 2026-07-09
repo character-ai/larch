@@ -149,6 +149,21 @@ def test_display_strings_docstrings_comments_and_fstrings_are_not_flagged(tmp_pa
     assert llpll.main(["--root", str(tmp_path)]) == 0
 
 
+def test_pragma_like_string_literals_do_not_suppress_findings(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/mod.py": _source(
+                '    message = "# lint-lifecycle-prefix: ok fixture"\n'
+                '    title.startswith("[DONE]")\n'
+            )
+        },
+        baseline=[],
+    )
+
+    assert llpll.main(["--root", str(tmp_path)]) == 1
+
+
 def test_inline_and_standalone_suppressions_require_reasons(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
@@ -191,6 +206,19 @@ def test_occurrence_is_assigned_before_suppression(tmp_path: Path) -> None:
     ]) == 0
     rows = json.loads((tmp_path / "python" / llpll.BASELINE_FILENAME).read_text(encoding="utf-8"))
     assert rows == [_record(occurrence=2, reason="bootstrap")]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        '    title.startswith("[done]\\t")\n',
+        '    title.startswith("[done]\\n")\n',
+    ],
+)
+def test_non_space_trailing_whitespace_is_not_normalized(tmp_path: Path, body: str) -> None:
+    findings = _scan_body(tmp_path, body)
+
+    assert findings == []
 
 
 def test_baseline_suppresses_existing_findings_and_reports_concrete_constant(
