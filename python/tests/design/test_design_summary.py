@@ -564,6 +564,58 @@ def test_render_final_summary_write_failure_skips_upsert(
     assert not upsert_calls
 
 
+def test_render_final_summary_write_failure_rebuilds_fallback_with_detail_first(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "design-run-1")
+    monkeypatch.setenv("ISSUE_NUMBER", "42")
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Warnings\n- warn1\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("render", "run-summary"):
+            out_file = Path(args[args.index("--output-file") + 1])
+            with out_file.open("w", encoding="utf-8") as fh:
+                fh.write("## /design run design-run-1: approved\n\n")
+                fh.write("- **Outcome**: ✅ DONE\n")
+                fh.write("<!-- larch:run-summary v=1 -->\n")
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    def fake_gate(**_kw: object) -> None:
+        return
+
+    def fake_render_design_review_detail(_design_tmpdir: Path) -> str:
+        return "## Review Phase Detail\n- recovered review\n"
+
+    original_write_text = Path.write_text
+    write_calls = 0
+
+    def flaky_write_text(self: Path, *args: object, **kwargs: object) -> int:
+        nonlocal write_calls
+        if self == tmp_path / "final-summary.md" and write_calls == 0:
+            write_calls += 1
+            raise OSError("simulated write failure")
+        return original_write_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
+    monkeypatch.setattr(design_summary.review_phase_detail, "render_design_review_detail", fake_render_design_review_detail)
+    monkeypatch.setattr(design_summary.Path, "write_text", flaky_write_text)
+
+    rc = design_summary.render_final_summary_main(["--outcome", "approved", "--repo", "o/r"])
+
+    assert rc == 1
+    assert write_calls == 1
+    body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert body.index("## Review Phase Detail") < body.index("## Exec Issues and Warnings")
+    assert body.index("## Exec Issues and Warnings") < body.index("## /design run design-run-1: approved")
+    assert body.index("## /design run design-run-1: approved") < body.index("<!-- larch:run-summary v=1 -->")
+
+
 def test_difficulty_summary_line_prefers_record(tmp_path: Path) -> None:
     _ = (tmp_path / "difficulty-rating.json").write_text(
         '{"predicted_tier":"MODERATE","applied_tier":"HARD","floors_applied":[{"path":"hooks/x"}],"confidence":"medium"}\n',

@@ -333,9 +333,16 @@ def _write_enriched_post_publish_summary(
             reloaded = exec_issue_detail.load_issue_detail_groups(design_tmpdir, run_dir=None)
             if out_file.is_file():
                 degraded_body = out_file.read_text(encoding="utf-8")
-                detail_block = exec_issue_detail.build_issue_detail_section(reloaded)
-                if detail_block:
-                    degraded_body = _append_issue_detail(body=degraded_body, load_result=reloaded)
+                try:
+                    detail = review_phase_detail.render_design_review_detail(design_tmpdir)
+                except Exception:
+                    detail = ""
+                issue_detail = exec_issue_detail.build_issue_detail_section(reloaded)
+                if detail or issue_detail:
+                    degraded_body = _join_prefixed_summary(
+                        prefix_sections=(detail, issue_detail),
+                        summary_body=degraded_body,
+                    )
                 else:
                     degraded_body = (
                         degraded_body.rstrip("\n")
