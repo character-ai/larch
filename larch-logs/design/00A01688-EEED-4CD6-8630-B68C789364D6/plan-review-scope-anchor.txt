@@ -1,0 +1,33 @@
+# Analyze-bugs follow-up
+
+Repo: character-ai/larch
+
+Findings:
+- #6610: INCOMPLETE. The literal reported repro (operator manually reruns failed post-merge CI, relaunches the driver, still stuck at NEEDS_USER_INPUT) is fixed: ship.py's _emergency_repair_transient_recovery_result (~1133-1188), reached from run_ship's resume.start=='emergency-repair' branch, re-checks MAIN_REPAIR_HEAD with skip_flap_check=True and, if green, calls run_postmerge_phase() directly to finalize as merged, bypassing pre-fix-rebase entirely. But the fix's second, proactive mechanism (_postmerge_main_health_gate, ship.py:730-788, reruns the failed job once and returns Outcome.TRANSIENT) surfaces through the generic ship-route-exit TRANSIENT-to-reship conversion in dispatch_ship.py (~802-815), which unconditionally sets PRE_FIX_REBASE_REQUIRED=true (dispatch_ship.py:375-378) with no phase-specific carve-out for PHASE=postmerge-push-watch or PR_CLOSED=true (grep found zero references to postmerge-push-watch in dispatch_ship.py). Since larch avoids checking out main directly post-merge, the local branch will typically still equal BRANCH_NAME, so _ship_pre_fix_validate_checkout will not block a pre-fix-rebase attempt against an already-merged, closed-PR branch. Code review raised exactly this concern (FINDING_2, major) and it was voted down 0/3 YES, but no protective carve-out exists in the code I read. The manual-recovery path is solid; the fully-automatic proactive-retry path added by this same fix has an unresolved routing gap.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Stop the post-merge proactive transient retry from rebasing + force-pushing the already-merged, closed-PR branch.
+- Preserve #6610's intended recovery: the reship still resumes at `postmerge-push-watch` and re-checks main CI health.
+
+### Non-goals
+- No change to `Outcome.TRANSIENT` emission, the retry counter, or the transient→reship conversion.
+- No change to `_emergency_repair_transient_recovery_result` (manual-recovery path; already bypasses pre-fix rebase).
+- No change to open-PR pre-fix rebase behavior (`ci-fix` / normal reship on live PRs).
+
+### Approach sketch
+- Add a `PR_CLOSED=true` skip guard at the top of `_ship_pre_fix_rebase_step` in `dispatch_ship.py`.
+- Mirror the existing `_ship_pre_fix_phase14_skip_allowed` skip: return `(None, "skip", "continue")`.
+- Skip → `ship_pre_fix_rebase_main` writes `.ship-pre-fix-rebase-ok` + emits `NEXT_ACTION=continue`, satisfying the orchestrator proof-guard so the reship relaunch proceeds.
+- Reuse `_ship_pre_fix_truthy`; `PR_CLOSED` is already read by `_ship_pre_fix_read_state`.
+
+### Surfaces in scope
+- `python/larch/implement/dispatch_ship.py` (guard).
+- `python/tests/implement/test_implement_dispatch.py` (regression test).
+- `skills/implement/references/ship-pr-exit-matrix.md` (one-line carve-out note; conditional).
+
+### Open questions
+- Guard key: `PR_CLOSED=true` (broad, semantically correct — recommended) vs. narrower `PHASE=postmerge-push-watch`. Defer final call to plan review.
