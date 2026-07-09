@@ -66,6 +66,13 @@ def wait_once(*, tmpdir: Path, step: str, max_wait_s: int, run_id: str | None = 
                 return 0
             daemon_live = registry.daemon_liveness(entry)
             if not daemon_live.live:
+                # Re-check result after daemon exit: daemon may have written the result
+                # between our first check and the liveness check (TOCTOU race).
+                rows = _read_result(result_path)
+                if rows is not None:
+                    out_rows = [(config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_DONE), *rows.items()]
+                    _print_rows(out_rows)
+                    return 0
                 tail = _log_tail(entry.stderr_log)
                 _print_rows(
                     [
