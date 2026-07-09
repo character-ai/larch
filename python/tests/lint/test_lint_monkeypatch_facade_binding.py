@@ -159,7 +159,7 @@ def test_patching_the_defining_module_is_not_flagged(tmp_path: Path) -> None:
         baseline=[],
     )
 
-    assert _scan_single(tmp_path) == []
+    assert not _scan_single(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -186,7 +186,7 @@ def test_module_that_defines_the_patched_name_is_not_flagged(tmp_path: Path, fac
         baseline=[],
     )
 
-    assert _scan_single(tmp_path) == []
+    assert not _scan_single(tmp_path)
 
 
 def test_unrelated_module_level_bindings_do_not_suppress_flag(tmp_path: Path) -> None:
@@ -254,7 +254,7 @@ def test_non_literal_attribute_names_are_skipped(tmp_path: Path) -> None:
         baseline=[],
     )
 
-    assert _scan_single(tmp_path) == []
+    assert not _scan_single(tmp_path)
 
 
 def test_non_repo_modules_and_unresolved_chains_are_skipped(tmp_path: Path) -> None:
@@ -273,7 +273,7 @@ def test_non_repo_modules_and_unresolved_chains_are_skipped(tmp_path: Path) -> N
         baseline=[],
     )
 
-    assert _scan_single(tmp_path) == []
+    assert not _scan_single(tmp_path)
 
 
 def test_unbound_package_child_chain_is_skipped(tmp_path: Path) -> None:
@@ -292,7 +292,7 @@ def test_unbound_package_child_chain_is_skipped(tmp_path: Path) -> None:
         baseline=[],
     )
 
-    assert _scan_single(tmp_path) == []
+    assert not _scan_single(tmp_path)
 
 
 def test_duplicate_import_alias_uses_last_binding(tmp_path: Path) -> None:
