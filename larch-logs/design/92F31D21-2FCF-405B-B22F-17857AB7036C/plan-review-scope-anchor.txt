@@ -1,0 +1,17 @@
+```
+Codex touched both plan files. The remaining TODO is that make py-lint and make py-test (full suites) were not completed; focused statusline tests and per-file lint passed. Coverage band is advisory.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ ☐ Coverage
+
+Codex completed implementation but did not run the full make py-lint / make py-test suite (focused statusline tests and per-file lint passed). Step 3 will run relevant checks. How do you want to proceed?
+
+❯ 1. proceed-partial
+     Continue with the partial implementation; Step 3 runs the relevant checks.
+  2. bail-rescope
+     Stop and rescope: discard this run and revise the plan before retrying.
+  3. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+```
+However, this is exactly correct behavior -- we only want to run relevant checks, we don't run full test suits -- CI is much faster for that.
+Consequently, I don't want it complaining/pausing and asking this.
