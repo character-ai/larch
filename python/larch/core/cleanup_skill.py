@@ -13,7 +13,7 @@ from pathlib import Path
 from larch.core import config
 from larch.core import env_file
 from larch.core import proc
-from larch.report import progress_file
+from larch.report import progress_file  # lint-layering: ok cleanup driver prunes stale progress breadcrumb files owned by larch.report
 
 TMP_PATTERNS = (
     "claude-implement-*",
