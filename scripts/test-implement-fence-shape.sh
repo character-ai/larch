@@ -233,6 +233,17 @@ try:
 except ValueError as exc:
     errors.append(f'ci-fix branch must document ship pre-fix-rebase before ci-fix load: {exc}')
 try:
+    assessments_start = skill_text.index('- **`assessments`**:')
+    invariants_start = skill_text.index('- **`invariants-assessment`**:', assessments_start)
+    assessments_slice = skill_text[assessments_start:invariants_start]
+    invariant_write = assessments_slice.index('step-architectural-invariants-write-compose.sh')
+    guideline_write = assessments_slice.index('step-architectural-guidelines-write-compose.sh')
+    relaunch = assessments_slice.index('relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair exactly once')
+    if not (invariant_write < guideline_write < relaunch):
+        errors.append('assessments branch must run invariant compose write before guideline compose write before one bgjob step-8-ship.sh relaunch')
+except ValueError as exc:
+    errors.append(f'assessments branch must document combined compose-write ordering: {exc}')
+try:
     guidelines_start = skill_text.index('- **`guidelines-assessment`**:')
     reship_start = skill_text.index('- **`reship`**:', guidelines_start)
     guidelines_slice = skill_text[guidelines_start:reship_start]

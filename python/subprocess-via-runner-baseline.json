@@ -127,23 +127,23 @@
   },
   {
     "file": "larch/core/architectural_guidelines.py",
+    "qualified_symbol": "_materialize_implementation_diff_for_head",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "qualified_symbol": "_materialize_implementation_diff_for_head",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
     "qualified_symbol": "_run_git_toplevel",
     "callee": "run",
     "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "materialize_implementation_diff",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "materialize_implementation_diff",
-    "callee": "run",
-    "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {

@@ -94,6 +94,16 @@ class ComposeMaterializationResult:
     warning: str = ""
 
 
+@dataclass(frozen=True)
+class ComposeAssessmentSnapshot:
+    """Frozen Step 8 compose-time diff evidence shared across assessment kinds."""
+
+    head_sha: str
+    base_ref: str
+    diff_text: str
+    diff_fingerprint: str
+
+
 def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa: C901, PLR0911, PLR0912
     from larch.implement.ship_guidelines import (  # noqa: PLC0415  # lint-layering: ok validator needs ship_guidelines constants; function-level import avoids circular import (ship_guidelines imports from this module)
         GUIDELINE_SHIP_OUTCOMES,
@@ -399,14 +409,15 @@ def resolve_diff_base(*, forked_target: bool) -> tuple[str, str]:
     return ("upstream", "main") if forked_target else ("origin", "main")
 
 
-def materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_ref: str) -> str:
-    """Return a merge-base..HEAD diff for orchestrator assessment."""
+def _materialize_implementation_diff_for_head(
+    repo_root: Path,
+    *,
+    head_sha: str,
+    base_remote: str,
+    base_ref: str,
+) -> str:
+    """Return a merge-base..HEAD diff for the already-resolved head."""
     target = f"{base_remote}/{base_ref}"
-    head_errors: list[str] = []
-    head_sha = _current_head(repo_root, verify_commit=True, error_out=head_errors)
-    if not head_sha:
-        msg = head_errors[0] if head_errors else "could not resolve HEAD"
-        raise RuntimeError(msg)
     merge_base = subprocess.run(
         ["git", "merge-base", head_sha, target],  # noqa: S607
         cwd=repo_root,
@@ -429,6 +440,53 @@ def materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_r
         msg = (diff.stderr or diff.stdout or "git diff failed").strip()
         raise RuntimeError(msg)
     return diff.stdout
+
+
+def materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_ref: str) -> str:
+    """Return a merge-base..HEAD diff for orchestrator assessment."""
+    head_errors: list[str] = []
+    head_sha = _current_head(repo_root, verify_commit=True, error_out=head_errors)
+    if not head_sha:
+        msg = head_errors[0] if head_errors else "could not resolve HEAD"
+        raise RuntimeError(msg)
+    return _materialize_implementation_diff_for_head(
+        repo_root,
+        head_sha=head_sha,
+        base_remote=base_remote,
+        base_ref=base_ref,
+    )
+
+
+def materialize_compose_assessment_snapshot(
+    *,
+    repo_root: str | Path | None,
+    forked_target: bool,
+    expected_head_sha: str,
+) -> ComposeAssessmentSnapshot:
+    """Materialize one frozen diff snapshot for compose-time assessments."""
+    root = _resolve_repo_root(repo_root)
+    if root is None:
+        raise RuntimeError("could not resolve repo root")
+    head_errors: list[str] = []
+    head_sha = _current_head(root, verify_commit=True, error_out=head_errors)
+    if not head_sha:
+        msg = head_errors[0] if head_errors else "could not resolve HEAD"
+        raise RuntimeError(msg)
+    if expected_head_sha and expected_head_sha != head_sha:
+        raise RuntimeError("HEAD changed before architectural compose materialization")
+    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
+    diff_text = _materialize_implementation_diff_for_head(
+        root,
+        head_sha=head_sha,
+        base_remote=base_remote,
+        base_ref=base_ref,
+    )
+    return ComposeAssessmentSnapshot(
+        head_sha=head_sha,
+        base_ref=f"{base_remote}/{base_ref}",
+        diff_text=diff_text,
+        diff_fingerprint=diff_fingerprint(diff_text),
+    )
 
 
 def diff_fingerprint(diff_text: str) -> str:
@@ -1386,6 +1444,7 @@ def prepare_compose_assessment(
     repo_root: str | Path | None = None,
     forked_target: bool = False,
     expected_head_sha: str = "",
+    compose_snapshot_factory: Callable[[], ComposeAssessmentSnapshot] | None = None,
 ) -> ComposeMaterializationResult:
     """Prepare Step 8 compose-time evidence for prompt-authored assessment."""
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
@@ -1402,29 +1461,45 @@ def prepare_compose_assessment(
         return precheck
     if result is None:
         return ComposeMaterializationResult(status="failed", head_sha=current_head, warning="guidelines precheck failed")
-    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
-    base_label = f"{base_remote}/{base_ref}"
     try:
-        diff_text = materialize_implementation_diff(root, base_remote=base_remote, base_ref=base_ref)
+        materialized_snapshot = (
+            compose_snapshot_factory()
+            if compose_snapshot_factory is not None
+            else materialize_compose_assessment_snapshot(
+                repo_root=root,
+                forked_target=forked_target,
+                expected_head_sha=current_head,
+            )
+        )
     except (OSError, RuntimeError) as exc:
         return ComposeMaterializationResult(
             status="failed",
             head_sha=current_head,
-            base_ref=base_label,
             guidelines_status=result.status,
             warning=str(exc).replace("\n", " "),
         )
+    if materialized_snapshot.head_sha != current_head:
+        return ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            base_ref=materialized_snapshot.base_ref,
+            guidelines_status=result.status,
+            warning="HEAD changed before architectural-guidelines compose materialization",
+        )
     materialized = ComposeMaterializationResult(
         status="assessment-required",
-        head_sha=current_head,
-        base_ref=base_label,
-        diff_fingerprint=diff_fingerprint(diff_text),
+        head_sha=materialized_snapshot.head_sha,
+        base_ref=materialized_snapshot.base_ref,
+        diff_fingerprint=materialized_snapshot.diff_fingerprint,
         diff_path=_diff_path(implement_tmpdir),
         guidelines_status=result.status,
         guidelines_path=str(result.path or ""),
     )
     try:
-        _write_text_atomic(path=_diff_path(implement_tmpdir), text=diff_text)
+        _write_text_atomic(
+            path=_diff_path(implement_tmpdir),
+            text=materialized_snapshot.diff_text,
+        )
         _write_compose_materialization_metadata(
             implement_tmpdir=implement_tmpdir,
             materialized=materialized,
@@ -1433,7 +1508,7 @@ def prepare_compose_assessment(
         return ComposeMaterializationResult(
             status="failed",
             head_sha=current_head,
-            base_ref=base_label,
+            base_ref=materialized.base_ref,
             guidelines_status=result.status,
             warning=str(exc).replace("\n", " "),
         )
@@ -1496,6 +1571,7 @@ def prepare_invariant_compose_assessment(
     repo_root: str | Path | None = None,
     forked_target: bool = False,
     expected_head_sha: str = "",
+    compose_snapshot_factory: Callable[[], ComposeAssessmentSnapshot] | None = None,
 ) -> ComposeMaterializationResult:
     """Prepare Step 8 compose-time invariant evidence for prompt-authored assessment."""
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
@@ -1512,29 +1588,45 @@ def prepare_invariant_compose_assessment(
         return precheck
     if result is None:
         return ComposeMaterializationResult(status="failed", head_sha=current_head, warning="invariants precheck failed")
-    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
-    base_label = f"{base_remote}/{base_ref}"
     try:
-        diff_text = materialize_implementation_diff(root, base_remote=base_remote, base_ref=base_ref)
+        materialized_snapshot = (
+            compose_snapshot_factory()
+            if compose_snapshot_factory is not None
+            else materialize_compose_assessment_snapshot(
+                repo_root=root,
+                forked_target=forked_target,
+                expected_head_sha=current_head,
+            )
+        )
     except (OSError, RuntimeError) as exc:
         return ComposeMaterializationResult(
             status="failed",
             head_sha=current_head,
-            base_ref=base_label,
             guidelines_status=result.status,
             warning=str(exc).replace("\n", " "),
         )
+    if materialized_snapshot.head_sha != current_head:
+        return ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            base_ref=materialized_snapshot.base_ref,
+            guidelines_status=result.status,
+            warning="HEAD changed before architectural-invariants compose materialization",
+        )
     materialized = ComposeMaterializationResult(
         status="assessment-required",
-        head_sha=current_head,
-        base_ref=base_label,
-        diff_fingerprint=diff_fingerprint(diff_text),
+        head_sha=materialized_snapshot.head_sha,
+        base_ref=materialized_snapshot.base_ref,
+        diff_fingerprint=materialized_snapshot.diff_fingerprint,
         diff_path=_invariant_diff_path(implement_tmpdir),
         guidelines_status=result.status,
         guidelines_path=str(result.path or ""),
     )
     try:
-        _write_text_atomic(path=_invariant_diff_path(implement_tmpdir), text=diff_text)
+        _write_text_atomic(
+            path=_invariant_diff_path(implement_tmpdir),
+            text=materialized_snapshot.diff_text,
+        )
         _write_invariant_compose_materialization_metadata(
             implement_tmpdir=implement_tmpdir,
             materialized=materialized,
@@ -1543,7 +1635,7 @@ def prepare_invariant_compose_assessment(
         return ComposeMaterializationResult(
             status="failed",
             head_sha=current_head,
-            base_ref=base_label,
+            base_ref=materialized.base_ref,
             guidelines_status=result.status,
             warning=str(exc).replace("\n", " "),
         )
