@@ -151,7 +151,7 @@
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
 ```
 
-  - `bgjob start`, `timeout: 14400000`.
+  - `run_in_background: true`, `timeout: 14400000`.
   - Parse exactly one line-anchored composite `NEXT_ACTION`; `continue` → steps 9–11; `stall` → Step 18; `checks-failed` → repair macro `--site step5-self-review`; seed-failed / missing `NEXT_ACTION` → invalid envelope fail-closed `STALL_STEP=5`.
   - Delete legacy fences.
 
@@ -161,7 +161,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-rout
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
 ```
 
-  - `bgjob start`, `timeout: 32400000`.
+  - `run_in_background: true`, `timeout: 32400000`.
   - `checks-failed`: repair macro `--site step5-mav --checks-site step5-review-fixes`.
   - On checks pass: apply Composite stdout parsing slice and full resume envelope contract.
   - Retain `--record-only` timing fence for terminal repair stalls.
@@ -173,7 +173,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resum
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb
 ```
 
-  - `bgjob start`, `timeout: 14400000`.
+  - `run_in_background: true`, `timeout: 14400000`.
   - `continue` → Step 7 7.r; `checks-failed` → repair `--site step6`; `stall` → Step 18; seed-failed → invalid envelope `STALL_STEP=7`.
   - Delete standalone Step 7 `commit-route` on FILES_CHANGED=true path.
   - Preserve FILES_CHANGED=false skip path unchanged.

@@ -658,7 +658,7 @@ index 459ad3dfa..48243f35d 100644
 -> **Continue after child returns.** On composite `NEXT_ACTION=continue`, proceed to Step 7.r. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
 +> **Continue after child returns.** On composite `NEXT_ACTION=continue`, apply the relayed 7.r checkpoint routing from the same stdout, then proceed to Step 7a when `CHECKPOINT_NEXT=continue`. On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On composite `NEXT_ACTION=checks-failed`, whitespace-scan the first physical line for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
  
- **⚠ Immediate-background required — set `bgjob start` and `timeout: 14700000`.**
+ **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
  
  ```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb
@@ -678,7 +678,7 @@ index 459ad3dfa..48243f35d 100644
 -
 -Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6–7 were skipped, skip this rebase — the pre-Step-8 rebase provides the safety net.
 -
--**⚠ Foreground required — do NOT set `bgjob start`.**
+-**⚠ Foreground required — do NOT set `run_in_background: true`.**
 -
 -```bash
 -bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py push checkpoint-probe 7.r 'commit (review)' --forked-target "${forked_target:-false}"
@@ -697,7 +697,7 @@ index 459ad3dfa..48243f35d 100644
  `python/cli.py implement step-7a` consolidates the small/non-runtime classifier, `python/cli.py diagram code-flow`, Code Flow section composition, shared `larch:diagrams` upsert, 7a.r rebase checkpoint, and pre-ship log flush into one Bash call. Do NOT write a `diagrams` larch-log batch. Do NOT copy `code-flow-diagram.failure.log` or code-flow body artifacts into `larch-logs/implement/<RUN_ID>/`; bounded `execution-issues.md` warnings are the durable failure surface.
  The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment only when `$IMPLEMENT_TMPDIR/code-flow-section.md` exists after successful generation. Regression harness: `skills/implement/scripts/test-step-7a.sh` (sibling contract: `skills/implement/scripts/test-step-7a.md`).
  
- **⚠ Immediate-background required — set `bgjob start` and `timeout: 1800000`.**
+ **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**
  
  ```bash
  bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"

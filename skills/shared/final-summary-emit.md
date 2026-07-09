@@ -54,7 +54,7 @@ Use this profile for `/design` final `bgjob wait` `DONE` stdout and the matching
 
 ## Marker-first profile
 
-Use this profile when the caller names a source that can emit markers with a non-empty body. `/implement` binds captured foreground Bash wrapper stdout, not asynchronous notification.
+Use this profile when the caller names a source that can emit markers with a non-empty body. `/implement` binds captured foreground Bash wrapper stdout, not asynchronous notification output.
 
 1. Locate the first balanced whole-line caller begin/end marker pair in the caller-named source already in the orchestrator context window.
 2. Extract/cache the marker body — including all subsections such as `### Round N reviewer timing` ASCII bar charts and the `**Top reviewers**` list. Do NOT collapse, wrap in `<details>`, or omit any part of the marker body.
