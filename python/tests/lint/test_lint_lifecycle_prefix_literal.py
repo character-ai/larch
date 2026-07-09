@@ -218,7 +218,7 @@ def test_occurrence_is_assigned_before_suppression(tmp_path: Path) -> None:
 def test_non_space_trailing_whitespace_is_not_normalized(tmp_path: Path, body: str) -> None:
     findings = _scan_body(tmp_path, body)
 
-    assert findings == []
+    assert not findings
 
 
 def test_baseline_suppresses_existing_findings_and_reports_concrete_constant(
