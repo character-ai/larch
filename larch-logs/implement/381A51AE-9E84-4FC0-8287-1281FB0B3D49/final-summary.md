@@ -1,15 +1,16 @@
-## /implement run 381A51AE-9E84-4FC0-8287-1281FB0B3D49: shipping
+## /implement run 381A51AE-9E84-4FC0-8287-1281FB0B3D49: stalled
 
-- **Outcome**: shipping
+- **Outcome**: ❌ STALLED
 - **Duration**: 00:14:36
-- **Cost**: 💰 TOTAL ~$7.44: Claude $1.43, Codex-5.5 $1.20, Codex-mini $0.61, Cursor $3.55, Claude (subprocess) $0.65  |  Tokens: 15424k
+- **Cost**: 💰 TOTAL ~$7.48: Claude $1.47, Codex-5.5 $1.20, Codex-mini $0.61, Cursor $3.55, Claude (subprocess) $0.65  |  Tokens: 15545k
 - **Issue**: #6685: https://github.com/character-ai/larch/issues/6685
+- **PR**: #6725: https://github.com/character-ai/larch/pull/6725
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0 findings
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +128/-0, larch-logs +557/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -56,11 +57,3 @@ codex/validity-vote                  │                                       �
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
