@@ -34,11 +34,42 @@ DEFERRED_INVENTORY = "deferred-plan-inventory.md"
 _MAX_TODO_ITEMS = 20
 _MAX_TODO_CHARS = 4000
 _MAX_UNTOUCHED_INVENTORY = 80
-_VALIDATION_ONLY_TODOS: Final[frozenset[str]] = frozenset(
+_FULL_SUITE_TOKENS: Final[frozenset[str]] = frozenset({"suite", "suites"})
+_UNRUN_VALIDATION_TOKENS: Final[frozenset[str]] = frozenset(
+    {"incomplete", "skipped", "uncompleted", "unexecuted", "unrun"}
+)
+_NEGATED_VALIDATION_ACTION_TOKENS: Final[frozenset[str]] = frozenset(
+    {"completed", "executed", "finished", "ran", "run"}
+)
+_VALIDATION_BLOCKER_TOKENS: Final[frozenset[str]] = frozenset(
     {
-        "make py-lint and make py-test (full suites) were not completed",
-        "make py-lint and make py-test (full suites) were not completed; focused tests passed",
+        "add",
+        "added",
+        "broken",
+        "error",
+        "errors",
+        "fail",
+        "failed",
+        "failing",
+        "fails",
+        "failure",
+        "fixed",
+        "fixes",
+        "finish",
+        "fix",
+        "missing",
+        "unimplemented",
+        "write",
+        "writing",
     }
+)
+_VALIDATION_COMMAND_TOKENS: Final[tuple[tuple[str, ...], ...]] = (
+    ("make", "py", "lint"),
+    ("make", "py", "test"),
+)
+_FOCUSED_TESTS_PASSED_TOKENS: Final[tuple[tuple[str, ...], ...]] = (
+    ("focused", "tests", "passed"),
+    ("focused", "test", "passed"),
 )
 
 
@@ -133,12 +164,58 @@ def _load_manifest_todos_raw(manifest_path: Path) -> list[object]:
     return cast("list[object]", raw)
 
 
-def _normalize_todo(value: str) -> str:
-    return re.sub(r"\s+", " ", value).strip().casefold()
+def _word_tokens(value: str) -> tuple[str, ...]:
+    return tuple(re.findall(r"[a-z0-9]+", value.lower()))
+
+
+def _contains_token_sequence(
+    tokens: tuple[str, ...], sequence: tuple[str, ...]
+) -> bool:
+    sequence_len = len(sequence)
+    return any(
+        tokens[index : index + sequence_len] == sequence
+        for index in range(len(tokens) - sequence_len + 1)
+    )
+
+
+def _mentions_full_suite_validation(tokens: tuple[str, ...]) -> bool:
+    return (
+        "full" in tokens
+        and any(token in _FULL_SUITE_TOKENS for token in tokens)
+        and any(
+            _contains_token_sequence(tokens, sequence)
+            for sequence in _VALIDATION_COMMAND_TOKENS
+        )
+    )
+
+
+def _mentions_unrun_validation(tokens: tuple[str, ...]) -> bool:
+    if any(token in _UNRUN_VALIDATION_TOKENS for token in tokens):
+        return True
+    for index, token in enumerate(tokens):
+        if token not in _NEGATED_VALIDATION_ACTION_TOKENS:
+            continue
+        prior_tokens = tokens[max(0, index - 3) : index]
+        if "not" in prior_tokens or "never" in prior_tokens:
+            return True
+    return False
+
+
+def _mentions_focused_tests_passed(tokens: tuple[str, ...]) -> bool:
+    return any(
+        _contains_token_sequence(tokens, sequence)
+        for sequence in _FOCUSED_TESTS_PASSED_TOKENS
+    )
 
 
 def _is_nonblocking_full_suite_validation_todo(value: str) -> bool:
-    return _normalize_todo(value) in _VALIDATION_ONLY_TODOS
+    tokens = _word_tokens(value)
+    return (
+        not any(token in _VALIDATION_BLOCKER_TOKENS for token in tokens)
+        and _mentions_full_suite_validation(tokens)
+        and _mentions_unrun_validation(tokens)
+        and _mentions_focused_tests_passed(tokens)
+    )
 
 
 def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], int]:

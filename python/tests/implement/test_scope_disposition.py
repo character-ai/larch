@@ -101,16 +101,20 @@ def test_compute_excludes_may_update_and_todos_require_disposition(
     assert coverage.disposition_required is True
 
 
+@pytest.mark.parametrize(
+    "todo",
+    [
+        "make py-lint and make py-test (full suites) were not completed; focused tests passed",
+        "make py-lint / make py-test (full suites) were not completed; focused tests passed",
+    ],
+)
 def test_compute_ignores_nonblocking_full_suite_validation_todo(
-    tmp_path: Path,
+    tmp_path: Path, todo: str
 ) -> None:
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
     manifest = tmp_path / "manifest.json"
-    _ = manifest.write_text(
-        '{"todos_left":["make py-lint and make py-test (full suites) were not completed; focused tests passed"]}\n',
-        encoding="utf-8",
-    )
+    _ = manifest.write_text(f'{{"todos_left":["{todo}"]}}\n', encoding="utf-8")
     _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
 
     coverage = scope_disposition.compute_and_write_coverage(
