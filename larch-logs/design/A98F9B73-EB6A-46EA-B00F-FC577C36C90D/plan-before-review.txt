@@ -1,0 +1,136 @@
+## Approach
+
+Implement the minimum scoped prompt-render change.
+
+- Keep invariants in every review prompt.
+- Omit guidelines only when:
+  - normalized difficulty is `TRIVIAL`, for specialist and plan-review prompts.
+  - specialist diff mode is `docs-only` or `generated-only`.
+- Fail open to inclusion when difficulty is missing or invalid.
+- Do not change design drafter, Gate C, voter, or aggregator prompts.
+- Keep existing architectural framing text unchanged when guidelines are included.
+- Thread difficulty as an explicit `--difficulty` flag. Do not infer it from env.
+- Include the effective gate state in specialist prompt caching and compact prompt sentinel reconstruction.
+
+## Files to modify/create
+
+### UPDATED: python/larch/rendering/rendering.py
+
+- Import `larch.calibration.difficulty`.
+- Add optional parameters to `_architectural_guidelines_review_section()`, likely:
+  - `difficulty_value: str = ""`
+  - `diff_mode: str = ""`
+- Read invariants unconditionally as today.
+- Read guidelines only when the gate includes them.
+- Gate guidelines out when `difficulty.normalize_tier(difficulty_value) == difficulty.TRIVIAL`.
+- Also gate guidelines out when `diff_mode in {"docs-only", "generated-only"}`.
+- Preserve fail-open behavior:
+  - `difficulty_value == ""` includes guidelines.
+  - invalid difficulty includes guidelines.
+  - `diff_mode == ""` or unknown internal values include guidelines.
+- Add `--difficulty` with default `""` to `_parse_specialist()`.
+- Add `--difficulty` with default `""` to `render_plan_review_main()`.
+- In `render_specialist_main()`:
+  - compute `effective_diff_mode` before rendering the architectural section.
+  - pass `args.difficulty` and `effective_diff_mode` to `_architectural_guidelines_review_section()`.
+  - add a cache key line for the normalized gate input, for example `difficulty=<raw or normalized value>`.
+  - keep `diff_mode=<effective_diff_mode>` in the key.
+- In `render_plan_review_main()`:
+  - pass `args.difficulty` to `_architectural_guidelines_review_section()`.
+  - do not apply diff-mode gating there.
+- Update payload sidecar accounting so prompt-size telemetry shows the omitted architectural payload on gated runs. Count the architectural section bytes as payload when present.
+- Keep non-TRIVIAL rendered prompt text byte-identical except for no visible change. Avoid wording edits.
+
+### UPDATED: python/larch/review/plan_review_panel.py
+
+- Add `--difficulty`, `tier` to every `render plan-review` subprocess call in:
+  - `_static_slot_rows()`
+  - `_generic_plan_codex_row()`
+  - `_dynamic_slot_rows()`
+- Remove the unused `_ = tier` in `_dynamic_slot_rows()` once the value is threaded.
+- Keep the existing `tier` source and model-role behavior unchanged.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+- Add `--difficulty`, `tier` to `waterfall_args`.
+- Do not change panel tier selection, round caps, or model role selection.
+
+### UPDATED: python/larch/agents/agent_waterfall.py
+
+- Add `difficulty: str = ""` to `Options`.
+- Accept `--difficulty` in `_parse_args()`.
+- Validate only enough to keep argv sane:
+  - empty is allowed.
+  - optional: reject control characters.
+  - do not coerce missing or invalid values to `TRIVIAL`.
+- Include `--difficulty` in `_common_args()` when non-empty so it reaches launchers.
+
+### UPDATED: python/larch/agents/_review_launcher.py
+
+- Add `--difficulty` with default `""` to `_review_parser()`.
+- Forward `--difficulty` from `_review_specialist_render_args()`.
+- Include `DIFFICULTY=<value>` in compact Codex prompt sentinel sidecars when present and safe for the line-oriented format.
+- Rehydrate `DIFFICULTY` from sentinels so prompt reconstruction hashes stay stable for TRIVIAL slim prompts.
+- Keep existing sentinel keys and hash behavior backward-compatible for old sidecars without `DIFFICULTY`.
+
+### UPDATED: python/tests/rendering/test_rendering.py
+
+Add focused renderer tests.
+
+- `_architectural_guidelines_review_section()`:
+  - TRIVIAL includes the invariants block and omits the guidelines block.
+  - MODERATE includes both blocks.
+  - missing difficulty includes both blocks.
+  - invalid difficulty includes both blocks.
+  - specialist docs-only and generated-only diff modes include invariants and omit guidelines.
+- `render_specialist_main()`:
+  - with `--difficulty TRIVIAL`, output has invariants but no guidelines.
+  - with `--difficulty MODERATE`, output has both blocks.
+  - cache creates different cache files for TRIVIAL and MODERATE, even with identical other inputs.
+  - cache does not reuse slim output for a non-TRIVIAL render.
+- `render_plan_review_main()`:
+  - with `--difficulty TRIVIAL`, output has invariants but no guidelines.
+  - with missing difficulty, output has both blocks.
+- Payload sidecar:
+  - assert a TRIVIAL render records fewer payload bytes than a MODERATE render when guidelines are present.
+
+### MAY_UPDATE: python/tests/agents/test_review_launcher.py
+
+Add or update tests only if this file already covers compact specialist sentinel reconstruction.
+
+- Cover `DIFFICULTY` in `_review_specialist_render_args(..., sentinel=...)`.
+- Cover that missing `DIFFICULTY` still reconstructs with fail-open defaults.
+
+### MAY_UPDATE: python/tests/agents/test_agent_waterfall.py
+
+Add or update tests only if existing parser coverage for `dispatch-waterfall` argv is present.
+
+- Cover that `--difficulty TRIVIAL` parses into `Options`.
+- Cover that `_common_args()` forwards it.
+
+## Edge cases
+
+- Empty or invalid difficulty must include guidelines.
+- Old compact prompt sentinel files without `DIFFICULTY` must still reconstruct.
+- Specialist renders with `--diff-mode docs-only` or generated-only must omit guidelines even when difficulty is missing.
+- Specialist renders with no diff file and no diff mode must treat the mode as generic and include guidelines unless difficulty is TRIVIAL.
+- Plan-review dynamic slots must get the same tier as static slots.
+- Cache keys must differ for slim and full prompt states.
+
+## Failure modes
+
+- If difficulty is not threaded through one dispatch path, TRIVIAL reviewers still receive the full guidelines payload.
+- If difficulty is omitted from the specialist cache key, slim and full prompts can cross-contaminate.
+- If compact sentinel reconstruction omits difficulty, Codex prompt sidecar hash checks can fail or reconstruct the wrong prompt.
+- If invalid difficulty defaults to TRIVIAL, guidelines can be incorrectly suppressed.
+
+## Testing strategy
+
+Run focused tests first.
+
+- `python3 -m pytest python/tests/rendering/test_rendering.py -k "architectural or render_specialist_cache or render_plan_review"`
+- If agent parser tests are changed, run those specific test files.
+- Run changed-file Python lint/type checks per repo practice, for example ruff/pyright on the changed Python files or the nearest existing `make py-lint` target if no narrower project target exists.
+
+difficulty: MODERATE
+diff_lines: 190
