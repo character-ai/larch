@@ -1,0 +1,1 @@
+Plan: localize the fix to `progress_file.py` and its statusline tests. Add fd-returning directory creation helpers, then route `activate_run()` and `append_breadcrumb_for_run()` through fd-relative parent-chain creation and final writes.
