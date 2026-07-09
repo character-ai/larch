@@ -273,6 +273,11 @@ def atomic_write(  # lint-keyword-only: ok shared write helper supports legacy p
     fixed stale temp after refusing symlink temps when ``nofollow`` is set.
     """
     dest = Path(path)
+    if nofollow:
+        check_dest = dest.expanduser()
+        if not check_dest.is_absolute():
+            check_dest = Path.cwd() / check_dest
+        assert_no_symlink_path_or_ancestors(check_dest)
     if create_parent:
         dest.parent.mkdir(parents=True, exist_ok=True)
     if nofollow and dest.is_symlink():
@@ -313,6 +318,11 @@ def atomic_write(  # lint-keyword-only: ok shared write helper supports legacy p
                     tmp_path.chmod(mode)
         if nofollow and dest.is_symlink():
             raise OSError(f"refusing to replace symlink: {dest}")
+        if nofollow:
+            check_dest = dest.expanduser()
+            if not check_dest.is_absolute():
+                check_dest = Path.cwd() / check_dest
+            assert_no_symlink_path_or_ancestors(check_dest)
         if replace_method == "move":
             shutil.move(str(tmp_path), str(dest))
         else:
