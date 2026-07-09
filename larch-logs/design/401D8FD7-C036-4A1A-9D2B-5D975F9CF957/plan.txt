@@ -1,0 +1,85 @@
+## Plan
+
+## Scope
+
+Add `I-Stale-1` under `## Workflow integrity` in `ARCHITECTURAL_INVARIANTS.md`.
+
+Do not change `ARCHITECTURAL_GUIDELINES.md` or enforcement code. If implementation discovers missing consumer validation, mention it in the PR body and file follow-ups rather than widening this PR.
+
+**Reader contract (accepted finding).** Feature acceptance requires `python3 python/cli.py architectural-invariants read` to include `I-Stale-1` with its **full body**. `parse_invariant_entries` in `python/larch/core/architectural_guidelines.py` preserves invariant headings and `- Why:` lines only; paragraph prose is stripped. Sibling workflow invariants (`I-Gate-1`, `I-Pause-1`) use paragraph prose and therefore emit headings only today—do not reformat them in this PR. **Author `I-Stale-1` in the reader-supported `- Why:` bullet shape** so read output carries the complete normative text without parser or test changes. Extending `parse_invariant_entries` to retain paragraph bodies remains a follow-up if all invariants should eventually round-trip full prose through read.
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_INVARIANTS.md
+
+Append a new invariant after `I-Pause-1` and before `## Run-log integrity`.
+
+Use this heading:
+
+`### I-Stale-1: A persisted step result is consumed only against the inputs that produced it`
+
+Keep normative content close to the issue text, expressed as one or more `- Why:` lines (not paragraph prose). Each bullet must start with `- Why:` per `_WHY_RE` in `python/larch/core/architectural_guidelines.py`. Cover at minimum:
+
+- **Definition:** persisted step results include bgjob result envs, staged or durable assessments, cached verdicts, and completion sentinels with payloads.
+- **Input identity:** results carry an identity of the inputs that produced them (content hash, `HEAD` SHA, or diff fingerprint).
+- **Consumption rule:** every consumer validates that identity against live inputs before acting.
+- **Mismatch behavior:** on mismatch, re-run the producing step or fail loudly—never silent stale reuse.
+- **Evidence:** preserve issue citations `#6633`, `#5337`, `#5675`, `#5969`, `#6059`, `#6106`.
+- **Mechanical backing:** preserve references to `DIFF_FINGERPRINT`, `HEAD_SHA`, `python/larch/core/architectural_guidelines.py`, `note_consumable`, and `_staged_fingerprint_valid`; state that bgjob result env re-entry should follow the same pattern.
+
+Example shape (adapt wording for readability; keep all required facts):
+
+```markdown
+### I-Stale-1: A persisted step result is consumed only against the inputs that produced it
+
+- Why: Any step result persisted for later consumption (a bgjob result env, a staged or durable assessment, a cached verdict, a completion sentinel with a payload) carries an identity of the inputs that produced it, such as a content hash, HEAD SHA, or diff fingerprint.
+- Why: Every consumer validates that identity against the live inputs before acting; on mismatch the consumer re-runs the producing step or fails loudly—it never silently reuses the stale result.
+- Why: Evidence of violation: /design review re-entry rejoined a pre-edit bgjob result env after plan.txt changed (#6633); the /implement guideline note was repeatedly consumed after HEAD drift invalidated the diff it assessed (#5337, #5675, #5969, #6059, #6106).
+- Why: Mechanical backing: input fingerprints in persisted result envs plus consumer-side validation, mirroring DIFF_FINGERPRINT/HEAD_SHA checks in python/larch/core/architectural_guidelines.py (note_consumable, _staged_fingerprint_valid); extend the same pattern to bgjob result envs consumed on re-entry.
+```
+
+The committed markdown is the source of truth. Read output must include the heading plus every `- Why:` line above.
+
+## Approach
+
+1. Insert the invariant in the workflow section after `I-Pause-1`.
+2. Use multiple `- Why:` bullets rather than paragraph prose so `parse_invariant_entries` emits the full body unchanged.
+3. Do not introduce exceptions. Input-independent markers with no payload are outside the entry scope.
+4. Confirm the heading matches `INVARIANT_HEADING_RE`; `I-Stale-1` was checked against the repo regex and matches.
+5. Preserve real, repo-observed mechanical backing already present in `python/larch/core/architectural_guidelines.py`.
+6. Leave `parse_invariant_entries` and its tests untouched; satisfy acceptance by matching the parser's supported shape.
+
+## Edge cases
+
+- Do not imply that every sentinel needs a fingerprint. The invariant applies only to persisted step results with a payload consumed later.
+- Do not promise mechanical coverage for all bgjob result envs in this PR.
+- Do not cite unverified new issue numbers.
+- Do not use paragraph prose for `I-Stale-1`; read would strip it and fail acceptance.
+- Do not reformat existing paragraph-style invariants (`I-Gate-1`, `I-Pause-1`, etc.) in this PR.
+
+## Failure modes
+
+- The heading format drifts and `python3 python/cli.py architectural-invariants read` omits the entry.
+- The text is written as paragraphs instead of `- Why:` lines, so read output shows only the heading.
+- The text sounds like a broad cache ban instead of a validation rule.
+- The PR accidentally grows into enforcement work or parser changes.
+
+## Testing strategy
+
+Run only relevant read-only checks after editing:
+
+1. `python3 python/cli.py architectural-invariants read`
+   - Verify normalized output includes `### I-Stale-1:` **and** every `- Why:` line from the committed entry (full body per acceptance).
+   - Verify no paragraph-only body remains outside `- Why:` lines for this entry.
+2. `git diff -- ARCHITECTURAL_INVARIANTS.md`
+   - Verify only the intended markdown section changed.
+   - Verify the committed entry contains all citations and mechanical references.
+3. No Python tests are required; existing `test_invariants_present_file_emits_normalized_entries` already covers the `- Why:` preservation contract.
+
+If downstream work needs paragraph-style invariants to round-trip full prose through read, file a follow-up to extend `parse_invariant_entries` and add targeted tests; do not widen this PR.
+
+difficulty: MODERATE
+diff_added: 22
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 22

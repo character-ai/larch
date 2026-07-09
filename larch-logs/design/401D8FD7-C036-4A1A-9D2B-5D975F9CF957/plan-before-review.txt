@@ -1,0 +1,60 @@
+## Scope
+
+Add `I-Stale-1` under `## Workflow integrity` in `ARCHITECTURAL_INVARIANTS.md`.
+
+Do not change Python, tests, `ARCHITECTURAL_GUIDELINES.md`, or enforcement code. If implementation discovers missing consumer validation, mention it in the PR body and file follow-ups rather than widening this PR.
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_INVARIANTS.md
+
+Append a new invariant after `I-Pause-1` and before `## Run-log integrity`.
+
+Use this heading:
+
+`### I-Stale-1: A persisted step result is consumed only against the inputs that produced it`
+
+Keep the body close to the issue text, with minor readability edits:
+- Define persisted step results as bgjob result envs, staged or durable assessments, cached verdicts, and completion sentinels with payloads.
+- Require an input identity, such as a content hash, `HEAD` SHA, or diff fingerprint.
+- Require consumers to validate that identity against live inputs before acting.
+- On mismatch, require re-run or loud failure, never silent stale reuse.
+- Preserve evidence issue citations: `#6633`, `#5337`, `#5675`, `#5969`, `#6059`, `#6106`.
+- Preserve the existing mechanical pattern references: `DIFF_FINGERPRINT`, `HEAD_SHA`, `python/larch/core/architectural_guidelines.py`, `note_consumable`, and `_staged_fingerprint_valid`.
+- State that bgjob result env re-entry should follow the same pattern.
+
+## Approach
+
+1. Insert the invariant in the workflow section after `I-Pause-1`.
+2. Keep paragraphs short and direct.
+3. Do not introduce exceptions. Input-independent markers with no payload are outside the entry scope.
+4. Confirm the heading matches `INVARIANT_HEADING_RE`; `I-Stale-1` was checked against the repo regex and matches.
+5. Preserve real, repo-observed mechanical backing. The code already has `DIFF_FINGERPRINT` and `HEAD_SHA` handling in `python/larch/core/architectural_guidelines.py`.
+
+## Edge cases
+
+- Do not imply that every sentinel needs a fingerprint. The invariant applies only to persisted step results with a payload consumed later.
+- Do not promise mechanical coverage for all bgjob result envs in this PR.
+- Do not cite unverified new issue numbers.
+
+## Failure modes
+
+- The heading format drifts and `python3 python/cli.py architectural-invariants read` omits the entry.
+- The text sounds like a broad cache ban instead of a validation rule.
+- The PR accidentally grows into enforcement work.
+
+## Testing strategy
+
+Run only relevant read-only checks after editing:
+
+1. `python3 python/cli.py architectural-invariants read`
+   - Verify output includes `I-Stale-1` with the full body.
+2. `git diff -- ARCHITECTURAL_INVARIANTS.md`
+   - Verify only the intended markdown section changed.
+3. No Python tests are required for this text-only invariant addition.
+
+difficulty: MODERATE
+diff_added: 18
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 18
