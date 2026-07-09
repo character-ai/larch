@@ -57,7 +57,7 @@ def _operator_repo_with_remote(tmp_path: Path) -> Path:
 
 def _operator_repo_with_guidelines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     repo = _operator_repo_with_remote(tmp_path)
-    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text(
+    _ = (repo / "ARCHITECTURAL_GUIDELINES.md").write_text(
         "### G-Test-1: Test\n- Why: test.\n",
         encoding="utf-8",
     )
@@ -258,13 +258,13 @@ def test_log_publish_approved_missing_guideline_assessment_records_warning(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _operator_repo_with_guidelines(tmp_path, monkeypatch)
+    _ = _operator_repo_with_guidelines(tmp_path, monkeypatch)
     design = tmp_path / "design"
     design.mkdir()
     published = False
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
-    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
         nonlocal published
@@ -298,17 +298,17 @@ def test_log_publish_guideline_assessment_present_suppresses_warning(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    _operator_repo_with_guidelines(tmp_path, monkeypatch)
+    _ = _operator_repo_with_guidelines(tmp_path, monkeypatch)
     design = tmp_path / "design"
     design.mkdir()
-    (design / "architectural-guideline-assessment.md").write_text("clean\n", encoding="utf-8")
+    _ = (design / "architectural-guideline-assessment.md").write_text("clean\n", encoding="utf-8")
 
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
-    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         design_log_publish_flow,
         "_publish_design_logs",
-        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),
+        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     rc = design_log_publish_flow.log_publish_main(
@@ -1318,3 +1318,4 @@ def test_spawn_detached_admin_merge_swallows_launch_failure(
     design_log_publish_flow._spawn_detached_admin_merge(
         cli="/p/python/cli.py", pr_number="77", repo="o/r", repo_root="/repo"
     )
+# pyright: reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false

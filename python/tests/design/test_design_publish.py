@@ -20,7 +20,7 @@ from larch.design import design_step5c
 
 
 @pytest.fixture(autouse=True)
-def _publish_tests_start_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _publish_tests_start_outside_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     monkeypatch.chdir(tmp_path)
 
 
@@ -2274,3 +2274,4 @@ def test_capture_aborts_when_capture_succeeds_but_hoist_fails(tmp_path: Path) ->
 
     warning_log = (design / "execution-issues.md").read_text(encoding="utf-8")
     assert "design Step 5c session-transcript hoist-failed" in warning_log
+# pyright: reportUnusedFunction=false
