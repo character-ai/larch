@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The spec only requires activation before the visible timing mark; asserting the whole subprocess sequence is extra coverage, not necessary for this feature.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Nested-clone repo-root parity for progress activate is not part of the stated acceptance, and the existing write-design-env assertion already covers the required repo-root check.
