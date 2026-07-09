@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import stat
 import subprocess
 import sys
@@ -22,11 +23,32 @@ def _git(*argv: str, cwd: Path) -> None:
     _ = subprocess.run(["git", *argv], cwd=cwd, check=True, capture_output=True)
 
 
-def _write_gh_stub(path: Path, *, pr_create_rc: int) -> None:
+def _write_gh_stub(
+    path: Path, *, pr_create_rc: int, capture_path: Path | None = None
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    capture_path_arg = shlex.quote(str(capture_path) if capture_path else "")
     _ = path.write_text(
         "#!/usr/bin/env bash\n"
+        f"CAPTURE_PATH={capture_path_arg}\n"
         'if [ "$1" = "pr" ] && [ "$2" = "create" ]; then\n'
+        '  if [ -n "$CAPTURE_PATH" ]; then\n'
+        '    {\n'
+        "      printf '%s\\n' '__ARGV__'\n"
+        "      for arg in \"$@\"; do printf '%s\\n' \"$arg\"; done\n"
+        "      printf '%s\\n' '__BODY__'\n"
+        '      body_file=""\n'
+        '      while [ "$#" -gt 0 ]; do\n'
+        '        if [ "$1" = "--body-file" ]; then\n'
+        '          shift\n'
+        '          body_file="${1-}"\n'
+        '          break\n'
+        '        fi\n'
+        '        shift\n'
+        '      done\n'
+        '      if [ -n "$body_file" ]; then cat "$body_file"; fi\n'
+        '    } > "$CAPTURE_PATH"\n'
+        '  fi\n'
         f"  if [ {pr_create_rc} -ne 0 ]; then echo 'gh: pr create failed' >&2; exit {pr_create_rc}; fi\n"
         "  echo 'https://github.com/o/r/pull/77'\n"
         "  exit 0\n"
@@ -302,13 +324,22 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     design.mkdir()
     _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
     bin_dir = tmp_path / "bin"
-    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+    pr_create_capture = tmp_path / "pr-create-capture.txt"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0, capture_path=pr_create_capture)
 
     result = _run_publish(repo, design, bin_dir)
     assert result.returncode == 0, result.stderr
     assert "PUBLISH_OK=true" in result.stdout, result.stderr
     assert "PR_NUMBER=77" in result.stdout
     assert "PR_URL=https://github.com/o/r/pull/77" in result.stdout
+    capture = pr_create_capture.read_text(encoding="utf-8")
+    argv_text, body_text = capture.split("__BODY__\n", 1)
+    pr_create_argv = argv_text.splitlines()[1:]
+    title = pr_create_argv[pr_create_argv.index("--title") + 1]
+    assert "issue #33" in title
+    assert "--body-file" in pr_create_argv
+    assert "--body" not in pr_create_argv
+    assert "issue #33" in body_text
     # The publish surfaces the scrub-violation count so the design tail can warn
     # the operator to rotate; a clean run reports zero (#4782).
     assert "SECRET_SCRUB_VIOLATIONS=0" in result.stdout
