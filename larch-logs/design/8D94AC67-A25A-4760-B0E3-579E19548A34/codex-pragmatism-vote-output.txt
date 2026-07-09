@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The parser already ignores non-Why/non-Deviate bullets by default; clarifying that in the plan is optional, not necessary for this feature.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already requires a byte-for-byte regression test for unmarked entries; a Guidance-specific fixture would be extra coverage, not a necessary acceptance condition.

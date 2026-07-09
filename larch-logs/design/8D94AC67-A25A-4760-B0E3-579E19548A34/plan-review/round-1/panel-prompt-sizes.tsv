@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	20844	5211	13563	3391	7281	1821		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	16773	4194	13266	3317	3507	877		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	16797	4200	13290	3323	3507	877		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	20857	5215	13576	3394	7281	1821		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	16782	4196	13275	3319	3507	877		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	16795	4199	13288	3322	3507	877		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	20835	5209	13554	3389	7281	1821		0	0
+design Step 3	phase1	1	dyn-codex-plan-normalization-contract	plan-review	codex	dyn-codex-plan-normalization-contract.txt	17065	4267	13141	3286	3924	981		0	0
+design Step 3	phase1	1	dyn-cursor-plan-normalization-contract	plan-review	cursor	dyn-cursor-plan-normalization-contract.txt	21127	5282	13429	3358	7698	1925		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	20859	5215	13578	3395	7281	1821		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	12503	3126	4475	1119	8028	2007	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14033	3509	9147	2287	4886	1222		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14033	3509	9147	2287	4886	1222		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14033	3509	9147	2287	4886	1222		0	0

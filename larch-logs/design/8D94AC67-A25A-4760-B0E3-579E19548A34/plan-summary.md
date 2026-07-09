@@ -1,0 +1,1 @@
+Plan: add `- Mechanized:` marker parsing for guideline entries, slim marked entries in normalized payloads, mark G-Bash-3 and G-Cfg-1 only, and cover marked and unmarked parser behavior with unit tests.
