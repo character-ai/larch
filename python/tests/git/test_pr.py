@@ -711,6 +711,14 @@ def _write_required_coverage(tmp_path: Path) -> None:
     pr_module.scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
 
 
+def _write_scope_required_plan(tmp_path: Path) -> None:
+    lines = ["## Files to modify/create"]
+    for index in range(85):
+        lines.append(f"### UPDATED: pkg/file_{index}.py")
+    _ = (tmp_path / "plan.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+
+
 def _mutating_calls(runner: RecordingRunner) -> list[list[str]]:
     return [
         call
@@ -725,9 +733,11 @@ def test_create_main_scope_disposition_refusal_needs_user_without_mutation(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _write_required_coverage(tmp_path)
+    _write_scope_required_plan(tmp_path)
     body = tmp_path / "body.md"
     _ = body.write_text("body", encoding="utf-8")
+    runner = RecordingRunner()
+    monkeypatch.setattr(pr_module, "proc", runner)
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
 
     rc = pr_module.create_main(
@@ -740,6 +750,20 @@ def test_create_main_scope_disposition_refusal_needs_user_without_mutation(
     assert "needs_user_reason=scope-disposition" in out
     assert "NEXT_ACTION=halt-scope-disposition" in out
     assert "PR_STATUS=error" not in out
+    assert _mutating_calls(runner) == []
+
+
+def test_ensure_pr_scope_disposition_refuses_before_push(
+    tmp_path: Path,
+) -> None:
+    _write_scope_required_plan(tmp_path)
+    runner = RecordingRunner()
+    ctx = _ctx(tmpdir=str(tmp_path))
+
+    with pytest.raises(NeedsUserInput):
+        _ = pr_module.ensure_pr(runner=runner, ctx=ctx, body="body", title="t")
+
+    assert _mutating_calls(runner) == []
 
 
 def test_create_pr_parity_manifest_only_refuses_before_push(
@@ -783,9 +807,11 @@ def test_body_update_main_scope_disposition_refusal_no_edit(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    _write_required_coverage(tmp_path)
+    _write_scope_required_plan(tmp_path)
     body = tmp_path / "body.md"
     _ = body.write_text("body", encoding="utf-8")
+    runner = RecordingRunner()
+    monkeypatch.setattr(pr_module, "proc", runner)
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
 
     rc = pr_module.body_update_main(
@@ -797,3 +823,4 @@ def test_body_update_main_scope_disposition_refusal_no_edit(
     assert "UPDATED=false" in out
     assert "needs_user_reason=scope-disposition" in out
     assert "NEXT_ACTION=halt-scope-disposition" in out
+    assert _mutating_calls(runner) == []
