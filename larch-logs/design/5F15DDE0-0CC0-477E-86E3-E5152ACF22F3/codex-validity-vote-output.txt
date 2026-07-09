@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- fallback write-failure behavior is explicitly outside the approved scope; this path is not required for the summary-order feature.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- final-summary heading stays first, so moving the detail/table body last does not affect first-line tolerance checks.
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_1; same fallback-path concern already captured.

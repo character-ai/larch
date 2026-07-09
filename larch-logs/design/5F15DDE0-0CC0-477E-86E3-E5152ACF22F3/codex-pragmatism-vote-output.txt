@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- degraded-fallback ordering is a real issue, but the plan explicitly leaves failure-path rendering out of scope.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- extra exec-issue ordering coverage is not plan-mandated and the current test already exercises the required summary-marker order.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of FINDING_1; same fallback-path concern already captured there.
