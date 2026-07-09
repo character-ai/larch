@@ -1,14 +1,15 @@
-## /implement run 34EEA4EB-AFF8-48DD-A596-3727CFEF09CF: shipping
+## /implement run 34EEA4EB-AFF8-48DD-A596-3727CFEF09CF: stalled
 
-- **Outcome**: shipping
+- **Outcome**: ❌ STALLED
 - **Duration**: 01:38:44
 - **Cost**: 💰 TOTAL ~$52.20: Claude $14.25, Codex-5.5 $22.59, Codex-mini $3.09, Cursor $10.15, Claude (subprocess) $2.12  |  Tokens: 80225k
 - **Issue**: #6624: https://github.com/character-ai/larch/issues/6624
+- **PR**: #6664: https://github.com/character-ai/larch/pull/6664
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 17/22 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1162/-278, larch-logs +1507/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6662
 - **Exec issues**: 0
 - **Warnings**: 5
@@ -94,14 +95,3 @@ codex/apply                        │                                ███�
 7. cursor/plan-fidelity-auto: 7
 
 **Reviewer slot failures**: 0
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Deviations from ARCHITECTURAL_GUIDELINES.md:
-
-- G-Py-11 (every lint or type suppression carries an inline reason): the Step 3/6 check-repair cleared lint by suppressing rather than removing dead code, and the new suppressions carry no reason. `python/larch/report/progress_report.py` keeps the now-unused `_report` behind `# type: ignore[reportUnusedFunction]` and adds inline `# type: ignore[reportUnnecessaryIsInstance]` and `[reportUnknownArgumentType]`; `python/larch/design/design_step0.py` adds a file-level `# ruff: noqa: SLF001`; `python/larch/report/progress_file.py` adds a file-level `# pyright: reportUnusedCallResult=false`. Each needs a `# CODE - reason` note or removal.
-- Retirement is partial, which is the cause of the G-Py-11 hits: the plan retires the mid-run renderers and live discovery (REWRITTEN `progress_report.py`, delete `_progress_report_live.py`). The diff removes the `progress report` verb, `report_main`, and the `UserPromptSubmit` hook, but leaves `_report`, the `_render_*` helpers, and `_progress_report_live.py` as dead code reachable only from the removed entry point. The typed surface is retired for users; the internal cleanup is not. A follow-up should delete the dead paths and drop the suppressions.
