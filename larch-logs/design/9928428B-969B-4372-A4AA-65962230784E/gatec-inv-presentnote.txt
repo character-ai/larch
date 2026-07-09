@@ -1,0 +1,9 @@
+ARCHITECTURAL_INVARIANTS_PATH=<OPERATOR_REPO_PATH>/ARCHITECTURAL_INVARIANTS.md
+<architectural_invariants encoding="literal-redacted">
+### I-Gate-1: A gate never disarms on data authored by the gated entity
+
+### I-Pause-1: A pause snapshot contains every artifact a resume guard reads
+
+</architectural_invariants>
+
+INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true

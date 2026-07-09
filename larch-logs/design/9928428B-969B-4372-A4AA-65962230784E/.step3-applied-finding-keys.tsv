@@ -1,0 +1,1 @@
+1	plan.txt:43-50 success-path test fake omits the existing prune-nit-findings subprocesses. scenario: the planned fake only handles panel dispatch, collection, aggregation, voter dispatch, and tally. execute_round also calls review prune-nit-findings twice on the normal path, so the test will raise before it can assert the breadcrumb sequence.

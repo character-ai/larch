@@ -1,0 +1,106 @@
+## Plan
+
+## Approach
+
+Scope the fix to `/design` plan review only.
+
+Add progress breadcrumbs inside `python/larch/review/plan_review_round.py::execute_round` for these sub-steps:
+
+1. `launching reviewers`
+2. `collecting reviewer outputs`
+3. `aggregating reviewer findings`
+4. `dispatching 3 voters`
+5. `tallying votes`
+
+Use the same side channel as the code-review path:
+
+- import `progress_file`
+- add `_progress_note(step, text)`
+- call `progress_file.append_breadcrumb(Path.cwd(), "design", step, text)`
+- ignore the boolean return value
+
+Do not change `_emit(...)`, stdout `KEY=value` rows, status-line rendering, or progress-file format.
+
+On the normal success path, `execute_round` also invokes `review prune-nit-findings` via `_drop_nits_before_plan_vote` (twice after collection on in-scope and OOS files, and twice more after aggregation succeeds before voter dispatch). Breadcrumb placement stays on the five operator-visible milestones above; do not add prune-specific breadcrumbs.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/plan_review_round.py
+
+Add:
+
+- `from larch.report import progress_file`
+- `_progress_note(*, step: str, text: str) -> None`
+
+Insert breadcrumb calls in `execute_round`:
+
+- before `plan-review panel-dispatch`: `step="3", text="launching reviewers"`
+- before `agent collect-results` (only when the paths file exists and is non-empty): `step="3", text="collecting reviewer outputs"`
+- before `review aggregate-findings`: `step="3", text="aggregating reviewer findings"`
+- before `plan-review voter-dispatch`: `step="3", text="dispatching 3 voters"`
+- before `plan-review tally`: `step="3", text="tallying votes"`
+
+Keep early-return branches unchanged except for breadcrumbs reached before the branch.
+
+### UPDATED: python/tests/review/test_plan_review_round.py
+
+Add a unit test for the successful `execute_round` path that asserts the breadcrumb sequence.
+
+Preferred shape: reuse the existing `_install_execute_round_fake` helper (it already routes every `review prune-nit-findings` argv to `_prune_nit_findings_fake`, covering all four prune calls on the normal path). Then monkeypatch `plan_review_round.progress_file.append_breadcrumb`, capture `(skill, step, text)` tuples, and assert the exact sequence below.
+
+If the test uses a standalone `_run_cli` fake instead, it must handle `argv[:2] == ["review", "prune-nit-findings"]` by delegating to the module-level `_prune_nit_findings_fake` for every prune invocation. Do not omit prune handling; an incomplete fake raises `AssertionError` before breadcrumb assertions run.
+
+Test assertions:
+
+- exact breadcrumb sequence:
+
+```text
+("design", "3", "launching reviewers")
+("design", "3", "collecting reviewer outputs")
+("design", "3", "aggregating reviewer findings")
+("design", "3", "dispatching 3 voters")
+("design", "3", "tallying votes")
+```
+
+- `rc == 0`
+- normal `values` behavior (for example `LOOP_STATUS == "complete"` when using `_install_execute_round_fake` defaults)
+- do not assert on `Path.cwd()` beyond confirming the helper passes a path-like repo root if useful
+
+## Edge cases
+
+- If panel dispatch fails, only `launching reviewers` should appear.
+- If collection is skipped because the paths file is empty, `collecting reviewer outputs` should not appear unless the code actually enters collection.
+- If aggregation fails, `dispatching 3 voters` and `tallying votes` should not appear.
+- If voter dispatch fails, `tallying votes` should not appear.
+- Breadcrumb append failure must stay silent.
+- Prune subprocesses run on paths between collection and aggregation and again after aggregation; they are not breadcrumb milestones and must not break the success-path fake.
+
+## Failure modes
+
+- Changing `_emit(...)` or printed stdout can break callers that parse `KEY=value`.
+- Using skill label `implement` or step `5` would make `/design` status lines wrong.
+- Adding changes to `/implement` or `/review` violates the resolved scope.
+- A test fake that omits `review prune-nit-findings` fails before asserting breadcrumbs (accepted finding).
+- A test that asserts every early-return branch can become brittle. Cover the normal sequence and rely on code placement for branch behavior.
+
+## Testing strategy
+
+Run changed-file Python tests:
+
+```bash
+python3 -m pytest python/tests/review/test_plan_review_round.py
+```
+
+Run relevant Python lint for changed files if available:
+
+```bash
+make py-lint
+```
+
+If time is tight, at minimum run the targeted pytest file because this change is isolated to plan-review round behavior.
+
+difficulty: MODERATE
+diff_added: 85
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 85
