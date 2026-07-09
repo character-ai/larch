@@ -1,15 +1,15 @@
-## /implement run 7500D167-9985-470E-8452-500A4D45DA2E: stalled
+## /implement run 7500D167-9985-470E-8452-500A4D45DA2E: pr-created
 
-- **Outcome**: ❌ STALLED
+- **Outcome**: ✅ DONE
 - **Duration**: 01:16:29
-- **Cost**: 💰 TOTAL ~$23.85: Claude $2.29, Codex-5.5 $8.62, Codex-mini $3.52, Cursor $9.24, Claude (subprocess) $0.18  |  Tokens: 46860k
+- **Cost**: 💰 TOTAL ~$25.97: Claude $4.41, Codex-5.5 $8.62, Codex-mini $3.52, Cursor $9.24, Claude (subprocess) $0.18  |  Tokens: 52324k
 - **Issue**: #6622: https://github.com/character-ai/larch/issues/6622
 - **PR**: #6659: https://github.com/character-ai/larch/pull/6659
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD structural-loc
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 3/10 accepted
-- **Lines (PR diff)**: code +1249/-1, larch-logs +1325/-0
+- **Lines (PR diff)**: code +1249/-1, larch-logs +1319/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -89,3 +89,11 @@ codex/apply                     │                                             
 3. codex/correctness: 1
 
 **Reviewer slot failures**: 0
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
