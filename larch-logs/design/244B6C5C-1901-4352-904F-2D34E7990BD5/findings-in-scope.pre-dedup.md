@@ -1,0 +1,100 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Focus area**: correctness
+- **Location**: python/tests/report/test_progress_report.py:810-976
+- **Concern**: Retained Gantt label/vendor-row unit tests sit above the `test_render_phase_detail_no_rounds` delete boundary but are absent from the explicit migration list. Scenario: A literal boundary-based delete drops `test_progress_label_fallbacks_and_manifest_precedence` and the non-cap `test_progress_vendor_rows_*` cases that exercise `_derive_progress_label` and `_progress_vendor_rows` on the final-report `render_phase_detail` Gantt path
+- **Proposed resolution**: Replace the line-number boundary with an explicit live-only delete manifest; add `test_progress_label_fallbacks_and_manifest_precedence` and the three non-cap `test_progress_vendor_rows_*` tests to the required migration list (keep cap-reservation rows on the delete list per OOS_1)
+
+
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/larch/report/progress_report.py:1178-1603
+- **Concern**: Step 2 retirement and post-delete rg audit omit mid-run-only wrappers and design freshness helpers defined in `progress_report.py` itself. Scenario: After removing the named entrypoints, `_render_review_detail`, `_render_design_review_detail`, `_prior_immediate_round_end_s`, `_round_dir_is_fresh`, `_is_design_plan_review_step`, and the design manifest-freshness block (~1275-1497) can survive as unreachable dead code because verification only greps live-module import tokens
+- **Proposed resolution**: Extend Step 2 with those wrappers/helpers on the delete manifest; broaden post-delete verification to `rg '_render_implement|_render_design|_render_step5|_render_design_plan_review|_render_inflight_gantt|_render_review_detail|_render_design_review_detail|LiveRun|_discover_live_run|_report\(' python/larch/report/progress_report.py` and require zero matches ## Findings ### 1. (correctness) Retained unit tests above the delete boundary are not on the migration list `python/tests/report/test_progress_report.py` orders live/mid-run tests before `test_render_phase_detail_no_rounds` (line 2317). The plan uses that test as the delete boundary while naming only a subset of tests to migrate. Retained-path tests above the boundary that are missing from the migration list include: - `test_progress_label_fallbacks_and_manifest_precedence` (line 810) - `test_progress_vendor_rows_use_apply_task_kind_priority` (line 891) - `test_progress_vendor_rows_skip_ci_rows_when_requested` (line 923) - `test_progress_vendor_rows_include_distinct_failed_primary_and_phase2_fallback` (line 941) These cover `_derive_progress_label`, `_progress_label_map_from_manifests`, and `_progress_vendor_rows` behavior that `render_phase_detail` still uses through `_render_phase_gantt` (for example `cap=None`, `skip_ci=True` at lines 711-718). A boundary-based delete would drop that coverage even though the high-level “include timing Gantt rows” integration tests do not replace these unit-level edge cases. **Suggested revision:** Delete by explicit live-only test manifest, not file position. Add the four tests above to the required migration list. Keep cap-reservation `test_progress_vendor_rows_*` rows (976-1084) on the delete side, consistent with OOS_1. ### 2. (architecture) Mid-run subtree inside `progress_report.py` is still under-specified for deletion Round 1 FINDING_1 (neutral) flagged incomplete mid-run pruning. The revised plan improves live-module helper migration and names top-level renderers, but Step 2 still does not enumerate mid-run-only code that already lives in `progress_report.py`: - Wrappers: `_render_review_detail`, `_render_design_review_detail` - Inflight helpers: `_prior_immediate_round_end_s`, `_round_dir_is_fresh` - Design live-only cluster: `_is_design_plan_review_step`, `_read_epoch_file` through `_design_elapsed` (~1275-1497) Post-delete verification only runs: rg '_progress_report_live|LiveRun|_discover_live_run|_report\(' python/larch/report/progress_report.py That confirms the import block is gone but does not prove mid-run renderers and freshness helpers inside `progress_report.py` were removed. That conflicts with the acceptance target to fully retire mid-run machinery and works against the minimum-change retirement goal by allowing hundreds of lines of dead code to remain. **Suggested revision:** Add the wrappers and helper cluster to the Step 2 delete manifest. Broaden verification to grep for mid-run symbol names in `progress_report.py` and require zero hits before deleting `_progress_report_live.py`. ## Out-of-scope **[OUT_OF_SCOPE]** `python/larch/report/progress_report.py:1031-1104` — After inflight removal, `_cap_gantt_rows_reserving_apply` and the default `PROGRESS_GANTT_ROW_CAP` branch in `_progress_vendor_rows` are only exercised by deleted `_render_inflight_gantt`; pruning that cap machinery would shrink the module further but is optional cleanup once final-report Gantt tests stay green.
+
+
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Focus area**: risk-integration
+- **Location**: python/larch/report/progress_report.py:1108-1607
+- **Concern**: Post-removal verification and the Step 2 delete list do not cover mid-run helpers still defined in progress_report.py. Scenario: The plan rg audit only checks `_progress_report_live|LiveRun|_discover_live_run|_report(` inside progress_report.py. After the live import block is removed, `_render_step5`, `_render_review_detail`, `_render_design_review_detail`, `_call_render_phase_detail`, `_render_inflight_gantt`, `_round_dir_is_fresh`, `_is_design_plan_review_step`, `_read_epoch_file`, `_prior_immediate_round_end_s`, and the design freshness cluster can remain and still pass verification, so mid-run machinery is not fully retired
+- **Proposed resolution**: Add those symbols to the Step 2 delete inventory and extend post-removal verification with an rg pass that asserts they are absent from progress_report.py (not only that the live import block is gone)
+
+
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/larch/report/progress_report.py:880-892
+- **Concern**: [SCOPE-REDUCTION] Plan still migrates and keeps `_strip_md_for_terminal` after mid-run removal. Scenario: `_strip_md_for_terminal` is only called from `_call_render_phase_detail`, which is only reached by `_render_review_detail` and `_render_design_review_detail`; all three are mid-run-only and slated for deletion. Migrating the helper and `test_strip_md_for_terminal` preserves dead code against the retirement goal
+- **Proposed resolution**: Drop `_strip_md_for_terminal` and `_call_render_phase_detail` from the pre-delete keep checklist and Step 3 keep list; delete `test_strip_md_for_terminal` with the mid-run tests instead of migrating it ## Findings ### 1. [risk-integration] `python/larch/report/progress_report.py:1108-1607` — Mid-run subtree can survive a passing audit The revised plan improves helper migration and test fixture ordering, but retirement verification still keys off import-block removal and four live-discovery tokens. A large block of mid-run-only functions remains defined directly in `progress_report.py` (for example `_render_review_detail`, `_render_design_review_detail`, `_call_render_phase_detail`, and the design freshness helpers). None appear in the named Step 2 delete list, and the proposed `rg` check would not fail if they are left behind. **Suggested revision:** Name those local mid-run symbols in Step 2 and add a second post-removal `rg` audit that asserts they are gone from `progress_report.py`. ### 2. [architecture] `python/larch/report/progress_report.py:880-892` — [SCOPE-REDUCTION] `_strip_md_for_terminal` becomes dead weight The plan still treats `_strip_md_for_terminal` as a retained helper and includes `test_strip_md_for_terminal` in the migration set. After mid-run renderers are removed, that helper has no production caller; only `_call_render_phase_detail` uses it, and that wrapper is itself mid-run-only. **Suggested revision:** Do not migrate `_strip_md_for_terminal` or its unit test. Delete it with `_call_render_phase_detail` and the mid-run wrapper renderers.
+
+
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/larch/report/progress_report.py:1178-1603
+- **Concern**: Round 1 FINDING_1 is only partly fixed: mid-run detail wrappers are still absent from the explicit delete list. Scenario: The Step 2 bullet list names `_render_step5`, `_render_design_plan_review`, and `_render_inflight_gantt`, but not `_render_review_detail`, `_render_design_review_detail`, `_call_render_phase_detail`, or `_prior_immediate_round_end_s`. Those functions sit between the named entrypoints and `render_phase_detail`; a literal implementer can delete the listed renderers yet leave ~400 lines of mid-run-only code, so live mid-run reporting is not fully retired.
+- **Proposed resolution**: Add those wrappers (and the design freshness helpers they call) to the explicit Step 2 delete list, drop `_call_render_phase_detail` with them, and extend the post-delete `rg` audit to match `_render_(review|design_review)_detail|_call_render_phase_detail|_prior_immediate_round_end_s`.
+
+
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/larch/report/progress_report.py:70-114
+- **Concern**: Pre-delete checklist still mandates `_strip_md_for_terminal` after mid-run removal. Scenario: Only `_call_render_phase_detail` calls `_strip_md_for_terminal`; final-summary callers use `review_phase_detail._invoke_renderer`, which redacts `_render_phase_detail_best_effort` output and never strips markdown. Migrating the helper and `test_strip_md_for_terminal` preserves dead code against the minimum-change retirement goal.
+- **Proposed resolution**: Remove `_strip_md_for_terminal` and `test_strip_md_for_terminal` with the mid-run wrapper deletion; keep `_render_phase_detail_best_effort` timeout coverage only. ## Findings ### 1. architecture (major, in-scope) — Mid-run detail wrappers still missing from explicit delete list Round 1 FINDING_1 is only partly addressed. The plan now has a catch-all for freshness/manifest helpers, but Step 2 still omits the mid-run detail wrappers that sit between the named renderers and the retained phase-detail stack: - `_render_review_detail` (lines 1178–1185) - `_render_design_review_detail` (lines 1500–1507) - `_call_render_phase_detail` (lines 880–892) - `_prior_immediate_round_end_s` (lines 1108–1132, inflight-only) `_render_step5` and `_render_design_plan_review` call these wrappers; deleting only the named entrypoints can leave ~400 lines of unreachable mid-run code. That misses the issue goal to fully retire mid-run machinery. **Suggested revision:** Add those symbols to the explicit Step 2 delete list, delete `_call_render_phase_detail` with them, and extend the post-delete `rg` audit beyond `_report` / `LiveRun`. ### 2. architecture (minor, in-scope, [SCOPE-REDUCTION]) — `_strip_md_for_terminal` migration is unnecessary after mid-run removal The pre-delete checklist still requires migrating `_strip_md_for_terminal` because `_call_render_phase_detail` uses it. That wrapper is mid-run-only. Retained final-report paths go through `review_phase_detail._invoke_renderer`, which calls `_render_phase_detail_best_effort` and applies `redact_outbound`; they never strip markdown for terminal display. Migrating the helper and `test_strip_md_for_terminal` adds dead code and test surface without a retained production caller. **Suggested revision:** Delete `_strip_md_for_terminal` and its unit test with the mid-run wrapper removal. Keep timeout coverage via `test_render_phase_detail_best_effort_timeout` only. --- **Accepted prior findings appear addressed:** helper migration checklist (FINDING_2), fixture migration before test deletion (FINDING_4/9), and mechanical delete-order guards look sufficient for the retained CLI/round-meta surfaces. **No new in-scope gaps found** for consumer wiring (`review_phase_detail.py`, `plan_review.py`, `round_runner.py`, `statusline.py`, `progress_file.py`), helper migration symbols used by `render_phase_detail` / round-meta writers, or the mandated `test_render_phase_detail_*` / round-meta migration block.
+
+
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: minor
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:47
+- **Concern**: Post-removal import audit omits the repo's Python package path. Scenario: Running the command from the repo root fails with ModuleNotFoundError before it exercises progress_report, so the strict verification gate can block deletion of _progress_report_live.py or hide real import regressions
+- **Proposed resolution**: Change the command to set PYTHONPATH=python, or run it from the python/ directory, before importing larch.report.progress_report
+
+
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: major
+- **Focus area**: risk-integration
+- **Location**: python/tests/report/test_progress_report.py:810-975
+- **Concern**: Retained Gantt helper unit tests are omitted from the migration list and fall inside the rewrite delete boundary. Scenario: The rewrite step deletes every test above `test_render_phase_detail_no_rounds`, but `test_progress_label_fallbacks_and_manifest_precedence` and the non-cap `test_progress_vendor_rows_*` cases (lines 810-975) exercise `_derive_progress_label`, `_progress_label_map_from_manifests`, and `_progress_vendor_rows` still used by retained `render_phase_detail` Gantt rendering. A literal delete-first rewrite drops that coverage despite the plan goal to own all retained `progress_report` tests in `test_review_phase_detail.py`.
+- **Proposed resolution**: Add those four tests to the explicit migration list (or state that every pre-boundary test targeting symbols still referenced by `render_phase_detail`/round-meta must move), and narrow the rewrite delete rule to live/mid-run tests only—not blanket deletion above the `test_render_phase_detail_no_rounds` line.
+
+
+
+### FINDING_9:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/larch/report/progress_report.py:880-892
+- **Concern**: [SCOPE-REDUCTION] `_strip_md_for_terminal` is listed as a retained migrate symbol but is mid-run-only. Scenario: The pre-delete checklist and Step 3 keep list require moving `_strip_md_for_terminal` for `_call_render_phase_detail`, yet `_call_render_phase_detail` is only called from `_render_review_detail` / `_render_design_review_detail`, which Step 2 deletes with other mid-run renderers. Final-report callers use `review_phase_detail._invoke_renderer` → `_render_phase_detail_best_effort` without this stripper. Migrating the helper and `test_strip_md_for_terminal` adds dead code against the retirement/minimum-change goal.
+- **Proposed resolution**: Remove `_strip_md_for_terminal`, `_call_render_phase_detail`, `_render_review_detail`, and `_render_design_review_detail` from the migrate/keep lists; delete them with the mid-run block; drop `test_strip_md_for_terminal` from the migration list and delete `test_render_review_detail_*` with other live tests.
+
+
+
+### FINDING_10:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: minor
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/write-final-report.md:115-129
+- **Concern**: [SCOPE-REDUCTION] Plan misses shipped prompt prose that still describes retired terminal progress. Scenario: After the planned live-renderer deletion, this shipped contract still says `--no-gantt` is reserved for terminal progress and that terminal progress skips the shared renderer during live Step 5 or design review, contradicting the new supported surfaces.
+- **Proposed resolution**: Add `skills/implement/scripts/write-final-report.md` to the plan and remove or reword the terminal-progress paragraphs to describe final-report and CLI behavior only.
+
+
+
