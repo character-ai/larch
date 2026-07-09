@@ -3854,6 +3854,10 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert f"(launcher + '{step6_launcher}', 'implement-step6-checks')" in structure
     assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
     assert 'BUDGET_S="14700"' in run_step_checks
+    assert "step_checks_live_registry_exists" in run_step_checks
+    assert "step_checks_result_env_state" in run_step_checks
+    assert 'RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"' in run_step_checks
+    assert 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0' in run_step_checks
     assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
     assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill

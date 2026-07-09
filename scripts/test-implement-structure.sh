@@ -189,6 +189,11 @@ for name in wrappers:
 # Existing wrappers that gained behavior.
 require('skills/implement/scripts/step-5-review.sh', 'bgjob start', 'step-5-review starts bgjob')
 require('skills/implement/scripts/step-5-review.sh', 'review-and-fix step5', 'step-5-review child calls review-and-fix step5')
+require('skills/implement/scripts/run-step-checks.sh', 'step_checks_live_registry_exists', 'run-step-checks live registry helper present')
+require('skills/implement/scripts/run-step-checks.sh', 'step_checks_result_env_state', 'run-step-checks canonical result env helper present')
+require('skills/implement/scripts/run-step-checks.sh', 'RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"', 'run-step-checks canonical result env pin')
+require('skills/implement/scripts/run-step-checks.sh', 'rm -f "$RESULT_ENV"', 'run-step-checks clears stale canonical result env before fresh start')
+require('skills/implement/scripts/run-step-checks.sh', 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0', 'run-step-checks rejoin wait pin')
 for needle, label in [
     ('--merge-result-env "$MERGE_RESULT_ENV"', 'step-5-review passes merge result env to bgjob'),
         ('step5_live_registry_exists', 'step-5-review checks live registry before fresh start'),
