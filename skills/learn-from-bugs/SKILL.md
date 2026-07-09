@@ -126,7 +126,7 @@ if [ "$COMMIT_RC" -ne 0 ]; then
   if git -C "$PWD" ls-files --error-unmatch -- "$MARKER_REL" >/dev/null 2>&1; then
     git -C "$PWD" restore --staged --worktree -- "$MARKER_REL"
   else
-    rm -f "$PWD/$MARKER_REL"
+    rm -f "$MARKER_REL"
   fi
 fi
 ```
