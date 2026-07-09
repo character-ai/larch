@@ -123,7 +123,7 @@ assert_reminder "$(mk_payload /tmp/disc.md 0 /proj/disc '' '' | HOOK_ANTI_READ_P
 
 assert_silent "$(run_hook 120 /tmp/empty-disc.md 0 /proj/empty-disc '' '')" 'unset discriminator call 1 silent'
 assert_silent "$(run_hook 121 /tmp/empty-disc.md 0 /proj/empty-disc '' '')" 'unset discriminator call 2 silent'
-assert_reminder "$(mk_payload /tmp/empty-disc.md 0 /proj/empty-disc '' '' | HOOK_ANTI_READ_POLL_NOW=122 HOOK_ANTI_READ_POLL_DISCRIMINATOR= "$HOOK")" 'empty discriminator shares nosession bucket'
+assert_reminder "$(mk_payload /tmp/empty-disc.md 0 /proj/empty-disc '' '' | HOOK_ANTI_READ_POLL_NOW=122 HOOK_ANTI_READ_POLL_DISCRIMINATOR='' "$HOOK")" 'empty discriminator shares nosession bucket'
 
 assert_silent "$(run_hook 130 /tmp/cwd-default.md 0 / nosession-cwd)" 'explicit root cwd call 1 silent'
 assert_silent "$(run_hook 131 /tmp/cwd-default.md 0 '' nosession-cwd)" 'empty cwd defaults to root bucket on call 2'
