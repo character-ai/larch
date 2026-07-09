@@ -672,26 +672,44 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.11"]
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
     steps:
-      # Full checkout (no sparse): the calibration replay tests read committed
-      # larch-logs/implement/<run-id>/ fixtures as a self-consistency gate, so
-      # the larch-logs tree must be present in this job's working tree.
+      # Sparse checkout keeps larch-logs/implement (the calibration replay tests
+      # read committed larch-logs/implement/<run-id>/ fixtures) but drops the
+      # larger larch-logs/design and larch-logs/shared trees, which no test
+      # reads, to trim checkout time.
       - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/larch-logs/design/
+            !/larch-logs/shared/
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v6
+        id: setup-python
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: python/requirements-test.txt
+      - name: Resolve interpreter site-packages
+        id: site-packages
+        run: printf 'path=%s\n' "$(python -c 'import site; print(site.getsitepackages()[0])')" >> "$GITHUB_OUTPUT"
+      - name: Cache installed Python packages
+        id: cache-site-packages
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.site-packages.outputs.path }}
+          key: ${{ runner.os }}-pip-site-py${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('python/requirements-test.txt') }}
       - name: Install Python test dependencies
+        if: steps.cache-site-packages.outputs.cache-hit != 'true'
         env:
           PIP_RETRIES: "5"
           PIP_DEFAULT_TIMEOUT: "30"
         run: pip install -r python/requirements-test.txt
-      - name: Run Python tests (shard ${{ matrix.shard }} of 20)
+      - name: Run Python tests (shard ${{ matrix.shard }} of 28)
         env:
           PYTEST_SHARD_ID: ${{ matrix.shard }}
-          PYTEST_SHARD_COUNT: "20"
+          PYTEST_SHARD_COUNT: "28"
         run: make py-test
 
   # Aggregate gate for the python-tests matrix (see test-harnesses-gate for the
