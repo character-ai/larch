@@ -2,10 +2,10 @@
 
 - **Outcome**: shipping
 - **Duration**: 00:35:35
-- **Cost**: 💰 TOTAL ~$11.55: Claude $2.09, Codex-5.5 $4.12, Codex-mini $1.36, Cursor $3.83, Claude (subprocess) $0.15  |  Tokens: 22696k
+- **Cost**: 💰 TOTAL ~$11.77: Claude $2.31, Codex-5.5 $4.12, Codex-mini $1.36, Cursor $3.83, Claude (subprocess) $0.15  |  Tokens: 23337k
 - **Issue**: #6717: https://github.com/character-ai/larch/issues/6717
 - **Plan review**: N/A
-- **Plan coverage**: 4/4 firm headings; band: advisory; disposition: proceed-partial; todos_left: 1; follow-up #6727
+- **Plan coverage**: 4/4 firm headings; band: advisory; disposition: proceed-partial; todos_left: 1; follow-up #6729
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/7 accepted
@@ -58,11 +58,3 @@ codex/apply                     │                                             
 1. cursor/plan-fidelity-auto: 1
 
 **Reviewer slot failures**: 0
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.

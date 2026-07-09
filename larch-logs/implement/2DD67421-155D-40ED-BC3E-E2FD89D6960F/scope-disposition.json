@@ -1,8 +1,8 @@
 {
-  "coverage_fingerprint": "96246be3a2042f01f7227b189bcfdc7188e1c37b4e29904ef50fd958e4def7da",
+  "coverage_fingerprint": "3799ce88ce862d742636b405deded8862dfa1b1bf5b19e123bc96c0ca9fb2d6c",
   "disposition": "proceed-partial",
-  "followup_issue_number": "6727",
-  "followup_issue_url": "https://github.com/character-ai/larch/issues/6727",
+  "followup_issue_number": "6729",
+  "followup_issue_url": "https://github.com/character-ai/larch/issues/6729",
   "todos_left_count": 1,
   "total": 4,
   "untouched_count": 0
