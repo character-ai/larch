@@ -1,0 +1,22 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the outline already places tests under python/tests/report, so a root test path is not part of the plan.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- compact rendering is required, but a dedicated ship-pr/design split is an implementation choice, not a blocker.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the proposed discovery hardening can be read-only; nothing in the plan requires mutating registry entries.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already says not to clobber custom statusLine configs; exact ownership matching is a refinement, not a required fix.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- live-candidate preference is already in the outline, so this reads as a detail of the same fix rather than a missing requirement.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the JSON shape should be documented, but the feature does not hinge on this extra specificity.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the security note is required, but the extra write-surface prose is documentation churn rather than a feature blocker.
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- atomic replace is prudent, but the plan can still ship with a safe settings update path; this edge is not shown to block the feature.
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the hook is explicitly optional/gated, so matcher breadth is not required for the core feature.
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- residual Bash coverage only matters if the implementation actually adds Bash scripts, which the outline does not require.
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is a lint-configuration preference, not a defect in the statusline feature path.
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_15: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is a performance/scalability optimization, not necessary to restore the feature.
+FINDING_16: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the approved design intentionally installs on first run to make the statusline always available, so opt-in-only would reduce scope.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is the same optional hook the outline already leaves gated/dropped, so it is duplicate.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is an alternative architecture, not a concrete defect in the proposed fix.
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- manifest coverage depends on shell scripts the outline does not require, so this is speculative.
+OOS_6: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the compact renderer is already supposed to avoid tmpdir paths by construction, so this extra redact pass is unnecessary.

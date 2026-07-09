@@ -1,0 +1,7 @@
+Deviations (intentional, operator-approved):
+
+- G-Py-4 (fail loudly, never swallow): `statusline_main` wraps its entrypoint in one outer `try/except Exception` and emits empty stdout; the installer exits 0 silently on path-safety refusals, invalid JSON, or missing prerequisites. Rationale: operator requirement (discussion-round1 Decision 4); the statusline is a harness-invoked UI command whose documented degraded path is a blank line, and the SessionStart hook must never break session startup. The swallow is confined to the statusline entrypoint and installer; `progress report` keeps loud failure.
+
+- G-Sec-4 (confine writes to larch-owned roots): the installer writes one `statusLine` key into `~/.claude/settings.json`, outside larch session/tmp roots. Rationale: operator-required always-on statusline; the platform has no plugin-native statusLine surface. Mitigations follow G-Sec-4's own posture: `assert_no_symlink_path_or_ancestors` on launcher and settings paths, regular-file checks before reads, `atomic_write(nofollow=True)`, strict no-clobber of non-larch entries, and a SECURITY.md disclosure.
+
+Alignment notes: the FINDING_13 refactor extracts the session-env ancestor guard into `larch.io` for both call sites (G-Fix-1); hooks stay thin with logic in Python (G-Skill-2); installer is idempotent per SessionStart (G-Idem-1); statusline stdin JSON is treated as untrusted data (G-Sec-2).

@@ -1,0 +1,2 @@
+1	leaf-only nofollow protection is insufficient for `~/.cache/larch/statusline.sh` and `~/.claude/settings.json`; a symlinked ancestor can redirect the sessionstart write to the wrong file.
+1	the new `progress statusline` command can be squelched by quiet-init unless it is registered as machine stdout.

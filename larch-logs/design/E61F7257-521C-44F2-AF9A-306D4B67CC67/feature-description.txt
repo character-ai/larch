@@ -1,0 +1,75 @@
+# [BUG] p/progress zero-cost progress reports unreachable during bgjob chunked…
+
+## Summary
+
+Typing `p` or `progress` at the Claude CLI prompt no longer prints the zero-cost progress report while a long larch phase runs. The plugin machinery still works: `scripts/hook-progress-report.sh` and `python3 python/cli.py progress report` behave correctly whenever the `UserPromptSubmit` hook fires. The regression is structural. The bgjob migration (PR #6522, 2026-07-07) replaced turn-ending `run_in_background` waits with chunked foreground `bgjob wait` fences, so the orchestrator turn stays active for the entire phase. The CLI never returns to an idle prompt, typed input is queued as mid-turn steering, and the hook never intercepts it. The feature is now unreachable exactly when it mattered most.
+
+## Original report
+
+The operator reports (paraphrased, details preserved): typing `p` (or `progress`) in the Claude CLI used to make the harness intercept the prompt and print, in yellow, the progress report generated and updated by the running phase job. It worked in all phases and was especially helpful for long-running ones. Key advantage: no context increase and no extra turns; the LLM was never involved. After a long string of spurious background-task notification bugs, the repo switched decisively to the bgjob library (long-running phases spawn as daemons). The spurious notifications appear gone, but the progress report feature stopped working too, most likely but not certainly due to the bgjob switch. Request: investigate, root cause, and file a detailed bug with proposed fix.
+
+## Reproduction scenario
+
+1. On current main (`6d32d492c`), start a long phase, for example `/implement` Step 5 code review or `/design` Step 3 plan review.
+2. While the phase runs, the orchestrator repeats foreground `python3 .../cli.py bgjob wait --step <step> --tmpdir ... --max-wait-s 270` fences. The session shows one continuous active turn.
+3. Type `p` and press Enter.
+4. No yellow report appears. The CLI queues the input as a mid-turn message.
+
+Control (verified 2026-07-08): with no active turn, the path works end to end. A synthetic live run (fake `current-implement-env-999999.sh` pointer, tmpdir, and one `v1 mark` timing-ledger row) plus `{"prompt":"p","cwd":...}` piped to `scripts/hook-progress-report.sh` produced the correct `{"decision":"block","reason":"implement: Step 5 — code review: started 0s ago\n..."}`.
+
+## Expected behavior
+
+Typing `p` or `progress` during a long-running phase prints the live progress report in the terminal with no context growth, no extra turn, and no model involvement, as it did before the bgjob migration.
+
+## Observed behavior
+
+During bgjob-migrated phases, no report prints. The typed `p` is queued and delivered mid-turn as steering when the current tool call completes; it may then land in model context instead of being blocked (inference, see below). At best a report could appear minutes late at a chunk boundary; the operator observes the feature as fully stopped. When the CLI is idle the hook still fires. In this clone an idle `p` currently renders a stale report ("Ship-PR phase: checks / stall step: 5") from a leftover `current-implement-env-*.sh` pointer whose tmpdir persists; `_discover_live_run` ranks by activity mtime and never checks run liveness. That staleness is pre-existing and minor, not a bgjob regression.
+
+## Root cause analysis
+
+The feature's trigger channel was the idle prompt, and the bgjob transport removed idle time during phases.
+
+- Pre-bgjob: long phases launched via Bash `run_in_background: true`. The orchestrator turn ended right after launch, so the CLI sat idle for the whole phase. Every typed `p` was a fresh prompt submission: `UserPromptSubmit` fired, blocked, and printed at zero cost.
+- Post-bgjob: phases run as detached daemons while the orchestrator holds the turn open with an unbroken chain of foreground `bgjob wait --max-wait-s 270` calls. The skill contract is explicit: on `BGJOB_STATUS=WAIT`, "the next action is the identical wait command with no intervening prose or tools". The CLI therefore never reaches an idle prompt during a phase.
+- Claude Code (docs v2.1.204, checked 2026-07-08) queues input typed while the assistant works and delivers it when the current tool call completes ("Type a correction and press Enter... Claude reads it as soon as the current action completes"). The hooks documentation says `UserPromptSubmit` fires "when you submit a prompt, before Claude processes it" but is silent on queued mid-turn messages.
+- Inference (upstream behavior undocumented): the queued `p` is injected into the live turn as steering text without an effective `UserPromptSubmit` block. No report prints, and the `p` consumes model context mid-wait-fence, the exact cost the feature existed to avoid.
+
+This is a harness-interaction regression, not a defect in the hook, discovery, or rendering code. The feature loss was an unstated side effect of #6514/#6521; do not revert bgjob, since the spurious-notification fix must stand (upstream anthropics/claude-code#18544, anthropics/claude-code#39027).
+
+## Evidence
+
+- `hooks/hooks.json` registers `scripts/hook-progress-report.sh` under `UserPromptSubmit`; the hook matches trimmed `p`/`progress`, calls `python3 python/cli.py progress report --cwd`, and emits `{"decision":"block","reason":...}`.
+- Synthetic end-to-end test on 2026-07-08 (fake pointer + tmpdir + timing-ledger mark, JSON piped to the hook) returned the correct block JSON; the same probe with the real repo cwd returned a stale ship-pr report from a leftover pointer. Plugin machinery confirmed intact.
+- `skills/implement/SKILL.md` Steps 3/5/6/8 and `skills/design/SKILL.md` Steps 3/4/5c/final-summary all use `bgjob start` plus repeated foreground `bgjob wait ... --max-wait-s 270` fences with the "identical wait ... no intervening prose or tools" contract. `skills/research/references/research-phase.md` and `validation-phase.md` use the same transport for lanes.
+- `python/larch/bgjob/wait.py` (`wait_once`) implements the chunked foreground wait; `BGJOB_WAIT_MAX_CHUNK_S = 270` in `python/larch/core/config.py:184`.
+- Timeline: bgjob transport PR #6522 merged 2026-07-07 (issues #6514/#6521, "[DONE] Replace run_in_background waits with bgjob daemons + chunked foreground waits"); phase migrations #6532/#6533/#6535/#6536/#6537 landed the same day (PRs #6562/#6563/#6571/#6573/#6582); design final-summary waits migrated 2026-07-08. The regression window matches the operator's report.
+- Claude Code docs v2.1.204: mid-turn queueing and steering delivery are documented; `UserPromptSubmit` semantics for queued messages are not. The statusline (`statusLine` in settings.json) is documented as event-driven with an optional `refreshInterval` timer, supports multi-line ANSI output, runs locally, and receives session JSON (including cwd) on stdin.
+- Feature origin: #3877 / PR #3912 (`44a97dbde`). Investigation HEAD: `6d32d492c`.
+
+## Affected files
+
+- `scripts/hook-progress-report.sh`: the interception hook; unreachable during phases. Keep for idle windows.
+- `hooks/hooks.json`: hook registration; a new PostToolUse snapshot hook (optional item 3) would be added here.
+- `python/larch/report/progress_report.py`, `python/larch/report/_progress_report_live.py`: report engine and `_discover_live_run`; home for the new compact statusline renderer and optional liveness hardening.
+- `python/larch/cli.py`: registry entry for the new `progress statusline` verb.
+- `skills/implement/SKILL.md`, `skills/design/SKILL.md`, `skills/research/references/research-phase.md`, `skills/research/references/validation-phase.md`: the wait-fence contracts that keep the turn active (context; no behavior change proposed).
+- `scripts/hook-progress-report.md`: currently the only documentation of the feature.
+- `README.md`, `docs/`: missing user-facing documentation for progress reporting; new docs land here.
+
+## Suggested fix(es)
+
+1. **Primary: statusline progress segment (restores zero-cost live visibility).** Add `python3 python/cli.py progress statusline`: reuse `_discover_live_run` plus a compact renderer emitting 1-2 lines (skill, current step label, round, reviewers returned/total, elapsed; ANSI yellow; empty stdout when no live run). Read the statusline stdin JSON for the session cwd. Ship docs plus an optional guided install that composes with any existing user `statusLine` command and sets `refreshInterval` (~10s). Zero context and zero turns. Refresh occurs at least on every assistant message, so at worst every ≤270s chunk boundary during waits; verify empirically whether `refreshInterval` also fires while a foreground Bash tool executes, and document the observed cadence.
+2. **Stopgap docs (works today).** Document on-demand full reports from a second terminal: `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" progress report --cwd <repo>` (optionally under `watch -n 10`). This prints the identical report `p` used to print. Also add user-facing docs for the `p`/`progress` feature itself, including its new limitation: it only fires when the CLI is at an idle prompt.
+3. **Optional per-chunk in-terminal snapshot (verify first).** A PostToolUse hook matching Bash `bgjob wait` commands could emit the compact progress line via the hook `systemMessage` field each time a wait chunk returns (≤ every 270s). Gate on verifying that `systemMessage` is UI-only and never enters model context; drop this item if it does.
+4. **Empirical characterization plus upstream report.** During the next live bgjob phase, type `p` once and record: (a) whether a blocked-prompt reason ever displays (chunk boundary or turn end), and (b) whether `p` appears in the transcript as a delivered user message. Then file an upstream Claude Code issue: `UserPromptSubmit` semantics for queued mid-turn messages are undocumented, and no zero-cost mechanism exists to run a local command and display output while a turn is active.
+5. **Keep the existing hook unchanged** for idle windows (pre-run, post-run, between skills).
+6. **Optional hardening (secondary observation).** Teach `_discover_live_run` to prefer candidates with a live bgjob registry row or validated owner PID, or annotate reports from runs with no live daemon as stale.
+
+Non-goals: do not revert or weaken the bgjob transport; do not add periodic progress text to tool results or model context.
+
+## Open questions
+
+- Does `UserPromptSubmit` fire for queued mid-turn messages at all, and is `decision:block` honored at dequeue time? (Item 4 answers this empirically.)
+- Is the hook `systemMessage` field UI-only, or does it enter model context? (Gates item 3.)
+- Does `statusLine` `refreshInterval` fire while a foreground Bash tool call is executing, or only between tool calls? (Affects item 1 cadence.)
+- Should the statusline install ship as docs-only guidance or as a guided settings.json installer, given operators may already have a custom `statusLine` command?

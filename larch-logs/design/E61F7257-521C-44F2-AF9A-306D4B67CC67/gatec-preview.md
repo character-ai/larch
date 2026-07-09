@@ -1,0 +1,365 @@
+## Final Design Plan
+
+The plan is very large. Showing the full plan body below.
+
+## Plan
+
+## Approach
+
+Implement the primary fix without weakening bgjob waits or changing `scripts/hook-progress-report.sh`.
+
+- Add `python3 python/cli.py progress statusline`.
+  - Read statusline stdin JSON from `stdin`.
+  - Use only `cwd` for run discovery.
+  - Emit compact ANSI-yellow text, 1 to 2 lines.
+  - Emit exactly empty stdout and exit 0 for no live run, corrupt input, missing files, parse errors, or any internal exception.
+  - Do not call `quiet_init`; rely on `_MACHINE_STDOUT_KEYS` registration so compact stdout is never diverted by quiet routing.
+- Add a larch-owned SessionStart installer.
+  - Write a stable launcher under `~/.cache/larch/`.
+  - Refresh that launcher on every SessionStart so it points at the current plugin root.
+  - Install `~/.claude/settings.json` `statusLine` only when absent or already larch-owned.
+  - Never overwrite or wrap a non-larch `statusLine`.
+  - Use `refreshInterval` around 10 seconds.
+  - Before any read or write of the launcher or settings paths, reject symlinked targets and symlinked ancestors; require a regular non-symlink file for existing settings reads; write only through `atomic_write(..., nofollow=True)`; fail open with exit 0 and no stdout/stderr on any path-safety refusal.
+- Harden live-run discovery.
+  - Prefer candidates with live bgjob registry evidence for the candidate tmpdir.
+  - Suppress stale candidates for statusline output.
+  - Keep `p` / `progress` reports useful at idle prompts, but annotate likely stale pointer-only reports.
+- Document the changed operator contract.
+  - Statusline is the live zero-cost path during bgjob waits.
+  - `p` / `progress` works only at idle prompts.
+  - Second-terminal `progress report --cwd <repo>` remains the full report stopgap.
+- Gate the optional PostToolUse snapshot hook.
+  - Add it only after verifying hook `systemMessage` is UI-only and does not enter model context.
+  - If verification is unavailable or negative, omit it and document why.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/_progress_report_live.py
+
+Extend `LiveRun` discovery with explicit liveness data.
+
+- Add a small frozen dataclass, for example `LiveRunHealth`, with fields such as `state`, `reason`, and `source`.
+- Add health to `LiveRun`, or add a helper that returns `(LiveRun, LiveRunHealth)` without disturbing current render call sites.
+- Match bgjob registry entries by resolved `entry.tmpdir == candidate.tmpdir`.
+- Treat a candidate as live when any matching registry entry has live child or daemon validation.
+- Treat invalid, expired, dead, or missing registry evidence as stale for statusline purposes.
+- Preserve current `_discover_live_run(cwd)` behavior for the existing full report path, but add a strict mode or a new helper for statusline discovery.
+- Keep symlink and unreadable-file handling fail-soft.
+
+### UPDATED: python/larch/report/progress_report.py
+
+Add compact statusline rendering and stale-report annotation.
+
+- Add `statusline_main(argv)` registered as `progress statusline`.
+- Do not call `quiet_init` in `statusline_main`; write visible text directly to stdout.
+- Parse stdin JSON defensively with `json.loads`; any invalid or non-object input emits nothing and exits 0.
+- Resolve `cwd` from stdin JSON, not argv.
+- Reuse strict live discovery.
+- Render a compact line:
+  - skill, current step label, elapsed time.
+  - review round and returned/total counts when available.
+  - voter counts when available for design plan review.
+- Use existing helpers where possible, but do not reuse the full report renderer because it can emit multi-section Gantt output.
+- Wrap visible text in ANSI yellow.
+- Enforce fail-silent with one outer `try/except Exception` around the statusline entrypoint.
+- Annotate full `progress report` output when the selected pointer has no live bgjob evidence, for example `note: run may be stale; no live bgjob daemon found`.
+
+### UPDATED: python/larch/io.py
+
+Extract shared ancestor-symlink path guard for home-cache and user-settings writes.
+
+- Move the `_assert_no_symlink_path_or_ancestors` logic from `session_env.py` into a public helper, for example `assert_no_symlink_path_or_ancestors(path: Path) -> None`.
+- Raise `OSError` on any symlink in the path or its ancestors.
+- Keep behavior identical to the existing session-env guard.
+
+### UPDATED: python/larch/state/session_env.py
+
+Switch home-cache pointer writes to the shared guard.
+
+- Replace private `_assert_no_symlink_path_or_ancestors` call sites with `larch.io.assert_no_symlink_path_or_ancestors`.
+- Remove the duplicated private helper once all call sites use the shared function.
+
+### UPDATED: python/larch/cli.py
+
+Register new verbs and machine-stdout routing.
+
+- Add `("progress", "statusline")`.
+- Add `("progress", "install-statusline")` if the installer lives in Python.
+- Add `("progress", "statusline")` to `_MACHINE_STDOUT_KEYS` so statusline compact output bypasses quiet-init routing.
+- Keep `progress report` unchanged.
+
+### NEW: python/larch/report/statusline_install.py
+
+Implement the user-level statusline installer.
+
+- Provide `install_statusline_main(argv)`.
+- Arguments:
+  - `--plugin-root` required or defaulted from `CLAUDE_PLUGIN_ROOT`.
+  - Hidden test seams for home/cache roots if needed by unit tests.
+- Validate plugin root as an absolute existing directory with `python/cli.py` present.
+- Resolve launcher path under `~/.cache/larch/`, for example `~/.cache/larch/statusline.sh`.
+- Resolve settings path as `~/.claude/settings.json`.
+- Before creating parents, reading, or writing either path:
+  - call `larch.io.assert_no_symlink_path_or_ancestors` on the target path.
+  - if an existing settings file is present, require a regular non-symlink file; refuse symlinked settings reads.
+  - on any path-safety refusal, exit 0 with no stdout and no stderr.
+- Write the launcher with `larch_io.atomic_write(..., nofollow=True, mode=0o755)`.
+- Launcher contract:
+  - `#!/usr/bin/env bash`
+  - no stderr on expected failure paths.
+  - exec `python3 "$PLUGIN_ROOT/python/cli.py" progress statusline`.
+  - fail silent if `python3` or `cli.py` is unavailable.
+- Update `~/.claude/settings.json` safely:
+  - create parent dir only after ancestor guard passes.
+  - if file is absent, create a minimal object.
+  - if file is invalid JSON, fail open and do not overwrite.
+  - if `statusLine` is absent, install larch statusline.
+  - if `statusLine` is larch-owned, refresh command and refresh interval.
+  - if `statusLine` exists and is not larch-owned, leave it unchanged.
+  - write settings via `larch_io.atomic_write(..., nofollow=True)`.
+- Mark ownership in a stable way. Prefer a command path under `~/.cache/larch/` plus a larch marker in the command or JSON-adjacent supported field only if Claude Code tolerates it. Do not rely on comments because JSON has none.
+- Preserve unrelated settings keys.
+- Do not emit stdout on success or expected no-op.
+
+### NEW: scripts/sessionstart-statusline.sh
+
+Add a thin SessionStart hook wrapper.
+
+- Always exit 0.
+- Read no prompt content.
+- Resolve `${CLAUDE_PLUGIN_ROOT}` or script-relative plugin root.
+- Skip silently if `python3` or `python/cli.py` is missing.
+- Call `python3 "$CLI" progress install-statusline --plugin-root "$PLUGIN_ROOT"` with stdout and stderr suppressed.
+- Do not background this helper unless profiling shows SessionStart latency is a problem.
+
+### NEW: scripts/sessionstart-statusline.md
+
+Document the hook contract.
+
+- Primary caller: `hooks/hooks.json` SessionStart.
+- Writes only:
+  - stable launcher under `~/.cache/larch/`.
+  - user `~/.claude/settings.json`, only absent or larch-owned `statusLine`.
+- No network calls.
+- Strict no-clobber for custom statuslines.
+- Reject symlinked targets and symlinked ancestors before any read or write; fail open with no output.
+- Test harness name and Makefile target.
+
+### UPDATED: hooks/hooks.json
+
+Register the SessionStart installer hook.
+
+- Add `scripts/sessionstart-statusline.sh` under the existing `SessionStart` matcher `startup|resume|clear|compact`.
+- Use a small timeout, likely 5 or 10 seconds.
+- Keep existing hooks unchanged.
+
+### MAY_UPDATE: hooks/hooks.json
+
+Only if `systemMessage` is verified UI-only, add a PostToolUse hook for Bash bgjob waits.
+
+- Match `PostToolUse` Bash.
+- Register the new snapshot hook with a short timeout.
+- Do not add this hook if verification is negative or inconclusive.
+
+### MAY_UPDATE: scripts/hook-bgjob-wait-progress.sh
+
+Only if `systemMessage` is verified UI-only, add a fail-open PostToolUse snapshot hook.
+
+- Parse hook JSON with `jq`.
+- Match successful Bash commands that include `python3 .../cli.py bgjob wait` or equivalent direct CLI path.
+- Extract `cwd` from hook input.
+- Call `python3 "$PLUGIN_ROOT/python/cli.py" progress statusline` with synthetic stdin JSON carrying that cwd.
+- Emit `hookSpecificOutput.systemMessage` only when the compact line is non-empty.
+- Never emit `additionalContext`.
+- Never print progress text through stdout except as hook JSON.
+- Fail open on missing `jq`, missing Python, parse failure, or empty report.
+
+### MAY_UPDATE: scripts/hook-bgjob-wait-progress.md
+
+Only if the hook is added, document the exact PostToolUse snapshot contract.
+
+- State the verification evidence for `systemMessage`.
+- State that output must not enter model context.
+- State fail-open behavior and no network calls.
+- Point to its harness.
+
+### UPDATED: scripts/hook-progress-report.md
+
+Update the existing feature doc.
+
+- Keep the hook behavior unchanged.
+- Add the limitation: `p` / `progress` only works when Claude Code is at an idle prompt.
+- State that bgjob wait phases keep the turn active, so statusline is the live zero-cost surface during those phases.
+- Add the second-terminal stopgap command.
+
+### NEW: docs/progress-reporting.md
+
+Add user-facing docs.
+
+- Explain three surfaces:
+  - automatic statusline for live bgjob phases.
+  - `p` / `progress` at idle prompts.
+  - second-terminal full report via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" progress report --cwd <repo>`.
+- Explain statusline install behavior:
+  - automatic on SessionStart.
+  - user-level settings only.
+  - no custom statusline clobber.
+  - blank outside live larch runs.
+- Hedge `refreshInterval` cadence during foreground Bash tool calls:
+  - timer behavior while a foreground tool executes is undocumented.
+  - worst case, updates appear at wait chunk boundaries.
+- Include troubleshooting:
+  - custom `statusLine` present.
+  - invalid `~/.claude/settings.json`.
+  - symlinked `~/.cache/larch/` or `~/.claude/` path ancestors blocking install.
+  - no live bgjob registry row.
+  - stale pointer annotation.
+
+### UPDATED: README.md
+
+Add a short link to `docs/progress-reporting.md`.
+
+- Place it in the setup or feature reference area.
+- Keep it concise.
+
+### UPDATED: docs/installation-and-setup.md
+
+Add a short setup note.
+
+- State that larch auto-installs its own statusline when no custom statusline exists.
+- State that users with custom statuslines keep them unchanged.
+- Link to `docs/progress-reporting.md`.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+Document settings behavior.
+
+- State that `statusLine` is a user settings key, not plugin-provided settings.
+- State the no-clobber rule.
+- Mention settings precedence so users know a project/local statusline can override the user-level larch one.
+
+### UPDATED: docs/workflow-lifecycle.md
+
+Update the bgjob progress paragraph.
+
+- Keep `BGJOB_STATUS=WAIT` wait-fence rules unchanged.
+- Add that live progress visibility now comes from the statusline, not prompt-side probes.
+
+### UPDATED: SECURITY.md
+
+Add the automated settings write security note.
+
+- Describe the SessionStart statusline installer.
+- State the exact files it may write.
+- State no-clobber behavior.
+- State fail-open behavior for invalid JSON, missing Python, missing plugin root, custom statuslines, and symlinked targets or ancestors.
+- State that installer reads and writes only regular non-symlink files and directories whose ancestor chain contains no symlinks.
+- State that renderer reads local session pointers and tmpdir artifacts only, makes no network calls, and emits empty output on errors.
+
+### NEW: python/test_progress_statusline.py
+
+Add Python unit tests.
+
+- `statusline_main`:
+  - empty stdin, invalid JSON, missing cwd, no live run all produce empty stdout and rc 0.
+  - synthetic live bgjob registry plus timing ledger produces yellow compact output.
+  - stale pointer without live registry produces empty statusline output.
+  - corrupt timing ledger does not print partial garbage.
+  - does not call `quiet_init`.
+- `progress report`:
+  - stale pointer report includes the stale annotation.
+  - current non-stale full report still works.
+- Installer:
+  - absent settings file creates larch statusLine and launcher.
+  - larch-owned statusLine refreshes.
+  - custom statusLine is preserved byte-semantically enough for value equality.
+  - invalid JSON is not overwritten.
+  - symlinked settings file is not read or overwritten.
+  - symlinked ancestor of launcher or settings parent exits 0 with no writes.
+  - launcher contains the current plugin root and uses `progress statusline`.
+- CLI contract:
+  - `("progress", "statusline")` is in `_MACHINE_STDOUT_KEYS`.
+
+### NEW: scripts/test-sessionstart-statusline.sh
+
+Add an offline shell harness.
+
+- Assert script is executable.
+- Assert hooks registration in `hooks/hooks.json`.
+- Missing `python3` exits 0 with no stdout.
+- Missing `cli.py` exits 0 with no stdout.
+- Stub `python/cli.py` receives `progress install-statusline --plugin-root`.
+- No stdout on normal path.
+
+### UPDATED: Makefile
+
+Wire the new harness.
+
+- Add `test-sessionstart-statusline` phony target.
+- Add it to one `test-harnesses-N` shard.
+- Keep shard line formatting on one physical line.
+
+### MAY_UPDATE: scripts/test-hook-bgjob-wait-progress.sh
+
+Only if the PostToolUse snapshot hook is added, test it.
+
+- Registration in `hooks/hooks.json`.
+- Non-bgjob Bash command is silent.
+- Bgjob wait command emits only hook JSON.
+- Empty statusline is silent.
+- Missing `jq` or failing renderer is silent.
+
+## Edge cases
+
+- Existing custom `statusLine` must survive unchanged.
+- Invalid `~/.claude/settings.json` must not be overwritten.
+- Symlinked `~/.cache/larch/statusline.sh`, `~/.claude/settings.json`, or any symlinked ancestor of those paths must block installer writes and exit 0 silently.
+- Project or local settings can override user settings; docs must say larch cannot force precedence.
+- Stale `current-*-env-*.sh` pointers must not produce visible statusline output.
+- Full `p` reports may still render stale data, but must label it.
+- Statusline must not print whitespace-only output.
+- Statusline must not leak absolute tmpdir paths.
+- ANSI output must stay compact and readable.
+- No bgjob wait contract changes are allowed.
+- No progress text may enter tool results or model context.
+- Statusline stdout must not be swallowed by quiet-init routing.
+
+## Failure modes
+
+- Claude Code does not run `refreshInterval` during foreground Bash: statusline still updates at chunk boundaries or next interaction; docs must hedge.
+- User has a custom statusline: larch skips install, so live progress requires manual custom composition later. Do not auto-wrap.
+- Hook `systemMessage` enters model context: omit the PostToolUse snapshot hook.
+- Registry rows are reaped before statusline refresh: renderer emits blank rather than stale output.
+- Process validation can fail transiently: statusline may briefly blank; full report can still be requested at idle.
+- Symlinked home-cache or Claude config ancestors redirect writes: installer refuses the operation and leaves existing files untouched.
+
+## Testing strategy
+
+Run only changed-file relevant checks.
+
+- `python3 -m pytest python/test_progress_statusline.py`
+- `bash scripts/test-sessionstart-statusline.sh`
+- If PostToolUse hook lands: `bash scripts/test-hook-bgjob-wait-progress.sh`
+- Existing related harnesses:
+  - `bash scripts/test-hook-progress-report.sh`
+  - `bash scripts/test-cleanup-sessionstart.sh`
+  - `bash scripts/test-sessionstart-health.sh`
+- Python lint and type checks for changed Python:
+  - `make py-lint`
+  - `make py-test` if shared helpers or discovery behavior changes beyond the new test file.
+- Final relevant sweep:
+  - `python3 python/cli.py checks run-relevant`
+
+## Difficulty
+
+This is HARD.
+
+It touches SessionStart hooks, user settings writes, live-run discovery, bgjob liveness, path-safety guards, machine-stdout routing, and security docs. The blast radius is bounded by fail-open and fail-silent rules, but integration can fail across Claude Code settings, hook timing, symlinked config paths, and stale session pointers.
+
+difficulty: HARD
+diff_added: 1020
+diff_deleted: 95
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 1115
