@@ -1,0 +1,92 @@
+Source: /learn-from-bugs mining run over the last 30 closed [BUG] issues, 2026-07-08, larch 52.5.15. This issue combines a verified residual defect with the lint that prevents its class, per G-Fix-1 (fix the class, not the instance).
+
+## Context and motivation
+
+Three closed bugs form one recurring class: a repo convention parsed by two independently authored predicates that drift apart, so one consumer silently sees a different population than another.
+
+- #6604: /analyze-bugs selected bug issues with a prefix-only, case-sensitive `[BUG]` title check. Retitled `[DONE] [BUG]` issues and `[Bug]` terminal reports never matched, so the audit silently skipped most of its target population.
+- #6618: /learn-from-bugs did not reuse the normalized predicate that #6604 introduced. Its default GitHub search over-selected non-bug issues; 4 of 25 selections in one run were feature or analysis issues, wasting 16 percent of the digest token budget and polluting root-cause clustering. The fix routed selection through the shared `bug_title_match` helper (`python/larch/issue/title_match.py`).
+- #6632: `ARCHITECTURAL_INVARIANTS.md` headings were counted by the /learn-from-bugs coverage indexer under one ID grammar (`INV-*` accepted) and read by the /design invariant reader under another (`I-*` only). An `INV-*` invariant was counted yet functionally dead: recorded, indexed, never surfaced to drafting.
+
+Each fix landed one axis at a time because nothing mechanically prevents a second parser literal. Direct reads on 2026-07-08 confirm the class persists on three further axes (next section).
+
+## Verified current state
+
+Two modules still parse the same two files with independently defined regexes.
+
+Reader (feeds /design and /implement drafting), `python/larch/core/architectural_guidelines.py`:
+
+```python
+_HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
+_INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
+```
+
+Consumed per line by `parse_guideline_entries` and `parse_invariant_entries`, which feed `read_guidelines` / `read_invariants` and the `architectural-guidelines` / `architectural-invariants` CLI verbs.
+
+Coverage indexer (feeds the /learn-from-bugs dedup section), `python/larch/issue/learn_from_bugs.py`:
+
+```python
+_GUIDELINE_ID_RE: Final = re.compile(r"^#{2,4}\s+(G-[A-Za-z0-9]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
+_INVARIANT_ID_RE: Final = re.compile(r"^#{2,4}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
+```
+
+Consumed by `coverage_index()` via `_scan_marked_ids`, producing `GUIDELINES_INDEXED` / `INVARIANTS_INDEXED` and the dedup index that keeps /learn-from-bugs proposals honest.
+
+Three concrete divergence axes:
+
+1. Invariant heading depth: reader accepts `#` through `######`; indexer accepts `##` through `####`. An invariant written at depth 1, 5, or 6 is live policy for drafting but missing from the coverage index.
+2. Guideline heading depth: reader accepts exactly `###`; indexer accepts `##` through `####`. A `## G-...:` or `#### G-...:` heading is counted as coverage but never surfaced to drafting; that is the exact "counted but functionally dead" shape #6632 fixed for `INV-*`.
+3. Guideline area-token charset: reader allows hyphens (`G-[A-Za-z0-9-]+`); indexer forbids them (`G-[A-Za-z0-9]+`). A hyphenated area such as `G-Run-Log-1` would be read but not indexed.
+
+Consequence of any axis: a future /learn-from-bugs run under-counts or over-counts existing coverage, so it can propose a duplicate entry its dedup section should have filtered, or treat a dead heading as real coverage.
+
+## Work items
+
+1. Single-source the heading grammar in `python/larch/core/architectural_guidelines.py`. Promote the two reader regexes to public module constants (suggested names: `GUIDELINE_HEADING_RE`, `INVARIANT_HEADING_RE`), compiled with `re.MULTILINE`. Adding `re.MULTILINE` does not change the reader's per-line `.match` behavior, because lines from `str.splitlines()` contain no newlines; it lets the same compiled object also serve whole-text scanning.
+2. Repoint the indexer. In `python/larch/issue/learn_from_bugs.py`, delete `_GUIDELINE_ID_RE` and `_INVARIANT_ID_RE`; import the shared constants and pass them to `_scan_marked_ids`. Layering is safe: `learn_from_bugs` already imports from `larch.issue.title_match`, and `larch.core` sits below `larch.issue`. Verify with the existing `lint_layering`.
+3. Decide the canonical grammar once, in the constants. Recommendation: keep the reader's current acceptance (guidelines exactly `###` with hyphenated areas allowed; invariants `#{1,6}`), because the reader is the live consumer and every existing entry in both files parses under it. The indexer must count exactly the population the reader reads. Do not widen the reader as part of this issue.
+4. Add a cross-module regression test asserting reader and indexer accept the identical (id, title) set for a fixture containing: headings at depths 1 through 6 for both ID families, a hyphenated guideline area, an `INV-*` heading (must stay rejected, per #6632), and a prose line containing `G-Xx-1:` mid-line (must stay rejected; anchoring).
+5. Add lint `lint_shared_convention_regex` in `python/larch/lint/` (one module, mirroring the structure of `lint_lifecycle_prefix_literal.py` and its test `python/tests/lint/test_lint_lifecycle_prefix_literal.py`). It flags a regex or string literal that encodes a shared repo convention outside that convention's canonical owner module. Initial convention table:
+   - guideline/invariant ID-heading shapes (a pattern containing `G-` or `I-` followed by an ID-and-colon grammar): owner `python/larch/core/architectural_guidelines.py`;
+   - bug-title predicate (a pattern or literal matching the `[BUG]` title-prefix convention): owner `python/larch/issue/title_match.py` (`bug_title_match`, `BUG_TITLE_LIFECYCLE_PREFIXES`);
+   - lifecycle prefixes: already covered by `lint_lifecycle_prefix_literal`; the new lint must skip what that lint already flags rather than double-report.
+6. Scan surface: `python/larch/**/*.py`, excluding `python/tests/`. Suppression: same-line `# lint-shared-convention-regex: ok <reason>`, narrowest scope. Baseline: work items 1 and 2 remove the known violations, so land with an empty baseline and a hard ban. If the lint lands separately from the fix, grandfather the two `learn_from_bugs` regexes in a shrinking reason-bearing baseline per G-Enf-2, mirroring the existing baseline-lint mechanics (`lint_complexity_baseline`).
+
+## Acceptance criteria
+
+- One compiled constant per ID family, defined in `architectural_guidelines.py`, used by both reader and indexer; no other `python/larch` module defines a regex matching those heading shapes.
+- The cross-module fixture test fails if either consumer's accepted population changes unilaterally.
+- `make py-lint` runs the new lint; its unit tests cover a violating fixture, a clean fixture, and a suppressed fixture.
+- Existing behavior preserved: `INV-*` stays rejected everywhere; `bug_title_match` semantics unchanged; every entry currently in `ARCHITECTURAL_GUIDELINES.md` and `ARCHITECTURAL_INVARIANTS.md` parses identically before and after.
+
+## Backing issues
+
+#6604, #6618, #6632 (closed class members). G-Cfg-3 (a convention's writer and its selectors share one constant) and G-Wire-1 state the principle this mechanizes.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Single-source the guideline/invariant ID-heading grammar so the /design reader and the /learn-from-bugs coverage indexer parse the identical (id, title) population.
+- Add a lint that hard-bans a second literal for that grammar and for the `[BUG]` bug-title predicate, so the drift class cannot recur (G-Fix-1, G-Cfg-3).
+
+### Non-goals
+- Do not widen the reader grammar: guidelines stay `###`-only; invariants stay `#{1,6}`; `INV-*` stays rejected everywhere.
+- Do not change `bug_title_match` semantics or the reader's per-line `.match` behavior.
+- Do not re-home or refactor unrelated regexes.
+
+### Approach sketch
+- Promote the two reader regexes in `architectural_guidelines.py` to public constants `GUIDELINE_HEADING_RE` / `INVARIANT_HEADING_RE`, compiled with `re.MULTILINE`.
+- Repoint `learn_from_bugs.py`: delete `_GUIDELINE_ID_RE` / `_INVARIANT_ID_RE`, import the shared constants, pass them to `_scan_marked_ids`.
+- Add one lint module `lint_shared_convention_regex` in `python/larch/lint/`, mirroring `lint_lifecycle_prefix_literal.py`, with an owner-module convention table and same-line suppression; skip what `lint_lifecycle_prefix_literal` already flags.
+- Wire the lint into `make py-lint`; land with an empty baseline and a hard ban.
+
+### Surfaces in scope
+- `python/larch/core/architectural_guidelines.py` (shared constants)
+- `python/larch/issue/learn_from_bugs.py` (repoint indexer)
+- `python/larch/lint/lint_shared_convention_regex.py` (new lint) plus its `make py-lint` wiring
+- Cross-module regression test and lint unit tests under `python/tests/`
+
+### Open questions
+- None.
