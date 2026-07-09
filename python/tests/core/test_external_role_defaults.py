@@ -49,7 +49,7 @@ def test_panel_role_metadata_is_separate() -> None:
         (slot, tool) for slot in ("correctness", "edge-cases", "testing") for tool in ("cursor", "codex")
     }
     generic = next(slot for slot in review_slots if slot.slot == "generalist")
-    deleted_auto_slot: str = "-".join(("plan", "fidelity", "auto"))
+    deleted_auto_slot: str = "plan-fidelity-auto"
     assert not any(slot.slot == deleted_auto_slot for slot in review_slots)
     assert generic.model_role == "default"
     assert generic.agent == "agents/code-reviewer.md"
