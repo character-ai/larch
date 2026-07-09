@@ -315,6 +315,9 @@ def test_pause_save_uses_real_log_publish_path(
         return "issue body\n"
 
     def fake_capture_design_transcript(**_kwargs: object) -> bool:
+        design_tmpdir = getattr(_kwargs.get("ctx"), "design_tmpdir", None)
+        if isinstance(design_tmpdir, Path):
+            _ = (design_tmpdir / "session-transcript.jsonl").write_bytes(b"")
         return True
 
     def fake_spawn_detached_admin_merge(**_kwargs: object) -> None:

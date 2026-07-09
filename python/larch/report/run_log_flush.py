@@ -19,7 +19,7 @@ from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.calibration import difficulty
-from larch.core.proc import Runner
+from larch.core.proc import CommandResult, Runner
 from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.git import pr_body
@@ -639,6 +639,18 @@ def _stage_pre_commit(
             _reconcile_terminal_manifest_from_ctx(ctx)
 
 
+def _refresh_skip_for_commit_result(commit_result: CommandResult) -> RefreshSkip | None:
+    if commit_result.returncode == 0:
+        return None
+    err = (commit_result.stderr or commit_result.stdout or "").strip()
+    reason = (
+        config.REFRESH_SKIP_RUN_LOG_INCOMPLETE
+        if commit_result.returncode == config.RUN_LOG_INCOMPLETE_RC
+        else config.REFRESH_SKIP_COMMIT_FAILED
+    )
+    return RefreshSkip(skipped=True, reason=reason, error=err)
+
+
 def flush_logs_pre(
     *, runner: Runner,
     ctx: RunContext,
@@ -691,13 +703,9 @@ def flush_logs_pre(
             reason=config.REFRESH_SKIP_COMMIT_FAILED,
             error=str(exc).strip(),
         )
-    if commit_result.returncode != 0:
-        err = (commit_result.stderr or commit_result.stdout or "").strip()
-        return RefreshSkip(
-            skipped=True,
-            reason=config.REFRESH_SKIP_COMMIT_FAILED,
-            error=err,
-        )
+    commit_skip = _refresh_skip_for_commit_result(commit_result)
+    if commit_skip is not None:
+        return commit_skip
     if commit_result.argv in {("larch-log-volatile-only",), ("true",)}:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
     return RefreshSkip(skipped=False, reason="")
@@ -1032,6 +1040,22 @@ def _refresh_context(*, tmpdir: Path, state_file: Path, run_id: str) -> RunConte
     )
 
 
+def _emit_flush_failure_warning(result: CommandResult) -> int:
+    if result.returncode == 0:
+        return 0
+    detail = result.stderr.strip()
+    if detail:
+        print(
+            f"WARN: larch-log flush failed: rc={result.returncode}: {detail}",
+            file=sys.stderr,
+        )
+    else:
+        print(f"WARN: larch-log flush failed: rc={result.returncode}", file=sys.stderr)
+    if result.returncode == config.RUN_LOG_INCOMPLETE_RC:
+        return config.RUN_LOG_INCOMPLETE_RC
+    return 0
+
+
 def refresh_run_logs_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py run-log refresh", add_help=False)
     parser.add_argument("--state-file", default="")
@@ -1065,6 +1089,7 @@ def refresh_run_logs_main(argv: list[str]) -> int:
     if skip.skipped:
         if skip.reason in {
             config.REFRESH_SKIP_COMMIT_FAILED,
+            config.REFRESH_SKIP_RUN_LOG_INCOMPLETE,
             REFRESH_SKIP_RECOVERY_FAILED,
         }:
             err = " ".join(skip.error.split())
@@ -1112,21 +1137,14 @@ def larch_log_flush_main(argv: list[str]) -> int:
     try:
         _stage_pre_commit(runner=proc, ctx=ctx, log_root=log_root, cwd=str(Path.cwd()), mode="flush")
         result = _commit_run(log_root=log_root, skill="implement", run_id=run_id, cwd=str(Path.cwd()))
-        if result.returncode != 0:
-            detail = result.stderr.strip()
-            if detail:
-                print(
-                    f"WARN: larch-log flush failed: rc={result.returncode}: {detail}",
-                    file=sys.stderr,
-                )
-            else:
-                print(f"WARN: larch-log flush failed: rc={result.returncode}", file=sys.stderr)
+        flush_rc = _emit_flush_failure_warning(result)
         for line in result.stdout.splitlines():
             if line.startswith("SECRET_SCRUB_VIOLATIONS=") and not line.endswith("=0"):
                 print(
                     "WARN: larch-log flush scrubbed secret-shaped values before commit",
                     file=sys.stderr,
                 )
+        return flush_rc
     except Exception as exc:
         print(f"WARN: larch-log flush failed: {exc}", file=sys.stderr)
     return 0

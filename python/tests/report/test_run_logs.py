@@ -16,6 +16,7 @@ from larch.core import architectural_guidelines
 from larch.core import config
 from larch.report import final_report
 from larch.report import run_logs
+from larch.report import run_log_manifest
 from larch.report import run_log_batch, run_log_commit, run_log_flush
 from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch  # pyright: ignore[reportPrivateUsage]
 from larch.report import timing
@@ -1596,6 +1597,7 @@ def test_commit_run_reports_copy_tree_scrub_count(
     log_root = tmp_path / "larch-logs"
     src = log_root / "implement" / "run-abc"
     src.mkdir(parents=True)
+    _ = (src / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
     _ = (src / "artifact.txt").write_text("clean\n", encoding="utf-8")
 
     def fake_scrub(_directory: Path) -> tuple[int, int]:
@@ -1624,6 +1626,7 @@ def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
     _init_git_repo_on_feature(repo)
     run_dir = repo / "larch-logs" / "design" / "run-abc"
     run_dir.mkdir(parents=True)
+    _ = (run_dir / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
     _ = (run_dir / "artifact.txt").write_text("clean\n", encoding="utf-8")
     _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
@@ -1631,7 +1634,11 @@ def test_commit_run_reports_pre_scrub_count_without_double_counting_same_tree(
     def fail_scrub(_directory: Path) -> tuple[int, int]:
         raise AssertionError("same-tree run-log commit must not re-scrub")
 
+    def noop_update(_manifest: Path) -> None:
+        return None
+
     monkeypatch.setattr(run_logs, "_scrub_run_tree", fail_scrub)
+    monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", noop_update)  # type: ignore[arg-type]
 
     result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
         log_root=repo / "larch-logs",
@@ -2961,6 +2968,158 @@ def test_verify_completeness_bailed_heading_without_pr_number_keeps_bail_skip(
 
     assert run_logs.verify_completeness_main([str(run_dir)]) == 0
     assert "OK" in capsys.readouterr().out
+
+
+def _write_run_manifest(run_dir: Path, *, skill: str, steps_ran: dict[str, object] | None = None) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": skill,
+        "run_id": run_dir.name,
+        "steps_ran": steps_ran or {},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+
+def test_artifact_present_or_waived_matches_implement_capture_warning(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    _write_run_manifest(run_dir, skill="implement")
+    body = "- **Step 7a: session-transcript status=write-failed:** source file disappeared"
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        json.dumps({"category": "Warnings", "body": body}) + "\n",
+        encoding="utf-8",
+    )
+    artifact = run_log_manifest.RequiredArtifact(
+        slug="session-transcript",
+        relative_path="session-transcript.jsonl",
+        skill="implement",
+        condition="step7a",
+    )
+
+    assert run_log_manifest.artifact_present_or_waived(
+        run_dir=run_dir,
+        artifact=artifact,
+        execution_issues_path=run_dir / "execution-issues.ndjson",
+    )
+
+
+def test_artifact_present_or_waived_matches_design_capture_warning(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    _ = (run_dir / "execution-issues.md").write_text(
+        "### Warnings\n- design Step 5c session-transcript write-failed: source file disappeared\n",
+        encoding="utf-8",
+    )
+    artifact = run_log_manifest.RequiredArtifact(
+        slug="session-transcript",
+        relative_path="session-transcript.jsonl",
+        skill="design",
+        condition="design-transcript",
+    )
+
+    assert run_log_manifest.artifact_present_or_waived(
+        run_dir=run_dir,
+        artifact=artifact,
+        execution_issues_path=run_dir / "execution-issues.md",
+    )
+
+
+def test_artifact_present_or_waived_ignores_live_tmpdir_warning(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
+    _write_run_manifest(run_dir, skill="implement")
+    live_issue_log = tmp_path / "execution-issues.md"
+    _ = live_issue_log.write_text(
+        "### Warnings\n- **Step 7a: session-transcript status=write-failed:** source file disappeared\n",
+        encoding="utf-8",
+    )
+    artifact = run_log_manifest.RequiredArtifact(
+        slug="session-transcript",
+        relative_path="session-transcript.jsonl",
+        skill="implement",
+        condition="step7a",
+    )
+
+    assert not run_log_manifest.artifact_present_or_waived(
+        run_dir=run_dir,
+        artifact=artifact,
+        execution_issues_path=live_issue_log,
+    )
+
+
+def test_design_plan_review_round_requires_classification_without_full_review_file(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    round_dir = run_dir / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "findings-classification.tsv").write_text("id\tstatus\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(run_dir=run_dir, skill="design")
+    rows = run_log_manifest.required_artifacts_for_run(
+        run_dir=run_dir,
+        skill="design",
+        manifest=run_log_manifest.Manifest.from_json(json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))),
+    )
+
+    assert ok is True
+    assert missing == []
+    assert "review-findings-full.jsonl" not in {row.relative_path for row in rows}
+    assert "plan-review/round-1/findings-classification.tsv" in {row.relative_path for row in rows}
+
+
+def test_design_plan_review_multi_round_requires_each_classification(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    round1 = run_dir / "plan-review" / "round-1"
+    round2 = run_dir / "plan-review" / "round-2"
+    round1.mkdir(parents=True)
+    round2.mkdir(parents=True)
+    _ = (round1 / "findings-classification.tsv").write_text("id\tstatus\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(run_dir=run_dir, skill="design")
+
+    assert ok is False
+    assert missing == ["plan-review-round-2:plan-review/round-2/findings-classification.tsv"]
+
+
+def test_design_final_summary_requires_session_transcript(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    _ = (run_dir / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(run_dir=run_dir, skill="design")
+
+    assert ok is False
+    assert missing == ["session-transcript:session-transcript.jsonl"]
+
+
+def test_design_publish_transcript_waived_by_committed_execution_issue(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    _ = (run_dir / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _ = (run_dir / "execution-issues.md").write_text(
+        "### Warnings\n- design Step 5c session-transcript write-failed: source file disappeared\n",
+        encoding="utf-8",
+    )
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(run_dir=run_dir, skill="design")
+
+    assert ok is True
+    assert missing == []
+
+
+def test_design_completed_step3_without_plan_review_does_not_reach_round_requirements(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    completed = run_dir / ".completed"
+    completed.mkdir()
+    _ = (completed / "step-3").write_text("", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(run_dir=run_dir, skill="design")
+
+    assert not run_log_manifest._design_plan_review_reached(run_dir)  # pyright: ignore[reportPrivateUsage]
+    assert ok is True
+    assert missing == []
 
 
 def test_refresh_run_logs_main_skips_without_state_file(tmp_path: Path) -> None:

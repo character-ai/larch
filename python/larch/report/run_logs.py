@@ -37,8 +37,6 @@ from larch.core import redact
 from larch.report import design_diagram_log
 from larch.report import tokens
 from larch.errors import ShipError
-from larch.report.run_log_tolerance import terminal_bail_skip_signal
-
 from larch.report.run_log_batch import (
     BatchInfo,
     _APPEND_LOCK_ATTEMPTS,
@@ -103,9 +101,12 @@ from larch.report.run_log_manifest import (
     _issue_number_from_context,
     _manifest_cli_path,
     _manifest_path,
+    _manifest_field,
     _manifest_step9a1_explicitly_ran,
     _manifest_step9a1_explicitly_skipped,
     _manifest_steps_ran_nonempty_without_step9a1,
+    _verify_condition_reached,
+    _verify_has_file,
     _now_utc,
     _parse_manifest_scalar,
     _parse_nonnegative_int,
@@ -191,9 +192,6 @@ from larch.report.run_log_flush import (
     write_final_report_comment,
 )
 
-_TERMINAL_OUTCOME_SUFFIX = re.compile(
-    r"(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?|shipping)$",
-)
 
 
 def _parse_common(*, parser: argparse.ArgumentParser, argv: list[str]) -> argparse.Namespace | None:
@@ -335,180 +333,6 @@ def _resolve_required_files_manifest(raw: str) -> Path:
         msg = "LARCH_VERIFY_MANIFEST resolves outside repository root"
         raise ValueError(msg)
     return candidate
-
-
-def _manifest_field(*, manifest: Manifest, key: str) -> str:
-    value = manifest.reserved.get(key) if key in _V2_RESERVED_KEYS else None
-    if value is None and manifest.extra:
-        value = manifest.extra.get(key)
-    if key == "pr_number":
-        if isinstance(value, bool):
-            return ""
-        if isinstance(value, int):
-            return str(value)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-        return ""
-    if key == "status":
-        return manifest.status
-    return ""
-
-
-def _manifest_steps_ran_empty(manifest: Manifest) -> bool:
-    return len(manifest.steps_ran) == 0
-
-
-def _final_summary_heading_bail_signal(run_dir: Path) -> bool:
-    summary = run_dir / "final-summary.md"
-    if not summary.is_file():
-        return False
-    for line in summary.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.strip():
-            return bool(_TERMINAL_OUTCOME_SUFFIX.search(line.rstrip("\r\n")))
-    return False
-
-
-def _final_summary_bail_signal_without_pr_evidence(
-    *, run_dir: Path,
-    manifest_pr_number: str,
-    manifest_data: Manifest | None = None,
-) -> bool:
-    manifest_obj: object | None = manifest_data.to_json(existing=None) if manifest_data is not None else None
-    if manifest_obj is None and manifest_pr_number.strip().isdigit():
-        manifest_obj = {"pr_number": int(manifest_pr_number)}
-    pr = int(manifest_pr_number) if manifest_pr_number.strip().isdigit() else 0
-    return terminal_bail_skip_signal(run_dir=run_dir, manifest=manifest_obj, pr=pr)
-
-
-def _verify_has_file(*, run_dir: Path, relative_path: str) -> bool:
-    return (run_dir / relative_path).is_file()
-
-
-def _verify_condition_reached(
-    *, condition: str,
-    run_dir: Path,
-    manifest_data: Manifest,
-    manifest_status: str,
-    manifest_pr_number: str,
-    chain: bool = False,
-) -> bool:
-    if condition == "always":
-        return True
-    if condition == "step5":
-        return (
-            _verify_has_file(run_dir=run_dir, relative_path="code-review-tally.json")
-            or _verify_has_file(run_dir=run_dir, relative_path="review-findings-full.jsonl")
-            or _verify_condition_reached(
-                condition="step7a",
-                run_dir=run_dir,
-                manifest_data=manifest_data,
-                manifest_status=manifest_status,
-                manifest_pr_number=manifest_pr_number,
-            )
-        )
-    if condition == "step7a":
-        if (
-            _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_bail_signal_without_pr_evidence(
-                run_dir=run_dir,
-                manifest_pr_number=manifest_pr_number,
-                manifest_data=manifest_data,
-            )
-            and not (
-                _verify_has_file(run_dir=run_dir, relative_path="token-report.json")
-                or _verify_has_file(run_dir=run_dir, relative_path="timing-report.json")
-                or _verify_has_file(run_dir=run_dir, relative_path="execution-issues.ndjson")
-                or _verify_has_file(run_dir=run_dir, relative_path="session-transcript.jsonl")
-            )
-        ):
-            return False
-        return (
-            _verify_has_file(run_dir=run_dir, relative_path="token-report.json")
-            or _verify_has_file(run_dir=run_dir, relative_path="timing-report.json")
-            or _verify_has_file(run_dir=run_dir, relative_path="execution-issues.ndjson")
-            or _verify_has_file(run_dir=run_dir, relative_path="session-transcript.jsonl")
-            or _verify_condition_reached(
-                condition="step8",
-                run_dir=run_dir,
-                manifest_data=manifest_data,
-                manifest_status=manifest_status,
-                manifest_pr_number=manifest_pr_number,
-            )
-        )
-    if condition == "step8":
-        if (
-            _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_bail_signal_without_pr_evidence(
-                run_dir=run_dir,
-                manifest_pr_number=manifest_pr_number,
-                manifest_data=manifest_data,
-            )
-            and not _verify_has_file(run_dir=run_dir, relative_path="version-bump-reasoning.md")
-        ):
-            return False
-        return (
-            _verify_has_file(run_dir=run_dir, relative_path="version-bump-reasoning.md")
-            or _verify_has_file(run_dir=run_dir, relative_path="final-summary.md")
-            or _verify_condition_reached(
-                condition="step9a1",
-                run_dir=run_dir,
-                manifest_data=manifest_data,
-                manifest_status=manifest_status,
-                manifest_pr_number=manifest_pr_number,
-                chain=True,
-            )
-        )
-    if condition == "step9a1":
-        # Intentional divergence from the retired bash verify-completeness, which
-        # OR-ed run-statistics.md / oos-issues.ndjson / PR-number / status=done /
-        # final-summary.md. Step 9a.1 completion is authoritative ONLY via
-        # run-statistics.md plus explicit steps_ran.step9a1 markers (#4427): an
-        # oos-issues.ndjson alone is provisional disposition evidence and must
-        # NOT count, and a steps_ran.step9a1=true without run-statistics.md is a
-        # stale or corrupt marker that must fail the scan. See the "bail-time
-        # steps_ran invariant" in skills/implement/SKILL.md and the asserting
-        # tests test_verify_completeness_stale_step9a1_true_without_stats_fails
-        # and test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only.
-        if _manifest_step9a1_explicitly_skipped(manifest_data):
-            return False
-        if _manifest_step9a1_explicitly_ran(manifest_data):
-            return True
-        if (
-            _manifest_steps_ran_empty(manifest_data)
-            and _final_summary_bail_signal_without_pr_evidence(
-                run_dir=run_dir,
-                manifest_pr_number=manifest_pr_number,
-                manifest_data=manifest_data,
-            )
-            and not _verify_has_file(run_dir=run_dir, relative_path="run-statistics.md")
-        ):
-            return False
-        if (
-            _final_summary_bail_signal_without_pr_evidence(
-                run_dir=run_dir,
-                manifest_pr_number=manifest_pr_number,
-                manifest_data=manifest_data,
-            )
-            and not _verify_has_file(run_dir=run_dir, relative_path="run-statistics.md")
-            and _manifest_steps_ran_nonempty_without_step9a1(manifest_data)
-        ):
-            return False
-        return _verify_has_file(run_dir=run_dir, relative_path="run-statistics.md") if chain else True
-    if condition == "exn-agg-validate-fail":
-        path = run_dir / "execution-issues.ndjson"
-        return path.is_file() and "merged output failed validation" in path.read_text(encoding="utf-8", errors="replace")
-    if condition == "exn-agg-dispatch-fail":
-        path = run_dir / "execution-issues.ndjson"
-        if not path.is_file():
-            return False
-        text = path.read_text(encoding="utf-8", errors="replace")
-        return (
-            "dispatch-with-waterfall exited non-zero" in text
-            or "agent dispatch-waterfall exited non-zero" in text
-            or "DISPATCH_OK=false" in text
-        )
-    msg = f"unsupported manifest condition: {condition}"
-    raise ValueError(msg)
 
 
 def verify_completeness_main(argv: list[str]) -> int:
