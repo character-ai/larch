@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ import pytest
 from larch.core import architectural_guidelines as ag
 from larch.core.proc import CommandResult
 from larch.issue import learn_from_bugs
+from larch.issue.title_match import BUG_PREFIX
 from test_support import RecordingRunner
 
 
@@ -152,24 +154,109 @@ def test_coverage_index_does_not_emit_retired_rule_field(tmp_path: Path) -> None
     assert set(payload) == {"guidelines", "invariants", "python_lints", "script_lints"}
 
 
-@pytest.mark.parametrize(
-    ("heading", "expected_invariants", "expected_reader_lines"),
-    [
-        ("### I-Test-1: Canonical", (("I-Test-1", "Canonical"),), ("### I-Test-1: Canonical",)),
-        ("### INV-Test-1: Noncanonical", (), ()),
-    ],
-)
-def test_coverage_index_invariant_id_grammar_matches_reader(
-    tmp_path: Path,
-    heading: str,
-    expected_invariants: tuple[tuple[str, str], ...],
-    expected_reader_lines: tuple[str, ...],
-) -> None:
-    raw_text: str = f"{heading}\n- Why: Example rationale.\n"
-    (tmp_path / ag.INVARIANTS_FILENAME).write_text(raw_text, encoding="utf-8")
+ARCHITECTURAL_FIXTURE = """# G-Depth-1: Rejected guideline depth 1
+- Why: Example rationale.
 
-    assert learn_from_bugs.coverage_index(tmp_path).invariants == expected_invariants
-    assert tuple(ag.parse_invariant_entries(raw_text).splitlines()[0:1]) == expected_reader_lines
+## G-Depth-2: Rejected guideline depth 2
+- Why: Example rationale.
+
+### G-Run-Log-3: Accepted hyphenated guideline
+- Why: Example rationale.
+- Deviate when: Example carve-out.
+
+#### G-Depth-4: Rejected guideline depth 4
+- Why: Example rationale.
+
+##### G-Depth-5: Rejected guideline depth 5
+- Why: Example rationale.
+
+###### G-Depth-6: Rejected guideline depth 6
+- Why: Example rationale.
+
+# I-Depth-1: Accepted invariant depth 1
+- Why: Example rationale.
+
+## I-Depth-2: Accepted invariant depth 2
+- Why: Example rationale.
+
+### I-Depth-3: Accepted invariant depth 3
+- Why: Example rationale.
+
+#### I-Depth-4: Accepted invariant depth 4
+- Why: Example rationale.
+
+##### I-Depth-5: Accepted invariant depth 5
+- Why: Example rationale.
+
+###### I-Depth-6: Accepted invariant depth 6
+- Why: Example rationale.
+
+### INV-Depth-1: Rejected invariant spelling
+- Why: Example rationale.
+
+Prose reference G-Xx-1: stays prose.
+"""
+
+
+def _reader_population(normalized: str, pattern: re.Pattern[str]) -> tuple[tuple[str, str], ...]:
+    entries: list[tuple[str, str]] = []
+    for block in normalized.split("\n\n"):
+        first_line: str = block.splitlines()[0] if block.splitlines() else ""
+        match: re.Match[str] | None = pattern.match(first_line)
+        if match is not None:
+            entries.append((match.group(1), match.group(2)))
+    return tuple(entries)
+
+
+def _assert_reader_indexer_parity(root: Path, *, guidelines_text: str, invariants_text: str) -> None:
+    expected_guidelines: tuple[tuple[str, str], ...] = tuple(
+        (match.group(1), match.group(2)) for match in ag.GUIDELINE_HEADING_RE.finditer(guidelines_text)
+    )
+    expected_invariants: tuple[tuple[str, str], ...] = tuple(
+        (match.group(1), match.group(2)) for match in ag.INVARIANT_HEADING_RE.finditer(invariants_text)
+    )
+    reader_guidelines: tuple[tuple[str, str], ...] = _reader_population(
+        ag.parse_guideline_entries(guidelines_text), ag.GUIDELINE_HEADING_RE
+    )
+    reader_invariants: tuple[tuple[str, str], ...] = _reader_population(
+        ag.parse_invariant_entries(invariants_text), ag.INVARIANT_HEADING_RE
+    )
+    indexed = learn_from_bugs.coverage_index(root)
+
+    assert indexed.guidelines == expected_guidelines
+    assert indexed.invariants == expected_invariants
+    assert reader_guidelines == expected_guidelines
+    assert reader_invariants == expected_invariants
+
+
+def test_coverage_index_architectural_grammar_matches_reader(tmp_path: Path) -> None:
+    (tmp_path / ag.GUIDELINES_FILENAME).write_text(ARCHITECTURAL_FIXTURE, encoding="utf-8")
+    (tmp_path / ag.INVARIANTS_FILENAME).write_text(ARCHITECTURAL_FIXTURE, encoding="utf-8")
+
+    _assert_reader_indexer_parity(
+        tmp_path, guidelines_text=ARCHITECTURAL_FIXTURE, invariants_text=ARCHITECTURAL_FIXTURE
+    )
+    indexed = learn_from_bugs.coverage_index(tmp_path)
+    all_rows = indexed.guidelines + indexed.invariants
+    assert ("G-Run-Log-3", "Accepted hyphenated guideline") in indexed.guidelines
+    assert ("G-Depth-2", "Rejected guideline depth 2") not in all_rows
+    assert ("G-Depth-4", "Rejected guideline depth 4") not in all_rows
+    assert all(identifier != "INV-Depth-1" for identifier, _title in all_rows)
+    assert all(identifier != "G-Xx-1" for identifier, _title in all_rows)
+
+
+def test_committed_architectural_files_match_reader_and_indexer() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    guidelines_text = (repo_root / ag.GUIDELINES_FILENAME).read_text(encoding="utf-8")
+    invariants_text = (repo_root / ag.INVARIANTS_FILENAME).read_text(encoding="utf-8")
+
+    _assert_reader_indexer_parity(
+        repo_root, guidelines_text=guidelines_text, invariants_text=invariants_text
+    )
+
+
+def test_default_search_uses_shared_bug_prefix() -> None:
+    assert f"{BUG_PREFIX} in:title" == learn_from_bugs.DEFAULT_SEARCH
 
 
 def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
