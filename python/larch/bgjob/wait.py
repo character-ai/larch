@@ -66,14 +66,19 @@ def wait_once(*, tmpdir: Path, step: str, max_wait_s: int, run_id: str | None = 
                 return 0
             daemon_live = registry.daemon_liveness(entry)
             if not daemon_live.live:
-                tail = _log_tail(entry.stderr_log)
-                _print_rows(
-                    [
-                        (config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_DEAD),
-                        ("BGJOB_DIAG", daemon_live.reason),
-                        ("STDERR_TAIL", tail),
-                    ]
-                )
+                # Re-check: daemon may have written result just before exiting.
+                rows = _read_result(result_path)
+                if rows is not None:
+                    _print_rows([(config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_DONE), *rows.items()])
+                else:
+                    tail = _log_tail(entry.stderr_log)
+                    _print_rows(
+                        [
+                            (config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_DEAD),
+                            ("BGJOB_DIAG", daemon_live.reason),
+                            ("STDERR_TAIL", tail),
+                        ]
+                    )
                 return 0
             if time.monotonic() >= deadline:
                 _print_rows([(config.BGJOB_STATUS_KEY, config.BGJOB_STATUS_WAIT), ("ELAPSED_S", str(max_wait_s))])

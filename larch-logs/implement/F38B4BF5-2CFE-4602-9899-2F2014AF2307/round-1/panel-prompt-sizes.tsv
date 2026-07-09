@@ -1,0 +1,5 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	1	dyn-dyn-guideline-parser	specialist	cursor	dyn-dyn-guideline-parser-output.txt	44406	11102	35204	8801	9202	2301		0	0
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	47565	11892	38848	9712	8717	2180	agents/reviewer-testing.md	5764	1441
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	48123	12031	39406	9852	8717	2180	agents/reviewer-edge-cases.md	6297	1575
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	47651	11913	38934	9734	8717	2180	agents/reviewer-correctness.md	5788	1447
