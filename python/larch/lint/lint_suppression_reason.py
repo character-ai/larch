@@ -72,22 +72,32 @@ NOQA_STRICT_RE = re.compile(
     + r"(?P<label>ruff:\s*noqa|noqa)\s*:\s*(?P<codes>[^#;\s][^#;]*?)\s+-\s*(?P<reason>\S.*)$",
     re.IGNORECASE,
 )
+SUPPRESSION_START_RE = re.compile(
+    r"(?:(?:ruff:\s*)?noqa\b(?:\s*:\s*[^#;]+(?:\s+-\s*\S.*)?)?|"
+    r"pylint:\s*(?:disable-next|disable|skip-file)\b(?:\s*=\s*[A-Za-z0-9_,\-\s]+)?(?:\s*#\s*\S.*)?|"
+    r"type:\s*ignore\[[^\]\s][^\]]*\](?:\s*#\s*\S.*)?|"
+    r"pyright:\s*ignore\[[^\]\s][^\]]*\](?:\s*#\s*\S.*)?|"
+    r"pyright:\s*report[A-Za-z0-9_]+\s*=\s*false(?:\s*,\s*report[A-Za-z0-9_]+\s*=\s*false)*(?:\s*#\s*\S.*)?)$",
+    re.IGNORECASE,
+)
 PYLINT_FAMILY_RE = re.compile(
     SUPPRESSION_PREFIX + r"pylint:\s*(?P<action>disable-next|disable|skip-file)\b",
     re.IGNORECASE,
 )
 PYLINT_STRICT_RE = re.compile(
-    SUPPRESSION_PREFIX + r"pylint:\s*(?P<action>disable-next|disable|skip-file)\b(?P<tail>[^#;]*)$",
+    SUPPRESSION_PREFIX
+    + r"pylint:\s*(?P<action>disable-next|disable|skip-file)\b(?P<tail>[^;#]*?)"
+    + r"(?:\s*#\s*(?P<reason>.*))?$",
     re.IGNORECASE,
 )
 TYPE_IGNORE_FAMILY_RE = re.compile(SUPPRESSION_PREFIX + r"type:\s*ignore\b", re.IGNORECASE)
 TYPE_IGNORE_STRICT_RE = re.compile(
-    SUPPRESSION_PREFIX + r"type:\s*ignore\[(?P<codes>[^\]\s][^\]]*)\]\s*$",
+    SUPPRESSION_PREFIX + r"type:\s*ignore\[(?P<codes>[^\]\s][^\]]*)\]\s*(?:#\s*(?P<reason>.*))?$",
     re.IGNORECASE,
 )
 PYRIGHT_IGNORE_FAMILY_RE = re.compile(SUPPRESSION_PREFIX + r"pyright:\s*ignore\b", re.IGNORECASE)
 PYRIGHT_IGNORE_STRICT_RE = re.compile(
-    SUPPRESSION_PREFIX + r"pyright:\s*ignore\[(?P<rules>[^\]\s][^\]]*)\]\s*$",
+    SUPPRESSION_PREFIX + r"pyright:\s*ignore\[(?P<rules>[^\]\s][^\]]*)\]\s*(?:#\s*(?P<reason>.*))?$",
     re.IGNORECASE,
 )
 PYRIGHT_REPORT_FAMILY_RE = re.compile(
@@ -95,7 +105,7 @@ PYRIGHT_REPORT_FAMILY_RE = re.compile(
     re.IGNORECASE,
 )
 PYRIGHT_REPORT_STRICT_RE = re.compile(
-    SUPPRESSION_PREFIX + r"pyright:\s*report[A-Za-z0-9_]+\s*=\s*false\s*$",
+    SUPPRESSION_PREFIX + r"pyright:\s*report[A-Za-z0-9_]+\s*=\s*false\s*(?:#\s*(?P<reason>.*))?$",
     re.IGNORECASE,
 )
 REASON_SUPPRESSION_PREFIX_RE = re.compile(
@@ -117,11 +127,6 @@ class Record(TypedDict):
 
 class BaselineError(ValueError):
     """Raised when the source tree or baseline cannot be trusted."""
-
-
-@dataclass(frozen=True)
-class Segment:
-    text: str
 
 
 @dataclass(frozen=True)
@@ -147,7 +152,6 @@ class Finding:
 class SegmentMatch:
     suppression_kind: str
     strict: bool
-    needs_following_reason: bool
     matched_text: str
     reason: str | None = None
 
@@ -220,8 +224,53 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", stripped)
 
 
-def _comment_segments(comment: str) -> list[Segment]:
-    return [Segment(text=part.strip()) for part in comment.split("#")[1:]]
+def _comment_segments(comment: str) -> list[str]:
+    body: str = comment.lstrip("#").lstrip()
+    segments: list[str] = []
+    start = 0
+    index = 0
+    while index < len(body):
+        char = body[index]
+        if char == ";":
+            segment = body[start:index].strip()
+            if segment:
+                segments.append(segment)
+            start = index + 1
+            index += 1
+            continue
+        if char == "#":
+            reason_tail: str = body[index + 1 :].lstrip()
+            if SUPPRESSION_START_RE.match(reason_tail) is not None:
+                segment = body[start:index].strip()
+                if segment:
+                    segments.append(segment)
+                start = index + 1
+                index += 1
+                continue
+        index += 1
+    segment = body[start:].strip()
+    if segment:
+        segments.append(segment)
+    return segments
+
+
+def _pyright_report_segments(segment: str) -> list[str]:
+    if PYRIGHT_REPORT_FAMILY_RE.search(segment) is None or "," not in segment:
+        return [segment]
+    head, _, tail = segment.partition("#")
+    parts = [
+        part.strip()
+        for part in re.split(r",\s*(?=report[A-Za-z0-9_]+\s*=\s*false\b)", head, flags=re.IGNORECASE)
+        if part.strip()
+    ]
+    if len(parts) <= 1 or not parts[0].lower().startswith("pyright:"):
+        return [segment]
+    normalized: list[str] = [parts[0]]
+    for part in parts[1:]:
+        normalized.append(part if part.lower().startswith("pyright:") else f"pyright: {part}")
+    if tail:
+        normalized[-1] = f"{normalized[-1]}  # {tail.strip()}"
+    return normalized
 
 
 def _has_reason_text(text: str | None) -> bool:
@@ -260,14 +309,12 @@ def _match_noqa(segment: str) -> SegmentMatch | None:
         return SegmentMatch(
             suppression_kind=suppression_kind,
             strict=False,
-            needs_following_reason=False,
             matched_text=_normalize_text(segment[family_match.start() :]),
         )
     reason: str = strict_match.group("reason")
     return SegmentMatch(
         suppression_kind=_kind_for_noqa(strict_match.group("label")),
         strict=_has_reason_text(reason),
-        needs_following_reason=False,
         matched_text=_normalize_text(segment[strict_match.start() :]),
         reason=reason,
     )
@@ -280,7 +327,7 @@ def _pylint_tail_has_checks(action: str, tail: str) -> bool:
     return tail_match is not None
 
 
-def _match_pylint(segment: str, *, following_reason: str | None) -> SegmentMatch | None:
+def _match_pylint(segment: str) -> SegmentMatch | None:
     family_match: re.Match[str] | None = PYLINT_FAMILY_RE.search(segment)
     if family_match is None:
         return None
@@ -291,15 +338,13 @@ def _match_pylint(segment: str, *, following_reason: str | None) -> SegmentMatch
         return SegmentMatch(
             suppression_kind=suppression_kind,
             strict=False,
-            needs_following_reason=True,
             matched_text=_normalize_text(segment[family_match.start() :]),
         )
     return SegmentMatch(
         suppression_kind=suppression_kind,
-        strict=_has_reason_text(following_reason),
-        needs_following_reason=True,
+        strict=_has_reason_text(cast("str | None", strict_match.groupdict().get("reason"))),
         matched_text=_normalize_text(segment[strict_match.start() :]),
-        reason=following_reason,
+        reason=cast("str | None", strict_match.groupdict().get("reason")),
     )
 
 
@@ -308,7 +353,6 @@ def _match_following_reason_suppression(
     *,
     family_re: Pattern[str],
     strict_re: Pattern[str],
-    following_reason: str | None,
     suppression_kind: str,
 ) -> SegmentMatch | None:
     family_match: re.Match[str] | None = family_re.search(segment)
@@ -319,41 +363,37 @@ def _match_following_reason_suppression(
         return SegmentMatch(
             suppression_kind=suppression_kind,
             strict=False,
-            needs_following_reason=True,
             matched_text=_normalize_text(segment[family_match.start() :]),
         )
+    reason: str | None = cast("str | None", strict_match.groupdict().get("reason"))
     return SegmentMatch(
         suppression_kind=suppression_kind,
-        strict=_has_reason_text(following_reason),
-        needs_following_reason=True,
+        strict=_has_reason_text(reason),
         matched_text=_normalize_text(segment[strict_match.start() :]),
-        reason=following_reason,
+        reason=reason,
     )
 
 
-def _match_segment(segment: str, *, following_reason: str | None) -> SegmentMatch | None:
+def _match_segment(segment: str) -> SegmentMatch | None:
     for match in (
         _match_noqa(segment),
-        _match_pylint(segment, following_reason=following_reason),
+        _match_pylint(segment),
         _match_following_reason_suppression(
             segment,
             family_re=TYPE_IGNORE_FAMILY_RE,
             strict_re=TYPE_IGNORE_STRICT_RE,
-            following_reason=following_reason,
             suppression_kind=KIND_TYPE_IGNORE,
         ),
         _match_following_reason_suppression(
             segment,
             family_re=PYRIGHT_IGNORE_FAMILY_RE,
             strict_re=PYRIGHT_IGNORE_STRICT_RE,
-            following_reason=following_reason,
             suppression_kind=KIND_PYRIGHT_IGNORE,
         ),
         _match_following_reason_suppression(
             segment,
             family_re=PYRIGHT_REPORT_FAMILY_RE,
             strict_re=PYRIGHT_REPORT_STRICT_RE,
-            following_reason=following_reason,
             suppression_kind=KIND_PYRIGHT_REPORT,
         ),
     ):
@@ -364,15 +404,11 @@ def _match_segment(segment: str, *, following_reason: str | None) -> SegmentMatc
 
 def _scan_comment(comment: str, *, lineno: int) -> list[FindingDraft]:
     findings: list[FindingDraft] = []
-    segments: list[Segment] = _comment_segments(comment)
-    index = 0
-    while index < len(segments):
-        following_reason: str | None = segments[index + 1].text if index + 1 < len(segments) else None
-        match: SegmentMatch | None = _match_segment(segments[index].text, following_reason=following_reason)
-        if match is None:
-            index += 1
-            continue
-        if not match.strict:
+    for segment in _comment_segments(comment):
+        for candidate in _pyright_report_segments(segment):
+            match: SegmentMatch | None = _match_segment(candidate)
+            if match is None or match.strict:
+                continue
             findings.append(
                 FindingDraft(
                     suppression_kind=match.suppression_kind,
@@ -380,9 +416,6 @@ def _scan_comment(comment: str, *, lineno: int) -> list[FindingDraft]:
                     lineno=lineno,
                 )
             )
-            index += 1
-            continue
-        index += 2 if match.needs_following_reason else 1
     return findings
 
 
@@ -522,9 +555,10 @@ def _records_for_write(
     initial_reason: str | None,
 ) -> list[Record]:
     preserved: dict[tuple[str, str, str, int], str] = {}
-    if baseline_path.is_file():
+    has_baseline = baseline_path.is_file()
+    if has_baseline:
         preserved = {_record_key(record): record["reason"] for record in load_baseline(baseline_path)}
-    reason_default: str | None = initial_reason.strip() if initial_reason is not None else None
+    reason_default: str | None = initial_reason.strip() if initial_reason is not None and not has_baseline else None
     records: list[Record] = []
     missing: list[str] = []
     for finding in sorted(findings, key=_finding_sort_key):
@@ -566,7 +600,11 @@ def _run_write(
     except BaselineError as exc:
         print(f"lint-suppression-reason: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
-    _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
+    try:
+        _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
+    except OSError as exc:
+        print(f"lint-suppression-reason: {baseline_path}: cannot write baseline: {exc}", file=sys.stderr)
+        return TOOL_FAILURE_EXIT
     print(f"lint-suppression-reason: wrote {len(records)} records to {baseline_path}", file=sys.stderr)
     return 0
 

@@ -152,6 +152,47 @@ def test_chained_suppressions_pass_with_individual_reasons(tmp_path: Path) -> No
     assert findings == []
 
 
+def test_semicolon_delimited_comment_scans_later_suppressions(tmp_path: Path) -> None:
+    assert _scan_comment(
+        tmp_path,
+        "# formatter note; noqa; pyright: ignore[reportPrivateUsage]",
+    ) == [
+        lsr.Finding("larch/mod.py", lsr.KIND_NOQA, "noqa", 1, 3),
+        lsr.Finding(
+            "larch/mod.py",
+            lsr.KIND_PYRIGHT_IGNORE,
+            "pyright: ignore[reportPrivateUsage]",
+            1,
+            3,
+        ),
+    ]
+
+
+def test_embedded_hash_reason_keeps_later_suppression(tmp_path: Path) -> None:
+    assert _scan_comment(
+        tmp_path,
+        "# pylint: disable=unused-argument  # protocol shape # hash note # pyright: ignore[reportPrivateUsage]",
+    ) == [
+        lsr.Finding(
+            "larch/mod.py",
+            lsr.KIND_PYRIGHT_IGNORE,
+            "pyright: ignore[reportPrivateUsage]",
+            1,
+            3,
+        )
+    ]
+
+
+def test_comma_separated_pyright_report_clauses_are_scanned_individually(tmp_path: Path) -> None:
+    assert _scan_comment(
+        tmp_path,
+        "# pyright: reportMissingImports=false, reportPrivateUsage=false",
+    ) == [
+        lsr.Finding("larch/mod.py", lsr.KIND_PYRIGHT_REPORT, "pyright: reportMissingImports=false", 1, 3),
+        lsr.Finding("larch/mod.py", lsr.KIND_PYRIGHT_REPORT, "pyright: reportPrivateUsage=false", 1, 3),
+    ]
+
+
 def test_plain_comments_containing_suppression_words_are_ignored(tmp_path: Path) -> None:
     assert _scan_comment(tmp_path, "# this comment explains why noqa exists") == []
 
@@ -279,6 +320,16 @@ def test_routine_write_fails_when_new_live_finding_lacks_preserved_reason(tmp_pa
     assert lsr.main(["--root", str(tmp_path), "--write"]) == 2
 
 
+def test_routine_write_initial_reason_does_not_seed_existing_baseline(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/mod.py": _module("# noqa\nVALUE2 = 2  # type: ignore")},
+        baseline=[_record()],
+    )
+
+    assert lsr.main(["--root", str(tmp_path), "--write", "--initial-reason", "bootstrap"]) == 2
+
+
 def test_write_preserves_reasons_and_shrinks_obsolete_rows(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
@@ -312,3 +363,12 @@ def test_tokenization_error_exits_2(tmp_path: Path, capsys: pytest.CaptureFixtur
 
     assert lsr.main(["--root", str(tmp_path)]) == 2
     assert "cannot tokenize source" in capsys.readouterr().err
+
+
+def test_write_errors_are_reported_as_baseline_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(tmp_path, files={"larch/mod.py": "VALUE = 1\n"}, baseline=None)
+    baseline_path = tmp_path / "python" / lsr.BASELINE_FILENAME
+    baseline_path.mkdir()
+
+    assert lsr.main(["--root", str(tmp_path), "--write"]) == 2
+    assert "cannot write baseline" in capsys.readouterr().err
