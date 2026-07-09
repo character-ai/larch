@@ -2268,7 +2268,7 @@ def test_ship_pre_driver_validates_scope_before_seeding_and_halts_for_missing_di
         calls.append(argv)
         if argv == ["implement", "step-8-python-guard"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
-        pytest.fail(f"unexpected CLI call: {argv}")
+        return pytest.fail(f"unexpected CLI call: {argv}")
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
@@ -2305,7 +2305,7 @@ def test_ship_pre_driver_scope_validation_hard_failure_stays_tool_failure(
         calls.append(argv)
         if argv == ["implement", "step-8-python-guard"]:
             return subprocess.CompletedProcess(argv, 0, "", "")
-        pytest.fail(f"unexpected CLI call: {argv}")
+        return pytest.fail(f"unexpected CLI call: {argv}")
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
     monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
