@@ -17,6 +17,7 @@ import json
 import os
 import random
 import re
+import secrets
 import sys
 import time
 from collections import OrderedDict
@@ -40,6 +41,10 @@ DEEP_VERDICTS: Final = set(config.ANALYZE_BUGS_DEEP_VERDICTS)
 MECHANICAL_VERDICTS: Final = {"NOT_FIXED", "WONTFIX", "NEEDS_DEEP"}
 TERMINAL_FOLLOWUP_VERDICTS: Final = {"NOT_FIXED", "INCOMPLETE", "REGRESSED"}
 PLAN_MALFORMED_REASON: Final = "malformed larch:plan block"
+EVIDENCE_TOKEN_LABEL: Final = "evidence_token"
+EVIDENCE_TOKEN_PATTERN: Final = re.compile(r"^evidence_token: (\S+)$")
+EVIDENCE_TOKEN_SCAN_LINES: Final = 20
+LEGACY_TRIAGE_WARN_LIMIT: Final = 20
 
 
 @dataclass(frozen=True)
@@ -108,6 +113,7 @@ class LedgerRecord:
     triage_reason: str = ""
     triage_missing_items: tuple[str, ...] = ()
     triage_needs_deep: bool = False
+    triage_evidence_verified: bool = False
     deep_verdict: str = ""
     deep_reason: str = ""
     sampled: bool = False
@@ -122,6 +128,7 @@ class TriageIngest:
     missing_items: tuple[str, ...]
     reason: str
     needs_deep: bool
+    evidence_token: str
 
 
 @dataclass(frozen=True)
@@ -129,6 +136,12 @@ class DeepIngest:
     issue: int
     verdict: str
     reason: str
+
+
+@dataclass(frozen=True)
+class EvidenceTokenLookup:
+    token: str = ""
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -552,6 +565,15 @@ def _capped(text: str, cap: int) -> str:
     return text[:cap] + f"\n\n[content truncated to {cap} characters]\n"
 
 
+def _extract_evidence_token(bundle_text: str) -> str | None:
+    """Return the canonical bundle evidence token when present near the top."""
+    for line in bundle_text.splitlines()[:EVIDENCE_TOKEN_SCAN_LINES]:
+        match = EVIDENCE_TOKEN_PATTERN.fullmatch(line)
+        if match:
+            return match.group(1)
+    return None
+
+
 def build_bundle_record(
     *,
     runner: Runner,
@@ -580,10 +602,12 @@ def build_bundle_record(
     bundle_path = run_dir / f"issue-{issue.number}-bundle.md"
     diff = _git_stdout(runner, ["git", "show", "--unified=1", "--format=medium", fix.fix_sha]) if fix.fix_sha else ""
     revert_scan = _git_stdout(runner, ["git", "log", f"{fix.fix_sha}..{evidence_ref}", "--regexp-ignore-case", "--grep", "revert", "--format=%H:%s", "--", *touched]) if fix.fix_sha and touched else ""
+    evidence_token = secrets.token_hex(16)
     _atomic_write_text(body_path, _capped(stripped_body, body_cap))
     bundle = "\n".join(
         [
             f"# Bug #{issue.number}: {issue.title}",
+            f"{EVIDENCE_TOKEN_LABEL}: {evidence_token}",
             "",
             f"URL: {issue.url}",
             f"State: {issue.state} {issue.state_reason}".rstrip(),
@@ -759,6 +783,7 @@ def _ledger_record_from_mapping(raw: Mapping[str, Any]) -> LedgerRecord | None:
         triage_reason=str(raw.get("triage_reason") or ""),
         triage_missing_items=missing,
         triage_needs_deep=bool(raw.get("triage_needs_deep", False)),
+        triage_evidence_verified=bool(raw.get("triage_evidence_verified", False)),
         deep_verdict=str(raw.get("deep_verdict") or ""),
         deep_reason=str(raw.get("deep_reason") or ""),
         sampled=bool(raw.get("sampled", False)),
@@ -807,6 +832,29 @@ def _complete(record: LedgerRecord | None, stage: str, *, refresh: bool) -> bool
     return stage in record.stages_complete
 
 
+def _triage_complete(record: LedgerRecord | None, *, refresh: bool) -> bool:
+    if refresh or record is None:
+        return False
+    return "triage" in record.stages_complete and record.triage_evidence_verified
+
+
+def _unverified_legacy_triage_issues(*, bundles: Sequence[BundleRecord], ledger: Mapping[str, LedgerRecord]) -> list[int]:
+    issues: list[int] = []
+    for bundle in bundles:
+        record = _record_for_bundle(ledger, bundle)
+        if record and "triage" in record.stages_complete and not record.triage_evidence_verified:
+            issues.append(bundle.issue_number)
+    return sorted(set(issues))
+
+
+def _warn_unverified_legacy_triage(issues: Sequence[int]) -> None:
+    if not issues:
+        return
+    shown = ",".join(str(issue) for issue in issues[:LEGACY_TRIAGE_WARN_LIMIT])
+    suffix = f" (+{len(issues) - LEGACY_TRIAGE_WARN_LIMIT} more)" if len(issues) > LEGACY_TRIAGE_WARN_LIMIT else ""
+    print(f"WARN: ignoring unverified legacy triage rows for issues: {shown}{suffix}", file=sys.stderr)
+
+
 def _write_triage_batches(run_dir: Path, bundles: Sequence[BundleRecord], *, batch_size: int) -> tuple[str, ...]:
     for path in run_dir.glob("triage-pending-*.jsonl"):
         with contextlib.suppress(OSError):
@@ -837,9 +885,9 @@ def _priority_deep_candidates(
         if bundle.mechanical_verdict == "NEEDS_DEEP":
             by_priority.append((0, bundle, record, "mechanical"))
             continue
-        if record and record.triage_verdict == "SUSPECT":
+        if _triage_complete(record, refresh=refresh) and record and record.triage_verdict == "SUSPECT":
             by_priority.append((1, bundle, record, "triage"))
-        elif record and (record.triage_verdict == "NEEDS_DEEP" or record.triage_needs_deep):
+        elif _triage_complete(record, refresh=refresh) and record and (record.triage_verdict == "NEEDS_DEEP" or record.triage_needs_deep):
             by_priority.append((2, bundle, record, "triage"))
     seen: set[int] = set()
     for _priority, bundle, record, source in sorted(by_priority, key=lambda item: (item[0], item[1].issue_number)):
@@ -854,7 +902,7 @@ def _priority_deep_candidates(
             if bundle.issue_number in seen:
                 continue
             record = _record_for_bundle(ledger, bundle)
-            if not record or record.triage_verdict not in {"FIXED_CLEAR", "FIXED_LIKELY"}:
+            if not _triage_complete(record, refresh=refresh) or not record or record.triage_verdict not in {"FIXED_CLEAR", "FIXED_LIKELY"}:
                 continue
             if bundle.fix_sha and _complete(record, "deep", refresh=refresh):
                 continue
@@ -914,6 +962,7 @@ def _upsert_record(base: LedgerRecord | None, bundle: BundleRecord, *, triage: T
     triage_reason = base.triage_reason if base else ""
     triage_missing = base.triage_missing_items if base else ()
     triage_needs_deep = base.triage_needs_deep if base else False
+    triage_evidence_verified = base.triage_evidence_verified if base else False
     deep_verdict = base.deep_verdict if base else ""
     deep_reason = base.deep_reason if base else ""
     sampled_value = base.sampled if base else False
@@ -923,6 +972,7 @@ def _upsert_record(base: LedgerRecord | None, bundle: BundleRecord, *, triage: T
         triage_reason = triage.reason
         triage_missing = triage.missing_items
         triage_needs_deep = triage.needs_deep
+        triage_evidence_verified = True
         stages.discard("deep")
         deep_verdict = ""
         deep_reason = ""
@@ -941,6 +991,7 @@ def _upsert_record(base: LedgerRecord | None, bundle: BundleRecord, *, triage: T
         triage_reason=triage_reason,
         triage_missing_items=triage_missing,
         triage_needs_deep=triage_needs_deep,
+        triage_evidence_verified=triage_evidence_verified,
         deep_verdict=deep_verdict,
         deep_reason=deep_reason,
         sampled=sampled_value,
@@ -967,7 +1018,9 @@ def ledger_compute(
     _manifest, bundles = _load_manifest(manifest_path)
     ledger, corrupt_count = load_ledger(ledger_path)
     task_model, rate_model = _validate_deep_model(deep_model)
-    pending_triage = [bundle for bundle in bundles if bundle.fix_sha and not bundle.mechanical_verdict and not _complete(_record_for_bundle(ledger, bundle), "triage", refresh=refresh)]
+    unverified_legacy_issues = _unverified_legacy_triage_issues(bundles=bundles, ledger=ledger)
+    _warn_unverified_legacy_triage(unverified_legacy_issues)
+    pending_triage = [bundle for bundle in bundles if bundle.fix_sha and not bundle.mechanical_verdict and not _triage_complete(_record_for_bundle(ledger, bundle), refresh=refresh)]
     triage_paths = _write_triage_batches(run_dir, pending_triage, batch_size=batch_size)
     candidates = _priority_deep_candidates(bundles=bundles, ledger=ledger, sample=sample, refresh=refresh)
     truncated = candidates[deep_max:] if deep_max >= 0 else []
@@ -996,7 +1049,7 @@ def _strict_keys(raw: Mapping[str, Any], allowed: set[str]) -> bool:
 
 
 def _parse_triage_row(raw: Mapping[str, Any]) -> TriageIngest | str:
-    if not _strict_keys(raw, {"issue", "verdict", "missing_items", "reason", "needs_deep"}):
+    if not _strict_keys(raw, {"issue", "verdict", "missing_items", "reason", "needs_deep", "evidence_token"}):
         return "triage row has unexpected or missing fields"
     issue = raw.get("issue")
     if isinstance(issue, bool) or not isinstance(issue, int) or issue <= 0:
@@ -1013,7 +1066,10 @@ def _parse_triage_row(raw: Mapping[str, Any]) -> TriageIngest | str:
     needs_deep = raw.get("needs_deep")
     if not isinstance(needs_deep, bool):
         return "triage needs_deep must be boolean"
-    return TriageIngest(issue=issue, verdict=verdict, missing_items=tuple(missing), reason=reason, needs_deep=needs_deep)
+    evidence_token = raw.get("evidence_token")
+    if not isinstance(evidence_token, str) or not evidence_token:
+        return "triage evidence_token must be a non-empty string"
+    return TriageIngest(issue=issue, verdict=verdict, missing_items=tuple(missing), reason=reason, needs_deep=needs_deep, evidence_token=evidence_token)
 
 
 def _parse_deep_row(raw: Mapping[str, Any]) -> DeepIngest | str:
@@ -1029,6 +1085,26 @@ def _parse_deep_row(raw: Mapping[str, Any]) -> DeepIngest | str:
     if not isinstance(reason, str):
         return "deep reason must be a string"
     return DeepIngest(issue=issue, verdict=verdict, reason=reason)
+
+
+def _triage_evidence_token_for_bundle(bundle: BundleRecord) -> EvidenceTokenLookup:
+    try:
+        bundle_text = Path(bundle.bundle_path).read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return EvidenceTokenLookup(error=f"bundle unreadable: {exc}")
+    token = _extract_evidence_token(bundle_text)
+    if token is None:
+        return EvidenceTokenLookup(error="bundle lacks evidence_token line")
+    return EvidenceTokenLookup(token=token)
+
+
+def _validate_triage_evidence_token(parsed: TriageIngest, bundle: BundleRecord) -> str:
+    expected = _triage_evidence_token_for_bundle(bundle)
+    if expected.error:
+        return expected.error
+    if parsed.evidence_token != expected.token:
+        return "triage evidence_token did not match bundle"
+    return ""
 
 
 def _sampled_lookup(run_dir: Path) -> set[int]:
@@ -1104,6 +1180,11 @@ def ledger_ingest(*, run_dir: Path, ledger_path: Path, manifest_path: Path, tria
             continue
         base = ledger.get(bundle.cache_key)
         if isinstance(parsed, TriageIngest):
+            evidence_error = _validate_triage_evidence_token(parsed, bundle)
+            if evidence_error:
+                print(f"WARN: rejected line {lineno}: {evidence_error}", file=sys.stderr)
+                rejected += 1
+                continue
             record = _upsert_record(base, bundle, triage=parsed)
         else:
             record = _upsert_record(base, bundle, deep=parsed, sampled=parsed.issue in sampled_issues)
@@ -1148,7 +1229,7 @@ def _final_verdict(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[s
         return bundle.mechanical_verdict, bundle.mechanical_reason, (), False
     if record and record.deep_verdict:
         return record.deep_verdict, record.deep_reason, (), record.sampled
-    if record and record.triage_verdict:
+    if _triage_complete(record, refresh=False) and record and record.triage_verdict:
         if record.triage_verdict in {"SUSPECT", "NEEDS_DEEP"} or record.triage_needs_deep:
             return "NEEDS_DEEP", record.triage_reason, record.triage_missing_items, record.sampled
         return record.triage_verdict, record.triage_reason, record.triage_missing_items, record.sampled

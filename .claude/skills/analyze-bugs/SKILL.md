@@ -71,7 +71,11 @@ LEDGER_OUT=$(python3 "$PWD/python/cli.py" analyze-bugs ledger \
 
 Read `TRIAGE_BATCH_PATHS`, `DEEP_QUEUE_PATH`, `DEEP_MODEL`, and `DEEP_RATE_MODEL` from whole-line KVs. Python validates the deep-model alias before any Task spend.
 
-For each triage batch path, launch `bug-fix-triage` with the file path and inline the capped bundle markdowns referenced by that batch into the Task prompt. Do not rely on the triage task having a `Read` tool. Save the agent JSONL output under `$RUN_DIR/triage-results-N.jsonl`.
+For each triage batch path, launch `bug-fix-triage` with only that batch path plus instructions to read the batch file and then read each `bundle_path` listed in it. The triage batch JSONL must not include `evidence_token`.
+
+Do not pass `MANIFEST_PATH`, manifest JSON, bundle markdown bodies, `bundle_path` lists copied from the batch, or any `evidence_token` values in the Task prompt. Do not Read manifest or bundle files during triage dispatch. Only the triage agent may obtain tokens by reading bundle files.
+
+Save the agent JSONL output under `$RUN_DIR/triage-results-N.jsonl`. `analyze-bugs ledger --ingest-triage` rejects rows with missing or mismatched `evidence_token` values by parsing the canonical `evidence_token: <token>` line from each bundle markdown file on disk.
 
 Ingest each triage result:
 
