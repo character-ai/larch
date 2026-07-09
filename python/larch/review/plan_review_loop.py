@@ -459,6 +459,8 @@ def _step3_clear_downstream_sentinels(tmpdir: Path) -> None:
         ".completed/step-3b",
         ".completed/step-4",
         ".completed/step-4b",
+        "bgjob/design-step3-review.result.env",
+        "bgjob/design-step4-tail.result.env",
     ):
         (tmpdir / rel).unlink(missing_ok=True)
     for path in tmpdir.glob(".gate-b-postapply-ready-*"):

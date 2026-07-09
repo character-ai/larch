@@ -718,12 +718,26 @@ def test_step3_state_non_numeric_round_count_falls_back_to_zero(tmp_path: Path) 
 
 def _seed_step3_downstream(tmp_path: Path) -> None:
     completed = tmp_path / ".completed"
+    bgjob = tmp_path / "bgjob"
     completed.mkdir(parents=True, exist_ok=True)
+    bgjob.mkdir(parents=True, exist_ok=True)
     for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
         (completed / name).touch()
+    _ = (bgjob / "design-step3-review.result.env").write_text("BGJOB_RC=0\nNEXT_ACTION=step3b\n", encoding="utf-8")
+    _ = (bgjob / "design-step4-tail.result.env").write_text(
+        "BGJOB_RC=0\nSKIP_APPROVE_REQUESTED_GATEC=false\n",
+        encoding="utf-8",
+    )
     (tmp_path / ".step3-terminal-persisted-this-run").touch()
     (tmp_path / ".gate-b-postapply-ready-1").touch()
     (tmp_path / ".gate-b-postapply-ready-2").touch()
+
+
+def _step3_bgjob_result_envs(tmp_path: Path) -> tuple[Path, Path]:
+    return (
+        tmp_path / "bgjob" / "design-step3-review.result.env",
+        tmp_path / "bgjob" / "design-step4-tail.result.env",
+    )
 
 
 def test_step3_state_direct_review_entry_noop_without_reentry(tmp_path: Path) -> None:
@@ -736,6 +750,8 @@ def test_step3_state_direct_review_entry_noop_without_reentry(tmp_path: Path) ->
     assert (tmp_path / ".completed" / "step-3").is_file()
     assert (tmp_path / ".completed" / "step-3-terminal").is_file()
     assert (tmp_path / ".gate-b-postapply-ready-1").is_file()
+    for result_env in _step3_bgjob_result_envs(tmp_path):
+        assert result_env.is_file()
 
 
 def test_step3_state_direct_review_entry_clears_restores_and_consumes(tmp_path: Path) -> None:
@@ -763,6 +779,8 @@ def test_step3_state_direct_review_entry_clears_restores_and_consumes(tmp_path: 
     assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
     assert not (tmp_path / ".gate-b-postapply-ready-1").exists()
     assert not (tmp_path / ".gate-b-postapply-ready-2").exists()
+    for result_env in _step3_bgjob_result_envs(tmp_path):
+        assert not result_env.exists()
     # Upstream package restored.
     for name in ("step-1e", "step-2a", "step-2b", "step-2b.5"):
         assert (tmp_path / ".completed" / name).is_file()
@@ -790,6 +808,8 @@ def test_step3_state_pause_hygiene_clears_but_preserves_findings_and_reentry(tmp
     # Clears downstream and restores upstream, same as direct-review-entry.
     assert not (tmp_path / ".completed" / "step-3").exists()
     assert not (tmp_path / ".step3-terminal-persisted-this-run").exists()
+    for result_env in _step3_bgjob_result_envs(tmp_path):
+        assert not result_env.exists()
     for name in ("step-1e", "step-2a", "step-2b", "step-2b.5"):
         assert (tmp_path / ".completed" / name).is_file()
     # But does NOT settle rounds, drop findings, or consume the breadcrumb.
@@ -819,6 +839,8 @@ def test_step3_state_auto_continuation_clears_without_restore(tmp_path: Path) ->
     for name in ("step-3", "step-3.5", "step-3-terminal", "step-3b", "step-4", "step-4b"):
         assert not (tmp_path / ".completed" / name).exists()
     assert not (tmp_path / ".gate-b-postapply-ready-1").exists()
+    for result_env in _step3_bgjob_result_envs(tmp_path):
+        assert not result_env.exists()
     # Settled round 1 dropped, future round 2 preserved.
     assert not (tmp_path / ".step3-round-1.phase").exists()
     assert (tmp_path / ".step3-round-2.phase").is_file()
