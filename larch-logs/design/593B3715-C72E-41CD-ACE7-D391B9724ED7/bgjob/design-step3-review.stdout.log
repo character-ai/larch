@@ -1,0 +1,10 @@
+NEXT_ACTION=step3b
+LOOP_STATUS=zero-findings-degraded-panel
+TALLY_PLAN_REVIEW_STATUS=ok
+REVIEW_ROUND_COUNT=1
+ROUNDS_COMPLETED=1
+ACCEPTED_COUNT=0
+AGGREGATOR_STATUS=insufficient-input
+VOTING_TALLY_FILE=<TMPDIR>/voting-tally.md
+DEGRADED_PANEL=0
+REASON=zero-findings-degraded-panel
