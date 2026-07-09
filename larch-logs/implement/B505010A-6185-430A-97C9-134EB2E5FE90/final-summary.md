@@ -2,7 +2,7 @@
 
 - **Outcome**: ❌ STALLED
 - **Duration**: 01:13:23
-- **Cost**: 💰 TOTAL ~$17.78: Claude $8.20, Codex-5.5 $4.27, Codex-mini $1.89, Cursor $3.18, Claude (subprocess) $0.24  |  Tokens: 35466k
+- **Cost**: 💰 TOTAL ~$18.82: Claude $9.21, Codex-5.5 $4.27, Codex-mini $1.89, Cursor $3.18, Claude (subprocess) $0.27  |  Tokens: 38658k
 - **Issue**: #6683: https://github.com/character-ai/larch/issues/6683
 - **Plan review**: N/A
 - **Plan coverage**: 3/3 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -92,3 +92,11 @@ codex/apply                   │                                         ██
 
 **Reviewer slot failures**: 2
 - cursor/dyn-dyn-fd-safety: 2
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
