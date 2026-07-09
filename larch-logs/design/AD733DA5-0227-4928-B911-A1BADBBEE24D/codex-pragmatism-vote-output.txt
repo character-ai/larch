@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Existing relaunch-on-wrapper-failure prose is a valid recovery path, not required for the combined-action feature.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Explicit tool-failure routing is extra failure hardening; the feature can still ship with the existing wrapper and route-exit recovery path.
+FINDING_5: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- The early-flush hazard is speculative on the proposed path; deferring it is robustness, not a required feature fix.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Reading only the needed present refs is a reasonable simplification, but the combined feature is still complete if the parent contract names both kinds.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior-round OOS_1 ledger item.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior-round recovery-prose OOS item; not a new concrete observation.

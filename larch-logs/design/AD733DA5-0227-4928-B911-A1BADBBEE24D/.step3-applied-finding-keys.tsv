@@ -1,0 +1,7 @@
+1	the present-reference and skill path still force an immediate step 8 relaunch after each compose write, which would split the combined assessments route into two relaunch rounds and can let the first writer finish before the second note is authored.
+1	the combined assessments route needs one authoritative contract for `needs_user_reason`, `detail`, and resume tokens, or the code, skill text, and exit matrix will disagree about which action token to emit, where to read it from, and how to parse it.
+1	the combined gate path must snapshot the compose base once and evaluate both gates before any early return; otherwise head drift or an invariants-first exit can still produce mismatched diffs or two pauses.
+1	the fence-shape harness still only checks the legacy branch ordering, so it can miss regressions in the new assessments branch placement and one-relaunch sequencing.
+2	existing tests still pin legacy per-kind `needs_user_reason` and prose details, so they will fail once the ship flow emits combined `architectural-assessments` tokens with kind-only detail values even if behavior is correct.
+2	the guidelines present-reference still reflects the legacy single-kind contract, so combined `assessments` pauses can be gated or described inconsistently through stale `when to load` and `consumer` wording.
+2	the combined helper can still materialize invariant and guideline drafts from different resolved bases if the branch tip moves between prepare calls, which breaks the shared-evidence requirement.

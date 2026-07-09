@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale failure prose is real, but the combined feature can still function without this carve-out.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the load-rule text is legacy, but it does not block the combined assessment path.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- fail-closed wording is helpful, but the feature is not incomplete without this extra contract text.
+FINDING_5: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=uncertain UNCERTAIN=true -- the combined-path flush timing risk is speculative here; the current plan does not show a concrete failure path.
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this duplicates the already accepted snapshot-base defect, so it does not need separate acceptance.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- reading an unnecessary ref on single-kind pauses is scope reduction, not a required fix.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier guidelines-assessment recovery-prose OOS item.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier conflict-resolution recovery-prose OOS item.
