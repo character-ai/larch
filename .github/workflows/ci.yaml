@@ -709,14 +709,19 @@ jobs:
           result="${{ needs.python-tests.result }}"
           [ "$result" = success ] || { echo "::error::python-tests result=$result"; exit 1; }
 
-  # Bash 3.2 conformance check. macOS ships /bin/bash at 3.2.57 (Apple
-  # keeps the GPLv2-era bash frozen). Runs bash -n (syntax-only, no
-  # execution) on every .sh file so parser-level 3.2 incompatibilities
-  # surface in CI before they break developer machines. Complements the
-  # static lint-bash32 grep in lint-local, which catches known 4+ tokens
-  # but cannot catch subtler parser differences.
+  # Bash 3.2 conformance check. macOS ships /bin/bash at 3.2.57 (Apple keeps
+  # the GPLv2-era bash frozen), which is why this job historically ran on a
+  # macOS runner. GitHub-hosted macOS runners have long, unpredictable queue
+  # times, so this job periodically stalled the whole CI wall-clock waiting to
+  # be scheduled. It now runs on Linux and gets a real bash 3.2.57 from the
+  # pinned official `bash` Docker image, so it schedules like every other Linux
+  # job while still exercising a genuine 3.2 parser. Runs bash -n (syntax-only,
+  # no execution) on every .sh file so parser-level 3.2 incompatibilities
+  # surface in CI before they break developer machines. Complements the static
+  # lint-bash32 grep in lint-local, which catches known 4+ tokens but cannot
+  # catch subtler parser differences.
   bash32-check:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -725,10 +730,36 @@ jobs:
             /*
             !/larch-logs/
           sparse-checkout-cone-mode: false
-      - name: Syntax-check all scripts under bash 3.2
+      # Pinned to the multi-arch manifest-list digest for bash 3.2.57 (the
+      # `bash:3.2` tag resolves to 3.2.57). Verify on bump:
+      #   docker buildx imagetools inspect bash:3.2
+      # Pre-pull with exponential backoff so a transient Docker Hub blip is
+      # retried before the check runs (mirrors the trufflehog pre-pull above).
+      - name: Pre-pull bash 3.2.57 image (exponential-backoff retry)
+        env:
+          BASH32_IMAGE: bash:3.2@sha256:3a13e5da38baa575985778cd09ce8ac736d4b4dafc91a430e71271f6e5311b89
         run: |
           set -euo pipefail
-          max_parallel="$(sysctl -n hw.logicalcpu 2>/dev/null || echo 1)"
+          for attempt in 1 2 3 4 5; do
+            if docker pull "$BASH32_IMAGE"; then exit 0; fi
+            echo "bash 3.2 image pull attempt $attempt failed; backing off $((2 ** attempt))s..." >&2
+            sleep $(( 2 ** attempt ))
+          done
+          echo "::error::failed to pull $BASH32_IMAGE after 5 attempts" >&2
+          exit 1
+      - name: Syntax-check all scripts under bash 3.2.57
+        env:
+          BASH32_IMAGE: bash:3.2@sha256:3a13e5da38baa575985778cd09ce8ac736d4b4dafc91a430e71271f6e5311b89
+        run: |
+          set -euo pipefail
+          # GNU find on the host builds the NUL-delimited file list (busybox
+          # find in the image lacks -not -path); real bash 3.2.57 inside the
+          # container runs `bash -n` on each file. The workspace is mounted
+          # read-only since the check never writes.
           find scripts skills .claude -name "*.sh" \
-            -not -path "*/larch-logs/*" -print0 \
-            | xargs -0 -n 1 -P "$max_parallel" /bin/bash -n --
+            -not -path "*/larch-logs/*" -print0 > "${RUNNER_TEMP}/bash32-files.nul"
+          docker run --rm \
+            -v "$PWD:/work:ro" \
+            -v "${RUNNER_TEMP}/bash32-files.nul:/tmp/bash32-files.nul:ro" \
+            -w /work "$BASH32_IMAGE" \
+            bash -c 'fail=0; while IFS= read -r -d "" f; do bash -n "$f" || fail=1; done < /tmp/bash32-files.nul; exit "$fail"'
