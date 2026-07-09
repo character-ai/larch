@@ -1,0 +1,4 @@
+1	the report text and emitted constant currently point callers at the whole `tracking_issue_prefix_by_state` map instead of a concrete state-keyed prefix symbol, so the new lint would violate the issue-report contract and give unusable remediation text for match operands.
+1	matching only against the raw regex source text misses escaped bracketed lifecycle tokens, so real `re.compile(...)` sites using bracket escapes would ship unflagged.
+1	the comparison walker covers `in` but not `notin`, leaving a hole in the match-position contract for membership tests.
+2	the baseline record does not pin the match-position context, so distinct hits on the same line can collapse into one identity and collide in occurrence, suppression, and write-shrink behavior.

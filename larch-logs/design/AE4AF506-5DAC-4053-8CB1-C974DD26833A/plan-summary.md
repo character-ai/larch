@@ -1,0 +1,1 @@
+Add a Python AST ratchet for lifecycle and bug title-prefix literals, wire it into CLI and Makefile fast lint, seed a reason-bearing baseline, and cover detection, allowlists, suppressions, and baseline behavior with pytest.

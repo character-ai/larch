@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the extra suppression-occurrence fixture is useful, but it is not required for the lint plan to ship correctly.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- these additional branch fixtures broaden coverage, but the plan only mandates the listed smoke fixture and baseline checks.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the token normalization is already in the spec; extra trailing-space hinting is not necessary to make the feature correct.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bare alternations are outside the specified token set, so this would broaden the lint beyond the issue contract.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the anchor explicitly includes .removeprefix and .lstrip, so removing them would shrink the requested scope rather than fix it.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this duplicates the same regex-alternation gap already raised in FINDING_5, so it is not a distinct OOS observation.

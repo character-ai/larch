@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- useful regression coverage, but the lint can still ship without this specific suppression-order fixture.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- broader branch fixtures are extra coverage, not a necessary acceptance gate for this lint.
+FINDING_3: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- occurrence-based baseline keys likely already distinguish rows; the added context requirement is not demonstrated as necessary.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the lint does not need special trailing-space hinting to be correct.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- semantic regex-alternation parsing is broader than the literal-token scope this lint was asked to cover.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the earlier bracketless-regex OOS gap; not new filing-worthy evidence.
