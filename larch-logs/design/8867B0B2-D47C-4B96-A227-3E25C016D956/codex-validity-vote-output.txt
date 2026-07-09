@@ -1,0 +1,3 @@
+FINDING_1: NO CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- repo evidence doesn’t show SessionStart lacks `source`; if it is present, the reset works, so this isn’t established enough to accept.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- real regression risk, but it’s a separate mid-session `clear` case; the fresh-start breadcrumb fix can still ship correctly without broadening scope here.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of FINDING_2 and the same out-of-scope `clear` narrowing concern for this issue.
