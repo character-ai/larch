@@ -1,0 +1,16 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicates prior neutral finding 4; empty-file rejection is already tracked.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- no such helper/path exists here; the repo-root derivation claim is speculative.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- extra ARCH_GUIDE_* fields are optional diagnostics, not required for the fail-closed gate.
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the sticky-marker scenario is speculative cleanup; no such marker path exists in the current plan.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- header order is formatting, not a required correctness property of the feature.
+FINDING_10: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the label is diagnostic only; the needed change is the refusal branch, not a new step-5c status.
+FINDING_12: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- approved-partition is outside the scoped approved-only gate for this fix.
+FINDING_13: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- marker duplication/noise is cleanup beyond the scoped fail-closed assessment fix.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of FINDING_13.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of OOS_1.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of OOS_1.
