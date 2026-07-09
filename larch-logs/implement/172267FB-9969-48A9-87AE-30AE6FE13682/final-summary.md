@@ -38,26 +38,19 @@ codex/apply                     │                                            �
 
 **Reviewer slot failures**: 0
 
-## Architectural invariants
+## /implement run 172267FB-9969-48A9-87AE-30AE6FE13682: stalled
 
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
-
-## /implement run 172267FB-9969-48A9-87AE-30AE6FE13682: shipping
-
-- **Outcome**: shipping
+- **Outcome**: ❌ STALLED
 - **Duration**: 01:03:54
-- **Cost**: 💰 TOTAL ~$19.10: Claude $6.67, Codex-5.5 $4.07, Codex-mini $2.18, Cursor $5.67, Claude (subprocess) $0.51  |  Tokens: 46147k
+- **Cost**: 💰 TOTAL ~$19.17: Claude $6.74, Codex-5.5 $4.07, Codex-mini $2.18, Cursor $5.67, Claude (subprocess) $0.51  |  Tokens: 46362k
 - **Issue**: #6752: https://github.com/character-ai/larch/issues/6752
+- **PR**: #6777: https://github.com/character-ai/larch/pull/6777
 - **Plan review**: N/A
 - **Plan coverage**: 8/8 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/4 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +518/-31, larch-logs +828/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
