@@ -1,8 +1,8 @@
-## /implement run B505010A-6185-430A-97C9-134EB2E5FE90: shipping
+## /implement run B505010A-6185-430A-97C9-134EB2E5FE90: stalled
 
-- **Outcome**: shipping
+- **Outcome**: ❌ STALLED
 - **Duration**: 01:02:40
-- **Cost**: 💰 TOTAL ~$14.41: Claude $4.85, Codex-5.5 $4.27, Codex-mini $1.89, Cursor $3.18, Claude (subprocess) $0.22  |  Tokens: 25740k
+- **Cost**: 💰 TOTAL ~$14.89: Claude $5.33, Codex-5.5 $4.27, Codex-mini $1.89, Cursor $3.18, Claude (subprocess) $0.22  |  Tokens: 27202k
 - **Issue**: #6683: https://github.com/character-ai/larch/issues/6683
 - **Plan review**: N/A
 - **Plan coverage**: 3/3 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -92,11 +92,3 @@ codex/apply                   │                                         ██
 
 **Reviewer slot failures**: 2
 - cursor/dyn-dyn-fd-safety: 2
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
