@@ -177,7 +177,7 @@ def test_swap_after_mkdir_rejected(monkeypatch: Any, tmp_path: Path, capsys: Any
 
     def swap_state_dir(state_path: Path) -> None:
         state_path.rmdir()
-        redirect.rename(state_path)
+        redirect.rename(state_path)  # pyright: ignore[reportUnusedCallResult]
 
     monkeypatch.setattr(hook, "AFTER_MKDIR_HOOK", swap_state_dir)
     _run_main(monkeypatch, _event(), tmp_path)

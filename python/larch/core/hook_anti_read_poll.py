@@ -23,7 +23,7 @@ from larch.core import config
 WINDOW_SECONDS: Final = 30
 THRESHOLD_COUNT: Final = 3
 STATE_DIR_NAME: Final = "larch-read-poll"
-TMP_FALLBACK: Final = "/private/tmp"  # noqa: S108 - hook state contract uses the platform temp root.
+TMP_FALLBACK: Final = "/private/tmp"
 REMINDER_TEXT: Final = "Read-poll detected: repeated identical Read calls. Use one read after state changes instead of polling."
 SAFE_BASENAME_RE: Final = re.compile(r"^[A-Za-z0-9._-]+$")
 _DIGEST_SIZE: Final = 32
