@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate comma-list handling concern; the approved direction already uses whole-directive baseline identity, so this is not a necessary plan change.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- a next-line negative test is useful but optional; the plan already pins same-line reasons, so it does not clear the necessity gate.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the approved design already excludes reason from baseline identity, so this is not a missing modification.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- bare suppression-family cases are already covered by the “lacking a reason” rule; no additional acceptance change is needed.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the outline already says to use a local iterator and avoid inherited owner-module self-skips, so this repeats covered scope.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the `tests/` mismatch is speculative and the current filename rule already excludes `python/tests/`; there is no concrete defect.
