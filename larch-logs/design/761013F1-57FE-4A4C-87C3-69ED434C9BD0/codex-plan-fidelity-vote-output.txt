@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate same-name renderers are an edge case; the plan still ships without an extra fail-closed guard.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Alias/rebind tracking is broader hardening than the plan requires; direct-call banning is sufficient for the stated ratchet.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan already mirrors the existing baseline-lint shrink-on-write behavior; explicit stale-row failure is not required.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Narrowing the predicate would be a scope change, not a defect in the proposed ratchet.
