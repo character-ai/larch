@@ -653,7 +653,7 @@ def _ship_pre_fix_rebase_step(
             },
         )
         return None, "conflict", "conflict-fix"
-    if _ship_pre_fix_phase14_skip_allowed(implement_tmpdir):
+    if _ship_pre_fix_phase14_skip_allowed(implement_tmpdir) or _ship_pre_fix_truthy(state.get("PR_CLOSED", "")):
         return None, "skip", "continue"
     base_remote = "upstream" if _ship_pre_fix_truthy(state.get("FORKED_TARGET", "")) else "origin"
     rebase_result = rebase.rebase_and_push(
