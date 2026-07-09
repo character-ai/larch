@@ -1,15 +1,16 @@
-## /implement run 228E5938-D29A-4996-9CA3-96DDA869184E: shipping
+## /implement run 228E5938-D29A-4996-9CA3-96DDA869184E: stalled
 
-- **Outcome**: shipping
+- **Outcome**: ❌ STALLED
 - **Duration**: 00:35:34
-- **Cost**: 💰 TOTAL ~$17.15: Claude $1.41, Codex-5.5 $9.84, Codex-mini $1.43, Cursor $4.03, Claude (subprocess) $0.44  |  Tokens: 25957k
+- **Cost**: 💰 TOTAL ~$17.19: Claude $1.45, Codex-5.5 $9.84, Codex-mini $1.43, Cursor $4.03, Claude (subprocess) $0.44  |  Tokens: 26093k
 - **Issue**: #6726: https://github.com/character-ai/larch/issues/6726
+- **PR**: #6742: https://github.com/character-ai/larch/pull/6742
 - **Plan review**: N/A
 - **Plan coverage**: 8/8 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/11 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +735/-150, larch-logs +1147/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -79,11 +80,3 @@ codex/apply              │                                    █████�
 5. dynamic/dyn-bgjob-process: 2
 
 **Reviewer slot failures**: 0
-
-## Architectural invariants
-
-Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
