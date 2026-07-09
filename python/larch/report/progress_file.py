@@ -119,32 +119,21 @@ def breadcrumb_line(*, skill: str, step: str, text: str) -> str:
 
 
 def append_breadcrumb(repo_root: str | Path, skill: str, step: str, text: str) -> bool:
-    """Append one breadcrumb, returning ``False`` on any best-effort failure."""
+    """Append one active-run breadcrumb, returning ``False`` on any best-effort failure."""
     try:
         line = breadcrumb_line(skill=skill, step=step, text=text)
-        path = progress_path(repo_root)
-        larch_io.assert_no_symlink_path_or_ancestors(path)
-        _ensure_directory(path.parent)
-        larch_io.assert_no_symlink_path_or_ancestors(path)
-        flags = os.O_WRONLY | os.O_APPEND | os.O_CREAT
-        if hasattr(os, "O_NONBLOCK"):
-            flags |= os.O_NONBLOCK
-        if hasattr(os, "O_NOFOLLOW"):
-            flags |= os.O_NOFOLLOW
-        fd = os.open(path, flags, 0o600)
+        clone_dir_fd: int = _open_existing_directory_fd(progress_clone_dir(repo_root))
         try:
-            stat_result = os.fstat(fd)
-            if not stat.S_ISREG(stat_result.st_mode):
-                raise OSError(f"refusing non-regular breadcrumb target: {path}")
-            with os.fdopen(fd, "a", encoding="utf-8") as handle:
-                fd = -1
-                _ = handle.write(line)
+            run_id: str | None = _read_active_run_id_from_dirfd(clone_dir_fd)
+            if run_id is None:
+                return False
+            run_dir_fd: int = _open_or_create_subdir(clone_dir_fd, run_id)
+            try:
+                _append_line_in_dir(run_dir_fd, RUN_BREADCRUMB_FILENAME, line)
+            finally:
+                os.close(run_dir_fd)
         finally:
-            if fd >= 0:
-                with contextlib.suppress(OSError):
-                    os.close(fd)
-        with contextlib.suppress(OSError):
-            path.chmod(0o600)
+            os.close(clone_dir_fd)
     except (OSError, TypeError, ValueError):
         return False
     return True
@@ -207,6 +196,26 @@ def _ensure_directory(path: Path) -> None:
         os.close(dir_fd)
 
 
+def _open_existing_directory_fd(path: Path) -> int:
+    """Open ``path`` and its parents without creating or following symlinks."""
+    target: Path = path.expanduser()
+    if not target.is_absolute():
+        target = Path.cwd() / target
+    if len(target.parts) == 1:
+        return _open_verified_dir(Path(target.anchor))
+    current_fd: int = _open_verified_dir(Path(target.anchor))
+    try:
+        for part in target.parts[1:]:
+            next_fd: int = _open_existing_subdir(current_fd, part)
+            old_fd: int = current_fd
+            current_fd = next_fd
+            os.close(old_fd)
+    except (OSError, ValueError):
+        os.close(current_fd)
+        raise
+    return current_fd
+
+
 def _open_or_create_subdir(parent_fd: int, name: str) -> int:
     """Open or create a verified directory entry under ``parent_fd``."""
     _validate_dir_entry_name(name)
@@ -218,6 +227,21 @@ def _open_or_create_subdir(parent_fd: int, name: str) -> int:
         child_fd = os.open(name, _dir_open_flags(), dir_fd=parent_fd)
     try:
         stat_result = os.fstat(child_fd)
+        if not stat.S_ISDIR(stat_result.st_mode):
+            msg = f"refusing non-directory progress path: {name}"
+            raise OSError(msg)
+    except OSError:
+        os.close(child_fd)
+        raise
+    return child_fd
+
+
+def _open_existing_subdir(parent_fd: int, name: str) -> int:
+    """Open an existing verified directory entry under ``parent_fd``."""
+    _validate_dir_entry_name(name)
+    child_fd: int = os.open(name, _dir_open_flags(), dir_fd=parent_fd)
+    try:
+        stat_result: os.stat_result = os.fstat(child_fd)
         if not stat.S_ISDIR(stat_result.st_mode):
             msg = f"refusing non-directory progress path: {name}"
             raise OSError(msg)
@@ -364,6 +388,18 @@ def _entry_mtime_for_cleanup(entry_path: Path, *, log_path: Path | None = None) 
         return entry_path.stat().st_mtime
     except OSError:
         return None
+
+
+def read_active_run_id(repo_root: str | Path) -> str | None:
+    """Return the active run ID for ``repo_root`` without creating progress state."""
+    try:
+        clone_dir_fd: int = _open_existing_directory_fd(progress_clone_dir(repo_root))
+    except (OSError, TypeError, ValueError):
+        return None
+    try:
+        return _read_active_run_id_from_dirfd(clone_dir_fd)
+    finally:
+        os.close(clone_dir_fd)
 
 
 def _read_active_run_id(clone_dir: Path) -> str | None:  # pyright: ignore[reportUnusedFunction]

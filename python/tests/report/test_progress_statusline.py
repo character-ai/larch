@@ -36,6 +36,8 @@ def test_append_breadcrumb_rejects_tabs_and_newlines(tmp_path: Path, monkeypatch
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
     repo.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
 
     assert progress_file.append_breadcrumb(repo, "implement", "5", "reviewers 7/12 done")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "bad\nrow")
@@ -45,25 +47,40 @@ def test_append_breadcrumb_rejects_tabs_and_newlines(tmp_path: Path, monkeypatch
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "see https://example.test")
     assert not progress_file.append_breadcrumb(repo, "implement", "5", "osc \x1b]8;;https://example.test\x07 link")
 
-    assert progress_file.progress_path(repo).read_text(encoding="utf-8") == "[implement 5] reviewers 7/12 done\n"
+    assert progress_file.run_progress_path(repo, run_id).read_text(encoding="utf-8") == "[implement 5] reviewers 7/12 done\n"
+    assert not progress_file.progress_path(repo).exists()
 
 
-def test_append_breadcrumb_rechecks_after_mkdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_append_breadcrumb_pins_run_dir_after_fd_acquisition(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
+    target = tmp_path / "outside-run"
     repo.mkdir()
-    calls = 0
+    target.mkdir()
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+    run_dir = progress_file.run_progress_dir(repo, run_id)
+    real_run_dir = tmp_path / "real-run"
+    original_subdir = progress_file._open_or_create_subdir
+    swapped = False
 
-    def fake_assert(_path: Path) -> None:
-        nonlocal calls
-        calls += 1
-        if calls == 2:
-            raise OSError("swapped ancestor")
+    def swapping_subdir(parent_fd: int, name: str) -> int:
+        nonlocal swapped
+        fd = original_subdir(parent_fd, name)
+        if not swapped and name == run_id and run_dir.is_dir():
+            run_dir.rename(real_run_dir)
+            run_dir.symlink_to(target, target_is_directory=True)
+            swapped = True
+        return fd
 
-    monkeypatch.setattr(progress_file.larch_io, "assert_no_symlink_path_or_ancestors", fake_assert)
+    monkeypatch.setattr(progress_file, "_open_or_create_subdir", swapping_subdir)
 
-    assert not progress_file.append_breadcrumb(repo, "implement", "5", "reviewers 7/12 done")
-    assert calls == 2
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "reviewers 7/12 done")
+    assert swapped
+    assert not (target / progress_file.RUN_BREADCRUMB_FILENAME).exists()
+    assert (real_run_dir / progress_file.RUN_BREADCRUMB_FILENAME).read_text(encoding="utf-8") == (
+        "[implement 5] reviewers 7/12 done\n"
+    )
 
 
 def test_progress_path_uses_consumer_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -220,13 +237,26 @@ def test_read_active_run_id_normalizes_activate_output(tmp_path: Path, monkeypat
     run_id = "design-20260708.1"
     progress_file.activate_run(repo, run_id)
 
+    assert progress_file.read_active_run_id(repo) == run_id
     assert progress_file._read_active_run_id(progress_file.progress_clone_dir(repo)) == run_id
 
     progress_file.current_run_path(repo).write_text("bad id\n", encoding="utf-8")
+    assert progress_file.read_active_run_id(repo) is None
     assert progress_file._read_active_run_id(progress_file.progress_clone_dir(repo)) is None
 
     progress_file.current_run_path(repo).write_text(" \t\n", encoding="utf-8")
+    assert progress_file.read_active_run_id(repo) is None
     assert progress_file._read_active_run_id(progress_file.progress_clone_dir(repo)) is None
+
+
+def test_read_active_run_id_missing_clone_dir_is_no_create(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    clone_dir = progress_file.progress_clone_dir(repo)
+
+    assert progress_file.read_active_run_id(repo) is None
+    assert not clone_dir.exists()
 
 
 def test_read_active_run_id_from_dirfd_is_best_effort_on_invalid_utf8_and_fifo(
@@ -517,10 +547,130 @@ def test_cleanup_old_progress_files_pins_clone_dir_before_enumeration(tmp_path: 
     assert (outside_clone / "old-20260708.1").exists()
 
 
+def test_default_progress_requires_current_pointer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    assert statusline.render_statusline(stdin_text=json.dumps({"cwd": str(repo)})) == ""
+    assert progress_file.read_active_run_id(repo) is None
+    assert not progress_file.progress_path(repo).exists()
+
+
+def test_invalid_current_pointer_blocks_default_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    clone_dir = progress_file.progress_clone_dir(repo)
+    clone_dir.mkdir(parents=True)
+    progress_file.current_run_path(repo).write_text("bad id\n", encoding="utf-8")
+
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    assert statusline.render_statusline(stdin_text=json.dumps({"cwd": str(repo)})) == ""
+    assert progress_file.read_active_run_id(repo) is None
+    assert not progress_file.progress_path(repo).exists()
+
+
+def test_legacy_flat_logs_are_ignored_by_statusline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    flat_path = progress_file.progress_path(repo)
+    flat_path.parent.mkdir(parents=True)
+    flat_path.write_text("[implement 5] old flat row\n", encoding="utf-8")
+    payload = json.dumps({"cwd": str(repo)})
+
+    assert statusline.render_statusline(stdin_text=payload) == ""
+
+    progress_file.activate_run(repo, "implement-20260708.1")
+    assert statusline.render_statusline(stdin_text=payload) == ""
+
+
+def test_new_run_starts_empty_and_old_run_never_renders(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    payload = json.dumps({"cwd": str(repo)})
+    env = {"LARCH_TEST_STATUSLINE_NOW": "1700000000", "LARCH_STATUSLINE_STALE_AFTER_S": "999999"}
+
+    progress_file.activate_run(repo, "old-20260708.1")
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "old run row")
+    progress_file.activate_run(repo, "new-20260708.1")
+
+    assert statusline.render_statusline(stdin_text=payload, env=env) == ""
+
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "new run row")
+    rendered = statusline.render_statusline(stdin_text=payload, env=env)
+
+    assert "new run row" in rendered
+    assert "old run row" not in rendered
+
+
+def test_statusline_staleness_uses_active_run_mtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    progress_file.append_breadcrumb_for_run(repo, "old-20260708.1", "implement", "5", "old run row")
+    progress_file.append_breadcrumb_for_run(repo, "active-20260708.1", "implement", "5", "active run row")
+    old_log = progress_file.run_progress_path(repo, "old-20260708.1")
+    active_log = progress_file.run_progress_path(repo, "active-20260708.1")
+    _ = os.utime(old_log, (1000, 1000))
+    _ = os.utime(active_log, (1900, 1900))
+    progress_file.activate_run(repo, "active-20260708.1")
+
+    rendered = statusline.render_statusline(
+        stdin_text=json.dumps({"cwd": str(repo)}),
+        env={"LARCH_TEST_STATUSLINE_NOW": "2000", "LARCH_STATUSLINE_STALE_AFTER_S": "60", "LARCH_STATUSLINE_HIDE_AFTER_S": "1000"},
+    )
+
+    assert "(stale 1m)" in rendered
+    assert "active run row" in rendered
+    assert "old run row" not in rendered
+
+
+def test_default_append_refuses_symlinked_active_pointer_and_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    target_current = tmp_path / "outside-current"
+    target_log = tmp_path / "outside.log"
+    repo.mkdir()
+    target_current.write_text("implement-20260708.1\n", encoding="utf-8")
+    target_log.write_text("", encoding="utf-8")
+    progress_file.activate_run(repo, "implement-20260708.1")
+    progress_file.current_run_path(repo).unlink()
+    progress_file.current_run_path(repo).symlink_to(target_current)
+
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    assert target_current.read_text(encoding="utf-8") == "implement-20260708.1\n"
+
+    progress_file.current_run_path(repo).unlink()
+    progress_file.current_run_path(repo).write_text("implement-20260708.1\n", encoding="utf-8")
+    progress_file.run_progress_path(repo, "implement-20260708.1").symlink_to(target_log)
+
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    assert target_log.read_text(encoding="utf-8") == ""
+
+
+def test_default_append_refuses_symlinked_clone_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    outside_clone = tmp_path / "outside-clone"
+    repo.mkdir()
+    outside_clone.mkdir()
+    progress_file.progress_clone_dir(repo).parent.mkdir(parents=True)
+    progress_file.progress_clone_dir(repo).symlink_to(outside_clone, target_is_directory=True)
+    (outside_clone / progress_file.CURRENT_RUN_FILENAME).write_text("implement-20260708.1\n", encoding="utf-8")
+
+    assert not progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    assert not (outside_clone / "implement-20260708.1" / progress_file.RUN_BREADCRUMB_FILENAME).exists()
+
+
 def test_statusline_fail_silent_empty_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     repo = tmp_path / "repo"
     repo.mkdir()
+    progress_file.activate_run(repo, "implement-20260708.1")
     assert progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
 
     assert statusline.render_statusline(stdin_text="") == ""
@@ -534,6 +684,7 @@ def test_statusline_renders_yellow_line_and_is_calm(tmp_path: Path, monkeypatch:
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(cache))
+    progress_file.activate_run(repo, "implement-20260708.1")
     assert progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
     payload = json.dumps({"workspace": {"current_dir": str(repo)}})
     env = {"LARCH_TEST_STATUSLINE_NOW": "1700000000", "LARCH_STATUSLINE_STALE_AFTER_S": "999999"}
@@ -547,18 +698,49 @@ def test_statusline_renders_yellow_line_and_is_calm(tmp_path: Path, monkeypatch:
     assert first.endswith("\033[0m\n")
 
 
+def test_statusline_refuses_symlinked_active_pointer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    target = tmp_path / "outside-current"
+    repo.mkdir()
+    target.write_text("implement-20260708.1\n", encoding="utf-8")
+    progress_file.activate_run(repo, "implement-20260708.1")
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    progress_file.current_run_path(repo).unlink()
+    progress_file.current_run_path(repo).symlink_to(target)
+
+    rendered = statusline.render_statusline(stdin_text=json.dumps({"cwd": str(repo)}))
+
+    assert rendered == ""
+
+
+def test_statusline_refuses_symlinked_active_run_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    target = tmp_path / "outside.log"
+    repo.mkdir()
+    target.write_text("[implement 5] outside row\n", encoding="utf-8")
+    progress_file.activate_run(repo, "implement-20260708.1")
+    progress_file.run_progress_path(repo, "implement-20260708.1").symlink_to(target)
+
+    rendered = statusline.render_statusline(stdin_text=json.dumps({"cwd": str(repo)}))
+
+    assert rendered == ""
+
+
 def test_statusline_refuses_symlinked_progress_ancestors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cache = tmp_path / "cache"
     cache_target = tmp_path / "cache-target"
     repo = tmp_path / "repo"
     repo.mkdir()
-    cache_target.mkdir()
-    (cache / "larch").parent.mkdir(parents=True, exist_ok=True)
-    (cache / "larch").symlink_to(cache_target)
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(cache))
-    path = progress_file.progress_path(repo)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("[implement 5] review round 1 running\n", encoding="utf-8")
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
+    assert progress_file.append_breadcrumb(repo, "implement", "5", "review round 1 running")
+    real_larch = tmp_path / "real-larch"
+    (cache / "larch").rename(real_larch)
+    cache_target.mkdir()
+    (cache / "larch").symlink_to(cache_target)
 
     rendered = statusline.render_statusline(stdin_text=json.dumps({"cwd": str(repo)}))
 
@@ -570,8 +752,10 @@ def test_statusline_stale_and_far_stale(tmp_path: Path, monkeypatch: pytest.Monk
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(cache))
+    run_id = "implement-20260708.1"
+    progress_file.activate_run(repo, run_id)
     assert progress_file.append_breadcrumb(repo, "implement", "8", "PR #1234 created")
-    path = progress_file.progress_path(repo)
+    path = progress_file.run_progress_path(repo, run_id)
     _ = os.utime(path, (1000, 1000))
     payload = json.dumps({"cwd": str(repo)})
 
@@ -592,6 +776,7 @@ def test_statusline_columns_truncation(tmp_path: Path, monkeypatch: pytest.Monke
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    progress_file.activate_run(repo, "design-20260708.1")
     assert progress_file.append_breadcrumb(repo, "design", "3", "reviewers 12/12 done and voting launched")
 
     rendered = statusline.render_statusline(
@@ -619,10 +804,14 @@ def test_timing_mark_appends_progress_breadcrumb(tmp_path: Path, monkeypatch: py
     monkeypatch.chdir(repo)
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
+    progress_file.activate_run(repo, "design-20260708.1")
 
     assert timing.timing_mark_main(["--ledger", str(ledger), "design Step 2b: plan"]) == 0
 
-    assert progress_file.progress_path(repo).read_text(encoding="utf-8") == "[design 2b] design Step 2b: plan started\n"
+    assert progress_file.run_progress_path(repo, "design-20260708.1").read_text(encoding="utf-8") == (
+        "[design 2b] design Step 2b: plan started\n"
+    )
+    assert not progress_file.progress_path(repo).exists()
 
 
 def test_install_statusline_creates_settings_and_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
