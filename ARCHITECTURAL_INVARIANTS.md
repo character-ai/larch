@@ -30,6 +30,13 @@ on an artifact the pause omitted is a defect of the snapshot, not of the guard
 `python/tests/design/test_design_pause.py` cover `.completed/` inclusion;
 extend them when the guard-read artifact set grows.
 
+### I-Stale-1: A persisted step result is consumed only against the inputs that produced it
+
+- Why: Any step result persisted for later consumption, including a bgjob result env, staged or durable assessment, cached verdict, or completion sentinel with a payload, carries an identity of the inputs that produced it, such as a content hash, `HEAD` SHA, or diff fingerprint.
+- Why: Every consumer validates that identity against the live inputs before acting; on mismatch, the consumer re-runs the producing step or fails loudly. It never silently reuses the stale result.
+- Why: Evidence of violation: /design review re-entry rejoined a pre-edit bgjob result env after `plan.txt` changed (#6633); the /implement guideline note was repeatedly consumed after HEAD drift invalidated the diff it assessed (#5337, #5675, #5969, #6059, #6106).
+- Why: Mechanical backing: input fingerprints in persisted result envs plus consumer-side validation, mirroring `DIFF_FINGERPRINT` and `HEAD_SHA` checks in `python/larch/core/architectural_guidelines.py` (`note_consumable`, `_staged_fingerprint_valid`); extend the same pattern to bgjob result envs consumed on re-entry.
+
 ## Run-log integrity
 
 ### I-Flush-1: A missing required run-log artifact is a recorded execution issue, never a silent status string
