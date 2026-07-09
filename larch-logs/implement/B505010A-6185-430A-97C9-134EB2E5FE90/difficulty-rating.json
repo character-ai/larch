@@ -1,17 +1,24 @@
 {
-  "applied_tier": "MODERATE",
-  "audit_evaluated": null,
+  "applied_tier": "HARD",
+  "audit_evaluated": true,
   "audit_upgrade": null,
-  "codex_model_role": "review",
+  "codex_model_role": "default",
   "confidence": "high",
   "design_tier": null,
-  "escalated_round": null,
-  "escalations": [],
+  "escalated_round": true,
+  "escalations": [
+    {
+      "from_tier": "MODERATE",
+      "round": 2,
+      "to_tier": "HARD",
+      "trigger": "structural-loc"
+    }
+  ],
   "floors_applied": [],
   "implement_tier": "MODERATE",
   "override_source": "none",
   "panel_skipped": null,
-  "panel_tier": "MODERATE",
+  "panel_tier": "HARD",
   "predicted_tier": "MODERATE",
   "rater": "implement",
   "rater_model": "gpt-5.5",
