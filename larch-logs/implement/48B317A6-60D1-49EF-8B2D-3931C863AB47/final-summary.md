@@ -2,7 +2,7 @@
 
 - **Outcome**: shipping
 - **Duration**: 00:20:17
-- **Cost**: 💰 TOTAL ~$5.13: Claude $0.43, Codex-5.5 $1.86, Codex-mini $1.09, Cursor $1.64, Claude (subprocess) $0.11  |  Tokens: 7890k
+- **Cost**: 💰 TOTAL ~$5.37: Claude $0.67, Codex-5.5 $1.86, Codex-mini $1.09, Cursor $1.64, Claude (subprocess) $0.11  |  Tokens: 8468k
 - **Issue**: #6705: https://github.com/character-ai/larch/issues/6705
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -10,7 +10,7 @@
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/2 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6713
 - **Exec issues**: 0
 - **Warnings**: 0
 - **Run logs**: `larch-logs/implement/48B317A6-60D1-49EF-8B2D-3931C863AB47/`
