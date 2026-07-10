@@ -1,0 +1,15 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The required evidence can be retained and emitted without mandating result-model changes in this omitted file.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This duplicates the prior neutral Step 5 MAV stall-exception finding without materially new evidence.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Restoring a full attempt baseline is not required by the feature and can discard legitimate pre-existing changes.
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Reusing a particular digest helper is an implementation preference, not a necessary scope reduction.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of prior OOS_1.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of prior OOS_2.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of prior OOS_1.
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicates the prior self-review routing observation.
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of prior OOS_1.
+OOS_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of prior OOS_2.

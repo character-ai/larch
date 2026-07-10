@@ -1,0 +1,59 @@
+# Lint-fix waterfall hardening
+
+Partition piece 2 of 4 split from #6804.
+
+**Scope**: `python/larch/implement/checks_lint_fix.py`, `skills/implement/references/checks-repair-loop.md`, checks-repair portions of `skills/implement/SKILL.md`, `python/tests/implement/test_checks.py`, checks-related assertions in `scripts/test-implement-structure.sh` and `scripts/test-implement-fence-shape.sh`, and related timeout guidance in `docs/configuration-and-permissions.md`.
+
+**Firm headings**: python/larch/implement/checks_lint_fix.py, skills/implement/references/checks-repair-loop.md, skills/implement/SKILL.md, python/tests/implement/test_checks.py, scripts/test-implement-structure.sh, scripts/test-implement-fence-shape.sh, docs/configuration-and-permissions.md
+
+**Acceptance**:
+
+Every `implement.lint_fix_coder` tier receives up to `FIXER_LANE_TIMEOUT_SEC`; the total budget covers the complete configured waterfall; timeout, missing binary, authentication failure, launcher failure, and no useful change advance to the next tier; useful edits trigger checks again; per-tier ledger and execution-issue records are retained; structural and redaction failures remain fail-closed; complete exhaustion routes to stall or an explicit exhausted state, never default `NEXT_ACTION=main-agent-edit`; Step 8 CI orchestration remains unchanged.
+
+**Dependencies (from panel)**: blocked-by Piece 1
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# CI fixing via bgjob lanes with evidence-based timeouts; make ship-step…
+
+CI fixing via bgjob lanes with evidence-based timeouts; make ship-step autonomous
+
+## Goal
+
+The ship step (Step 8+) must be aggressively autonomous: CI and lint failures are repaired by delegated background lanes, and the main agent bails to the operator only in exceptional circumstances (fork/repo-unavailable, auth/infra hard failure, exhausted generous budgets, red base branch beyond a recorded repair). Today, multiple fallback paths silently dump repair work back onto the main agent, and the delegate lanes are killed by undersized timeouts.
+
+## Evidence (committed larch-logs + code, 2026-07-10)
+
+- Share of merged implement PRs containing a `Fix CI failure (main-agent)` commit: ~4.5% mid-June -> 31% week of Jun 28-Jul 4, 23% week of Jul 5-11 (139 such commits since Jun 28). Runs with CI issues cost ~2x in main-agent tokens (Step 8 claude lane 14.1M vs 6-7M).
+- Lint-fixer vendor lanes are capped at `_RUN_EXTERNAL_TIMEOUT = 300` seconds (python/larch/implement/checks_lint_fix.py:65). Measured `claude-lint-fix` lane durations since 2026-06-15: median 267s, p90 706s, max 1636s — 108 of 238 lanes (45%) die at the 300s cap. `Step lint fixer: claude-ci failed (exit 124, timeout)` is the dominant July execution-issues signature (~21% of July runs log CI Issues entries).
+- `codex-ci` lanes: median 1495s, max 1752s. Step 8 Agent-tool fixer spans: median 534s, max 1190s. Reference budgets elsewhere: SUBPROCESS_DEFAULT_TIMEOUT_SEC = 1800, CI_WAIT_TIMEOUT_SEC = 1800.
+- The #6556 Agent-tool CI fixer works (4/4 runs fixed in one round) but is an in-session sub-agent: its tokens (~2-3.9M per fixer) still bill to the main-agent Claude lane, and inline main-agent fixes still occur on fixer-enabled versions (e.g. issue #6726 run on larch 52.5.18: 9.3M-token Step 8 with an inline `Fix CI failure (main-agent)` commit and no fixer spawn).
+
+## Required change 1 — bgjob execution, not in-session sub-agent
+
+Replace the Step 8 Agent-tool CI fixer with a bgjob lane (same start/wait contract as step-5-review and step-8-ship): the fixer runs as a detached claude_sub/codex/cursor subprocess under the fixer waterfall (`implement.ci_recovery_fixer`), the orchestrator only starts the bgjob and repeats the documented `bgjob wait`. Fixer tokens land in the claude_sub/vendor lanes; fixer reasoning and CI logs stay out of main-agent context. The existing file-backed handoff surface (distilled-failure.md, fixer-status.env, fixer-rounds.tsv, fixer-bail.md) is kept.
+
+## Required change 2 — evidence-based timeouts
+
+Size every CI/lint fixer lane timeout from measured duration distributions so the timeout does not fire in most cases:
+
+- Raise the checks repair-loop external-lane budget from 300s to at least 1800s (p95+ of measured claude-lint-fix and codex-ci durations; align with SUBPROCESS_DEFAULT_TIMEOUT_SEC / CI_WAIT_TIMEOUT_SEC).
+- Make the budget a config constant per lane role, derived from and documented against the measured p95, not an ad-hoc literal in the dispatch module.
+- Timeout firing should be rare enough to be an execution-issue anomaly, not a routine escalation path.
+
+## Required change 3 — close the inline-fallback leaks
+
+Each of these paths currently ends with the main agent editing code inline (or an avoidable operator-bail). Route each back into the delegated waterfall with bounded retries; inline main-agent repair should be removed or reduced to a last-resort behind all delegated lanes:
+
+1. Step 3/5/6 checks repair-loop `NEXT_ACTION=main-agent-edit` after a vendor lint-fix lane timeout/failure — the dominant leak; with change 2 most of these disappear, and the remainder should retry the waterfall (next tool) before any main-agent edit.
+2. Step 8 fixer-bail 10-attempt inline main-agent fallback (`ship-pr-ci-fix.md`) — on fixer bail, retry via the next waterfall tool as a fresh bgjob before any inline attempt.
+3. `ci distill-log` BAIL_CLASS `github-log-failure` / `write-fa

@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicates the prior neutral Step 5 MAV stall-exception finding without materially new evidence.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Broad baseline restoration is not required by the scoped waterfall behavior and risks discarding legitimate pre-existing or useful edits.
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Reusing an existing digest helper is an implementation preference, not a necessary scope reduction or correctness requirement.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicates a prior OOS ledger entry.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicates the prior OOS self-review routing observation.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicates prior OOS ledger-documentation observations.
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicates the prior rejected documentation-caveat finding.
+OOS_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- `main-agent-edit` remaining an inline-repair action for structural outcomes does not require a structural-only prose carve-out.
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicates prior OOS ledger-documentation observations.
+OOS_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicates the prior OOS self-review routing observation.
