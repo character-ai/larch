@@ -15,6 +15,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch.agents import agent_waterfall
+from larch.agents._launch_failure import resolve_model_args
 from larch.calibration import difficulty
 from larch.core import external_defaults
 from larch.review import findings_ledger
@@ -319,10 +320,33 @@ def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[V
                 "model_role": "vote",
             }
             vote_model = config.CODEX_VOTE_MODEL_BY_DIFFICULTY.get(tier, "")
-            if vote_model:
-                row["resolved_model"] = vote_model
+            if policy.primary_tool == "codex":
+                row["resolved_model"] = _resolved_model_for_row("codex", vote_model)
+            elif policy.primary_tool == "cursor":
+                row["resolved_model"] = _resolved_model_for_row("cursor")
             _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     return str(manifest)
+
+
+def _resolved_model_for_row(tool: str, default_model: str = "") -> str:
+    try:
+        argv = list(
+            resolve_model_args(
+                tool,
+                with_effort=(tool == "codex"),
+                default_model=default_model,
+                codex_role="vote" if tool == "codex" else "default",
+            ).argv
+        )
+    except (ValueError, KeyError):
+        return "unknown"
+    if tool == "cursor" and "--model" in argv:
+        idx = argv.index("--model")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    if tool == "codex" and "-m" in argv:
+        idx = argv.index("-m")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    return "unknown"
 
 
 def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str], review_tmpdir: Path) -> str:

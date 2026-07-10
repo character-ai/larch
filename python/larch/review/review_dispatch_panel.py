@@ -225,10 +225,10 @@ prompt_body: |
 
 
 
-def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
+def _resolved_model_for_row(tool: str, model_role: str = "", default_model: str = "") -> str:
     try:
         role = model_role if model_role in {"default", "review", "vote", "fix"} else "default"
-        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), codex_role=role).argv)
+        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), default_model=default_model, codex_role=role).argv)
     except (ValueError, KeyError):
         return "unknown"
     if tool == "cursor" and "--model" in argv:
@@ -256,10 +256,11 @@ def _generic_codex_enabled(round_num: int) -> bool:
     return bool(policy and round_num in policy.generic_codex_rounds)
 
 
-def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_root: Path) -> None:
+def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_root: Path, tier: str) -> None:
     slot = next((row for row in external_defaults.slot_defaults("review.panel") if row.slot == "generalist" and row.tool == "codex"), None)
     if slot is None:
         return
+    codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
     _append_manifest_row(
         manifest=manifest,
         row={
@@ -270,14 +271,15 @@ def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_roo
             "focus_area": slot.focus_area,
             "weight": slot.weight,
             "model_role": slot.model_role,
+            "resolved_model": _resolved_model_for_row(slot.tool, slot.model_role, default_model=codex_panel_model),
         },
     )
 
 
-def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, round_num: int, codex_slots_available: bool) -> None:
+def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, round_num: int, codex_slots_available: bool, tier: str) -> None:
     from larch.review.review_pipeline_shared import _PLUGIN_ROOT  # noqa: PLC0415
     if codex_slots_available and _generic_codex_enabled(round_num):
-        _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT)
+        _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT, tier=tier)
 
 
 def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool, cursor_slots_available: bool, tier: str) -> None:
@@ -306,7 +308,7 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
             row["resolved_model"] = slot.cursor_model
         if slot.tool == "codex":
             row["model_role"] = "review"
-            row["resolved_model"] = codex_panel_model
+            row["resolved_model"] = _resolved_model_for_row(slot.tool, "review", default_model=codex_panel_model)
         _append_manifest_row(
             manifest=manifest,
             row=row,
@@ -413,7 +415,7 @@ def _synthesize_dynamic_slots(*,
                     "weight": weight,
                     "focus_area": focus_area,
                     "model_role": "review",
-                    "resolved_model": codex_panel_model,
+                    "resolved_model": _resolved_model_for_row("codex", "review", default_model=codex_panel_model),
                 }
             )
             count += 1
@@ -595,7 +597,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     cursor_slots_available = cursor_available == "true"
     _append_static_specialist_rows(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available, cursor_slots_available=cursor_slots_available, tier=tier)
     _append_forced_plan_fidelity_row(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available, cursor_slots_available=cursor_slots_available, tier=tier)
-    _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num, codex_slots_available=codex_slots_available)
+    _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num, codex_slots_available=codex_slots_available, tier=tier)
     scout_status = "na"
     scout_fail_reason = ""
     scout_manifest: Path | None = None

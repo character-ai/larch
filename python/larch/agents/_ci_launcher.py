@@ -151,6 +151,16 @@ def _validate_failure_log_path(path: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def _model_arg_value(model_args: list[str]) -> str:
+    for flag in ("--model", "-m"):
+        if flag not in model_args:
+            continue
+        idx = model_args.index(flag)
+        if idx + 1 < len(model_args):
+            return model_args[idx + 1]
+    return ""
+
+
 def _read_failure_context(path_text: str) -> str:
     if not path_text:
         return ""
@@ -234,7 +244,6 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
         return rc
     output = Path(args.output)
     paths = LauncherPaths.from_output(output)
-    model = args.model or (config.CLAUDE_CI_RECOVERY_MODEL if args.role == "fix" else config.CLAUDE_CI_FIX_MODEL)
     prompt = _ci_prompt(tool="Codex", args=args)
     _write(path=paths.prompt, text=prompt)
     workdir = _resolve_review_codex_workdir(str(Path.cwd()))
@@ -251,12 +260,19 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
             _append_ci_failure(output, tool="codex", launcher_exit=auth_rc, site="ci fixer")
             return 0
         try:
-            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="fix").argv)
+            model_args = list(
+                resolve_model_args(
+                    "codex",
+                    with_effort=True,
+                    default_model=args.model,
+                    codex_role="fix" if args.role == "fix" else "default",
+                ).argv
+            )
         except ValueError as exc:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             _append_ci_failure(output, tool="codex", launcher_exit=1, site="ci fixer")
             return 0
-        resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
+        resolved_model = _model_arg_value(model_args)
         child = [
             "codex",
             "exec",
@@ -340,7 +356,12 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     prompt = f" /max-mode on. Prompt: {_ci_prompt(tool='Cursor', args=args)}"
     _write(path=paths.prompt, text=prompt)
     try:
-        model_args = ["--model", config.CURSOR_AUTO_MODEL]
+        if args.role == "fix":
+            model_args = ["--model", config.CURSOR_AUTO_MODEL]
+        elif args.model:
+            model_args = ["--model", args.model]
+        else:
+            model_args = list(resolve_model_args("cursor", with_effort=True).argv)
     except ValueError as exc:
         _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}", tool="cursor")
         _append_ci_failure(output, tool="cursor", launcher_exit=1, site="ci fixer")
@@ -365,7 +386,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)
 
-    cursor_ci_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
+    cursor_ci_model = _model_arg_value(model_args)
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-ci\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
@@ -817,7 +838,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
             _write_stderr_tail(source=sidecar, output=output)
             _emit_implement_launcher_envelope(args=args, launcher_exit=1)
             return 0
-        resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
+        resolved_model = _model_arg_value(model_args)
         events = paths.events
         child = [
             "codex",
@@ -969,7 +990,7 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)
 
-    cursor_impl_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
+    cursor_impl_model = _model_arg_value(model_args)
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
