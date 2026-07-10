@@ -79,6 +79,11 @@ contains "$SKILL_MD" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROO
 contains "$SKILL_MD" 'approval-gates-gate-b.md` completely. This Gate B slice is unconditional' 'Gate B slice must load unconditionally'
 contains "$SKILL_MD" 'approval-gates-gate-c.md` completely. This Gate C slice is unconditional' 'Gate C slice must load unconditionally'
 contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging/export and before this fence' 'failure slice must load before failed final summary'
+gate_a_read_count="$(grep -F -c -e 'approval-gates-gate-a.md` completely' "$SKILL_MD")"
+[ "$gate_a_read_count" -eq 1 ] || fail 'Gate A slice must load only in the Step 1e re-entry block'
+gate_a_read_line="$(grep -F -n -e 'approval-gates-gate-a.md` completely' "$SKILL_MD" | cut -d: -f1)"
+step1e_line="$(grep -F -n -e '<!-- step:1e: Discussion Mode Gate (Gate A) -->' "$SKILL_MD" | cut -d: -f1)"
+[ "$gate_a_read_line" -gt "$step1e_line" ] || fail 'Gate A slice must remain absent from the default pre-plan path'
 not_contains "$FINALIZE_STEP5_MD" '## /design auto error reporting' 'green finalize must exclude failure reporting'
 contains "$FINALIZE_STEP5_FAILURES_MD" '## /design auto error reporting' 'failure slice must own error reporting'
 
@@ -590,6 +595,10 @@ contains "$FINALIZE_STEP5_FAILURES_MD" 'When `_publish_rc=2` or an unexpected no
 contains "$FINALIZE_STEP5_FAILURES_MD" 'This includes `_publish_rc=5`.' 'finalize-step5 must own rc5 abort guidance'
 contains "$FINALIZE_STEP5_MD" 'When `_publish_rc=3`, the publish tail may have completed but `.design-publish-result.env` could not be written.' 'finalize-step5 must own rc3 stdout fallback guidance'
 not_contains "$SKILL_MD" '_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}`' 'SKILL must not retain publish rc abort wall'
+contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging `failed-clarify` or exporting `SUMMARY_OUTCOME=failed-clarify`' 'clarify fetch failure must load failure slice before staging'
+contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging or exporting `SUMMARY_OUTCOME=failed-plan-write`' 'clarify plan-write failure must load failure slice before staging'
+contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging `failed-judge-panel` or exporting `SUMMARY_OUTCOME=failed-judge-panel`' 'Split-path judge-panel failure must load failure slice before staging'
+contains "$SKILL_MD" 'run the Final summary block through Read/cache' 'Split-path judge-panel failure must execute the Final summary block'
 contains "$FINALIZE_STEP5_MD" 'Step 5d warning replay and footer' 'finalize-step5 must own Step 5d warning replay detail'
 contains "$SKILL_MD" 'architecture diagram work runs only at Step 5b.5 after Gate C approval' 'Step 2b anti-halt must not promise pre-approval diagram generation'
 not_contains "$SKILL_MD" 'design-run-$PPID.sh" design-step3b-sanitize.sh' 'SKILL must not retain standalone Step 5b.5 sanitizer fence'

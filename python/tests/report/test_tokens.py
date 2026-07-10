@@ -997,8 +997,12 @@ def _setup_reference_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
         "skills/design/SKILL.md": "design skill tokens",
         "skills/implement/SKILL.md": "implement skill tokens",
         "skills/design/references/approval-gates.md": "approval gates reference",
+        "skills/design/references/approval-gates-gate-b.md": "approval gates gate b reference",
+        "skills/design/references/approval-gates-gate-c.md": "approval gates gate c reference",
+        "skills/design/references/plan-review-runtime.md": "plan review runtime reference",
         "skills/design/references/plan-review.md": "plan review reference",
         "skills/design/references/finalize-step5.md": "finalize step five reference",
+        "skills/design/references/finalize-step5-failures.md": "finalize step five failures reference",
         "skills/shared/topology.md": "shared topology reference words",
         "docs/ignored.md": "ignored docs",
     }.items():
@@ -1177,9 +1181,12 @@ def test_measure_references_heatmap_counts_raw_v3_future_and_normalized_paths(tm
         {
             "message": {
                 "content": [
-                    {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/approval-gates.md"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/approval-gates-gate-b.md"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/approval-gates-gate-c.md"}},
                     {"type": "tool_use", "name": "Read", "input": {"file_path": f"{tmp_path}/skills/design/references/plan-review.md"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/plan-review-runtime.md"}},
                     {"type": "tool_use", "name": "Read", "input": {"file_path": f"{config.REDACTED_OPERATOR_REPO}/skills/design/references/finalize-step5.md"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/finalize-step5-failures.md"}},
                     {"type": "tool_use", "name": "Read", "input": {"file_path": "docs/ignored.md"}},
                 ]
             }
@@ -1187,7 +1194,7 @@ def test_measure_references_heatmap_counts_raw_v3_future_and_normalized_paths(tm
         {
             "blocks": [
                 {"type": "tool_call", "name": "Read", "input": {"file_path": "/Users/me/.claude/plugins/cache/larch-local/larch/abc/skills/shared/topology.md"}},
-                {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/approval-gates.md"}},
+                {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/approval-gates-gate-b.md"}},
             ]
         },
     ]
@@ -1208,11 +1215,14 @@ def test_measure_references_heatmap_counts_raw_v3_future_and_normalized_paths(tm
     assert coverage["design"]["transcript_coverage_ratio"] == "0.500000"
     assert coverage["design"]["reference_capture_status"] == "measured"
     rows = {(row["skill"], row["reference_path"]): row for row in _tsv_section_rows(out, "reference_heatmap")}
-    assert rows[("design", "skills/design/references/approval-gates.md")]["reads_observed"] == "2"
-    assert rows[("design", "skills/design/references/approval-gates.md")]["runs_observed"] == "2"
-    assert rows[("design", "skills/design/references/approval-gates.md")]["loads_per_run"] == "1.000000"
+    assert rows[("design", "skills/design/references/approval-gates-gate-b.md")]["reads_observed"] == "2"
+    assert rows[("design", "skills/design/references/approval-gates-gate-b.md")]["runs_observed"] == "2"
+    assert rows[("design", "skills/design/references/approval-gates-gate-b.md")]["loads_per_run"] == "1.000000"
+    assert rows[("design", "skills/design/references/approval-gates-gate-c.md")]["reads_observed"] == "1"
+    assert rows[("design", "skills/design/references/plan-review-runtime.md")]["reads_observed"] == "1"
     assert rows[("design", "skills/design/references/plan-review.md")]["reads_observed"] == "1"
     assert rows[("design", "skills/design/references/finalize-step5.md")]["reads_observed"] == "1"
+    assert rows[("design", "skills/design/references/finalize-step5-failures.md")]["reads_observed"] == "1"
     assert rows[("design", "skills/shared/topology.md")]["reads_observed"] == "1"
     assert all("docs/ignored.md" not in row["reference_path"] for row in rows.values())
 
