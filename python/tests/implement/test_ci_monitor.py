@@ -3580,3 +3580,46 @@ def test_verify_job_locally_skips_breadcrumb_without_run_id(
     )
 
     assert len(breadcrumb_calls) == 0
+
+
+def test_prepare_failure_evidence_distinguishes_ready_and_error() -> None:
+    runner = RecordingRunner({})
+    key = ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")
+    runner.sequential[key] = [
+        CommandResult(key, 0, "failure body\n", "", 0.01),
+        CommandResult(key, 1, "", "gh auth failed", 0.01),
+    ]
+    ready = ci_monitor.prepare_failure_evidence(runner, run_id="42", repo="o/r")
+    error = ci_monitor.prepare_failure_evidence(runner, run_id="42", repo="o/r")
+    assert ready.state == "ready"
+    assert error.state == "error"
+
+
+def test_resolve_failed_run_id_once_requires_failed_snapshot() -> None:
+    runner = RecordingRunner({})
+    key = ("gh", "pr", "checks", "7", "--repo", "o/r", "--json", "name,state,bucket,link")
+    runner.sequential[key] = [
+        CommandResult(key, 0, '[{"name":"CI","bucket":"pending","link":"https://github.com/o/r/actions/runs/41"}]', "", 0.01),
+        CommandResult(key, 0, '[{"name":"CI","bucket":"fail","link":"https://github.com/o/r/actions/runs/42"}]', "", 0.01),
+    ]
+    assert ci_monitor.resolve_failed_run_id_once(runner, pr=7, repo="o/r") is None
+    assert ci_monitor.resolve_failed_run_id_once(runner, pr=7, repo="o/r") == "42"
+
+
+def test_prepare_failure_evidence_waits_for_in_progress_result() -> None:
+    runner = RecordingRunner({})
+    key = ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")
+    runner.sequential[key] = [
+        CommandResult(key, 1, "", "run is still in progress; logs will be available", 0.01),
+        CommandResult(key, 0, "failure body\n", "", 0.01),
+    ]
+    now = [0.0]
+
+    def sleep_fn(seconds: float) -> None:
+        now[0] += seconds
+
+    result = ci_monitor.prepare_failure_evidence(
+        runner, run_id="42", repo="o/r", sleep_fn=sleep_fn, clock=lambda: now[0]
+    )
+    assert result.state == "ready"
+    assert result.text.endswith("failure body\n")

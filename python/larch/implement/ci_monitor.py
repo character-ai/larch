@@ -1263,12 +1263,45 @@ def _on_named_branch(runner: Runner, *, cwd: str | None) -> bool:
     return result.returncode == 0
 
 
+
+def resolve_failed_run_id_once(
+    runner: Runner,
+    *,
+    pr: int,
+    repo: str,
+    cwd: str | None = None,
+) -> str | None:
+    """Resolve one failed Actions run from the current PR checks snapshot."""
+    result = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        return None
+    status, run_id = _classify_checks_json(result.stdout)
+    return run_id if status == "fail" else None
+
+
+def prepare_failure_evidence(
+    runner: Runner,
+    *,
+    run_id: str,
+    repo: str,
+    cwd: str | None = None,
+    sleep_fn: SleepFn = time.sleep,
+    clock: ClockFn = time.monotonic,
+) -> LogCollectResult:
+    """Collect failed logs, waiting within the shared bound when still running."""
+    logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
+    if logs.state != "in_progress":
+        return logs
+    return wait_for_ci_ready(
+        runner, run_id=run_id, repo=repo, cwd=cwd, sleep_fn=sleep_fn, clock=clock
+    )
+
 def _outer_backoff_seconds(attempt_index: int) -> float:
     base = 2 * (2 ** max(0, attempt_index - 1))
     return max(1.0, float(base))
 
 
-def _wait_for_ci_ready(
+def wait_for_ci_ready(
     runner: Runner,
     *,
     run_id: str,
@@ -1598,7 +1631,7 @@ def evaluate_failure(
 
     upfront_logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
     if upfront_logs.state == "in_progress":
-        upfront_logs = _wait_for_ci_ready(
+        upfront_logs = wait_for_ci_ready(
             runner,
             run_id=run_id,
             repo=repo,
@@ -1804,3 +1837,6 @@ def monitor(
         goto=False,
         step=StepResult(outcome=Outcome.STALLED, detail=decision.action),
     )
+
+# Backward-compatible private alias for existing focused tests and callers.
+_wait_for_ci_ready = wait_for_ci_ready

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from larch.implement import ci_monitor
+from larch.implement import ci_fixer_lane, ci_monitor
 from larch.implement import main_health
 from larch import io as larch_io
 from larch.core import config
@@ -703,6 +703,14 @@ def _distill_from_gh(args: _DistillArgs) -> int:
     _emit_kv(key="FAILED_JOBS_COUNT", value=len(failed_jobs))
     _emit_kv(key="BAIL_CLASS", value="")
     return config.EXIT_OK
+
+
+def fixer_lane_main(argv: list[str]) -> int:
+    """Run one validated dormant CI fixer tier."""
+    try:
+        return ci_fixer_lane.main(argv)
+    except SystemExit as exc:
+        return int(exc.code or 0)
 
 
 def distill_log_main(argv: list[str]) -> int:
