@@ -6477,6 +6477,113 @@ def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
     assert "docs/optional.md" not in issues
 
 
+def test_step2_dispatch_bails_on_quota_when_plan_coverage_requires_disposition(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Files to modify/create\n"
+        "### UPDATED: `README.md`\n"
+        "### UPDATED: `docs/expected.md`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    baseline_head = _git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("partial edit\n", encoding="utf-8")
+        st.sidecar_log.write_text("Error: usage limit reached\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: partial quota edit")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
+
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    coverage = (tmp / "plan-coverage.env").read_text(encoding="utf-8")
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=true" in coverage
+    assert "STATUS=bailed" in out
+    assert "REASON=quota" in out
+    assert "STATUS=complete" not in out
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=true" not in out
+    assert _git(repo, "rev-parse", "HEAD").stdout.strip() == baseline_head
+    assert _git(repo, "status", "--porcelain").stdout.strip() == "M README.md"
+
+
+def test_step2_dispatch_completes_full_coverage_despite_quota_sidecar(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Files to modify/create\n"
+        "### UPDATED: `README.md`\n"
+        "### UPDATED: `docs/expected.md`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("complete edit\n", encoding="utf-8")
+        docs_dir = repo / "docs"
+        docs_dir.mkdir()
+        (docs_dir / "expected.md").write_text("complete docs edit\n", encoding="utf-8")
+        st.sidecar_log.write_text("Error: usage limit reached\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = _complete_manifest_payload(commit_message="stub: complete despite quota marker")
+        payload["files_touched"] = [
+            {"path": "README.md", "lines_added": 1, "lines_removed": 1},
+            {"path": "docs/expected.md", "lines_added": 1, "lines_removed": 0},
+        ]
+        payload["todos_left"] = []
+        st.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
+
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=false" in out
+    assert "STATUS=bailed" not in out
+    assert "REASON=quota" not in out
+    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "stub: complete despite quota marker"
+    assert _git(repo, "status", "--porcelain").stdout.strip() == ""
+
+
 def test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

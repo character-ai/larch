@@ -176,6 +176,7 @@ STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys(
     *LINT_FIX_BAIL_REASON_TOKENS,
     IMPLEMENTATION_COMMIT_FAILED,
     REVIEW_CHANGE_DETECTION_FAILED,
+    "quota",
     "design-flaw",
     "escalate",
     "all-vendors-failed",

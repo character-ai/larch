@@ -109,6 +109,7 @@ def test_implement_step4_and_post_dispatch_literals() -> None:
     assert config.IMPLEMENTATION_COMMIT_FAILED in config.STALL_RECOVERY_BAIL_REASON_TOKENS
     assert config.REVIEW_CHANGE_DETECTION_FAILED == "review-change-detection-failed"
     assert config.REVIEW_CHANGE_DETECTION_FAILED in config.STALL_RECOVERY_BAIL_REASON_TOKENS
+    assert "quota" in config.STALL_RECOVERY_BAIL_REASON_TOKENS
 
 
 def test_exit_stall_removed_bail_kept() -> None:

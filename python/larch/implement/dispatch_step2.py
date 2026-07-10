@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from larch import io as larch_io
+from larch.agents._launch_failure import is_quota_failure
 from larch.core import config
 from larch.core import architectural_guidelines
 from larch.core import logging_util
@@ -711,6 +712,8 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         except ShipError as exc:
             _append_warning(st=st, text=f"Step 7a.1 — plan coverage compute failed closed: {exc}")
             return st.emit_bailed("plan-coverage-compute-failed")
+        if plan_coverage.disposition_required and is_quota_failure(tool=st.coder, sidecar=st.sidecar_log):
+            return st.emit_bailed("quota")
         uncovered = list(plan_coverage.untouched_paths)
         if uncovered:
             uncovered_plan_path_count = len(uncovered)
