@@ -1005,6 +1005,19 @@ def write_unavailable_note(
     invariant: bool = False,
 ) -> None:
     """Persist a non-violating note when assessment input is unavailable."""
+    if invariant:
+        existing_metadata = invariant_durable_note_metadata(implement_tmpdir)
+        existing_note_path = invariant_durable_note_path(implement_tmpdir)
+        if (
+            existing_metadata.get("NOTE_STATE", config.NOTE_STATE_AUTHORED) == config.NOTE_STATE_AUTHORED
+            and _regular_file(existing_note_path)
+        ):
+            try:
+                existing_note = _read_regular_text_no_follow(existing_note_path)
+            except (OSError, UnicodeDecodeError):
+                existing_note = ""
+            if _invariant_assessment_kind(existing_note) == "violation":
+                return
     metadata = {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE, "ASSESSMENT_KIND": ""}
     writer = write_invariant_implement_note if invariant else write_implement_note
     writer(
@@ -1407,7 +1420,7 @@ def _validated_note_metadata(  # noqa: PLR0911 - fail-closed metadata validator 
     return note_state, authored_fingerprint, covered_fingerprint, base_ref
 
 
-def _advance_note_coverage(  # noqa: PLR0913 - each coverage advancement parameter is an individually required atomic input
+def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0913 - fail-closed coverage advancement validates each independent safety boundary
     *,
     implement_tmpdir: Path,
     metadata: dict[str, str],
@@ -1417,6 +1430,30 @@ def _advance_note_coverage(  # noqa: PLR0913 - each coverage advancement paramet
     invariant: bool,
 ) -> bool:
     stored_head = metadata.get("HEAD_SHA", "").strip()
+    identity = _note_identity(metadata)
+    if identity is None:
+        return False
+    note_state, authored_fingerprint, covered_fingerprint = identity
+    if note_state == config.NOTE_STATE_UNAVAILABLE:
+        return False
+    snapshot_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
+    if not _valid_commit(repo_root=repo_root, revision=stored_head):
+        return False
+    remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
+    try:
+        stored_diff = _materialize_implementation_diff_for_head(
+            repo_root,
+            head_sha=stored_head,
+            base_remote=remote,
+            base_ref=ref,
+        )
+    except (OSError, RuntimeError):
+        return False
+    if diff_fingerprint(stored_diff) != covered_fingerprint or not _snapshot_matches(
+        snapshot_path=snapshot_path,
+        covered_fingerprint=covered_fingerprint,
+    ):
+        return False
     if not _incremental_paths_out_of_scope(repo_root=repo_root, old_head=stored_head, new_head=head_sha):
         return False
     if _current_head(repo_root, verify_commit=True) != head_sha:
@@ -1425,8 +1462,9 @@ def _advance_note_coverage(  # noqa: PLR0913 - each coverage advancement paramet
     if live_diff is None or _current_head(repo_root, verify_commit=True) != head_sha:
         return False
     diff_text, covered_fingerprint = live_diff
-    snapshot_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
     refreshed = dict(metadata)
+    refreshed["NOTE_STATE"] = note_state
+    refreshed["AUTHORED_DIFF_FINGERPRINT"] = authored_fingerprint
     refreshed["COVERED_DIFF_FINGERPRINT"] = covered_fingerprint
     refreshed["DIFF_FINGERPRINT"] = covered_fingerprint
     refreshed["DIFF_SNAPSHOT"] = str(snapshot_path)
@@ -1435,6 +1473,8 @@ def _advance_note_coverage(  # noqa: PLR0913 - each coverage advancement paramet
     snapshot_tmp = snapshot_path.with_name(snapshot_path.name + ".coverage.tmp")
     meta_tmp = meta_path.with_name(meta_path.name + ".coverage.tmp")
     try:
+        previous_snapshot = _read_regular_text_no_follow(snapshot_path)
+        previous_metadata = _read_regular_text_no_follow(meta_path)
         snapshot_tmp.write_text(diff_text, encoding="utf-8")
         meta_tmp.write_text(
             _durable_metadata_text(
@@ -1449,7 +1489,12 @@ def _advance_note_coverage(  # noqa: PLR0913 - each coverage advancement paramet
         if diff_fingerprint(snapshot_tmp.read_text(encoding="utf-8")) != covered_fingerprint:
             return False
         snapshot_tmp.replace(snapshot_path)
-        meta_tmp.replace(meta_path)
+        try:
+            meta_tmp.replace(meta_path)
+        except OSError:
+            _write_text_atomic(path=snapshot_path, text=previous_snapshot)
+            _write_text_atomic(path=meta_path, text=previous_metadata)
+            return False
     except (OSError, UnicodeDecodeError):
         return False
     finally:
@@ -1560,8 +1605,10 @@ def _note_fingerprint_stale(
     meta_path = _invariant_durable_meta_path(implement_tmpdir) if invariant else _durable_meta_path(implement_tmpdir)
     metadata = _read_env(meta_path)
     identity = _note_identity(metadata)
-    if identity is None or identity[0] == config.NOTE_STATE_UNAVAILABLE or not base_ref or repo_root is None:
+    if identity is None or not base_ref or repo_root is None:
         return True
+    if identity[0] == config.NOTE_STATE_UNAVAILABLE:
+        return False
     try:
         root = Path(repo_root).resolve()
     except OSError:

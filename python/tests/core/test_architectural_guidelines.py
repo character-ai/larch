@@ -2198,6 +2198,43 @@ def test_unavailable_note_is_head_pinned_and_has_no_synthetic_identity(tmp_path:
     assert not ag.invariant_note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
 
 
+def test_unavailable_note_is_not_stale_at_its_pinned_head(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_unavailable_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+    )
+
+    assert not ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=tmp_path)
+
+
+def test_unavailable_invariant_refresh_preserves_authored_violation(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_invariant_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="I-Test-1: violated\n",
+        head_sha="head-a",
+        metadata={
+            "NOTE_STATE": ag.config.NOTE_STATE_AUTHORED,
+            "AUTHORED_DIFF_FINGERPRINT": "author-fingerprint",
+            "COVERED_DIFF_FINGERPRINT": "covered-fingerprint",
+            "DIFF_FINGERPRINT": "covered-fingerprint",
+        },
+        base_ref="origin/main",
+    )
+
+    ag.write_unavailable_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-b",
+        base_ref="origin/main",
+        invariant=True,
+    )
+
+    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "I-Test-1: violated\n"
+    assert ag.invariant_durable_note_metadata(tmpdir)["NOTE_STATE"] == ag.config.NOTE_STATE_AUTHORED
+
+
 @pytest.mark.parametrize(
     ("validator", "record"),
     [
@@ -2312,6 +2349,36 @@ def test_incremental_paths_out_of_scope_same_revision_fails_closed(tmp_path: Pat
     assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head=sha, new_head=sha)
 
 
+@pytest.mark.parametrize(
+    "completed",
+    [
+        subprocess.CompletedProcess(["git"], 1, b"", b"git failure"),
+        subprocess.CompletedProcess(["git"], 0, b"docs/guide.md", b""),
+        subprocess.CompletedProcess(["git"], 0, b"docs/\xff.md\0", b""),
+    ],
+)
+def test_incremental_paths_out_of_scope_rejects_bad_git_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    completed: subprocess.CompletedProcess[bytes],
+) -> None:
+    repo = _repo(tmp_path)
+    sha = _git_head(repo)
+
+    def fake_valid_commit(*, repo_root: Path, revision: str) -> bool:
+        _ = repo_root, revision
+        return True
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        _ = argv
+        return completed
+
+    monkeypatch.setattr(ag, "_valid_commit", fake_valid_commit)
+    monkeypatch.setattr(ag.subprocess, "run", fake_run)
+
+    assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head=sha, new_head="next")
+
+
 def test_coverage_advancement_docs_only_note_remains_consumable(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     tmpdir = tmp_path / "implement"
@@ -2346,6 +2413,75 @@ def test_coverage_advancement_docs_only_note_remains_consumable(tmp_path: Path) 
         ag.diff_fingerprint(ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"))
         == metadata["COVERED_DIFF_FINGERPRINT"]
     )
+
+
+def test_coverage_advancement_rejects_snapshot_not_matching_stored_head(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ag.write_deterministic_clean_note(implement_tmpdir=tmpdir, head_sha=h1, base_ref="origin/main", diff_text=diff_text)
+
+    forged_snapshot = "forged snapshot\n"
+    (tmpdir / ag.MATERIALIZED_DIFF).write_text(forged_snapshot, encoding="utf-8")
+    metadata_path = tmpdir / ag.DURABLE_NOTE_ENV
+    forged_fingerprint = ag.diff_fingerprint(forged_snapshot)
+    metadata_path.write_text(
+        "\n".join(
+        f"{key}={forged_fingerprint}" if key in {"COVERED_DIFF_FINGERPRINT", "DIFF_FINGERPRINT"} else line
+        for line in metadata_path.read_text(encoding="utf-8").splitlines()
+        for key, _, _value in [line.partition("=")]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "docs only")
+
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha=_git_head(repo), base_ref="origin/main", repo_root=repo)
+
+
+def test_coverage_advancement_metadata_failure_restores_prior_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"),
+    )
+    before_snapshot = (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8")
+    before_metadata = (tmpdir / ag.DURABLE_NOTE_ENV).read_text(encoding="utf-8")
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "docs only")
+    original_replace = Path.replace
+
+    def fail_metadata_replace(path: Path, target: Path) -> Path:
+        if target == tmpdir / ag.DURABLE_NOTE_ENV:
+            raise OSError("metadata replace failed")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_metadata_replace)
+
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha=_git_head(repo), base_ref="origin/main", repo_root=repo)
+    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == before_snapshot
+    assert (tmpdir / ag.DURABLE_NOTE_ENV).read_text(encoding="utf-8") == before_metadata
 
 
 def test_coverage_advancement_chained_advances_preserve_authored_fingerprint(tmp_path: Path) -> None:
