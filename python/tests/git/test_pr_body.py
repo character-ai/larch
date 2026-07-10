@@ -1650,3 +1650,120 @@ def test_render_run_summary_identity_lines_manifest_version_fallback(
     )
 
     assert "- **Larch version**: 52.7.3" in body
+
+
+def test_render_run_summary_cursor_lane_split_when_components_present() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="merged",
+        run_id="run1",
+        total_cost="3.00",
+        claude_cost="0.50",
+        codex_cost="0.25",
+        cursor_cost="2.00",
+        cursor_composer_cost="1.20",
+        cursor_grok_cost="0.60",
+        cursor_auto_cost="0.20",
+        claude_sub_cost="0.25",
+        total_tokens=5000,
+        cost_unavailable=False,
+    )
+    assert "Cursor $2.00 (Composer $1.20, Grok $0.60, Auto $0.20)" in body
+    assert "Cursor $2.00" in body
+
+
+def test_render_run_summary_cursor_aggregate_when_no_components() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="merged",
+        run_id="run1",
+        total_cost="1.00",
+        claude_cost="0.50",
+        codex_cost="0.25",
+        cursor_cost="0.10",
+        claude_sub_cost="0.15",
+        total_tokens=1000,
+        cost_unavailable=False,
+    )
+    assert "Cursor $0.10" in body
+    # Ensure no lane breakdown appears
+    assert "Cursor $0.10 (Composer" not in body
+
+
+def test_render_run_summary_cursor_lane_with_zero_valued_component() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="merged",
+        run_id="run1",
+        total_cost="2.00",
+        claude_cost="1.00",
+        codex_cost="0.50",
+        cursor_cost="0.30",
+        cursor_composer_cost="0.30",
+        cursor_grok_cost="0.00",
+        cursor_auto_cost="0.00",
+        claude_sub_cost="0.20",
+        total_tokens=2000,
+        cost_unavailable=False,
+    )
+    assert "Grok $0.00" in body
+    assert "Auto $0.00" in body
+
+
+def test_render_run_summary_total_unchanged_by_cursor_split() -> None:
+    body_aggregate = pr_body.render_run_summary(
+        skill="implement",
+        outcome="merged",
+        run_id="run1",
+        total_cost="5.00",
+        claude_cost="2.00",
+        codex_cost="1.00",
+        cursor_cost="1.50",
+        claude_sub_cost="0.50",
+        total_tokens=10000,
+        cost_unavailable=False,
+    )
+    body_split = pr_body.render_run_summary(
+        skill="implement",
+        outcome="merged",
+        run_id="run1",
+        total_cost="5.00",
+        claude_cost="2.00",
+        codex_cost="1.00",
+        cursor_cost="1.50",
+        cursor_composer_cost="0.80",
+        cursor_grok_cost="0.50",
+        cursor_auto_cost="0.20",
+        claude_sub_cost="0.50",
+        total_tokens=10000,
+        cost_unavailable=False,
+    )
+    assert "TOTAL ~$5.00" in body_aggregate
+    assert "TOTAL ~$5.00" in body_split
+    assert "10k" in body_aggregate
+    assert "10k" in body_split
+
+
+def test_render_run_summary_main_forwards_cursor_grok_flags(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = pr_body.render_run_summary_main([
+        "--skill", "implement", "--outcome", "merged", "--run-id", "r1",
+        "--cursor-grok-input-tokens", "1000000",
+        "--cursor-grok-output-tokens", "1000000",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Grok" in out
+
+
+def test_render_run_summary_main_grok_only_uses_detailed_pricing(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = pr_body.render_run_summary_main([
+        "--skill", "implement", "--outcome", "merged", "--run-id", "r1",
+        "--cursor-grok-input-tokens", "1000000",
+        "--cursor-grok-cache-read-tokens", "0",
+        "--cursor-grok-output-tokens", "1000000",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Grok-only: detailed pricing activates; $8.00 = 1M@$2.00 input + 1M@$6.00 output
+    assert "$8.00" in out
+    assert "Grok" in out
