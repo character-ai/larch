@@ -1,0 +1,2 @@
+warning: fix text for slot 'dyn-dyn-session-cleanup' in FINDING_1 not traceable to scoped input (first 80 chars: '`Validate ns.claude_pid (same _validate_claude_pid helper) before tmpdir cleanup')
+warning: fix text for slot 'dyn-dyn-session-cleanup' in FINDING_2 not traceable to scoped input (first 80 chars: '`Require and validate parsed.claude_pid before cleanup_tmpdir_main; only call re')
