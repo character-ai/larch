@@ -17,6 +17,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts skill-closure-size lint-skill-closure-growth regen-skill-closure-baseline test-lint-skill-closure-growth
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync
 .PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage
+.PHONY: lint-guideline-no-exception test-lint-guideline-no-exception
 .PHONY: lint-flat-tests test-lint-flat-tests
 .PHONY: test-hook-deny-run-in-background test-bgjob
 .PHONY: lint-em-dash-output test-lint-em-dash-output
@@ -54,7 +55,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason guidelines-note-wrapper-bypass layering flat-tests; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -193,6 +194,12 @@ skill-closure-size:
 
 lint-skill-closure-growth:
 	$(PYTHON) python/cli.py lint skill-closure-growth
+
+lint-guideline-no-exception:
+	$(PYTHON) python/cli.py lint guideline-no-exception
+
+test-lint-guideline-no-exception:
+	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_guideline_no_exception.py -q
 
 py-typecheck:
 	@$(PYTHON) -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
