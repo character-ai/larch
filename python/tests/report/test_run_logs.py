@@ -2258,7 +2258,7 @@ def test_larch_log_commit_main_allows_legacy_commit_failed_summary(
         "schema_version": 2,
         "skill": "implement",
         "run_id": "run-abc",
-        "steps_ran": {},
+        "steps_ran": cast("dict[str, Any]", {}),
         "status": "partial",
     }
     _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
@@ -2271,7 +2271,7 @@ def test_larch_log_commit_main_allows_legacy_commit_failed_summary(
         return CommandResult(("run-log", "commit"), 0, "a" * 40 + "\n", "", 0.0)
 
     monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit_run)
-    monkeypatch.setattr(run_log_commit, "_emit_larch_log_envelope", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(run_log_commit, "_emit_larch_log_envelope", lambda *_a, **_k: None)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     rc = run_logs.larch_log_commit_main(
         [
