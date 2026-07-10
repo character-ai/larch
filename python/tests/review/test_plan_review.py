@@ -1605,6 +1605,49 @@ def test_gate_b_dedup_preserves_trailers_and_rejects_new_keys(tmp_path: Path) ->
     assert proc.returncode == 1
 
 
+def test_gate_b_dedup_resyncs_oversize_override_authority(tmp_path: Path) -> None:
+    _write_gate_b_plan(tmp_path, "body\nbody\noversize_override: operator\ndiff_lines: 10\n")
+    override = run_cli("plan", "set-oversize-override", "--design-tmpdir", str(tmp_path))
+    assert override.returncode == 0, override.stderr
+    before = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert before.returncode == 0, before.stderr
+    assert "OVERSIZE_OVERRIDE=operator" in before.stdout.splitlines()
+
+    snapshot = run_cli(
+        "plan-review",
+        "gate-b-dedup",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--snapshot-trailers",
+    )
+    assert snapshot.returncode == 0, snapshot.stderr
+    dedup = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(tmp_path), "--dedup")
+    assert dedup.returncode == 0, dedup.stderr
+    assert "dedup-sweep: removed 1 duplicate" in dedup.stdout
+
+    after = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert after.returncode == 0, after.stderr
+    assert "OVERSIZE_OVERRIDE=operator" in after.stdout.splitlines()
+
+
+def test_gate_b_dedup_does_not_authorize_untrusted_oversize_override(tmp_path: Path) -> None:
+    _write_gate_b_plan(tmp_path, "body\nbody\noversize_override: operator\ndiff_lines: 10\n")
+    snapshot = run_cli(
+        "plan-review",
+        "gate-b-dedup",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--snapshot-trailers",
+    )
+    assert snapshot.returncode == 0, snapshot.stderr
+    dedup = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(tmp_path), "--dedup")
+    assert dedup.returncode == 0, dedup.stderr
+
+    after = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert after.returncode == 0, after.stderr
+    assert "OVERSIZE_OVERRIDE=" in after.stdout.splitlines()
+
+
 def test_gate_b_dedup_allows_value_recompute_and_rejects_key_loss(tmp_path: Path) -> None:
     _write_gate_b_plan(tmp_path, "body\ndiff_added: 100\ndiff_lines: 200\n")
     assert (

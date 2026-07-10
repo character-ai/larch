@@ -115,12 +115,21 @@ grep -Fxq 'PLAN_WRITE_OK=true' "$D/bgjob/design-step5c.result.env" || fail 'bgjo
 grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must include BGJOB_RC'
 pass 'wrapper writes bgjob result env'
 
+cat >"$D/bgjob/design-step5c.result.env" <<'ENV'
+BGJOB_RC=7
+STEP=design-step5c
+STALE_RESULT=true
+ENV
+stale_result=$(cat "$D/bgjob/design-step5c.result.env")
 out=$(CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$D" LARCH_BGJOB_REGISTRY_ROOT="$TMP/registry" \
   "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh" --session-env-path "$TMP/source-env.sh" --claude-pid $$)
 case "$out" in
-  $'BGJOB_STATUS=DONE\n'*) ;;
-  *) fail "existing result env must route to bgjob wait DONE, got: $out" ;;
+  BGJOB_STATUS=STARTED\ STEP=design-step5c\ PGID=*) ;;
+  *) fail "stale result env must trigger a fresh bgjob start, got: $out" ;;
 esac
-pass 'existing bgjob result env routes to wait instead of relaunch'
+new_result=$(cat "$D/bgjob/design-step5c.result.env")
+[ "$new_result" != "$stale_result" ] || fail 'fresh bgjob start must overwrite the stale result env'
+grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'fresh result env must contain the new bgjob result'
+pass 'stale bgjob result env is cleared before relaunch'
 
 printf 'PASS: test-design-step5c.sh\n'

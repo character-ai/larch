@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from larch.design.design_lifecycle import json_get_bool, phase_driver_write_result_env
+from larch.design.plan_quality import sync_oversize_override_authority
 from larch.report.timing import TIMING_VENDOR_MIN_COLS, TimingLedger
 from larch.review import plan_review_round
 from larch.review import plan_review_tally
@@ -395,6 +396,7 @@ def gate_b_dedup_plan(argv: Sequence[str]) -> int:
             seen.add(line)
         out_lines.append(line)
     _write_atomic(path=plan, content="\n".join(out_lines) + ("\n" if text.endswith("\n") else ""))
+    sync_oversize_override_authority(design_tmpdir=tmpdir, plan=plan, previous_plan_text=text)
     print(f"dedup-sweep: removed {removed} duplicate line(s) from plan.txt")
     _emit_kv(key="GATE_B_DEDUP_STATUS", value="ok")
     return 0

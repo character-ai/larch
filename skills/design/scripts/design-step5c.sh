@@ -78,12 +78,6 @@ if [ -e "$_result_env" ] && [ ! -f "$_result_env" ]; then
   printf '%s\n' 'design-step5c.sh: existing bgjob result env must be a regular file' >&2
   exit 1
 fi
-if [ -f "$_result_env" ]; then
-  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait \
-    --step design-step5c \
-    --tmpdir "$DESIGN_TMPDIR" \
-    --max-wait-s 0
-fi
 _registry_state="$(step5c_bgjob_registry_state)" || {
   printf '%s\n' 'BGJOB_ERROR=registry-check-failed'
   exit 2

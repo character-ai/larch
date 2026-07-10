@@ -598,6 +598,23 @@ def _sync_oversize_override_authority(*, design_tmpdir: Path, plan: Path) -> Non
         authority_path.unlink(missing_ok=True)
 
 
+def sync_oversize_override_authority(*, design_tmpdir: Path, plan: Path, previous_plan_text: str | None = None) -> None:
+    """Preserve an already-authorized override across a verified plan rewrite."""
+    authority_path = _oversize_override_authority_path(design_tmpdir=design_tmpdir)
+    try:
+        plan_text = plan.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    authorized_text = previous_plan_text if previous_plan_text is not None else plan_text
+    if (
+        parse_optional_metadata(plan_text).oversize_override == config.OVERSIZE_OVERRIDE_OPERATOR
+        and _trusted_oversize_override(design_tmpdir=design_tmpdir, plan_text=authorized_text) is not None
+    ):
+        _atomic_write(path=authority_path, text=_oversize_override_authority_token(text=plan_text) + "\n")
+    else:
+        authority_path.unlink(missing_ok=True)
+
+
 def set_oversize_override_main(argv: list[str]) -> int:
     quiet_init(argv0="plan set-oversize-override")
     parser = argparse.ArgumentParser(prog="cli.py plan set-oversize-override")
