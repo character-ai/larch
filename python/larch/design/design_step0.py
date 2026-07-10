@@ -711,7 +711,7 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
         print("/design Step 0 abort-cleanup: DESIGN_TMPDIR required", file=sys.stderr)
         return 1
     try:
-        session_env._validate_claude_pid(ns.claude_pid)  # pyright: ignore[reportPrivateUsage]
+        session_env._validate_claude_pid(ns.claude_pid)  # pyright: ignore[reportPrivateUsage] - sibling module private helper validates PID consistently
     except ValueError as exc:
         print(f"design-step0-abort-cleanup.sh: {exc}", file=sys.stderr)
         return CONFIGURATION_ERROR_RC
