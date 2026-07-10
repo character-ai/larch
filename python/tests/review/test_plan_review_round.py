@@ -892,11 +892,11 @@ def test_execute_round_records_progress_breadcrumb_sequence(
     assert rc == 0
     assert values["LOOP_STATUS"] == "complete"
     assert breadcrumbs == [
-        ("design", "3", "launching reviewers"),
-        ("design", "3", "collecting reviewer outputs"),
-        ("design", "3", "aggregating reviewer findings"),
-        ("design", "3", "dispatching 3 voters"),
-        ("design", "3", "tallying votes"),
+        ("design", "3", "round 1: launching reviewers"),
+        ("design", "3", "round 1: collecting reviewer outputs"),
+        ("design", "3", "round 1: aggregating reviewer findings"),
+        ("design", "3", "round 1: dispatching 3 voters"),
+        ("design", "3", "round 1: tallying votes"),
     ]
 
 

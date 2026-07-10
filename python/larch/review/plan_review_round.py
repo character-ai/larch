@@ -882,7 +882,7 @@ def execute_round(
         argv=panel_args,
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
-        text="launching reviewers",
+        text=f"round {round_num}: launching reviewers",
     )
     out_lines.append(panel.stdout)
     if panel.returncode != 0:
@@ -945,7 +945,7 @@ def execute_round(
             ],
             env={"LARCH_QUIET_DISABLE": "1"},
             step="3",
-            text="collecting reviewer outputs",
+            text=f"round {round_num}: collecting reviewer outputs",
         )
         collect_out = collect.stdout
         collect_rc = collect.returncode
@@ -1010,7 +1010,7 @@ def execute_round(
         ],
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
-        text="aggregating reviewer findings",
+        text=f"round {round_num}: aggregating reviewer findings",
     )
     agg_kv = _parse_kv(agg.stdout)
     agg_status = _aggregator_status_from_kv(agg_kv=agg_kv, returncode=agg.returncode)
@@ -1102,7 +1102,7 @@ def execute_round(
         ],
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
-        text="dispatching 3 voters",
+        text=f"round {round_num}: dispatching 3 voters",
     )
     out_lines.append(voter.stdout)
     voter_kv = _parse_kv(voter.stdout)
@@ -1146,7 +1146,7 @@ def execute_round(
         argv=voter_args,
         env={"LARCH_QUIET_DISABLE": "1"},
         step="3",
-        text="tallying votes",
+        text=f"round {round_num}: tallying votes",
     )
     out_lines.append(tally.stdout)
     tally_kv = _parse_kv(tally.stdout)
