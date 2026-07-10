@@ -44,6 +44,34 @@ def test_registry_round_trip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) ->
     assert loaded.child.pid == os.getpid()
 
 
+def test_registry_round_trip_accepts_uppercase_uuid_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    identity = _identity()
+    entry = model.RegistryEntry(
+        step="demo-step",
+        run_id="A0B1C2D3-E4F5-6789-ABCD-0123456789AB",
+        tmpdir=tmp_path,
+        log_dir=tmp_path / "bgjob",
+        clone_path=Path.cwd().resolve(),
+        daemon=identity,
+        child=identity,
+        owner=None,
+        start_epoch=1,
+        budget_s=30,
+        stdout_log=tmp_path / "bgjob/demo-step.stdout.log",
+        stderr_log=tmp_path / "bgjob/demo-step.stderr.log",
+        result_env=tmp_path / "bgjob/demo-step.result.env",
+    )
+    entry.log_dir.mkdir(parents=True, exist_ok=True)
+
+    loaded = registry.read_entry(registry.write_entry(entry))
+
+    assert loaded is not None
+    assert loaded.run_id == entry.run_id
+
+
 def test_registry_ignores_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
     root = model.registry_root()

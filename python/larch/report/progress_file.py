@@ -113,6 +113,24 @@ def resolve_owned_run_id(
     return None
 
 
+def resolve_persisted_repo_root(*, tmpdir: str | Path) -> Path | None:
+    """Resolve the persisted consumer root for a session-owned run."""
+    root = Path(tmpdir)
+    for path in (root / "source-env.sh", root / "session-env.sh"):
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            for prefix in ("REPO_ROOT=", "export REPO_ROOT="):
+                if raw.startswith(prefix):
+                    candidate = Path(raw[len(prefix):].strip().strip("'\""))
+                    if candidate.is_absolute() and candidate.is_dir():
+                        with contextlib.suppress(OSError):
+                            return candidate.resolve()
+    return None
+
+
 def progress_clone_dir(repo_root: str | Path) -> Path:
     """Return the clone-scoped progress directory for ``repo_root``."""
     return progress_path(repo_root).with_suffix("")

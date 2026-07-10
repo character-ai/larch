@@ -1090,8 +1090,11 @@ def _try_deactivate_design_run(design_tmpdir: Path) -> None:
     with contextlib.suppress(Exception):
         from larch.report import progress_file  # noqa: PLC0415 - best-effort lazy import guarded by contextlib.suppress
         run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
-        if run_id:
-            progress_file.deactivate_run(Path.cwd(), run_id)
+        repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
+        if run_id and repo_root is not None:
+            from larch.bgjob import registry  # noqa: PLC0415
+            if not registry.has_live_entry(repo_root=repo_root, run_id=run_id):
+                progress_file.deactivate_run(repo_root, run_id)
 
 
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:

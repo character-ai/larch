@@ -195,8 +195,9 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
         return req
     _touch(design_tmpdir / ".completed" / "step-6")
     effective_run = resolve_owned_run_id(tmpdir=design_tmpdir)
-    if effective_run:
-        _ = deactivate_run(Path.cwd(), effective_run)
+    repo_root = resolve_persisted_repo_root(tmpdir=design_tmpdir)
+    if effective_run and repo_root is not None:
+        _ = deactivate_run(repo_root, effective_run)
     cleanup_rc = session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
     if cleanup_rc != 0:
         return cleanup_rc

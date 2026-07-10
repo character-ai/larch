@@ -272,8 +272,9 @@ def pause_save_main(argv: Sequence[str]) -> int:
     (design_tmpdir / ".pause-requested").unlink(missing_ok=True)
     _ = (design_tmpdir / ".pause-save-complete").write_text("", encoding="utf-8")
     effective_run = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir) or run_id
-    if effective_run:
-        _ = progress_file.deactivate_run(Path.cwd(), effective_run)
+    repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
+    if effective_run and repo_root is not None:
+        _ = progress_file.deactivate_run(repo_root, effective_run)
     _emit([("PAUSE_OK", "true"), ("STEP", step), ("RUN_ID", run_id)])
     return 0
 

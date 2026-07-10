@@ -84,13 +84,7 @@ def _tail_breadcrumbs(path: Path, *, count: int) -> list[str]:
 
 def _run_has_live_bgjob(repo_root: Path, run_id: str) -> bool:
     with contextlib.suppress(Exception):
-        repo_real = repo_root.resolve()
-        for _path, entry in registry.iter_entries():
-            if entry is None or entry.run_id != run_id or registry.entry_expired(entry):
-                continue
-            with contextlib.suppress(OSError):
-                if entry.clone_path.resolve() == repo_real and registry.child_liveness(entry).live:
-                    return True
+        return registry.has_live_entry(repo_root=repo_root, run_id=run_id)
     return False
 
 

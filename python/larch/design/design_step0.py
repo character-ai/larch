@@ -166,7 +166,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     _emit_parse_kvs(cache=cache, data=parsed)
     bootstrap._install_statusline_best_effort()
     setup = subprocess.run(
-        _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
+        _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check"),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -210,6 +210,17 @@ def step0_session_main(argv: Sequence[str]) -> int:
         ),
         env=env,
     )
+    reviewer_probe = subprocess.run(
+        _cli_cmd(plugin_root, "agent", "check-reviewers"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if reviewer_probe.stdout:
+        print(reviewer_probe.stdout, end="" if reviewer_probe.stdout.endswith("\n") else "\n")
+    reviewer_kv = _parse_stdout_kv(reviewer_probe.stdout)
+    if reviewer_probe.returncode != 0:
+        reviewer_kv = {}
     _run_best_effort(
         command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"),
         env={**env, "LARCH_TIMING_SKILL": "design"},
@@ -222,9 +233,9 @@ def step0_session_main(argv: Sequence[str]) -> int:
             "--skill",
             "design",
             "--codex-present",
-            kv.get("CODEX_PRESENT", ["false"])[-1] or "false",
+            reviewer_kv.get("CODEX_PRESENT", kv.get("CODEX_PRESENT", ["false"]))[-1] or "false",
             "--cursor-present",
-            kv.get("CURSOR_PRESENT", ["false"])[-1] or "false",
+            reviewer_kv.get("CURSOR_PRESENT", kv.get("CURSOR_PRESENT", ["false"]))[-1] or "false",
             "--codex-binary-found",
             codex_binary or "false",
             "--cursor-binary-found",
@@ -720,6 +731,11 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
     design_tmpdir = Path(env["DESIGN_TMPDIR"])
     print(f"**⚠ /design: aborted by operator: {ns.reason}**")
     _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 0", tool=ns.tool, exit_code=0, category="Warnings", output_file=design_tmpdir / "execution-issues.md")
+    from larch.report import progress_file  # noqa: PLC0415
+    run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
+    repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
+    if run_id and repo_root is not None:
+        _ = progress_file.deactivate_run(repo_root, run_id)
     cleanup_rc = subprocess.run(_cli_cmd(plugin_root, "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)), check=False).returncode
     if cleanup_rc != 0:
         return cleanup_rc

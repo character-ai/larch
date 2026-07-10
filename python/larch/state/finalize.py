@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from larch.core import config, process_identity
+from larch.bgjob import registry as bgjob_registry
 from larch.issue import execution_issues
 from larch.report import progress_file
 from larch.git import gh
@@ -717,9 +718,9 @@ def teardown(
     teardown_run_id = run_logs.effective_run_id(ctx)
     if teardown_run_id:
         _ = _teardown_log_flush(runner=runner, ctx=ctx, cwd=cwd)
-        _ = progress_file.deactivate_run(
-            Path(cwd).resolve() if cwd else Path.cwd(), teardown_run_id
-        )
+        repo_root = Path(cwd).resolve() if cwd else Path.cwd()
+        if not bgjob_registry.has_live_entry(repo_root=repo_root, run_id=teardown_run_id):
+            _ = progress_file.deactivate_run(repo_root, teardown_run_id)
     issue_url = ""
     issue_number = ctx.issue_number or ctx.issue
     if issue_number and not ctx.repo_unavailable:
