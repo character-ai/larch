@@ -109,4 +109,3 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no prompt. Hard triggers are body `> 800`, firm headings `> 25`, surfaces `> 4`, or `diff_added > 2000` / fallback `diff_lines > 1500`; `mechanical_churn: true` softens only the diff trigger. `SIZE_TRIGGER_FIRED=true` fires Split / Override / Cancel; Override writes the oversize trailer, deletes `composed-plan.md`, and writes postplan completion. Drift is advisory. Standalone Step 2b.5 is only for Override-after-defects and recovery. Contract: `python/cli.py plan check-size`.
 
 ---
-

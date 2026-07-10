@@ -147,4 +147,3 @@ When the user picks **Approve final design** or **Approve final design (acknowle
 **Approve is NOT a halt.** Immediately after `AskUserQuestion` returns either Approve label, enter Step 5 in the same turn. Print `> **🔶 /design 5: finalize**`, then continue to Step 5b. Do NOT end the turn, emit a confirmation-only reply, or wait for another user message. Step 5b, Step 5b.5, Step 5c, and Step 6 still run in this turn.
 
 ---
-

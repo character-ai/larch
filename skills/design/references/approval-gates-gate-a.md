@@ -27,4 +27,3 @@ When the user picks **Discuss more**, ask what else to discuss or walk a deferre
 Re-entry is post-plan. Write new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md`, not `discussion-round1.md` (Round 1 closes once Step 2a begins). `discussion-round2.md` records user-approved discussion outcomes, not patch instructions. Gate A may revise `plan.txt` only for user-resolved design decisions recorded during that discussion flow; Gate B alone applies accepted review findings. Do not run a Gate B rollback pass from `discussion-round2.md`. If discussion changes the plan after an explicit apply or changes whether an earlier finding should still stand, exit through **Ready for review** so Step 3 re-runs and regenerates `accepted-plan-findings.md` before any later Gate B entry.
 
 ---
-
