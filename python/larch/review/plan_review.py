@@ -123,11 +123,11 @@ def _run_post_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> 
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "design", "postplan-emit"]
-    _progress_note(step="3", text="plan-review post-apply running")
+    _progress_note(step="3", text=f"round {round_num}: plan-review post-apply running")
     proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--with-plan-size"], cwd=consumer_repo_root())
     rc = proc.returncode
     if rc == 0:
-        _progress_note(step="3", text="plan-review awaiting continuation")
+        _progress_note(step="3", text=f"round {round_num}: plan-review awaiting continuation")
         _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
     if rc == POSTPLAN_RC_PAUSE:
@@ -205,7 +205,7 @@ def _run_dedup(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
         base = [override]
     else:
         base = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan-review", "gate-b-dedup"]
-    _progress_note(step="3", text="plan-review dedup running")
+    _progress_note(step="3", text=f"round {round_num}: plan-review dedup running")
     proc = _run_command(argv=[*base, "--design-tmpdir", str(tmpdir), "--snapshot-trailers"])
     rc = proc.returncode
     if rc == 0:
