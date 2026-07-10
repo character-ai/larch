@@ -1,0 +1,40 @@
+# [BUG] Implement runs stop writing the Step 2 token mark; coder cost lands in Step 0
+
+Implement runs stop writing the Step 2 token mark; coder cost lands in Step 0
+
+## Observed
+
+- Most /implement token reports since early July have no `Step 2 — implementation` row in `.codex.per_step`. Reports jump from `Step 0 — preflight` to `Step 3 — checks first pass`.
+- The implementer's Codex tokens land under `Step 0 — preflight` (7k to 61k output tokens attributed to preflight per run).
+- `python/analysis/codex_role_costs.py` keys the coder split on `CODER_STEP_PREFIX = "Step 2 "`. Over the last 7 days (156 runs) it reports Codex-coder $0.00 and inflates "Codex-other" to 18.4% of run cost. The 30-day window still averages coder $4.56/run (12.2%), so the split degraded silently.
+- Regression window from committed run logs (count of `Step 2*` rows in `.codex.per_step`):
+  - 2026-07-01: mixed; some runs 1, some 0.
+  - 2026-07-05 onward: almost all 0.
+  - 2026-07-09: 2 of the 36 newest runs still write the mark.
+
+## Mechanics
+
+- `_per_step_json` (`python/larch/report/tokens.py:1007`) slices ledger rows between step marks; labels come from `mark["step"]`.
+- A missing mark folds the implementer's tokens into the preceding span. A present mark with zero tokens would still emit a row, so the mark itself is missing, not just token-flush timing.
+- Expected writer: the Step 2 dispatcher marks `Step 2 — implementation` via `python3 python/cli.py timing mark` and `token mark` around `agent launch-codex-implement` / `agent launch-cursor-implement`, after the Step 2 token-budget preflight. Both marks are best-effort.
+- `python/tests/implement/test_implement_dispatch.py` still asserts these mark calls, so the contract stands. The live path likely diverges: a launch route that skips the dispatcher mark, or a silent best-effort failure (for example a stale or missing `IMPLEMENT_TMPDIR` when the mark fires).
+
+## Impact
+
+- Per-role cost analysis is wrong for recent runs: coder spend reads as $0 and hides in "other". This skews any model-routing or cost-cut decision that uses the split.
+- Other `.codex.per_step` consumers (for example the cache-efficiency per-step rows in `python/larch/report/tokens.py`) likely misattribute the same way. Unverified.
+
+## Repro
+
+    for d in $(ls -td larch-logs/implement/*/ | head -12); do
+      jq -r '[.codex.per_step[]?.step] | join(" | ")' "$d/token-report.json"
+    done
+
+Most rows show `Step 0 — preflight | Step 3 — ... | Step 5 — ...` with no Step 2 entry.
+
+## Fix directions
+
+1. Find why the live dispatch path skips the mark and restore it on every implementer launch route. Preferred; keeps historical reports comparable.
+2. If a launch route legitimately runs before Step 2, stamp its ledger rows with an explicit step label instead of relying on mark spans, and adjust `codex_role_costs.py` consumers.
+
+Found while comparing per-role cost splits during the Databricks coding-agent benchmark discussion (2026-07-09).
