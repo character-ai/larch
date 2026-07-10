@@ -1,0 +1,5 @@
+site	attempt	redacted_bytes	digest_bytes	redacted_tokens	digest_tokens	saved_bytes	saved_tokens	digest_truncated
+step3	1	3911	161	978	41	3750	937	false
+step6	1	137710	455	34428	114	137255	34314	false
+step6	2	137866	455	34467	114	137411	34353	false
+step6	3	3979	230	995	58	3749	937	false

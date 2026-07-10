@@ -117,6 +117,8 @@ class Step0WrapperNs(argparse.Namespace):
     issue_number: str
     exit_code: str
     failure_detail_log: str
+    reason: str
+    tool: str
     public_argv: list[str]
 
 
@@ -131,6 +133,8 @@ def _parse_wrapper_args(argv: Sequence[str]) -> Step0WrapperNs:
     ns.issue_number = ""
     ns.exit_code = os.environ.get("CLARIFY_HARD_HALT_RC", "1") or "1"
     ns.failure_detail_log = os.environ.get("CLARIFY_FAILURE_LOG", "")
+    ns.reason = "external tool unhealthy; re-run once it recovers."
+    ns.tool = "degraded-tools-gate"
     ns.public_argv = []
     i = 0
     args = list(argv)
@@ -143,6 +147,8 @@ def _parse_wrapper_args(argv: Sequence[str]) -> Step0WrapperNs:
         "--issue-number": "issue_number",
         "--exit-code": "exit_code",
         "--failure-detail-log": "failure_detail_log",
+        "--reason": "reason",
+        "--tool": "tool",
         "--site": "site",
         "--step3-review-loop-status": "step3_review_loop_status",
         "--loop-status": "loop_status",
@@ -363,7 +369,8 @@ def _load_wrapper_env(ns: Step0WrapperNs) -> dict[str, str]:
 
 
 def _parsed_cache_path(claude_pid: str) -> Path:
-    return Path.home() / ".cache" / "larch" / "sessions" / f"step0-parsed-{claude_pid}.env"
+    # Returns the step0-parsed-<pid>.env path in the sessions cache directory.
+    return session_env._step0_parsed_env_path(claude_pid)  # noqa: SLF001 - Step 0 write/reap share one PID-cache helper.
 
 
 def _run_parse_argv(*, public_argv: Sequence[str], plugin_root: Path, claude_pid: str) -> tuple[int, dict[str, str], str]:

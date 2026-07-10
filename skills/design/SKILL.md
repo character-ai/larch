@@ -116,10 +116,12 @@ Parse `STEP0_STATUS`, `DEGRADED`, `BOTH_DOWN`, optional `DEGRADED_HARD_FAIL`, an
 - **`needs-degraded-decision`**: this must be accompanied by `DEGRADED_PROMPT_REQUIRED=true`; the wrapper already printed the explanation block. Fire `AskUserQuestion` with **Continue (reduced panel: unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
 
 ```bash
-"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-abort-cleanup
+"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-abort-cleanup \
+  --reason 'external tool unhealthy; re-run once it recovers.' \
+  --tool degraded-tools-gate
 ```
 
-and stop (run no further steps). **`degraded-both-down-hard-fail`** stops the skill in every mode with no Continue path. The `.degraded-tools-gate-prompted` sentinel is created only after an explicit Continue on the one-down path, and stale sentinels never permit both-down continuation.
+and stop (run no further steps). The explicit flags match the degraded-tools fallback defaults for backward-compatible launcher reuse. Any non-degraded abort or operator-postpone path that reuses `step0-abort-cleanup` must pass caller-specific `--reason` and `--tool` values; for example, pass `--reason 'operator postpone; resume later' --tool operator-postpone`. Without explicit flags, the verb falls back to degraded-tools messaging even when tools are healthy. **`degraded-both-down-hard-fail`** stops the skill in every mode with no Continue path. The `.degraded-tools-gate-prompted` sentinel is created only after an explicit Continue on the one-down path, and stale sentinels never permit both-down continuation.
 
 ### 0b: Parse argv, issue binding, clarify / already-planned routers, init → `run-params.json`
 

@@ -28,6 +28,7 @@ from larch.design.design_session import (
     _rehydrate_wrapper_env,
     _touch,
 )
+from larch.design.design_step0_env import CONFIGURATION_ERROR_RC
 from larch.design.design_step2b import _read_simple_env
 from larch.design.design_step5c import STEP5C_STATUS_ALLOW_KEYS, STEP6_INFO_ICON
 
@@ -138,6 +139,18 @@ def step6_prelude_main(argv: Sequence[str]) -> int:
     return step6_prelude_core(argv)
 
 
+def _step6_preservation_message(status: dict[str, str]) -> str | None:
+    if status.get("PLAN_WRITE_OK", "") != "true":
+        return f"**{STEP6_INFO_ICON} Step 6: plan write did not succeed; preserving $DESIGN_TMPDIR.**"
+    if status.get("STANDALONE_HEAVY_FAILED", "false") == "true":
+        return f"**{STEP6_INFO_ICON} Step 6: standalone heavy failed; preserving $DESIGN_TMPDIR.**"
+    if status.get("SESSION_ID", "") and status.get("PUBLISH_OK", "") != "true":
+        return f"**{STEP6_INFO_ICON} Step 6: publish did not complete; preserving $DESIGN_TMPDIR for recovery.**"
+    if status.get("CLEANUP_ELIGIBLE", "") == "false":
+        return f"**{STEP6_INFO_ICON} Step 6: cleanup not eligible per Step 5c status; preserving $DESIGN_TMPDIR.**"
+    return None
+
+
 def step6_cleanup_core(argv: Sequence[str]) -> int:
     try:
         parsed = _parse_common_wrapper_args(argv)
@@ -160,19 +173,16 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
         return 0
 
     status = _read_step5c_status_sidecar(design_tmpdir)
-    if status.get("PLAN_WRITE_OK", "") != "true":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: plan write did not succeed; preserving $DESIGN_TMPDIR.**")
-        return 0
-    if status.get("STANDALONE_HEAVY_FAILED", "false") == "true":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: standalone heavy failed; preserving $DESIGN_TMPDIR.**")
-        return 0
-    if status.get("SESSION_ID", "") and status.get("PUBLISH_OK", "") != "true":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: publish did not complete; preserving $DESIGN_TMPDIR for recovery.**")
-        return 0
-    if status.get("CLEANUP_ELIGIBLE", "") == "false":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: cleanup not eligible per Step 5c status; preserving $DESIGN_TMPDIR.**")
+    preserve_msg = _step6_preservation_message(status)
+    if preserve_msg is not None:
+        _step6_emit_cleanup_preserved(preserve_msg)
         return 0
 
+    try:
+        session_env.validate_claude_pid(parsed.claude_pid)
+    except ValueError as exc:
+        _core_diagnostic(f"design-step6-cleanup.sh: {exc}")
+        return CONFIGURATION_ERROR_RC
     try:
         design_tmpdir = _validate_design_tmpdir_arg(design_tmpdir_raw)
     except _CoreUsageError as exc:
@@ -182,7 +192,15 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
     if req != 0:
         return req
     _touch(design_tmpdir / ".completed" / "step-6")
-    return session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
+    cleanup_rc = session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
+    if cleanup_rc != 0:
+        return cleanup_rc
+    try:
+        session_env.reap_pid_residuals(parsed.claude_pid)
+    except (OSError, ValueError) as exc:
+        _core_diagnostic(f"design-step6-cleanup.sh: {exc}")
+        return 1
+    return 0
 
 
 def step6_cleanup_main(argv: Sequence[str]) -> int:
