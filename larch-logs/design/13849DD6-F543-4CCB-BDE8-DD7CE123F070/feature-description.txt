@@ -1,0 +1,70 @@
+# [BUG] step0-abort-cleanup: false 'unhealthy' banner + leaves PID session-env residuals
+
+## Summary
+
+The `/design` Step 0 abort verb `step0-abort-cleanup` (`python/larch/design/design_step0.py:705`) hardcodes both its operator-facing banner and its failure-log attribution to the degraded-tools case, and its cleanup removes only the session tmpdir. So any abort routed through it reports "external tool unhealthy" even when the external tools are healthy, and it leaves this Claude PID's `current-design-env-$PPID.sh` symlink (now dangling), `design-run-$PPID.sh` launcher, and `step0-parsed-$PPID.env` behind.
+
+## Original report
+
+Minor tooling note observed during a `/design 6791` run that was postponed on in-flight overlap. The postpone reused `step0-abort-cleanup` for cleanup, and:
+
+- It printed `**⚠ /design: aborted by operator: external tool unhealthy; re-run once it recovers.**` even though no external tool was unhealthy (both Codex and Cursor probed `ok`; the abort reason was an operator postpone).
+- After it removed the session tmpdir, `ls ~/.cache/larch/sessions/` still showed this PID's `current-design-env-9771.sh` (a now-dangling symlink), `design-run-9771.sh`, and `step0-parsed-9771.env`, which had to be removed by hand.
+
+## Reproduction scenario
+
+Either path reproduces:
+
+1. **Intended caller.** Trigger the Step 0a degraded-tools gate result `needs-degraded-decision` and choose **Abort** (the only documented caller, `skills/design/SKILL.md:119`). The verb removes the tmpdir but leaves the PID-keyed symlink/launcher/parsed-env; the `current-design-env-$PPID.sh` symlink dangles because its target `source-env.sh` was inside the deleted tmpdir.
+2. **Observed.** After Step 0 session setup, run `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-abort-cleanup` for any non-degraded reason (e.g. postponing a design). The banner still claims "external tool unhealthy" regardless of the real reason.
+
+Observed evidence: post-verb `ls` showed `current-design-env-9771.sh -> <OPERATOR_REPO_PATH>/source-env.sh` with the target already deleted, plus `design-run-9771.sh` and `step0-parsed-9771.env`.
+
+## Expected behavior
+
+- The banner and the `execution-issues.md` failure-log entry describe the actual abort reason. An operator postpone should not be reported as "external tool unhealthy" with `tool=degraded-tools-gate`.
+- After the verb runs, this PID's session-env symlink, launcher, and parsed-env are also reaped, or at minimum the now-dangling `current-design-env-$PPID.sh` symlink is removed, leaving no dangling pointer.
+
+## Observed behavior
+
+- `design_step0.py:713` unconditionally prints `**⚠ /design: aborted by operator: external tool unhealthy; re-run once it recovers.**`.
+- `design_step0.py:714` appends a `Warnings` failure-log entry with `tool="degraded-tools-gate"`, `exit_code=0`, regardless of the real reason.
+- `design_step0.py:715` runs only `session cleanup-tmpdir --dir <tmpdir>`, which `shutil.rmtree`s the tmpdir and nothing else.
+- Result: a misleading message plus three PID residuals, one of them a dangling symlink.
+
+## Root cause analysis
+
+`step0_abort_cleanup_main` takes no reason or tool parameter; the message and the log `tool=`/`exit_code` are string literals scoped to the single caller that exists today (the degraded-tools **Abort** branch). Any other abort routed through the verb inherits those literals.
+
+For the residuals: `cleanup_tmpdir_main` (`python/larch/state/session_env.py:1447-1485`) is intentionally dir-only. The PID-keyed `current-design-env-{pid}.sh` (`session_env.py:818`), `design-run-{pid}.sh` (`session_env.py:822`), and `step0-parsed-{pid}.env` are created by `step0-session` but reaped only by the separate `/larch:cleanup` skill, so the abort path leaves them until that reaper runs. The happy-path Step 6 cleanup (`design_step6.py:185`) uses the same dir-only `cleanup_tmpdir_main`, so the residual gap is shared; the abort path additionally produces the immediately-dangling symlink and the false "unhealthy" banner.
+
+## Evidence
+
+- `python/larch/design/design_step0.py:713` — hardcoded banner string.
+- `python/larch/design/design_step0.py:714` — hardcoded `tool="degraded-tools-gate"`, `exit_code=0`.
+- `python/larch/design/design_step0.py:715` — cleanup is `session cleanup-tmpdir --dir <tmpdir>` only.
+- `python/larch/state/session_env.py:1447-1485` — `cleanup_tmpdir_main` rmtrees `--dir` and touches nothing else.
+- `python/larch/state/session_env.py:818,822` — PID-keyed symlink and launcher path helpers.
+- `skills/design/SKILL.md:119` — the only documented caller is the degraded-tools **Abort** branch.
+- Observed run: `current-design-env-9771.sh` (dangling) + `design-run-9771.sh` + `step0-parsed-9771.env` remained after the verb.
+
+## Affected files
+
+- `python/larch/design/design_step0.py` — the verb; both defects live here.
+- `python/larch/state/session_env.py` — `cleanup_tmpdir_main` scope and the PID-path helpers; where any residual reap would hook in.
+- `python/tests/design/test_design_lifecycle.py` — `test_step0_abort_cleanup_appends_failure_and_cleans` asserts current behavior and would extend.
+- `skills/design/SKILL.md` — documents the sole caller; relevant if a reason is threaded through or a dedicated postpone path is added.
+
+## Suggested fix(es)
+
+Root cause is understood; the exact shape is for `/design` to choose. Candidate directions:
+
+1. **Parameterize the reason.** Add `--reason <text>` and `--tool <name>` to `step0_abort_cleanup_main`; print the provided reason and log with the provided tool, defaulting to today's degraded-tools strings for backward compatibility. Callers that abort for other reasons pass their own.
+2. **Reap PID residuals.** After `cleanup-tmpdir`, unlink `current-design-env-$PPID.sh`, `design-run-$PPID.sh`, and `step0-parsed-$PPID.env` for the passed `--claude-pid` (path helpers already exist at `session_env.py:818`/`822`). At minimum remove the dangling symlink.
+3. **Or scope-separate.** Keep `step0-abort-cleanup` bound to the degraded-tools case and add a distinct operator-postpone/cancel cleanup verb, so reuse cannot mislabel.
+
+## Open questions
+
+- Should the residual reap live in `step0-abort-cleanup` only, or in `cleanup_tmpdir_main` / a shared session reaper so the happy-path Step 6 also benefits?
+- Is leaving PID residuals to `/larch:cleanup` an intentional contract? If so, only the dangling-symlink cleanup and the false banner need fixing.
+- Should there be a dedicated postpone/cancel cleanup verb distinct from the degraded-tools abort, rather than generalizing this one?
