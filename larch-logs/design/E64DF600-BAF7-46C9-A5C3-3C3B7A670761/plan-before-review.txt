@@ -1,0 +1,169 @@
+## Approach
+
+Extend the existing Step 8 note and outcome contracts in place. Keep inline assessment authoring and dispatch unchanged.
+
+1. Define shared note-state and outcome-reason constants.
+2. Classify a changed path as clearly out of scope only when it is under `larch-logs/` or is a Markdown file under `docs/`.
+3. Store separate authored-input and covered-input fingerprints. Preserve `DIFF_FINGERPRINT` for compatibility.
+4. Advance covered input only after a successful incremental diff check proves every new path is clearly out of scope.
+5. Add deterministic-clean and unavailable note materialization paths with explicit `NOTE_STATE`.
+6. Validate live inputs before consuming or advancing persisted state. Treat Git errors, malformed paths, stale fingerprints, symlinks, and non-regular files as unsafe.
+7. Map note states to existing schema-version-1 outcomes. Preserve blocking invariant violations when later assessment input is unavailable.
+8. Document the additive metadata and outcome semantics.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Add canonical `Final` constants for:
+  - `NOTE_STATE_AUTHORED`
+  - `NOTE_STATE_DETERMINISTIC_CLEAN`
+  - `NOTE_STATE_UNAVAILABLE`
+  - `REASON_DETERMINISTIC_CLEAN`
+  - `REASON_UNAVAILABLE`
+- Build any note-state token set from these constants so writers and validators share one source.
+- Do not add new outcome `assessment_kind` values or change unrelated wire tokens.
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+- Add a conservative `_path_out_of_scope(path)` classifier.
+  - Accept only normalized repo-relative paths under `larch-logs/`.
+  - Accept only `.md` files recursively under `docs/`.
+  - Treat root Markdown, code, knowledge files, empty paths, absolute paths, traversal-like paths, malformed Git output, and all other paths as intersecting.
+- Replace the log-only HEAD-change rule with a shared incremental path check that uses the classifier for both guideline and invariant notes.
+  - Return a safe result only when Git succeeds, reports at least one path, and every path is clearly out of scope.
+  - Treat Git launch errors, nonzero exits, undecodable or ambiguous output, and empty results as unsafe.
+- Extend durable note metadata with:
+  - `NOTE_STATE`
+  - `AUTHORED_DIFF_FINGERPRINT`
+  - `COVERED_DIFF_FINGERPRINT`
+- Keep `DIFF_FINGERPRINT` readable and writable as the prior-format compatibility field.
+  - For old metadata, interpret `DIFF_FINGERPRINT` as both authored and covered identity.
+  - Treat a missing `NOTE_STATE` on a valid old note as `authored`.
+- Update guideline and invariant note writers to preserve distinct identities.
+  - Authored notes pin the authoring input and initial covered input to the same proven fingerprint.
+  - Later safe increments update only the covered fingerprint and current coverage metadata.
+  - Never rewrite the authored fingerprint during mechanical coverage advancement.
+- Add focused helpers for deterministic-clean and unavailable notes.
+  - Write regular durable artifacts through the existing atomic helpers.
+  - Record the correct `NOTE_STATE`, fingerprints, base reference, status, and assessment kind.
+  - Use deterministic fixed prose rather than model-authored assessment text.
+- Add an incremental coverage advancement helper.
+  - Validate the stored covered fingerprint against the input that produced it.
+  - Materialize the live incremental input from persisted repo and base state.
+  - Advance only when the old covered input is current and every increment path is clearly out of scope.
+  - Leave state unchanged and require assessment when an increment intersects scope or cannot be proven safe.
+- Update note consumption and fingerprint-staleness checks to compare the live input with `COVERED_DIFF_FINGERPRINT`.
+  - Reject mismatched or missing required identities.
+  - Keep explicit compatibility behavior for valid prior-format metadata.
+  - Do not silently accept a stale authored or covered result.
+- Validate every materialization input at use time.
+  - Reject symlinks, directories, missing files, and other non-regular inputs.
+  - Reject a snapshot whose content fingerprint does not match its declared fingerprint.
+  - Reject HEAD or base identity drift before persisting or consuming the result.
+- Apply the same state and identity rules to guideline and invariant artifacts through shared helpers where practical.
+- Keep `prepare_compose_assessment`, `prepare_invariant_compose_assessment`, and their current callers on the existing inline route.
+
+### UPDATED: python/larch/implement/ship_guidelines.py
+
+- Add `REASON_DETERMINISTIC_CLEAN` and `REASON_UNAVAILABLE` to the guideline and invariant reason-token sets using the config constants.
+- Read `NOTE_STATE` from durable metadata when producing gate results.
+- Classify schema-version-1 outcomes without adding fields or new `assessment_kind` values:
+  - `authored`: preserve existing clean, pinned deviation, and violation behavior.
+  - `deterministic-clean`: emit `clean` with reason `deterministic-clean` and the existing clean assessment kind.
+  - `unavailable`: emit the existing non-violation fallback outcome with reason `unavailable` and an empty assessment kind.
+- Make invariant classification precedence explicit.
+  - A valid authored violation remains `violation`.
+  - An unavailable state by itself is never a violation.
+  - An unavailable refresh or fallback must not overwrite or downgrade an already valid violation result.
+- Extend schema-version-1 validators to accept the new reason and field combinations while retaining all prior valid records.
+- Continue rejecting unknown reasons, inconsistent assessment kinds, malformed statuses, and invalid outcome combinations.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+- Add table-driven path-classification coverage for:
+  - nested and top-level `larch-logs/` paths;
+  - nested and top-level Markdown files under `docs/`;
+  - non-Markdown files under `docs/`;
+  - root Markdown and architecture knowledge files;
+  - code paths, ambiguous paths, absolute paths, traversal-like paths, and empty input.
+- Extend incremental HEAD-change tests to prove:
+  - docs-only Markdown and log-only increments are safe;
+  - mixed safe and intersecting paths require reassessment;
+  - Git errors, nonzero exits, malformed output, and empty output fail closed.
+- Test authored and covered fingerprint separation.
+  - Initial authored writes set both identities.
+  - Safe advancement changes only covered identity.
+  - Intersecting or failed advancement changes neither identity.
+- Test stale-input rejection for mismatched HEAD, base, snapshot content, authored fingerprint, and covered fingerprint.
+- Test rejection of missing, symlinked, directory, and other non-regular materialization inputs.
+- Add deterministic-clean and unavailable note tests for both guideline and invariant artifacts.
+- Add prior-format fixtures with only `DIFF_FINGERPRINT` and no `NOTE_STATE`.
+  - Confirm valid old notes remain readable under the explicit fallback.
+  - Confirm stale old notes still require reassessment.
+- Preserve existing tests for inline compose materialization and staged-note compatibility.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+- Test guideline outcome classification for authored, deterministic-clean, and unavailable states under schema version `1`.
+- Test invariant outcome classification for the same states.
+- Verify unavailable produces no violation classification and uses an empty assessment kind.
+- Verify a valid invariant violation takes precedence over an unavailable fallback and cannot be erased.
+- Extend validator tests for:
+  - accepted new reason combinations;
+  - prior valid outcome records;
+  - rejection of unavailable paired with violation;
+  - rejection of deterministic-clean paired with deviation or violation;
+  - unknown state, reason, and assessment-kind combinations.
+- Keep Step 8 route assertions unchanged. Do not add bgjob dispatch expectations.
+
+### UPDATED: docs/run-logs.md
+
+- Document `authored`, `deterministic-clean`, and `unavailable` note states.
+- Explain the difference between authored-input and covered-input fingerprints.
+- State that coverage advances only across proven `larch-logs/**` or `docs/**/*.md` increments.
+- Document fail-closed stale-input and unsafe-materialization behavior.
+- Explain prior metadata compatibility and when reassessment is required.
+- Clarify that unavailable is non-violating and cannot replace a recorded invariant violation.
+
+### UPDATED: docs/run-log-batches.md
+
+- Extend the schema-version-1 outcome documentation with the `deterministic-clean` and `unavailable` reason tokens.
+- Record the valid outcome, reason, and `assessment_kind` combinations for guidelines and invariants.
+- State that the schema remains version `1` and historical records remain valid.
+- Note invariant precedence: violations stay blocking, while unavailable remains a non-violation fallback.
+
+## Edge cases
+
+- A diff contains both `docs/guide.md` and a code path. Treat the increment as intersecting.
+- A path is `README.md`, `ARCHITECTURAL_GUIDELINES.md`, or `ARCHITECTURAL_INVARIANTS.md`. Treat it as intersecting.
+- A path is under `docs/` but does not end in `.md`. Treat it as intersecting.
+- Git returns no paths for distinct recorded inputs. Do not infer safety.
+- The note sidecar is old but internally valid. Derive both identities from `DIFF_FINGERPRINT`.
+- The old sidecar lacks enough identity to prove freshness. Require reassessment.
+- The durable note is readable but its metadata, snapshot, or fingerprint is stale. Do not consume it.
+- A deterministic-clean note later gains an intersecting increment. Require authored assessment.
+- An unavailable state follows an existing invariant violation. Preserve the violation.
+- Artifact paths change type or become symlinks between checks. Revalidate at use time and fail closed.
+
+## Failure modes
+
+- Over-broad classification could skip a required architectural assessment. Keep the allowlist narrow and table-test ambiguous paths.
+- Updating the authored fingerprint during incremental advancement could falsely claim model coverage. Assert identity separation in tests.
+- Strict new readers could invalidate historical runs. Centralize prior-format fallback and test legacy fixtures.
+- Tolerant outcome handling could downgrade a blocking invariant violation. Encode and test violation precedence.
+- A failed Git or file read could be mistaken for clean input. Map uncertainty to intersecting or unavailable, never deterministic-clean.
+- Partial metadata writes could leave inconsistent identities. Use the existing atomic write helpers and validate the complete record before consumption.
+
+## Testing strategy
+
+- Run the changed core test module:
+  - `python3 -m pytest python/tests/core/test_architectural_guidelines.py`
+- Run the changed ship test module:
+  - `python3 -m pytest python/tests/implement/test_ship.py`
+- Run lint and type checks only for the changed Python files, using the targets documented in `docs/linting.md`.
+- Run documentation lint for `docs/run-logs.md` and `docs/run-log-batches.md`.
+- Confirm no test or production change touches `dispatch_step18.py` or alters the current Step 8 dispatch and inline authoring path.
+
+difficulty: HARD
+diff_lines: 620
