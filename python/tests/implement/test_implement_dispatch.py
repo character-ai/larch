@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import errno
 import fcntl
-import inspect
 import json
 import os
 import shlex
@@ -13,7 +12,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 import pytest
 
@@ -34,13 +33,11 @@ from larch.implement import (
     dispatch_recovery,
 )
 from larch.core import config
+from larch.core.proc import CommandResult
 from larch.core import process_identity
 from larch.core import logging_util
 from larch.outcomes import Outcome
 from larch.report import run_logs
-
-if TYPE_CHECKING:
-    from larch.core.proc import CommandResult
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -4529,57 +4526,194 @@ def test_run_dispatch_retries_step2_telemetry_after_bailed_first_dispatch(
 
 
 @pytest.mark.parametrize(
+    ("coder", "env_key"),
+    [
+        ("codex", "CODEX_BINARY_FOUND"),
+        ("cursor", "CURSOR_BINARY_FOUND"),
+    ],
+)
+def test_run_dispatch_skips_step2_token_mark_when_external_binary_present(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    coder: str,
+    env_key: str,
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "session-env.sh").write_text(
+        f"{env_key}=true\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
+        encoding="utf-8",
+    )
+    token_calls: list[list[str]] = []
+    timing_calls: list[list[str]] = []
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(argv)
+        if call[-3:] == ["token", "mark", config.IMPLEMENT_STEP2_LABEL]:
+            token_calls.append(call)
+            return subprocess.CompletedProcess(call, 0, "", "")
+        if call[-3:] == ["timing", "mark", config.IMPLEMENT_STEP2_LABEL]:
+            timing_calls.append(call)
+            return subprocess.CompletedProcess(call, 0, "", "")
+        if len(call) >= 4 and call[2:4] == ["implement", "step2-dispatch"]:
+            return subprocess.CompletedProcess(call, 0, "STATUS=complete\n", "")
+        return subprocess.CompletedProcess(call, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+
+    assert implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", coder]) == 0
+    assert token_calls == []
+    assert len(timing_calls) == 1
+
+
+@pytest.mark.parametrize(
     ("launcher", "tool"),
     [
         (agents.launch_codex_implement_main, "codex"),
         (agents.launch_cursor_implement_main, "cursor"),
     ],
 )
-def test_implement_launchers_do_not_emit_step2_token_mark(
+def test_implement_launchers_emit_step2_token_mark_before_usage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     launcher: Callable[[list[str]], int],
     tool: str,
 ) -> None:
-    launcher_source = inspect.getsource(launcher)
-    assert '["token", "mark", "Step 2 — implementation"]' not in launcher_source
-    assert '"Step 2 — implementation"' not in launcher_source
-
+    _ = tool
     args = _launcher_args(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setattr(agents.shutil, "which", lambda name: f"/usr/bin/{name}" if name in {"codex", "cursor"} else "/bin/true")
-    monkeypatch.setattr(agents, "_implement_token_budget_hit", lambda **_kwargs: False)
-    monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(_ci_launcher, "_implement_token_budget_hit", lambda **_kwargs: False)
+    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    order: list[str] = []
     proc_calls: list[list[str]] = []
-    original_proc_run = agents.proc.run
 
     def spy_proc_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
-        proc_calls.append(list(argv))
-        if list(argv)[-3:] == ["token", "mark", "Step 2 — implementation"]:
-            raise AssertionError(f"launcher must not emit Step 2 token mark: {tool}")
-        return original_proc_run(argv, **cast("Any", kwargs))
+        _ = kwargs
+        call = [str(arg) for arg in argv]
+        proc_calls.append(call)
+        if call == [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]:
+            order.append("mark")
+        return CommandResult(tuple(call), 0, "", "", 0.0)
 
     monkeypatch.setattr(agents.proc, "run", spy_proc_run)
+
+    def fake_record_usage(*_args: object, **_kwargs: object) -> None:
+        order.append("usage")
+
+    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", fake_record_usage)
+    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", fake_record_usage)
 
     def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
         output = cast("Path", kwargs["output"])
         output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
+        if "stdout_path" in kwargs:
+            cast("Path", kwargs["stdout_path"]).write_text('{"type":"turn_completed","usage":{"input_tokens":1}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
 
     rc = launcher(args)
 
     assert rc == 0
-    assert not any(call[-3:] == ["token", "mark", "Step 2 — implementation"] for call in proc_calls)
+    token_calls = [call for call in proc_calls if call == [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]]
+    assert token_calls == [[sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]]
+    assert order == ["mark", "usage"]
+
+
+@pytest.mark.parametrize(
+    ("launcher", "tool"),
+    [
+        (agents.launch_codex_implement_main, "codex"),
+        (agents.launch_cursor_implement_main, "cursor"),
+    ],
+)
+def test_implement_launchers_skip_step2_token_mark_on_cap_hit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    launcher: Callable[[list[str]], int],
+    tool: str,
+) -> None:
+    _ = tool
+    args = _launcher_args(tmp_path)
+    monkeypatch.setattr(_ci_launcher, "_implement_token_budget_hit", lambda **_kwargs: True)
+    proc_calls: list[list[str]] = []
+
+    def spy_proc_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
+        _ = kwargs
+        call = [str(arg) for arg in argv]
+        proc_calls.append(call)
+        return CommandResult(tuple(call), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents.proc, "run", spy_proc_run)
+
+    assert launcher(args) == 0
+    assert [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL] not in proc_calls
+
+
+@pytest.mark.parametrize(
+    ("launcher", "tool"),
+    [
+        (agents.launch_codex_implement_main, "codex"),
+        (agents.launch_cursor_implement_main, "cursor"),
+    ],
+)
+def test_implement_launchers_step2_token_mark_failure_is_nonfatal(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    launcher: Callable[[list[str]], int],
+    tool: str,
+) -> None:
+    args = _launcher_args(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(agents.shutil, "which", lambda name: f"/usr/bin/{name}" if name in {"codex", "cursor"} else "/bin/true")
+    monkeypatch.setattr(_ci_launcher, "_implement_token_budget_hit", lambda **_kwargs: False)
+    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    issue_calls: list[list[str]] = []
+
+    def fake_proc_run(argv: Sequence[str], **kwargs: object) -> CommandResult:
+        _ = kwargs
+        call = [str(arg) for arg in argv]
+        if call == [sys.executable, str(_ci_launcher._PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL]:
+            return CommandResult(tuple(call), 7, "mark stdout\n", "mark stderr\n", 0.0)
+        if call[2:4] == ["run-log", "append-entry"]:
+            issue_calls.append(call)
+        return CommandResult(tuple(call), 0, "", "", 0.0)
+
+    monkeypatch.setattr(agents.proc, "run", fake_proc_run)
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        output = cast("Path", kwargs["output"])
+        output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
+        if "stdout_path" in kwargs:
+            cast("Path", kwargs["stdout_path"]).write_text('{"type":"turn_completed","usage":{"input_tokens":1}}\n', encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output)
+
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+
+    assert launcher(args) == 0
+    sidecar = tmp_path / "sidecar.log"
+    sidecar_text = sidecar.read_text(encoding="utf-8")
+    assert "token mark failed with exit 7" in sidecar_text
+    assert "mark stderr" in sidecar_text
+    assert "mark stdout" in sidecar_text
+    assert issue_calls, f"{tool} should append a warning execution issue"
 
 
 def test_step2_dispatch_main_answers_redispatch_no_timing_mark(

@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch import io as larch_io
+from larch.core import config
 from larch.core import logging_util
 from larch.implement import phantom
 from larch.core import proc
@@ -226,11 +227,11 @@ def _maybe_mark_step2_telemetry(
         codex_binary_found=codex_binary_found,
         cursor_binary_found=cursor_binary_found,
     ):
-        token_result = _invoke_cli(["token", "mark", "Step 2 — implementation"])
+        token_result = _invoke_cli(["token", "mark", config.IMPLEMENT_STEP2_LABEL])
         if token_result.returncode != 0:
             return False
     timing_result = _run(
-        [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", "Step 2 — implementation"],
+        [sys.executable, str(Path(plugin_root) / "python" / "cli.py"), "timing", "mark", config.IMPLEMENT_STEP2_LABEL],
         env={**env, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"},
     )
     if timing_result.returncode != 0:

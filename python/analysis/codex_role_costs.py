@@ -42,6 +42,7 @@ if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
 from larch.report import tokens  # noqa: E402
+from larch.core import config  # noqa: E402
 
 from larch.report.report_tokens_cost import (  # noqa: E402
     CODEX_MINI_MODEL,
@@ -53,7 +54,6 @@ from larch.report.report_tokens_cost import (  # noqa: E402
 TOKENS_PER_M = 1_000_000
 DEFAULT_DAYS = 30
 MIN_REVIEW_ROUNDS = 1
-CODER_STEP_PREFIX = "Step 2 "
 REVIEWER_STEP_PREFIX = "Step 5 "
 LEDGER_CODER_LABEL = "codex_plan_draft"
 LEDGER_REVIEWER_LABEL = "codex_review"
@@ -201,7 +201,7 @@ def _implement_step_model(step: str, by_model: dict[str, object]) -> str:
     if len(models) == 1:
         return models[0]
     default_model = DEFAULT_VENDOR_MODEL["codex"]
-    if step.startswith(CODER_STEP_PREFIX):
+    if step.startswith(config.IMPLEMENT_STEP2_PREFIX):
         if default_model in by_model:
             return default_model
         non_mini = [model for model in models if model != CODEX_MINI_MODEL]
@@ -258,7 +258,8 @@ def _implement_roles_from_ledger(
         if not cost:
             continue
         found = True
-        if step.startswith(CODER_STEP_PREFIX):
+        raw = str(entry.get("raw") or "")
+        if step.startswith(config.IMPLEMENT_STEP2_PREFIX) or raw == config.CODEX_IMPLEMENT_RAW_LABEL:
             coder += cost
         elif step.startswith(REVIEWER_STEP_PREFIX):
             reviewer += cost
@@ -296,7 +297,7 @@ def _implement_roles(
             cost = _codex_step_cost(totals, eff)
         if not cost:
             continue
-        if step.startswith(CODER_STEP_PREFIX):
+        if step.startswith(config.IMPLEMENT_STEP2_PREFIX):
             coder += cost
         elif step.startswith(REVIEWER_STEP_PREFIX):
             reviewer += cost

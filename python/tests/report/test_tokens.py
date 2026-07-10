@@ -881,6 +881,51 @@ def test_build_report_from_ledgers_recovers_vendor_lanes(tmp_path: Path) -> None
     assert report["claude"]["totals"]["total"] == 0
 
 
+def test_build_report_from_ledgers_reroutes_implementer_raw_rows_to_step2(tmp_path: Path) -> None:
+    ledger = _ledger(
+        tmp_path / "larch-tokens-abc.jsonl",
+        (
+            {"type": "mark", "step": "Step 0 — preflight", "ts": "2026-06-15T00:00:00Z"},
+            {
+                "type": "vendor",
+                "vendor": "codex",
+                "input": 100,
+                "output": 20,
+                "total": 120,
+                "raw": config.CODEX_IMPLEMENT_RAW_LABEL,
+                "ts": "2026-06-15T00:00:05Z",
+            },
+            {
+                "type": "vendor",
+                "vendor": "codex",
+                "total": 10,
+                "raw": "codex_review",
+                "ts": "2026-06-15T00:00:06Z",
+            },
+            {
+                "type": "vendor",
+                "vendor": "cursor",
+                "input": 7,
+                "output": 8,
+                "total": 15,
+                "raw": config.CURSOR_IMPLEMENT_RAW_LABEL,
+                "ts": "2026-06-15T00:00:07Z",
+            },
+        ),
+    )
+
+    report = tokens.build_report_from_ledgers([ledger])
+    codex_steps = {row["step"]: row["totals"] for row in report["codex"]["per_step"]}
+    cursor_steps = {row["step"]: row["totals"] for row in report["cursor"]["per_step"]}
+
+    assert codex_steps["Step 0 — preflight"]["total"] == 10
+    assert codex_steps[config.IMPLEMENT_STEP2_LABEL]["total"] == 120
+    assert report["codex"]["totals"]["total"] == 130
+    assert cursor_steps["Step 0 — preflight"]["total"] == 0
+    assert cursor_steps[config.IMPLEMENT_STEP2_LABEL]["total"] == 15
+    assert report["cursor"]["totals"]["total"] == 15
+
+
 def test_build_report_from_ledgers_merges_multiple(tmp_path: Path) -> None:
     led1 = _ledger(
         tmp_path / "larch-tokens-1.jsonl",
