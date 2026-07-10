@@ -822,6 +822,22 @@ def _design_run_path(pid: str) -> Path:
     return Path.home() / ".cache" / "larch" / "sessions" / f"design-run-{pid}.sh"
 
 
+def _step0_parsed_env_path(pid: str) -> Path:
+    return Path.home() / ".cache" / "larch" / "sessions" / f"step0-parsed-{pid}.env"
+
+
+def reap_pid_residuals(claude_pid: str) -> None:
+    _validate_claude_pid(claude_pid)
+    targets: tuple[Path, Path, Path] = (
+        _design_symlink_path(claude_pid),
+        _design_run_path(claude_pid),
+        _step0_parsed_env_path(claude_pid),
+    )
+    for target in targets:
+        with suppress(FileNotFoundError):
+            target.unlink()
+
+
 def _design_run_launcher_text(*, pid: str, plugin_root: str) -> str:
     quoted_plugin_root = shlex.quote(plugin_root)
     return (

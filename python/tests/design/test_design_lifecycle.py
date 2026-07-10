@@ -703,6 +703,24 @@ def _write_session_env(tmp_path: Path, design: Path, monkeypatch: pytest.MonkeyP
     return env_path
 
 
+def _pid_residual_paths(home: Path, pid: str = "123") -> tuple[Path, Path, Path]:
+    sessions = home / ".cache" / "larch" / "sessions"
+    return (
+        sessions / f"current-design-env-{pid}.sh",
+        sessions / f"design-run-{pid}.sh",
+        sessions / f"step0-parsed-{pid}.env",
+    )
+
+
+def _write_pid_residuals(home: Path, *, target: Path, pid: str = "123") -> tuple[Path, Path, Path]:
+    symlink_path, run_path, parsed_path = _pid_residual_paths(home, pid)
+    symlink_path.parent.mkdir(parents=True, exist_ok=True)
+    symlink_path.symlink_to(target)
+    run_path.write_text("launcher\n", encoding="utf-8")
+    parsed_path.write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+    return symlink_path, run_path, parsed_path
+
+
 def test_step0_route_cancel_pause_load_replays_errors_and_no_route_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
@@ -1158,8 +1176,12 @@ def test_step0_parse_rejects_invalid_positional_kind(tmp_path: Path, monkeypatch
 def test_step0_abort_cleanup_appends_failure_and_cleans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     design = tmp_path / "design"
     design.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
     env_path = tmp_path / "source-env.sh"
     env_path.write_text(f"export DESIGN_TMPDIR={design}\nexport CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
+    residuals = _write_pid_residuals(home, target=design / "source-env.sh")
     calls: list[str] = []
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -1171,11 +1193,96 @@ def test_step0_abort_cleanup_appends_failure_and_cleans(tmp_path: Path, monkeypa
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     rc = design_lifecycle.step0_abort_cleanup_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+    out = capsys.readouterr().out
     assert rc == 0
-    assert "aborted by operator" in capsys.readouterr().out
+    assert "aborted by operator: external tool unhealthy; re-run once it recovers." in out
     assert any("append-failure" in call for call in calls)
+    assert any("degraded-tools-gate" in call for call in calls)
     assert any("cleanup-tmpdir" in call for call in calls)
     assert (design / "execution-issues.md").is_file()
+    assert all(not path.exists() and not path.is_symlink() for path in residuals)
+
+
+def test_step0_abort_cleanup_uses_supplied_reason_and_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    _write_pid_residuals(home, target=design / "source-env.sh")
+    calls: list[str] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(" ".join(cmd))
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    rc = design_lifecycle.step0_abort_cleanup_main([
+        "--session-env-path",
+        str(env_path),
+        "--claude-pid",
+        "123",
+        "--plugin-root",
+        str(CLI.parent.parent),
+        "--reason",
+        "operator postpone; resume later",
+        "--tool",
+        "operator-postpone",
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "aborted by operator: operator postpone; resume later" in out
+    assert "external tool unhealthy" not in out
+    assert any("operator-postpone" in call for call in calls if "append-failure" in call)
+    assert not any("degraded-tools-gate" in call for call in calls if "append-failure" in call)
+
+
+def test_step0_abort_cleanup_does_not_reap_when_tmpdir_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    symlink_path, run_path, parsed_path = _write_pid_residuals(home, target=design / "source-env.sh")
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        returncode = 1 if "cleanup-tmpdir" in cmd else 0
+        return subprocess.CompletedProcess(cmd, returncode, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    rc = design_lifecycle.step0_abort_cleanup_main(["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)])
+
+    assert rc == 1
+    assert symlink_path.is_symlink()
+    assert run_path.is_file()
+    assert parsed_path.is_file()
+
+
+def test_step0_parsed_cache_path_uses_session_env_helper() -> None:
+    assert design_step0_env._parsed_cache_path("123") == session_env._step0_parsed_env_path("123")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_reap_pid_residuals_uses_home_cache_when_xdg_differs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    xdg = tmp_path / "xdg"
+    home.mkdir()
+    xdg.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(xdg))
+    residuals = _write_pid_residuals(home, target=tmp_path / "missing-source-env.sh")
+    xdg_file = xdg / "larch" / "sessions" / "step0-parsed-123.env"
+    xdg_file.parent.mkdir(parents=True)
+    xdg_file.write_text("POSITIONAL_KIND=none\n", encoding="utf-8")
+
+    session_env.reap_pid_residuals("123")
+
+    assert all(not path.exists() and not path.is_symlink() for path in residuals)
+    assert xdg_file.is_file()
 
 
 def test_step0_ap_continue_writes_result_envs_before_pause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5247,12 +5354,67 @@ def test_step6_cleanup_deletion_path_validates_requires_and_writes_result_env_be
         order.append("cleanup")
         return 0
 
+    def fake_reap(claude_pid: str) -> None:
+        assert claude_pid == "123"
+        assert order == ["validate", "require", "cleanup"]
+        order.append("reap")
+
     monkeypatch.setattr(design_step6, "_validate_design_tmpdir_arg", fake_validate)
     monkeypatch.setattr(design_step6, "_design_require_plugin_root", fake_require)
     monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
+    monkeypatch.setattr(session_env, "reap_pid_residuals", fake_reap)
 
     assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
-    assert order == ["validate", "require", "cleanup"]
+    assert order == ["validate", "require", "cleanup", "reap"]
+
+
+def test_step6_cleanup_reaps_pid_residuals_after_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design)
+    residuals = _write_pid_residuals(home, target=design / "source-env.sh")
+
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    assert not design.exists()
+    assert all(not path.exists() and not path.is_symlink() for path in residuals)
+
+
+def test_step6_cleanup_does_not_reap_when_preserved(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design, cleanup_eligible="false")
+
+    def fail_reap(_claude_pid: str) -> None:
+        raise AssertionError("preserved cleanup must not reap PID residuals")
+
+    monkeypatch.setattr(session_env, "reap_pid_residuals", fail_reap)
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 0
+    assert design.exists()
+
+
+def test_step6_cleanup_does_not_reap_when_tmpdir_cleanup_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design)
+
+    def fail_cleanup(_argv: list[str]) -> int:
+        return 1
+
+    def fail_reap(_claude_pid: str) -> None:
+        raise AssertionError("failed tmpdir cleanup must not reap PID residuals")
+
+    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fail_cleanup)
+    monkeypatch.setattr(session_env, "reap_pid_residuals", fail_reap)
+    assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 1
 
 
 def test_step6_combined_skips_cleanup_when_prelude_saves_pause(

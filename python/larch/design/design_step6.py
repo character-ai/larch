@@ -182,7 +182,11 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
     if req != 0:
         return req
     _touch(design_tmpdir / ".completed" / "step-6")
-    return session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
+    cleanup_rc = session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
+    if cleanup_rc != 0:
+        return cleanup_rc
+    session_env.reap_pid_residuals(parsed.claude_pid)
+    return 0
 
 
 def step6_cleanup_main(argv: Sequence[str]) -> int:

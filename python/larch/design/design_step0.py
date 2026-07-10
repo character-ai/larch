@@ -43,6 +43,7 @@ from larch.design.design_step0_env import (
 )
 from larch.design.design_terminal import _replay_warn_error, phase_driver_read_result_env, stage_terminal_state_core
 from larch.git.repo_roots import consumer_repo_root
+from larch.state import session_env
 
 def _derive_binary_found(env: dict[str, str]) -> None:
     if not env.get("CODEX_BINARY_FOUND"):
@@ -710,9 +711,13 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
         print("/design Step 0 abort-cleanup: DESIGN_TMPDIR required", file=sys.stderr)
         return 1
     design_tmpdir = Path(env["DESIGN_TMPDIR"])
-    print("**⚠ /design: aborted by operator: external tool unhealthy; re-run once it recovers.**")
-    _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 0", tool="degraded-tools-gate", exit_code=0, category="Warnings", output_file=design_tmpdir / "execution-issues.md")
-    return subprocess.run(_cli_cmd(plugin_root, "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)), check=False).returncode
+    print(f"**⚠ /design: aborted by operator: {ns.reason}**")
+    _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 0", tool=ns.tool, exit_code=0, category="Warnings", output_file=design_tmpdir / "execution-issues.md")
+    cleanup_rc = subprocess.run(_cli_cmd(plugin_root, "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)), check=False).returncode
+    if cleanup_rc != 0:
+        return cleanup_rc
+    session_env.reap_pid_residuals(ns.claude_pid)
+    return 0
 
 
 def step0_ap_continue_main(argv: Sequence[str]) -> int:
