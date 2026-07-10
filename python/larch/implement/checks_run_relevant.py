@@ -103,6 +103,7 @@ class LoopResult:
     ledger_dispatcher: str = ""
     ledger_exit_code: int | None = None
     ledger_failure_detail_log: str = ""
+    final_redacted_checks_log: str = ""
     coder_log_path: str = ""
     stderr_tail_path: str = ""
 

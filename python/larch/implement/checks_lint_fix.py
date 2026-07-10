@@ -273,6 +273,12 @@ def _repair_loop_action(
         allowed_tmpdir=allowed_tmpdir,
     ):
         return "main-agent-edit"
+    if _populate_exhausted_ledger(
+        loop=loop,
+        lint_site=lint_site,
+        allowed_tmpdir=allowed_tmpdir,
+    ):
+        return "main-agent-edit"
     return "stall"
 
 
@@ -293,6 +299,33 @@ def _populate_no_changes_stale_ledger(
         return False
     log_path = resolve_checks_log_path(
         candidate=checks_log,
+        allowed_root=allowed_tmpdir,
+    )
+    if log_path is None:
+        return False
+    loop.ledger_ready = True
+    loop.ledger_site = _ledger_site_for_lint_site(lint_site)
+    loop.ledger_trigger = _ledger_trigger_for_lint_site(lint_site)
+    loop.ledger_step = _ledger_step_for_site(lint_site)
+    loop.ledger_phase = _ledger_phase_for_site(lint_site)
+    loop.ledger_dispatcher = "lint-fix-loop"
+    loop.ledger_exit_code = 1
+    loop.ledger_failure_detail_log = str(log_path)
+    return True
+
+
+def _populate_exhausted_ledger(
+    *,
+    loop: LoopResult,
+    lint_site: str,
+    allowed_tmpdir: Path,
+) -> bool:
+    if loop.status != "exhausted":
+        return False
+    if not _site_supports_no_changes_stale_main_agent(lint_site):
+        return False
+    log_path = resolve_checks_log_path(
+        candidate=loop.final_redacted_checks_log,
         allowed_root=allowed_tmpdir,
     )
     if log_path is None:
@@ -1686,6 +1719,7 @@ def run_check_fix_loop(  # noqa: PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 loop.status = "ok"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
+            loop.final_redacted_checks_log = ""
             redacted_path = _redacted_log_for_dispatch(
                 checks,
                 allowed_tmpdir=canonical_tmp,
@@ -1698,6 +1732,7 @@ def run_check_fix_loop(  # noqa: PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 )
                 loop.delta_paths = tuple(delta_accum)
                 return loop
+            loop.final_redacted_checks_log = redacted_path
             redacted_log_for_dispatch = redacted_path
         else:
             checks = checks_runner()
