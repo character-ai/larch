@@ -408,6 +408,8 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 
 ### Fixer model policy
 
+Each configured fixer lane has a shared 1800-second timeout, and the derived role budget reserves that full timeout for every configured tier. The committed lane-duration analysis reports a Claude lane p90 of 706 seconds and observed maxima of 1636 seconds for Claude and 1752 seconds for Codex, so 1800 seconds covers the observed upper-tail durations while matching the existing subprocess and CI wait budgets.
+
 Ship-pr CI fixing uses a delegated Claude/Opus 4.8 agentic loop. The delegate receives an explicit `--repo-root` filesystem path, runs local verification under that cwd, pushes only after guard checks pass, and waits for CI with a blocking subprocess. `ci-fix-exhausted` is an operator bail, not a stall-recovery auto-resume.
 
 Conflict resolution uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
