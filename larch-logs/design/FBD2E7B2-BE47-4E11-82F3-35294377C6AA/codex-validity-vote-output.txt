@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior neutral finding; the current repair-loop reference already preserves the Step 5 MAV/coder durable-bail override.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Partial edits can exist, but restoring them is neither specified nor necessary for the required next-tier waterfall behavior and risks discarding useful changes.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Each configured tier has distinct tool-specific artifact names, so one invocation's waterfall does not inherently overwrite a prior tier's relevant logs.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Content-aware detection is necessary, but requiring reuse of a particular helper is an out-of-scope implementation preference.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of a prior OOS ledger observation.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of a prior OOS ledger observation and based on a speculative stale-envelope path.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of a prior OOS ledger observation.
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of the previously rejected stale-documentation observation.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicates the prior self-review routing observation without a concrete new trigger.
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of the prior stall-recovery OOS observation.
+OOS_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior self-review OOS observation.
