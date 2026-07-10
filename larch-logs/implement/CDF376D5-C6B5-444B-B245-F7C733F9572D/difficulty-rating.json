@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": false,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "Cross-cutting change to architectural note consumption and coverage advancement; introduces fail-closed security-relevant identity checks, incremental path classification, atomic snapshot refresh, and backward compatibility for old metadata format; 735 diff lines across 7 files with full test coverage.",
+  "round_cap": 2,
+  "schema_version": 1
+}
