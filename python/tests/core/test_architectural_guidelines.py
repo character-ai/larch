@@ -481,7 +481,7 @@ def test_skip_approve_sequence_uses_explicit_repo_root_from_wrong_cwd(
 
 def test_skip_approve_guideline_prompt_contracts_bind_repo_root() -> None:
     root = Path(__file__).resolve().parents[3]
-    approval = (root / "skills" / "design" / "references" / "approval-gates.md").read_text(encoding="utf-8")
+    approval = (root / "skills" / "design" / "references" / "approval-gates-gate-c.md").read_text(encoding="utf-8")
     skill = (root / "skills" / "design" / "SKILL.md").read_text(encoding="utf-8")
     outline = (root / "skills" / "design" / "references" / "design-outline.md").read_text(encoding="utf-8")
 

@@ -20,3 +20,5 @@ The harness also pins the post-approval Step 5 reference split: `skills/design/S
 It also pins the repeat-fingerprint silent-yield contract across Tier-1 prose, shared wait prose, `/design` Step 3 post-loop routing, and Step 5c routing. It keeps the shared `orchestrator-never.md` distinction between `/design` premature-notification probes and the narrower `/implement` Step 3/5 post-denial retry contract.
 
 It also scans tracked non-test skill, reference, script, and Python launcher surfaces for literal `--timing-task-kind <value>` call sites and fails when a literal is missing from `python/larch/report/timing.py` `TIMING_TASK_KINDS_ALLOWED`.
+
+The split harness also pins shared approval core plus unconditional Gate A/B/C slices, Step 3 `plan-review-runtime.md` loading before `design-step3-entry.sh`, the default-path Gate A negative, and conditional `finalize-step5-failures.md` loading before terminal failure staging. The green `finalize-step5.md` slice remains Step 5-only.

@@ -34,7 +34,7 @@ test "$b" -ge 1 || fail 'design_summary.py must pass --claude-input-tokens to re
 pass 'design_summary.py render-run-summary per-bucket argv shape'
 
 design_skill="$REPO/skills/design/SKILL.md"
-finalize_step5="$REPO/skills/design/references/finalize-step5.md"
+finalize_step5_failures="$REPO/skills/design/references/finalize-step5-failures.md"
 shared_final_summary="$REPO/skills/shared/final-summary-emit.md"
 
 # Step 17 marker handoff lives in python/larch/state/closeout.py.
@@ -128,11 +128,11 @@ grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn'
 grep -Fq 'parenthetical cost paraphrase such as `~$10.46`' "$design_skill" || fail 'design SKILL must pin no-cost-paraphrase prose'
 grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "$design_skill" || fail 'design SKILL must pin render-exit carve-out'
 grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follow the `/design` Read-always readiness profile' "$design_skill" || fail 'cancellation fence must cite shared readiness profile without full binding paragraph'
-grep -Fq 'Parse `FINAL_SUMMARY_PATH=<path>` from final `bgjob wait` `DONE` stdout' "$finalize_step5" || fail 'Step 5c abort path must name bgjob DONE stdout source and cite shared readiness profile'
+grep -Fq 'Parse `FINAL_SUMMARY_PATH=<path>` from final `bgjob wait` `DONE` stdout' "$finalize_step5_failures" || fail 'Step 5c abort path must name bgjob DONE stdout source and cite shared readiness profile'
 grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` or final `DONE` stdout, follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5c abort must name bgjob result env source and cite shared readiness profile'
 grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 must follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared readiness profile'
 grep -Fq 'Complete the shared sidecar Read/cache before any cleanup, cancellation line, or exit.' "$design_skill" || fail 'cancellation fence must preserve sidecar Read/cache ordering'
-grep -Fq 'follow the `/design` Read-always readiness profile to Read/cache the final summary and allowed sidecars before tmpdir loss' "$finalize_step5" || fail 'Step 5c abort must preserve sidecar Read/cache before tmpdir loss'
+grep -Fq 'follow the `/design` Read-always readiness profile to Read/cache the final summary and allowed sidecars before tmpdir loss' "$finalize_step5_failures" || fail 'Step 5c abort must preserve sidecar Read/cache before tmpdir loss'
 grep -Fq 'Apply terminal emit **after** the plan-write failure warning or success footer decisions below, and after Step 6 cleanup when cleanup runs.' "$design_skill" || fail 'Step 5c item 5 must preserve deferred terminal ordering'
 grep -Fq 'No free-form recap may appear between or after terminal emission.' "$design_skill" || fail 'Step 5d must preserve no-recap terminal ordering token'
 grep -Fq 'Do not add post-emit recap prose, artifact bullet recaps, or parenthetical cost paraphrases such as approximate no-cost restatements.' "$shared_final_summary" || fail 'shared final-summary emit must pin recap/no-cost rule'

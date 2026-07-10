@@ -10,7 +10,7 @@ CLI="$ROOT/python/cli.py"
 POSTPLAN_CLI=(python3 "$CLI" design postplan-emit)
 SETTLE="$ROOT/skills/design/scripts/design-step35-settle.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
-APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
+APPROVAL_GATES="$ROOT/skills/design/references/approval-gates-gate-b.md"
 
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }

@@ -1,15 +1,17 @@
 [
   {
-    "closure_content_estimated_tokens": 52801,
-    "closure_estimated_tokens": 52953,
-    "closure_lines": 1715,
-    "conditional_content_estimated_tokens": 19362,
-    "conditional_estimated_tokens": 19438,
+    "closure_content_estimated_tokens": 52102,
+    "closure_estimated_tokens": 52251,
+    "closure_lines": 1708,
+    "conditional_content_estimated_tokens": 21022,
+    "conditional_estimated_tokens": 21104,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
       "skills/design/references/sentinel-host-table.md",
       "skills/shared/final-summary-emit.md",
+      "skills/design/references/finalize-step5-failures.md",
+      "skills/design/references/approval-gates-gate-a.md",
       "skills/design/references/settle-rc-dispatch.md",
       "skills/design/references/step2b-drafter-failsafe.md",
       "skills/design/references/step2b5-rc-handling.md",
@@ -17,7 +19,7 @@
       "skills/design/references/dialectic-clarifier.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 838,
+    "conditional_lines": 892,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",
@@ -25,13 +27,15 @@
       "skills/design/references/discussion-rounds.md",
       "skills/design/references/design-outline.md",
       "skills/design/references/approval-gates.md",
-      "skills/design/references/plan-review.md",
+      "skills/design/references/plan-review-runtime.md",
+      "skills/design/references/approval-gates-gate-b.md",
+      "skills/design/references/approval-gates-gate-c.md",
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25816,
-    "skill_md_estimated_tokens": 25870,
-    "skill_md_lines": 687
+    "skill_md_content_estimated_tokens": 26028,
+    "skill_md_estimated_tokens": 26082,
+    "skill_md_lines": 692
   },
   {
     "closure_content_estimated_tokens": 44347,

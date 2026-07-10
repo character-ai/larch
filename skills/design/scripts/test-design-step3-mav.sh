@@ -363,7 +363,7 @@ assert_contains "$_launcher_out" 'DESIGN_STEP3_MAV_KV_BEGIN' 'launcher stub reac
 
 echo '=== prose regression pins ==='
 SKILL_FILE="$ROOT/skills/design/SKILL.md"
-PLAN_REVIEW_FILE="$ROOT/skills/design/references/plan-review.md"
+PLAN_REVIEW_FILE="$ROOT/skills/design/references/plan-review-runtime.md"
 APPROVAL_GATES_FILE="$ROOT/skills/design/references/approval-gates.md"
 assert_file_contains "$SKILL_FILE" 'design-step3-mav.sh --phase pre' 'SKILL delegates MAV pre phase'
 assert_file_contains "$SKILL_FILE" "\"\$HOME/.cache/larch/sessions/design-run-\$PPID.sh\" design-step3-mav.sh --phase pre" 'SKILL pins MAV pre launcher fence'
