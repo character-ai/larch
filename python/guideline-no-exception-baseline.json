@@ -1,0 +1,34 @@
+[
+  {
+    "guideline_id": "G-Cfg-2",
+    "reason": "release-owned version fields have no exception, but release flow policy stays in guidelines with config conventions"
+  },
+  {
+    "guideline_id": "G-Enf-1",
+    "reason": "meta guidance promotes recurring judgment to mechanical checks but is not itself an invariant"
+  },
+  {
+    "guideline_id": "G-Enf-2",
+    "reason": "baseline ratchet guidance governs how enforcement lints evolve rather than a runtime invariant"
+  },
+  {
+    "guideline_id": "G-Md-2",
+    "reason": "rename sweep guidance stays with Markdown maintenance policy despite having no useful exception"
+  },
+  {
+    "guideline_id": "G-Orch-2",
+    "reason": "agent fan-out caps are hard within orchestration design, but degradation policy remains judgment-tier guidance"
+  },
+  {
+    "guideline_id": "G-Py-11",
+    "reason": "suppression reasons are mechanically ratcheted, while file-level suppression scope still needs reviewer judgment"
+  },
+  {
+    "guideline_id": "G-Py-6",
+    "reason": "this defines the Python style boundary after linters, not an independently enforceable invariant"
+  },
+  {
+    "guideline_id": "G-Skill-2",
+    "reason": "Python-over-Bash preference is partly enforced by lints, while residual skill design judgment stays guidance"
+  }
+]
