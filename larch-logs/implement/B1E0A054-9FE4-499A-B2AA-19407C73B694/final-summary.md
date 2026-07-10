@@ -35,11 +35,19 @@ codex/pragmatism-vote           │                                    ███
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run B1E0A054-9FE4-499A-B2AA-19407C73B694: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:31:34
-- **Cost**: 💰 TOTAL ~$11.01: Claude $1.52, Codex-5.5 $1.92, Codex-mini $1.48, Cursor $5.46, Claude (subprocess) $0.63  |  Tokens: 26109k
+- **Cost**: 💰 TOTAL ~$11.82: Claude $2.33, Codex-5.5 $1.92, Codex-mini $1.48, Cursor $5.46, Claude (subprocess) $0.63  |  Tokens: 27958k
 - **Issue**: #6788: https://github.com/character-ai/larch/issues/6788
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
