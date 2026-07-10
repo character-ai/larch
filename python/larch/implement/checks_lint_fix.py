@@ -619,28 +619,6 @@ def _forbidden_paths_match_count(
     return coder_delta_guards.forbidden_paths_match_count(paths=paths, forbidden=forbidden)
 
 
-def _delta_paths_after_dispatch(
-    *, baseline_tracked: tuple[str, ...],
-    baseline_untracked: tuple[str, ...],
-    current_tracked: tuple[str, ...],
-    current_untracked: tuple[str, ...],
-) -> tuple[str, ...]:
-    baseline_tracked_set = set(baseline_tracked)
-    baseline_untracked_set = set(baseline_untracked)
-    delta = [
-        path
-        for path in current_tracked
-        if path not in baseline_tracked_set
-    ]
-    delta.extend(
-        path
-        for path in current_untracked
-        if path not in baseline_untracked_set
-    )
-    return tuple(delta)
-
-
-
 @dataclass(frozen=True)
 class _RepoPathState:
     path: str
@@ -710,7 +688,7 @@ def _tier_ledger_path(run_parent: Path) -> Path:
 def _initialize_tier_ledger(run_parent: Path) -> Path:
     path: Path = _tier_ledger_path(run_parent)
     if not path.exists():
-        path.write_text(_TIER_LEDGER_HEADER, encoding="utf-8")
+        _ = path.write_text(_TIER_LEDGER_HEADER, encoding="utf-8")
     return path
 
 
