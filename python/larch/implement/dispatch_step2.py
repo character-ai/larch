@@ -734,7 +734,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
             commit_args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
         )
         if commit.returncode != 0:
-            retry_add = subprocess.run(
+            retry_add = subprocess.run(  # lint-subprocess-via-runner: ok retry of the baselined dispatcher git add-A; same DEVNULL/PIPE split as the initial add
                 [GIT_BIN, "-C", str(repo_root), "add", "-A"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
             )
             if retry_add.returncode != 0:
@@ -744,7 +744,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
                 with contextlib.suppress(OSError):
                     st.manifest_raw_path.unlink()
                 return st.emit_bailed("commit-failed")
-            commit = subprocess.run(
+            commit = subprocess.run(  # lint-subprocess-via-runner: ok retry of the baselined dispatcher git commit; same DEVNULL/PIPE split as the initial commit
                 commit_args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
             )
             if commit.returncode != 0:
