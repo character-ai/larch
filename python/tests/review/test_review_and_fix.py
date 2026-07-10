@@ -5196,8 +5196,6 @@ def test_progress_note_uses_run_aware_breadcrumb(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """review_and_fix._progress_note uses append_breadcrumb_for_run with owned run ID."""
-    from larch.report import progress_file
-
     monkeypatch.setenv("LARCH_RUN_ID", "raf-run-33")
     monkeypatch.chdir(tmp_path)
 
@@ -5207,7 +5205,6 @@ def test_progress_note_uses_run_aware_breadcrumb(
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
-    monkeypatch.setattr(progress_file, "append_breadcrumb_for_run", fake_append)
     monkeypatch.setattr(review_and_fix.progress_file, "append_breadcrumb_for_run", fake_append)
 
     review_and_fix._progress_note(step="5", text="round 1 done")  # pyright: ignore[reportPrivateUsage]

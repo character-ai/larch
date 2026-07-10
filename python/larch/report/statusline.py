@@ -118,12 +118,6 @@ def _truncate(text: str, *, columns: int) -> str:
     return text[: columns - 1] + "…"
 
 
-def _active_progress_path(repo_root: Path) -> Path | None:
-    run_id: str | None = progress_file.read_active_run_id(repo_root)
-    if run_id is None:
-        return None
-    return progress_file.run_progress_path(repo_root, run_id)
-
 
 def session_reset_progress(stdin_text: str, env: dict[str, str] | None = None) -> bool:
     env_map = os.environ if env is None else env

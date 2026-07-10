@@ -1,4 +1,4 @@
-# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
+# pyright: reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedCallResult=false
 from __future__ import annotations
 
 import json
@@ -2215,7 +2215,7 @@ def test_restore_resume_progress_reactivates_persisted_run_id(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """--resume-plan-tail path re-activates the persisted LARCH_RUN_ID."""
-    from larch.state import bootstrap as bs
+    bs = bootstrap
 
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
     session_env_path = tmp_path / "session-env.sh"
@@ -2224,11 +2224,11 @@ def test_restore_resume_progress_reactivates_persisted_run_id(
     activate_calls: list[tuple[str, ...]] = []
     real_run = bs._run  # type: ignore[attr-defined]
 
-    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+    def fake_run(argv: list[str], **kwargs: str | None) -> subprocess.CompletedProcess[str]:
         if len(argv) >= 4 and argv[2:4] == ["progress", "activate"]:
             activate_calls.append(tuple(argv))
             return subprocess.CompletedProcess(argv, 0, "", "")
-        return real_run(argv, **kwargs)
+        return real_run(argv, **kwargs)  # type: ignore[arg-type]
 
     monkeypatch.setattr(bs, "_run", fake_run)  # type: ignore[attr-defined]
 

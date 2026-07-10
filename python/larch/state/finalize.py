@@ -717,7 +717,7 @@ def teardown(
     teardown_run_id = run_logs.effective_run_id(ctx)
     if teardown_run_id:
         _ = _teardown_log_flush(runner=runner, ctx=ctx, cwd=cwd)
-        progress_file.deactivate_run(
+        _ = progress_file.deactivate_run(
             Path(cwd).resolve() if cwd else Path.cwd(), teardown_run_id
         )
     issue_url = ""

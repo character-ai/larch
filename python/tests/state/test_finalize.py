@@ -13,7 +13,8 @@ from larch.issue import execution_issues
 from larch.state import finalize
 from larch.report import run_logs, progress_file
 from larch.errors import ShipError
-from larch.core.proc import CommandResult
+from larch.core.proc import CommandResult, Runner
+from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
 
@@ -1061,7 +1062,7 @@ def test_implement_finalize_accepts_cache_root_state_file(
 def test_teardown_deactivates_run_before_tmpdir_removal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """teardown calls deactivate_run with the effective run ID."""
+    """Teardown calls deactivate_run with the effective run ID."""
     runner = RecordingRunner()
     ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
     _ = run_logs.init_run(ctx)
@@ -1074,8 +1075,14 @@ def test_teardown_deactivates_run_before_tmpdir_removal(
 
     monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
 
-    monkeypatch.setattr(finalize, "_teardown_log_flush", lambda **_kw: True)
-    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kw: True)
+    def fake_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:  # noqa: ARG001
+        return True
+
+    def fake_kill(*, runner: Runner, ctx: RunContext) -> bool:  # noqa: ARG001
+        return True
+
+    monkeypatch.setattr(finalize, "_teardown_log_flush", fake_flush)
+    monkeypatch.setattr(finalize, "kill_session_background_processes", fake_kill)
 
     result = finalize.teardown(runner=runner, ctx=ctx, cwd=str(tmp_path))
     assert result.outcome.name == "OK"

@@ -3527,12 +3527,15 @@ def test_verify_job_locally_uses_run_aware_breadcrumb(
     monkeypatch.setenv("LARCH_RUN_ID", "test-impl-run-7")
     breadcrumb_calls: list[tuple[str, str, str, str]] = []
 
-    def fake_append(repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
+    def fake_per_job(*, name: str, shard: str) -> tuple[str, ...] | None:  # noqa: ARG001
+        return ("true",)
+
     monkeypatch.setattr(ci_monitor.progress_file, "append_breadcrumb_for_run", fake_append)
-    monkeypatch.setattr(ci_monitor, "per_job_command", lambda name, shard: ("true",))
+    monkeypatch.setattr(ci_monitor, "per_job_command", fake_per_job)
 
     fake_runner = RecordingRunner(
         responses={("true",): _cr(("true",), 0)},
@@ -3557,17 +3560,22 @@ def test_verify_job_locally_skips_breadcrumb_without_run_id(
     monkeypatch.delenv("LARCH_RUN_ID", raising=False)
     breadcrumb_calls: list[object] = []
 
-    monkeypatch.setattr(
-        ci_monitor.progress_file,
-        "append_breadcrumb_for_run",
-        lambda *a, **k: breadcrumb_calls.append(a),
-    )
-    monkeypatch.setattr(ci_monitor, "per_job_command", lambda name, shard: ("true",))
+    def fake_append_no_run(
+        _repo: object, run_id: str, skill: str, step: str, text: str
+    ) -> bool:
+        breadcrumb_calls.append((run_id, skill, step, text))
+        return True
+
+    def fake_per_job_cmd(*, name: str, shard: str) -> tuple[str, ...] | None:  # noqa: ARG001
+        return ("true",)
+
+    monkeypatch.setattr(ci_monitor.progress_file, "append_breadcrumb_for_run", fake_append_no_run)
+    monkeypatch.setattr(ci_monitor, "per_job_command", fake_per_job_cmd)
 
     fake_runner = RecordingRunner(
         responses={("true",): _cr(("true",), 0)},
     )
-    ci_monitor.verify_job_locally(
+    _ = ci_monitor.verify_job_locally(
         runner=fake_runner, name="py-test", shard="1", cwd=str(tmp_path)
     )
 

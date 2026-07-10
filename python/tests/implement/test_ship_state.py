@@ -93,20 +93,17 @@ def test_progress_note_uses_run_aware_breadcrumb(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """ship_state._progress_note writes breadcrumbs via append_breadcrumb_for_run."""
-    from larch.implement import ship_state as ss
-    from larch.report import progress_file
-
     monkeypatch.setenv("LARCH_RUN_ID", "ship-run-88")
     breadcrumb_calls: list[tuple[str, str, str, str]] = []
 
-    def fake_append(repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
-    monkeypatch.setattr(ss.progress_file, "append_breadcrumb_for_run", fake_append)  # type: ignore[attr-defined]
+    monkeypatch.setattr(ship_state.progress_file, "append_breadcrumb_for_run", fake_append)  # type: ignore[attr-defined]
     monkeypatch.chdir(tmp_path)
 
-    ss._progress_note(step="9", text="test note")  # pyright: ignore[reportPrivateUsage]
+    ship_state._progress_note(step="9", text="test note")  # pyright: ignore[reportPrivateUsage]
 
     assert len(breadcrumb_calls) == 1
     assert breadcrumb_calls[0][0] == "ship-run-88"

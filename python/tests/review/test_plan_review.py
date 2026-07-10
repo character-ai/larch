@@ -4250,7 +4250,7 @@ def test_plan_review_progress_note_uses_run_aware_breadcrumb(
 
     breadcrumb_calls: list[tuple[str, str, str, str]] = []
 
-    def fake_append(repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 

@@ -34,6 +34,7 @@ from larch.design import (
 from larch.design import design_pause
 from larch.design import design_publish
 from larch.core import logging_util
+from larch.report import progress_file
 from larch.core import proc as proc_module
 from larch.state import session_env
 from larch.state import stall_recovery
@@ -6319,9 +6320,6 @@ def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """step6_cleanup_core calls deactivate_run with the persisted run ID before cleanup."""
-    from larch.report import progress_file
-    from larch.design import design_step6
-
     design, env_path = _step6_design(tmp_path, monkeypatch)
     (design / "source-env.sh").write_text(
         "LARCH_RUN_ID=step6-run-77\n", encoding="utf-8"
@@ -6330,13 +6328,19 @@ def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
 
     deactivate_calls: list[tuple[object, str]] = []
 
-    def fake_deactivate(repo_root: object, run_id: str) -> bool:
-        deactivate_calls.append((repo_root, run_id))
+    def fake_deactivate(_repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append((_repo_root, run_id))
         return True
 
+    def fake_cleanup(_argv: list[str]) -> int:
+        return 0
+
+    def fake_reap(_pid: str) -> None:
+        pass
+
     monkeypatch.setattr(design_step6, "deactivate_run", fake_deactivate)
-    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", lambda _a: 0)
-    monkeypatch.setattr(session_env, "reap_pid_residuals", lambda _p: None)
+    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
+    monkeypatch.setattr(session_env, "reap_pid_residuals", fake_reap)
 
     rc = design_lifecycle.step6_cleanup_core(_step6_args(env_path))
     assert rc == 0
@@ -6348,9 +6352,6 @@ def test_step_final_summary_deactivates_run_on_rendered_path(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """step_final_summary_core calls _try_deactivate_design_run on the rendered summary path."""
-    from larch.report import progress_file
-    from larch.design import design_terminal
-
     design = tmp_path / "design"
     design.mkdir()
     (design / "source-env.sh").write_text(
@@ -6361,18 +6362,18 @@ def test_step_final_summary_deactivates_run_on_rendered_path(
 
     deactivate_calls: list[str] = []
 
-    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+    def fake_deactivate(_repo_root: object, run_id: str) -> bool:
         deactivate_calls.append(run_id)
         return True
 
     monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
 
-    def fake_rendered(*, design_tmpdir: object, ctx: object, final_summary_path: object) -> int:
+    def fake_rendered(*, design_tmpdir: object, ctx: object, final_summary_path: object) -> int:  # noqa: ARG001
         return 0
 
     monkeypatch.setattr(design_terminal, "_run_rendered_final_summary", fake_rendered)
 
-    argv = _step6_args(env_path) + ["--summary-outcome", "complete"]
+    argv = [*_step6_args(env_path), "--summary-outcome", "complete"]
     design_terminal.step_final_summary_core(argv)
 
     assert len(deactivate_calls) == 1

@@ -1088,7 +1088,7 @@ def _run_rendered_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_summary_
 
 def _try_deactivate_design_run(design_tmpdir: Path) -> None:
     with contextlib.suppress(Exception):
-        from larch.report import progress_file  # noqa: PLC0415
+        from larch.report import progress_file  # noqa: PLC0415 - best-effort lazy import guarded by contextlib.suppress
         run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
         if run_id:
             progress_file.deactivate_run(Path.cwd(), run_id)
