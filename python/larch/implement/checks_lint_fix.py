@@ -666,15 +666,15 @@ def _diff_fingerprints(
     cached: bool,
 ) -> dict[str, str] | None:
     result = runner.run(
-        ["git", "diff", "--raw", "--no-ext-diff", "--",] if not cached else
-        ["git", "diff", "--cached", "--raw", "--no-ext-diff", "--",],
+        ["git", "diff", "--raw", "--no-ext-diff", "--"] if not cached else
+        ["git", "diff", "--cached", "--raw", "--no-ext-diff", "--"],
         cwd=cwd,
     )
     if result.returncode != 0:
         return None
     fingerprints: dict[str, str] = {}
     for line in result.stdout.splitlines():
-        metadata, separator, path = line.partition("\t")
+        _, separator, path = line.partition("\t")
         if not separator or not path:
             return None
         fingerprints[path] = hashlib.sha256(line.encode("utf-8")).hexdigest()
@@ -1161,7 +1161,7 @@ def _coder_stderr_tail(*, run_dir: Path, log_name: str) -> str:
         text = candidate.read_text(encoding="utf-8", errors="replace")[-4096:]
         if not text:
             return ""
-        target.write_text(redact.redact(text), encoding="utf-8")
+        _ = target.write_text(redact.redact(text), encoding="utf-8")
         target.chmod(0o600)
         if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
             return ""
@@ -1205,7 +1205,7 @@ def _redacted_attempt_log(*, run_dir: Path, log_name: str) -> str:
         if not source.is_file() or source.is_symlink():
             return ""
         text = source.read_text(encoding="utf-8", errors="replace")
-        target.write_text(redact.redact(text), encoding="utf-8")
+        _ = target.write_text(redact.redact(text), encoding="utf-8")
         target.chmod(0o600)
         if target.is_symlink() or not target.is_file():
             return ""
@@ -1235,12 +1235,10 @@ def _append_attempt_execution_issue(
     entry = redact.redact(
         f"- lint-fix tier={tier} category={issue_kind}; {detail}"
     ).strip()
-    try:
+    with contextlib.suppress(OSError):
         execution_issues.append_execution_issue(
             issue_log, category="Tool Failures", entry=entry
         )
-    except OSError:
-        pass
 
 
 def _resolve_lint_fix_timing_root(*, allowed_tmpdir: str | None, run_parent: str) -> Path | None:
