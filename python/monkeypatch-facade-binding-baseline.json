@@ -3925,75 +3925,165 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
-    "attribute": "_implement_token_budget_hit",
-    "defining_module": "larch.agents._ci_launcher",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
-    "attribute": "_mirror_codex_quota_from_events",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_prepare_codex_home",
     "defining_module": "larch.agents._run_external",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "occurrence": 2,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
     "attribute": "_promote_inner_done",
     "defining_module": "larch.agents._run_external",
     "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "consuming module binding required to intercept ci_launcher calls"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
-    "attribute": "_record_cursor_implement_usage",
-    "defining_module": "larch.agents._ci_launcher",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
-    "attribute": "_record_implement_timing",
-    "defining_module": "larch.agents._ci_launcher",
-    "occurrence": 2,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
     "attribute": "_record_usage_from_events",
     "defining_module": "larch.agents._run_external",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "occurrence": 11,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
     "attribute": "_resolve_review_codex_workdir",
     "defining_module": "larch.agents._run_external",
     "occurrence": 10,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "consuming module binding required to intercept ci_launcher calls"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_implement_launchers_do_not_emit_step2_token_mark",
-    "facade_module": "larch.agents.agents",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
     "attribute": "_run_external_agent_with_auth_retries",
     "defining_module": "larch.agents._run_external",
+    "occurrence": 13,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_export_env",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 9,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_preflight",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 7,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_preread_service_token",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 8,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_emit_step2_token_mark_before_usage",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "resolve_model_args",
+    "defining_module": "larch.agents._launch_failure",
+    "occurrence": 3,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 2,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_promote_inner_done",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 7,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_record_usage_from_events",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 5,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_resolve_review_codex_workdir",
+    "defining_module": "larch.agents._run_external",
     "occurrence": 11,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 12,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_export_env",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 10,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_preflight",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 8,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_preread_service_token",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 9,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_implement_launchers_step2_token_mark_failure_is_nonfatal",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "resolve_model_args",
+    "defining_module": "larch.agents._launch_failure",
+    "occurrence": 3,
+    "reason": "consuming module binding required to intercept ci_launcher calls"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
