@@ -4561,7 +4561,7 @@ def test_run_dispatch_skips_step2_token_mark_when_external_binary_present(
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
 
     assert implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", coder]) == 0
-    assert token_calls == []
+    assert not token_calls
     assert len(timing_calls) == 1
 
 
