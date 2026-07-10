@@ -482,13 +482,23 @@ def test_skip_approve_sequence_uses_explicit_repo_root_from_wrong_cwd(
 def test_skip_approve_guideline_prompt_contracts_bind_repo_root() -> None:
     root = Path(__file__).resolve().parents[3]
     approval = (root / "skills" / "design" / "references" / "approval-gates.md").read_text(encoding="utf-8")
+    skill = (root / "skills" / "design" / "SKILL.md").read_text(encoding="utf-8")
     outline = (root / "skills" / "design" / "references" / "design-outline.md").read_text(encoding="utf-8")
 
     assert '. "$DESIGN_TMPDIR/source-env.sh"' in approval
     assert 'present-note --repo-root "$REPO_ROOT"' in approval
     assert 'persist-design-assessment --repo-root "$REPO_ROOT"' in approval
+    assert 'architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT"' in approval
+    assert approval.index('architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT"') < approval.index('architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT"')
+    assert "**Absent, invalid, or present-but-empty**: when `read_invariants().status` is not `present` or parsed `content.strip()` is empty after parsing `I-*` entries." in approval
+    assert "**Clean**: only when invariants are `present` with parsed non-empty content and no violation assessment was required (no `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` path and no remediated-violations sidecar)." in approval
+    assert "**Remediated-violations**: when violations were identified and the remediation loop produced a clean plan." in approval
+    assert "If invariant present-note emits `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview." in approval
+    assert approval.index("INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true") < approval.index("**Clean**: only when invariants are `present`")
     assert "reason=persist-design-assessment-failed" in approval
     assert approval.index("reason=persist-design-assessment-failed") < approval.index("Do not fire `AskUserQuestion`, approve, auto-approve, or transition to Step 5.")
+    assert "**Step 5c missing-invariant-assessment.**" in skill
+    assert skill.index("**Step 5c missing-invariant-assessment.**") < skill.index("**Step 5c missing-guideline-assessment.**")
     assert '. "$DESIGN_TMPDIR/source-env.sh"' in outline
     assert 'present-note --repo-root "$REPO_ROOT"' in outline
     assert "auto-approved (--skip-approve)" in outline

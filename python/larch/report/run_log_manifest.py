@@ -512,6 +512,16 @@ def _derive_consumer_repo_root_from_run_dir(run_dir: Path) -> Path | None:
         return None
 
 
+def _invariant_assessment_required(*, run_dir: Path, repo_root: Path | None) -> bool:
+    if not _design_run_approved(run_dir):
+        return False
+    resolved_repo_root = repo_root or _derive_consumer_repo_root_from_run_dir(run_dir)
+    if resolved_repo_root is None:
+        return False
+    result = architectural_guidelines.read_invariants(repo_root=resolved_repo_root)
+    return result.status == "present" and bool(result.content.strip())
+
+
 def _guideline_assessment_required(*, run_dir: Path, repo_root: Path | None) -> bool:
     if not _design_run_approved(run_dir):
         return False
@@ -546,6 +556,13 @@ def _required_design_artifacts(run_dir: Path, *, repo_root: Path | None = None) 
                 skill="design",
                 condition="design-plan-review",
             ))
+    if _invariant_assessment_required(run_dir=run_dir, repo_root=repo_root):
+        rows.append(RequiredArtifact(
+            slug="invariant-assessment",
+            relative_path=architectural_guidelines.INVARIANT_DESIGN_ASSESSMENT,
+            skill="design",
+            condition="design-invariant-assessment",
+        ))
     if _guideline_assessment_required(run_dir=run_dir, repo_root=repo_root):
         rows.append(RequiredArtifact(
             slug="guideline-assessment",

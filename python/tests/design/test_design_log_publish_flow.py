@@ -89,6 +89,21 @@ def _operator_repo_with_guidelines(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     return repo
 
 
+
+
+def _operator_repo_with_invariants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    text: str = "### I-Test-1: Test\nInvariant text.\n",
+) -> Path:
+    repo = _operator_repo_with_remote(tmp_path)
+    _ = (repo / "ARCHITECTURAL_INVARIANTS.md").write_text(text, encoding="utf-8")
+    _git("add", "ARCHITECTURAL_INVARIANTS.md", cwd=repo)
+    _git("commit", "-q", "-m", "invariants", cwd=repo)
+    monkeypatch.chdir(repo)
+    return repo
+
 def _run_publish(
     repo: Path,
     design: Path,
@@ -274,6 +289,151 @@ def test_log_publish_capture_failure_skips_publish(
     assert rc == 0
     assert not published
     assert "PUBLISH_OK=false" in capsys.readouterr().out
+
+
+
+
+def test_log_publish_approved_missing_invariant_assessment_records_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_invariants(tmp_path, monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    published = False
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+        nonlocal published
+        published = True
+        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+
+    monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    issues = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert published
+    assert (design / ".missing-invariant-assessment-warning").is_file()
+    assert "invariant-assessment" in issues
+    assert "architectural-invariant-assessment.md" in issues
+
+
+def test_log_publish_approved_missing_invariant_assessment_does_not_follow_marker_symlink(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_invariants(tmp_path, monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    protected = tmp_path / "protected-invariant-warning.txt"
+    _ = protected.write_text("keep\n", encoding="utf-8")
+    (design / ".missing-invariant-assessment-warning").symlink_to(protected)
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(
+        design_log_publish_flow,
+        "_publish_design_logs",
+        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    )
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    assert rc == 0
+    assert protected.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_log_publish_invariant_assessment_present_suppresses_warning(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_invariants(tmp_path, monkeypatch)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "architectural-invariant-assessment.md").write_text("clean\n", encoding="utf-8")
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(
+        design_log_publish_flow,
+        "_publish_design_logs",
+        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    )
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    assert rc == 0
+    assert not (design / ".missing-invariant-assessment-warning").exists()
+
+
+def test_log_publish_empty_invariants_do_not_warn(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _ = _operator_repo_with_invariants(tmp_path, monkeypatch, text="# No invariant entries\n")
+    design = tmp_path / "design"
+    design.mkdir()
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", lambda **_kwargs: True)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(
+        design_log_publish_flow,
+        "_publish_design_logs",
+        lambda **_kwargs: (True, "77", "https://github.com/o/r/pull/77", "", "0"),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    )
+
+    rc = design_log_publish_flow.log_publish_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--run-id",
+            RUN_ID,
+            "--issue",
+            "33",
+            "--outcome",
+            "approved",
+        ]
+    )
+
+    assert rc == 0
+    assert not (design / ".missing-invariant-assessment-warning").exists()
 
 
 def test_log_publish_approved_missing_guideline_assessment_records_warning(

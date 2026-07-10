@@ -343,6 +343,35 @@ contains "$DESIGN_OUTLINE_MD" 'Bound the invariant outline remediation loop with
 contains "$APPROVAL_GATES_MD" 'If invariant violations remain after assessment, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving.' 'Gate C must block auto-approval until invariant remediation clears'
 contains "$APPROVAL_GATES_MD" 'Bound the remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-gatec-remediation.count`: read it on Gate C entry and increment it per remediation attempt so pause/resume or repeated entry cannot reset it. After the bound (for example two attempts), hard-stop with a clear operator repair message.' 'Gate C must pin bounded remediation counter contract'
 
+contains "$APPROVAL_GATES_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment clean' 'Gate C must persist clean invariant assessments'
+contains "$APPROVAL_GATES_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-invariant-assessment.input.sidecar"' 'Gate C must persist remediated invariant sidecar assessments'
+contains "$APPROVAL_GATES_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags so stale artifacts are removed.' 'Gate C must document no-flags invariant stale-artifact removal'
+contains "$APPROVAL_GATES_MD" '**Clean**: only when invariants are `present` with parsed non-empty content and no violation assessment was required (no `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` path and no remediated-violations sidecar).' 'Gate C must pin clean invariant persist dispatch condition'
+contains "$APPROVAL_GATES_MD" '**Remediated-violations**: when violations were identified and the remediation loop produced a clean plan.' 'Gate C must pin remediated invariant persist dispatch condition'
+contains "$APPROVAL_GATES_MD" '**Absent, invalid, or present-but-empty**: when `read_invariants().status` is not `present` or parsed `content.strip()` is empty after parsing `I-*` entries.' 'Gate C must pin no-assessment invariant persist dispatch condition'
+contains "$APPROVAL_GATES_MD" 'If invariant present-note emits `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview.' 'Gate C must pin invariant violation assessment flow'
+contains "$APPROVAL_GATES_MD" '**⚠ 4b: architectural-invariant assessment persistence failed**' 'Gate C must keep distinct invariant persist failure message'
+contains "$APPROVAL_GATES_MD" '**Fail-closed persistence contract**: every invariant and guideline `persist-design-assessment` invocation must exit `0` before Gate C continues' 'Gate C must fail closed for invariant and guideline persistence'
+_invariant_persist_line=$(awk '/architectural-invariants persist-design-assessment --repo-root/ { print NR; exit }' "$APPROVAL_GATES_MD")
+_guideline_persist_line=$(awk '/architectural-guidelines persist-design-assessment --repo-root/ { print NR; exit }' "$APPROVAL_GATES_MD")
+[ -n "$_invariant_persist_line" ] || fail "Gate C missing invariant persist text"
+[ -n "$_guideline_persist_line" ] || fail "Gate C missing guideline persist text"
+[ "$_invariant_persist_line" -lt "$_guideline_persist_line" ] || fail "Gate C invariant persist must precede guideline persist"
+_invariant_flow_line=$(awk '/INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true/ { print NR; exit }' "$APPROVAL_GATES_MD")
+_invariant_branch_line=$(awk '/\*\*Clean\*\*: only when invariants are `present`/ { print NR; exit }' "$APPROVAL_GATES_MD")
+[ -n "$_invariant_flow_line" ] || fail "Gate C missing invariant assessment flow marker"
+[ -n "$_invariant_branch_line" ] || fail "Gate C missing invariant persist branch marker"
+[ "$_invariant_flow_line" -lt "$_invariant_branch_line" ] || fail "Gate C invariant assessment flow must precede persist branches"
+contains "$FINALIZE_STEP5_MD" 'Missing invariant assessment is evaluated and surfaced before missing guideline assessment when both artifacts are missing.' 'Step 5c docs must pin invariant-before-guideline refusal order'
+contains "$FINALIZE_STEP5_MD" 'Return: Step 4b (`resume@4b`) → `python/cli.py architectural-invariants present-note --repo-root "$REPO_ROOT"` → `python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR"` (clean, sidecar, or no-flags branch as appropriate) → `design-step5c.sh`' 'Step 5c docs must pin invariant return path'
+contains "$FINALIZE_STEP5_MD" '**⚠ 5c: publish refused: missing architectural-invariant-assessment.md; return to Gate C to persist the architectural-invariant assessment before publish.**' 'Step 5c docs must pin invariant refusal warning'
+contains "$SKILL_MD" '**Step 5c missing-invariant-assessment.** With `--site design Step 5c` and `PUBLISH_REFUSE_REASON=missing-invariant-assessment`' 'SKILL must document missing invariant assessment Step 5c special case'
+_skill_invariant_case_line=$(awk '/\*\*Step 5c missing-invariant-assessment\.\*\*/ { print NR; exit }' "$SKILL_MD")
+_skill_guideline_case_line=$(awk '/\*\*Step 5c missing-guideline-assessment\.\*\*/ { print NR; exit }' "$SKILL_MD")
+[ -n "$_skill_invariant_case_line" ] || fail "SKILL missing invariant assessment special case"
+[ -n "$_skill_guideline_case_line" ] || fail "SKILL missing guideline assessment special case"
+[ "$_skill_invariant_case_line" -lt "$_skill_guideline_case_line" ] || fail "SKILL invariant assessment special case must precede guideline case"
+
 contains "$MAKEFILE" 'python3 -m pytest python/tests/design/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
 
 g6_terminal_retired_paths='design-stage-terminal-state.sh design-stage-terminal-state.md test-design-stage-terminal-state.sh test-design-stage-terminal-state.md design-failure-report.sh design-failure-report.md test-design-failure-report.sh test-design-failure-report.md design-step-final-summary.sh design-step-final-summary.md _dbg-stage.sh _debug-step5c.sh'

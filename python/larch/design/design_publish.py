@@ -40,6 +40,15 @@ class GuidelineAssessmentCompleteness:
     reason: str
 
 
+@dataclass(frozen=True)
+class InvariantAssessmentCompleteness:
+    invariants_status: str
+    required: bool
+    present: bool
+    artifact: str
+    reason: str
+
+
 def _emit_rows(rows: list[tuple[str, str]]) -> None:
     for key, value in rows:
         print(f"{key}={value}")
@@ -419,6 +428,46 @@ def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env
     _ = _write_result_env(path=result_env, rows=kvs)
 
 
+def _check_invariant_assessment_completeness(
+    *,
+    design_tmpdir: Path,
+    repo_root: Path,
+    outcome: str = "approved",
+) -> InvariantAssessmentCompleteness:
+    invariants = architectural_guidelines.read_invariants(repo_root=repo_root)
+    artifact = architectural_guidelines.INVARIANT_DESIGN_ASSESSMENT
+    required = (
+        outcome in {"approved", "approved-partition"}
+        and invariants.status == "present"
+        and bool(invariants.content.strip())
+    )
+    path = design_tmpdir / artifact
+    present = path.is_file() and not path.is_symlink()
+    if not required:
+        reason = (
+            "outcome-not-approved"
+            if outcome not in {"approved", "approved-partition"}
+            else f"invariants-{invariants.status}"
+        )
+        if invariants.status == "present" and not invariants.content.strip():
+            reason = "invariants-empty"
+    elif present:
+        reason = "present"
+    elif path.is_symlink():
+        reason = "artifact-symlink"
+    elif path.exists():
+        reason = "artifact-not-regular"
+    else:
+        reason = "artifact-missing"
+    return InvariantAssessmentCompleteness(
+        invariants_status=invariants.status,
+        required=required,
+        present=present,
+        artifact=artifact,
+        reason=reason,
+    )
+
+
 def _check_guideline_assessment_completeness(
     *,
     design_tmpdir: Path,
@@ -447,6 +496,31 @@ def _check_guideline_assessment_completeness(
         artifact=artifact,
         reason=reason,
     )
+
+
+def _emit_missing_invariant_assessment_refusal(
+    *,
+    design_tmpdir: Path,
+    result: InvariantAssessmentCompleteness,
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> None:
+    del design_tmpdir
+    print(
+        "**⚠ 5c: publish refused: missing architectural-invariant-assessment.md; "
+        "return to Gate C to persist the architectural-invariant assessment before publish.**",
+        flush=True,
+    )
+    _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="not-run")
+    _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value="0")
+    _replace_kv(rows=kvs, key="VALIDATE_LOG_FILE", value="")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_REQUIRED", value="true")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_PRESENT", value="false")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_STATUS", value="missing")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_ARTIFACT", value=result.artifact)
+    _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value="missing-invariant-assessment")
+    _emit_rows(kvs)
+    _ = _write_result_env(path=result_env, rows=kvs)
 
 
 def _emit_missing_guideline_assessment_refusal(
@@ -928,6 +1002,20 @@ def publish_core(argv: Sequence[str]) -> int:
             return 4
         if validate.returncode != 0 or kvs[1][1] != "ok":
             return 5
+
+    invariant_completeness = _check_invariant_assessment_completeness(
+        design_tmpdir=design_tmpdir,
+        repo_root=repo_root_arg,
+        outcome="approved",
+    )
+    if invariant_completeness.required and not invariant_completeness.present:
+        _emit_missing_invariant_assessment_refusal(
+            design_tmpdir=design_tmpdir,
+            result=invariant_completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
 
     completeness = _check_guideline_assessment_completeness(
         design_tmpdir=design_tmpdir,

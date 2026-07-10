@@ -196,6 +196,128 @@ def _write_design_round_fixture(tmp_path: Path, *, with_timing: bool) -> None:
         )
 
 
+def test_missing_invariant_assessment_warning_prefixes_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upsert_bodies = _install_final_summary_env(tmp_path, monkeypatch)
+    (tmp_path / ".missing-invariant-assessment-warning").write_text("", encoding="utf-8")
+
+    rc = design_summary.render_final_summary_main(
+        [
+            "--outcome",
+            "approved",
+            "--mode",
+            "N/A",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--issue-number",
+            "42",
+            "--session-id",
+            "design-run-1",
+        ]
+    )
+
+    summary = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert summary.startswith("**⚠ Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**")
+    assert upsert_bodies
+    assert upsert_bodies[-1].startswith("**⚠ Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**")
+
+
+def test_missing_invariant_assessment_warning_prefixes_fallback_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "design-run-1")
+    (tmp_path / ".missing-invariant-assessment-warning").write_text("", encoding="utf-8")
+
+    def fake_run_cli(*_args: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(["cli.py"], 1, stdout="", stderr="")
+
+    def fake_run_design_failure_report_gate(
+        design_tmpdir: Path,
+        phase: str,
+        outcome: str,
+        repo: str,
+        issue: str,
+        run_id: str,
+    ) -> None:
+        _ = (design_tmpdir, phase, outcome, repo, issue, run_id)
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_run_design_failure_report_gate)
+
+    rc = design_summary.render_final_summary_main(
+        [
+            "--outcome",
+            "approved",
+            "--mode",
+            "N/A",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--issue-number",
+            "42",
+            "--session-id",
+            "design-run-1",
+            "--skip-summary-upsert",
+        ]
+    )
+
+    summary = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert summary.startswith("**⚠ Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**")
+    assert "Degraded fallback" in summary
+
+
+def test_missing_assessment_warnings_prefix_both_once_in_invariant_first_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _install_final_summary_env(tmp_path, monkeypatch)
+    (tmp_path / ".missing-invariant-assessment-warning").write_text("", encoding="utf-8")
+    (tmp_path / ".missing-guideline-assessment-warning").write_text("", encoding="utf-8")
+
+    rc = design_summary.render_final_summary_main(
+        [
+            "--outcome",
+            "approved",
+            "--mode",
+            "N/A",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--issue-number",
+            "42",
+            "--session-id",
+            "design-run-1",
+            "--skip-summary-upsert",
+        ]
+    )
+
+    summary = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    invariant_warning = "**⚠ Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**"
+    guideline_warning = "**⚠ Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**"
+    assert rc == 0
+    assert summary.index(invariant_warning) < summary.index(guideline_warning)
+    assert summary.count(invariant_warning) == 1
+    assert summary.count(guideline_warning) == 1
+
+
+def test_missing_invariant_assessment_symlink_or_missing_marker_is_ignored(
+    tmp_path: Path,
+) -> None:
+    out_file = tmp_path / "final-summary.md"
+    out_file.write_text("body\n", encoding="utf-8")
+    target = tmp_path / "target"
+    target.write_text("", encoding="utf-8")
+    (tmp_path / ".missing-invariant-assessment-warning").symlink_to(target)
+
+    design_summary._prefix_missing_assessment_warnings(design_tmpdir=tmp_path, out_file=out_file)  # pyright: ignore[reportPrivateUsage]
+
+    assert out_file.read_text(encoding="utf-8") == "body\n"
+
+
 def test_missing_guideline_assessment_warning_prefixes_summary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

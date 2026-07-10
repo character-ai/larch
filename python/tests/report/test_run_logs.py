@@ -3144,6 +3144,136 @@ def _design_run_with_final_summary(tmp_path: Path, *, outcome: str = "approved")
     return repo, run_dir
 
 
+def test_design_invariant_assessment_required_for_approved_present_invariants(tmp_path: Path) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path)
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Test\nInvariant text.\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+
+    assert ok is False
+    assert missing == ["invariant-assessment:architectural-invariant-assessment.md"]
+
+
+def test_design_invariant_assessment_required_for_approved_partition(tmp_path: Path) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path, outcome="approved-partition")
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Test\nInvariant text.\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+
+    assert ok is False
+    assert missing == ["invariant-assessment:architectural-invariant-assessment.md"]
+
+
+def test_design_invariant_assessment_present_passes(tmp_path: Path) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path)
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Test\nInvariant text.\n", encoding="utf-8")
+    (run_dir / "architectural-invariant-assessment.md").write_text("clean\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+
+    assert ok is True
+    assert missing == []
+
+
+def test_design_invariant_assessment_warning_waives_missing_artifact(tmp_path: Path) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path)
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Test\nInvariant text.\n", encoding="utf-8")
+    (run_dir / "execution-issues.md").write_text(
+        "### Warnings\n- invariant-assessment: missing architectural-invariant-assessment.md\n",
+        encoding="utf-8",
+    )
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+
+    assert ok is True
+    assert missing == []
+
+
+def test_design_invariant_assessment_not_required_for_nonapproved_absent_invalid_or_empty(
+    tmp_path: Path,
+) -> None:
+    repo, run_dir = _design_run_with_final_summary(tmp_path, outcome="failed-plan-write")
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Test\nInvariant text.\n", encoding="utf-8")
+
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+    assert ok is True
+    assert missing == []
+
+    (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
+    (repo / "ARCHITECTURAL_INVARIANTS.md").unlink()
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+    assert ok is True
+    assert missing == []
+
+    (repo / "ARCHITECTURAL_INVARIANTS.md").mkdir()
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+    assert ok is True
+    assert missing == []
+
+    (repo / "ARCHITECTURAL_INVARIANTS.md").rmdir()
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("# No invariant entries\n", encoding="utf-8")
+    ok, missing = run_log_manifest.verify_run_log_completeness(
+        run_dir=run_dir,
+        skill="design",
+        repo_root=repo,
+    )
+    assert ok is True
+    assert missing == []
+
+
+def test_copy_tree_to_repo_completeness_refuses_missing_invariant_assessment(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text("### I-Test-1: Test\nInvariant text.\n", encoding="utf-8")
+    log_root = tmp_path / "session" / "larch-logs"
+    run_dir = log_root / "design" / "RUN1"
+    _write_run_manifest(run_dir, skill="design")
+    (run_dir / "final-summary.md").write_text("## /design run RUN1: approved\n\n", encoding="utf-8")
+    (run_dir / "session-transcript.jsonl").write_text('{"type":"message"}\n', encoding="utf-8")
+
+    rels, _dest, _violations, error, rc = run_log_commit._copy_tree_to_repo_after_completeness(  # pyright: ignore[reportPrivateUsage]
+        log_root=log_root,
+        repo_root=repo,
+        skill="design",
+        run_id="RUN1",
+    )
+
+    assert not rels
+    assert rc == config.RUN_LOG_INCOMPLETE_RC
+    assert error == "run-log incomplete: invariant-assessment:architectural-invariant-assessment.md"
+    assert not (repo / "larch-logs" / "design" / "RUN1").exists()
+
+
 def test_design_guideline_assessment_required_for_approved_present_guidelines(tmp_path: Path) -> None:
     repo, run_dir = _design_run_with_final_summary(tmp_path)
     (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
