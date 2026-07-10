@@ -273,7 +273,6 @@ def _repair_loop_action(
     checks_log: str,
     allowed_tmpdir: Path,
 ) -> str:
-    del checks_log, allowed_tmpdir
     if loop.status == "ok":
         return "continue"
     if loop.status == "main-agent-required":
@@ -288,6 +287,28 @@ def _repair_loop_action(
         and loop.failure_reason in _PRE_SHIP_NON_STRUCTURAL_REASONS
     ):
         return "stall"
+    # Iteration-count exhaustion: populate ledger and fall back to main-agent.
+    # This is distinct from delegated-waterfall exhaustion (failure_reason in
+    # _PRE_SHIP_NON_STRUCTURAL_REASONS), which stalls without escalation.
+    if loop.status in {"exhausted", "no-changes-stale"} and _is_pre_ship_site(lint_site):
+        # Use the initial checks_log for no-changes-stale, final iteration log for exhausted.
+        log_candidate = (
+            checks_log if loop.status == "no-changes-stale" else loop.final_redacted_checks_log
+        )
+        log_path = resolve_checks_log_path(
+            candidate=log_candidate,
+            allowed_root=allowed_tmpdir,
+        )
+        if log_path is not None:
+            loop.ledger_ready = True
+            loop.ledger_site = _ledger_site_for_lint_site(lint_site)
+            loop.ledger_trigger = _ledger_trigger_for_lint_site(lint_site)
+            loop.ledger_step = _ledger_step_for_site(lint_site)
+            loop.ledger_phase = _ledger_phase_for_site(lint_site)
+            loop.ledger_dispatcher = "lint-fix-loop"
+            loop.ledger_exit_code = 1
+            loop.ledger_failure_detail_log = str(log_path)
+            return "main-agent-edit"
     return "stall"
 
 
@@ -746,13 +767,23 @@ def _is_pre_ship_site(site: str) -> bool:
 
 
 def _exhausted_outcome(
-    *, site: str, reason: str, ledger_path: Path, stderr_tail_path: str = ""
+    *, site: str, reason: str, ledger_path: Path,
+    stderr_tail_path: str = "", failure_detail_log: str = ""
 ) -> FixOutcome:
-    if _is_pre_ship_site(site):
+    # Pre-ship sites and ship-pr-ci-initial stall without escalation; carry
+    # ledger metadata for diagnostics but do NOT set ledger_ready so the
+    # repair-loop consumer routes to stall, not stall-recovery record-escalation.
+    if _is_pre_ship_site(site) or site == "ship-pr-ci-initial":
         return FixOutcome(
             status="failed", delta_paths=(), failure_reason=reason, commit_sha=None,
             head_changed=False, coder_tool=None, tier_ledger_path=str(ledger_path),
             stderr_tail_path=stderr_tail_path,
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
+            ledger_step=_ledger_step_for_site(site),
+            ledger_phase=_ledger_phase_for_site(site),
+            ledger_dispatcher="lint-fix-loop", ledger_exit_code=1,
+            ledger_failure_detail_log=failure_detail_log,
         )
     return FixOutcome(
         status="main-agent-required", delta_paths=(), failure_reason=reason,
@@ -763,6 +794,7 @@ def _exhausted_outcome(
         ledger_phase=_ledger_phase_for_site(site),
         ledger_dispatcher="lint-fix-loop", ledger_exit_code=1,
         tier_ledger_path=str(ledger_path), stderr_tail_path=stderr_tail_path,
+        ledger_failure_detail_log=failure_detail_log,
     )
 
 def _run_with_startup_lock(
@@ -1427,6 +1459,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         return _exhausted_outcome(
             site=site, reason="lint-fix-no-selectable-tier",
             ledger_path=no_tool_ledger,
+            failure_detail_log=str(log_path),
         )
     scripts: Path = plugin_scripts_dir()
     agent_cli: Path = _agent_cli()
@@ -1508,11 +1541,13 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             return _exhausted_outcome(
                 site=site, reason=reason, ledger_path=tier_ledger,
                 stderr_tail_path=last_stderr_tail,
+                failure_detail_log=str(log_path),
             )
         if remaining_budget < config.FIXER_LANE_TIMEOUT_SEC:
             return _exhausted_outcome(
                 site=site, reason="lint-fix-budget-exhausted",
                 ledger_path=tier_ledger, stderr_tail_path=last_stderr_tail,
+                failure_detail_log=str(log_path),
             )
         tier: str = selection.selected_tier
         attempted_tiers.append(tier)

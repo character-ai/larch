@@ -2402,6 +2402,12 @@
   {
     "file": "larch/implement/checks_lint_fix.py",
     "code": "C901",
+    "qualified_symbol": "checks_repair_loop_main",
+    "metric": 12
+  },
+  {
+    "file": "larch/implement/checks_lint_fix.py",
+    "code": "C901",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 17
   },

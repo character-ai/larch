@@ -1813,6 +1813,8 @@ def test_run_lint_fix_complexity_baseline_tool_error_uses_normal_fixer(
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok("abc123\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
@@ -1864,6 +1866,8 @@ def test_run_lint_fix_structural_false_positives_use_normal_fixer(
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok("abc123\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
@@ -1991,8 +1995,8 @@ def test_run_lint_fix_missing_scripts_dir_no_longer_checks_deleted_launcher(
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "no-changes"
-    assert outcome.failure_reason is None
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
 
 
 def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
@@ -2006,12 +2010,12 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
-        _ok("", rc=1),  # codex dispatch fails
-        _ok("", rc=1),  # cursor not tried when codex_present only
     ])
     outcome = checks.run_lint_fix(
         runner,
@@ -2024,7 +2028,7 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "failed"
-    assert outcome.failure_reason == "dispatch-failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
     flat = " ".join(arg for call, _kw in runner.calls for arg in call)
     assert "launch-codex-ci.sh" not in flat
     assert "launch-cursor-ci.sh" not in flat
@@ -2036,7 +2040,7 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     argv = list(codex_call)[idx:]
     assert argv[:3] == [str(agent_cli), "agent", "launch-codex-exec"]
     assert "--timeout" in argv
-    assert "300" in argv
+    assert "1800" in argv
     assert "--workdir" in argv
     assert str(repo) in argv
     assert "--prompt-file" in argv
@@ -2294,6 +2298,8 @@ def test_run_lint_fix_threads_session_root_as_codex_implement_tmpdir(
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok("abc123\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
@@ -2341,6 +2347,8 @@ def test_run_lint_fix_derives_implement_tmpdir_from_run_parent_without_allowed_t
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok("abc123\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
@@ -2384,6 +2392,8 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
@@ -2441,22 +2451,47 @@ def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
     _ = log.write_text("lint error\n", encoding="utf-8")
     commit = "def456"
     head = "abc123"
+    delta_raw = ":100644 100644 abc def M\tfixed.py\n"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # branch
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline (while-loop, before dispatch)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Dispatch
         _ok(""),  # codex dispatch succeeds
+        # Post-dispatch current snapshot (while-loop, after dispatch)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # current snapshot git diff --raw (useful delta)
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD
+        # Post-loop: current HEAD (no change)
         _ok(head + "\n"),  # current HEAD after dispatch
-        _ok("fixed.py\n"),  # forbidden-revert tracked diff
+        # _post_dispatch_forbidden_revert (head unchanged branch)
+        _ok(""),  # forbidden-revert tracked diff
         _ok(""),  # forbidden-revert cached diff
         _ok(""),  # forbidden-revert untracked status
+        # Final delta snapshot
         _ok("fixed.py\n"),  # current tracked diff
         _ok(""),  # current cached diff
         _ok(""),  # current untracked status
+        _ok(delta_raw),  # final snapshot git diff --raw
+        _ok(""),  # final snapshot git diff --cached --raw
+        # Git operations
         _ok(""),  # git add
         _ok(""),  # cli.py git commit
         _ok(commit + "\n"),  # commit SHA
@@ -2486,22 +2521,41 @@ def test_run_lint_fix_forbidden_reset_failure_is_structural(tmp_path: Path) -> N
     moved = "def456"
     head = "abc123"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # baseline branch
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Dispatch
         _ok(""),  # codex dispatch succeeds
+        # Post-dispatch current snapshot
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(""),  # current snapshot git diff --raw
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(moved + "\n"),  # current attempt HEAD (changed: useful delta)
+        # Post-loop
         _ok(moved + "\n"),  # current HEAD after dispatch
-        _ok("main\n"),  # current branch
+        _ok("main\n"),  # current branch (for _head_change_invalid check)
         _ok(""),  # merge-base --is-ancestor
         _ok(head + "\n"),  # current parent
         _ok("", rc=1),  # no second parent
         _ok(".gitmodules\n"),  # committed forbidden path
         _ok("", rc=1),  # reset fails
-        _ok(moved + "\n"),  # HEAD still moved
+        _ok(moved + "\n"),  # HEAD still moved (post-reset rev_parse)
     ])
     outcome = checks.run_lint_fix(
         runner,
@@ -2527,14 +2581,33 @@ def test_run_lint_fix_committed_forbidden_delta_reset_success_is_violation(
     moved = "def456"
     head = "abc123"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # baseline branch
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Dispatch
         _ok(""),  # codex dispatch succeeds
+        # Post-dispatch current snapshot
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(""),  # current snapshot git diff --raw
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(moved + "\n"),  # current attempt HEAD (changed: useful delta)
+        # Post-loop
         _ok(moved + "\n"),  # current HEAD after dispatch
         _ok("main\n"),  # current branch
         _ok(""),  # merge-base --is-ancestor
@@ -2542,7 +2615,7 @@ def test_run_lint_fix_committed_forbidden_delta_reset_success_is_violation(
         _ok("", rc=1),  # no second parent
         _ok(".gitmodules\n"),  # committed forbidden path
         _ok(""),  # reset succeeds
-        _ok(head + "\n"),  # HEAD reset
+        _ok(head + "\n"),  # HEAD reset (back to baseline)
     ])
     outcome = checks.run_lint_fix(
         runner,
@@ -2564,16 +2637,37 @@ def test_run_lint_fix_forbidden_worktree_delta_is_reverted(tmp_path: Path) -> No
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
     head = "abc123"
+    delta_raw = ":100644 100644 abc def M\t.gitmodules\n"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # branch
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Dispatch
         _ok(""),  # codex dispatch succeeds
+        # Post-dispatch current snapshot
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # current snapshot git diff --raw (useful delta: .gitmodules)
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD (unchanged)
+        # Post-loop: current HEAD (unchanged)
         _ok(head + "\n"),  # current HEAD after dispatch
+        # _post_dispatch_forbidden_revert (head unchanged, else branch)
         _ok(".gitmodules\n"),  # forbidden-revert tracked diff
         _ok(""),  # forbidden-revert cached diff
         _ok(""),  # forbidden-revert untracked status
@@ -2605,15 +2699,35 @@ def test_run_lint_fix_plugin_json_touch_is_reverted(tmp_path: Path, monkeypatch:
 
     monkeypatch.setattr(_clf, "_run_claude", succeed_claude)
     head = "abc123"
+    plugin_raw = f":100644 100644 abc def M\t{config.PLUGIN_JSON_PATH}\n"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # branch
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline (claude is mocked, no dispatch stubs needed)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Post-dispatch current snapshot (claude mocked, no dispatch stub)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(plugin_raw),  # current snapshot git diff --raw (useful delta: plugin.json)
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD (unchanged)
+        # Post-loop: current HEAD (unchanged)
         _ok(head + "\n"),  # current HEAD after dispatch
+        # _post_dispatch_forbidden_revert (head unchanged, else branch)
         _ok(f"{config.PLUGIN_JSON_PATH}\n"),  # forbidden-revert tracked diff
         _ok(""),  # forbidden-revert cached diff
         _ok(""),  # forbidden-revert untracked status
@@ -2645,15 +2759,33 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     _ = log.write_text("lint error\n", encoding="utf-8")
     head = "abc123"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # baseline HEAD
         _ok("main\n"),  # branch
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline (before cursor dispatch)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Cursor dispatch (cursor-wrap-prompt.sh + cursor agent)
         _ok("wrapped promptX"),  # cursor-wrap-prompt.sh
         _ok("", rc=1),  # cursor dispatch fails
+        # Post-dispatch current snapshot (no useful delta)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(""),  # current snapshot git diff --raw (empty = no useful delta)
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD (unchanged)
     ])
     outcome = checks.run_lint_fix(
         runner,
@@ -2666,7 +2798,8 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "main-agent-required"
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
     flat = " ".join(arg for call, _kw in runner.calls for arg in call)
     assert "lib-external-launcher-common.sh" not in flat
     assert "--tool" in flat
@@ -2686,7 +2819,7 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     assert argv[:4] == [str(_clf._agent_cli()), "agent", "run-external-agent", "--tool"]  # pyright: ignore[reportPrivateUsage]
     assert argv[4] == "cursor"
     assert "--timeout" in argv
-    assert "300" in argv
+    assert "1800" in argv
     assert "--capture-stdout" in argv
     assert "launch-cursor-ci.sh" not in " ".join(argv)
     leaf = argv[argv.index("--") + 1 :]
@@ -2981,21 +3114,45 @@ def test_run_lint_fix_dispatches_claude_before_codex(
     monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
     head = "abc123"
+    delta_raw = ":100644 100644 abc def M\tfixed.py\n"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline (claude is first, mocked)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Post-dispatch current snapshot (claude mocked, no dispatch stub)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # current snapshot git diff --raw (useful delta)
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD (unchanged)
+        # Post-loop: current HEAD (unchanged)
         _ok(head + "\n"),  # current HEAD after dispatch
-        _ok("fixed.py\n"),  # forbidden-revert tracked diff
+        # _post_dispatch_forbidden_revert (head unchanged, else branch)
+        _ok(""),  # forbidden-revert tracked diff
         _ok(""),  # forbidden-revert cached diff
         _ok(""),  # forbidden-revert untracked status
+        # Final delta snapshot
         _ok("fixed.py\n"),  # current tracked diff
         _ok(""),  # current cached diff
-        _ok(""),  # untracked status
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # final snapshot git diff --raw
+        _ok(""),  # final snapshot git diff --cached --raw
+        # Git operations
         _ok(""),  # git add
         _ok(""),  # cli.py git commit
         _ok("def456\n"),  # commit SHA
@@ -3043,21 +3200,73 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
 
     monkeypatch.setattr(shutil, "which", claude_on_path)
     head = "abc123"
+    delta_raw = ":100644 100644 abc def M\tfixed.py\n"
     runner = StubRunner([
+        # Baseline setup
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
         _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
         _ok(head + "\n"),  # rev-parse HEAD
         _ok("main\n"),  # symbolic-ref
         _ok(""),  # submodule foreach (prompt)
         _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt: claude (fails, mocked)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Post-dispatch: claude (no useful delta)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(""),  # current snapshot git diff --raw
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD
+        # Per-attempt: codex (fails, mocked)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Post-dispatch: codex (no useful delta)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(""),  # current snapshot git diff --raw
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD
+        # Per-attempt: cursor (succeeds, mocked)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Post-dispatch: cursor (useful delta!)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # current snapshot git diff --raw (useful delta)
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD (unchanged)
+        # Post-loop: current HEAD (unchanged)
         _ok(head + "\n"),  # current HEAD after dispatch
-        _ok("fixed.py\n"),  # forbidden-revert tracked diff
+        # _post_dispatch_forbidden_revert
+        _ok(""),  # forbidden-revert tracked diff
         _ok(""),  # forbidden-revert cached diff
         _ok(""),  # forbidden-revert untracked status
+        # Final delta snapshot
         _ok("fixed.py\n"),  # current tracked diff
         _ok(""),  # current cached diff
-        _ok(""),  # untracked status
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # final snapshot git diff --raw
+        _ok(""),  # final snapshot git diff --cached --raw
+        # Git operations
         _ok(""),  # git add
         _ok(""),  # cli.py git commit
         _ok("def456\n"),  # commit SHA
@@ -3108,8 +3317,8 @@ def test_run_lint_fix_generic_failed_maps_dispatch_failed(tmp_path: Path) -> Non
         initial_redacted_log=str(initial),
         allowed_tmpdir=str(session),
     )
-    assert loop.status == "dispatch-failed"
-    assert checks.escalate(loop.status).outcome == Outcome.TRANSIENT
+    assert loop.status == "main-agent-required"
+    assert checks.escalate(loop.status).outcome == Outcome.NEEDS_USER_INPUT
 
 
 def test_run_check_fix_loop_max_iter_six_exhausted(tmp_path: Path) -> None:
@@ -3188,8 +3397,8 @@ def test_run_lint_fix_non_executable_deleted_launcher_is_ignored(
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "no-changes"
-    assert outcome.failure_reason is None
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
 
 
 def test_run_check_fix_loop_requires_allowed_tmpdir_for_dispatch_first(
@@ -3563,7 +3772,7 @@ def test_lint_fix_main_agent_required_carries_ledger_tokens(tmp_path: Path) -> N
         allowed_tmpdir=str(tmp_path),
     )
     assert outcome.status == "failed"
-    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
+    assert outcome.failure_reason == "lint-fix-no-selectable-tier"
     assert outcome.tier_ledger_path
     assert outcome.ledger_ready is False
     assert outcome.ledger_site == "step5-self-review"
@@ -3591,7 +3800,7 @@ def test_lint_fix_ship_pr_initial_carries_ci_initial_ledger_phase(tmp_path: Path
         allowed_tmpdir=str(tmp_path),
     )
     assert outcome.status == "failed"
-    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
+    assert outcome.failure_reason == "lint-fix-no-selectable-tier"
     assert outcome.tier_ledger_path
     assert outcome.ledger_ready is False
     assert outcome.ledger_site == "ship-pr-internal"
@@ -4864,24 +5073,48 @@ def test_run_lint_fix_claude_only_host_dispatches_claude(
 
     monkeypatch.setattr(shutil, "which", claude_on_path)
     head = "abc123"
+    delta_raw = ":100644 100644 abc def M\tfixed.py\n"
     runner = StubRunner([
-        _ok(""),
-        _ok(""),
-        _ok(""),
-        _ok(head + "\n"),
-        _ok("main\n"),
-        _ok(""),
-        _ok(""),
-        _ok(head + "\n"),
-        _ok("fixed.py\n"),
-        _ok(""),
-        _ok(""),
-        _ok("fixed.py\n"),
-        _ok(""),
-        _ok(""),
-        _ok(""),
-        _ok(""),
-        _ok("def456\n"),
+        # Baseline setup
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
+        _ok(head + "\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
+        # Per-attempt baseline (claude is mocked)
+        _ok(""),  # attempt tracked diff
+        _ok(""),  # attempt cached diff
+        _ok(""),  # attempt untracked status
+        _ok(""),  # attempt snapshot git diff --raw
+        _ok(""),  # attempt snapshot git diff --cached --raw
+        _ok(head + "\n"),  # attempt HEAD
+        # Post-dispatch current snapshot (claude mocked, no dispatch stub)
+        _ok(""),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # current snapshot git diff --raw (useful delta)
+        _ok(""),  # current snapshot git diff --cached --raw
+        _ok(head + "\n"),  # current attempt HEAD (unchanged)
+        # Post-loop: current HEAD (unchanged)
+        _ok(head + "\n"),  # current HEAD after dispatch
+        # _post_dispatch_forbidden_revert
+        _ok(""),  # forbidden-revert tracked diff
+        _ok(""),  # forbidden-revert cached diff
+        _ok(""),  # forbidden-revert untracked status
+        # Final delta snapshot
+        _ok("fixed.py\n"),  # current tracked diff
+        _ok(""),  # current cached diff
+        _ok(""),  # current untracked status
+        _ok(delta_raw),  # final snapshot git diff --raw
+        _ok(""),  # final snapshot git diff --cached --raw
+        # Git operations
+        _ok(""),  # git add
+        _ok(""),  # cli.py git commit
+        _ok("def456\n"),  # commit SHA
     ])
     outcome = checks.run_lint_fix(
         runner,
@@ -4929,14 +5162,15 @@ def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
     monkeypatch.setattr(shutil, "which", all_tools_on_path)
     head = "abc123"
     runner = StubRunner([
-        _ok(""),
-        _ok(""),
-        _ok(""),
-        _ok(head + "\n"),
-        _ok("main\n"),
-        _ok(""),
-        _ok(""),
-        _ok(head + "\n"),
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok(""),  # baseline snapshot git diff --raw
+        _ok(""),  # baseline snapshot git diff --cached --raw
+        _ok(head + "\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach (prompt)
+        _ok(""),  # submodule foreach (forbidden paths)
     ])
     outcome = checks.run_lint_fix(
         runner,

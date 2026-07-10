@@ -110,10 +110,19 @@ def test_checks_lint_fix_uses_lint_fix_coder_role(tmp_path: Path, monkeypatch: p
         run_calls.append("cursor")
         return 0
 
+    # The waterfall harness calls _capture_tracked_paths: (0) baseline, (1) per-attempt
+    # baseline before cursor, (2) post-dispatch current (needs useful delta).
+    capture_count: list[int] = [0]
+    def tracked_with_useful_delta(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        n = capture_count[0]
+        capture_count[0] += 1
+        # Calls 0 and 1 are pre-dispatch; call 2+ is post-dispatch for cursor.
+        return ("fixed.py",) if n >= 2 else ()  # type: ignore[return-value]
+
     monkeypatch.setattr(_clf, "_agent_cli", lambda: agent_cli)
     monkeypatch.setattr(_clf, "plugin_scripts_dir", lambda: tmp_path)
-    monkeypatch.setattr(_clf, "_capture_tracked_paths", lambda *_args, **_kwargs: frozenset())
-    monkeypatch.setattr(_clf, "_capture_untracked_paths", lambda *_args, **_kwargs: frozenset())
+    monkeypatch.setattr(_clf, "_capture_tracked_paths", tracked_with_useful_delta)
+    monkeypatch.setattr(_clf, "_capture_untracked_paths", lambda *_args, **_kwargs: ())
     monkeypatch.setattr(checks.git, "rev_parse", lambda *_args, **_kwargs: "HEAD")
     monkeypatch.setattr(checks.git, "current_branch", lambda *_args, **_kwargs: "feature")
     monkeypatch.setattr(_clf, "_submodule_paths", lambda *_args, **_kwargs: ())
@@ -133,7 +142,10 @@ def test_checks_lint_fix_uses_lint_fix_coder_role(tmp_path: Path, monkeypatch: p
         claude_present=True,
     )
 
-    assert seen == ["implement.lint_fix_coder"]
+    # The waterfall harness calls tool_order multiple times (once for budget calculation,
+    # once per tier selection). Verify all calls use the correct role_id.
+    assert seen
+    assert all(s == "implement.lint_fix_coder" for s in seen)
     assert run_calls == ["cursor"]
     assert outcome.coder_tool == "cursor"
 
