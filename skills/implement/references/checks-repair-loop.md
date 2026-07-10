@@ -63,7 +63,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" stall-recovery record-escalation -
 
 Stable lint-fix site/trigger tokens come from repair-loop stdout (for example `step3` / `main-agent-required`, `step5-self-review` / `main-agent-required`, `step5-mav` / `main-agent-required`, `step6` / `main-agent-required`). Use the parsed values, not the capture-site label.
 
-When `LOOP_STATUS=exhausted` and `LINT_FIX_LEDGER_READY=true`, supported sites enter this branch with `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` set to the final repair-loop failure log. Read that log as the repair diagnosis. Use `STDERR_TAIL_PATH` only as optional dispatch context when present. Apply inline repairs, then rerun the pinned composite launcher.
+When `LOOP_STATUS=exhausted` and `LINT_FIX_LEDGER_READY=true`, supported sites enter this branch with `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` set to the final repair-loop failure log. Treat that log as the sole repair diagnosis, superseding any earlier `DIGEST_FILE` binding until the main agent reruns the pinned composite launcher. Use `STDERR_TAIL_PATH` and `CODER_LOG_FILE` only as optional context when present. Apply inline repairs, then rerun the pinned composite launcher.
 
 Read tail paths when present.
 Repair via main-agent Edit/Write.
