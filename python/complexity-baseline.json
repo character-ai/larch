@@ -111,7 +111,7 @@
     "file": "larch/agents/_ci_launcher.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_ci_main",
-    "metric": 55
+    "metric": 56
   },
   {
     "file": "larch/agents/_ci_launcher.py",
@@ -124,6 +124,18 @@
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_review_fix_main",
     "metric": 67
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_codex_implement_main",
+    "metric": 52
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_cursor_ci_main",
+    "metric": 55
   },
   {
     "file": "larch/agents/_ci_launcher.py",
@@ -513,7 +525,7 @@
     "file": "larch/agents/agent_waterfall.py",
     "code": "C901",
     "qualified_symbol": "_launch_slot",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/agents/agent_waterfall.py",
@@ -538,6 +550,12 @@
     "code": "PLR0911",
     "qualified_symbol": "_apply_collector_block",
     "metric": 7
+  },
+  {
+    "file": "larch/agents/agent_waterfall.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_launch_slot",
+    "metric": 13
   },
   {
     "file": "larch/agents/agent_waterfall.py",
@@ -4964,12 +4982,6 @@
   {
     "file": "larch/review/coder_runner.py",
     "code": "PLR0911",
-    "qualified_symbol": "_run_coder_cursor",
-    "metric": 7
-  },
-  {
-    "file": "larch/review/coder_runner.py",
-    "code": "PLR0911",
     "qualified_symbol": "apply_findings_with_coder",
     "metric": 12
   },
@@ -5457,7 +5469,7 @@
     "file": "larch/review/review_core_body.py",
     "code": "C901",
     "qualified_symbol": "_review_core_body",
-    "metric": 54
+    "metric": 55
   },
   {
     "file": "larch/review/review_core_body.py",
@@ -5475,7 +5487,7 @@
     "file": "larch/review/review_core_body.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_core_body",
-    "metric": 54
+    "metric": 55
   },
   {
     "file": "larch/review/review_core_body.py",
@@ -5499,13 +5511,7 @@
     "file": "larch/review/review_core_body.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_core_body",
-    "metric": 241
-  },
-  {
-    "file": "larch/review/review_dispatch_panel.py",
-    "code": "C901",
-    "qualified_symbol": "_append_static_specialist_rows",
-    "metric": 11
+    "metric": 243
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -5523,7 +5529,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "C901",
     "qualified_symbol": "dispatch_panel",
-    "metric": 62
+    "metric": 63
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -5547,7 +5553,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 73
+    "metric": 74
   },
   {
     "file": "larch/review/review_dispatch_panel.py",

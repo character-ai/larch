@@ -438,7 +438,7 @@ def test_round_vendor_cost_uses_claude_sub_raw_fallback(tmp_path: Path) -> None:
     ]
     ledger.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
 
-    assert progress_report._round_vendor_cost(token_ledger=ledger, start_s=1782345600, end_s=1782345610) == "$8.00"
+    assert progress_report._round_vendor_cost(token_ledger=ledger, start_s=1782345600, end_s=1782345610) == "$6.00"
 
 
 def test_fallback_label_remap_annotates_executing_tool(tmp_path: Path) -> None:

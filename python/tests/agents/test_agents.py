@@ -3893,7 +3893,7 @@ def test_launch_cursor_ci_model_arg_failure_writes_launcher_contract(
     rc = agents.launch_cursor_ci_main(
         [
             "--role",
-            "fix",
+            "resolve-conflict",
             "--output",
             str(output),
             "--run-id",
