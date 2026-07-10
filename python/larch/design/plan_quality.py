@@ -598,6 +598,11 @@ def _sync_oversize_override_authority(*, design_tmpdir: Path, plan: Path) -> Non
         authority_path.unlink(missing_ok=True)
 
 
+def sync_oversize_override_authority(*, design_tmpdir: Path, plan: Path) -> None:
+    """Re-sync the override authority token after any write that preserves the trailer."""
+    _sync_oversize_override_authority(design_tmpdir=design_tmpdir, plan=plan)
+
+
 def set_oversize_override_main(argv: list[str]) -> int:
     quiet_init(argv0="plan set-oversize-override")
     parser = argparse.ArgumentParser(prog="cli.py plan set-oversize-override")
