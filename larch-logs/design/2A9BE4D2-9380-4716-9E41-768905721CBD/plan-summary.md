@@ -1,0 +1,1 @@
+Add a distinct `skip` main-health status when `gh run list --workflow CI` reports that no workflow named `CI` exists. Keep empty run lists as `error`. Update all `/implement` main-health consumers so `skip` continues instead of bailing or polling.
