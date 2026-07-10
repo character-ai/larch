@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from larch.core.proc import CommandResult
 from larch.implement import main_health
 from test_support import RecordingRunner
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _query(
@@ -25,8 +30,8 @@ def _query(
     )
 
 
-def _res(stdout: str, rc: int = 0) -> CommandResult:
-    return CommandResult(("gh", "run", "list"), rc, stdout, "", 0.01)
+def _res(stdout: str, rc: int = 0, stderr: str = "") -> CommandResult:
+    return CommandResult(("gh", "run", "list", "--workflow", "CI"), rc, stdout, stderr, 0.01)
 
 
 def test_latest_matching_success_returns_pass() -> None:
@@ -126,6 +131,45 @@ def test_filtered_argv_uses_repo_bare_branch_event_workflow_limit_and_commit() -
     assert call[call.index("--commit") + 1] == "abc"
 
 
+def test_missing_default_workflow_returns_skip() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _res("", rc=1, stderr="could not find any workflows named CI\n"),
+        ],
+    )
+
+    result = main_health.read_main_health(runner, _query())
+
+    assert result.status == "skip"
+    assert "not present" in result.detail
+
+
+def test_non_matching_gh_failure_returns_error() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _res("", rc=1, stderr="could not resolve to a Repository\n"),
+        ],
+    )
+
+    result = main_health.read_main_health(runner, _query())
+
+    assert result.status == "error"
+    assert "gh command failed (1)" in result.detail
+
+
+def test_empty_run_list_still_returns_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_if_wrapper_runs(*_args: object, **_kwargs: object) -> tuple[main_health.gh.WorkflowRun, ...]:
+        raise AssertionError("read_main_health must inspect raw run_list_filtered_read result")
+
+    monkeypatch.setattr(main_health.gh, "run_list_filtered", fail_if_wrapper_runs)
+    runner = RecordingRunner(responses=[_res("[]")])
+
+    result = main_health.read_main_health(runner, _query())
+
+    assert result.status == "error"
+    assert "no matching push workflow runs" in result.detail
+
+
 def test_forked_upstream_repo_uses_bare_main_branch() -> None:
     runner = RecordingRunner(responses=[_res("[]")])
 
@@ -135,6 +179,33 @@ def test_forked_upstream_repo_uses_bare_main_branch() -> None:
     assert call[call.index("--repo") + 1] == "upstream/r"
     assert call[call.index("--branch") + 1] == "main"
     assert "upstream/main" not in call
+
+
+def test_wait_treats_skip_as_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[main_health.MainHealthQuery] = []
+
+    def read_main_health(
+        _runner: RecordingRunner,
+        query: main_health.MainHealthQuery,
+    ) -> main_health.MainHealthStatus:
+        calls.append(query)
+        return main_health.MainHealthStatus(status="skip", detail="workflow absent")
+
+    def sleep(_seconds: float) -> None:
+        raise AssertionError("skip must not sleep or retry")
+
+    monkeypatch.setattr(main_health, "read_main_health", read_main_health)
+
+    waited = main_health.wait_main_health(
+        RecordingRunner(),
+        main_health.MainHealthWaitQuery(health=_query(), timeout=10, interval=1),
+        clock=lambda: 0.0,
+        sleep=sleep,
+    )
+
+    assert waited.health.status == "skip"
+    assert waited.attempts == 1
+    assert len(calls) == 1
 
 
 def test_wait_ignores_stale_green_for_specific_sha_until_timeout() -> None:

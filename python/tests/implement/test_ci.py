@@ -56,6 +56,29 @@ def test_main_health_cli_emits_stable_kvs(monkeypatch, capsys):
     assert "MAIN_HEALTH_DETAIL=" in out
 
 
+def test_main_health_cli_emits_skip_for_missing_default_workflow(monkeypatch, capsys):
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "run", "list", "--workflow", "CI"),
+                1,
+                "",
+                "could not find any workflows named CI\n",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(ci, "proc", runner)
+
+    assert ci.main_health_main(["--repo", "o/r"]) == 0
+
+    out = capsys.readouterr().out
+    assert "MAIN_CI_STATUS=skip" in out
+    assert "MAIN_FAILED_RUN_ID=" in out
+    assert "MAIN_HEALTH_HEAD_SHA=" in out
+    assert "not present" in out
+
+
 def test_main_health_cli_uses_bare_branch_for_upstream(monkeypatch):
     runner = RecordingRunner(responses=[_res(0, "[]")])
     monkeypatch.setattr(ci, "proc", runner)

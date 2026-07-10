@@ -642,6 +642,59 @@ def test_run_list_filtered_builds_filters_and_parses_head_sha_event() -> None:
     ]
 
 
+def test_missing_named_workflow_signature_matches_only_exact_run_list_shape() -> None:
+    assert gh.is_missing_named_workflow(
+        CommandResult(
+            ("gh", "run", "list", "--workflow", "CI"),
+            1,
+            "",
+            "could not find any workflows named CI\n",
+            0.01,
+        ),
+        workflow="CI",
+    )
+    assert not gh.is_missing_named_workflow(
+        CommandResult(
+            ("gh", "run", "list", "--workflow", "CI"),
+            1,
+            "",
+            "could not resolve to a Repository\n",
+            0.01,
+        ),
+        workflow="CI",
+    )
+    assert not gh.is_missing_named_workflow(
+        CommandResult(
+            ("gh", "run", "list", "--workflow", "PR"),
+            1,
+            "",
+            "could not find any workflows named PR\n",
+            0.01,
+        ),
+        workflow="CI",
+    )
+    assert not gh.is_missing_named_workflow(
+        CommandResult(
+            ("gh", "run", "list", "--workflow", "CI"),
+            2,
+            "",
+            "could not find any workflows named CI\n",
+            0.01,
+        ),
+        workflow="CI",
+    )
+    assert not gh.is_missing_named_workflow(
+        CommandResult(
+            ("gh", "workflow", "view", "CI"),
+            1,
+            "",
+            "could not find any workflows named CI\n",
+            0.01,
+        ),
+        workflow="CI",
+    )
+
+
 def test_run_list_filtered_raises_on_malformed_row() -> None:
     runner = RecordingRunner(
         responses=[
