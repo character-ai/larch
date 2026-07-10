@@ -147,6 +147,61 @@ def test_destall_pre_pr_reentry_fails_closed_on_finalize_symlink(tmp_path: Path)
     assert "PHASE=stalled\n" in state_file.read_text(encoding="utf-8")
 
 
+def test_run_ship_destalls_before_first_pre_pr_flush(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\nRUN_ID=run-abc\nREPO=owner/repo\nBRANCH_NAME=feat\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ship,
+        "_resume_plan",
+        lambda **_kwargs: _pre_pr_resume_plan(repo="owner/repo"),
+    )
+    monkeypatch.setattr(
+        ship.finalize,
+        "postbump_preflight",
+        lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True),
+    )
+
+    class _FlushProbe(Exception):
+        pass
+
+    def fake_flush_logs_pre(
+        runner: RecordingRunner,
+        ctx: RunContext,
+        *,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        _ = runner, cwd, strict_final_report
+        assert ctx.state_file is None
+        assert ctx.stall_tracking is False
+        assert ctx.stall_step == ""
+        assert "PHASE=assessments\n" in state_file.read_text(encoding="utf-8")
+        assert "STALL_TRACKING=false\n" in state_file.read_text(encoding="utf-8")
+        assert not (tmp_path / "finalize-state.sh").exists()
+        raise _FlushProbe
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+
+    with pytest.raises(_FlushProbe):
+        ship.run_ship(
+            _ctx(tmp_path, state_file=str(state_file), branch="feat", repo="owner/repo"),
+            runner=RecordingRunner(),
+            cwd=str(tmp_path),
+        )
+
+
 def _pin_guidelines_note_text(
     *,
     implement_tmpdir: str,

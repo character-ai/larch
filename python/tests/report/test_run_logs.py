@@ -2244,6 +2244,50 @@ def test_larch_log_commit_main_refuses_preterminal_stalled_summary(
     assert "LARCH_LOG_COMMIT_SHA" not in captured.out
 
 
+def test_larch_log_commit_main_allows_legacy_commit_failed_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    monkeypatch.chdir(repo)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "session-transcript.jsonl").write_text("[]\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: commit-failed\n", encoding="utf-8")
+    commits: list[str] = []
+
+    def fake_commit_run(**_kwargs: object) -> CommandResult:
+        commits.append("commit")
+        return CommandResult(("run-log", "commit"), 0, "a" * 40 + "\n", "", 0.0)
+
+    monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit_run)
+    monkeypatch.setattr(run_log_commit, "_emit_larch_log_envelope", lambda *_a, **_k: None)
+
+    rc = run_logs.larch_log_commit_main(
+        [
+            "--log-root",
+            str(tmp_path / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-abc",
+        ]
+    )
+
+    assert rc == 0
+    assert commits == ["commit"]
+
+
 def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
     source = tmp_path / "source-round"
     source.mkdir()
