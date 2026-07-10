@@ -39,6 +39,22 @@ INPUT_FINGERPRINT=$(git -C "$REPO_ROOT" diff --binary HEAD | shasum -a 256 | awk
 ROUNDS="$HANDOFF_DIR/fixer-rounds.tsv"
 STATUS="$HANDOFF_DIR/fixer-status.env"
 [ ! -L "$ROUNDS" ] && [ ! -L "$STATUS" ] || fail unsafe-sidecar
+if [ -z "$RUN_ID" ] && [ -f "$STATUS" ]; then RUN_ID=$(read_key RUN_ID "$STATUS"); fi
+if [ -z "$RUN_ID" ]; then
+  [ -n "$PR_NUMBER" ] || fail missing-run-identity
+  RUN_ID=$(python3 - "$CLAUDE_PLUGIN_ROOT" "$REPO_ROOT" "$REPO" "$PR_NUMBER" <<'PY'
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(sys.argv[1]) / "python"))
+from larch.core import proc
+from larch.implement import ci_monitor
+run_id = ci_monitor.resolve_failed_run_id_once(proc, pr=int(sys.argv[4]), repo=sys.argv[3], cwd=sys.argv[2])
+if run_id:
+    print(run_id)
+PY
+  ) || fail run-id-resolution-failed
+fi
+case "$RUN_ID" in ''|*[!0-9]*) fail unresolved-run-id ;; esac
 ATTEMPTED=""
 if [ -f "$ROUNDS" ]; then
   ATTEMPTED=$(python3 - "$ROUNDS" "$RUN_ID" "$STARTING_HEAD" "$INPUT_FINGERPRINT" <<'PY'
@@ -78,7 +94,7 @@ TIER=$(printf '%s' "$SELECT" | cut -f2)
 REASON=$(printf '%s' "$SELECT" | cut -f3)
 [ "$ACTION" = selected ] || fail "${REASON:-waterfall-exhausted}"
 ATTEMPT=$(( $(printf '%s' "$ATTEMPTED" | awk -F, '{ if ($0 == "") print 0; else print NF }') + 1 ))
-IDENTITY_RUN=${RUN_ID:-pr-$PR_NUMBER}
+IDENTITY_RUN=$RUN_ID
 SUFFIX=$(printf '%s\0%s\0%s\0%s\0%s' "$IDENTITY_RUN" "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" | shasum -a 256 | awk '{print substr($1,1,16)}')
 STEP="implement-step8-ci-fixer-${ATTEMPT}-${TIER}-${SUFFIX}"
 MERGE_ENV="$BGJOB_DIR/$STEP.merge.env"
@@ -89,17 +105,29 @@ set +e
 WAIT_OUT=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0 2>/dev/null)
 WAIT_RC=$?
 set -e
+START_FRESH=0
 if [ "$WAIT_RC" -eq 0 ] && printf '%s\n' "$WAIT_OUT" | command grep -q '^BGJOB_STATUS='; then
   printf '%s\n' "$WAIT_OUT"
-  case "$WAIT_OUT" in *BGJOB_STATUS=WAIT*) exit 0 ;; esac
+  case "$WAIT_OUT" in
+    *BGJOB_STATUS=WAIT*) exit 0 ;;
+    *BGJOB_STATUS=DEAD*)
+      printf '%s\n' "$WAIT_OUT" | command grep -q 'BGJOB_DIAG=missing-registry' || fail bgjob-dead
+      START_FRESH=1
+      ;;
+    *BGJOB_STATUS=DONE*) ;;
+    *) fail bgjob-invalid-status ;;
+  esac
 else
+  START_FRESH=1
+fi
+if [ "$START_FRESH" -eq 1 ]; then
   rm -f "$MERGE_ENV" "$RESULT_ENV"
   CHILD=(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ci fixer-lane
     --repo-root "$REPO_ROOT" --implement-tmpdir "$IMPLEMENT_TMPDIR"
     --handoff-dir "$HANDOFF_DIR" --repo "$REPO" --tier "$TIER"
     --attempt "$ATTEMPT" --starting-head "$STARTING_HEAD"
     --input-fingerprint "$INPUT_FINGERPRINT" --bgjob-result-env "$MERGE_ENV")
-  if [ -n "$RUN_ID" ]; then CHILD+=(--run-id "$RUN_ID"); else CHILD+=(--pr "$PR_NUMBER"); fi
+  CHILD+=(--run-id "$RUN_ID")
   if [ -f "$IMPLEMENT_TMPDIR/architectural-invariants.md" ]; then
     CHILD+=(--invariant-evidence "$IMPLEMENT_TMPDIR/architectural-invariants.md")
   fi
@@ -111,7 +139,7 @@ fi
 
 case "$WAIT_OUT" in *BGJOB_STATUS=DONE*BGJOB_RC=0*) ;; *) fail bgjob-not-successful ;; esac
 [ -f "$MERGE_ENV" ] && [ ! -L "$MERGE_ENV" ] && [ -f "$STATUS" ] || fail missing-result
-python3 - "$MERGE_ENV" "$STATUS" "$STEP" "$IDENTITY_RUN" "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" <<'PY'
+python3 - "$MERGE_ENV" "$STATUS" "$STEP" "$IDENTITY_RUN" "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" <<'PY' || fail merge-status-disagreement
 from pathlib import Path
 import sys
 merge, status = Path(sys.argv[1]), Path(sys.argv[2])
