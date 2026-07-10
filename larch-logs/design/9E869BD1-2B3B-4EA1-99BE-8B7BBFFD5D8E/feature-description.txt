@@ -1,0 +1,46 @@
+# /design: split and lazy-load large reference docs (approval-gates, plan-review)
+
+/design: split and lazy-load large reference docs (approval-gates, plan-review)
+
+## Motivation
+
+/design is inline-only, so every reference file it loads stays resident in main-agent context for the rest of the session — charged as cache-read on every subsequent turn and re-written at cache-create rates whenever the prompt cache refreshes during the long review-round waits. The 2026-07-10 reference heatmap (`python3 python/cli.py token measure-references-heatmap`, 145 transcript-bearing design runs) shows the mainline always-loaded reference mass:
+
+| Reference | Size | Read in | Load point |
+|---|---|---|---|
+| `skills/design/references/approval-gates.md` | 40.7KB (~10K tokens) | 94% of runs | Gate B (Step 3.5), unconditional |
+| `skills/design/references/plan-review.md` | 22.9KB (~5.3K tokens) | 55% of runs | Step 3, before launching reviewers |
+| `skills/design/references/finalize-step5.md` | 19.5KB (~4.8K tokens) | 97% of runs | Step 5 entry |
+| `skills/design/references/discussion-rounds.md` | 11.0KB | 88% | Step 1c (already just-in-time) |
+| `skills/design/references/design-outline.md` | 10.4KB | 88% | Step 1d.7 (already just-in-time) |
+
+The skill already lazy-loads many references conditionally (`brainstorm.md`, `decompose-panel.md`, `validator-failure.md`, `dialectic-clarifier.md`, `sentinel-host-table.md` maintainer-only, and `approval-gates-explicit.md` split out of Gate B) — the pattern is established; the three large files above just have not been split.
+
+For a typical run (no Gate A re-entry, default auto-apply Gate B) this is ~10-17K tokens of avoidable resident reference mass from mid-session onward. Estimated ~$0.5-1.5/run on Opus-class main-agent models (double on Fable) from cache reads plus cache-refresh re-writes; the primary benefit is context-window headroom on long HARD design sessions (less compaction pressure, more budget for the plan and diff).
+
+## Required change
+
+1. **Split `approval-gates.md` per gate** (biggest win). Factor into a small shared core (severity rubric, shared post-apply pipeline) plus per-gate files: Gate B mainline, Gate C, and Gate A re-entry. Load each gate's file only at that gate's load point, mirroring the existing `approval-gates-explicit.md` precedent. Most runs never fire Gate A (reachable only by re-entry from Gate B(c)/Gate C(b)), so its content should never load on the common path. Update the three load directives (Step 1e, Step 3.5, Step 4b) to load only the slices they execute.
+2. **Slim `plan-review.md` to a runtime slice.** The runtime is Python-owned (`python/plan_review.py`); much of the reference is authority/maintainer content (producer contracts, harness inventories, agent-lint pin lists). Extract the orchestration steps the main agent actually executes at Step 3 into a slim file; demote the authority content to a load-only-when-editing reference (the `extracted-script-registry.md` pattern).
+3. **Split `finalize-step5.md` green path vs failure reporting** (lower priority — it loads near session end, so residency is short). The auto-error-reporting teardown half loads only when a failure path fires.
+4. `discussion-rounds.md` and `design-outline.md` are already just-in-time at run start; content slimming only, optional, designer's call.
+
+## Constraints
+
+- Gate semantics, prompts, and loop routing must stay byte-identical for the executed path; this is a packaging change, not a behavior change.
+- Each split adds a conditional MANDATORY-READ branch point — a new place a load can be skipped. Keep load directives adjacent to the gate banners they serve, and keep the anti-halt / re-entry rules intact.
+- Cross-file anchors referenced elsewhere (e.g., `approval-gates.md` section citations from SKILL.md and other references) must be updated in the same PR.
+- Skill-closure and agent-lint baselines that pin reference file lists may need regeneration.
+
+## Acceptance criteria
+
+- A default run (auto-apply Gate B, no Gate A re-entry, approve at Gate C) loads only the shared core + Gate B mainline + Gate C slices; the Gate A re-entry content never enters context.
+- A Gate C **Discuss further** re-entry run still loads the Gate A slice at Step 1e and behaves identically to today.
+- Reference heatmap on a fresh sample shows the reduced per-run reference bytes for /design.
+- No new halt points or skipped-gate regressions in the design structure tests.
+
+## Relation to md-to-py-XII and prior rounds (dependency notes)
+
+- #6162 (closed) was the first heatmap-driven demotion round: it demoted two zero-read shared references from the design eager closure. This issue is the natural second round, but with a different mechanism — the targets here are heavily-read files that cannot be demoted outright, only split so the unexecuted slices stay out of context.
+- #6166 (open umbrella, md-to-py-XII) owns closure governance; this issue uses the same machinery (closure classifier from #6156, eager-closure ratchet, `python/skill-closure-baseline.json` regeneration). No blocker edge is wired: the umbrella's concrete children are closed, no open issue currently edits `skills/design/SKILL.md` or these references, and `skill-closure-baseline.json` is in the rebase auto-resolve generated-file list so baseline collisions self-heal. Coordinate the family prefix/round membership at design time if round XII is still open when this runs.
+- #5983 and #6155 (closed) already excised the rendered gate copy from `approval-gates.md`; this issue splits what remains. Cite fresh sizes at design time rather than reusing the numbers above if those files have moved.

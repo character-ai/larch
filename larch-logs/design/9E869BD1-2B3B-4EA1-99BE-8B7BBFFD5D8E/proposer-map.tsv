@@ -1,0 +1,7 @@
+# attributed_ballot_sha256=818dd854e293e5c07db62eb23cca388d248bb3e84bb6aceb2d28e63bfc0a7459
+# neutral_ballot_sha256=1f4ef5e1dcd778f625f1d6aae403769129dabd2ba2eca32b9bbb30d192f75f48
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+FINDING_2	Cursor-Requirements	- **Reviewer(s)**: Cursor-Requirements
+FINDING_3	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
+OOS_1	Cursor-Pragmatic	- **Reviewer**: Cursor-Pragmatic
