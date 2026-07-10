@@ -1567,6 +1567,8 @@ def test_classify_sanitizes_raw_step_phase_dispatcher(tmp_path: Path, capsys: py
         ("", "wrapper-validation-failure", "dispatch-failure", "step2-impl", "dispatch-bail-token"),
         ("", "orchestrator-envelope-invalid", "dispatch-failure", "step2-impl", "dispatch-bail-token"),
         ("", "dirty-state-after-timeout", "dispatch-failure", "step2-impl", "dispatch-bail-token"),
+        ("quota", "", "dispatch-failure", "step2-impl", "dispatch-bail-token"),
+        ("", "quota", "dispatch-failure", "step2-impl", "dispatch-bail-token"),
         ("protected-path-edit-required-out-of-scope", "", "protected-path", "step2-impl", "protected-path-bail-token"),
         ("", "protected-path-edit-required-out-of-scope", "protected-path", "step2-impl", "protected-path-bail-token"),
         ("submodule-edit-required-out-of-scope", "", "submodule-restricted", "none", "submodule-restricted-bail-token"),
@@ -1592,6 +1594,8 @@ def test_classify_bail_precedence_tokens(
     assert f"FAILURE_CLASS={expected_class}" in out
     assert f"RESUME_HINT={expected_hint}" in out
     assert f"MATCHED_CLASSIFIER_PATTERN={expected_pattern}" in out
+    if state_bail == "quota" or argv_bail == "quota":
+        assert "BAIL_REASON=quota" in out
 
 
 def test_compose_report_tier_a_skips_oversize_detail_log(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

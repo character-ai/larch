@@ -986,6 +986,7 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
                 timeout_seconds=int(args.timeout, 10),
                 cmd=child,
                 capture_stdout_only=True,
+                stderr_path=sidecar,
             )
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)

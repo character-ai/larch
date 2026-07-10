@@ -4672,6 +4672,42 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_bails_on_quota_in_transcript_when_coverage_is_incomplete",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_materialize_oos",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 3,
+    "reason": "step2_dispatch_main uses dispatch_step2 bindings; patch at consumer required to intercept calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_bails_on_quota_in_transcript_when_coverage_is_incomplete",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_normalize_scout",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 2,
+    "reason": "step2_dispatch_main uses dispatch_step2 bindings; patch at consumer required to intercept calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_bails_on_quota_when_plan_coverage_requires_disposition",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_materialize_oos",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 3,
+    "reason": "step2_dispatch_main uses dispatch_step2 bindings; patch at consumer required to intercept calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_bails_on_quota_when_plan_coverage_requires_disposition",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_normalize_scout",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 2,
+    "reason": "step2_dispatch_main uses dispatch_step2 bindings; patch at consumer required to intercept calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_step2_dispatch_baseline_persists_across_answers_resume",
     "facade_module": "larch.implement.dispatch_step2",
     "attribute": "_normalize_scout",
@@ -4894,6 +4930,24 @@
     "defining_module": "larch.implement.dispatch_step2",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_completes_full_coverage_despite_quota_sidecar",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_materialize_oos",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 3,
+    "reason": "step2_dispatch_main uses dispatch_step2 bindings; patch at consumer required to intercept calls"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_completes_full_coverage_despite_quota_sidecar",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_normalize_scout",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 2,
+    "reason": "step2_dispatch_main uses dispatch_step2 bindings; patch at consumer required to intercept calls"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",

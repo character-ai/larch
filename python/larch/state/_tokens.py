@@ -104,7 +104,7 @@ _DISPATCH_BAIL_TOKENS = frozenset({
     "cursor-modified-history", "cursor-runtime-failure", "detached-head-prohibited",
     "dirty-state-after-timeout", "interactive-subprocess-unsupported", "main-branch-post-dispatch",
     "main-branch-prohibited", "manifest-missing", "manifest-oos-materialization-failed",
-    "manifest-schema-invalid", "protected-path-modified", "qa-pending-missing",
+    "manifest-schema-invalid", "protected-path-modified", "qa-pending-missing", "quota",
     "redactor-not-executable", "resume-incompatible", "submodule-dirty",
     "wrapper-validation-failure", "orchestrator-envelope-invalid",
 })
@@ -342,7 +342,7 @@ def _safe_bail_reason_value(value: str, *, generic: bool) -> bool:
         "detached-head-prohibited", "interactive-subprocess-unsupported", "main-branch-prohibited",
         "manifest-missing", "manifest-oos-materialization-failed", "manifest-schema-invalid",
         "protected-path-modified", "protected-path-modification-required",
-        "qa-pending-missing", "redactor-not-executable", "resume-incompatible",
+        "qa-pending-missing", "quota", "redactor-not-executable", "resume-incompatible",
         "submodule-dirty", "submodule-edit-required-out-of-scope", "local-unfixable", "checks-failed",
         "checks-timeout", "ci-health-failed", "ci-timeout", "ci-status-error", "ci-too-many-rebases",
         "no-fix-path", "main-agent-required", "coder-main-agent-required", "main-agent-vote-required",
