@@ -20,6 +20,7 @@ from larch.report.report_tokens_cost import (
     DEFAULT_RATE_TABLE_PER_M,
     DEFAULT_VENDOR_MODEL,
     CURSOR_COMPOSER_BASE,
+    cursor_argv_from_buckets,
     display_rates,
     env_rate,
     price_run,
@@ -778,6 +779,71 @@ def test_token_cost_argv_splits_cursor_grok_by_model() -> None:
     assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "100"
     assert argv[argv.index("--cursor-input-tokens") + 1] == "200"
     assert cost["CURSOR_TOKENS"] == "390"
+
+
+def test_cursor_grok_tokens_emit_component_costs_in_wire_order() -> None:
+    cost_lines = token_cost_from_args([
+        "--cursor-grok-input-tokens", "1000000",
+        "--cursor-grok-cache-read-tokens", "1000000",
+        "--cursor-grok-output-tokens", "1000000",
+    ]).splitlines()
+    cost = dict(line.split("=", 1) for line in cost_lines)
+
+    assert cost["CURSOR_COMPOSER_COST"] == "0.00"
+    assert cost["CURSOR_GROK_COST"] == "8.50"
+    assert cost["CURSOR_AUTO_COST"] == "0.00"
+    assert float(cost["CURSOR_COST"]) == sum(
+        float(cost[key])
+        for key in ("CURSOR_COMPOSER_COST", "CURSOR_GROK_COST", "CURSOR_AUTO_COST")
+    )
+    assert cost_lines.index("CURSOR_COMPOSER_COST=0.00") < cost_lines.index("CURSOR_COST=8.50")
+    assert cost_lines.index("CURSOR_GROK_COST=8.50") < cost_lines.index("CURSOR_COST=8.50")
+    assert cost_lines.index("CURSOR_AUTO_COST=0.00") < cost_lines.index("CURSOR_COST=8.50")
+
+
+def test_price_run_preserves_cursor_lanes_only_for_valid_model_map() -> None:
+    detailed = RunRecord(
+        number=1, title="", url="", started_at="", closed_at="", workflow="implement",
+        claude=VendorTotals(), codex=VendorTotals(), cursor=VendorTotals(total=390), phase_rows=(),
+        raw_report={
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {
+                "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+                "composer-2.5": {"input": 200, "cache_read": 40, "output": 20},
+            },
+        },
+    )
+    malformed = RunRecord(
+        number=2, title="", url="", started_at="", closed_at="", workflow="implement",
+        claude=VendorTotals(), codex=VendorTotals(), cursor=VendorTotals(total=390), phase_rows=(),
+        raw_report={
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {"grok-4.5": "invalid"},
+        },
+    )
+
+    priced_detailed = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=detailed)
+    priced_malformed = price_run(Runner(CommandResult(("unused",), 0, "", "", 0.01)), record=malformed)
+
+    assert priced_detailed.cursor_composer_cost is not None
+    assert priced_detailed.cursor_grok_cost is not None
+    assert priced_detailed.cursor_auto_cost is not None
+    assert priced_malformed.cursor_composer_cost is None
+    assert priced_malformed.cursor_grok_cost is None
+    assert priced_malformed.cursor_auto_cost is None
+
+
+def test_cursor_non_exact_grok_models_route_to_composer() -> None:
+    argv = cursor_argv_from_buckets(
+        by_model={
+            "grok-4.6": {"input": 100, "cache_read": 20, "output": 10},
+            "grok-beta": {"input": 200, "cache_read": 40, "output": 20},
+        },
+        bucket={"input": 300, "cache_read": 60, "output": 30},
+    )
+
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "300"
+    assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "0"
 
 
 def test_cursor_grok_rate_row_and_overrides_ignore_surcharge() -> None:

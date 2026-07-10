@@ -273,6 +273,45 @@ def test_final_report_token_fields_uses_manifest_main_model_and_claude_sub_by_mo
     assert fields["claude_sub_cost"] == "1.00"
 
 
+def test_final_report_token_fields_cursor_lanes_require_valid_model_map(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {
+                "composer-2.5": {"input": 200, "cache_read": 40, "output": 20},
+                "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+
+    assert fields["cursor_composer_cost"] is not None
+    assert fields["cursor_grok_cost"] is not None
+    assert fields["cursor_auto_cost"] is not None
+
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {"grok-4.5": "invalid"},
+        }),
+        encoding="utf-8",
+    )
+
+    fallback_fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+
+    assert fallback_fields["cursor_composer_cost"] is None
+    assert fallback_fields["cursor_grok_cost"] is None
+    assert fallback_fields["cursor_auto_cost"] is None
+
+
 def test_final_report_token_fields_enriches_claude_sub_by_model_from_ledger(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
     run_dir.mkdir(parents=True)
