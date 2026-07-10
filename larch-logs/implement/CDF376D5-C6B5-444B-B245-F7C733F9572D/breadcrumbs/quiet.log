@@ -24,6 +24,9 @@ append-execution-issue.sh: error: the following arguments are required: --log
 === larch-quiet-read-session-env-key.sh-98984.log ===
 === larch-quiet-read-session-env-key.sh-99000.log ===
 === larch-quiet-scout-plan-archetypes-wrapper.sh-90376.log ===
+=== larch-quiet-sessionstart-health.sh-10131.log ===
+=== larch-quiet-sessionstart-health.sh-10711.log ===
+=== larch-quiet-sessionstart-health.sh-11196.log ===
 === larch-quiet-sessionstart-health.sh-2284.log ===
 === larch-quiet-sessionstart-health.sh-2926.log ===
 === larch-quiet-sessionstart-health.sh-3835.log ===
@@ -32,4 +35,5 @@ append-execution-issue.sh: error: the following arguments are required: --log
 === larch-quiet-sessionstart-health.sh-94594.log ===
 === larch-quiet-sessionstart-health.sh-95148.log ===
 === larch-quiet-sessionstart-health.sh-95737.log ===
+=== larch-quiet-sessionstart-health.sh-9633.log ===
 === larch-quiet-sessionstart-health.sh-96377.log ===

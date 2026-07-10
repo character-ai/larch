@@ -72,11 +72,19 @@ Exec Issues (3):
 Warnings (1):
   1. Step 2: Codex bailed: interactive-subprocess-unsupported
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run CDF376D5-C6B5-444B-B245-F7C733F9572D: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:08:49
-- **Cost**: 💰 TOTAL ~$33.31: Claude $13.28, Codex-5.6 $11.24, Codex-mini $0.07, Cursor $8.09, Claude (subprocess) $0.63  |  Tokens: 61863k
+- **Cost**: 💰 TOTAL ~$34.71: Claude $14.64, Codex-5.6 $11.24, Codex-mini $0.07, Cursor $8.09, Claude (subprocess) $0.67  |  Tokens: 65998k
 - **Issue**: #6834: https://github.com/character-ai/larch/issues/6834
 - **Plan review**: N/A
 - **Plan coverage**: 7/7 firm headings; band: advisory; disposition: none; todos_left: 0
