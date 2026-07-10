@@ -212,10 +212,7 @@ def _run_coder_cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
     if not agents.cursor_auth_preflight(caller="review-and-fix coder").ok:
         return False
     agents.cursor_auth_export_env()
-    try:
-        model_args = list(agents.resolve_model_args("cursor", with_effort=True).argv)
-    except ValueError:
-        return False
+    model_args = ["--model", config.CURSOR_AUTO_MODEL]
     wrapped = _run(["python3", str(cli), "agent", "cursor-wrap-prompt", prompt_body])
     if wrapped.returncode != 0:
         return False
@@ -300,6 +297,7 @@ def _run_coder_claude(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
         "--output", str(output),
         "--prompt-body-file", str(prompt_file),
         "--timeout", "1800",
+        "--model", config.CLAUDE_SONNET_4_6_1M_MODEL,
         "--timing-task-kind", "claude-review-fix",
     ], env=_coder_timing_env(round_dir=round_dir, ledger=_resolve_coder_timing_ledger(round_dir)))
     wrapper = round_dir / "coder-claude.wrapper.log"

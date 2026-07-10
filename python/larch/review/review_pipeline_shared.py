@@ -88,6 +88,7 @@ class ReviewCoreBranchContext:
     run_id: str
     prune_ledger: str
     site: str = ""
+    panel_tier: str = ""
     diff_file: str = ""
     scope_files: str = ""
     plan_file: str = ""

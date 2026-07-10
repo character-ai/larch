@@ -32,7 +32,7 @@
     "codex_model": {
       "title": "Codex Model",
       "type": "string",
-      "description": "Strong/default Codex model for untagged launches such as Step 2 implementer, brainstorm, negotiations, and callers that do not pass --model-role. Also accepted via LARCH_CODEX_MODEL. Review, voting, and fix roles use LARCH_CODEX_REVIEW_MODEL, LARCH_CODEX_VOTE_MODEL, and LARCH_CODEX_FIX_MODEL. When unset, defaults to gpt-5.5.",
+      "description": "Strong/default Codex model for untagged launches such as brainstorm, negotiations, health probes, and callers that do not pass --model-role. Also accepted via LARCH_CODEX_MODEL. When unset, defaults to gpt-5.6-sol. Step 2 Codex implementers are difficulty-routed unless pinned: TRIVIAL uses gpt-5.6-terra, MODERATE/HARD use gpt-5.6-sol. Review panels, voters, and fixers use their role env vars and tier routing before falling back to gpt-5.6-luna or gpt-5.6-terra.",
       "sensitive": false
     },
     "codex_effort": {

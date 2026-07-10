@@ -15,6 +15,8 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch.agents import agent_waterfall
+from larch.agents._launch_failure import resolve_model_args
+from larch.calibration import difficulty
 from larch.core import external_defaults
 from larch.review import findings_ledger
 from larch.review import voting
@@ -72,6 +74,7 @@ class Options:
     plan_file: str = ""
     round_num: int = 1
     site: str = "review Step 2"
+    tier: str = ""
 
 
 # Mutable: per-voter status / parse-rate fields are updated in place as voters resolve.
@@ -304,7 +307,7 @@ def _build_voter_prompt_files(
     return prompt_files, payload_files
 
 
-def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[VoterSlotPolicy], prompt_files: dict[str, dict[str, str]], payload_files: dict[str, dict[str, int]]) -> str:
+def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[VoterSlotPolicy], prompt_files: dict[str, dict[str, str]], payload_files: dict[str, dict[str, int]], tier: str = "") -> str:
     manifest = review_tmpdir / "code-voter-slots.ndjson"
     with manifest.open("w", encoding="utf-8") as handle:
         for policy in policies:
@@ -314,15 +317,41 @@ def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[V
                 "output": str(review_tmpdir / policy.output_name),
                 "prompt_files": prompt_files.get(policy.prompt_label, {}),
                 "payload_files": payload_files.get(policy.prompt_label, {}),
+                "model_role": "vote",
             }
+            vote_model = config.CODEX_VOTE_MODEL_BY_DIFFICULTY.get(tier, "")
+            if policy.primary_tool == "codex":
+                row["resolved_model"] = _resolved_model_for_row("codex", vote_model)
+            elif policy.primary_tool == "cursor":
+                row["resolved_model"] = _resolved_model_for_row("cursor")
             _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     return str(manifest)
 
 
+def _resolved_model_for_row(tool: str, default_model: str = "") -> str:
+    try:
+        argv = list(
+            resolve_model_args(
+                tool,
+                with_effort=(tool == "codex"),
+                default_model=default_model,
+                codex_role="vote" if tool == "codex" else "default",
+            ).argv
+        )
+    except (ValueError, KeyError):
+        return "unknown"
+    if tool == "cursor" and "--model" in argv:
+        idx = argv.index("--model")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    if tool == "codex" and "-m" in argv:
+        idx = argv.index("-m")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    return "unknown"
+
+
 def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str], review_tmpdir: Path) -> str:
     artifact_dir, _round_dir, panel_env = _panel_artifact_context(review_tmpdir=review_tmpdir, round_num=opts.round_num, site=opts.site)
-    result = proc.run(
-        [
+    waterfall_args = [
             *_cli_argv("agent", "dispatch-waterfall"),
             "--slots-file",
             manifest,
@@ -346,9 +375,11 @@ def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]
             "--claude-read-tools-add-dir",
             str(review_tmpdir),
             *ctx_args,
-        ],
-        env=panel_env,
-    )
+    ]
+    vote_default = config.CODEX_VOTE_MODEL_BY_DIFFICULTY.get(opts.tier, "")
+    if vote_default:
+        waterfall_args.extend(["--default-model", vote_default])
+    result = proc.run(waterfall_args, env=panel_env)
     if result.returncode != 0:
         _err(f"agent dispatch-voters: agent dispatch-waterfall exited {result.returncode}: proceeding with partial or empty result")
     return result.stdout
@@ -517,7 +548,7 @@ def dispatch_voters(opts: Options) -> int:
         availability=(codex_present, cursor_present),
         calibration_stats_file=calibration_stats_file,
     )
-    manifest = _write_voter_waterfall_manifest(review_tmpdir=review_tmpdir, policies=launched_policies, prompt_files=prompt_files, payload_files=payload_files)
+    manifest = _write_voter_waterfall_manifest(review_tmpdir=review_tmpdir, policies=launched_policies, prompt_files=prompt_files, payload_files=payload_files, tier=opts.tier)
     waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args, review_tmpdir=review_tmpdir)
     _outputs, _tools, dispatch_ok = _parse_waterfall_output(waterfall_output)
     bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
@@ -586,6 +617,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--round-num", default="1")
     parser.add_argument("--site", default="review Step 2")
+    parser.add_argument("--tier", default="")
     args = parser.parse_args(argv)
     if not str(args.round_num).isdigit() or int(str(args.round_num), 10) <= 0:
         raise ValidationError("agent dispatch-voters: --round-num must be a positive integer")
@@ -594,6 +626,9 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         raise ValidationError("agent dispatch-voters: --site requires a non-empty, non-flag-like value")
     if re.search(r"[\x00-\x1f\x7f]", site):
         raise ValidationError("agent dispatch-voters: --site must not contain control characters")
+    tier = difficulty.normalize_tier(str(args.tier))
+    if str(args.tier) and not tier:
+        raise ValidationError("agent dispatch-voters: --tier must be TRIVIAL, MODERATE, or HARD")
     return Options(
         ballot_file=str(args.ballot_file),
         review_tmpdir=str(args.review_tmpdir),
@@ -604,6 +639,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         plan_file=str(args.plan_file),
         round_num=int(str(args.round_num), 10),
         site=site,
+        tier=tier,
     )
 
 

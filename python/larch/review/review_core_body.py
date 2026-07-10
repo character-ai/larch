@@ -626,6 +626,8 @@ def _dispatch_voters_for_ballot(ctx: ReviewCoreBranchContext) -> tuple[list[str]
         "--site",
         ctx.site,
     ]
+    if ctx.panel_tier:
+        voter_args.extend(["--tier", ctx.panel_tier])
     if ctx.session_env_path:
         voter_args.extend(["--session-env-path", ctx.session_env_path])
     if ctx.diff_file:
@@ -1053,6 +1055,7 @@ def _review_core_body(
         scout_status=scout_status,
         dynamic_slots=dynamic_slots,
         static_slot_count=static_slot_count,
+        panel_tier=panel_tier,
         run_id=run_id,
         prune_ledger=prune_ledger,
         site=site,
@@ -1081,6 +1084,8 @@ def _review_core_body(
         return _post_gate_panel_failed_exit(rows=rows, review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num, panel_mode=panel_mode, panel_shape=panel_shape, threshold_reason="proposer-map-failed")
 
     voter_args = ["--ballot-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-available", codex_available, "--cursor-available", cursor_available, "--round-num", str(round_num), "--site", site]
+    if panel_tier:
+        voter_args.extend(["--tier", panel_tier])
     if session_env_path:
         voter_args.extend(["--session-env-path", session_env_path])
     if diff_file:

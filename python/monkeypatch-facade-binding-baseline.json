@@ -6003,6 +6003,15 @@
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_write_step2_difficulty_record_uses_trivial_tier_model",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_invoke_cli",
+    "defining_module": "larch.implement.dispatch_helpers",
+    "occurrence": 1,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
     "file": "tests/implement/test_ship.py",
     "qualified_symbol": "_default_post_ensure_flush_and_push",
     "facade_module": "larch.report.run_logs",

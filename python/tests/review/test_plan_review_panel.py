@@ -347,11 +347,12 @@ def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -
         "requirements": "default",
     }
     resolved_by_focus = {str(row["focus_area"]): str(row.get("resolved_model")) for row in codex_rows}
+    expected_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY["HARD"]
     assert resolved_by_focus == {
-        "arch": config.CODEX_REVIEW_MODEL_DEFAULT,
-        "innovation": config.CODEX_REVIEW_MODEL_DEFAULT,
-        "pragmatic": config.CODEX_DEFAULT_MODEL,
-        "requirements": config.CODEX_DEFAULT_MODEL,
+        "arch": expected_model,
+        "innovation": expected_model,
+        "pragmatic": expected_model,
+        "requirements": expected_model,
     }
     cursor_rows = [row for row in rows if row.get("tool") == "cursor"]
     assert all(row.get("cursor_model") == "auto" for row in cursor_rows)

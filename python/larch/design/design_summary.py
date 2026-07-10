@@ -18,7 +18,7 @@ from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.design.design_publish import review_provenance
 from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
-from larch.report.report_tokens_cost import CODEX_MINI_MODEL
+from larch.report.report_tokens_cost import CODEX_MINI_MODELS
 
 
 _VALID_OUTCOMES = frozenset({
@@ -77,8 +77,8 @@ def _read_token_report(design_tmpdir: Path) -> dict[str, int]:
             t: dict[str, object] = data[vendor].get("totals", {})  # type: ignore[union-attr]
             buckets[f"{vendor.upper()}_T"] = int(t.get("total", 0) or 0)  # type: ignore[arg-type]
     # Split codex by model so the cost line prices gpt-5.4-mini at mini rates.
-    # gpt-5.4-mini routes to D_MINI_*; every other model (gpt-5.5, unknown, legacy)
-    # folds into D_* (gpt-5.5 rates). Reads `cached_input` (the BUCKETS_codex key).
+    # Mini-class models route to D_MINI_*; every other model (gpt-5.6, unknown, legacy)
+    # folds into D_* (gpt-5.6 rates). Reads `cached_input` (the BUCKETS_codex key).
     by_model = data.get("BUCKETS_codex_by_model")
     if isinstance(by_model, dict):
         bm: dict[str, object] = by_model  # type: ignore[assignment]
@@ -88,7 +88,7 @@ def _read_token_report(design_tmpdir: Path) -> dict[str, int]:
             if not isinstance(raw_mb, dict):
                 continue
             mb: dict[str, object] = raw_mb  # type: ignore[assignment]
-            target = mini if model == CODEX_MINI_MODEL else main
+            target = mini if model in CODEX_MINI_MODELS else main
             target["in"] += int(mb.get("input", 0) or 0)  # type: ignore[arg-type]
             target["cr"] += int(mb.get("cached_input", 0) or 0)  # type: ignore[arg-type]
             target["out"] += int(mb.get("output", 0) or 0)  # type: ignore[arg-type]

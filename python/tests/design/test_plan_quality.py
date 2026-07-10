@@ -688,8 +688,8 @@ PLAN
     cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
-    assert out["REVISE_TIER_2_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_TIER_1_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_TIER_2_STATUS"] == "skipped-binary-missing"
     assert out["REVISE_STATUS"] == "failed-apply"
     assert plan.read_text(encoding="utf-8") == original
 
@@ -727,8 +727,8 @@ fi
     cp = _run_revise(tmp_path, plan, findings, feature, env)
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
-    assert out["REVISE_TIER_2_STATUS"] == "apply-failed"
+    assert out["REVISE_TIER_1_STATUS"] == "apply-failed"
+    assert out["REVISE_TIER_2_STATUS"] == "skipped-binary-missing"
     assert out["REVISE_STATUS"] == "failed-apply"
     assert plan.read_text(encoding="utf-8") == original
 
@@ -809,7 +809,7 @@ PLAN
     assert size_out["OVERSIZE_OVERRIDE"] == "operator"
 
 
-def test_revise_waterfall_attempts_cursor_first_when_present(tmp_path: Path) -> None:
+def test_revise_waterfall_attempts_codex_first_when_present(tmp_path: Path) -> None:
     plan, findings, feature = _revise_base(tmp_path)
     calls = tmp_path / "calls.txt"
     fake = _write_executable(
@@ -865,12 +865,13 @@ fi
     assert out["REVISE_TIER_4_STATUS"] == "ok"
     assert out["REVISE_WINNING_TIER"] == "cursor"
     assert out["REVISE_PATCH_PATH"].endswith("revise/cursor-output.txt")
-    # Cursor-first order in both the initial unified-diff pass and the
-    # file-replacement fallback pass (Part 1: Cursor-first apply-agent).
+    # Codex-first order in both the initial unified-diff pass and the
+    # file-replacement fallback pass (Part 1: Codex-first apply-agent).
     assert calls.read_text(encoding="utf-8").splitlines() == [
-        "cursor-output.txt",
         "codex-output.txt",
+        "cursor-output.txt",
         "claude-output.txt",
+        "codex-output.txt",
         "cursor-output.txt",
     ]
 
@@ -1071,8 +1072,8 @@ fi
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["REVISE_STATUS"] == "failed-apply"
-    assert out["REVISE_TIER_1_STATUS"] == "no-patch"
-    assert out["REVISE_TIER_2_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_TIER_1_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_TIER_2_STATUS"] == "no-patch"
     assert out["REVISE_TIER_3_STATUS"] == "no-patch"
     assert out["REVISE_TIER_4_STATUS"] == "no-patch"
     assert "alpha" in plan.read_text(encoding="utf-8")
@@ -1173,8 +1174,8 @@ PLAN
     cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
     assert cp.returncode == 0, cp.stderr
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
-    assert out["REVISE_TIER_2_STATUS"] == "invalid-patch"
+    assert out["REVISE_TIER_1_STATUS"] == "invalid-patch"
+    assert out["REVISE_TIER_2_STATUS"] == "skipped-binary-missing"
     assert out["REVISE_STATUS"] == "failed-validation"
     assert plan.read_text(encoding="utf-8") == original
 

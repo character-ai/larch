@@ -449,7 +449,7 @@ def test_build_launch_argv_per_tier(tier: str) -> None:
 
 def test_model_args_defaults_and_effort() -> None:
     result = agents.resolve_model_args("codex", with_effort=True)
-    assert result.argv[:2] == ("-m", "gpt-5.5")
+    assert result.argv[:2] == ("-m", "gpt-5.6-sol")
     assert "-c" in result.argv
     assert 'model_reasoning_effort="high"' in result.argv
 
@@ -2892,7 +2892,7 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     meta_text = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
     assert "OUTER_LAUNCHER=agent launch-codex-exec" in meta_text
     assert "OUTER_LAUNCHER_MODEL_ROLE=fix" in meta_text
-    assert "MODEL=gpt-5.4-mini" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
+    assert "MODEL=gpt-5.6-terra" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "TOTAL=14" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "LAUNCHER_EXIT=0" in capsys.readouterr().out
     assert home_log.read_text(encoding="utf-8").strip()
@@ -3613,10 +3613,10 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
         order.append("timing")
 
     def fake_record_usage(events: Path, sidecar: Path, label: str, token_record: Path | None = None, *, model: str = "") -> None:  # noqa: ARG001  # pylint: disable=unused-argument
-        _ = model
         order.append("usage")
         assert token_record == paths.token_record
-        _ = paths.token_record.write_text("TOKEN=1\n", encoding="utf-8")
+        assert model == "gpt-5.6-terra"
+        _ = paths.token_record.write_text(f"TOOL=codex\nMODEL={model}\nTOKEN=1\n", encoding="utf-8")
 
     def fake_emit_kv(key: str, value: str | int) -> None:
         if key == "TOKEN_RECORD":
@@ -3638,7 +3638,7 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
 
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
     monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(("--model", "gpt-5.6-terra")))
     monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(_run_external, "_write", fake_write)
     monkeypatch.setattr(_ci_launcher, "_append", fake_append)
@@ -3667,6 +3667,7 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
 
     assert rc == 0
     assert order == ["events", "timing", "usage", "token", "meta", "stall", "promote", "failure", "emit"]
+    assert "MODEL=gpt-5.6-terra" in paths.token_record.read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
     assert stdout.index("TOKEN_RECORD=") < stdout.index("LAUNCHER_EXIT=")
 
@@ -3788,7 +3789,7 @@ def test_launch_claude_ci_records_timing_and_token_sidecars(
     token_record = output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "TOOL=claude" in token_record
     assert "TOTAL=17" in token_record
-    assert f"MODEL={config.CLAUDE_CI_FIX_MODEL}" in token_record
+    assert f"MODEL={config.CLAUDE_SONNET_4_6_MODEL}" in token_record
 
 
 @pytest.mark.parametrize(
@@ -3892,7 +3893,7 @@ def test_launch_cursor_ci_model_arg_failure_writes_launcher_contract(
     rc = agents.launch_cursor_ci_main(
         [
             "--role",
-            "fix",
+            "resolve-conflict",
             "--output",
             str(output),
             "--run-id",
@@ -4193,7 +4194,7 @@ def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
 
     def fake_record_usage(events: Path, sidecar: Path, label: str, token_record: Path | None = None, *, model: str = "") -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         _ = token_record
-        _ = model
+        assert model == "gpt-5.6-terra"
         order.append("usage")
 
     def fake_append_failure(**kwargs: object) -> None:  # type: ignore[reportAny]
@@ -4219,7 +4220,7 @@ def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
     monkeypatch.setattr(_ci_launcher, "_safe_codex_home_dir", fake_safe_home)
     monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(("--model", "gpt-5.6-terra")))
     monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
     monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(_ci_launcher, "_append", fake_append)
@@ -4961,9 +4962,51 @@ def test_launch_claude_ci_uses_opus_default_and_write_capable_argv(
     assert rc == 0
     argv = argv_log.read_text(encoding="utf-8").splitlines()
     assert "-p" in argv
-    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert config.CLAUDE_CI_RECOVERY_MODEL in argv
     assert "Read,Edit,Write" in argv
     assert "You are using Claude" not in argv
+
+
+def test_launch_claude_ci_resolve_conflict_uses_opus_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    argv_log = tmp_path / "argv.log"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"result\":\"fixed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_ARGV_LOG", str(argv_log))
+    output = tmp_path / "claude-ci.out"
+    rc = agents.launch_claude_ci_main(
+        [
+            "--role",
+            "resolve-conflict",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert "-p" in argv
+    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert "Read,Edit,Write" in argv
+    token_record = output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
+    assert f"MODEL={config.CLAUDE_CI_FIX_MODEL}" in token_record
 
 
 def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(
@@ -5677,15 +5720,15 @@ def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, m
     assert render_args[render_args.index("--session-env-path") + 1] == str(session_env)
 
 
-def test_codex_role_model_resolution_ignores_default_model_and_global_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_codex_role_model_resolution_uses_default_model_after_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
     monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
     monkeypatch.delenv("LARCH_CODEX_VOTE_MODEL", raising=False)
     monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
 
-    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
-    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
-    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
+    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "custom")
 
 
 def test_codex_default_role_preserves_default_model_contract(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5709,7 +5752,7 @@ def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatc
         agents.resolve_model_args("codex", codex_role="vote")
 
 
-def test_model_args_main_codex_role_ignores_default_and_global_env(
+def test_model_args_main_codex_role_uses_default_model_after_role_env(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -5719,7 +5762,7 @@ def test_model_args_main_codex_role_ignores_default_and_global_env(
     rc = agents.model_args_main(["--tool", "codex", "--codex-role", "review", "--default-model", "custom"])
 
     assert rc == 0
-    assert capsys.readouterr().out.splitlines()[:2] == ["-m", "gpt-5.4-mini"]
+    assert capsys.readouterr().out.splitlines()[:2] == ["-m", "custom"]
 
 
 def test_codex_probe_blank_default_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

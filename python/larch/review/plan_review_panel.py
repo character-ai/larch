@@ -163,8 +163,9 @@ def _static_slot_rows(
                 slot.archetype,
                 tier,
             )
+            codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
             row["model_role"] = role
-            row["resolved_model"] = _resolved_model_for_row(slot.tool, role)
+            row["resolved_model"] = _resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
         elif slot.cursor_model:
             row["cursor_model"] = slot.cursor_model
             row["resolved_model"] = slot.cursor_model
@@ -240,11 +241,12 @@ def _generic_plan_codex_row(
         payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 and prompt else 0,
     )
     role = difficulty.codex_review_model_role(tier)
+    codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
     row["model_role"] = role
-    row["resolved_model"] = _resolved_model_for_row(slot.tool, role)
+    row["resolved_model"] = _resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
     return row
 
-def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
+def _resolved_model_for_row(tool: str, model_role: str = "", default_model: str = "") -> str:
     try:
         if model_role == "review":
             role = "review"
@@ -254,7 +256,7 @@ def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
             role = "fix"
         else:
             role = "default"
-        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), codex_role=role).argv)
+        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), default_model=default_model, codex_role=role).argv)
     except (ValueError, KeyError):
         return "unknown"
     if tool == "cursor" and "--model" in argv:
@@ -402,7 +404,8 @@ def _dynamic_slot_rows(
         if tool == "codex":
             role = "review"
             row["model_role"] = role
-            row["resolved_model"] = _resolved_model_for_row(tool, role)
+            codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
+            row["resolved_model"] = _resolved_model_for_row(tool, role, default_model=codex_panel_model)
         elif tool == "cursor":
             row["cursor_model"] = config.CURSOR_AUTO_MODEL
             row["resolved_model"] = config.CURSOR_AUTO_MODEL

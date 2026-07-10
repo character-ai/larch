@@ -36,7 +36,6 @@ from larch.review.review_pipeline_shared import (
     _write_text,
 )
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
-from larch import io as larch_io
 from larch.core import config
 from larch.review.review_prune import (
     derive_prune_status,
@@ -226,10 +225,10 @@ prompt_body: |
 
 
 
-def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
+def _resolved_model_for_row(tool: str, model_role: str = "", default_model: str = "") -> str:
     try:
         role = model_role if model_role in {"default", "review", "vote", "fix"} else "default"
-        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), codex_role=role).argv)
+        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), default_model=default_model, codex_role=role).argv)
     except (ValueError, KeyError):
         return "unknown"
     if tool == "cursor" and "--model" in argv:
@@ -257,8 +256,11 @@ def _generic_codex_enabled(round_num: int) -> bool:
     return bool(policy and round_num in policy.generic_codex_rounds)
 
 
-def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_root: Path) -> None:
-    slot = next(row for row in external_defaults.slot_defaults("review.panel") if row.slot == "generalist" and row.tool == "codex")
+def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_root: Path, tier: str) -> None:
+    slot = next((row for row in external_defaults.slot_defaults("review.panel") if row.slot == "generalist" and row.tool == "codex"), None)
+    if slot is None:
+        return
+    codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
     _append_manifest_row(
         manifest=manifest,
         row={
@@ -269,25 +271,25 @@ def _append_generic_codex_row(*, manifest: Path, review_tmpdir: Path, plugin_roo
             "focus_area": slot.focus_area,
             "weight": slot.weight,
             "model_role": slot.model_role,
+            "resolved_model": _resolved_model_for_row(slot.tool, slot.model_role, default_model=codex_panel_model),
         },
     )
 
 
-def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, round_num: int, codex_slots_available: bool) -> None:
+def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, round_num: int, codex_slots_available: bool, tier: str) -> None:
     from larch.review.review_pipeline_shared import _PLUGIN_ROOT  # noqa: PLC0415
     if codex_slots_available and _generic_codex_enabled(round_num):
-        _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT)
+        _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT, tier=tier)
 
 
 def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool, cursor_slots_available: bool, tier: str) -> None:
     from larch.review.review_pipeline_shared import _PLUGIN_ROOT  # noqa: PLC0415
+    codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
     for slot in external_defaults.slot_defaults("review.panel"):
-        if slot.slot == "generalist":
-            continue
         if tier == difficulty.TRIVIAL:
-            if codex_slots_available and slot.tool != "codex":
+            if cursor_slots_available and slot.tool != "cursor":
                 continue
-            if not codex_slots_available and cursor_slots_available and slot.tool != "cursor":
+            if not cursor_slots_available and codex_slots_available and slot.tool != "codex":
                 continue
         if slot.tool == "codex" and not codex_slots_available:
             continue
@@ -305,11 +307,8 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
             row["cursor_model"] = slot.cursor_model
             row["resolved_model"] = slot.cursor_model
         if slot.tool == "codex":
-            row["model_role"] = difficulty.codex_review_model_role_for_archetype(
-                "review.panel",
-                slot.archetype,
-                tier,
-            )
+            row["model_role"] = "review"
+            row["resolved_model"] = _resolved_model_for_row(slot.tool, "review", default_model=codex_panel_model)
         _append_manifest_row(
             manifest=manifest,
             row=row,
@@ -317,45 +316,8 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
 
 
 
-def _forced_plan_fidelity_active() -> bool:
-    raw_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    if not raw_tmpdir:
-        return False
-    return larch_io.read_kv(
-        path=Path(raw_tmpdir) / "plan-coverage.env",
-        key="PLAN_FIDELITY_FORCED",
-        default="false",
-        first_match=True,
-        on_error_default=True,
-    ) == "true"
-
-
 def _append_forced_plan_fidelity_row(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool, cursor_slots_available: bool, tier: str) -> None:
-    if not _forced_plan_fidelity_active():
-        return
-    from larch.review.review_pipeline_shared import _PLUGIN_ROOT  # noqa: PLC0415
-
-    tool = "cursor" if cursor_slots_available else "codex" if codex_slots_available else ""
-    if not tool:
-        return
-    row: dict[str, object] = {
-        "slot": "plan-fidelity-forced",
-        "tool": tool,
-        "output": str(review_tmpdir / f"{tool}-specialist-plan-fidelity-forced-output.txt"),
-        "agent": str(_PLUGIN_ROOT / "agents" / "reviewer-plan-fidelity.md"),
-        "focus_area": "architecture",
-        "prune_exempt": True,
-    }
-    if tool == "cursor":
-        row["cursor_model"] = config.CURSOR_AUTO_MODEL
-        row["resolved_model"] = config.CURSOR_AUTO_MODEL
-    else:
-        row["model_role"] = difficulty.codex_review_model_role_for_archetype(
-            "review.panel",
-            "testing",
-            tier,
-        )
-    _append_manifest_row(manifest=manifest, row=row)
+    del manifest, review_tmpdir, codex_slots_available, cursor_slots_available, tier
 
 def _synthesize_dynamic_slots(*,
     scout_manifest: Path,
@@ -438,8 +400,10 @@ def _synthesize_dynamic_slots(*,
                 }
             )
             count += 1
-        if codex_available and tier != difficulty.TRIVIAL:
+        codex_dynamic_allowed = codex_available and (tier != difficulty.TRIVIAL or not cursor_available)
+        if codex_dynamic_allowed:
             codex_out = review_tmpdir / f"dyn-{name}-codex-output.txt"
+            codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
             _append_manifest_row(
                 manifest=manifest,
                 row={
@@ -451,6 +415,7 @@ def _synthesize_dynamic_slots(*,
                     "weight": weight,
                     "focus_area": focus_area,
                     "model_role": "review",
+                    "resolved_model": _resolved_model_for_row("codex", "review", default_model=codex_panel_model),
                 }
             )
             count += 1
@@ -632,7 +597,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     cursor_slots_available = cursor_available == "true"
     _append_static_specialist_rows(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available, cursor_slots_available=cursor_slots_available, tier=tier)
     _append_forced_plan_fidelity_row(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available, cursor_slots_available=cursor_slots_available, tier=tier)
-    _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num, codex_slots_available=codex_slots_available)
+    _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num, codex_slots_available=codex_slots_available, tier=tier)
     scout_status = "na"
     scout_fail_reason = ""
     scout_manifest: Path | None = None
@@ -895,11 +860,14 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         "--site",
         site,
         "--model-role",
-        difficulty.codex_review_model_role(tier),
+        "review",
         "--difficulty",
         tier,
         "--no-fallback",
     ]
+    codex_panel_default = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "")
+    if codex_panel_default:
+        waterfall_args.extend(["--default-model", codex_panel_default])
     if mode == "diff" and diff_file:
         waterfall_args.extend(["--diff-file", diff_file, "--commit-count", _get(parsed=parsed, key="--commit-count", default="0")])
     if mode == "description" and _get(parsed=parsed, key="--scope-files"):

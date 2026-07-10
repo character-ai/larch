@@ -590,6 +590,10 @@ def _build_targeted_dispatch_args(
         "--site",
         "implement Step 5",
     ]
+    core = _parse_env_file(round_dir / "review-core-dispatch.env")
+    panel_tier = difficulty.normalize_tier(core.get("PANEL_TIER", "")) or difficulty.normalize_tier(getattr(args, "panel_tier", ""), difficulty.MODERATE)
+    if panel_tier:
+        dispatch_args.extend(["--tier", panel_tier])
     for flag, value in (
         ("--session-env-path", getattr(args, "session_env_path", "")),
         ("--diff-file", getattr(args, "diff_file", "")),
@@ -597,7 +601,6 @@ def _build_targeted_dispatch_args(
     ):
         if value and (flag != "--plan-file" or Path(value).is_file()):
             dispatch_args.extend([flag, str(value)])
-    del round_dir
     return dispatch_args
 
 

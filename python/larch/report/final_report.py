@@ -221,8 +221,8 @@ def _append_architectural_knowledge(body: str, implement_tmpdir: Path) -> str:
 def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
     """Codex token flags split by model from ``BUCKETS_codex_by_model``.
 
-    gpt-5.4-mini rows route to ``--codex-mini-*`` (mini rates); every other model
-    folds into ``--codex-*`` (gpt-5.5 rates, the documented unknown/legacy fallback).
+    Mini-class rows route to ``--codex-mini-*`` (mini rates); every other model
+    folds into ``--codex-*`` (gpt-5.6 rates, the documented unknown/legacy fallback).
     Falls back to the model-summed ``BUCKETS_codex`` when no per-model split exists.
     """
     by_model = _object_map(data.get("BUCKETS_codex_by_model"))
@@ -236,7 +236,7 @@ def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object
     mini_in = mini_cached = mini_out = 0
     for model, raw_mb in by_model.items():
         mb = _object_map(raw_mb)
-        if model == report_tokens_cost.CODEX_MINI_MODEL:
+        if model in report_tokens_cost.CODEX_MINI_MODELS:
             mini_in += _safe_int(mb.get("input"))
             mini_cached += _safe_int(mb.get("cached_input"))
             mini_out += _safe_int(mb.get("output"))

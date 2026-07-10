@@ -113,7 +113,7 @@ def _add_round_vendor_cost_row(
         bucket["cache_create_5m"] += _as_int(data.get("cache_create"))
         bucket["output"] += _as_int(data.get("output"))
         return
-    bucket_key = "codex_mini" if vendor == "codex" and model == report_tokens_cost.CODEX_MINI_MODEL else vendor
+    bucket_key = "codex_mini" if vendor == "codex" and model in report_tokens_cost.CODEX_MINI_MODELS else vendor
     bucket = sums.setdefault(bucket_key, {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0})
     bucket["input"] += _as_int(data.get("input"))
     bucket["cache_read"] += _as_int(data.get("cache_read"))

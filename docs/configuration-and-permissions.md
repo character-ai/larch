@@ -183,7 +183,7 @@ Model configuration is also available via plugin `userConfig` — environment va
 
 ### `LARCH_CURSOR_MODEL`
 
-The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `claude-sonnet-4-6`).
+The model name to pass to Cursor's `--model` flag (for example, `composer-2.5` or `auto`).
 
 **When set:**
 - Cursor invocations use this model unless a reviewer-panel manifest row pins a per-slot `cursor_model`
@@ -242,18 +242,18 @@ The strong/default Codex model for untagged Codex launches. Examples include the
 - Review, vote, and fix launchers ignore this key and use their role-specific keys.
 
 **When not set:**
-- The default role uses the plugin `codex_model` option, then a caller-supplied default, then `gpt-5.5`.
+- The default role uses the plugin `codex_model` option, then a caller-supplied default, then `gpt-5.6-sol`.
 
 ### `LARCH_CODEX_REVIEW_MODEL`, `LARCH_CODEX_VOTE_MODEL`, `LARCH_CODEX_FIX_MODEL`
 
 Role-specific Codex model keys for cheaper review, voting, and fix application.
 
 **Defaults:**
-- `LARCH_CODEX_REVIEW_MODEL`: `gpt-5.4-mini` for launch sites that still pass the Codex review role (not the main specialist reviewer panel).
-- `LARCH_CODEX_VOTE_MODEL`: `gpt-5.4-mini` for Codex voting slots.
-- `LARCH_CODEX_FIX_MODEL`: `gpt-5.4-mini` for Codex plan revision, plan autofix, and review-fix application.
+- `LARCH_CODEX_REVIEW_MODEL`: `gpt-5.6-luna` for Codex review-role launch sites and TRIVIAL Cursor-down review panel rows.
+- `LARCH_CODEX_VOTE_MODEL`: `gpt-5.6-terra` for Codex voting slots unless tier routing supplies TRIVIAL `gpt-5.6-luna`.
+- `LARCH_CODEX_FIX_MODEL`: `gpt-5.6-terra` for Codex CI recovery, plan revision, plan autofix, and review-fix application.
 
-Codex specialist reviewer panel rows use `model_role=default` (`gpt-5.5` unless overridden by `LARCH_CODEX_MODEL` / `codex_model`). `LARCH_CODEX_REVIEW_MODEL` does not affect those panel slots.
+Codex specialist reviewer panel rows use the review role with tier defaults: TRIVIAL Cursor-down rows use `gpt-5.6-luna`, MODERATE uses `gpt-5.6-luna`, and HARD uses `gpt-5.6-terra`. `LARCH_CODEX_REVIEW_MODEL` still wins over those defaults.
 
 These roles ignore `LARCH_CODEX_MODEL`, `codex_model`, and `--default-model`. Blank, whitespace-only, or control-character values fail in the Codex probe or launcher preflight before panel launch.
 
@@ -372,8 +372,8 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) (used by [`python/cli.py render run-summary`](../python/pr_body.py)) computes USD estimates per lane:
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
-- **Codex bucket env vars** (gpt-5.5 tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`. These continue to price the gpt-5.5 Codex lane only.
-- **Codex mini bucket env vars** (gpt-5.4-mini tokens): `LARCH_CODEX_MINI_INPUT_RATE_PER_M`, `LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_MINI_OUTPUT_RATE_PER_M`. The Codex lane can run default-role gpt-5.5 reviewers alongside gpt-5.4-mini coder or fixer rows, so each model prices at its own rate and the cost line shows `Codex-5.5` and `Codex-mini` separately.
+- **Codex bucket env vars** (`gpt-5.6-sol` default-bucket tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`.
+- **Codex mini bucket env vars** (`gpt-5.4-mini` and `gpt-5.6-luna` tokens): `LARCH_CODEX_MINI_INPUT_RATE_PER_M`, `LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_MINI_OUTPUT_RATE_PER_M`. The cost line shows `Codex-5.6` and `Codex-mini` separately.
 - **Cursor bucket env vars**: `LARCH_CURSOR_INPUT_RATE_PER_M`, `LARCH_CURSOR_CACHE_READ_RATE_PER_M`, and `LARCH_CURSOR_OUTPUT_RATE_PER_M`.
 - **Blended compatibility env vars**: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, and `LARCH_CURSOR_RATE_PER_M`.
 
@@ -383,8 +383,8 @@ Per-bucket env vars win when bucketed counts are available. Blended env vars are
 
 Default model basis:
 
-- **Codex default role**: `gpt-5.5`, with `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens.
-- **Codex review/vote/fix roles**: `gpt-5.4-mini`, with `input=0.75`, `cached input=0.075`, and `output=4.50` per million tokens.
+- **Codex default role**: `gpt-5.6-sol`, with `input=5.00`, `cached input=0.50`, and `output=30.00` per million tokens.
+- **Codex review role**: `gpt-5.6-luna`, with `input=1.00`, `cached input=0.10`, and `output=6.00` per million tokens. **Codex vote/fix roles**: `gpt-5.6-terra`, with `input=2.50`, `cached input=0.25`, and `output=15.00` per million tokens.
 - **Cursor**: `composer-2.5`, with `input=0.50`, `cache read=0.20`, and `output=2.50` per million tokens.
 - **Claude**: Opus 4.8, with `input=5.00`, `cache read=0.50`, `cache write 5m=6.25`, `cache write 1h=10.00`, and `output=25.00` per million tokens.
 
@@ -410,9 +410,9 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 
 Ship-pr CI fixing uses a delegated Claude/Opus 4.8 agentic loop. The delegate receives an explicit `--repo-root` filesystem path, runs local verification under that cwd, pushes only after guard checks pass, and waits for CI with a blocking subprocess. `ci-fix-exhausted` is an operator bail, not a stall-recovery auto-resume.
 
-Conflict resolution uses Claude/Opus 4.8, then Codex default-role `gpt-5.5`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
+Conflict resolution uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
 
-Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.5`, then Cursor `composer-2.5`, then `main-agent-required`. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.4-mini`. Routine local check failures may therefore spawn Claude/Opus before Codex or Cursor.
+Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`, then `main-agent-required`. CI recovery uses Codex fix-role `gpt-5.6-terra`, then Cursor `auto`, then Claude `claude-sonnet-4-6[1m]`. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.6-terra`.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 

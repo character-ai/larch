@@ -33,6 +33,7 @@ from larch.implement import (
     dispatch_recovery,
 )
 from larch.core import config
+from larch.calibration import difficulty
 from larch.core.proc import CommandResult
 from larch.core import process_identity
 from larch.core import logging_util
@@ -224,6 +225,11 @@ def test_resolve_implement_rater_model_uses_default_and_rejects_control_chars(
     _clear_rater_model_env(monkeypatch)
 
     assert dispatch_step2._resolve_implement_rater_model(tool="codex", session_env=tmp / "session-env.sh") == config.CODEX_DEFAULT_MODEL
+    assert dispatch_step2._resolve_implement_rater_model(
+        tool="codex",
+        session_env=tmp / "session-env.sh",
+        difficulty_tier=difficulty.TRIVIAL,
+    ) == config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.TRIVIAL]
 
     monkeypatch.setenv(config.ENV_LARCH_CODEX_MODEL, "bad\x1fmodel")
     assert dispatch_step2._resolve_implement_rater_model(tool="codex", session_env=tmp / "session-env.sh") == "unknown"
@@ -249,7 +255,7 @@ def test_write_step2_difficulty_record_passes_resolved_rater_model(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke_cli)
-    st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex")
+    st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex", difficulty="")
 
     dispatch_step2._write_step2_difficulty_record(
         st=cast("dispatch_step2.DispatchState", st),
@@ -259,6 +265,37 @@ def test_write_step2_difficulty_record_passes_resolved_rater_model(
 
     write_call = next(call for call in calls if call[:2] == ["difficulty", "write-record"])
     assert write_call[write_call.index("--rater-model") + 1] == "codex-env-model"
+
+
+def test_write_step2_difficulty_record_uses_trivial_tier_model(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+    calls: list[list[str]] = []
+
+    def fake_invoke_cli(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+        _ = cwd
+        argv = list(args)
+        calls.append(argv)
+        if argv[:2] == ["difficulty", "write-record"]:
+            output = Path(argv[argv.index("--output") + 1])
+            output.write_text("{}\n", encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke_cli)
+    st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex", difficulty=difficulty.TRIVIAL)
+
+    dispatch_step2._write_step2_difficulty_record(
+        st=cast("dispatch_step2.DispatchState", st),
+        manifest={"difficulty": {"predicted_tier": "TRIVIAL", "confidence": "medium", "rationale": "test fixture"}},
+        changed_paths={"README.md"},
+    )
+
+    write_call = next(call for call in calls if call[:2] == ["difficulty", "write-record"])
+    assert write_call[write_call.index("--rater-model") + 1] == config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.TRIVIAL]
 
 
 def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout: str = "", rc: int = 0) -> None:

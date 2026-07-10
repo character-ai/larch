@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from larch.core import config
+from larch.core import external_defaults
 from larch.git import rebase
 from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.errors import PrePushConflictHandoff, Stalled, TransientNetworkError
@@ -1728,7 +1729,7 @@ def test_conflict_loop_continues_when_log_missing_failure_class_kv(
 
     def launch_fn(tier: str, _csv: str) -> TierAttempt:
         launch_calls.append(tier)
-        if tier == config.FIXER_TIER_ORDER[-1]:
+        if tier == external_defaults.tool_order("implement.rebase_conflict_fixer")[-1]:
             return TierAttempt(
                 tier,
                 wrapper_rc=0,
@@ -1757,7 +1758,7 @@ def test_conflict_loop_continues_when_log_missing_failure_class_kv(
         cwd=str(tmp_path),
         tmpdir=str(tmp_path),
     )
-    assert launch_calls == list(config.FIXER_TIER_ORDER)
+    assert launch_calls == list(external_defaults.tool_order("implement.rebase_conflict_fixer"))
 
 
 def test_conflict_loop_health_failure_continues_to_next_tier(tmp_path: Path) -> None:
@@ -1767,7 +1768,7 @@ def test_conflict_loop_health_failure_continues_to_next_tier(tmp_path: Path) -> 
 
     def launch_fn(tier: str, _csv: str) -> TierAttempt:
         launch_calls.append(tier)
-        if tier == config.FIXER_TIER_ORDER[-1]:
+        if tier == external_defaults.tool_order("implement.rebase_conflict_fixer")[-1]:
             return TierAttempt(
                 tier,
                 wrapper_rc=0,
@@ -1810,7 +1811,7 @@ def test_conflict_loop_health_failure_continues_to_next_tier(tmp_path: Path) -> 
         cwd=str(tmp_path),
         tmpdir=str(tmp_path),
     )
-    assert launch_calls == list(config.FIXER_TIER_ORDER)
+    assert launch_calls == list(external_defaults.tool_order("implement.rebase_conflict_fixer"))
 
 
 def test_path_has_conflict_markers_detects_any_marker_line(tmp_path: Path) -> None:

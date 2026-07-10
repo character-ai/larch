@@ -370,14 +370,14 @@ def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixtu
     assert rc == 0
     out = capsys.readouterr().out
     assert out.startswith("💰 Cost: TOTAL ~$")
-    assert "Codex-5.5 $" in out
+    assert "Codex-5.6 $" in out
     assert "Codex-mini $" in out
     assert "Tokens:" in out
 
 
 def test_display_rates_shipped_defaults_snapshot() -> None:
     assert DEFAULT_VENDOR_MODEL == {
-        "codex": "gpt-5.5",
+        "codex": "gpt-5.6-sol",
         "cursor": "composer-2.5",
         "claude": "claude-opus-4-8",
     }
@@ -560,7 +560,9 @@ def test_codex_mini_rate_row_is_available() -> None:
 
 
 def test_rate_row_resolves_by_vendor_and_model() -> None:
-    assert rate_row("codex", model="gpt-5.4-mini") == DEFAULT_RATE_TABLE_PER_M[("codex", CODEX_MINI_MODEL)]
+    assert rate_row("codex", model="gpt-5.4-mini") == DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.4-mini")]
+    assert rate_row("codex", model="gpt-5.6-luna") == DEFAULT_RATE_TABLE_PER_M[("codex", CODEX_MINI_MODEL)]
+    assert rate_row("codex", model="gpt-5.6-sol") == DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.6-sol")]
     assert rate_row("codex", model="gpt-5.5") == DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.5")]
 
 
@@ -575,8 +577,8 @@ def test_rate_row_unknown_and_missing_model_fall_back_to_vendor_default() -> Non
 def test_codex_mini_env_overrides_apply() -> None:
     rates = display_rates(environ={"LARCH_CODEX_MINI_INPUT_RATE_PER_M": "9.0"})
     assert rates.codex_mini_input == 9.0
-    # The gpt-5.5 codex rate is unaffected by the mini override.
-    assert rates.codex_input == DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.5")]["input"]
+    # The gpt-5.6-sol codex rate is unaffected by the mini override.
+    assert rates.codex_input == DEFAULT_RATE_TABLE_PER_M[("codex", "gpt-5.6-sol")]["input"]
 
 
 def test_token_cost_argv_splits_codex_by_model() -> None:

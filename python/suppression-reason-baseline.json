@@ -5063,13 +5063,6 @@
   {
     "file": "larch/review/review_dispatch_panel.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415",
-    "occurrence": 6,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/review_dispatch_panel.py",
-    "suppression_kind": "noqa",
     "text": "noqa: PLR0915,RUF100",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"

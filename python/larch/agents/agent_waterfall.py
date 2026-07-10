@@ -34,6 +34,7 @@ _USAGE = (
     "Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. "
     "--straggler-cutoff enables the adaptive reviewer straggler deadline for this dispatch. "
     "--model-role default|review|vote|fix forwards an explicit Codex model role to Codex launches. "
+    "--default-model forwards a non-empty Codex model default after env overrides and before role defaults. "
     "--difficulty forwards the applied difficulty tier to prompt renderers. "
     "Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
 )
@@ -101,6 +102,7 @@ class Options:
     site: str = "review Step 2"
     session_env_path: str = ""
     model_role: str = ""
+    default_model: str = ""
     difficulty: str = ""
     claude_read_tools_add_dir: str = ""
     panel_artifact_dir: str = ""
@@ -193,6 +195,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "site": "review Step 2",
         "session_env_path": "",
         "model_role": "",
+        "default_model": "",
         "difficulty": "",
         "claude_read_tools_add_dir": "",
         "panel_artifact_dir": "",
@@ -218,6 +221,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
             "--site": "site",
             "--session-env-path": "session_env_path",
             "--model-role": "model_role",
+            "--default-model": "default_model",
             "--difficulty": "difficulty",
             "--claude-read-tools-add-dir": "claude_read_tools_add_dir",
             "--panel-artifact-dir": "panel_artifact_dir",
@@ -299,6 +303,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         site=site,
         session_env_path=str(values["session_env_path"]),
         model_role=model_role,
+        default_model=str(values["default_model"]),
         difficulty=str(values["difficulty"]),
         claude_read_tools_add_dir=str(values["claude_read_tools_add_dir"]),
         panel_artifact_dir=str(values["panel_artifact_dir"]),
@@ -577,6 +582,8 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             effective_role = slot.model_role or opts.model_role
             if effective_role:
                 argv.extend(["--model-role", effective_role])
+            if opts.default_model:
+                argv.extend(["--default-model", opts.default_model])
         elif tool == "cursor" and slot.cursor_model:
             argv.extend(["--cursor-model", slot.cursor_model])
     child_env: dict[str, str] | None = None

@@ -20,8 +20,8 @@ DEFAULT_VENDOR_MODEL = {
     "claude": config.CLAUDE_OPUS_4_8_MODEL,
 }
 
-# Pricing sources, verified as of 2026-06-11:
-# - OpenAI Codex pricing credits for gpt-5.5 at $0.04/credit.
+# Pricing sources, verified as of 2026-07-09:
+# - OpenAI GPT-5.6 family and historical Codex model pricing.
 # - Cursor docs models-and-pricing composer-2.5 row + Teams surcharge (see below).
 # - Anthropic Claude Opus/Sonnet/Haiku/Fable list-price buckets.
 
@@ -36,6 +36,21 @@ CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M = config.CURSOR_TEAMS_TOKEN_RATE_SURCHAR
 CURSOR_COMPOSER_BASE = {"input": 0.50, "cache_read": 0.20, "output": 2.50}
 
 DEFAULT_RATE_TABLE_PER_M = {
+    ("codex", "gpt-5.6-sol"): {
+        "input": 5.00,
+        "cache_read": 0.50,
+        "output": 30.00,
+    },
+    ("codex", "gpt-5.6-terra"): {
+        "input": 2.50,
+        "cache_read": 0.25,
+        "output": 15.00,
+    },
+    ("codex", "gpt-5.6-luna"): {
+        "input": 1.00,
+        "cache_read": 0.10,
+        "output": 6.00,
+    },
     ("codex", "gpt-5.5"): {
         "input": 5.00,
         "cache_read": 0.50,
@@ -95,11 +110,11 @@ CODEX_CURSOR_BLENDED_FLEET_MIX = {
 }
 DEFAULT_CLAUDE_BLENDED_PER_M = 0.80
 
-# Codex can run two models in one workflow: default-role gpt-5.5 reviewers and
-# cheaper gpt-5.4-mini coder/fixer rows. The pricing/display split is keyed on
-# these two model ids; every other Codex model (and model-less legacy rows)
-# falls back to the vendor default rate via rate_row.
+# Codex can run default and mini-class models in one workflow. The display split
+# routes historical gpt-5.4-mini and current gpt-5.6-luna rows to Codex-mini;
+# every other Codex model, including model-less legacy rows, uses the default bucket.
 CODEX_MINI_MODEL = config.CODEX_REVIEW_MODEL_DEFAULT
+CODEX_MINI_MODELS = frozenset({"gpt-5.4-mini", "gpt-5.6-luna"})
 CLAUDE_SUB_MODEL_FLAG_PREFIXES = {
     config.CLAUDE_SONNET_4_6_MODEL: "claude-sub-sonnet",
     config.CLAUDE_HAIKU_4_5_MODEL: "claude-sub-haiku",
@@ -112,7 +127,7 @@ def rate_row(vendor: str, *, model: str | None = None) -> Mapping[str, float]:
 
     Falls back to the vendor's ``DEFAULT_VENDOR_MODEL`` row when ``model`` is empty
     or absent from the table. Model-less legacy ledger rows therefore price at the
-    vendor default (gpt-5.5 for codex), which is correct for the pre-mini era.
+    vendor default (gpt-5.6-sol for codex).
     """
     if model:
         row = DEFAULT_RATE_TABLE_PER_M.get((vendor, model))
@@ -251,10 +266,9 @@ def aggregate_vendor_tokens(*, record: RunRecord, vendor: VendorName) -> int:
 def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]:
     """Codex token flags, split by model when the report carries a per-model split.
 
-    Reads ``BUCKETS_codex_by_model`` (added by tokens.py report building); gpt-5.4-mini
-    rows route to ``--codex-mini-*`` flags, every other model (gpt-5.5, unknown, and
-    model-less legacy) folds into the gpt-5.5 ``--codex-*`` flags. Falls back to the
-    model-summed ``BUCKETS_codex`` (priced as gpt-5.5) when no per-model split exists.
+    Reads ``BUCKETS_codex_by_model`` (added by tokens.py report building); mini-class
+    rows route to ``--codex-mini-*`` flags. Every other model and model-less legacy
+    row folds into the ``--codex-*`` flags. Falls back to the model-summed bucket.
     """
     by_model = _as_mapping(record.raw_report.get("BUCKETS_codex_by_model"))
     if not by_model:
@@ -267,7 +281,7 @@ def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]
     mini_in = mini_cached = mini_out = 0
     for model, raw_mb in by_model.items():
         mb = _as_mapping(raw_mb)
-        if model == CODEX_MINI_MODEL:
+        if model in CODEX_MINI_MODELS:
             mini_in += safe_int(value=mb.get("input"))
             mini_cached += safe_int(value=mb.get("cached_input"))
             mini_out += safe_int(value=mb.get("output"))
@@ -547,7 +561,7 @@ def _pricing_from_counts(
         warn = warn or c_tokens > 0
         claude = _cost_blend(tokens=c_tokens, rate=rates.claude_blended)
     if d_bucket or d_mini_bucket:
-        # gpt-5.5 (default) and gpt-5.4-mini Codex tokens are priced at their own
+        # Codex default and mini-class tokens are priced at their own
         # model rates and summed; the lane can mix both models within one round.
         d_tokens = (
             counts["d_in"] + counts["d_cached"] + counts["d_out"]
@@ -662,7 +676,7 @@ def _emit_cost_line(*, total: str, claude: str, codex_5_5: str, codex_mini: str,
     except ValueError:
         tok_k = 0
     return (
-        f"💰 Cost: TOTAL ~{money(total)}: Claude {money(claude)}, Codex-5.5 {money(codex_5_5)}, "
+        f"💰 Cost: TOTAL ~{money(total)}: Claude {money(claude)}, Codex-5.6 {money(codex_5_5)}, "
         f"Codex-mini {money(codex_mini)}, Cursor {money(cursor)}, Claude (subprocess) {money(claude_sub)}  |  Tokens: {tok_k}k\n"
     )
 
