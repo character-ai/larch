@@ -406,6 +406,15 @@ def _render_payload(identity: LaneIdentity, result: LaneResult, *, evidence: Evi
     return "".join(f"{key}={value}\n" for key, value in values.items())
 
 
+def _rollback_sidecars(previous: dict[Path, bytes | None]) -> None:
+    for path, prior_bytes in previous.items():
+        with contextlib.suppress(OSError):
+            if prior_bytes is None:
+                path.unlink(missing_ok=True)
+            else:
+                larch_io.atomic_write(path, prior_bytes.decode("utf-8"), mode=0o600, nofollow=True)
+
+
 def _persist(identity: LaneIdentity, result: LaneResult, evidence: EvidenceState, *, runner: Runner) -> LaneResult:
     if result.result not in _RESULT_TOKENS:
         raise LaneClosedError("invalid typed result")
@@ -449,12 +458,7 @@ def _persist(identity: LaneIdentity, result: LaneResult, evidence: EvidenceState
         if status_bytes != result_bytes or status_bytes != payload.encode():
             raise LaneClosedError("status and bgjob result env disagree")
     except (OSError, UnicodeError, ValueError, LaneClosedError):
-        for path, prior_bytes in previous.items():
-            with contextlib.suppress(OSError):
-                if prior_bytes is None:
-                    path.unlink(missing_ok=True)
-                else:
-                    larch_io.atomic_write(path, prior_bytes.decode("utf-8"), mode=0o600, nofollow=True)
+        _rollback_sidecars(previous)
         raise
     return result
 

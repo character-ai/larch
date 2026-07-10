@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Any
 
 import pytest
 
@@ -16,9 +16,6 @@ from larch.agents import _ci_launcher
 from larch.core import config
 from larch.implement import ci, ci_monitor
 from larch.cli import _REGISTRY
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _res(rc: int = 0, stdout: str = "", stderr: str = "") -> CommandResult:
@@ -715,7 +712,7 @@ def test_fixer_lane_rolls_back_rounds_when_result_persistence_fails(
     )
     real_write = ci.ci_fixer_lane.larch_io.atomic_write
 
-    def failing_write(path: str | Path, text: str, **kwargs: object) -> None:
+    def failing_write(path: str | Path, text: str, **kwargs: Any) -> None:
         if Path(path).name == config.CI_FIXER_STATUS_FILE:
             raise OSError("status write failed")
         real_write(path, text, **kwargs)
