@@ -139,6 +139,18 @@ def step6_prelude_main(argv: Sequence[str]) -> int:
     return step6_prelude_core(argv)
 
 
+def _step6_preservation_message(status: dict[str, str]) -> str | None:
+    if status.get("PLAN_WRITE_OK", "") != "true":
+        return f"**{STEP6_INFO_ICON} Step 6: plan write did not succeed; preserving $DESIGN_TMPDIR.**"
+    if status.get("STANDALONE_HEAVY_FAILED", "false") == "true":
+        return f"**{STEP6_INFO_ICON} Step 6: standalone heavy failed; preserving $DESIGN_TMPDIR.**"
+    if status.get("SESSION_ID", "") and status.get("PUBLISH_OK", "") != "true":
+        return f"**{STEP6_INFO_ICON} Step 6: publish did not complete; preserving $DESIGN_TMPDIR for recovery.**"
+    if status.get("CLEANUP_ELIGIBLE", "") == "false":
+        return f"**{STEP6_INFO_ICON} Step 6: cleanup not eligible per Step 5c status; preserving $DESIGN_TMPDIR.**"
+    return None
+
+
 def step6_cleanup_core(argv: Sequence[str]) -> int:
     try:
         parsed = _parse_common_wrapper_args(argv)
@@ -161,21 +173,13 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
         return 0
 
     status = _read_step5c_status_sidecar(design_tmpdir)
-    if status.get("PLAN_WRITE_OK", "") != "true":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: plan write did not succeed; preserving $DESIGN_TMPDIR.**")
-        return 0
-    if status.get("STANDALONE_HEAVY_FAILED", "false") == "true":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: standalone heavy failed; preserving $DESIGN_TMPDIR.**")
-        return 0
-    if status.get("SESSION_ID", "") and status.get("PUBLISH_OK", "") != "true":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: publish did not complete; preserving $DESIGN_TMPDIR for recovery.**")
-        return 0
-    if status.get("CLEANUP_ELIGIBLE", "") == "false":
-        _step6_emit_cleanup_preserved(f"**{STEP6_INFO_ICON} Step 6: cleanup not eligible per Step 5c status; preserving $DESIGN_TMPDIR.**")
+    preserve_msg = _step6_preservation_message(status)
+    if preserve_msg is not None:
+        _step6_emit_cleanup_preserved(preserve_msg)
         return 0
 
     try:
-        session_env._validate_claude_pid(parsed.claude_pid)  # pyright: ignore[reportPrivateUsage]  # sibling module private helper validates PID consistently
+        session_env.validate_claude_pid(parsed.claude_pid)
     except ValueError as exc:
         _core_diagnostic(f"design-step6-cleanup.sh: {exc}")
         return CONFIGURATION_ERROR_RC

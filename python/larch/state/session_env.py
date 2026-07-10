@@ -965,6 +965,9 @@ def _validate_claude_pid(pid: str) -> None:
         raise ValueError("Invalid --claude-pid: must be a positive integer of at most 7 decimal digits")
 
 
+validate_claude_pid = _validate_claude_pid
+
+
 def _validate_design_current_env_link(*, symlink_path: Path, pid: str) -> None:
     expected = _design_symlink_path(pid)
     if symlink_path != expected:
