@@ -7240,6 +7240,108 @@ def _run_step2(tmp: Path, *, coder: str = "codex") -> int:
     ])
 
 
+def _install_step2_pre_commit_hook(repo: Path, body: str) -> Path:
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    _ = hook.write_text("#!/bin/sh\nset -eu\n" + body, encoding="utf-8")
+    hook.chmod(0o755)
+    return hook
+
+
+def test_step2_dispatch_retries_after_fixer_pre_commit_hook(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    counter = repo / ".git" / "hook-count"
+    _install_step2_pre_commit_hook(
+        repo,
+        """
+count=0
+if [ -f .git/hook-count ]; then
+  count=$(cat .git/hook-count)
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > .git/hook-count
+if [ "$count" = "1" ]; then
+  printf '\n' >> implemented.txt
+  printf 'files were modified by this hook\n' >&2
+  exit 1
+fi
+exit 0
+""",
+    )
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest(ack="honoring I-Stale-1, G-Idem-1 for this change")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    _patch_successful_step2(monkeypatch)
+
+    assert _run_step2(tmp) == 0
+    assert "STATUS=complete" in capsys.readouterr().out
+    assert counter.read_text(encoding="utf-8").strip() == "2"
+    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "Implement with architecture acknowledgment"
+    assert _git(repo, "show", "HEAD:implemented.txt").stdout == "done\n"
+    assert _git(repo, "status", "--porcelain").stdout == ""
+    assert (tmp / "codex-step2-out" / "manifest.json").is_file()
+    assert (tmp / "manifest-raw.json").is_file()
+    assert not (tmp / "codex-commit-stderr.txt").exists()
+
+
+def test_step2_dispatch_persistent_pre_commit_failure_uses_second_stderr(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    counter = repo / ".git" / "hook-count"
+    _install_step2_pre_commit_hook(
+        repo,
+        """
+count=0
+if [ -f .git/hook-count ]; then
+  count=$(cat .git/hook-count)
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > .git/hook-count
+printf 'commit attempt %s failed\n' "$count" >&2
+exit 1
+""",
+    )
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest(ack="honoring I-Stale-1, G-Idem-1 for this change")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=commit-failed" in out
+    assert counter.read_text(encoding="utf-8").strip() == "2"
+    assert (tmp / "codex-commit-stderr.txt").read_text(encoding="utf-8") == "commit attempt 2 failed\n"
+    assert not (tmp / "codex-step2-out" / "manifest.json").exists()
+    assert not (tmp / "manifest-raw.json").exists()
+    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "base"
+
+
 def test_step2_dispatch_required_architectural_acknowledgment_passes(
     repo: Path,
     tmp_path: Path,
