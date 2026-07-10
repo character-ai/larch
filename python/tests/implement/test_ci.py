@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 
@@ -660,6 +662,76 @@ def test_fixer_lane_cli_is_registered_and_help(capsys: pytest.CaptureFixture[str
     assert _REGISTRY[("ci", "fixer-lane")] == ("larch.implement.ci", "fixer_lane_main")
     assert ci.fixer_lane_main(["--help"]) == 0
     assert "ci fixer-lane" in capsys.readouterr().out
+
+
+def test_fixer_lane_rejects_pr_only_identity_before_result_path_validation(tmp_path: Path) -> None:
+    impl = tmp_path / "impl"
+    handoff = impl / "ci-fixer"
+    handoff.mkdir(parents=True)
+    args = ci.ci_fixer_lane._parse_args([
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(impl),
+        "--handoff-dir", str(handoff), "--repo", "o/r", "--pr", "1",
+        "--tier", "codex", "--attempt", "1", "--starting-head", "a" * 40,
+        "--input-fingerprint", "b" * 64,
+        "--bgjob-result-env", str(impl / "bgjob" / "unresolved.merge.env"),
+    ])
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="run id must be resolved"):
+        ci.ci_fixer_lane._validated_run_identity(args)
+
+
+def test_fixer_lane_rejects_error_logs_as_raw_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    handoff = impl / "ci-fixer"
+    handoff.mkdir(parents=True)
+    identity = ci.ci_fixer_lane.LaneIdentity(
+        repo_root=tmp_path, implement_tmpdir=impl, handoff_dir=handoff, repo="o/r", pr=None,
+        run_id="42", tier="codex", attempt=1, starting_head="a" * 40,
+        input_fingerprint="b" * 64, step="step", result_env=impl / "bgjob" / "step.merge.env",
+        invariant_evidence=None,
+    )
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "prepare_failure_evidence",
+        lambda *_args, **_kwargs: ci_monitor.LogCollectResult("gh auth failed\n", "error"),
+    )
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="no usable failed-log body"):
+        ci.ci_fixer_lane._collect_evidence(identity, runner=RecordingRunner())
+    assert not (handoff / "failed-ci.raw.redacted.log").exists()
+
+
+def test_fixer_lane_rolls_back_rounds_when_result_persistence_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    impl = tmp_path / "impl"
+    handoff = impl / "ci-fixer"
+    handoff.mkdir(parents=True)
+    identity = ci.ci_fixer_lane.LaneIdentity(
+        repo_root=tmp_path, implement_tmpdir=impl, handoff_dir=handoff, repo="o/r", pr=None,
+        run_id="42", tier="codex", attempt=1, starting_head="a" * 40,
+        input_fingerprint="b" * 64, step="step", result_env=impl / "bgjob" / "step.merge.env",
+        invariant_evidence=None,
+    )
+    real_write = ci.ci_fixer_lane.larch_io.atomic_write
+
+    def failing_write(path: str | Path, text: str, **kwargs: object) -> None:
+        if Path(path).name == config.CI_FIXER_STATUS_FILE:
+            raise OSError("status write failed")
+        real_write(path, text, **kwargs)
+
+    monkeypatch.setattr(ci.ci_fixer_lane.larch_io, "atomic_write", failing_write)
+    runner = RecordingRunner(responses=[_res(0, "a" * 40)])
+
+    with pytest.raises(OSError, match="status write failed"):
+        ci.ci_fixer_lane._persist(
+            identity,
+            ci.ci_fixer_lane.LaneResult("retry-next-tool", "no progress", "a" * 40),
+            ci.ci_fixer_lane.EvidenceState(handoff / "failure.md", "distilled", "c" * 64),
+            runner=runner,
+        )
+    assert not (handoff / config.CI_FIXER_ROUNDS_FILE).exists()
+    assert not identity.result_env.exists()
 
 
 def test_ci_launcher_prompt_includes_untrusted_invariant_evidence(

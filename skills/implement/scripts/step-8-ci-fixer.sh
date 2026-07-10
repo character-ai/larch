@@ -16,20 +16,49 @@ read_key() {
 
 fail() { printf 'RESULT=operator-bail\nREASON=%s\n' "$1"; exit 0; }
 
+safe_paths() {
+  python3 - "$@" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1])
+if not root.is_absolute() or root.is_symlink() or not root.is_dir() or root.resolve(strict=True) != root:
+    raise SystemExit(1)
+for raw in sys.argv[2:]:
+    path = Path(raw)
+    if not path.is_absolute() or path.is_symlink():
+        raise SystemExit(1)
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise SystemExit(1)
+    current = path
+    while not current.exists():
+        current = current.parent
+    while True:
+        if current.is_symlink():
+            raise SystemExit(1)
+        if current == root:
+            break
+        current = current.parent
+PY
+}
+
 case "$IMPLEMENT_TMPDIR" in /*) ;; *) fail unsafe-tmpdir ;; esac
 [ ! -L "$IMPLEMENT_TMPDIR" ] && [ -d "$IMPLEMENT_TMPDIR" ] || fail unsafe-tmpdir
+safe_paths "$IMPLEMENT_TMPDIR" "$IMPLEMENT_TMPDIR" || fail unsafe-tmpdir
 HANDOFF_DIR="$IMPLEMENT_TMPDIR/ci-fixer"
 BGJOB_DIR="$IMPLEMENT_TMPDIR/bgjob"
-[ ! -L "$HANDOFF_DIR" ] || fail unsafe-handoff
-[ ! -L "$BGJOB_DIR" ] || fail unsafe-bgjob-dir
+safe_paths "$IMPLEMENT_TMPDIR" "$HANDOFF_DIR" "$BGJOB_DIR" || fail unsafe-sidecar
 mkdir -p "$HANDOFF_DIR" "$BGJOB_DIR"
+safe_paths "$IMPLEMENT_TMPDIR" "$HANDOFF_DIR" "$BGJOB_DIR" || fail unsafe-sidecar
 
 STATE="$IMPLEMENT_TMPDIR/ship-pr-state.sh"
 SESSION="$IMPLEMENT_TMPDIR/session-env.sh"
 REPO_ROOT=${REPO_ROOT:-$(read_key REPO_ROOT "$SESSION")}
 REPO=${REPO:-$(read_key REPO "$STATE")}
 PR_NUMBER=${PR_NUMBER:-$(read_key PR_NUMBER "$STATE")}
-RUN_ID=${CI_RUN_ID:-$(read_key FAILED_RUN_ID "$STATE")}
+RUN_ID=${CI_RUN_ID:-}
 [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/.git" ] && [ ! -L "$REPO_ROOT" ] || fail missing-repo-root
 [ -n "$REPO" ] || fail missing-repo
 
@@ -38,8 +67,15 @@ case "$STARTING_HEAD" in ''|*[!0-9a-f]*) fail invalid-head ;; esac
 INPUT_FINGERPRINT=$(git -C "$REPO_ROOT" diff --binary HEAD | shasum -a 256 | awk '{print $1}')
 ROUNDS="$HANDOFF_DIR/fixer-rounds.tsv"
 STATUS="$HANDOFF_DIR/fixer-status.env"
-[ ! -L "$ROUNDS" ] && [ ! -L "$STATUS" ] || fail unsafe-sidecar
-if [ -z "$RUN_ID" ] && [ -f "$STATUS" ]; then RUN_ID=$(read_key RUN_ID "$STATUS"); fi
+safe_paths "$IMPLEMENT_TMPDIR" "$ROUNDS" "$STATUS" || fail unsafe-sidecar
+if [ -z "$RUN_ID" ] && [ -f "$STATUS" ]; then
+  STATUS_RUN=$(read_key RUN_ID "$STATUS")
+  STATUS_HEAD=$(read_key STARTING_HEAD "$STATUS")
+  STATUS_FINGERPRINT=$(read_key INPUT_FINGERPRINT "$STATUS")
+  if [ "$STATUS_HEAD" = "$STARTING_HEAD" ] && [ "$STATUS_FINGERPRINT" = "$INPUT_FINGERPRINT" ]; then
+    RUN_ID=$STATUS_RUN
+  fi
+fi
 if [ -z "$RUN_ID" ]; then
   [ -n "$PR_NUMBER" ] || fail missing-run-identity
   RUN_ID=$(python3 - "$CLAUDE_PLUGIN_ROOT" "$REPO_ROOT" "$REPO" "$PR_NUMBER" <<'PY'
@@ -99,7 +135,7 @@ SUFFIX=$(printf '%s\0%s\0%s\0%s\0%s' "$IDENTITY_RUN" "$ATTEMPT" "$TIER" "$STARTI
 STEP="implement-step8-ci-fixer-${ATTEMPT}-${TIER}-${SUFFIX}"
 MERGE_ENV="$BGJOB_DIR/$STEP.merge.env"
 RESULT_ENV="$BGJOB_DIR/$STEP.result.env"
-[ ! -L "$MERGE_ENV" ] && [ ! -L "$RESULT_ENV" ] || fail unsafe-result
+safe_paths "$IMPLEMENT_TMPDIR" "$MERGE_ENV" "$RESULT_ENV" || fail unsafe-result
 
 set +e
 WAIT_OUT=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0 2>/dev/null)
@@ -121,6 +157,7 @@ else
   START_FRESH=1
 fi
 if [ "$START_FRESH" -eq 1 ]; then
+  safe_paths "$IMPLEMENT_TMPDIR" "$MERGE_ENV" "$RESULT_ENV" || fail unsafe-result
   rm -f "$MERGE_ENV" "$RESULT_ENV"
   CHILD=(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ci fixer-lane
     --repo-root "$REPO_ROOT" --implement-tmpdir "$IMPLEMENT_TMPDIR"
@@ -138,7 +175,8 @@ if [ "$START_FRESH" -eq 1 ]; then
 fi
 
 case "$WAIT_OUT" in *BGJOB_STATUS=DONE*BGJOB_RC=0*) ;; *) fail bgjob-not-successful ;; esac
-[ -f "$MERGE_ENV" ] && [ ! -L "$MERGE_ENV" ] && [ -f "$STATUS" ] || fail missing-result
+safe_paths "$IMPLEMENT_TMPDIR" "$MERGE_ENV" "$STATUS" || fail unsafe-result
+[ -f "$MERGE_ENV" ] && [ ! -L "$MERGE_ENV" ] && [ -f "$STATUS" ] && [ ! -L "$STATUS" ] || fail missing-result
 python3 - "$MERGE_ENV" "$STATUS" "$STEP" "$IDENTITY_RUN" "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" <<'PY' || fail merge-status-disagreement
 from pathlib import Path
 import sys
