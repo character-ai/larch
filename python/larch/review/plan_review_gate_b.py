@@ -84,7 +84,7 @@ def _gate_b_fallback_predicates(concern: str) -> set[str]:
 
 
 def _gate_b_fallback_label(concern: str) -> str:
-    # Gate B fallback mirrors skills/design/references/approval-gates.md:
+    # Gate B fallback mirrors skills/design/references/approval-gates-gate-b.md:
     # collect every Concern-text predicate that matches, choose the lowest
     # bucket (Low < Medium < High < Critical), and default no-match or empty
     # concerns to Low. This display bucketing is intentionally separate from

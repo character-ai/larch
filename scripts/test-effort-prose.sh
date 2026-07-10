@@ -10,6 +10,7 @@ FILES=(
   python/larch/rendering/rendering.py
   skills/design/SKILL.md
   skills/design/references/plan-review.md
+  skills/design/references/plan-review-runtime.md
   skills/implement/SKILL.md
   skills/review/SKILL.md
   skills/shared/voting-protocol.md

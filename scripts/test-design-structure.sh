@@ -11,13 +11,18 @@ ORCH_NEVER_MD="$ROOT/skills/shared/orchestrator-never.md"
 BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
 DESIGN_OUTLINE_MD="$ROOT/skills/design/references/design-outline.md"
 APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
+APPROVAL_GATE_A_MD="$ROOT/skills/design/references/approval-gates-gate-a.md"
+APPROVAL_GATE_B_MD="$ROOT/skills/design/references/approval-gates-gate-b.md"
+APPROVAL_GATE_C_MD="$ROOT/skills/design/references/approval-gates-gate-c.md"
 PLAN_REVIEW_MD="$ROOT/skills/design/references/plan-review.md"
+PLAN_REVIEW_RUNTIME_MD="$ROOT/skills/design/references/plan-review-runtime.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
 STEP2B5_RC_MD="$ROOT/skills/design/references/step2b5-rc-handling.md"
 OOS_STEP5B_DISPATCH_MD="$ROOT/skills/design/references/oos-step5b-dispatch.md"
 DIALECTIC_LEGACY_ATTIC_MD="$ROOT/docs/attic/dialectic-legacy.md"
 FINALIZE_STEP5_MD="$ROOT/skills/design/references/finalize-step5.md"
+FINALIZE_STEP5_FAILURES_MD="$ROOT/skills/design/references/finalize-step5-failures.md"
 CLI_PY="$ROOT/python/larch/cli.py"
 # After the god-module split, design_lifecycle.py is a thin re-export shim.
 # Combine all sub-modules so existing structural checks still find their strings.
@@ -71,6 +76,13 @@ not_contains() {
     fail "$label"
   fi
 }
+contains "$SKILL_MD" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-runtime.md` completely before invoking `design-step3-entry.sh`; the entry wrapper emits the preview internally.' 'Step 3 must load runtime slice before entry'
+contains "$SKILL_MD" 'approval-gates-gate-b.md` completely. This Gate B slice is unconditional' 'Gate B slice must load unconditionally'
+contains "$SKILL_MD" 'approval-gates-gate-c.md` completely. This Gate C slice is unconditional' 'Gate C slice must load unconditionally'
+contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging/export and before this fence' 'failure slice must load before failed final summary'
+not_contains "$FINALIZE_STEP5_MD" '## /design auto error reporting' 'green finalize must exclude failure reporting'
+contains "$FINALIZE_STEP5_FAILURES_MD" '## /design auto error reporting' 'failure slice must own error reporting'
+
 extract_stdout_keys_block() {
   awk '
     /^_DESIGN_LIFECYCLE_STDOUT_KEYS:/ { flag = 1; next }
@@ -340,25 +352,25 @@ contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=false`
 not_contains "$SKILL_MD" 'Run exactly once after skip or finish' 'Step 1d.5 must not describe completion fence as after skip'
 contains "$DESIGN_OUTLINE_MD" 'When `skip_approve_requested=true`: run Output, run Presentation via `present-note --repo-root "$REPO_ROOT"`, assess invariants before guidelines, and if invariant violations remain, enter the remediation loop instead of auto-approving.' 'Design outline must block skip-approve auto-approval until invariant remediation clears'
 contains "$DESIGN_OUTLINE_MD" 'Bound the invariant outline remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-outline-remediation.count`, read on Step 1d.7 invariant entry, incremented per rewrite, mirroring Gate C. Hard-stop after the bound and record a warning.' 'Design outline must pin bounded remediation counter contract'
-contains "$APPROVAL_GATES_MD" 'If invariant violations remain after assessment, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving.' 'Gate C must block auto-approval until invariant remediation clears'
-contains "$APPROVAL_GATES_MD" 'Bound the remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-gatec-remediation.count`: read it on Gate C entry and increment it per remediation attempt so pause/resume or repeated entry cannot reset it. After the bound (for example two attempts), hard-stop with a clear operator repair message.' 'Gate C must pin bounded remediation counter contract'
+contains "$APPROVAL_GATE_C_MD" 'If invariant violations remain after assessment, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving.' 'Gate C must block auto-approval until invariant remediation clears'
+contains "$APPROVAL_GATE_C_MD" 'Bound the remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-gatec-remediation.count`: read it on Gate C entry and increment it per remediation attempt so pause/resume or repeated entry cannot reset it. After the bound (for example two attempts), hard-stop with a clear operator repair message.' 'Gate C must pin bounded remediation counter contract'
 
-contains "$APPROVAL_GATES_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment clean' 'Gate C must persist clean invariant assessments'
-contains "$APPROVAL_GATES_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-invariant-assessment.input.sidecar"' 'Gate C must persist remediated invariant sidecar assessments'
-contains "$APPROVAL_GATES_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags so stale artifacts are removed.' 'Gate C must document no-flags invariant stale-artifact removal'
-contains "$APPROVAL_GATES_MD" '**Clean**: only when invariants are `present` with parsed non-empty content and no violation assessment was required (no `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` path and no remediated-violations sidecar).' 'Gate C must pin clean invariant persist dispatch condition'
-contains "$APPROVAL_GATES_MD" '**Remediated-violations**: when violations were identified and the remediation loop produced a clean plan.' 'Gate C must pin remediated invariant persist dispatch condition'
-contains "$APPROVAL_GATES_MD" '**Absent, invalid, or present-but-empty**: when `read_invariants().status` is not `present` or parsed `content.strip()` is empty after parsing `I-*` entries.' 'Gate C must pin no-assessment invariant persist dispatch condition'
-contains "$APPROVAL_GATES_MD" 'If invariant present-note emits `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview.' 'Gate C must pin invariant violation assessment flow'
-contains "$APPROVAL_GATES_MD" '**⚠ 4b: architectural-invariant assessment persistence failed**' 'Gate C must keep distinct invariant persist failure message'
-contains "$APPROVAL_GATES_MD" '**Fail-closed persistence contract**: every invariant and guideline `persist-design-assessment` invocation must exit `0` before Gate C continues' 'Gate C must fail closed for invariant and guideline persistence'
-_invariant_persist_line=$(awk '/architectural-invariants persist-design-assessment --repo-root/ { print NR; exit }' "$APPROVAL_GATES_MD")
-_guideline_persist_line=$(awk '/architectural-guidelines persist-design-assessment --repo-root/ { print NR; exit }' "$APPROVAL_GATES_MD")
+contains "$APPROVAL_GATE_C_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment clean' 'Gate C must persist clean invariant assessments'
+contains "$APPROVAL_GATE_C_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-invariant-assessment.input.sidecar"' 'Gate C must persist remediated invariant sidecar assessments'
+contains "$APPROVAL_GATE_C_MD" 'python/cli.py architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags so stale artifacts are removed.' 'Gate C must document no-flags invariant stale-artifact removal'
+contains "$APPROVAL_GATE_C_MD" '**Clean**: only when invariants are `present` with parsed non-empty content and no violation assessment was required (no `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` path and no remediated-violations sidecar).' 'Gate C must pin clean invariant persist dispatch condition'
+contains "$APPROVAL_GATE_C_MD" '**Remediated-violations**: when violations were identified and the remediation loop produced a clean plan.' 'Gate C must pin remediated invariant persist dispatch condition'
+contains "$APPROVAL_GATE_C_MD" '**Absent, invalid, or present-but-empty**: when `read_invariants().status` is not `present` or parsed `content.strip()` is empty after parsing `I-*` entries.' 'Gate C must pin no-assessment invariant persist dispatch condition'
+contains "$APPROVAL_GATE_C_MD" 'If invariant present-note emits `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview.' 'Gate C must pin invariant violation assessment flow'
+contains "$APPROVAL_GATE_C_MD" '**⚠ 4b: architectural-invariant assessment persistence failed**' 'Gate C must keep distinct invariant persist failure message'
+contains "$APPROVAL_GATE_C_MD" '**Fail-closed persistence contract**: every invariant and guideline `persist-design-assessment` invocation must exit `0` before Gate C continues' 'Gate C must fail closed for invariant and guideline persistence'
+_invariant_persist_line=$(awk '/architectural-invariants persist-design-assessment --repo-root/ { print NR; exit }' "$APPROVAL_GATE_C_MD")
+_guideline_persist_line=$(awk '/architectural-guidelines persist-design-assessment --repo-root/ { print NR; exit }' "$APPROVAL_GATE_C_MD")
 [ -n "$_invariant_persist_line" ] || fail "Gate C missing invariant persist text"
 [ -n "$_guideline_persist_line" ] || fail "Gate C missing guideline persist text"
 [ "$_invariant_persist_line" -lt "$_guideline_persist_line" ] || fail "Gate C invariant persist must precede guideline persist"
-_invariant_flow_line=$(awk '/INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true/ { print NR; exit }' "$APPROVAL_GATES_MD")
-_invariant_branch_line=$(awk '/\*\*Clean\*\*: only when invariants are `present`/ { print NR; exit }' "$APPROVAL_GATES_MD")
+_invariant_flow_line=$(awk '/INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true/ { print NR; exit }' "$APPROVAL_GATE_C_MD")
+_invariant_branch_line=$(awk '/\*\*Clean\*\*: only when invariants are `present`/ { print NR; exit }' "$APPROVAL_GATE_C_MD")
 [ -n "$_invariant_flow_line" ] || fail "Gate C missing invariant assessment flow marker"
 [ -n "$_invariant_branch_line" ] || fail "Gate C missing invariant persist branch marker"
 [ "$_invariant_flow_line" -lt "$_invariant_branch_line" ] || fail "Gate C invariant assessment flow must precede persist branches"
@@ -470,7 +482,7 @@ not_contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" desi
 _step3_entry_launcher_count=$(grep -Fc '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-entry.sh' "$SKILL_MD" || true)
 [ "$_step3_entry_launcher_count" -eq 1 ] || fail "SKILL must retain exactly one Step 3 entry launcher fence, found $_step3_entry_launcher_count"
 contains "$SKILL_MD" 'Before launching external reviewers, verify the implementation plan exists at `$DESIGN_TMPDIR/plan.txt`' 'External reviewer setup must retain prompt-side plan.txt check'
-contains "$SKILL_MD" 'Reviewer focus areas are delegated to `plan-review.md` and the rendered reviewer prompts.' 'External reviewer setup must delegate focus areas'
+contains "$SKILL_MD" 'Reviewer focus areas are delegated to `plan-review-runtime.md` and the rendered reviewer prompts.' 'External reviewer setup must delegate focus areas'
 not_contains "$SKILL_MD" '_step4_debate_may_run' 'Step 4 must not self-compute debate may-run flag'
 not_contains "$SKILL_MD" 'dialectic-gatec --design-tmpdir "$DESIGN_TMPDIR" --probe-only' 'Step 4 must not run prompt-side dialectic probe'
 contains "$SKILL_MD" 'Step 4 routing authority is `STEP4_MODE` only.' 'Step 4 must route only on STEP4_MODE'
@@ -485,7 +497,7 @@ not_contains "$SKILL_MD" '**Optional trailer guard (Gate B post-apply)**' 'SKILL
 not_contains "$SKILL_MD" 'Before any reviewer-finding `plan.txt` replacement, run' 'SKILL must not retain inline Gate B snapshot-trailers restatement'
 not_contains "$SKILL_MD" '**Gate B resume idempotency**' 'SKILL must not retain inline Gate B resume idempotency block'
 not_contains "$SKILL_MD" 'do not probe the apply-ready marker' 'SKILL must not retain old Gate B idempotency probe wording'
-contains "$SKILL_MD" 'Apply the `approval-gates.md` §Gate B **Resume idempotency guard** before executing Gate B.' 'SKILL must point Gate B idempotency to approval-gates'
+contains "$SKILL_MD" 'Apply the `approval-gates-gate-b.md` §Gate B **Resume idempotency guard** before executing Gate B.' 'SKILL must point Gate B idempotency to approval-gates'
 contains "$SKILL_MD" 'Consult `ARCHITECTURAL_INVARIANTS.md` before `ARCHITECTURAL_GUIDELINES.md`' 'SKILL must keep invariant knowledge ahead of guidelines'
 contains "$SKILL_MD" 'Call `python/cli.py architectural-invariants read` or the in-process helper before `python/cli.py architectural-guidelines read`.' 'SKILL must read invariants before guidelines'
 contains "$SKILL_MD" 'If invariants are `present` with parsed content, fold hard constraints from helper output first;' 'SKILL must fold invariant constraints first'
@@ -573,9 +585,10 @@ not_contains "$SKILL_MD" 'Manual OOS recovery when annotate ran before' 'SKILL m
 contains "$FINALIZE_STEP5_MD" 'Compose `$DESIGN_TMPDIR/composed-plan.md`' 'finalize-step5 must own Step 5c composition detail'
 not_contains "$SKILL_MD" 'Compose `$DESIGN_TMPDIR/composed-plan.md`' 'SKILL must not retain Step 5c composition detail'
 contains "$FINALIZE_STEP5_MD" 'Driver WARN replay (top chat)' 'finalize-step5 must own driver WARN replay detail'
-contains "$SKILL_MD" 'Follow `finalize-step5.md` for `_publish_rc` abort handling, stdout fallback, validator-defect routing, and `PLAN_WRITE_OK` branches.' 'SKILL must point rare publish rc handling to finalize-step5'
-contains "$FINALIZE_STEP5_MD" 'When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`.' 'finalize-step5 must own rc2 and unexpected non-zero abort guidance'
-contains "$FINALIZE_STEP5_MD" 'This includes `_publish_rc=5`.' 'finalize-step5 must own rc5 abort guidance'
+contains "$SKILL_MD" 'Follow `finalize-step5.md` for stdout fallback, validator-defect routing, and normal `PLAN_WRITE_OK` branches.' 'SKILL must point normal publish rc handling to green finalize'
+contains "$SKILL_MD" 'finalize-step5-failures.md` before staging the failed outcome' 'SKILL must point abort handling to failure slice'
+contains "$FINALIZE_STEP5_FAILURES_MD" 'When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`.' 'finalize-step5 must own rc2 and unexpected non-zero abort guidance'
+contains "$FINALIZE_STEP5_FAILURES_MD" 'This includes `_publish_rc=5`.' 'finalize-step5 must own rc5 abort guidance'
 contains "$FINALIZE_STEP5_MD" 'When `_publish_rc=3`, the publish tail may have completed but `.design-publish-result.env` could not be written.' 'finalize-step5 must own rc3 stdout fallback guidance'
 not_contains "$SKILL_MD" '_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}`' 'SKILL must not retain publish rc abort wall'
 contains "$FINALIZE_STEP5_MD" 'Step 5d warning replay and footer' 'finalize-step5 must own Step 5d warning replay detail'
@@ -612,44 +625,44 @@ not_contains "$SETTLE_DISPATCH_MD" '## Site variants for fallback rc dispatch' '
 not_contains "$SETTLE_DISPATCH_MD" '| **Gate B** |' 'settle dispatch must remove Gate B fallback variant row'
 not_contains "$SETTLE_DISPATCH_MD" '| **Gate A / discussion-round2** |' 'settle dispatch must remove Gate A fallback variant row'
 
-for caller in "$SKILL_MD" "$APPROVAL_GATES_MD" "$DISCUSSION_ROUNDS_MD"; do
+for caller in "$SKILL_MD" "$APPROVAL_GATE_B_MD" "$DISCUSSION_ROUNDS_MD"; do
   contains "$caller" 'skills/design/references/settle-rc-dispatch.md' "caller must reference settle rc dispatch: $caller"
 done
 contains "$APPROVAL_GATES_MD" 'Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design render-gate ...`.' 'approval-gates must document render-gate invocation'
-contains "$APPROVAL_GATES_MD" '**Shape 2: re-entry from Gate B(c) or Gate C(b) (post-plan)**: run `python/cli.py design render-gate --gate A`. Pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.' 'Gate A must delegate prompt copy to render-gate'
-contains "$APPROVAL_GATES_MD" 'Run `python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false`, print `AUTO_APPLY_MESSAGE`, then Execute `### Apply-all body` verbatim.' 'Gate B default must delegate auto-apply copy to render-gate'
-contains "$APPROVAL_GATES_MD" 'Run `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"` and pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.' 'Gate C must delegate prompt copy to render-gate with accepted audit escalation'
-contains "$APPROVAL_GATES_MD" 'approval-gates-explicit.md' 'approval-gates must still point explicit mode to approval-gates-explicit'
-not_contains "$APPROVAL_GATES_MD" 'All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?' 'approval-gates must not retain inline Gate A question text'
-not_contains "$APPROVAL_GATES_MD" 'Final design plan is ready. Approve, see the full plan, discuss further, or re-run the review panel against this plan?' 'approval-gates must not retain inline Gate C below-cap question text'
+contains "$APPROVAL_GATE_A_MD" '**Shape 2: re-entry from Gate B(c) or Gate C(b) (post-plan)**: run `python/cli.py design render-gate --gate A`. Pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.' 'Gate A must delegate prompt copy to render-gate'
+contains "$APPROVAL_GATE_B_MD" 'Run `python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false`, print `AUTO_APPLY_MESSAGE`, then Execute `### Apply-all body` verbatim.' 'Gate B default must delegate auto-apply copy to render-gate'
+contains "$APPROVAL_GATE_C_MD" 'Run `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"` and pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.' 'Gate C must delegate prompt copy to render-gate with accepted audit escalation'
+contains "$APPROVAL_GATE_B_MD" 'approval-gates-explicit.md' 'approval-gates must still point explicit mode to approval-gates-explicit'
+not_contains "$APPROVAL_GATE_A_MD" 'All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?' 'approval-gates must not retain inline Gate A question text'
+not_contains "$APPROVAL_GATE_C_MD" 'Final design plan is ready. Approve, see the full plan, discuss further, or re-run the review panel against this plan?' 'approval-gates must not retain inline Gate C below-cap question text'
 contains "$CLI_PY" '("design", "render-gate"): ("larch.design.design_gate_render", "render_gate_main")' 'cli registry missing design render-gate'
 printf '%s' "$stdout_keys_block" | grep -Fq '("design", "render-gate")' || fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design render-gate"
-contains "$APPROVAL_GATES_MD" 'accepted-plan-findings-all.md` when present (cumulative acceptance context).' 'accepted audit must name cumulative accepted corpus in read list'
-contains "$APPROVAL_GATES_MD" 'accepted-plan-findings.md` when present (current-round Gate B apply set; not the end-state fidelity authority).' 'accepted audit must name current-round accepted corpus in read list'
-contains "$APPROVAL_GATES_MD" 'filtered accepted corpus selected above' 'accepted audit must name selected corpus fidelity source'
-contains "$APPROVAL_GATES_MD" 'plan-before-review.txt` when present.' 'accepted audit must read pre-review snapshot'
-contains "$APPROVAL_GATES_MD" 'discussion-round1.md` when present (explicit Round 1 refusals).' 'accepted audit must read Round 1 refusals'
-contains "$APPROVAL_GATES_MD" 'design-outline.md` when `.outline-approved` exists (approved non-goals).' 'accepted audit must read approved outline non-goals'
-contains "$APPROVAL_GATES_MD" 'bind `_accepted_corpus` to non-empty `$DESIGN_TMPDIR/accepted-plan-findings-all.md` when that file exists and has non-zero size; else to non-empty `$DESIGN_TMPDIR/accepted-plan-findings.md`; else treat as no cumulative accepted findings.' 'accepted audit must mirror compose_review corpus precedence'
-contains "$APPROVAL_GATES_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review filter-gate-b-skipped '"\\" 'accepted audit must include filter-gate-b-skipped invocation'
-contains "$APPROVAL_GATES_MD" '--accepted "${_accepted_corpus}"' 'accepted audit filter invocation must pass selected corpus'
-contains "$APPROVAL_GATES_MD" 'On filter helper non-zero exit: print `**⚠ 4b: accepted-plan-findings skip-filter failed**`, append a bounded warning with `site=design Gate C Presentation` and `reason=filter-gate-b-skipped-failed`, and stop before persist, prompt, auto-approval, or Step 5.' 'accepted audit must fail closed on skip-filter failure'
-contains "$APPROVAL_GATES_MD" 'Auto-approve only after accepted-findings audit persistence succeeds and binds `STRONG_AUDIT_DISSENT=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation.' 'accepted audit strong dissent must override skip-approve'
-contains "$APPROVAL_GATES_MD" 'Run the full audit on every Gate C Presentation, including `resume@4b`, pause recovery, re-entry after discussion, re-run review, or postplan fixes.' 'accepted audit must rerun on every Gate C Presentation'
-contains "$APPROVAL_GATES_MD" 'mild-disagree or strong-disagree prints a compact audit digest immediately before either Gate C `AskUserQuestion` or the `--skip-approve` auto-approval breadcrumb.' 'accepted audit must print mild digest before prompt or auto-approve'
-contains "$APPROVAL_GATES_MD" '--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"' 'Gate C render-gate example must include accepted audit escalation'
+contains "$APPROVAL_GATE_C_MD" 'accepted-plan-findings-all.md` when present (cumulative acceptance context).' 'accepted audit must name cumulative accepted corpus in read list'
+contains "$APPROVAL_GATE_C_MD" 'accepted-plan-findings.md` when present (current-round Gate B apply set; not the end-state fidelity authority).' 'accepted audit must name current-round accepted corpus in read list'
+contains "$APPROVAL_GATE_C_MD" 'filtered accepted corpus selected above' 'accepted audit must name selected corpus fidelity source'
+contains "$APPROVAL_GATE_C_MD" 'plan-before-review.txt` when present.' 'accepted audit must read pre-review snapshot'
+contains "$APPROVAL_GATE_C_MD" 'discussion-round1.md` when present (explicit Round 1 refusals).' 'accepted audit must read Round 1 refusals'
+contains "$APPROVAL_GATE_C_MD" 'design-outline.md` when `.outline-approved` exists (approved non-goals).' 'accepted audit must read approved outline non-goals'
+contains "$APPROVAL_GATE_C_MD" 'bind `_accepted_corpus` to non-empty `$DESIGN_TMPDIR/accepted-plan-findings-all.md` when that file exists and has non-zero size; else to non-empty `$DESIGN_TMPDIR/accepted-plan-findings.md`; else treat as no cumulative accepted findings.' 'accepted audit must mirror compose_review corpus precedence'
+contains "$APPROVAL_GATE_C_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review filter-gate-b-skipped '"\\" 'accepted audit must include filter-gate-b-skipped invocation'
+contains "$APPROVAL_GATE_C_MD" '--accepted "${_accepted_corpus}"' 'accepted audit filter invocation must pass selected corpus'
+contains "$APPROVAL_GATE_C_MD" 'On filter helper non-zero exit: print `**⚠ 4b: accepted-plan-findings skip-filter failed**`, append a bounded warning with `site=design Gate C Presentation` and `reason=filter-gate-b-skipped-failed`, and stop before persist, prompt, auto-approval, or Step 5.' 'accepted audit must fail closed on skip-filter failure'
+contains "$APPROVAL_GATE_C_MD" 'Auto-approve only after accepted-findings audit persistence succeeds and binds `STRONG_AUDIT_DISSENT=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation.' 'accepted audit strong dissent must override skip-approve'
+contains "$APPROVAL_GATE_C_MD" 'Run the full audit on every Gate C Presentation, including `resume@4b`, pause recovery, re-entry after discussion, re-run review, or postplan fixes.' 'accepted audit must rerun on every Gate C Presentation'
+contains "$APPROVAL_GATE_C_MD" 'mild-disagree or strong-disagree prints a compact audit digest immediately before either Gate C `AskUserQuestion` or the `--skip-approve` auto-approval breadcrumb.' 'accepted audit must print mild digest before prompt or auto-approve'
+contains "$APPROVAL_GATE_C_MD" '--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"' 'Gate C render-gate example must include accepted audit escalation'
 contains "$ROOT/skills/design/scripts/design-step3-entry.sh" 'plan-review snapshot-pre-review' 'design-step3-entry must snapshot pre-review plan'
 contains "$CLI_PY" '("plan-review", "persist-accepted-audit"): ("larch.review.plan_review_accepted_audit", "persist_accepted_audit_main")' 'cli registry missing plan-review persist-accepted-audit'
 contains "$CLI_PY" '("plan-review", "filter-gate-b-skipped"): ("larch.review.plan_review_accepted_audit", "filter_gate_b_skipped_main")' 'cli registry missing plan-review filter-gate-b-skipped'
-contains "$PLAN_REVIEW_MD" 'plan-before-review.txt` is written once per Step 3 entry' 'plan-review reference must document pre-review snapshot'
-assert_followed_count_at_least "$APPROVAL_GATES_MD" '   1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'approval-gates must load settle dispatch immediately before Gate B branch directive'
+contains "$PLAN_REVIEW_RUNTIME_MD" 'plan-before-review.txt` is written once per Step 3 entry' 'plan-review reference must document pre-review snapshot'
+assert_followed_count_at_least "$APPROVAL_GATE_B_MD" '   1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '   2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'approval-gates must load settle dispatch immediately before Gate B branch directive'
 assert_followed_count_at_least "$DISCUSSION_ROUNDS_MD" '1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'discussion-rounds must use numbered settle dispatch steps 1-2'
 assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'SKILL Gate A guard must load settle dispatch immediately before branch directive'
 assert_followed_count_at_least "$SKILL_MD" '1. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at Step 1e).' '2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.' 1 'SKILL Gate B guard must load settle dispatch immediately before branch directive'
 
-not_contains "$APPROVAL_GATES_MD" 'Branch on the settle wrapper rc' 'approval-gates must not retain inline settle rc branch table'
-not_contains "$APPROVAL_GATES_MD" 'Branch on wrapper rc' 'approval-gates must not retain inline wrapper rc branch table'
-not_contains "$APPROVAL_GATES_MD" 'fallback row' 'approval-gates must not retain Gate B fallback-row prose'
+not_contains "$APPROVAL_GATE_B_MD" 'Branch on the settle wrapper rc' 'approval-gates must not retain inline settle rc branch table'
+not_contains "$APPROVAL_GATE_B_MD" 'Branch on wrapper rc' 'approval-gates must not retain inline wrapper rc branch table'
+not_contains "$APPROVAL_GATE_B_MD" 'fallback row' 'approval-gates must not retain Gate B fallback-row prose'
 not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on the settle wrapper rc' 'discussion-rounds must not retain inline settle rc branch table'
 not_contains "$DISCUSSION_ROUNDS_MD" 'Branch on wrapper rc' 'discussion-rounds must not retain inline wrapper rc branch table'
 not_contains "$DISCUSSION_ROUNDS_MD" 'fallback row' 'discussion-rounds must not retain fallback-row prose'
@@ -660,13 +673,13 @@ not_contains "$SKILL_MD" 'fallback row' 'SKILL must not retain settle fallback-r
 contains "$STEP2B5_RC_MD" 'settle action `SETTLE_NEXT_ACTION=gate-a-hard-size`' 'step2b5 rc handling must keep gate-a-hard-size direct-entry trigger'
 contains "$STEP2B5_RC_MD" 'Do not recompute the action from check-size rc, `SIZE_TRIGGER_FIRED`, `DRIFT_TRIGGER_FIRED`, or `partition_requested` in prompt prose.' 'step2b5 rc handling must reject prompt-side action derivation'
 contains "$STEP2B5_RC_MD" 'If `STEP2B5_NEXT_ACTION` is absent, stop for repair. Do not route from process rc or raw trigger KVs when the action row is missing.' 'step2b5 rc handling must reject process-rc fallback routing'
-contains "$STEP2B5_RC_MD" 'Do not load for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates.md`.' 'step2b5 rc handling must delegate gate-b-hard-size to approval-gates'
+contains "$STEP2B5_RC_MD" 'Do not load for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates-gate-b.md`.' 'step2b5 rc handling must delegate gate-b-hard-size to approval-gates'
 not_contains "$STEP2B5_RC_MD" 'Gate A / discussion-round2 fallback rc `12`' 'step2b5 rc handling must remove Gate A fallback rc trigger'
 not_contains "$STEP2B5_RC_MD" 'Gate B fallback rc `12`' 'step2b5 rc handling must remove Gate B fallback rc trigger'
-contains "$APPROVAL_GATES_MD" 'Before executing the Gate B body, bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; fail closed if it is empty or non-numeric.' 'approval-gates must own Gate B pre-apply round binding'
-contains "$APPROVAL_GATES_MD" 'Route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying.' 'approval-gates must route post-apply resume through settle without reapply'
-contains "$APPROVAL_GATES_MD" 'Bind `STEP3_RESUME_ROUND="$_gate_b_round"` before any later Step 3 resume fence.' 'approval-gates must bind Step 3 resume round after post-apply resume'
-contains "$APPROVAL_GATES_MD" 'Do not jump directly to Step 3b from this post-apply resume branch' 'approval-gates must forbid direct Step 3b jump from post-apply resume'
+contains "$APPROVAL_GATE_B_MD" 'Before executing the Gate B body, bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; fail closed if it is empty or non-numeric.' 'approval-gates must own Gate B pre-apply round binding'
+contains "$APPROVAL_GATE_B_MD" 'Route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying.' 'approval-gates must route post-apply resume through settle without reapply'
+contains "$APPROVAL_GATE_B_MD" 'Bind `STEP3_RESUME_ROUND="$_gate_b_round"` before any later Step 3 resume fence.' 'approval-gates must bind Step 3 resume round after post-apply resume'
+contains "$APPROVAL_GATE_B_MD" 'Do not jump directly to Step 3b from this post-apply resume branch' 'approval-gates must forbid direct Step 3b jump from post-apply resume'
 
 contains "$SKILL_MD" 'python/cli.py design step2b-drafter' 'SKILL must name step2b-drafter Python authority'
 contains "$SKILL_MD" 'python/cli.py design step2b-postplan' 'SKILL must name step2b-postplan Python authority'

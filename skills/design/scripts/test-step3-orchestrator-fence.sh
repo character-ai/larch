@@ -392,8 +392,8 @@ fi
 
 echo "=== MainAgent MAV wrapper prose pins ==="
 SKILL_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/SKILL.md"
-PLAN_REVIEW_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/plan-review.md"
-APPROVAL_GATES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/approval-gates.md"
+PLAN_REVIEW_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/plan-review-runtime.md"
+APPROVAL_GATES_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)/references/approval-gates-gate-c.md"
 # shellcheck disable=SC2016 # Literal documentation probe contains backticks.
 if ( command grep -Fq '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-mav.sh --phase pre' "$SKILL_FILE" ); then
     pass 'SKILL pins MAV pre launcher fence'

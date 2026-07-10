@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
-APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
+APPROVAL_GATES="$ROOT/skills/design/references/approval-gates-gate-b.md"
 CLI="$ROOT/python/cli.py"
 
 fail() {
