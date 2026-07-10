@@ -1191,7 +1191,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0915",
     "qualified_symbol": "log_publish_main",
-    "metric": 79
+    "metric": 82
   },
   {
     "file": "larch/design/design_log_ship.py",
@@ -1347,7 +1347,7 @@
     "file": "larch/design/design_publish.py",
     "code": "C901",
     "qualified_symbol": "publish_core",
-    "metric": 48
+    "metric": 49
   },
   {
     "file": "larch/design/design_publish.py",
@@ -1359,19 +1359,19 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_core",
-    "metric": 20
+    "metric": 21
   },
   {
     "file": "larch/design/design_publish.py",
     "code": "PLR0912",
     "qualified_symbol": "publish_core",
-    "metric": 49
+    "metric": 50
   },
   {
     "file": "larch/design/design_publish.py",
     "code": "PLR0915",
     "qualified_symbol": "publish_core",
-    "metric": 155
+    "metric": 158
   },
   {
     "file": "larch/design/design_router.py",
@@ -1587,7 +1587,7 @@
     "file": "larch/design/design_step5c.py",
     "code": "C901",
     "qualified_symbol": "step5c_core",
-    "metric": 17
+    "metric": 19
   },
   {
     "file": "larch/design/design_step5c.py",
@@ -1599,7 +1599,7 @@
     "file": "larch/design/design_step5c.py",
     "code": "PLR0912",
     "qualified_symbol": "step5c_core",
-    "metric": 19
+    "metric": 22
   },
   {
     "file": "larch/design/design_step5c.py",
@@ -1611,7 +1611,7 @@
     "file": "larch/design/design_step5c.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 88
+    "metric": 93
   },
   {
     "file": "larch/design/design_step6.py",
@@ -1706,12 +1706,6 @@
   {
     "file": "larch/design/design_terminal.py",
     "code": "C901",
-    "qualified_symbol": "phase_driver_write_result_env",
-    "metric": 12
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "code": "C901",
     "qualified_symbol": "read_result_env_main",
     "metric": 12
   },
@@ -1738,12 +1732,6 @@
     "code": "PLR0912",
     "qualified_symbol": "failure_report_core",
     "metric": 21
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "code": "PLR0912",
-    "qualified_symbol": "phase_driver_write_result_env",
-    "metric": 13
   },
   {
     "file": "larch/design/design_terminal.py",

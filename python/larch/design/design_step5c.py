@@ -127,6 +127,10 @@ STEP5C_PUBLISH_RESULT_ALLOW_KEYS = (
     "RECOVERY_BRANCH",
     "LOG_RECOVERY_BRANCH",
     "PUBLISH_REFUSE_REASON",
+    "ARCH_INVARIANT_ASSESSMENT_REQUIRED",
+    "ARCH_INVARIANT_ASSESSMENT_PRESENT",
+    "ARCH_INVARIANT_ASSESSMENT_STATUS",
+    "ARCH_INVARIANT_ASSESSMENT_ARTIFACT",
     "ARCH_GUIDE_ASSESSMENT_REQUIRED",
     "ARCH_GUIDE_ASSESSMENT_PRESENT",
     "ARCH_GUIDE_ASSESSMENT_STATUS",
@@ -632,6 +636,10 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 ("VALIDATE_MISSING_SCRIPT_COUNT", result_env.get("VALIDATE_MISSING_SCRIPT_COUNT", "")),
                 ("VALIDATE_LOG_FILE", result_env.get("VALIDATE_LOG_FILE", "")),
                 ("PUBLISH_REFUSE_REASON", publish_refuse_reason),
+                ("ARCH_INVARIANT_ASSESSMENT_REQUIRED", result_env.get("ARCH_INVARIANT_ASSESSMENT_REQUIRED", "")),
+                ("ARCH_INVARIANT_ASSESSMENT_PRESENT", result_env.get("ARCH_INVARIANT_ASSESSMENT_PRESENT", "")),
+                ("ARCH_INVARIANT_ASSESSMENT_STATUS", result_env.get("ARCH_INVARIANT_ASSESSMENT_STATUS", "")),
+                ("ARCH_INVARIANT_ASSESSMENT_ARTIFACT", result_env.get("ARCH_INVARIANT_ASSESSMENT_ARTIFACT", "")),
                 ("ARCH_GUIDE_ASSESSMENT_REQUIRED", result_env.get("ARCH_GUIDE_ASSESSMENT_REQUIRED", "")),
                 ("ARCH_GUIDE_ASSESSMENT_PRESENT", result_env.get("ARCH_GUIDE_ASSESSMENT_PRESENT", "")),
                 ("ARCH_GUIDE_ASSESSMENT_STATUS", result_env.get("ARCH_GUIDE_ASSESSMENT_STATUS", "")),
@@ -648,11 +656,12 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             )
             _emit_core_kvs(rows)
             if publish_rc == 4:
-                status_value = (
-                    "missing-guideline-assessment"
-                    if publish_refuse_reason == "missing-guideline-assessment"
-                    else "validator-defects"
-                )
+                if publish_refuse_reason == "missing-invariant-assessment":
+                    status_value = "missing-invariant-assessment"
+                elif publish_refuse_reason == "missing-guideline-assessment":
+                    status_value = "missing-guideline-assessment"
+                else:
+                    status_value = "validator-defects"
                 logging_util.emit_kv(key="STEP5C_STATUS", value=status_value)
                 _emit_report_gate_sidecars_from_disk(design_tmpdir)
                 return 0, []
@@ -691,6 +700,10 @@ STEP5C_STATUS_ALLOW_KEYS = {
     "PUBLISH_RC",
     "PUBLISH_STDOUT_FALLBACK",
     "CLEANUP_ELIGIBLE",
+    "ARCH_INVARIANT_ASSESSMENT_REQUIRED",
+    "ARCH_INVARIANT_ASSESSMENT_PRESENT",
+    "ARCH_INVARIANT_ASSESSMENT_STATUS",
+    "ARCH_INVARIANT_ASSESSMENT_ARTIFACT",
     "ARCH_GUIDE_ASSESSMENT_REQUIRED",
     "ARCH_GUIDE_ASSESSMENT_PRESENT",
     "ARCH_GUIDE_ASSESSMENT_STATUS",

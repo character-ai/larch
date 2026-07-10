@@ -1050,6 +1050,13 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
+    "file": "larch/design/design_log_publish_flow.py",
+    "suppression_kind": "pyright-ignore",
+    "text": "pyright: ignore[reportPrivateUsage]",
+    "occurrence": 4,
+    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
     "file": "larch/design/design_log_ship.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=broad-except",

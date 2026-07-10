@@ -407,6 +407,21 @@ def _git_repo_with_guidelines(
     return repo
 
 
+
+
+def _git_repo_with_invariants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    text: str = "### I-Test-1: Test\nInvariant text.\n",
+) -> Path:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    (repo / "ARCHITECTURAL_INVARIANTS.md").write_text(text, encoding="utf-8")
+    monkeypatch.chdir(repo)
+    return repo
+
 def _minimal_publish_design(tmp_path: Path) -> tuple[Path, Path]:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
@@ -416,6 +431,165 @@ def _minimal_publish_design(tmp_path: Path) -> tuple[Path, Path]:
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     return plugin_root, design
+
+
+
+
+def test_publish_invariants_present_missing_assessment_refuses_gate_c(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _git_repo_with_invariants(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+
+    stdout = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "missing architectural-invariant-assessment.md" in stdout
+    assert "PUBLISH_REFUSE_REASON=missing-invariant-assessment" in result_env
+    assert "VALIDATE_STATUS=not-run" in result_env
+    assert "ARCH_INVARIANT_ASSESSMENT_REQUIRED=true" in result_env
+    assert "ARCH_INVARIANT_ASSESSMENT_PRESENT=false" in result_env
+
+
+def test_publish_invariants_refusal_precedes_guidelines_when_both_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _git_repo_with_invariants(tmp_path, monkeypatch)
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Test\n- Why: test.\n", encoding="utf-8")
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "PUBLISH_REFUSE_REASON=missing-invariant-assessment" in result_env
+    assert "PUBLISH_REFUSE_REASON=missing-guideline-assessment" not in result_env
+
+
+def test_publish_invariants_present_regular_assessment_proceeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git_repo_with_invariants(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    (design / "architectural-invariant-assessment.md").write_text("clean\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+
+    assert rc == 0
+
+
+@pytest.mark.parametrize("invariants_text", ["", "# No invariant entries\n"])
+def test_publish_invariants_empty_or_no_parsed_entries_not_required(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    invariants_text: str,
+) -> None:
+    _git_repo_with_invariants(tmp_path, monkeypatch, text=invariants_text)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ]
+    )
+
+    assert rc == 0
+
+
+def test_publish_skip_validate_still_checks_missing_invariant_assessment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git_repo_with_invariants(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+            "--skip-validate",
+        ]
+    )
+
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "PUBLISH_REFUSE_REASON=missing-invariant-assessment" in result_env
+    assert "VALIDATE_STATUS=not-run" in result_env
+
+
+def test_publish_invariant_assessment_required_for_approved_partition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _git_repo_with_invariants(tmp_path, monkeypatch)
+    _plugin_root, design = _minimal_publish_design(tmp_path)
+
+    completeness = design_publish._check_invariant_assessment_completeness(
+        design_tmpdir=design,
+        repo_root=repo,
+        outcome="approved-partition",
+    )
+
+    assert completeness.required is True
+    assert completeness.present is False
+    assert completeness.artifact == "architectural-invariant-assessment.md"
 
 
 def test_publish_guidelines_present_missing_assessment_refuses_gate_c(

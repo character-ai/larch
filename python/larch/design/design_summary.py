@@ -31,6 +31,9 @@ _VALID_OUTCOMES = frozenset({
     "publish-skipped", "paused",
 })
 _OOS_FILE_MAP_FIELD_COUNT = 3
+_MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING = (
+    "**⚠ Missing architectural-invariant-assessment.md; Gate C assessment did not persist.**"
+)
 _MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING = (
     "**⚠ Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**"
 )
@@ -499,9 +502,22 @@ def _append_render_warning(*, design_tmpdir: Path, message: str) -> None:
             _ = fh.write(f"\n### Warnings\n- **design-summary**: {message}\n")
 
 
-def _prefix_missing_guideline_assessment_warning(*, design_tmpdir: Path, out_file: Path) -> None:
-    marker = design_tmpdir / ".missing-guideline-assessment-warning"
-    if not marker.exists() or marker.is_symlink():
+def _missing_assessment_summary_warnings(design_tmpdir: Path) -> list[str]:
+    warnings: list[str] = []
+    markers = (
+        (".missing-invariant-assessment-warning", _MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING),
+        (".missing-guideline-assessment-warning", _MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING),
+    )
+    for marker_name, message in markers:
+        marker = design_tmpdir / marker_name
+        if marker.exists() and not marker.is_symlink():
+            warnings.append(message)
+    return warnings
+
+
+def _prefix_missing_assessment_warnings(*, design_tmpdir: Path, out_file: Path) -> None:
+    warnings = _missing_assessment_summary_warnings(design_tmpdir)
+    if not warnings:
         return
     if out_file.is_symlink() or not out_file.is_file():
         return
@@ -509,11 +525,12 @@ def _prefix_missing_guideline_assessment_warning(*, design_tmpdir: Path, out_fil
         body = out_file.read_text(encoding="utf-8")
     except OSError:
         return
-    if body.startswith(_MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING):
+    prefix_lines = [warning for warning in warnings if warning not in body]
+    if not prefix_lines:
         return
     with contextlib.suppress(OSError):
         _ = out_file.write_text(
-            f"{_MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING}\n\n{body}",
+            "\n".join(prefix_lines) + f"\n\n{body}",
             encoding="utf-8",
         )
 
@@ -692,11 +709,11 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
             fh.write(f"- **Warnings**: {warnings}\n")  # pyright: ignore[reportUnusedCallResult]
 
     if phase == "pre":
-        _prefix_missing_guideline_assessment_warning(design_tmpdir=design_tmpdir, out_file=out_file)
+        _prefix_missing_assessment_warnings(design_tmpdir=design_tmpdir, out_file=out_file)
         return 0
 
     exit_rc = _write_enriched_post_publish_summary(design_tmpdir=design_tmpdir, out_file=out_file, load_result=load_result)
-    _prefix_missing_guideline_assessment_warning(design_tmpdir=design_tmpdir, out_file=out_file)
+    _prefix_missing_assessment_warnings(design_tmpdir=design_tmpdir, out_file=out_file)
     write_ok = exit_rc == 0
     summary_written = write_ok and out_file.is_file() and out_file.stat().st_size > 0
 
