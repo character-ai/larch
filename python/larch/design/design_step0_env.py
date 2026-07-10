@@ -369,6 +369,7 @@ def _load_wrapper_env(ns: Step0WrapperNs) -> dict[str, str]:
 
 
 def _parsed_cache_path(claude_pid: str) -> Path:
+    # Returns the step0-parsed-<pid>.env path in the sessions cache directory.
     return session_env._step0_parsed_env_path(claude_pid)  # noqa: SLF001 - Step 0 write/reap share one PID-cache helper.
 
 

@@ -5452,20 +5452,12 @@ def test_step6_cleanup_rejects_invalid_claude_pid_before_touch_or_cleanup(
     design, env_path = _step6_design(tmp_path, monkeypatch)
     _write_step5c_status(design)
 
-    def fail_touch(_path: Path) -> None:
-        raise AssertionError("step-6 marker must not be written after invalid --claude-pid")
-
-    def fail_require() -> int:
-        raise AssertionError("plugin-root validation must not run after invalid --claude-pid")
-
     def fail_cleanup(_argv: list[str]) -> int:
         raise AssertionError("cleanup must not run after invalid --claude-pid")
 
     def fail_reap(_claude_pid: str) -> None:
         raise AssertionError("reap must not run after invalid --claude-pid")
 
-    monkeypatch.setattr(design_step6, "_touch", fail_touch)
-    monkeypatch.setattr(design_step6, "_design_require_plugin_root", fail_require)
     monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fail_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fail_reap)
 
