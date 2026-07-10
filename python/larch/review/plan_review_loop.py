@@ -396,7 +396,7 @@ def gate_b_dedup_plan(argv: Sequence[str]) -> int:
             seen.add(line)
         out_lines.append(line)
     _write_atomic(path=plan, content="\n".join(out_lines) + ("\n" if text.endswith("\n") else ""))
-    sync_oversize_override_authority(design_tmpdir=tmpdir, plan=plan)
+    sync_oversize_override_authority(design_tmpdir=tmpdir, plan=plan, previous_plan_text=text)
     print(f"dedup-sweep: removed {removed} duplicate line(s) from plan.txt")
     _emit_kv(key="GATE_B_DEDUP_STATUS", value="ok")
     return 0

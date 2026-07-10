@@ -1630,6 +1630,24 @@ def test_gate_b_dedup_resyncs_oversize_override_authority(tmp_path: Path) -> Non
     assert "OVERSIZE_OVERRIDE=operator" in after.stdout.splitlines()
 
 
+def test_gate_b_dedup_does_not_authorize_untrusted_oversize_override(tmp_path: Path) -> None:
+    _write_gate_b_plan(tmp_path, "body\nbody\noversize_override: operator\ndiff_lines: 10\n")
+    snapshot = run_cli(
+        "plan-review",
+        "gate-b-dedup",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--snapshot-trailers",
+    )
+    assert snapshot.returncode == 0, snapshot.stderr
+    dedup = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(tmp_path), "--dedup")
+    assert dedup.returncode == 0, dedup.stderr
+
+    after = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert after.returncode == 0, after.stderr
+    assert "OVERSIZE_OVERRIDE=" in after.stdout.splitlines()
+
+
 def test_gate_b_dedup_allows_value_recompute_and_rejects_key_loss(tmp_path: Path) -> None:
     _write_gate_b_plan(tmp_path, "body\ndiff_added: 100\ndiff_lines: 200\n")
     assert (
