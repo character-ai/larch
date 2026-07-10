@@ -16,6 +16,7 @@ from typing import NoReturn, cast
 from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.core import config
+from larch.implement import main_health
 
 LIFECYCLE_PREFIXES = (
     "[DESIGNING] ",
@@ -118,6 +119,11 @@ def _read_kv_lines(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
+def _main_health_status_display() -> str:
+    statuses = main_health.MAIN_HEALTH_STATUS_ORDER
+    return f"{', '.join(statuses[:-1])}, or {statuses[-1]}"
+
+
 def _write_text(*, path: Path, text: str) -> None:
     larch_io.write_text(path=path, text=text)
 
@@ -207,8 +213,8 @@ def _validate_success_envelope(
         error = _success_readability_error(data)
     if not error and not data["BYPASS_COUNT"].isdigit():
         error = "BYPASS_COUNT must be numeric"
-    if not error and data["MAIN_CI_STATUS"] not in {"pass", "fail", "pending", "error"}:
-        error = "MAIN_CI_STATUS must be pass, fail, pending, or error"
+    if not error and data["MAIN_CI_STATUS"] not in main_health.MAIN_HEALTH_STATUSES:
+        error = f"MAIN_CI_STATUS must be {_main_health_status_display()}"
     if not error:
         for key in MAIN_HEALTH_KEYS:
             if "\n" in data[key] or "\r" in data[key]:

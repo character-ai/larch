@@ -3052,6 +3052,15 @@
   },
   {
     "file": "tests/implement/test_ci.py",
+    "qualified_symbol": "test_main_health_cli_emits_skip_for_missing_default_workflow",
+    "facade_module": "larch.implement.ci",
+    "attribute": "proc",
+    "defining_module": "larch.core",
+    "occurrence": 1,
+    "reason": "test uses same module-level proc/function facade pattern as existing baselined tests in file"
+  },
+  {
+    "file": "tests/implement/test_ci.py",
     "qualified_symbol": "test_main_health_cli_emits_stable_kvs",
     "facade_module": "larch.implement.ci",
     "attribute": "proc",
@@ -6892,6 +6901,15 @@
     "defining_module": "larch.implement.ship_pr",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_ship_postmerge_push_watch_skip_continues_to_finalize",
+    "facade_module": "larch.implement.ship",
+    "attribute": "run_postmerge_phase",
+    "defining_module": "larch.implement.ship_pr",
+    "occurrence": 3,
+    "reason": "test uses same module-level proc/function facade pattern as existing baselined tests in file"
   },
   {
     "file": "tests/implement/test_ship.py",

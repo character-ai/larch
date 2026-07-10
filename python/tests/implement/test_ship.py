@@ -4762,6 +4762,59 @@ def test_ship_postmerge_push_watch_passes_before_finalize(
     assert observed_skip_flap == [True]
 
 
+def test_ship_postmerge_push_watch_skip_continues_to_finalize(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.com/pr/5",
+        pr_closed=True,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=skip\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def pr_view_field_read(*_args: object, **_kwargs: object) -> CommandResult:
+        calls.append("mergeCommit")
+        return CommandResult(("gh", "pr", "view", "5", "--repo", "o/r", "--json", "mergeCommit"), 0, '{"mergeCommit":{"oid":"merge-sha"}}', "", 0.01)
+
+    def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
+        calls.append("watch")
+        return ship.main_health.MainHealthWaitResult(
+            health=ship.main_health.MainHealthStatus(
+                status="skip",
+                detail="workflow absent",
+            ),
+            elapsed_seconds=1,
+            attempts=1,
+        )
+
+    def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
+        calls.append("postmerge")
+        return ship.ShipResult(Outcome.OK, detail="done")
+
+    monkeypatch.setattr(ship.gh, "pr_view_field_read", pr_view_field_read)
+    monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
+    monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
+
+    result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+    )
+
+    assert result.outcome is Outcome.OK
+    assert calls == ["mergeCommit", "watch", "postmerge"]
+
+
 def test_ship_postmerge_push_watch_falls_back_to_origin_main_when_merge_commit_missing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -5026,6 +5079,47 @@ def test_premerge_main_health_gate_uses_commit_scoped_head_sha(
 
     assert result is None
     assert observed["head_sha"] == "base-sha"
+
+
+def test_premerge_main_health_gate_skip_continues(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = (tmp_path / "preflight-tmpdir.env").write_text("PREFLIGHT_TMPDIR=/preflight\n", encoding="utf-8")
+    _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=skip\n", encoding="utf-8")
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.com/pr/5",
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    counters = ship.ShipReconciliationCounters(iteration=1, rebase_count=2, fix_attempts=3, transient_retries=4)
+
+    def fetch(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("git", "fetch", "origin", "main"), 0, "", "", 0.01)
+
+    def try_rev_parse(*args: object, **kwargs: object) -> str:
+        ref = str(args[1]) if len(args) > 1 else str(kwargs.get("ref", ""))
+        return "base-sha" if ref == "origin/main" else ""
+
+    def read_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthStatus:
+        return ship.main_health.MainHealthStatus(status="skip", detail="workflow absent")
+
+    monkeypatch.setattr(ship.git, "fetch", fetch)
+    monkeypatch.setattr(ship.git, "try_rev_parse", try_rev_parse)
+    monkeypatch.setattr(ship.main_health, "read_main_health", read_main_health)
+
+    result = ship._premerge_main_health_gate(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        repo_root=str(tmp_path),
+        base_ref="main",
+        counters=counters,
+    )
+
+    assert result is None
 
 
 def test_main_health_gates_fail_closed_when_sidecar_missing(tmp_path: Path) -> None:

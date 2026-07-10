@@ -5,13 +5,15 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Final
 
 from larch.core import config
-from larch.core.proc import Runner
+from larch.core.proc import CommandResult, Runner
 from larch.errors import ShipError
 from larch.git import gh
 
-MAIN_HEALTH_STATUSES = frozenset({"pass", "fail", "pending", "error"})
+MAIN_HEALTH_STATUS_ORDER: Final[tuple[str, ...]] = ("pass", "fail", "pending", "error", "skip")
+MAIN_HEALTH_STATUSES: Final[frozenset[str]] = frozenset(MAIN_HEALTH_STATUS_ORDER)
 _FAILURE_CONCLUSIONS = frozenset({
     "action_required",
     "cancelled",
@@ -68,6 +70,10 @@ def _failure_detail(run: gh.WorkflowRun, *, reason: str) -> str:
     return _bounded_detail(
         f"{reason}: run {run.database_id} status={run.status} conclusion={run.conclusion or ''}",
     )
+
+
+def _read_failure_detail(result: CommandResult) -> str:
+    return f"gh command failed ({result.returncode}): {' '.join(result.argv)}"
 
 
 def _has_named_repository_failure(
@@ -187,19 +193,26 @@ def read_main_health(
     query: MainHealthQuery,
 ) -> MainHealthStatus:
     query_repo = query.upstream_repo or query.repo
+    filters = gh.WorkflowRunListFilters(
+        repo=query_repo,
+        branch=query.base_branch,
+        workflow=query.workflow,
+        event="push",
+        commit=query.head_sha,
+        limit=query.limit,
+        cwd=query.cwd,
+    )
     try:
-        runs = gh.run_list_filtered(
-            runner,
-            gh.WorkflowRunListFilters(
-                repo=query_repo,
-                branch=query.base_branch,
-                workflow=query.workflow,
-                event="push",
-                commit=query.head_sha,
-                limit=query.limit,
-                cwd=query.cwd,
-            ),
-        )
+        result = gh.run_list_filtered_read(runner, filters)
+        if result.returncode != 0:
+            if (
+                query.workflow == config.MAIN_HEALTH_DEFAULT_WORKFLOW
+                and gh.is_missing_named_workflow(result, workflow=query.workflow)
+            ):
+                detail = f"configured main-health workflow {query.workflow} not present in repo"
+                return MainHealthStatus(status="skip", detail=_bounded_detail(detail))
+            return MainHealthStatus(status="error", detail=_bounded_detail(_read_failure_detail(result)))
+        runs = gh.parse_run_list_filtered_result(result)
         return _classify_runs(
             runner,
             runs,
@@ -225,7 +238,7 @@ def wait_main_health(
         attempts += 1
         last = read_main_health(runner, query.health)
         elapsed = int(clock() - start)
-        if last.status in {"pass", "fail"}:
+        if last.status in {"pass", "fail", "skip"}:
             return MainHealthWaitResult(health=last, elapsed_seconds=elapsed, attempts=attempts)
         no_match_for_requested_sha = (
             last.status == "error"

@@ -2613,7 +2613,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "_premerge_main_health_gate",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/implement/ship.py",

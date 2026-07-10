@@ -840,7 +840,7 @@ def _postmerge_main_health_gate(
         ),
     )
     health = waited.health
-    if health.status == "pass":
+    if health.status in {"pass", "skip"}:
         return None
     if health.status == "fail":
         repair_head = health.head_sha or merged_head
@@ -1038,6 +1038,8 @@ def _premerge_main_health_gate(
         )
         health = waited.health
     if health.status == "pass":
+        return None
+    if health.status == "skip":
         return None
     if health.status == "fail" and _main_health_repair_covers_active_failure(
         ctx=working,

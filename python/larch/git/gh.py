@@ -35,6 +35,8 @@ from larch.core.retry import (
 )
 from larch.core import proc
 
+_RUN_LIST_WORKFLOW_ARGC_MIN: Final = 5
+
 
 class GhReadTimeout(ShipError):
     """A gh read subprocess exceeded its per-call timeout (exit EXIT_TIMEOUT).
@@ -130,6 +132,23 @@ def _gh(
 
 def _combined(result: CommandResult) -> str:
     return result.stdout + result.stderr
+
+
+def is_missing_named_workflow(result: CommandResult, *, workflow: str) -> bool:
+    """Return whether ``gh run list --workflow`` could not find ``workflow``."""
+    if result.returncode != 1 or not workflow:
+        return False
+    argv = result.argv
+    if (
+        len(argv) < _RUN_LIST_WORKFLOW_ARGC_MIN
+        or tuple(argv[:3]) != ("gh", "run", "list")
+        or "--workflow" not in argv
+    ):
+        return False
+    workflow_index = argv.index("--workflow") + 1
+    if workflow_index >= len(argv) or argv[workflow_index] != workflow:
+        return False
+    return f"could not find any workflows named {workflow}" in _combined(result)
 
 
 def _redact_gh_scalar(text: str) -> str:
@@ -1102,6 +1121,11 @@ def run_list_filtered(
     result = run_list_filtered_read(runner, filters)
     if result.returncode != 0:
         _raise_read_failure(result)
+    return parse_run_list_filtered_result(result)
+
+
+def parse_run_list_filtered_result(result: CommandResult) -> tuple[WorkflowRun, ...]:
+    """Parse ``gh run list`` filtered JSON rows."""
     rows_obj = _as_json_list(
         _loads_json(result.stdout or "[]", context="run list filtered"),
         context="run list filtered",

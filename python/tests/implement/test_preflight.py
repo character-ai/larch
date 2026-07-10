@@ -77,6 +77,10 @@ def _nonnumeric_bypass_count(rows: list[tuple[str, str]], _tmp_path: Path) -> li
     return [(key, "NaN" if key == "BYPASS_COUNT" else value) for key, value in rows]
 
 
+def _invalid_main_ci_status(rows: list[tuple[str, str]], _tmp_path: Path) -> list[tuple[str, str]]:
+    return [(key, "unknown" if key == "MAIN_CI_STATUS" else value) for key, value in rows]
+
+
 @pytest.mark.parametrize(
     ("mutate", "expected"),
     [
@@ -88,6 +92,7 @@ def _nonnumeric_bypass_count(rows: list[tuple[str, str]], _tmp_path: Path) -> li
         (_wrong_issue_json_path, "ISSUE_JSON_PATH must match preflight tmpdir"),
         (_missing_plan_path, "PLAN_PATH must match preflight tmpdir"),
         (_nonnumeric_bypass_count, "BYPASS_COUNT must be numeric"),
+        (_invalid_main_ci_status, "MAIN_CI_STATUS must be pass, fail, pending, error, or skip"),
     ],
 )
 def test_validate_success_envelope_rejects_malformed_rows(
@@ -115,6 +120,22 @@ def test_validate_success_envelope_rejects_absent_referenced_file(tmp_path: Path
         issue_json_path=tmp_path / "issue.json",
     )
     assert error == "PLAN_PATH must be readable"
+
+
+def test_validate_success_envelope_accepts_main_ci_skip(tmp_path: Path) -> None:
+    rows = [
+        (key, "skip" if key == "MAIN_CI_STATUS" else value)
+        for key, value in _valid_success_rows(tmp_path)
+    ]
+
+    error = preflight._validate_success_envelope(  # pyright: ignore[reportPrivateUsage]
+        rows,
+        preflight_tmpdir=tmp_path,
+        plan_path=tmp_path / "plan-from-issue.txt",
+        issue_json_path=tmp_path / "issue.json",
+    )
+
+    assert error == ""
 
 
 def test_preflight_success_emits_kv_and_forwards_repo(
