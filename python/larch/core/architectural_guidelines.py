@@ -17,7 +17,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import cast
 
 from larch import io as larch_io
@@ -142,6 +142,8 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
         OUTCOME_PINNED,
         REASON_CLEAN_NOTE,
         REASON_COMPOSE_MATERIALIZATION_FAILED,
+        REASON_DETERMINISTIC_CLEAN,
+        REASON_UNAVAILABLE,
         REASON_GUIDELINES_ABSENT,
         REASON_GUIDELINES_INVALID,
         REASON_NOTE_PINNED,
@@ -188,7 +190,7 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
             return "guideline outcome fields are inconsistent for invalid guidelines"
         return None
     if outcome == OUTCOME_CLEAN:
-        if reason != REASON_CLEAN_NOTE or assessment_kind != "clean":
+        if reason not in {REASON_CLEAN_NOTE, REASON_DETERMINISTIC_CLEAN} or assessment_kind != "clean":
             return "guideline outcome fields are inconsistent for clean guidelines"
         return None
     if outcome == OUTCOME_PINNED:
@@ -202,6 +204,7 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
             REASON_NOTE_READ_FAILED,
             REASON_NOTE_REDACTION_FAILED,
             REASON_COMPOSE_MATERIALIZATION_FAILED,
+            REASON_UNAVAILABLE,
             REASON_UNKNOWN,
         }:
             return "guideline outcome fields are inconsistent for dropped guidelines"
@@ -244,7 +247,7 @@ def validate_invariant_ship_outcome_record(data: object) -> str | None:  # noqa:
             return f"invariant outcome fields are inconsistent for {invariants_status} invariants"
         return None
     if outcome == "clean":
-        if reason not in {"clean-note", "invariants-empty"} or assessment_kind != "clean":
+        if reason not in {"clean-note", "invariants-empty", config.REASON_DETERMINISTIC_CLEAN} or assessment_kind != "clean":
             return "invariant outcome fields are inconsistent for clean invariants"
         return None
     if outcome == "violation":
@@ -252,7 +255,13 @@ def validate_invariant_ship_outcome_record(data: object) -> str | None:  # noqa:
             return "invariant outcome fields are inconsistent for invariant violations"
         return None
     if outcome == "dropped":
-        if assessment_kind or reason not in {"note-read-failed", "note-redaction-failed", "compose-materialization-failed", "unknown"}:
+        if assessment_kind or reason not in {
+            "note-read-failed",
+            "note-redaction-failed",
+            "compose-materialization-failed",
+            config.REASON_UNAVAILABLE,
+            "unknown",
+        }:
             return "invariant outcome fields are inconsistent for dropped invariants"
         return None
     return "invariant outcome fields are inconsistent"
@@ -869,48 +878,159 @@ def write_invariant_staged_assessment(  # noqa: PLR0913 - mirrors guideline arti
     _write_text_atomic(path=_invariant_sidecar_path(implement_tmpdir), text=sidecar)
 
 
-def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
-    """Write the durable compose-time note and HEAD-pinned metadata."""
-    _write_text_atomic(path=durable_note_path(implement_tmpdir), text=note_text)
-    diff_snapshot = metadata.get("DIFF_SNAPSHOT", "")
-    meta = "\n".join(
+def _note_identity(metadata: dict[str, str]) -> tuple[str, str, str] | None:
+    legacy_fingerprint = metadata.get("DIFF_FINGERPRINT", "").strip()
+    new_format = any(key in metadata for key in ("NOTE_STATE", "AUTHORED_DIFF_FINGERPRINT", "COVERED_DIFF_FINGERPRINT"))
+    note_state = metadata.get("NOTE_STATE", "").strip() or ("" if new_format else config.NOTE_STATE_AUTHORED)
+    if note_state not in config.NOTE_STATE_TOKENS:
+        return None
+    authored_fingerprint = metadata.get("AUTHORED_DIFF_FINGERPRINT", "").strip()
+    covered_fingerprint = metadata.get("COVERED_DIFF_FINGERPRINT", "").strip()
+    if not new_format:
+        authored_fingerprint = legacy_fingerprint
+        covered_fingerprint = legacy_fingerprint
+    if note_state == config.NOTE_STATE_UNAVAILABLE:
+        return note_state, authored_fingerprint, covered_fingerprint
+    if not authored_fingerprint or not covered_fingerprint:
+        return None
+    return note_state, authored_fingerprint, covered_fingerprint
+
+
+def _durable_metadata_text(
+    *,
+    head_sha: str,
+    metadata: dict[str, str],
+    base_ref: str,
+    status_key: str,
+    status_default: str,
+) -> str:
+    new_format = any(
+        metadata.get(key)
+        for key in ("NOTE_STATE", "AUTHORED_DIFF_FINGERPRINT", "COVERED_DIFF_FINGERPRINT")
+    )
+    identity = _note_identity(metadata)
+    note_state = identity[0] if identity is not None else metadata.get("NOTE_STATE", config.NOTE_STATE_AUTHORED)
+    authored_fingerprint = identity[1] if identity is not None else metadata.get("AUTHORED_DIFF_FINGERPRINT", "")
+    covered_fingerprint = identity[2] if identity is not None else metadata.get("COVERED_DIFF_FINGERPRINT", "")
+    compatibility_fingerprint = covered_fingerprint or metadata.get("DIFF_FINGERPRINT", "")
+    lines = ["STATUS=present"]
+    if new_format:
+        lines.extend(
+            [
+                f"NOTE_STATE={_env_escape(note_state)}",
+                f"AUTHORED_DIFF_FINGERPRINT={_env_escape(authored_fingerprint)}",
+                f"COVERED_DIFF_FINGERPRINT={_env_escape(covered_fingerprint)}",
+            ]
+        )
+    lines.extend(
         [
-            "STATUS=present",
             f"HEAD_SHA={_env_escape(head_sha)}",
             f"ASSESSED_HEAD_SHA={_env_escape(metadata.get('ASSESSED_HEAD_SHA', ''))}",
-            f"DIFF_FINGERPRINT={_env_escape(metadata.get('DIFF_FINGERPRINT', ''))}",
+            f"DIFF_FINGERPRINT={_env_escape(compatibility_fingerprint)}",
             f"BASE_REF={_env_escape(base_ref or metadata.get('BASE_REF', ''))}",
-            f"DIFF_SNAPSHOT={_env_escape(diff_snapshot)}",
-            f"GUIDELINES_STATUS={_env_escape(metadata.get('GUIDELINES_STATUS', 'present'))}",
+            f"DIFF_SNAPSHOT={_env_escape(metadata.get('DIFF_SNAPSHOT', ''))}",
+            f"{status_key}={_env_escape(metadata.get(status_key, status_default))}",
             f"ASSESSMENT_KIND={_env_escape(metadata.get('ASSESSMENT_KIND', ''))}",
             f"WRITTEN_AT={datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')}",
             "",
         ]
     )
-    _write_text_atomic(path=_durable_meta_path(implement_tmpdir), text=meta)
+    return "\n".join(lines)
+
+
+def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
+    """Write the durable compose-time note and HEAD-pinned metadata."""
+    _write_text_atomic(path=durable_note_path(implement_tmpdir), text=note_text)
+    _write_text_atomic(
+        path=_durable_meta_path(implement_tmpdir),
+        text=_durable_metadata_text(
+            head_sha=head_sha,
+            metadata=metadata,
+            base_ref=base_ref,
+            status_key="GUIDELINES_STATUS",
+            status_default="present",
+        ),
+    )
     clear_staged_and_dropped_artifacts(implement_tmpdir)
 
 
 def write_invariant_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
     """Write the durable invariant compose-time note and HEAD-pinned metadata."""
     _write_text_atomic(path=invariant_durable_note_path(implement_tmpdir), text=note_text)
-    diff_snapshot = metadata.get("DIFF_SNAPSHOT", "")
-    meta = "\n".join(
-        [
-            "STATUS=present",
-            f"HEAD_SHA={_env_escape(head_sha)}",
-            f"ASSESSED_HEAD_SHA={_env_escape(metadata.get('ASSESSED_HEAD_SHA', ''))}",
-            f"DIFF_FINGERPRINT={_env_escape(metadata.get('DIFF_FINGERPRINT', ''))}",
-            f"BASE_REF={_env_escape(base_ref or metadata.get('BASE_REF', ''))}",
-            f"DIFF_SNAPSHOT={_env_escape(diff_snapshot)}",
-            f"INVARIANTS_STATUS={_env_escape(metadata.get('INVARIANTS_STATUS', 'present'))}",
-            f"ASSESSMENT_KIND={_env_escape(metadata.get('ASSESSMENT_KIND', ''))}",
-            f"WRITTEN_AT={datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')}",
-            "",
-        ]
+    _write_text_atomic(
+        path=_invariant_durable_meta_path(implement_tmpdir),
+        text=_durable_metadata_text(
+            head_sha=head_sha,
+            metadata=metadata,
+            base_ref=base_ref,
+            status_key="INVARIANTS_STATUS",
+            status_default="present",
+        ),
     )
-    _write_text_atomic(path=_invariant_durable_meta_path(implement_tmpdir), text=meta)
     clear_invariant_staged_and_dropped_artifacts(implement_tmpdir)
+
+
+def write_deterministic_clean_note(
+    *,
+    implement_tmpdir: Path,
+    head_sha: str,
+    base_ref: str,
+    diff_text: str,
+    invariant: bool = False,
+) -> None:
+    """Persist a deterministic clean note backed by validated diff evidence."""
+    fingerprint = diff_fingerprint(diff_text)
+    diff_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
+    _write_text_atomic(path=diff_path, text=diff_text)
+    metadata = {
+        "NOTE_STATE": config.NOTE_STATE_DETERMINISTIC_CLEAN,
+        "ASSESSED_HEAD_SHA": head_sha,
+        "DIFF_FINGERPRINT": fingerprint,
+        "AUTHORED_DIFF_FINGERPRINT": fingerprint,
+        "COVERED_DIFF_FINGERPRINT": fingerprint,
+        "DIFF_SNAPSHOT": str(diff_path),
+        "ASSESSMENT_KIND": "clean",
+    }
+    writer = write_invariant_implement_note if invariant else write_implement_note
+    writer(
+        implement_tmpdir=implement_tmpdir,
+        note_text=CLEAN_INVARIANT_PRESENTATION_NOTE if invariant else CLEAN_PRESENTATION_NOTE,
+        head_sha=head_sha,
+        metadata=metadata,
+        base_ref=base_ref,
+    )
+
+
+def write_unavailable_note(
+    *,
+    implement_tmpdir: Path,
+    head_sha: str,
+    base_ref: str,
+    invariant: bool = False,
+) -> None:
+    """Persist a non-violating note when assessment input is unavailable."""
+    if invariant:
+        existing_metadata = invariant_durable_note_metadata(implement_tmpdir)
+        existing_note_path = invariant_durable_note_path(implement_tmpdir)
+        if (
+            existing_metadata.get("NOTE_STATE", config.NOTE_STATE_AUTHORED) == config.NOTE_STATE_AUTHORED
+            and _regular_file(existing_note_path)
+        ):
+            try:
+                existing_note = _read_regular_text_no_follow(existing_note_path)
+            except (OSError, UnicodeDecodeError):
+                existing_note = ""
+            if _invariant_assessment_kind(existing_note) == "violation":
+                return
+    metadata = {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE, "ASSESSMENT_KIND": ""}
+    writer = write_invariant_implement_note if invariant else write_implement_note
+    writer(
+        implement_tmpdir=implement_tmpdir,
+        note_text="Architectural assessment unavailable.",
+        head_sha=head_sha,
+        metadata=metadata,
+        base_ref=base_ref,
+    )
 
 
 def _materialize_live_diff(*, repo_root: Path | None, resolved_base: str) -> tuple[str, str] | None:
@@ -1214,6 +1334,249 @@ def invariant_durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
     return _read_env(_invariant_durable_meta_path(implement_tmpdir))
 
 
+def _path_out_of_scope(path: str) -> bool:
+    """Return true only for normalized paths outside architectural scope."""
+    if not path or path.startswith("/") or "\\" in path or "//" in path:
+        return False
+    candidate = PurePosixPath(path)
+    if candidate.is_absolute() or any(part in {"", ".", ".."} for part in candidate.parts):
+        return False
+    normalized = candidate.as_posix()
+    if normalized != path:
+        return False
+    if len(candidate.parts) >= 2 and candidate.parts[0] == "larch-logs":  # noqa: PLR2004 - minimum path depth: top-level dir + filename
+        return True
+    return len(candidate.parts) >= 2 and candidate.parts[0] == "docs" and candidate.suffix == ".md"  # noqa: PLR2004 - minimum path depth: top-level dir + filename
+
+
+def _valid_commit(*, repo_root: Path, revision: str) -> bool:
+    if not revision or revision.startswith("-") or any(char.isspace() for char in revision):
+        return False
+    try:
+        completed = subprocess.run(  # lint-subprocess-via-runner: ok read-only git revision validation mirrors sibling git helpers in this module
+            ["git", "rev-parse", "--verify", f"{revision}^{{commit}}"],  # noqa: S607
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    return completed.returncode == 0 and bool(completed.stdout.strip())
+
+
+def _incremental_paths_out_of_scope(*, repo_root: Path, old_head: str, new_head: str) -> bool:
+    if not _valid_commit(repo_root=repo_root, revision=old_head) or not _valid_commit(repo_root=repo_root, revision=new_head):
+        return False
+    try:
+        completed = subprocess.run(  # lint-subprocess-via-runner: ok read-only NUL-delimited git path inspection mirrors sibling git helpers in this module
+            ["git", "diff", "--no-renames", "--name-only", "-z", f"{old_head}..{new_head}", "--"],  # noqa: S607 - read-only git path inspection; revisions validated by _valid_commit before this call
+            cwd=repo_root,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    if completed.returncode != 0 or completed.stderr or not completed.stdout or not completed.stdout.endswith(b"\0"):
+        return False
+    raw_paths = completed.stdout[:-1].split(b"\0")
+    if not raw_paths or any(not raw_path for raw_path in raw_paths):
+        return False
+    try:
+        paths = [raw_path.decode("utf-8") for raw_path in raw_paths]
+    except UnicodeDecodeError:
+        return False
+    return all(_path_out_of_scope(path) for path in paths)
+
+
+def _snapshot_matches(*, snapshot_path: Path, covered_fingerprint: str) -> bool:
+    if not covered_fingerprint or not _regular_file(snapshot_path):
+        return False
+    try:
+        snapshot_text = _read_regular_text_no_follow(snapshot_path)
+    except (OSError, UnicodeDecodeError):
+        return False
+    return diff_fingerprint(snapshot_text) == covered_fingerprint
+
+
+def _validated_note_metadata(  # noqa: PLR0911 - fail-closed metadata validator has distinct early exits per invariant check
+    *,
+    metadata: dict[str, str],
+    expected_snapshot: Path,
+) -> tuple[str, str, str, str] | None:
+    if metadata.get("STATUS") != "present":
+        return None
+    identity = _note_identity(metadata)
+    if identity is None:
+        return None
+    note_state, authored_fingerprint, covered_fingerprint = identity
+    base_ref = metadata.get("BASE_REF", "").strip()
+    if note_state == config.NOTE_STATE_UNAVAILABLE:
+        return note_state, authored_fingerprint, covered_fingerprint, base_ref
+    declared_snapshot = metadata.get("DIFF_SNAPSHOT", "")
+    prior_format = not metadata.get("NOTE_STATE") and not metadata.get("AUTHORED_DIFF_FINGERPRINT") and not metadata.get("COVERED_DIFF_FINGERPRINT")
+    if prior_format:
+        return note_state, authored_fingerprint, covered_fingerprint, base_ref
+    if not declared_snapshot or Path(declared_snapshot) != expected_snapshot:
+        return None
+    if not _snapshot_matches(snapshot_path=expected_snapshot, covered_fingerprint=covered_fingerprint):
+        return None
+    return note_state, authored_fingerprint, covered_fingerprint, base_ref
+
+
+def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - fail-closed coverage advancement validates each independent safety boundary
+    *,
+    implement_tmpdir: Path,
+    metadata: dict[str, str],
+    head_sha: str,
+    base_ref: str,
+    repo_root: Path,
+    invariant: bool,
+) -> bool:
+    stored_head = metadata.get("HEAD_SHA", "").strip()
+    identity = _note_identity(metadata)
+    if identity is None:
+        return False
+    note_state, authored_fingerprint, covered_fingerprint = identity
+    if note_state == config.NOTE_STATE_UNAVAILABLE:
+        return False
+    snapshot_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
+    if not _valid_commit(repo_root=repo_root, revision=stored_head):
+        return False
+    remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
+    try:
+        stored_diff = _materialize_implementation_diff_for_head(
+            repo_root,
+            head_sha=stored_head,
+            base_remote=remote,
+            base_ref=ref,
+        )
+    except (OSError, RuntimeError):
+        return False
+    if diff_fingerprint(stored_diff) != covered_fingerprint or not _snapshot_matches(
+        snapshot_path=snapshot_path,
+        covered_fingerprint=covered_fingerprint,
+    ):
+        return False
+    if not _incremental_paths_out_of_scope(repo_root=repo_root, old_head=stored_head, new_head=head_sha):
+        return False
+    if _current_head(repo_root, verify_commit=True) != head_sha:
+        return False
+    live_diff = _materialize_live_diff(repo_root=repo_root, resolved_base=base_ref)
+    if live_diff is None or _current_head(repo_root, verify_commit=True) != head_sha:
+        return False
+    diff_text, covered_fingerprint = live_diff
+    refreshed = dict(metadata)
+    refreshed["NOTE_STATE"] = note_state
+    refreshed["AUTHORED_DIFF_FINGERPRINT"] = authored_fingerprint
+    refreshed["COVERED_DIFF_FINGERPRINT"] = covered_fingerprint
+    refreshed["DIFF_FINGERPRINT"] = covered_fingerprint
+    refreshed["DIFF_SNAPSHOT"] = str(snapshot_path)
+    meta_path = _invariant_durable_meta_path(implement_tmpdir) if invariant else _durable_meta_path(implement_tmpdir)
+    status_key = "INVARIANTS_STATUS" if invariant else "GUIDELINES_STATUS"
+    snapshot_tmp = snapshot_path.with_name(snapshot_path.name + ".coverage.tmp")
+    meta_tmp = meta_path.with_name(meta_path.name + ".coverage.tmp")
+    try:
+        previous_snapshot = _read_regular_text_no_follow(snapshot_path)
+        previous_metadata = _read_regular_text_no_follow(meta_path)
+        snapshot_tmp.write_text(diff_text, encoding="utf-8")
+        meta_tmp.write_text(
+            _durable_metadata_text(
+                head_sha=head_sha,
+                metadata=refreshed,
+                base_ref=base_ref,
+                status_key=status_key,
+                status_default="present",
+            ),
+            encoding="utf-8",
+        )
+        if diff_fingerprint(snapshot_tmp.read_text(encoding="utf-8")) != covered_fingerprint:
+            return False
+        snapshot_tmp.replace(snapshot_path)
+        try:
+            meta_tmp.replace(meta_path)
+        except OSError:
+            restored = False
+            try:
+                if _read_regular_text_no_follow(snapshot_path) != previous_snapshot:
+                    _write_text_atomic(path=snapshot_path, text=previous_snapshot)
+                if _read_regular_text_no_follow(meta_path) != previous_metadata:
+                    _write_text_atomic(path=meta_path, text=previous_metadata)
+                restored = (
+                    _read_regular_text_no_follow(snapshot_path) == previous_snapshot
+                    and _read_regular_text_no_follow(meta_path) == previous_metadata
+                )
+            except (OSError, UnicodeDecodeError):
+                restored = False
+            if not restored:
+                raise RuntimeError("could not restore architectural assessment coverage artifacts") from None
+            return False
+    except (OSError, UnicodeDecodeError):
+        return False
+    finally:
+        with suppress(OSError):
+            snapshot_tmp.unlink()
+        with suppress(OSError):
+            meta_tmp.unlink()
+    return True
+
+
+def _note_consumable(  # noqa: C901, PLR0911 - fail-closed consumption logic has distinct validation exits for each safety check
+    *,
+    implement_tmpdir: Path,
+    head_sha: str,
+    base_ref: str,
+    repo_root: str | Path | None,
+    invariant: bool,
+) -> bool:
+    note_path = invariant_durable_note_path(implement_tmpdir) if invariant else durable_note_path(implement_tmpdir)
+    meta_path = _invariant_durable_meta_path(implement_tmpdir) if invariant else _durable_meta_path(implement_tmpdir)
+    snapshot_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
+    if not _regular_file(note_path) or not _regular_file(meta_path):
+        return False
+    metadata = _read_env(meta_path)
+    validated = _validated_note_metadata(
+        metadata=metadata,
+        expected_snapshot=snapshot_path,
+    )
+    if validated is None:
+        return False
+    note_state, _authored_fingerprint, covered_fingerprint, stored_base = validated
+    resolved_base = (base_ref or stored_base).strip()
+    if not resolved_base or (base_ref and resolved_base != stored_base):
+        return False
+    if note_state == config.NOTE_STATE_UNAVAILABLE:
+        return metadata.get("HEAD_SHA") == head_sha
+    if repo_root is None:
+        return metadata.get("HEAD_SHA") == head_sha
+    try:
+        root = Path(repo_root).resolve()
+    except OSError:
+        return False
+    if metadata.get("HEAD_SHA") != head_sha:
+        if not _advance_note_coverage(
+            implement_tmpdir=implement_tmpdir,
+            metadata=metadata,
+            head_sha=head_sha,
+            base_ref=resolved_base,
+            repo_root=root,
+            invariant=invariant,
+        ):
+            return False
+        metadata = _read_env(meta_path)
+        validated = _validated_note_metadata(
+            metadata=metadata,
+            expected_snapshot=snapshot_path,
+        )
+        if validated is None:
+            return False
+        covered_fingerprint = validated[2]
+    if _current_head(root, verify_commit=True) != head_sha:
+        return False
+    live_fingerprint = _live_fingerprint(repo_root=root, resolved_base=resolved_base)
+    return live_fingerprint is not None and live_fingerprint == covered_fingerprint
+
+
 def note_consumable(
     *,
     implement_tmpdir: Path,
@@ -1222,29 +1585,12 @@ def note_consumable(
     repo_root: str | Path | None = None,
 ) -> bool:
     """Return true when the durable note is safe to surface for head_sha."""
-    note = durable_note_path(implement_tmpdir)
-    meta = _durable_meta_path(implement_tmpdir)
-    if not note.is_file() or note.is_symlink() or not meta.is_file() or meta.is_symlink():
-        return False
-    metadata = _read_env(meta)
-    if metadata.get("STATUS") != "present":
-        return False
-    if metadata.get("HEAD_SHA") == head_sha:
-        return True
-    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
-    if not resolved_base or repo_root is None:
-        return False
-    stored_head = metadata.get("HEAD_SHA", "")
-    if not _head_change_larch_logs_only(
+    return _note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+        base_ref=base_ref,
         repo_root=repo_root,
-        old_head=stored_head,
-        new_head=head_sha,
-    ):
-        return False
-    return not note_fingerprint_stale(
-        implement_tmpdir,
-        base_ref=resolved_base,
-        repo_root=repo_root,
+        invariant=False,
     )
 
 
@@ -1256,55 +1602,35 @@ def invariant_note_consumable(
     repo_root: str | Path | None = None,
 ) -> bool:
     """Return true when the durable invariant note is safe to surface for head_sha."""
-    note = invariant_durable_note_path(implement_tmpdir)
-    meta = _invariant_durable_meta_path(implement_tmpdir)
-    if not note.is_file() or note.is_symlink() or not meta.is_file() or meta.is_symlink():
-        return False
-    metadata = _read_env(meta)
-    if metadata.get("STATUS") != "present":
-        return False
-    if metadata.get("HEAD_SHA") == head_sha:
-        return True
-    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
-    if not resolved_base or repo_root is None:
-        return False
-    stored_head = metadata.get("HEAD_SHA", "")
-    if not _head_change_larch_logs_only(
+    return _note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+        base_ref=base_ref,
         repo_root=repo_root,
-        old_head=stored_head,
-        new_head=head_sha,
-    ):
-        return False
-    return not invariant_note_fingerprint_stale(
-        implement_tmpdir,
-        base_ref=resolved_base,
-        repo_root=repo_root,
+        invariant=True,
     )
 
 
-def _head_change_larch_logs_only(
+def _note_fingerprint_stale(
     *,
-    repo_root: str | Path,
-    old_head: str,
-    new_head: str,
+    implement_tmpdir: Path,
+    base_ref: str,
+    repo_root: str | Path | None,
+    invariant: bool,
 ) -> bool:
-    if not old_head or not new_head:
+    meta_path = _invariant_durable_meta_path(implement_tmpdir) if invariant else _durable_meta_path(implement_tmpdir)
+    metadata = _read_env(meta_path)
+    identity = _note_identity(metadata)
+    if identity is None or not base_ref or repo_root is None:
+        return True
+    if identity[0] == config.NOTE_STATE_UNAVAILABLE:
         return False
     try:
         root = Path(repo_root).resolve()
     except OSError:
-        return False
-    completed = subprocess.run(  # lint-subprocess-via-runner: ok read-only git diff --name-only mirrors sibling grandfathered git helpers in this module
-        ["git", "diff", "--name-only", f"{old_head}..{new_head}", "--"],  # noqa: S607
-        cwd=root,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    if completed.returncode != 0:
-        return False
-    paths = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
-    return bool(paths) and all(path == "larch-logs" or path.startswith("larch-logs/") for path in paths)
+        return True
+    live_fingerprint = _live_fingerprint(repo_root=root, resolved_base=base_ref)
+    return live_fingerprint is None or live_fingerprint != identity[2]
 
 
 def note_fingerprint_stale(
@@ -1313,18 +1639,13 @@ def note_fingerprint_stale(
     base_ref: str,
     repo_root: str | Path | None = None,
 ) -> bool:
-    """Return true when the durable note fingerprint no longer matches the implementation diff."""
-    meta = _read_env(_durable_meta_path(implement_tmpdir))
-    stored_fp = meta.get("DIFF_FINGERPRINT", "")
-    if not stored_fp or not base_ref:
-        return False
-    if repo_root is None:
-        return True
-    root = Path(repo_root).resolve()
-    live_fp = _live_fingerprint(repo_root=root, resolved_base=base_ref)
-    if live_fp is None:
-        return True
-    return live_fp != stored_fp
+    """Return true when the durable note fingerprint no longer matches the live diff."""
+    return _note_fingerprint_stale(
+        implement_tmpdir=implement_tmpdir,
+        base_ref=base_ref,
+        repo_root=repo_root,
+        invariant=False,
+    )
 
 
 def invariant_note_fingerprint_stale(
@@ -1333,18 +1654,13 @@ def invariant_note_fingerprint_stale(
     base_ref: str,
     repo_root: str | Path | None = None,
 ) -> bool:
-    """Return true when the durable invariant note fingerprint no longer matches the implementation diff."""
-    meta = _read_env(_invariant_durable_meta_path(implement_tmpdir))
-    stored_fp = meta.get("DIFF_FINGERPRINT", "")
-    if not stored_fp or not base_ref:
-        return False
-    if repo_root is None:
-        return True
-    root = Path(repo_root).resolve()
-    live_fp = _live_fingerprint(repo_root=root, resolved_base=base_ref)
-    if live_fp is None:
-        return True
-    return live_fp != stored_fp
+    """Return true when the durable invariant note fingerprint no longer matches the live diff."""
+    return _note_fingerprint_stale(
+        implement_tmpdir=implement_tmpdir,
+        base_ref=base_ref,
+        repo_root=repo_root,
+        invariant=True,
+    )
 
 
 def clear_guideline_ship_outcome(implement_tmpdir: Path) -> None:
@@ -1384,7 +1700,10 @@ def _write_compose_materialization_metadata(
                 f"HEAD_SHA={_env_escape(materialized.head_sha)}",
                 f"ASSESSED_HEAD_SHA={_env_escape(materialized.head_sha)}",
                 f"BASE_REF={_env_escape(materialized.base_ref)}",
+                f"NOTE_STATE={config.NOTE_STATE_AUTHORED}",
                 f"DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
+                f"AUTHORED_DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
+                f"COVERED_DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
                 f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
                 f"GUIDELINES_STATUS={_env_escape(materialized.guidelines_status)}",
                 f"GUIDELINES_PATH={_env_escape(materialized.guidelines_path)}",
@@ -1419,7 +1738,10 @@ def _write_invariant_compose_materialization_metadata(
                 f"HEAD_SHA={_env_escape(materialized.head_sha)}",
                 f"ASSESSED_HEAD_SHA={_env_escape(materialized.head_sha)}",
                 f"BASE_REF={_env_escape(materialized.base_ref)}",
+                f"NOTE_STATE={config.NOTE_STATE_AUTHORED}",
                 f"DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
+                f"AUTHORED_DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
+                f"COVERED_DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
                 f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
                 f"INVARIANTS_STATUS={_env_escape(materialized.guidelines_status)}",
                 f"INVARIANTS_PATH={_env_escape(materialized.guidelines_path)}",
@@ -1444,7 +1766,12 @@ def _compose_precheck_result(
             head_sha=current_head,
             warning="HEAD changed before architectural-guidelines compose materialization",
         )
-    if current_head and note_consumable(implement_tmpdir=implement_tmpdir, head_sha=current_head):
+    if current_head and note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=current_head,
+        repo_root=root,
+        base_ref=durable_note_metadata(implement_tmpdir).get("BASE_REF", ""),
+    ):
         if root is None:
             return None, ComposeMaterializationResult(status="current", head_sha=current_head)
         metadata = durable_note_metadata(implement_tmpdir)
@@ -1563,7 +1890,12 @@ def _invariant_compose_precheck_result(  # noqa: PLR0911 - fail-closed precheck 
             head_sha=current_head,
             warning="HEAD changed before architectural-invariants compose materialization",
         )
-    if current_head and invariant_note_consumable(implement_tmpdir=implement_tmpdir, head_sha=current_head):
+    if current_head and invariant_note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=current_head,
+        repo_root=root,
+        base_ref=invariant_durable_note_metadata(implement_tmpdir).get("BASE_REF", ""),
+    ):
         if root is None:
             return None, ComposeMaterializationResult(status="current", head_sha=current_head)
         metadata = invariant_durable_note_metadata(implement_tmpdir)

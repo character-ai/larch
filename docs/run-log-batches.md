@@ -22,7 +22,10 @@ execution-issue, transcript, vendor-diagnostic, and checks-digest telemetry carr
 implement run reaches Step 8 invariant-note composition. Schema version `1`
 uses `outcome` values `clean`, `violation`, or `dropped`; `violation` is
 blocking and feeds remediation, while `assessment_kind` is `clean` or
-`violation` when a note exists.
+`violation` when a note exists. Reason `deterministic-clean` requires `clean`
+with `assessment_kind=clean`. Reason `unavailable` requires the existing
+`dropped` non-violation fallback with an empty assessment kind. A valid
+violation remains blocking and is not downgraded by a later unavailable input.
 
 `architectural-guideline-outcome` is a replace-mode `.json` batch with the
 `json-object` sanitizer. It writes
@@ -39,6 +42,12 @@ Schema version `1` uses:
 - `detail`: redacted bounded diagnostic.
 - `guidelines_status`: `present`, `absent`, or `invalid`.
 - `head_sha`, `base_ref`, and `assessment_kind`.
+
+Schema version `1` remains unchanged. Historical records stay valid. For
+guidelines, reason `deterministic-clean` requires `outcome=clean` and
+`assessment_kind=clean`; reason `unavailable` requires `outcome=dropped` and an
+empty assessment kind. The same combinations apply to invariant outcomes, with
+`violation` reserved for an authored `violation-note`.
 
 Runs below `GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION`, or runs that did not
 reach the Step 8 condition, are pre-feature-era for this batch. At or above the

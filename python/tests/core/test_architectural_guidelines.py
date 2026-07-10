@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 
 from larch.core import architectural_guidelines as ag
+from larch.implement import ship_guidelines
 from larch.report import run_log_flush
 from test_support import make_run_context
 
@@ -2140,3 +2141,534 @@ def test_validate_invariant_ship_outcome_record_accepts_violation() -> None:
     )
 
     assert reason is None
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("larch-logs/run/log.txt", True),
+        ("docs/guide.md", True),
+        ("docs/nested/guide.md", True),
+        ("docs/guide.txt", False),
+        ("README.md", False),
+        ("ARCHITECTURAL_GUIDELINES.md", False),
+        ("python/larch/core/config.py", False),
+        ("../docs/guide.md", False),
+        ("/docs/guide.md", False),
+        ("", False),
+    ],
+)
+def test_path_out_of_scope_is_conservative(path: str, expected: bool) -> None:
+    assert ag._path_out_of_scope(path) is expected
+
+
+def test_deterministic_clean_note_records_distinct_identities(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
+
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+
+    metadata = ag.durable_note_metadata(tmpdir)
+    fingerprint = ag.diff_fingerprint(diff_text)
+    assert metadata["NOTE_STATE"] == ag.config.NOTE_STATE_DETERMINISTIC_CLEAN
+    assert metadata["AUTHORED_DIFF_FINGERPRINT"] == fingerprint
+    assert metadata["COVERED_DIFF_FINGERPRINT"] == fingerprint
+    assert metadata["DIFF_FINGERPRINT"] == fingerprint
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
+
+
+def test_unavailable_note_is_head_pinned_and_has_no_synthetic_identity(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_unavailable_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+        invariant=True,
+    )
+
+    metadata = ag.invariant_durable_note_metadata(tmpdir)
+    assert metadata["NOTE_STATE"] == ag.config.NOTE_STATE_UNAVAILABLE
+    assert metadata["AUTHORED_DIFF_FINGERPRINT"] == ""
+    assert metadata["COVERED_DIFF_FINGERPRINT"] == ""
+    assert ag.invariant_note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
+    assert not ag.invariant_note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
+
+
+def test_unavailable_note_is_not_stale_at_its_pinned_head(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_unavailable_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+    )
+
+    assert not ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=tmp_path)
+
+
+def test_unavailable_invariant_refresh_preserves_authored_violation(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_invariant_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="I-Test-1: violated\n",
+        head_sha="head-a",
+        metadata={
+            "NOTE_STATE": ag.config.NOTE_STATE_AUTHORED,
+            "AUTHORED_DIFF_FINGERPRINT": "author-fingerprint",
+            "COVERED_DIFF_FINGERPRINT": "covered-fingerprint",
+            "DIFF_FINGERPRINT": "covered-fingerprint",
+        },
+        base_ref="origin/main",
+    )
+
+    ag.write_unavailable_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-b",
+        base_ref="origin/main",
+        invariant=True,
+    )
+
+    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "I-Test-1: violated\n"
+    assert ag.invariant_durable_note_metadata(tmpdir)["NOTE_STATE"] == ag.config.NOTE_STATE_AUTHORED
+
+
+@pytest.mark.parametrize(
+    ("validator", "record"),
+    [
+        (
+            ag.validate_guideline_ship_outcome_record,
+            {
+                "schema_version": "1", "phase": "implement", "step": "8",
+                "outcome": "clean", "reason": "deterministic-clean", "detail": "",
+                "guidelines_status": "present", "head_sha": "abc", "base_ref": "origin/main",
+                "assessment_kind": "clean",
+            },
+        ),
+        (
+            ag.validate_invariant_ship_outcome_record,
+            {
+                "schema_version": "1", "phase": "implement", "step": "8",
+                "outcome": "dropped", "reason": "unavailable", "detail": "",
+                "invariants_status": "present", "head_sha": "abc", "base_ref": "origin/main",
+                "assessment_kind": "",
+            },
+        ),
+    ],
+)
+def test_ship_outcome_validators_accept_new_state_reasons(
+    validator: object,
+    record: dict[str, str],
+) -> None:
+    assert callable(validator)
+    assert validator(record) is None
+
+
+def _git_head(repo: Path) -> str:
+    return subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+
+
+def test_incremental_paths_out_of_scope_docs_md_is_safe(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    base_sha = _git_head(repo)
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "add docs")
+    new_sha = _git_head(repo)
+    assert ag._incremental_paths_out_of_scope(repo_root=repo, old_head=base_sha, new_head=new_sha)
+
+
+def test_incremental_paths_out_of_scope_larch_logs_is_safe(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    base_sha = _git_head(repo)
+    (repo / "larch-logs" / "run").mkdir(parents=True, exist_ok=True)
+    (repo / "larch-logs" / "run" / "log.txt").write_text("log\n", encoding="utf-8")
+    _git(repo, "add", "larch-logs/run/log.txt")
+    _git(repo, "commit", "-m", "add log")
+    new_sha = _git_head(repo)
+    assert ag._incremental_paths_out_of_scope(repo_root=repo, old_head=base_sha, new_head=new_sha)
+
+
+def test_incremental_paths_out_of_scope_code_file_intersects(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    base_sha = _git_head(repo)
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "foo.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/foo.py")
+    _git(repo, "commit", "-m", "add code")
+    new_sha = _git_head(repo)
+    assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head=base_sha, new_head=new_sha)
+
+
+def test_incremental_paths_out_of_scope_mixed_path_intersects(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    base_sha = _git_head(repo)
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "foo.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md", "python/foo.py")
+    _git(repo, "commit", "-m", "add mixed")
+    new_sha = _git_head(repo)
+    assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head=base_sha, new_head=new_sha)
+
+
+def test_incremental_paths_out_of_scope_rename_source_intersects(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+    _git(repo, "rm", "python/impl.py")
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "rename to docs")
+    h2 = _git_head(repo)
+    assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head=h1, new_head=h2)
+
+
+def test_incremental_paths_out_of_scope_invalid_revision_fails_closed(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    base_sha = _git_head(repo)
+    assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head="notarevision", new_head=base_sha)
+
+
+def test_incremental_paths_out_of_scope_same_revision_fails_closed(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    sha = _git_head(repo)
+    assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head=sha, new_head=sha)
+
+
+@pytest.mark.parametrize(
+    "completed",
+    [
+        subprocess.CompletedProcess(["git"], 1, b"", b"git failure"),
+        subprocess.CompletedProcess(["git"], 0, b"docs/guide.md", b""),
+        subprocess.CompletedProcess(["git"], 0, b"docs/\xff.md\0", b""),
+    ],
+)
+def test_incremental_paths_out_of_scope_rejects_bad_git_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    completed: subprocess.CompletedProcess[bytes],
+) -> None:
+    repo = _repo(tmp_path)
+    sha = _git_head(repo)
+
+    def fake_valid_commit(*, repo_root: Path, revision: str) -> bool:
+        _ = repo_root, revision
+        return True
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[bytes]:
+        _ = argv
+        return completed
+
+    monkeypatch.setattr(ag, "_valid_commit", fake_valid_commit)
+    monkeypatch.setattr(ag.subprocess, "run", fake_run)
+
+    assert not ag._incremental_paths_out_of_scope(repo_root=repo, old_head=sha, new_head="next")
+
+
+def test_coverage_advancement_docs_only_note_remains_consumable(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    authored_fp = ag.diff_fingerprint(diff_text)
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=h1, base_ref="origin/main", repo_root=repo)
+
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "add docs")
+    h2 = _git_head(repo)
+
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=h2, base_ref="origin/main", repo_root=repo)
+    metadata = ag.durable_note_metadata(tmpdir)
+    assert metadata["HEAD_SHA"] == h2
+    assert metadata["AUTHORED_DIFF_FINGERPRINT"] == authored_fp
+    assert metadata["COVERED_DIFF_FINGERPRINT"] != authored_fp
+    assert (
+        ag.diff_fingerprint(ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"))
+        == metadata["COVERED_DIFF_FINGERPRINT"]
+    )
+    prepared = ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
+    assert prepared.status == "current"
+    loaded = ship_guidelines.load_or_prepare_guidelines_note(
+        implement_tmpdir=str(tmpdir),
+        head_sha=h2,
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+    assert loaded.needs_assessment is False
+
+
+def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / ag.INVARIANTS_FILENAME).write_text("### I-Test-1: Keep tests direct\n", encoding="utf-8")
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", ag.INVARIANTS_FILENAME, "python/impl.py")
+    _git(repo, "commit", "-m", "add invariant and impl")
+    h1 = _git_head(repo)
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"),
+        invariant=True,
+    )
+    (repo / "larch-logs").mkdir()
+    (repo / "larch-logs" / "run.log").write_text("log\n", encoding="utf-8")
+    _git(repo, "add", "larch-logs/run.log")
+    _git(repo, "commit", "-m", "logs only")
+    h2 = _git_head(repo)
+
+    prepared = ag.prepare_invariant_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
+    assert prepared.status == "current"
+    loaded = ship_guidelines.load_or_prepare_invariants_note(
+        implement_tmpdir=str(tmpdir),
+        head_sha=h2,
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+    assert loaded.needs_assessment is False
+
+
+def test_coverage_advancement_rejects_snapshot_not_matching_stored_head(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ag.write_deterministic_clean_note(implement_tmpdir=tmpdir, head_sha=h1, base_ref="origin/main", diff_text=diff_text)
+
+    forged_snapshot = "forged snapshot\n"
+    (tmpdir / ag.MATERIALIZED_DIFF).write_text(forged_snapshot, encoding="utf-8")
+    metadata_path = tmpdir / ag.DURABLE_NOTE_ENV
+    forged_fingerprint = ag.diff_fingerprint(forged_snapshot)
+    metadata_path.write_text(
+        "\n".join(
+        f"{key}={forged_fingerprint}" if key in {"COVERED_DIFF_FINGERPRINT", "DIFF_FINGERPRINT"} else line
+        for line in metadata_path.read_text(encoding="utf-8").splitlines()
+        for key, _, _value in [line.partition("=")]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "docs only")
+
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha=_git_head(repo), base_ref="origin/main", repo_root=repo)
+
+
+def test_coverage_advancement_metadata_failure_restores_prior_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"),
+    )
+    before_snapshot = (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8")
+    before_metadata = (tmpdir / ag.DURABLE_NOTE_ENV).read_text(encoding="utf-8")
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "docs only")
+    original_replace = Path.replace
+
+    def fail_metadata_replace(path: Path, target: Path) -> Path:
+        if target == tmpdir / ag.DURABLE_NOTE_ENV:
+            raise OSError("metadata replace failed")
+        return original_replace(path, target)
+
+    monkeypatch.setattr(Path, "replace", fail_metadata_replace)
+
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha=_git_head(repo), base_ref="origin/main", repo_root=repo)
+    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == before_snapshot
+    assert (tmpdir / ag.DURABLE_NOTE_ENV).read_text(encoding="utf-8") == before_metadata
+
+
+def test_coverage_advancement_chained_advances_preserve_authored_fingerprint(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    authored_fp = ag.diff_fingerprint(diff_text)
+
+    (repo / "docs").mkdir(parents=True, exist_ok=True)
+    (repo / "docs" / "guide.md").write_text("guide\n", encoding="utf-8")
+    _git(repo, "add", "docs/guide.md")
+    _git(repo, "commit", "-m", "add docs")
+    h2 = _git_head(repo)
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=h2, base_ref="origin/main", repo_root=repo)
+    covered_after_h2 = ag.durable_note_metadata(tmpdir)["COVERED_DIFF_FINGERPRINT"]
+
+    (repo / "docs" / "extra.md").write_text("extra\n", encoding="utf-8")
+    _git(repo, "add", "docs/extra.md")
+    _git(repo, "commit", "-m", "add extra docs")
+    h3 = _git_head(repo)
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=h3, base_ref="origin/main", repo_root=repo)
+    metadata_h3 = ag.durable_note_metadata(tmpdir)
+    assert metadata_h3["HEAD_SHA"] == h3
+    assert metadata_h3["AUTHORED_DIFF_FINGERPRINT"] == authored_fp
+    assert metadata_h3["COVERED_DIFF_FINGERPRINT"] != covered_after_h2
+
+
+def test_coverage_advancement_code_commit_requires_reassessment(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "python/impl.py")
+    _git(repo, "commit", "-m", "add impl")
+    h1 = _git_head(repo)
+
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+
+    (repo / "python" / "bar.py").write_text("y = 2\n", encoding="utf-8")
+    _git(repo, "add", "python/bar.py")
+    _git(repo, "commit", "-m", "add more code")
+    h2 = _git_head(repo)
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha=h2, base_ref="origin/main", repo_root=repo)
+
+
+def test_consumption_rejects_note_with_no_covered_identity(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    tmpdir.mkdir(parents=True)
+    ag.durable_note_path(tmpdir).write_text("some note\n", encoding="utf-8")
+    (tmpdir / ag.DURABLE_NOTE_ENV).write_text(
+        "STATUS=present\n"
+        "HEAD_SHA=abc\n"
+        "NOTE_STATE=authored\n"
+        "AUTHORED_DIFF_FINGERPRINT=\n"
+        "COVERED_DIFF_FINGERPRINT=\n"
+        "DIFF_FINGERPRINT=\n"
+        "BASE_REF=origin/main\n"
+        "DIFF_SNAPSHOT=\n"
+        "GUIDELINES_STATUS=present\n"
+        "ASSESSMENT_KIND=\n"
+        "WRITTEN_AT=2024-01-01T00:00:00Z\n",
+        encoding="utf-8",
+    )
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="abc", base_ref="origin/main")
+
+
+def test_consumption_rejects_partial_new_format_metadata(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    metadata_path = tmpdir / ag.DURABLE_NOTE_ENV
+    metadata_path.write_text(
+        metadata_path.read_text(encoding="utf-8").replace("AUTHORED_DIFF_FINGERPRINT=", "AUTHORED_DIFF_FINGERPRINT=\n", 1),
+        encoding="utf-8",
+    )
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a", base_ref="origin/main")
+
+
+def test_consumption_accepts_prior_format_metadata(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    tmpdir.mkdir(parents=True)
+    ag.durable_note_path(tmpdir).write_text("some note\n", encoding="utf-8")
+    (tmpdir / ag.DURABLE_NOTE_ENV).write_text(
+        "STATUS=present\n"
+        "HEAD_SHA=abc\n"
+        "DIFF_FINGERPRINT=somefingerprint\n"
+        "BASE_REF=origin/main\n"
+        "GUIDELINES_STATUS=present\n"
+        "ASSESSMENT_KIND=clean\n"
+        "WRITTEN_AT=2024-01-01T00:00:00Z\n",
+        encoding="utf-8",
+    )
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="abc")
+
+
+def test_consumption_rejects_fingerprint_mismatched_snapshot(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    snapshot_path = tmpdir / ag.MATERIALIZED_DIFF
+    snapshot_path.write_text("tampered diff content\n", encoding="utf-8")
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
+
+
+def test_consumption_rejects_symlinked_snapshot(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    snapshot_path = tmpdir / ag.MATERIALIZED_DIFF
+    target = tmp_path / "linked.txt"
+    target.write_text(diff_text, encoding="utf-8")
+    snapshot_path.unlink()
+    snapshot_path.symlink_to(target)
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
