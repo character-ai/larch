@@ -39,7 +39,7 @@ codex/pragmatism-vote           │                                    ███
 
 - **Outcome**: shipping
 - **Duration**: 00:31:34
-- **Cost**: 💰 TOTAL ~$10.88: Claude $1.39, Codex-5.5 $1.92, Codex-mini $1.48, Cursor $5.46, Claude (subprocess) $0.63  |  Tokens: 25719k
+- **Cost**: 💰 TOTAL ~$11.01: Claude $1.52, Codex-5.5 $1.92, Codex-mini $1.48, Cursor $5.46, Claude (subprocess) $0.63  |  Tokens: 26109k
 - **Issue**: #6788: https://github.com/character-ai/larch/issues/6788
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
