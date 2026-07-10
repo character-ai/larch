@@ -29,6 +29,7 @@ from larch.core import external_defaults
 from larch.core import proc
 from larch.core import redact
 from larch.git import git
+from larch.issue import execution_issues
 from larch.lint import lint_complexity_baseline
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, Runner
@@ -653,18 +654,48 @@ def _file_digest(path: Path) -> str:
         return "unreadable"
 
 
+def _diff_fingerprints(
+    runner: Runner,
+    *,
+    cwd: str,
+    cached: bool,
+) -> dict[str, str] | None:
+    result = runner.run(
+        ["git", "diff", "--raw", "--no-ext-diff", "--",] if not cached else
+        ["git", "diff", "--cached", "--raw", "--no-ext-diff", "--",],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return None
+    fingerprints: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        metadata, separator, path = line.partition("\t")
+        if not separator or not path:
+            return None
+        fingerprints[path] = hashlib.sha256(line.encode("utf-8")).hexdigest()
+    return fingerprints
+
+
+def _snapshot_diff_fingerprints(runner: Runner, *, cwd: str, cached: bool) -> dict[str, str] | None:
+    return _diff_fingerprints(runner, cwd=cwd, cached=cached)
+
+
 def _snapshot_from_paths(
-    *, cwd: str, tracked: tuple[str, ...], untracked: tuple[str, ...]
-) -> _RepoSnapshot:
+    runner: Runner, *, cwd: str, tracked: tuple[str, ...], untracked: tuple[str, ...]
+) -> _RepoSnapshot | None:
+    unstaged = _snapshot_diff_fingerprints(runner, cwd=cwd, cached=False)
+    staged = _snapshot_diff_fingerprints(runner, cwd=cwd, cached=True)
+    if unstaged is None or staged is None:
+        return None
     states: tuple[_RepoPathState, ...] = tuple(
         _RepoPathState(
             path=path,
             worktree_digest=_file_digest(Path(cwd) / path),
-            unstaged_diff="tracked" if path in tracked else "",
-            staged_diff="",
+            unstaged_diff=unstaged.get(path, ""),
+            staged_diff=staged.get(path, ""),
             untracked=path in untracked,
         )
-        for path in sorted(set(tracked).union(untracked))
+        for path in sorted(set(tracked).union(untracked).union(unstaged).union(staged))
     )
     return _RepoSnapshot(paths=states)
 
@@ -1119,6 +1150,51 @@ def _coder_stderr_tail(*, run_dir: Path, log_name: str) -> str:
     return ""
 
 
+def _redacted_attempt_log(*, run_dir: Path, log_name: str) -> str:
+    source = run_dir / log_name
+    target = source.with_name(f"{source.name}.redacted")
+    try:
+        if not source.is_file() or source.is_symlink():
+            return ""
+        text = source.read_text(encoding="utf-8", errors="replace")
+        target.write_text(redact.redact(text), encoding="utf-8")
+        target.chmod(0o600)
+        if target.is_symlink() or not target.is_file():
+            return ""
+    except OSError:
+        with contextlib.suppress(OSError):
+            target.unlink(missing_ok=True)
+        return ""
+    return str(target)
+
+
+def _append_attempt_execution_issue(
+    *,
+    issue_log: Path,
+    tier: str,
+    issue_kind: str,
+    attempt_log: str,
+) -> None:
+    if not issue_kind:
+        return
+    detail = "attempt log unavailable"
+    if attempt_log:
+        try:
+            text = Path(attempt_log).read_text(encoding="utf-8", errors="replace")
+            detail = text[-4096:].strip() or detail
+        except OSError:
+            pass
+    entry = redact.redact(
+        f"- lint-fix tier={tier} category={issue_kind}; {detail}"
+    ).strip()
+    try:
+        execution_issues.append_execution_issue(
+            issue_log, category="Tool Failures", entry=entry
+        )
+    except OSError:
+        pass
+
+
 def _resolve_lint_fix_timing_root(*, allowed_tmpdir: str | None, run_parent: str) -> Path | None:
     if allowed_tmpdir is not None:
         try:
@@ -1326,9 +1402,15 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         )
     baseline_tracked: tuple[str, ...] = _capture_tracked_paths(runner, cwd=cwd)
     baseline_untracked: tuple[str, ...] = _capture_untracked_paths(runner, cwd=cwd)
-    baseline_snapshot: _RepoSnapshot = _snapshot_from_paths(
-        cwd=cwd, tracked=baseline_tracked, untracked=baseline_untracked
+    baseline_snapshot = _snapshot_from_paths(
+        runner, cwd=cwd, tracked=baseline_tracked, untracked=baseline_untracked
     )
+    if baseline_snapshot is None:
+        return FixOutcome(
+            status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+            commit_sha=None, head_changed=False, coder_tool=None,
+            tier_ledger_path=str(tier_ledger),
+        )
     try:
         baseline_head: str = git.rev_parse(runner, "HEAD", cwd=cwd)
     except Exception:
@@ -1349,6 +1431,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         target_cmd_display=target_cmd_display,
     )
     coder_tool: str | None = None
+    coder_log_path: str = ""
     run_dir: Path | None = None
     last_stderr_tail: str = ""
     useful_delta_paths: tuple[str, ...] = ()
@@ -1394,9 +1477,23 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             )
         attempt_tracked: tuple[str, ...] = _capture_tracked_paths(runner, cwd=cwd)
         attempt_untracked: tuple[str, ...] = _capture_untracked_paths(runner, cwd=cwd)
-        attempt_baseline: _RepoSnapshot = _snapshot_from_paths(
-            cwd=cwd, tracked=attempt_tracked, untracked=attempt_untracked
+        attempt_baseline = _snapshot_from_paths(
+            runner, cwd=cwd, tracked=attempt_tracked, untracked=attempt_untracked
         )
+        if attempt_baseline is None:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
+        try:
+            attempt_head = git.rev_parse(runner, "HEAD", cwd=cwd)
+        except Exception:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="head-unresolved-after-dispatch",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
         attempt_start: float = time.monotonic()
         if tier == "claude":
             launcher_rc: int = _run_claude(
@@ -1420,14 +1517,28 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         elapsed_ms: int = int((time.monotonic() - attempt_start) * 1000)
         attempt_current_tracked: tuple[str, ...] = _capture_tracked_paths(runner, cwd=cwd)
         attempt_current_untracked: tuple[str, ...] = _capture_untracked_paths(runner, cwd=cwd)
-        current_snapshot: _RepoSnapshot = _snapshot_from_paths(
-            cwd=cwd, tracked=attempt_current_tracked,
+        current_snapshot = _snapshot_from_paths(
+            runner, cwd=cwd, tracked=attempt_current_tracked,
             untracked=attempt_current_untracked,
         )
+        if current_snapshot is None:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
         useful_delta_paths = _snapshot_delta_paths(
             baseline=attempt_baseline, current=current_snapshot
         )
-        useful_delta: bool = launcher_rc == 0 or bool(useful_delta_paths)
+        try:
+            current_attempt_head = git.rev_parse(runner, "HEAD", cwd=cwd)
+        except Exception:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="head-unresolved-after-dispatch",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
+        useful_delta: bool = bool(useful_delta_paths) or current_attempt_head != attempt_head
         issue_kind: str = "" if launcher_rc == 0 else (
             "timeout" if launcher_rc == config.PROC_TIMEOUT_EXIT_CODE else "launcher-failure"
         )
@@ -1445,8 +1556,16 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         tail: str = _coder_stderr_tail(run_dir=run_dir, log_name=log_name)
         if tail:
             last_stderr_tail = tail
+        attempt_log = _redacted_attempt_log(run_dir=run_dir, log_name=log_name)
+        _append_attempt_execution_issue(
+            issue_log=allowed_root / "execution-issues.md",
+            tier=tier,
+            issue_kind=issue_kind,
+            attempt_log=attempt_log,
+        )
         if useful_delta:
             coder_tool = tier
+            coder_log_path = attempt_log
             break
     assert run_dir is not None
     try:
@@ -1543,8 +1662,14 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         current_tracked = _capture_tracked_paths(runner, cwd=cwd)
         current_untracked = _capture_untracked_paths(runner, cwd=cwd)
         current_snapshot = _snapshot_from_paths(
-            cwd=cwd, tracked=current_tracked, untracked=current_untracked
+            runner, cwd=cwd, tracked=current_tracked, untracked=current_untracked
         )
+        if current_snapshot is None:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+                commit_sha=None, head_changed=False, coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
+            )
         delta_paths = _snapshot_delta_paths(
             baseline=baseline_snapshot, current=current_snapshot
         )
@@ -1556,7 +1681,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
-                coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
+                coder_log_path=coder_log_path,
                 tier_ledger_path=str(tier_ledger),
             )
         if baseline_clean:
@@ -1598,7 +1723,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             commit_sha=commit_sha,
             head_changed=head_changed,
             coder_tool=coder_tool,
-            coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
+            coder_log_path=coder_log_path,
                 tier_ledger_path=str(tier_ledger),
         )
     delta_result = runner.run(
@@ -1615,7 +1740,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         commit_sha=commit_sha,
         head_changed=head_changed,
         coder_tool=coder_tool,
-        coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
+        coder_log_path=coder_log_path,
                 tier_ledger_path=str(tier_ledger),
     )
 
@@ -1656,7 +1781,9 @@ def _handle_fix_outcome(
         elif fix.failure_reason == "head-changed-after-dispatch":
             loop.status = "head-changed"
         else:
-            loop.status = "dispatch-failed"
+            loop.status = "main-agent-required"
+            loop.stderr_tail_path = fix.stderr_tail_path
+            loop.coder_log_path = fix.coder_log_path
         return False
     loop.status = "dispatch-failed"
     return False
