@@ -1,0 +1,119 @@
+## Summary
+
+The progress statusline can show the previous run's last breadcrumb in two situations: right after a new `/design` or `/implement` starts, and right after Claude starts. Four causes cooperate. The active-run pointer `current` is never cleared at run end. New runs activate the pointer late in Step 0. The SessionStart reset skips `resume`/`compact` sources and is vetoed by any live bgjob in the clone, including orphans. And all breadcrumb writers follow the `current` pointer, so a surviving process from an old run writes into the newer run's log.
+
+## Original report
+
+> please investigate why larch /design and /implement mechanism for status line progress report still shows stale previous-run status sometimes on job start, sometimes even when I just start claude
+
+## Reproduction scenario
+
+Real-world scenarios:
+
+1. **Job start**: finish a `/design`, then start `/implement` in the same clone within 5 minutes. During implement Step 0 (session setup plus vendor probes), the statusline still shows the design run's last breadcrumb with no `(stale Nm)` marker.
+2. **Claude start (resume)**: finish or abort a run, quit Claude, restart with `--continue` or `--resume` within an hour. The old run's last breadcrumb renders at startup.
+3. **Claude start (fresh, veto)**: interrupt a run while a bgjob daemon is alive (budgets reach 21600s). Start Claude fresh. The reset is vetoed, and the stale breadcrumb renders without the stale marker.
+
+Sandboxed repro (semantics confirmed, run with `LARCH_TEST_CACHE_HOME` set to a scratch dir):
+
+```bash
+python3 python/cli.py progress activate --repo-root "$REPO" --run-id RUN-A
+python3 python/cli.py progress note --repo-root "$REPO" --skill implement --step 18 "Step 18 done (previous run)"
+printf '{"workspace":{"current_dir":"%s"}}' "$REPO" | python3 python/cli.py progress statusline
+# renders: larch HH:MM: [implement 18] Step 18 done (previous run)   <- unmarked
+printf '{"source":"resume","cwd":"%s"}' "$REPO" | python3 python/cli.py progress session-reset
+# current pointer preserved
+printf '{"source":"startup","cwd":"%s"}' "$REPO" | python3 python/cli.py progress session-reset
+# current pointer deleted
+python3 python/cli.py progress activate --repo-root "$REPO" --run-id RUN-B
+python3 python/cli.py progress note --repo-root "$REPO" --skill implement --step 8 "orphan run-A daemon writes after run B activated"
+# line lands in RUN-B/breadcrumbs.log
+```
+
+## Expected behavior
+
+- After a run ends or bails, the statusline stops showing that run's status, or clearly marks it as finished.
+- A new run never renders the previous run's breadcrumbs as its own status.
+- A fresh Claude start does not show a prior run's status unless that run's own background work is still live.
+
+## Observed behavior
+
+- After a run ends, the last breadcrumb keeps rendering for up to `hide_after_s` (3600s): unmarked for the first 300s, then with `(stale Nm)`.
+- At new-job start, the previous run's last breadcrumb renders until Step 0 reaches `progress activate`, which happens after session setup and reviewer probes.
+- At Claude start with `resume` source, the pointer is preserved by design, so a finished run's status still shows.
+- With a live orphaned bgjob in the clone, a fresh startup reset is vetoed, and the same liveness check suppresses both the stale suffix and the 1-hour hide. The stale breadcrumb renders as if fresh.
+
+## Root cause analysis
+
+Four cooperating causes, all verified by code read plus sandboxed repro:
+
+- **RC1 (primary): no end-of-run deactivation.** `deactivate_run` (`python/larch/report/progress_file.py:405`) has exactly one caller: the SessionStart session-reset (`python/larch/report/statusline.py:139`). No `progress deactivate` CLI verb exists (`python/larch/cli.py:386-393`). Neither design Step 5 finalize nor implement Step 18/cleanup nor any bail path clears `current`.
+- **RC2: late activation at job start.** Design activates after `session setup --check-reviewers` and write-design-env (`python/larch/design/design_step0.py:200-212`). Implement activates after setup, probes, and write-id (`python/larch/state/bootstrap.py:501-503`). Until then the statusline serves the previous run. The `--resume-plan-tail` branch (`python/larch/state/bootstrap.py:463-472`) never re-activates: if a fresh-session reset deleted `current`, the resumed run shows nothing and default breadcrumb writes silently no-op.
+- **RC3: reset skip and veto at Claude start.** `RESET_SESSION_SOURCES` is `{startup, clear}` (`python/larch/report/statusline.py:24`), so `resume`/`compact` preserve the pointer. Combined with RC1, a finished run's status survives resume for up to an hour. `_clone_has_live_bgjob` (`python/larch/report/statusline.py:85-96,137`) vetoes the reset for ANY live in-budget bgjob in the clone, not just one belonging to the active run. `bgjob reap` (`scripts/cleanup-sessionstart.sh:20`, `python/larch/bgjob/cli.py:111-136`) removes only rows with a result env, dead processes, or expired budgets. A live in-budget orphan survives both reap and veto. The same check suppresses the stale suffix and the hide (`python/larch/report/statusline.py:106-107`).
+- **RC4: cross-run contamination.** Every production writer follows `current` with no run id: `python/larch/review/review_core_body.py:57`, `python/larch/implement/ship_state.py:165`, `python/larch/review/review_and_fix.py:119`, `python/larch/implement/ci_monitor.py:1117` and `:1438`, `python/larch/review/plan_review.py:104`, `python/larch/review/plan_review_round.py:39`, `python/larch/report/timing.py:690`. An orphaned daemon from run A appends into whichever run is active now, refreshing mtime and defeating stale marking.
+
+## Evidence
+
+- Investigated at commit `0825e12ff` on `main`.
+- Live machine state: clone hash `b9df583d5a7423d9` still had `current` set, last breadcrumb `[design 5b] design Step 5b.5 — arch diagram started` from Jul 9 15:53. Clone hash `4022b09529d2f813` still had `current` set, last breadcrumb `[implement 18] Step 18 — done started` from Jul 9 16:37. Both pointers were still present the next day.
+- Sandboxed repro (commands above) confirmed: unmarked render of a finished run, `resume` preserving the pointer, `startup` deleting it, and a pointer-following write landing in the newer run's log.
+- `docs/progress-reporting.md` documents the startup reset and the bgjob protection, but no end-of-run clear.
+- Budgets: `skills/shared/bgjob-wait.md` shows `--budget-s 21600` (6 hours), which bounds how long an orphan can veto the reset.
+- Prior related work: #6686 (flip production reader/writer to active run), #6750, #6624. No open statusline issues found.
+
+## Affected files
+
+- `python/larch/report/statusline.py`: session-reset sources, bgjob veto, stale-suffix suppression.
+- `python/larch/report/progress_file.py`: `deactivate_run` exists but is unreachable from run lifecycles.
+- `python/larch/cli.py`: no `progress deactivate` verb.
+- `python/larch/design/design_step0.py`: late `progress activate` in design Step 0.
+- `python/larch/state/bootstrap.py`: late `progress activate` in implement Step 0; `--resume-plan-tail` never re-activates.
+- `python/larch/review/review_core_body.py`, `python/larch/review/review_and_fix.py`, `python/larch/review/plan_review.py`, `python/larch/review/plan_review_round.py`, `python/larch/implement/ci_monitor.py`, `python/larch/implement/ship_state.py`, `python/larch/report/timing.py`: pointer-following writers.
+- `scripts/cleanup-sessionstart.sh`, `python/larch/bgjob/cli.py`: reap does not remove live in-budget orphans (by design; interacts with the veto).
+- `docs/progress-reporting.md`: contract to update with end-of-run semantics.
+
+## Suggested fix(es)
+
+1. Add a `progress deactivate` CLI verb and call it at run end and bail: design Step 5 finalize and bail paths, implement Step 18/cleanup and bail paths, and pause-save. Optionally write a terminal "run complete" breadcrumb first, then clear.
+2. Activate the new run at the top of Step 0, before reviewer probes. Or clear the stale pointer at Step 0 entry. Have `--resume-plan-tail` re-activate its run id.
+3. Scope both the session-reset veto and the stale-suffix/hide suppression to live bgjobs whose registry `RUN_ID` matches the active run id, not any bgjob in the clone.
+4. Make daemon-side writers pass their own run id (`append_breadcrumb_for_run` / `progress note --run-id`) so orphans cannot contaminate a newer run.
+
+Fixes 1 and 2 remove the two reported symptoms directly. Fixes 3 and 4 close the orphan paths that make stale status look fresh.
+
+## Open questions
+
+- Should `resume`/`compact` also clear the pointer when no live bgjob matches the active run, or is preserving active work worth the stale window?
+- After a terminal "run complete" breadcrumb, how long should it stay visible before deactivation hides it? Immediate clear loses a useful "done" signal.
+- Should the statusline render breadcrumbs from a run other than the one that wrote them at all, or should writers hard-fail on run-id mismatch?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Stop the progress statusline from rendering a previous run's breadcrumb at new-job start and at Claude start.
+- Clear the active-run `current` pointer at run end, bail, and pause across `/design` and `/implement`.
+- Keep an orphaned old-run daemon from contaminating a newer run's log or masking staleness.
+
+### Non-goals
+- No terminal "run complete" marker and no visibility-window knob. Silent clear only.
+- No change to reap for a live in-budget bgjob that belongs to the active run.
+- No redesign of the breadcrumb format or statusline layout beyond run-id scoping.
+
+### Approach sketch
+- RC1: add a `progress deactivate` CLI verb wrapping existing `deactivate_run`; call it at design Step 5 finalize and bail, implement Step 18/cleanup and bail, and pause-save.
+- RC2: activate the run at the top of Step 0 before reviewer probes in `design_step0.py` and `bootstrap.py`; make `--resume-plan-tail` re-activate its run id.
+- RC3: add `resume`/`compact` to `RESET_SESSION_SOURCES` and scope the reset veto plus stale-suffix/hide suppression to bgjobs whose registry `RUN_ID` matches the active run.
+- RC4: route daemon-side writers through `append_breadcrumb_for_run` / `progress note --run-id` so they write their own run id, not `current`.
+- Update `docs/progress-reporting.md`; add and extend progress/statusline tests.
+
+### Surfaces in scope
+- `python/larch/report/statusline.py`, `python/larch/report/progress_file.py`, `python/larch/cli.py`
+- `python/larch/design/design_step0.py`, `python/larch/state/bootstrap.py`
+- pointer-following writers: `review_core_body.py`, `review_and_fix.py`, `plan_review.py`, `plan_review_round.py`, `ci_monitor.py`, `ship_state.py`, `timing.py`
+- `/design` and `/implement` end/bail/pause call sites; `docs/progress-reporting.md`; progress tests.
+
+### Open questions
+- Exact bail/pause call sites that must invoke `progress deactivate` (resolved during drafting).
+- Whether RC4 changes writer signatures or adds run-id-aware call paths (resolved during drafting/review).
