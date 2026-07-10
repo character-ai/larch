@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	23351	5838	13553	3389	9798	2450		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	23364	5841	13566	3392	9798	2450		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	16254	4064	13265	3317	2989	748		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	23366	5842	13568	3392	9798	2450		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	16269	4068	13280	3320	2989	748		0	0
+design Step 3	phase1	1	dyn-cursor-plan-telemetry-attribution	plan-review	cursor	dyn-cursor-plan-telemetry-attribution.txt	23666	5917	13419	3355	10247	2562		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	16267	4067	13278	3320	2989	748		0	0
+design Step 3	phase1	1	dyn-codex-plan-telemetry-attribution	plan-review	codex	dyn-codex-plan-telemetry-attribution.txt	16569	4143	13131	3283	3438	860		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	23342	5836	13544	3386	9798	2450		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	16245	4062	13256	3314	2989	748		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	24832	6208	4459	1115	20373	5094	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14144	3536	9131	2283	5013	1254		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14144	3536	9131	2283	5013	1254		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14144	3536	9131	2283	5013	1254		0	0

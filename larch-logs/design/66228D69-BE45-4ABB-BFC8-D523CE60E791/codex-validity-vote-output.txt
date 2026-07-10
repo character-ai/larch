@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the contract text is stale, but updating this doc is not necessary for the launcher/consumer fix to ship correctly.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cursor-specific coverage is useful, but it is not necessary for this feature to be complete or correct on its shared live path.
