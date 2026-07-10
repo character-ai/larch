@@ -7,6 +7,8 @@ append-execution-issue.sh: error: the following arguments are required: --log
 === larch-quiet-cli.py-86857.log ===
 === larch-quiet-cli.py-91013.log ===
 === larch-quiet-cli.py-96070.log ===
+=== larch-quiet-read-session-env-key.sh-18775.log ===
+=== larch-quiet-read-session-env-key.sh-18910.log ===
 === larch-quiet-read-session-env-key.sh-74238.log ===
 === larch-quiet-read-session-env-key.sh-74240.log ===
 === larch-quiet-read-session-env-key.sh-74243.log ===
@@ -27,9 +29,17 @@ append-execution-issue.sh: error: the following arguments are required: --log
 === larch-quiet-sessionstart-health.sh-10131.log ===
 === larch-quiet-sessionstart-health.sh-10711.log ===
 === larch-quiet-sessionstart-health.sh-11196.log ===
+=== larch-quiet-sessionstart-health.sh-14633.log ===
+=== larch-quiet-sessionstart-health.sh-15099.log ===
+=== larch-quiet-sessionstart-health.sh-15670.log ===
+=== larch-quiet-sessionstart-health.sh-16164.log ===
 === larch-quiet-sessionstart-health.sh-2284.log ===
 === larch-quiet-sessionstart-health.sh-2926.log ===
 === larch-quiet-sessionstart-health.sh-3835.log ===
+=== larch-quiet-sessionstart-health.sh-38647.log ===
+=== larch-quiet-sessionstart-health.sh-39162.log ===
+=== larch-quiet-sessionstart-health.sh-39787.log ===
+=== larch-quiet-sessionstart-health.sh-40252.log ===
 === larch-quiet-sessionstart-health.sh-4695.log ===
 === larch-quiet-sessionstart-health.sh-88767.log ===
 === larch-quiet-sessionstart-health.sh-94594.log ===

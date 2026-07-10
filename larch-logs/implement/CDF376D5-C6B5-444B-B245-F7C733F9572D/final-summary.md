@@ -80,18 +80,19 @@ Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
-## /implement run CDF376D5-C6B5-444B-B245-F7C733F9572D: shipping
+## /implement run CDF376D5-C6B5-444B-B245-F7C733F9572D: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 01:08:49
-- **Cost**: 💰 TOTAL ~$34.71: Claude $14.64, Codex-5.6 $11.24, Codex-mini $0.07, Cursor $8.09, Claude (subprocess) $0.67  |  Tokens: 65998k
+- **Cost**: 💰 TOTAL ~$38.12: Claude $17.95, Codex-5.6 $11.24, Codex-mini $0.07, Cursor $8.09, Claude (subprocess) $0.77  |  Tokens: 73869k
 - **Issue**: #6834: https://github.com/character-ai/larch/issues/6834
+- **PR**: #6853: https://github.com/character-ai/larch/pull/6853
 - **Plan review**: N/A
 - **Plan coverage**: 7/7 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 10/14 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1218/-118, larch-logs +1394/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6852
 - **Exec issues**: 3
 - **Warnings**: 1
