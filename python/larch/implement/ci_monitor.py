@@ -1114,11 +1114,10 @@ def verify_job_locally(
     argv = per_job_command(name=name, shard=shard)
     if argv is None:
         return False
-    _ci_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    _ci_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     _ci_run_id = progress_file.resolve_owned_run_id(tmpdir=_ci_tmpdir or None)
     if _ci_run_id is not None:
-        _ci_repo_root = progress_file.resolve_persisted_repo_root(tmpdir=_ci_tmpdir) if _ci_tmpdir else None
-        _ = progress_file.append_breadcrumb_for_run(_ci_repo_root or Path(cwd or _REPO_ROOT), _ci_run_id, "implement", "8", f"running check shard {_job_token(name=name, shard=shard)}")
+        _ = progress_file.append_breadcrumb_for_run(Path(cwd or _REPO_ROOT), _ci_run_id, "implement", "8", f"running check shard {_job_token(name=name, shard=shard)}")
     result = runner.run(list(argv), cwd=cwd)
     return result.returncode == 0
 
@@ -1439,12 +1438,11 @@ def stage_and_push(
             _warn_stderr("ship-pr: pending CI-fix rebase lacks local verification targets; preserving pending retry")
             return False, head, delta_paths, did_rebase, True
         if (did_rebase or ci_fix_rebase_pending) and classified and classified.fixable:
-            _ci_fix_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+            _ci_fix_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
             _ci_fix_run_id = progress_file.resolve_owned_run_id(tmpdir=_ci_fix_tmpdir or None)
             if _ci_fix_run_id is not None:
-                _ci_fix_repo_root = progress_file.resolve_persisted_repo_root(tmpdir=_ci_fix_tmpdir) if _ci_fix_tmpdir else None
                 _ = progress_file.append_breadcrumb_for_run(
-                    _ci_fix_repo_root or Path(cwd or _REPO_ROOT),
+                    Path(cwd or _REPO_ROOT),
                     _ci_fix_run_id,
                     "implement",
                     "8",

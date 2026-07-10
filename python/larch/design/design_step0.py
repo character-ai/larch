@@ -731,7 +731,7 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
     design_tmpdir = Path(env["DESIGN_TMPDIR"])
     print(f"**⚠ /design: aborted by operator: {ns.reason}**")
     _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 0", tool=ns.tool, exit_code=0, category="Warnings", output_file=design_tmpdir / "execution-issues.md")
-    from larch.report import progress_file  # noqa: PLC0415
+    from larch.report import progress_file  # noqa: PLC0415 - deferred import, only the operator-abort cleanup path needs progress_file
     run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
     repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
     if run_id and repo_root is not None:

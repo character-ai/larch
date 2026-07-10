@@ -46,6 +46,7 @@ from larch.design.design_session import (
     _valid_var_name,
     PHASE_RESULT_ENV_ALLOW_KEYS,
 )
+from larch.report import progress_file as _progress_file
 
 def phase_driver_read_result_env(*, path: str | Path, allow_keys: Iterable[str]) -> list[tuple[str, str]]:
     """Read allowlisted KEY=VALUE records from a result-env file.
@@ -1088,13 +1089,9 @@ def _run_rendered_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_summary_
 
 def _try_deactivate_design_run(design_tmpdir: Path) -> None:
     with contextlib.suppress(Exception):
-        from larch.report import progress_file  # noqa: PLC0415 - best-effort lazy import guarded by contextlib.suppress
-        run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
-        repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir) or Path.cwd()
+        run_id = _progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
         if run_id:
-            from larch.bgjob import registry  # noqa: PLC0415
-            if not registry.has_live_entry(repo_root=repo_root, run_id=run_id):
-                progress_file.deactivate_run(repo_root, run_id)
+            _ = _progress_file.deactivate_run(Path.cwd(), run_id)
 
 
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:

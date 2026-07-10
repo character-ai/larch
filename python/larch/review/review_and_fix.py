@@ -116,11 +116,10 @@ from larch.review.round_runner import (
 
 
 def _progress_note(*, step: str, text: str) -> None:
-    implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+    implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     run_id = progress_file.resolve_owned_run_id(tmpdir=implement_tmpdir or None)
     if run_id is not None:
-        repo_root = progress_file.resolve_persisted_repo_root(tmpdir=implement_tmpdir) if implement_tmpdir else None
-        _ = progress_file.append_breadcrumb_for_run(repo_root or Path.cwd(), run_id, "implement", step, text)
+        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "implement", step, text)
 
 
 # Keep these module-level constants for backward compatibility with any code
@@ -1265,7 +1264,7 @@ def commit_fixes(argv: list[str] | None = None) -> int:
     if not args.message.strip():
         _emit_commit_fixes_kvs(committed=False, sha="", error="--message must be non-empty", outcome="failed")
         return 2
-    session = Path(os.environ.get("IMPLEMENT_TMPDIR", "")) / "session-env.sh"
+    session = Path(os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")) / "session-env.sh"
     if session.is_file():
         for key in ("LARCH_TOKEN_SESSION_ID", "LARCH_CLAUDE_SOURCE_FILE", "LARCH_TIMING_LEDGER"):
             if not os.environ.get(key):

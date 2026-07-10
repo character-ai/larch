@@ -15,7 +15,7 @@ from typing import cast
 
 from larch.agents import collect_results
 from larch import io as larch_io
-from larch.core import logging_util
+from larch.core import config, logging_util
 from larch.report import progress_file
 from larch.review import review_aggregate
 from larch.review import voting
@@ -68,7 +68,7 @@ def _run_cli_with_progress(
     step: str,
     text: str,
 ) -> subprocess.CompletedProcess[str]:
-    raw_tmpdir = (env or {}).get("DESIGN_TMPDIR") or os.environ.get("DESIGN_TMPDIR", "")
+    raw_tmpdir = (env or {}).get("DESIGN_TMPDIR") or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
     _progress_note(step=step, text=text, tmpdir=Path(raw_tmpdir) if raw_tmpdir else None)
     return _run_cli(argv=argv, env=env)
 
