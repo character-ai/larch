@@ -79,6 +79,8 @@ contains "$SKILL_MD" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROO
 contains "$SKILL_MD" 'approval-gates-gate-b.md` completely. This Gate B slice is unconditional' 'Gate B slice must load unconditionally'
 contains "$SKILL_MD" 'approval-gates-gate-c.md` completely. This Gate C slice is unconditional' 'Gate C slice must load unconditionally'
 contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging/export and before this fence' 'failure slice must load before failed final summary'
+contains "$APPROVAL_GATE_A_MD" 'plan-review-runtime.md` completely before invoking `design-step3-entry.sh --reentry`' 'Gate A re-entry must load Step 3 runtime before entry'
+contains "$APPROVAL_GATE_C_MD" 'plan-review-runtime.md` completely before invoking `design-step3-entry.sh --reentry`' 'Gate C re-entry must load Step 3 runtime before entry'
 gate_a_read_count="$(grep -F -c -e 'approval-gates-gate-a.md` completely' "$SKILL_MD")"
 [ "$gate_a_read_count" -eq 1 ] || fail 'Gate A slice must load only in the Step 1e re-entry block'
 gate_a_read_line="$(grep -F -n -e 'approval-gates-gate-a.md` completely' "$SKILL_MD" | cut -d: -f1)"
