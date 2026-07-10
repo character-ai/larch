@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import hashlib
 import os
 import re
 import shutil
@@ -17,6 +18,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final, NoReturn
 
@@ -27,6 +29,7 @@ from larch.core import external_defaults
 from larch.core import proc
 from larch.core import redact
 from larch.git import git
+from larch.issue import execution_issues
 from larch.lint import lint_complexity_baseline
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, Runner
@@ -55,15 +58,23 @@ _SITE_LABELS: Final[dict[str, str]] = {
     "ship-pr-ci-merge": "ship-pr CI merge",
     "ship-pr-ci-per-job": "ship-pr CI per-job",
 }
-_NO_CHANGES_STALE_MAIN_AGENT_SITES: Final[frozenset[str]] = frozenset({
+_PRE_SHIP_SITES: Final[frozenset[str]] = frozenset({
     "step3",
+    "step5",
     "step5-self-review",
     "step5-mav",
     "step6",
 })
+_PRE_SHIP_NON_STRUCTURAL_REASONS: Final[frozenset[str]] = frozenset({
+    "lint-fix-no-selectable-tier",
+    "lint-fix-all-tiers-no-useful-delta",
+    "lint-fix-budget-exhausted",
+})
+_TIER_LEDGER_HEADER: Final = (
+    "sequence\ttier\toutcome_class\texit_status\telapsed_ms\t"
+    "useful_delta\texecution_issue_kind\n"
+)
 _PROMPT_TAIL_BYTES: Final = 60000
-_RUN_EXTERNAL_TIMEOUT: Final = 300
-_LINT_FIX_TOTAL_BUDGET_SECONDS: Final = 600
 _EMPTY_FAILURE_CAP: Final = 2
 _ASCII_CONTROL_MAX: Final = 31
 _ASCII_DELETE: Final = 127
@@ -266,79 +277,39 @@ def _repair_loop_action(
         return "continue"
     if loop.status == "main-agent-required":
         return "main-agent-edit"
-    if _populate_no_changes_stale_ledger(
-        loop=loop,
-        lint_site=lint_site,
-        checks_log=checks_log,
-        allowed_tmpdir=allowed_tmpdir,
-    ):
+    if _is_pre_ship_site(lint_site) and loop.status in {
+        "head-changed",
+        "dispatch-failed",
+    }:
         return "main-agent-edit"
-    if _populate_exhausted_ledger(
-        loop=loop,
-        lint_site=lint_site,
-        allowed_tmpdir=allowed_tmpdir,
+    if (
+        _is_pre_ship_site(lint_site)
+        and loop.failure_reason in _PRE_SHIP_NON_STRUCTURAL_REASONS
     ):
-        return "main-agent-edit"
+        return "stall"
+    # Iteration-count exhaustion: populate ledger and fall back to main-agent.
+    # This is distinct from delegated-waterfall exhaustion (failure_reason in
+    # _PRE_SHIP_NON_STRUCTURAL_REASONS), which stalls without escalation.
+    if loop.status in {"exhausted", "no-changes-stale"} and _is_pre_ship_site(lint_site):
+        # Use the initial checks_log for no-changes-stale, final iteration log for exhausted.
+        log_candidate = (
+            checks_log if loop.status == "no-changes-stale" else loop.final_redacted_checks_log
+        )
+        log_path = resolve_checks_log_path(
+            candidate=log_candidate,
+            allowed_root=allowed_tmpdir,
+        )
+        if log_path is not None:
+            loop.ledger_ready = True
+            loop.ledger_site = _ledger_site_for_lint_site(lint_site)
+            loop.ledger_trigger = _ledger_trigger_for_lint_site(lint_site)
+            loop.ledger_step = _ledger_step_for_site(lint_site)
+            loop.ledger_phase = _ledger_phase_for_site(lint_site)
+            loop.ledger_dispatcher = "lint-fix-loop"
+            loop.ledger_exit_code = 1
+            loop.ledger_failure_detail_log = str(log_path)
+            return "main-agent-edit"
     return "stall"
-
-
-def _site_supports_no_changes_stale_main_agent(site: str) -> bool:
-    return site in _NO_CHANGES_STALE_MAIN_AGENT_SITES
-
-
-def _populate_no_changes_stale_ledger(
-    *,
-    loop: LoopResult,
-    lint_site: str,
-    checks_log: str,
-    allowed_tmpdir: Path,
-) -> bool:
-    if loop.status != "no-changes-stale":
-        return False
-    if not _site_supports_no_changes_stale_main_agent(lint_site):
-        return False
-    log_path = resolve_checks_log_path(
-        candidate=checks_log,
-        allowed_root=allowed_tmpdir,
-    )
-    if log_path is None:
-        return False
-    loop.ledger_ready = True
-    loop.ledger_site = _ledger_site_for_lint_site(lint_site)
-    loop.ledger_trigger = _ledger_trigger_for_lint_site(lint_site)
-    loop.ledger_step = _ledger_step_for_site(lint_site)
-    loop.ledger_phase = _ledger_phase_for_site(lint_site)
-    loop.ledger_dispatcher = "lint-fix-loop"
-    loop.ledger_exit_code = 1
-    loop.ledger_failure_detail_log = str(log_path)
-    return True
-
-
-def _populate_exhausted_ledger(
-    *,
-    loop: LoopResult,
-    lint_site: str,
-    allowed_tmpdir: Path,
-) -> bool:
-    if loop.status != "exhausted":
-        return False
-    if not _site_supports_no_changes_stale_main_agent(lint_site):
-        return False
-    log_path = resolve_checks_log_path(
-        candidate=loop.final_redacted_checks_log,
-        allowed_root=allowed_tmpdir,
-    )
-    if log_path is None:
-        return False
-    loop.ledger_ready = True
-    loop.ledger_site = _ledger_site_for_lint_site(lint_site)
-    loop.ledger_trigger = _ledger_trigger_for_lint_site(lint_site)
-    loop.ledger_step = _ledger_step_for_site(lint_site)
-    loop.ledger_phase = _ledger_phase_for_site(lint_site)
-    loop.ledger_dispatcher = "lint-fix-loop"
-    loop.ledger_exit_code = 1
-    loop.ledger_failure_detail_log = str(log_path)
-    return True
 
 
 def _valid_checks_site(site: str) -> bool:
@@ -358,21 +329,10 @@ class _RepairLoopArgumentParser(argparse.ArgumentParser):
 
 
 def _emit_repair_loop_heartbeat(*, stop: threading.Event, site: str) -> None:
-    """Emit periodic liveness lines to stdout while the lint-fix loop blocks.
-
-    ``checks repair-loop`` dispatches an external lint-fix agent synchronously,
-    which can run for tens of minutes without writing terminal KV lines,
-    making the command indistinguishable from a hang (issue #5286). Background
-    task capture is stdout-only, so heartbeats use flushed ``PROGRESS=`` lines
-    outside the ``NEXT_ACTION`` / ``LOOP_STATUS`` keys section 3 extracts.
-    """
-    start = time.monotonic()
+    start: float = time.monotonic()
     while not stop.wait(_REPAIR_LOOP_HEARTBEAT_INTERVAL_S):
-        elapsed = int(time.monotonic() - start)
-        print(
-            f"PROGRESS=lint-fix-running site={site} elapsed={elapsed}s",
-            flush=True,
-        )
+        elapsed: int = int(time.monotonic() - start)
+        print(f"PROGRESS=lint-fix-running site={site} elapsed={elapsed}s", flush=True)
 
 
 def checks_repair_loop_main(argv: list[str] | None = None) -> int:
@@ -459,6 +419,10 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
         print(f"STDERR_TAIL_PATH={loop.stderr_tail_path}")
     if loop.coder_log_path:
         print(f"CODER_LOG_FILE={loop.coder_log_path}")
+    if loop.failure_reason:
+        print(f"FAILURE_REASON={loop.failure_reason}")
+    if loop.tier_ledger_path:
+        print(f"LINT_FIX_TIER_LEDGER_PATH={loop.tier_ledger_path}")
     if action == "main-agent-edit":
         _print_loop_ledger(loop)
     return 0 if action in {"continue", "main-agent-edit"} else 1
@@ -682,26 +646,156 @@ def _forbidden_paths_match_count(
     return coder_delta_guards.forbidden_paths_match_count(paths=paths, forbidden=forbidden)
 
 
-def _delta_paths_after_dispatch(
-    *, baseline_tracked: tuple[str, ...],
-    baseline_untracked: tuple[str, ...],
-    current_tracked: tuple[str, ...],
-    current_untracked: tuple[str, ...],
-) -> tuple[str, ...]:
-    baseline_tracked_set = set(baseline_tracked)
-    baseline_untracked_set = set(baseline_untracked)
-    delta = [
-        path
-        for path in current_tracked
-        if path not in baseline_tracked_set
-    ]
-    delta.extend(
-        path
-        for path in current_untracked
-        if path not in baseline_untracked_set
-    )
-    return tuple(delta)
+@dataclass(frozen=True)
+class _RepoPathState:
+    path: str
+    worktree_digest: str
+    unstaged_diff: str
+    staged_diff: str
+    untracked: bool
 
+
+@dataclass(frozen=True)
+class _RepoSnapshot:
+    paths: tuple[_RepoPathState, ...]
+
+
+@dataclass(frozen=True)
+class _TierLedgerRow:
+    sequence: int
+    tier: str
+    outcome_class: str
+    exit_status: int
+    elapsed_ms: int
+    useful_delta: bool
+    execution_issue_kind: str
+
+
+def _file_digest(path: Path) -> str:
+    try:
+        if not path.is_file() or path.is_symlink():
+            return "missing"
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return "unreadable"
+
+
+def _diff_fingerprints(
+    runner: Runner,
+    *,
+    cwd: str,
+    cached: bool,
+) -> dict[str, str] | None:
+    result = runner.run(
+        ["git", "diff", "--raw", "--no-ext-diff", "--"] if not cached else
+        ["git", "diff", "--cached", "--raw", "--no-ext-diff", "--"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return None
+    fingerprints: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        _, separator, path = line.partition("\t")
+        if not separator or not path:
+            return None
+        fingerprints[path] = hashlib.sha256(line.encode("utf-8")).hexdigest()
+    return fingerprints
+
+
+def _snapshot_diff_fingerprints(runner: Runner, *, cwd: str, cached: bool) -> dict[str, str] | None:
+    return _diff_fingerprints(runner, cwd=cwd, cached=cached)
+
+
+def _snapshot_from_paths(
+    runner: Runner, *, cwd: str, tracked: tuple[str, ...], untracked: tuple[str, ...]
+) -> _RepoSnapshot | None:
+    unstaged = _snapshot_diff_fingerprints(runner, cwd=cwd, cached=False)
+    staged = _snapshot_diff_fingerprints(runner, cwd=cwd, cached=True)
+    if unstaged is None or staged is None:
+        return None
+    states: tuple[_RepoPathState, ...] = tuple(
+        _RepoPathState(
+            path=path,
+            worktree_digest=_file_digest(Path(cwd) / path),
+            unstaged_diff=unstaged.get(path, ""),
+            staged_diff=staged.get(path, ""),
+            untracked=path in untracked,
+        )
+        for path in sorted(set(tracked).union(untracked).union(unstaged).union(staged))
+    )
+    return _RepoSnapshot(paths=states)
+
+
+def _snapshot_delta_paths(
+    *, baseline: _RepoSnapshot, current: _RepoSnapshot
+) -> tuple[str, ...]:
+    baseline_by_path: dict[str, _RepoPathState] = {state.path: state for state in baseline.paths}
+    current_by_path: dict[str, _RepoPathState] = {state.path: state for state in current.paths}
+    return tuple(
+        path
+        for path in sorted(set(baseline_by_path).union(current_by_path))
+        if baseline_by_path.get(path) != current_by_path.get(path)
+    )
+
+
+def _tier_ledger_path(run_parent: Path) -> Path:
+    return run_parent / "lint-fix-tier-ledger.tsv"
+
+
+def _initialize_tier_ledger(run_parent: Path) -> Path:
+    path: Path = _tier_ledger_path(run_parent)
+    if not path.exists():
+        _ = path.write_text(_TIER_LEDGER_HEADER, encoding="utf-8")
+    return path
+
+
+def _append_tier_ledger(path: Path, *, row: _TierLedgerRow) -> None:
+    safe_kind: str = re.sub(
+        r"[^a-z0-9-]", "-", row.execution_issue_kind.lower()
+    )[:80]
+    text: str = "\t".join((
+        str(row.sequence), row.tier, row.outcome_class, str(row.exit_status),
+        str(max(0, row.elapsed_ms)), "true" if row.useful_delta else "false",
+        safe_kind,
+    )) + "\n"
+    with path.open("a", encoding="utf-8") as handle:
+        _ = handle.write(text)
+
+
+def _is_pre_ship_site(site: str) -> bool:
+    return site in _PRE_SHIP_SITES
+
+
+def _exhausted_outcome(
+    *, site: str, reason: str, ledger_path: Path,
+    stderr_tail_path: str = "", failure_detail_log: str = ""
+) -> FixOutcome:
+    # Pre-ship sites and ship-pr-ci-initial stall without escalation; carry
+    # ledger metadata for diagnostics but do NOT set ledger_ready so the
+    # repair-loop consumer routes to stall, not stall-recovery record-escalation.
+    if _is_pre_ship_site(site) or site == "ship-pr-ci-initial":
+        return FixOutcome(
+            status="failed", delta_paths=(), failure_reason=reason, commit_sha=None,
+            head_changed=False, coder_tool=None, tier_ledger_path=str(ledger_path),
+            stderr_tail_path=stderr_tail_path,
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
+            ledger_step=_ledger_step_for_site(site),
+            ledger_phase=_ledger_phase_for_site(site),
+            ledger_dispatcher="lint-fix-loop", ledger_exit_code=1,
+            ledger_failure_detail_log=failure_detail_log,
+        )
+    return FixOutcome(
+        status="main-agent-required", delta_paths=(), failure_reason=reason,
+        commit_sha=None, head_changed=False, coder_tool=None, ledger_ready=True,
+        ledger_site=_ledger_site_for_lint_site(site),
+        ledger_trigger=_ledger_trigger_for_lint_site(site),
+        ledger_step=_ledger_step_for_site(site),
+        ledger_phase=_ledger_phase_for_site(site),
+        ledger_dispatcher="lint-fix-loop", ledger_exit_code=1,
+        tier_ledger_path=str(ledger_path), stderr_tail_path=stderr_tail_path,
+        ledger_failure_detail_log=failure_detail_log,
+    )
 
 def _run_with_startup_lock(
     runner: Runner,
@@ -733,7 +827,7 @@ def _build_codex_argv(
         "--output",
         str(codex_log),
         "--timeout",
-        str(_RUN_EXTERNAL_TIMEOUT),
+        str(config.FIXER_LANE_TIMEOUT_SEC),
         "--workdir",
         repo_root,
         "--add-dir",
@@ -794,7 +888,7 @@ def _build_cursor_argv(  # noqa: PLR0913,RUF100
         "--output",
         str(cursor_log),
         "--timeout",
-        str(_RUN_EXTERNAL_TIMEOUT),
+        str(config.FIXER_LANE_TIMEOUT_SEC),
         "--capture-stdout",
         "--",
         "cursor",
@@ -881,7 +975,8 @@ def _run_codex(  # noqa: PLR0913,RUF100
     result = runner.run(argv, cwd=repo_root)
     launcher_exit = _parse_launcher_exit(result.stdout)
     if launcher_exit is None:
-        launcher_exit = _read_done_exit(codex_log) or result.returncode
+        done_exit = _read_done_exit(codex_log)
+        launcher_exit = result.returncode if result.returncode != 0 else done_exit
     token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
     if token_record.is_file() and token_record.stat().st_size > 0:
         _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)], purpose="token append-record", cwd=repo_root)
@@ -916,13 +1011,14 @@ def _run_claude(
             "--output",
             str(output),
             "--timeout",
-            str(_RUN_EXTERNAL_TIMEOUT),
+            str(config.FIXER_LANE_TIMEOUT_SEC),
         ],
         cwd=repo_root,
     )
     launcher_exit = _parse_launcher_exit(result.stdout)
     if launcher_exit is None:
-        launcher_exit = _read_done_exit(output) or result.returncode
+        done_exit = _read_done_exit(output)
+        launcher_exit = result.returncode if result.returncode != 0 else done_exit
     return launcher_exit
 
 
@@ -937,9 +1033,9 @@ def _parse_launcher_exit(text: str) -> int | None:
 def _read_done_exit(output: Path) -> int:
     done = output.with_suffix(output.suffix + ".done")
     if not done.is_file():
-        return 0
+        return 1
     raw = done.read_text(encoding="utf-8", errors="replace").strip()
-    return int(raw) if raw.isdigit() else 0
+    return int(raw) if raw.isdigit() else 1
 
 
 def _write_failed_agent_stderr_tail(
@@ -1088,9 +1184,93 @@ def _post_dispatch_forbidden_revert(
 
 def _coder_stderr_tail(*, run_dir: Path, log_name: str) -> str:
     candidate = run_dir / f"{log_name}.stderr-tail"
-    if candidate.is_file() and candidate.stat().st_size > 0:
-        return str(candidate)
-    return ""
+    target = candidate.with_name(f"{candidate.name}.redacted")
+    try:
+        root = run_dir.resolve()
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(root) or not candidate.is_file() or candidate.is_symlink():
+            return ""
+        text = candidate.read_text(encoding="utf-8", errors="replace")[-4096:]
+        if not text:
+            return ""
+        _ = target.write_text(redact.redact(text), encoding="utf-8")
+        target.chmod(0o600)
+        if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
+            return ""
+    except OSError:
+        with contextlib.suppress(OSError):
+            target.unlink(missing_ok=True)
+        return ""
+    return str(target)
+
+
+def _classify_attempt_issue(*, launcher_rc: int, run_dir: Path, log_name: str, useful_delta: bool) -> str:
+    """Return a bounded failure classification before writing public evidence."""
+    if launcher_rc == config.PROC_TIMEOUT_EXIT_CODE:
+        return "timeout"
+    text = ""
+    for path in (run_dir / log_name, run_dir / f"{log_name}.stderr-tail"):
+        try:
+            if path.is_file() and not path.is_symlink():
+                text += path.read_text(encoding="utf-8", errors="replace")[-8192:]
+        except OSError:
+            pass
+    lowered = text.lower()
+    if any(token in lowered for token in ("not found", "no such file", "missing binary", "command not found")):
+        return "missing-binary"
+    if any(token in lowered for token in ("authentication", "not authenticated", "unauthorized", "login required", "preflight")):
+        return "authentication-preflight"
+    if launcher_rc != 0:
+        return "launcher-failure"
+    return "" if useful_delta else "no-op"
+
+
+def _with_tier_ledger(outcome: FixOutcome, tier_ledger: Path) -> FixOutcome:
+    """Preserve initialized ledger evidence on every post-initialization return."""
+    return outcome if outcome.tier_ledger_path else replace(outcome, tier_ledger_path=str(tier_ledger))
+
+
+def _redacted_attempt_log(*, run_dir: Path, log_name: str) -> str:
+    source = run_dir / log_name
+    target = source.with_name(f"{source.name}.redacted")
+    try:
+        if not source.is_file() or source.is_symlink():
+            return ""
+        text = source.read_text(encoding="utf-8", errors="replace")
+        _ = target.write_text(redact.redact(text), encoding="utf-8")
+        target.chmod(0o600)
+        if target.is_symlink() or not target.is_file():
+            return ""
+    except OSError:
+        with contextlib.suppress(OSError):
+            target.unlink(missing_ok=True)
+        return ""
+    return str(target)
+
+
+def _append_attempt_execution_issue(
+    *,
+    issue_log: Path,
+    tier: str,
+    issue_kind: str,
+    attempt_log: str,
+) -> None:
+    if not issue_kind:
+        return
+    detail = "attempt log unavailable"
+    if attempt_log:
+        try:
+            text = Path(attempt_log).read_text(encoding="utf-8", errors="replace")
+            detail = text[-4096:].strip() or detail
+        except OSError:
+            pass
+    entry = redact.redact(
+        f"- lint-fix tier={tier} category={issue_kind}; {detail}"
+    ).strip()
+    with contextlib.suppress(OSError):
+        execution_issues.append_execution_issue(
+            issue_log, category="Tool Failures", entry=entry
+        )
 
 
 def _resolve_lint_fix_timing_root(*, allowed_tmpdir: str | None, run_parent: str) -> Path | None:
@@ -1266,144 +1446,236 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         probe_root = Path(allowed_tmpdir) if allowed_tmpdir is not None else Path(run_parent).resolve().parent
         claude_present = _binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=probe_root, binary="claude")
     if not claude_present and not codex_present and not cursor_present:
-        return FixOutcome(
-            status="main-agent-required",
-            delta_paths=(),
-            failure_reason=None,
-            commit_sha=None,
-            head_changed=False,
-            coder_tool=None,
-            ledger_ready=True,
-            ledger_site=_ledger_site_for_lint_site(site),
-            ledger_trigger=_ledger_trigger_for_lint_site(site),
-            ledger_step=_ledger_step_for_site(site),
-            ledger_phase=_ledger_phase_for_site(site),
-            ledger_dispatcher="lint-fix-loop",
-            ledger_exit_code=0,
-            ledger_failure_detail_log=str(ledger_log_path),
+        no_tool_parent: Path = Path(run_parent)
+        try:
+            no_tool_parent.mkdir(parents=True, exist_ok=True)
+            no_tool_ledger: Path = _initialize_tier_ledger(no_tool_parent)
+        except OSError:
+            return FixOutcome(
+                status="failed", delta_paths=(),
+                failure_reason="isolated-artifact-failed", commit_sha=None,
+                head_changed=False, coder_tool=None,
+            )
+        return _exhausted_outcome(
+            site=site, reason="lint-fix-no-selectable-tier",
+            ledger_path=no_tool_ledger,
+            failure_detail_log=str(log_path),
         )
-    scripts = plugin_scripts_dir()
-    agent_cli = _agent_cli()
+    scripts: Path = plugin_scripts_dir()
+    agent_cli: Path = _agent_cli()
     if not agent_cli.is_file():
         return FixOutcome(
-            status="failed",
-            delta_paths=(),
-            failure_reason="missing-python-agent-cli",
-            commit_sha=None,
-            head_changed=False,
-            coder_tool=None,
+            status="failed", delta_paths=(), failure_reason="missing-python-agent-cli",
+            commit_sha=None, head_changed=False, coder_tool=None,
         )
-    cwd = repo_root
-    site_label = _site_label(site)
-    run_parent_path = Path(run_parent)
-    run_parent_path.mkdir(parents=True, exist_ok=True)
-    run_dir = Path(tempfile.mkdtemp(prefix=f"{site}.", dir=str(run_parent_path)))
-    baseline_tracked = _capture_tracked_paths(runner, cwd=cwd)
-    baseline_untracked = _capture_untracked_paths(runner, cwd=cwd)
+    cwd: str = repo_root
+    site_label: str = _site_label(site)
+    run_parent_path: Path = Path(run_parent)
     try:
-        baseline_head = git.rev_parse(runner, "HEAD", cwd=cwd)
+        run_parent_path.mkdir(parents=True, exist_ok=True)
+        tier_ledger: Path = _initialize_tier_ledger(run_parent_path)
+    except OSError:
+        _append_attempt_execution_issue(
+            issue_log=allowed_root / "execution-issues.md",
+            tier="none",
+            issue_kind="ledger-failure",
+            attempt_log="",
+        )
+        return FixOutcome(
+            status="failed", delta_paths=(), failure_reason="tier-ledger-failed",
+            commit_sha=None, head_changed=False, coder_tool=None,
+        )
+    baseline_tracked: tuple[str, ...] = _capture_tracked_paths(runner, cwd=cwd)
+    baseline_untracked: tuple[str, ...] = _capture_untracked_paths(runner, cwd=cwd)
+    baseline_snapshot = _snapshot_from_paths(
+        runner, cwd=cwd, tracked=baseline_tracked, untracked=baseline_untracked
+    )
+    if baseline_snapshot is None:
+        return FixOutcome(
+            status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+            commit_sha=None, head_changed=False, coder_tool=None,
+            tier_ledger_path=str(tier_ledger),
+        )
+    try:
+        baseline_head: str = git.rev_parse(runner, "HEAD", cwd=cwd)
     except Exception:
         return FixOutcome(
-            status="failed",
-            delta_paths=(),
-            failure_reason="baseline-head-unresolved",
-            commit_sha=None,
-            head_changed=False,
-            coder_tool=None,
+            status="failed", delta_paths=(), failure_reason="baseline-head-unresolved",
+            commit_sha=None, head_changed=False, coder_tool=None,
+            tier_ledger_path=str(tier_ledger),
         )
     try:
-        baseline_branch = git.current_branch(runner, cwd=cwd)
+        baseline_branch: str = git.current_branch(runner, cwd=cwd)
     except Exception:
         baseline_branch = ""
-    baseline_clean = not baseline_tracked and not baseline_untracked
-    submodule_paths = _submodule_paths(runner, cwd=cwd)
-    forbidden = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
-    prompt_body = _compose_prompt(
-        checks_log=log_path,
-        site_label=site_label,
-        submodule_paths=submodule_paths,
+    baseline_clean: bool = not baseline_tracked and not baseline_untracked
+    submodule_paths: tuple[str, ...] = _submodule_paths(runner, cwd=cwd)
+    forbidden: tuple[str, ...] = coder_delta_guards.coder_forbidden_paths(runner, cwd=cwd)
+    prompt_body: str = _compose_prompt(
+        checks_log=log_path, site_label=site_label, submodule_paths=submodule_paths,
         target_cmd_display=target_cmd_display,
     )
     coder_tool: str | None = None
-    last_stderr_tail = ""
-    budget_start = time.monotonic()
-    budget_exceeded = False
-    for tier in external_defaults.tool_order("implement.lint_fix_coder"):
-        if tier == "claude":
-            if not claude_present:
-                continue
-            claude_rc = _run_claude(
-                runner,
-                agent_cli=agent_cli,
-                run_dir=run_dir,
-                repo_root=repo_root,
-                prompt_body=prompt_body,
-            )
-            if claude_rc == 0:
-                coder_tool = "claude"
-                break
-            tail = _coder_stderr_tail(run_dir=run_dir, log_name="claude-lint-fix.txt")
-            if tail:
-                last_stderr_tail = tail
-        elif tier == "codex":
-            if not codex_present:
-                continue
-            codex_rc = _run_codex(
-                runner,
-                agent_cli=agent_cli,
-                run_dir=run_dir,
-                implement_tmpdir=allowed_root,
-                repo_root=repo_root,
-                prompt_body=prompt_body,
-                site=site,
-            )
-            if codex_rc == 0:
-                coder_tool = "codex"
-                break
-            tail = _coder_stderr_tail(run_dir=run_dir, log_name="codex.log")
-            if tail:
-                last_stderr_tail = tail
-        elif tier == "cursor":
-            if not cursor_present:
-                continue
-            cursor_rc = _run_cursor(
-                runner,
-                scripts_dir=scripts,
-                agent_cli=agent_cli,
-                run_dir=run_dir,
-                repo_root=repo_root,
-                prompt_body=prompt_body,
-            )
-            if cursor_rc == 0:
-                coder_tool = "cursor"
-                break
-            tail = _coder_stderr_tail(run_dir=run_dir, log_name="cursor.log")
-            if tail:
-                last_stderr_tail = tail
-        else:
-            continue
-        if time.monotonic() - budget_start >= _LINT_FIX_TOTAL_BUDGET_SECONDS:
-            budget_exceeded = True
-            break
-    if coder_tool is None:
-        failure_reason = "lint-fix-budget-exceeded" if budget_exceeded else "dispatch-failed"
-        return FixOutcome(
-            status="main-agent-required",
-            delta_paths=(),
-            failure_reason=failure_reason,
-            commit_sha=None,
-            head_changed=False,
-            coder_tool=None,
-            ledger_ready=True,
-            ledger_site=_ledger_site_for_lint_site(site),
-            ledger_trigger=_ledger_trigger_for_lint_site(site),
-            ledger_step=_ledger_step_for_site(site),
-            ledger_phase=_ledger_phase_for_site(site),
-            ledger_dispatcher="lint-fix-loop",
-            ledger_exit_code=1,
-            ledger_failure_detail_log=str(ledger_log_path),
-            stderr_tail_path=last_stderr_tail,
+    coder_log_path: str = ""
+    run_dir: Path | None = None
+    last_stderr_tail: str = ""
+    last_attempt_log: str = ""
+    useful_delta_paths: tuple[str, ...] = ()
+    attempted_tiers: list[str] = []
+    remaining_budget: int = external_defaults.fixer_lane_budget_sec(
+        "implement.lint_fix_coder"
+    )
+    sequence: int = 0
+    while True:
+        selection = external_defaults.next_untried_tier(
+            "implement.lint_fix_coder", attempted_tiers,
+            claude_present=claude_present, codex_present=codex_present,
+            cursor_present=cursor_present,
         )
+        if selection.action != config.FIXER_TIER_ACTION_SELECTED:
+            reason: str = (
+                "lint-fix-no-selectable-tier"
+                if not attempted_tiers
+                else "lint-fix-all-tiers-no-useful-delta"
+            )
+            return _exhausted_outcome(
+                site=site, reason=reason, ledger_path=tier_ledger,
+                stderr_tail_path=last_stderr_tail,
+                failure_detail_log=str(log_path),
+            )
+        if remaining_budget < config.FIXER_LANE_TIMEOUT_SEC:
+            return _exhausted_outcome(
+                site=site, reason="lint-fix-budget-exhausted",
+                ledger_path=tier_ledger, stderr_tail_path=last_stderr_tail,
+                failure_detail_log=str(log_path),
+            )
+        tier: str = selection.selected_tier
+        attempted_tiers.append(tier)
+        remaining_budget -= config.FIXER_LANE_TIMEOUT_SEC
+        sequence += 1
+        try:
+            run_dir = Path(tempfile.mkdtemp(
+                prefix=f"attempt-{sequence:02d}-{tier}.", dir=str(run_parent_path)
+            ))
+        except OSError:
+            return FixOutcome(
+                status="failed", delta_paths=(),
+                failure_reason="isolated-artifact-failed", commit_sha=None,
+                head_changed=False, coder_tool=tier, tier_ledger_path=str(tier_ledger),
+            )
+        attempt_tracked: tuple[str, ...] = _capture_tracked_paths(runner, cwd=cwd)
+        attempt_untracked: tuple[str, ...] = _capture_untracked_paths(runner, cwd=cwd)
+        attempt_baseline = _snapshot_from_paths(
+            runner, cwd=cwd, tracked=attempt_tracked, untracked=attempt_untracked
+        )
+        if attempt_baseline is None:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
+        try:
+            attempt_head = git.rev_parse(runner, "HEAD", cwd=cwd)
+        except Exception:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="head-unresolved-after-dispatch",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
+        attempt_start: float = time.monotonic()
+        if tier == "claude":
+            launcher_rc: int = _run_claude(
+                runner, agent_cli=agent_cli, run_dir=run_dir, repo_root=repo_root,
+                prompt_body=prompt_body,
+            )
+            log_name: str = "claude-lint-fix.txt"
+        elif tier == "codex":
+            launcher_rc = _run_codex(
+                runner, agent_cli=agent_cli, run_dir=run_dir,
+                implement_tmpdir=allowed_root, repo_root=repo_root,
+                prompt_body=prompt_body, site=site,
+            )
+            log_name = "codex.log"
+        else:
+            launcher_rc = _run_cursor(
+                runner, scripts_dir=scripts, agent_cli=agent_cli, run_dir=run_dir,
+                repo_root=repo_root, prompt_body=prompt_body,
+            )
+            log_name = "cursor.log"
+        elapsed_ms: int = int((time.monotonic() - attempt_start) * 1000)
+        attempt_current_tracked: tuple[str, ...] = _capture_tracked_paths(runner, cwd=cwd)
+        attempt_current_untracked: tuple[str, ...] = _capture_untracked_paths(runner, cwd=cwd)
+        current_snapshot = _snapshot_from_paths(
+            runner, cwd=cwd, tracked=attempt_current_tracked,
+            untracked=attempt_current_untracked,
+        )
+        if current_snapshot is None:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
+        useful_delta_paths = _snapshot_delta_paths(
+            baseline=attempt_baseline, current=current_snapshot
+        )
+        try:
+            current_attempt_head = git.rev_parse(runner, "HEAD", cwd=cwd)
+        except Exception:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="head-unresolved-after-dispatch",
+                commit_sha=None, head_changed=False, coder_tool=tier,
+                tier_ledger_path=str(tier_ledger),
+            )
+        useful_delta: bool = bool(useful_delta_paths) or current_attempt_head != attempt_head
+        issue_kind = _classify_attempt_issue(
+            launcher_rc=launcher_rc,
+            run_dir=run_dir,
+            log_name=log_name,
+            useful_delta=useful_delta,
+        )
+        try:
+            _append_tier_ledger(
+                tier_ledger,
+                row=_TierLedgerRow(
+                    sequence=sequence, tier=tier,
+                    outcome_class=(
+                        "useful-delta" if useful_delta else "no-useful-delta"
+                    ),
+                    exit_status=launcher_rc, elapsed_ms=elapsed_ms,
+                    useful_delta=useful_delta, execution_issue_kind=issue_kind,
+                ),
+            )
+        except OSError:
+            _append_attempt_execution_issue(
+                issue_log=allowed_root / "execution-issues.md",
+                tier=tier,
+                issue_kind="ledger-failure",
+                attempt_log="",
+            )
+            return _with_tier_ledger(
+                FixOutcome(
+                    status="failed", delta_paths=(), failure_reason="tier-ledger-failed",
+                    commit_sha=None, head_changed=False, coder_tool=tier,
+                ),
+                tier_ledger,
+            )
+        tail: str = _coder_stderr_tail(run_dir=run_dir, log_name=log_name)
+        if tail:
+            last_stderr_tail = tail
+        attempt_log = _redacted_attempt_log(run_dir=run_dir, log_name=log_name)
+        last_attempt_log = attempt_log
+        if issue_kind != "no-op":
+            _append_attempt_execution_issue(
+                issue_log=allowed_root / "execution-issues.md",
+                tier=tier,
+                issue_kind=issue_kind,
+                attempt_log=attempt_log,
+            )
+        if useful_delta:
+            coder_tool = tier
+            coder_log_path = attempt_log
+            break
+    assert run_dir is not None
     try:
         current_head = git.rev_parse(runner, "HEAD", cwd=cwd)
     except Exception:
@@ -1414,6 +1686,9 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             commit_sha=None,
             head_changed=False,
             coder_tool=coder_tool,
+            coder_log_path=last_attempt_log,
+            stderr_tail_path=last_stderr_tail,
+            tier_ledger_path=str(tier_ledger),
         )
     if _head_change_invalid_after_dispatch(
         runner,
@@ -1430,6 +1705,9 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             commit_sha=None,
             head_changed=True,
             coder_tool=coder_tool,
+            coder_log_path=last_attempt_log,
+            stderr_tail_path=last_stderr_tail,
+            tier_ledger_path=str(tier_ledger),
         )
     commit_sha: str | None = None
     head_changed = False
@@ -1457,6 +1735,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                     commit_sha=None,
                     head_changed=False,
                     coder_tool=coder_tool,
+                    tier_ledger_path=str(tier_ledger),
                 )
             return FixOutcome(
                 status="failed",
@@ -1465,6 +1744,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
             )
         if _post_dispatch_forbidden_revert(
             runner,
@@ -1478,6 +1758,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
             )
         commit_sha = current_head
         head_changed = True
@@ -1494,10 +1775,22 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
             )
         current_tracked = _capture_tracked_paths(runner, cwd=cwd)
         current_untracked = _capture_untracked_paths(runner, cwd=cwd)
-        delta_paths = _delta_paths_after_dispatch(baseline_tracked=baseline_tracked, baseline_untracked=baseline_untracked, current_tracked=current_tracked, current_untracked=current_untracked)
+        current_snapshot = _snapshot_from_paths(
+            runner, cwd=cwd, tracked=current_tracked, untracked=current_untracked
+        )
+        if current_snapshot is None:
+            return FixOutcome(
+                status="failed", delta_paths=(), failure_reason="snapshot-capture-failed",
+                commit_sha=None, head_changed=False, coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
+            )
+        delta_paths = _snapshot_delta_paths(
+            baseline=baseline_snapshot, current=current_snapshot
+        )
         if not delta_paths:
             return FixOutcome(
                 status="no-changes",
@@ -1506,7 +1799,8 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
-                coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
+                coder_log_path=coder_log_path,
+                tier_ledger_path=str(tier_ledger),
             )
         if baseline_clean:
             add_result = runner.run(["git", "add", "--", *delta_paths], cwd=cwd)
@@ -1519,6 +1813,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                     commit_sha=None,
                     head_changed=False,
                     coder_tool=coder_tool,
+                    tier_ledger_path=str(tier_ledger),
                 )
             commit_result = git.commit_with_trailer(
                 runner,
@@ -1535,6 +1830,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                     commit_sha=None,
                     head_changed=False,
                     coder_tool=coder_tool,
+                    tier_ledger_path=str(tier_ledger),
                 )
             try:
                 commit_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
@@ -1547,7 +1843,8 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             commit_sha=commit_sha,
             head_changed=head_changed,
             coder_tool=coder_tool,
-            coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
+            coder_log_path=coder_log_path,
+                tier_ledger_path=str(tier_ledger),
         )
     delta_result = runner.run(
         ["git", "diff", "--name-only", f"{baseline_head}..{commit_sha}"],
@@ -1563,7 +1860,8 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         commit_sha=commit_sha,
         head_changed=head_changed,
         coder_tool=coder_tool,
-        coder_log_path=_coder_stderr_tail(run_dir=run_dir, log_name=f"{coder_tool}.log"),
+        coder_log_path=coder_log_path,
+                tier_ledger_path=str(tier_ledger),
     )
 
 
@@ -1575,6 +1873,8 @@ def _handle_fix_outcome(
 ) -> bool:
     """Return True when the outer loop should continue."""
     loop.last_fix_status = fix.status
+    loop.failure_reason = fix.failure_reason or ""
+    loop.tier_ledger_path = fix.tier_ledger_path
     if fix.ledger_ready:
         loop.ledger_ready = True
         loop.ledger_site = fix.ledger_site
@@ -1596,12 +1896,20 @@ def _handle_fix_outcome(
         loop.coder_log_path = fix.coder_log_path
         return False
     if fix.status == "failed":
-        if fix.failure_reason == "head-changed-after-dispatch":
+        if fix.failure_reason in _PRE_SHIP_NON_STRUCTURAL_REASONS:
+            loop.status = "exhausted"
+        elif fix.failure_reason == "head-changed-after-dispatch":
             loop.status = "head-changed"
+            loop.stderr_tail_path = fix.stderr_tail_path
+            loop.coder_log_path = fix.coder_log_path
         else:
-            loop.status = "dispatch-failed"
+            loop.status = "main-agent-required"
+            loop.stderr_tail_path = fix.stderr_tail_path
+            loop.coder_log_path = fix.coder_log_path
         return False
     loop.status = "dispatch-failed"
+    loop.stderr_tail_path = fix.stderr_tail_path
+    loop.coder_log_path = fix.coder_log_path
     return False
 
 

@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_5 not traceable to scoped input (first 80 chars: 'Route all returns after ledger initialization through a helper that preserves `t')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_8 not traceable to scoped input (first 80 chars: 'Update stub sequences and repair-loop assertions then run the full `test_checks`')

@@ -414,7 +414,7 @@ Ship-pr CI fixing uses a delegated Claude/Opus 4.8 agentic loop. The delegate re
 
 Conflict resolution uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
 
-Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`, then `main-agent-required`. CI recovery uses Codex fix-role `gpt-5.6-terra`, then Cursor `auto`, then Claude `claude-sonnet-4-6[1m]`. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.6-terra`.
+Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Each attempted tier gets an isolated artifact directory and a full 1800-second reservation. Capture, validation, and evidence-writing overhead does not consume the next tier reservation. Failed and no-op tiers advance; useful validated edits return to checks. Exhaustion stalls with `lint-fix-no-selectable-tier`, `lint-fix-budget-exhausted`, or `lint-fix-all-tiers-no-useful-delta`, plus a bounded redacted `LINT_FIX_TIER_LEDGER_PATH`. Structural failures remain fail-closed. This pre-ship contract does not change CI recovery or Step 8 ship-pr policy. CI recovery uses Codex fix-role `gpt-5.6-terra`, then Cursor `auto`, then Claude `claude-sonnet-4-6[1m]`. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.6-terra`.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 
