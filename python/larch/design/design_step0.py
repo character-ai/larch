@@ -165,8 +165,13 @@ def step0_session_main(argv: Sequence[str]) -> int:
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
     bootstrap._install_statusline_best_effort()
+    repo_root = consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
+    _run_best_effort(
+        command=_cli_cmd(plugin_root, "progress", "clear", "--repo-root", str(repo_root)),
+        env=os.environ,
+    )
     setup = subprocess.run(
-        _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check"),
+        _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -188,28 +193,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     _run_best_effort(command=_cli_cmd(plugin_root, "token", "mark", "design Step 0: session setup"), env=env)
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
-    repo_root = consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
     active_run_id = parsed.get("run_id", "") or session_id
-    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
-    if codex_binary:
-        wdce.extend(["--codex-binary-found", codex_binary])
-    if cursor_binary:
-        wdce.extend(["--cursor-binary-found", cursor_binary])
-    rc = subprocess.run(wdce, check=False).returncode
-    if rc != 0:
-        return rc
-    _run_best_effort(
-        command=_cli_cmd(
-            plugin_root,
-            "progress",
-            "activate",
-            "--repo-root",
-            str(repo_root),
-            "--run-id",
-            active_run_id,
-        ),
-        env=env,
-    )
     reviewer_probe = subprocess.run(
         _cli_cmd(plugin_root, "agent", "check-reviewers"),
         capture_output=True,
@@ -221,6 +205,22 @@ def step0_session_main(argv: Sequence[str]) -> int:
     reviewer_kv = _parse_stdout_kv(reviewer_probe.stdout)
     if reviewer_probe.returncode != 0:
         reviewer_kv = {}
+    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
+    for flag, value in (
+        ("--codex-present", reviewer_kv.get("CODEX_PRESENT", kv.get("CODEX_PRESENT", [""]))[-1]),
+        ("--cursor-present", reviewer_kv.get("CURSOR_PRESENT", kv.get("CURSOR_PRESENT", [""]))[-1]),
+        ("--codex-binary-found", reviewer_kv.get("CODEX_BINARY_FOUND", [codex_binary])[-1]),
+        ("--cursor-binary-found", reviewer_kv.get("CURSOR_BINARY_FOUND", [cursor_binary])[-1]),
+    ):
+        if value:
+            wdce.extend([flag, value])
+    rc = subprocess.run(wdce, check=False).returncode
+    if rc != 0:
+        return rc
+    _run_best_effort(
+        command=_cli_cmd(plugin_root, "progress", "activate", "--repo-root", str(repo_root), "--run-id", active_run_id),
+        env=env,
+    )
     _run_best_effort(
         command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"),
         env={**env, "LARCH_TIMING_SKILL": "design"},

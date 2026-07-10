@@ -442,6 +442,7 @@ def _restore_resume_progress(st: BootstrapState) -> None:
 
 
 def _phase_infra(st: BootstrapState) -> None:
+    _cli("progress", "clear", "--repo-root", str(Path.cwd()))
     branch = _cli("pr", "create-branch", "--check")
     if branch.returncode != 0:
         st.emit_step_failed("create-branch")

@@ -687,10 +687,13 @@ def _append_progress_mark(*, skill: str, label: str) -> None:
     try:
         from larch.report import progress_file
 
-        run_id = progress_file.resolve_owned_run_id()
+        implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+        design_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
+        tmpdir = implement_tmpdir or design_tmpdir
+        run_id = progress_file.resolve_owned_run_id(tmpdir=tmpdir or None)
         if run_id is not None:
             _ = progress_file.append_breadcrumb_for_run(
-                Path.cwd(),
+                progress_file.resolve_persisted_repo_root(tmpdir=tmpdir) if tmpdir else Path.cwd(),
                 run_id,
                 skill,
                 _progress_step_from_label(label),

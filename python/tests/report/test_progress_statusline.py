@@ -866,7 +866,19 @@ def test_statusline_cli_registered_as_machine_stdout() -> None:
     assert ("progress", "session-reset") not in cli._MACHINE_STDOUT_KEYS
     assert ("progress", "activate") in cli._REGISTRY
     assert ("progress", "activate") not in cli._MACHINE_STDOUT_KEYS
+    assert ("progress", "clear") in cli._REGISTRY
+    assert ("progress", "clear") not in cli._MACHINE_STDOUT_KEYS
     assert ("progress", "report") not in cli._REGISTRY
+
+
+def test_clear_active_run_removes_prior_pointer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    progress_file.activate_run(repo, "prior-run")
+
+    assert progress_file.clear_active_run(repo)
+    assert progress_file.read_active_run_id(repo) is None
 
 
 def test_session_reset_progress_clears_startup_statusline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -11,7 +11,7 @@ from collections.abc import Mapping, Sequence
 
 from larch.bgjob import registry
 from larch.core import logging_util
-from larch.report.progress_file import deactivate_run, resolve_owned_run_id
+from larch.report.progress_file import deactivate_run, resolve_owned_run_id, resolve_persisted_repo_root
 from larch.state import session_env
 
 from larch.design.design_core import (
@@ -196,8 +196,10 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
     _touch(design_tmpdir / ".completed" / "step-6")
     effective_run = resolve_owned_run_id(tmpdir=design_tmpdir)
     repo_root = resolve_persisted_repo_root(tmpdir=design_tmpdir)
-    if effective_run and repo_root is not None:
-        _ = deactivate_run(repo_root, effective_run)
+    if effective_run:
+        repo_root = repo_root or Path.cwd()
+        if not registry.has_live_entry(repo_root=repo_root, run_id=effective_run):
+            _ = deactivate_run(repo_root, effective_run)
     cleanup_rc = session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
     if cleanup_rc != 0:
         return cleanup_rc

@@ -612,6 +612,38 @@ def test_step0_session_progress_activate_uses_parsed_run_id_before_timing_and_fa
     assert progress_idx < timing_idx
 
 
+def test_step0_session_refreshes_reviewer_values_before_writing_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(list(cmd))
+        if cmd[2:4] == ["session", "setup"]:
+            return subprocess.CompletedProcess(cmd, 0, f"SESSION_TMPDIR={design}\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
+        if cmd[2:4] == ["agent", "check-reviewers"]:
+            return subprocess.CompletedProcess(cmd, 0, "CODEX_PRESENT=true\nCURSOR_PRESENT=true\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n", "")
+        if cmd[2:4] == ["agent", "degraded-tools-gate"]:
+            return subprocess.CompletedProcess(cmd, 0, "DEGRADED=false\nBOTH_DOWN=false\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
+
+    assert design_lifecycle.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]) == 0
+    probe_idx = next(index for index, cmd in enumerate(commands) if cmd[2:4] == ["agent", "check-reviewers"])
+    write_idx = next(index for index, cmd in enumerate(commands) if cmd[2:4] == ["session", "write-design-env"])
+    write_cmd = commands[write_idx]
+    assert probe_idx < write_idx
+    assert _cmd_arg(write_cmd, "--codex-present") == "true"
+    assert _cmd_arg(write_cmd, "--cursor-present") == "true"
+
+
 def test_init_runparams_refresh_preserves_step0_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     home = tmp_path / "home"
     home.mkdir()

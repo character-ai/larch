@@ -495,6 +495,23 @@ def deactivate_run(repo_root: str | Path, expected_run_id: str) -> bool:
     return True
 
 
+def clear_active_run(repo_root: str | Path) -> bool:
+    """Clear the active-run pointer regardless of its prior owner."""
+    try:
+        clone_dir_fd = _open_existing_directory_fd(progress_clone_dir(repo_root))
+        try:
+            with _current_pointer_lock(clone_dir_fd):
+                stat_result = os.lstat(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+                if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISREG(stat_result.st_mode):
+                    return False
+                os.unlink(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+        finally:
+            os.close(clone_dir_fd)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
 def _read_active_run_id(clone_dir: Path) -> str | None:  # pyright: ignore[reportUnusedFunction]
     """Return the normalized ``current`` pointer written by ``activate_run``."""
     pointer_path = clone_dir / CURRENT_RUN_FILENAME
@@ -709,4 +726,15 @@ def progress_deactivate_main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
     _ = deactivate_run(args.repo_root, args.run_id)
+    return 0
+
+
+def progress_clear_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress clear")
+    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    _ = clear_active_run(args.repo_root)
     return 0

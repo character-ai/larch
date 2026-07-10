@@ -1090,8 +1090,8 @@ def _try_deactivate_design_run(design_tmpdir: Path) -> None:
     with contextlib.suppress(Exception):
         from larch.report import progress_file  # noqa: PLC0415 - best-effort lazy import guarded by contextlib.suppress
         run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
-        repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
-        if run_id and repo_root is not None:
+        repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir) or Path.cwd()
+        if run_id:
             from larch.bgjob import registry  # noqa: PLC0415
             if not registry.has_live_entry(repo_root=repo_root, run_id=run_id):
                 progress_file.deactivate_run(repo_root, run_id)
@@ -1122,7 +1122,9 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         with contextlib.suppress(OSError):
             (design_tmpdir / ".design-step-final-summary-result.env").unlink(missing_ok=True)
         if ctx.summary_outcome in {"cancelled-clarify", "failed-clarify"} and _has_nonempty_final_summary(disk_final_summary):
-            return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary)), []
+            rc = _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary))
+            _try_deactivate_design_run(design_tmpdir)
+            return rc, []
         if _is_terminal_publish_outcome(ctx.summary_outcome):
             rc = _run_terminal_publish_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, final_summary_path=disk_final_summary)
             _try_deactivate_design_run(design_tmpdir)
