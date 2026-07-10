@@ -43,18 +43,19 @@ Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
-## /implement run B1E0A054-9FE4-499A-B2AA-19407C73B694: shipping
+## /implement run B1E0A054-9FE4-499A-B2AA-19407C73B694: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:31:34
-- **Cost**: 💰 TOTAL ~$11.82: Claude $2.33, Codex-5.5 $1.92, Codex-mini $1.48, Cursor $5.46, Claude (subprocess) $0.63  |  Tokens: 27958k
+- **Cost**: 💰 TOTAL ~$14.99: Claude $5.50, Codex-5.5 $1.92, Codex-mini $1.48, Cursor $5.46, Claude (subprocess) $0.63  |  Tokens: 35156k
 - **Issue**: #6788: https://github.com/character-ai/larch/issues/6788
+- **PR**: #6793: https://github.com/character-ai/larch/pull/6793
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0 findings
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +352/-27, larch-logs +640/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
