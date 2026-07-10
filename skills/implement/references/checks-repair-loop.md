@@ -1,5 +1,5 @@
 **Consumer**: `/implement` checks-failure orchestrator at folded Step 3, Step 5 self-review, Step 5 MAV, Step 5 coder-main-agent-required, and Step 6 sites.
-**Contract**: normative `checks repair-loop` invocation, stdout KV parse-and-branch rules (`NEXT_ACTION`, optional tail and ledger keys), outer main-agent-edit re-entry, and default stall routing.
+**Contract**: normative `checks repair-loop` invocation, stdout KV parse-and-branch rules (`NEXT_ACTION`, optional tail and ledger keys), structural main-agent-edit re-entry, and delegated-waterfall stall routing.
 **When to load**: **MANDATORY: READ ENTIRE FILE** before handling `STATUS=fail` at any of those sites; do not invoke `checks repair-loop` or branch on repair outcomes without loading this file first.
 
 ## 1. Structural gate, all sites
@@ -38,6 +38,8 @@ Use key-based extraction for these keys before checking the Bash exit code:
 - `STDERR_TAIL_PATH`
 - `CODER_LOG_FILE`
 - All `LINT_FIX_LEDGER_*` keys when present
+- `FAILURE_REASON`
+- `LINT_FIX_TIER_LEDGER_PATH`
 
 Exit-code contract:
 
@@ -46,6 +48,16 @@ Exit-code contract:
 - Exit `2` for argument or validation failure still prints `NEXT_ACTION=stall`. Parse KVs first, then route to stall.
 
 ## 4. Branch semantics
+
+### `NEXT_ACTION=stall` after delegated lint-fix exhaustion
+
+For pre-ship sites, these exact terminal reasons are ordinary delegated-waterfall exhaustion:
+
+- `lint-fix-no-selectable-tier`
+- `lint-fix-budget-exhausted`
+- `lint-fix-all-tiers-no-useful-delta`
+
+Require both `FAILURE_REASON` and `LINT_FIX_TIER_LEDGER_PATH` as terminal evidence. Route to the normal stall path. Do not edit inline and do not reinterpret `LOOP_STATUS=exhausted` or `LOOP_STATUS=no-changes-stale` as `NEXT_ACTION=main-agent-edit`. The ship-pr CI sites keep their existing internal lint-fix handoff and are outside this pre-ship remapping.
 
 ### `NEXT_ACTION=continue`
 

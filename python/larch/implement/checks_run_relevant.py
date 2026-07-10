@@ -87,6 +87,7 @@ class FixOutcome:
     ledger_failure_detail_log: str = ""
     coder_log_path: str = ""
     stderr_tail_path: str = ""
+    tier_ledger_path: str = ""
 
 
 # Mutable: delta_paths and ledger_* fields are filled in across fix-loop iterations.
@@ -106,6 +107,8 @@ class LoopResult:
     final_redacted_checks_log: str = ""
     coder_log_path: str = ""
     stderr_tail_path: str = ""
+    failure_reason: str = ""
+    tier_ledger_path: str = ""
 
 
 def normalize_max_iter(raw: str | int | None = None) -> int:

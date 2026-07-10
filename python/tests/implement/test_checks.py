@@ -1419,15 +1419,16 @@ def test_run_lint_fix_no_tools(tmp_path: Path) -> None:
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "main-agent-required"
-    assert outcome.ledger_failure_detail_log == str(log.resolve())
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-no-selectable-tier"
+    assert outcome.tier_ledger_path
     timing_calls = _timing_record_calls(runner, task_kind="claude-lint-fix")
     assert len(timing_calls) == 1
     call, _kw = timing_calls[0]
     assert "--output" in call
     assert call[call.index("--output") + 1] == str(tmp_path / "claude-lint-fix.txt")
     assert "--exit-code" in call
-    assert call[call.index("--exit-code") + 1] == "0"
+    assert call[call.index("--exit-code") + 1] == "1"
     assert "--status" in call
     assert call[call.index("--status") + 1] == "complete"
 
@@ -1831,8 +1832,8 @@ def test_run_lint_fix_complexity_baseline_tool_error_uses_normal_fixer(
     )
 
     assert codex_calls == ["codex"]
-    assert outcome.status == "main-agent-required"
-    assert outcome.failure_reason == "dispatch-failed"
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
     assert outcome.failure_reason != "complexity-baseline-regression"
 
 
@@ -1882,8 +1883,8 @@ def test_run_lint_fix_structural_false_positives_use_normal_fixer(
     )
 
     assert codex_calls == ["codex"]
-    assert outcome.status == "main-agent-required"
-    assert outcome.failure_reason == "dispatch-failed"
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
 
 
 def test_run_lint_fix_complexity_baseline_no_tools_fast_fail(tmp_path: Path) -> None:
@@ -2022,7 +2023,7 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "main-agent-required"
+    assert outcome.status == "failed"
     assert outcome.failure_reason == "dispatch-failed"
     flat = " ".join(arg for call, _kw in runner.calls for arg in call)
     assert "launch-codex-ci.sh" not in flat
@@ -2311,7 +2312,8 @@ def test_run_lint_fix_threads_session_root_as_codex_implement_tmpdir(
         run_parent=str(run_parent),
     )
 
-    assert outcome.status == "main-agent-required"
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
     assert captured["implement_tmpdir"] == implement_tmpdir.resolve()
     assert captured["implement_tmpdir"] != run_parent
     assert captured["implement_tmpdir"] != captured["run_dir"]
@@ -2368,7 +2370,6 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
 
     def fail_codex(*_args: object, **_kwargs: object) -> int:
         return 1
@@ -2378,6 +2379,7 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
 
     monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     monkeypatch.setattr("larch.agents.agents.classify_launch_failure", classify_must_not_run)
+    head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -2398,28 +2400,25 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "main-agent-required"
-    assert outcome.failure_reason == "dispatch-failed"
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
 
 
-def test_run_lint_fix_all_tools_timeout(tmp_path: Path) -> None:
-    """Exit 124 (timeout) from every tier routes to main-agent-required, not failed."""
+def test_run_lint_fix_all_tools_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exit 124 from every selectable tier advances to named exhaustion."""
+
+    def timeout_lane(*_args: object, **_kwargs: object) -> int:
+        return config.PROC_TIMEOUT_EXIT_CODE
+
+    monkeypatch.setattr(_clf, "_run_claude", timeout_lane)
+    monkeypatch.setattr(_clf, "_run_codex", timeout_lane)
     repo = tmp_path / "repo"
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
-    runner = StubRunner([
-        _ok(""),          # baseline tracked diff
-        _ok(""),          # baseline cached diff
-        _ok(""),          # baseline untracked status
-        _ok(head + "\n"), # rev-parse HEAD
-        _ok("main\n"),    # symbolic-ref
-        _ok(""),          # submodule foreach (prompt)
-        _ok(""),          # submodule foreach (forbidden paths)
-        _ok("", rc=124),  # claude dispatch: timeout
-        _ok("", rc=124),  # codex dispatch: timeout
-    ])
+    runner = StubRunner()
     outcome = checks.run_lint_fix(
         runner,
         site="step6",
@@ -2431,8 +2430,8 @@ def test_run_lint_fix_all_tools_timeout(tmp_path: Path) -> None:
         allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
-    assert outcome.status == "main-agent-required"
-    assert outcome.failure_reason in {"dispatch-failed", "lint-fix-budget-exceeded"}
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
 
 
 def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
@@ -2440,8 +2439,8 @@ def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
     commit = "def456"
+    head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -2484,8 +2483,8 @@ def test_run_lint_fix_forbidden_reset_failure_is_structural(tmp_path: Path) -> N
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
     moved = "def456"
+    head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -2525,8 +2524,8 @@ def test_run_lint_fix_committed_forbidden_delta_reset_success_is_violation(
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
     moved = "def456"
+    head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -2600,12 +2599,12 @@ def test_run_lint_fix_plugin_json_touch_is_reverted(tmp_path: Path, monkeypatch:
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
 
     def succeed_claude(*_args: object, **_kwargs: object) -> int:
         return 0
 
     monkeypatch.setattr(_clf, "_run_claude", succeed_claude)
+    head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -2964,7 +2963,6 @@ def test_run_lint_fix_dispatches_claude_before_codex(
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
     dispatch_calls: list[str] = []
 
     def succeed_claude(*_args: object, **_kwargs: object) -> int:
@@ -2982,6 +2980,7 @@ def test_run_lint_fix_dispatches_claude_before_codex(
     monkeypatch.setattr(_clf, "_run_claude", succeed_claude)
     monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
+    head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -3022,7 +3021,6 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
     dispatch_calls: list[str] = []
 
     def fail_claude(*_args: object, **_kwargs: object) -> int:
@@ -3044,6 +3042,7 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
         return "/usr/bin/claude" if name == "claude" else None
 
     monkeypatch.setattr(shutil, "which", claude_on_path)
+    head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -3563,8 +3562,10 @@ def test_lint_fix_main_agent_required_carries_ledger_tokens(tmp_path: Path) -> N
         run_parent=str(run_parent),
         allowed_tmpdir=str(tmp_path),
     )
-    assert outcome.status == "main-agent-required"
-    assert outcome.ledger_ready is True
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
+    assert outcome.tier_ledger_path
+    assert outcome.ledger_ready is False
     assert outcome.ledger_site == "step5-self-review"
     assert outcome.ledger_trigger == "main-agent-required"
     assert outcome.ledger_step == "5"
@@ -3589,8 +3590,10 @@ def test_lint_fix_ship_pr_initial_carries_ci_initial_ledger_phase(tmp_path: Path
         run_parent=str(tmp_path / "lint-fix-loop"),
         allowed_tmpdir=str(tmp_path),
     )
-    assert outcome.status == "main-agent-required"
-    assert outcome.ledger_ready is True
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
+    assert outcome.tier_ledger_path
+    assert outcome.ledger_ready is False
     assert outcome.ledger_site == "ship-pr-internal"
     assert outcome.ledger_trigger == "ship-pr-internal-lint-fix"
     assert outcome.ledger_step == "8"
@@ -4849,7 +4852,6 @@ def test_run_lint_fix_claude_only_host_dispatches_claude(
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
     dispatch_calls: list[str] = []
 
     def succeed_claude(*_args: object, **_kwargs: object) -> int:
@@ -4861,6 +4863,7 @@ def test_run_lint_fix_claude_only_host_dispatches_claude(
         return "/usr/bin/claude" if name == "claude" else None
 
     monkeypatch.setattr(shutil, "which", claude_on_path)
+    head = "abc123"
     runner = StubRunner([
         _ok(""),
         _ok(""),
@@ -4903,7 +4906,6 @@ def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
     repo.mkdir()
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
-    head = "abc123"
     dispatch_calls: list[str] = []
 
     def fail_claude(*_args: object, **_kwargs: object) -> int:
@@ -4925,6 +4927,7 @@ def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
         return f"/usr/bin/{name}"
 
     monkeypatch.setattr(shutil, "which", all_tools_on_path)
+    head = "abc123"
     runner = StubRunner([
         _ok(""),
         _ok(""),
@@ -4946,5 +4949,62 @@ def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
         run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert dispatch_calls == ["claude", "codex", "cursor"]
-    assert outcome.status == "main-agent-required"
-    assert outcome.ledger_ready is True
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "lint-fix-all-tiers-no-useful-delta"
+    assert outcome.tier_ledger_path
+    assert outcome.ledger_ready is False
+
+
+def test_handle_fix_outcome_preserves_named_exhaustion_evidence() -> None:
+    loop = checks.LoopResult(status="exhausted")
+    fix = checks.FixOutcome(
+        status="failed",
+        delta_paths=(),
+        failure_reason="lint-fix-all-tiers-no-useful-delta",
+        commit_sha=None,
+        head_changed=False,
+        coder_tool=None,
+        tier_ledger_path="/tmp/lint-fix-tier-ledger.tsv",
+    )
+
+    should_continue = _clf._handle_fix_outcome(  # pyright: ignore[reportPrivateUsage]
+        fix,
+        delta_accum=[],
+        loop=loop,
+    )
+
+    assert should_continue is False
+    assert loop.status == "exhausted"
+    assert loop.failure_reason == "lint-fix-all-tiers-no-useful-delta"
+    assert loop.tier_ledger_path == "/tmp/lint-fix-tier-ledger.tsv"
+
+
+def test_repair_loop_action_stalls_only_named_pre_ship_exhaustion(tmp_path: Path) -> None:
+    named = checks.LoopResult(
+        status="exhausted",
+        failure_reason="lint-fix-budget-exhausted",
+    )
+    generic = checks.LoopResult(status="exhausted", failure_reason="dispatch-failed")
+    structural = checks.LoopResult(
+        status="main-agent-required",
+        failure_reason="structural-ruff-failure",
+    )
+
+    assert _clf._repair_loop_action(  # pyright: ignore[reportPrivateUsage]
+        named,
+        lint_site="step6",
+        checks_log="",
+        allowed_tmpdir=tmp_path,
+    ) == "stall"
+    assert _clf._repair_loop_action(  # pyright: ignore[reportPrivateUsage]
+        generic,
+        lint_site="step6",
+        checks_log="",
+        allowed_tmpdir=tmp_path,
+    ) == "stall"
+    assert _clf._repair_loop_action(  # pyright: ignore[reportPrivateUsage]
+        structural,
+        lint_site="step6",
+        checks_log="",
+        allowed_tmpdir=tmp_path,
+    ) == "main-agent-edit"
