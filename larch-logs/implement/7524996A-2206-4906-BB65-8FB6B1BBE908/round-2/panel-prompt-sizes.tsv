@@ -1,0 +1,9 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	2	correctness	specialist	codex	codex-specialist-correctness-output.txt	130426	32607	7621	1906	122805	30702	agents/reviewer-correctness.md	5788	1447
+implement Step 5	phase1	2	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	130898	32725	8093	2024	122805	30702	agents/reviewer-edge-cases.md	6297	1575
+implement Step 5	phase1	2	testing	specialist	codex	codex-specialist-testing-output.txt	130340	32585	7535	1884	122805	30702	agents/reviewer-testing.md	5764	1441
+review Step 2	phase1	2	aggregator	aggregator	codex	aggregator-output.txt	14209	3553	4140	1035	10069	2518	agents/orchestrator-aggregator.md	4363	1091
+implement Step 5	phase1	2	voter-1	voter	codex	codex-validity-vote-output.txt	13645	3412	8456	2114	5189	1298		0	0
+implement Step 5	phase1	2	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	13991	3498	8802	2201	5189	1298		0	0
+implement Step 5	phase1	2	voter-3	voter	codex	codex-pragmatism-vote-output.txt	13702	3426	8513	2129	5189	1298		0	0
+review.fix_coder	review.fix_coder	2	implementer	implementer	codex	coder-output.log	1746	437	340	85	1406	352		0	0
