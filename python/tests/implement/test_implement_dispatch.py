@@ -6505,11 +6505,8 @@ def test_step2_dispatch_bails_on_quota_when_plan_coverage_requires_disposition(
         )
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
-    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
-    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
-    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
 
     rc = implement_dispatch.step2_dispatch_main([
@@ -6556,11 +6553,8 @@ def test_step2_dispatch_bails_on_quota_in_transcript_when_coverage_is_incomplete
         )
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
-    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
-    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
-    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
 
     rc = implement_dispatch.step2_dispatch_main([
@@ -6607,11 +6601,8 @@ def test_step2_dispatch_completes_full_coverage_despite_quota_sidecar(
         st.manifest_path.write_text(json.dumps(payload), encoding="utf-8")
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
-    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
-    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
-    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
 
     rc = implement_dispatch.step2_dispatch_main([
