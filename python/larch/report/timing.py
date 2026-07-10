@@ -687,12 +687,15 @@ def _append_progress_mark(*, skill: str, label: str) -> None:
     try:
         from larch.report import progress_file
 
-        _ = progress_file.append_breadcrumb(
-            Path.cwd(),
-            skill,
-            _progress_step_from_label(label),
-            f"{label} started",
-        )
+        run_id = progress_file.resolve_owned_run_id()
+        if run_id is not None:
+            _ = progress_file.append_breadcrumb_for_run(
+                Path.cwd(),
+                run_id,
+                skill,
+                _progress_step_from_label(label),
+                f"{label} started",
+            )
     except Exception:
         return
 

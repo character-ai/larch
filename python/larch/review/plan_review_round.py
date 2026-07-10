@@ -37,7 +37,9 @@ def _emit(*, key: str, value: object = "") -> None:
 
 
 def _progress_note(*, step: str, text: str) -> None:
-    _ = progress_file.append_breadcrumb(Path.cwd(), "design", step, text)
+    run_id = progress_file.resolve_owned_run_id()
+    if run_id is not None:
+        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "design", step, text)
 
 
 def _parse_kv(text: str) -> dict[str, str]:

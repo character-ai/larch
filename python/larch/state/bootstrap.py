@@ -429,6 +429,18 @@ def _persist_run_flags(st: BootstrapState) -> bool:
     return True
 
 
+def _ensure_plugin_root_env(st: BootstrapState) -> None:
+    plugin_env = Path(st.implement_tmpdir) / "plugin-root.env"
+    if not plugin_env.is_file():
+        _cli("session", "write-env", "--plugin-root-only", "--output", str(plugin_env), "--value", str(_REPO_ROOT))
+
+
+def _restore_resume_progress(st: BootstrapState) -> None:
+    st.run_id = st.read_session(key="LARCH_RUN_ID") or st.resolve_run_id()
+    if _activatable_run_id(st.run_id):
+        _cli("progress", "activate", "--repo-root", str(Path.cwd()), "--run-id", st.run_id)
+
+
 def _phase_infra(st: BootstrapState) -> None:
     branch = _cli("pr", "create-branch", "--check")
     if branch.returncode != 0:
@@ -468,8 +480,8 @@ def _phase_infra(st: BootstrapState) -> None:
         st.cursor_present = st.read_session(key="CURSOR_PRESENT")
         st.codex_binary_found = st.read_session(key="CODEX_BINARY_FOUND")
         st.cursor_binary_found = st.read_session(key="CURSOR_BINARY_FOUND")
-        if not (Path(st.implement_tmpdir) / "plugin-root.env").is_file():
-            _cli("session", "write-env", "--plugin-root-only", "--output", str(Path(st.implement_tmpdir) / "plugin-root.env"), "--value", str(_REPO_ROOT))
+        _restore_resume_progress(st)
+        _ensure_plugin_root_env(st)
     else:
         setup_args = ["session", "setup", "--prefix", "claude-implement", "--check-reviewers"]
         if st.skip_branch_check == "true":

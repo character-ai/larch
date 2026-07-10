@@ -70,6 +70,7 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
     "CLAUDE_PLUGIN_ROOT",
     "LARCH_CLAUDE_SOURCE_FILE",
+    "LARCH_RUN_ID",
 })
 RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED", "SELF_IMPLEMENT_REQUESTED", "DIFFICULTY_OVERRIDE"})
 # Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
@@ -572,6 +573,13 @@ def _base_design_writer_values(args: argparse.Namespace, *, prior_file: Path | N
         values["REPO_ROOT"] = repo_root
     if args.issue_number:
         values["ISSUE_NUMBER"] = args.issue_number
+    run_id = args.run_id.strip()
+    if not run_id and prior_file is not None:
+        run_id = _recover_prior_design_value(key="LARCH_RUN_ID", prior_file=prior_file)
+    if run_id:
+        if not _SAFE_RUN_ID_RE.fullmatch(run_id):
+            raise ValueError("Invalid --run-id: must match ^[A-Za-z0-9._-]{1,128}$")
+        values["LARCH_RUN_ID"] = run_id
     return values
 
 
@@ -996,7 +1004,7 @@ def resolve_trusted_design_session_env_source(*, path: Path, claude_pid: str) ->
 
 def write_design_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-design-env", add_help=False)
-    for flag in ("output", "design-tmpdir", "session-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "repo-root", "issue-number", "claude-pid", "claude-source-file"):
+    for flag in ("output", "design-tmpdir", "session-id", "run-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "repo-root", "issue-number", "claude-pid", "claude-source-file"):
         parser.add_argument(f"--{flag}", default="")
     try:
         args = parser.parse_args(argv)

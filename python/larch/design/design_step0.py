@@ -189,7 +189,8 @@ def step0_session_main(argv: Sequence[str]) -> int:
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
     repo_root = consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
-    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
+    active_run_id = parsed.get("run_id", "") or session_id
+    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
     if codex_binary:
         wdce.extend(["--codex-binary-found", codex_binary])
     if cursor_binary:
@@ -197,7 +198,6 @@ def step0_session_main(argv: Sequence[str]) -> int:
     rc = subprocess.run(wdce, check=False).returncode
     if rc != 0:
         return rc
-    active_run_id = parsed.get("run_id", "") or session_id
     _run_best_effort(
         command=_cli_cmd(
             plugin_root,
@@ -464,6 +464,8 @@ def _refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int:
         str(ctx.design_tmpdir),
         "--session-id",
         session_id,
+        "--run-id",
+        ctx.env.get("LARCH_RUN_ID", "") or session_id,
         "--issue-number",
         issue_number,
         "--claude-pid",

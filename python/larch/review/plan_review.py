@@ -101,7 +101,9 @@ from larch.review.plan_review_normalize import (
 
 
 def _progress_note(*, step: str, text: str) -> None:
-    _ = progress_file.append_breadcrumb(Path.cwd(), "design", step, text)
+    run_id = progress_file.resolve_owned_run_id()
+    if run_id is not None:
+        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "design", step, text)
 
 
 def _exec_pause_save(tmpdir: Path) -> int:

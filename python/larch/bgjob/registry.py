@@ -10,6 +10,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.bgjob import model
 from larch.core import process_identity
+from larch.report.progress_file import resolve_owned_run_id
 
 
 def _identity_rows(prefix: str, identity: process_identity.RecordedProcessIdentity | None) -> list[tuple[str, str]]:
@@ -137,7 +138,7 @@ def read_entry(path: Path) -> model.RegistryEntry | None:
 
 def read_for(*, tmpdir: Path, step: str, run_id: str | None = None) -> tuple[Path, model.RegistryEntry | None]:
     clone_path = Path.cwd().resolve()
-    active_run_id = run_id or model.default_run_id(tmpdir=tmpdir, clone_path=clone_path)
+    active_run_id = resolve_owned_run_id(explicit=run_id, tmpdir=tmpdir) or model.default_run_id(tmpdir=tmpdir, clone_path=clone_path)
     path = model.registry_path(run_id=active_run_id, step=step)
     return path, read_entry(path)
 

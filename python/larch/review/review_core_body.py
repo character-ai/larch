@@ -54,7 +54,9 @@ def _review_commands() -> ReviewCommands:
 
 
 def _progress_note(*, step: str, text: str) -> None:
-    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
+    run_id = progress_file.resolve_owned_run_id()
+    if run_id is not None:
+        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "implement", step, text)
 
 
 def _copy_to_parent(*, file: Path, name: str, session_env_path: str) -> None:

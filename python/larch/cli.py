@@ -386,6 +386,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("progress", "statusline"): ("larch.report.statusline", "statusline_main"),
     ("progress", "session-reset"): ("larch.report.statusline", "session_reset_main"),
     ("progress", "activate"): ("larch.report.progress_file", "progress_activate_main"),
+    ("progress", "deactivate"): ("larch.report.progress_file", "progress_deactivate_main"),
     ("progress", "note"): ("larch.report.progress_file", "progress_note_main"),
     ("progress", "install-statusline"): ("larch.report.statusline_install", "install_statusline_main"),
     ("progress", "render-phase-detail"): ("larch.report.progress_report", "render_phase_detail_main"),

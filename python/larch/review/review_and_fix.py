@@ -116,7 +116,9 @@ from larch.review.round_runner import (
 
 
 def _progress_note(*, step: str, text: str) -> None:
-    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
+    run_id = progress_file.resolve_owned_run_id()
+    if run_id is not None:
+        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "implement", step, text)
 
 
 # Keep these module-level constants for backward compatibility with any code
