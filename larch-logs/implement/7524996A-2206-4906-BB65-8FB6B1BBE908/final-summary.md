@@ -68,11 +68,19 @@ Warnings (2):
   1. Step 7a.1 — 15 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/calibration/difficulty.py, python/larch/agents/_run_external.py, pyt...
   2. Step 5 — code review hit the 2-round HARD cap without full convergence: fixes applied and committed (f032626); remaining reviewer findings are in rejected-findings.md and the round-2 tally.
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run 7524996A-2206-4906-BB65-8FB6B1BBE908: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:48:53
-- **Cost**: 💰 TOTAL ~$71.40: Claude $13.01, Codex-5.5 $31.14, Codex-mini $8.78, Cursor $17.23, Claude (subprocess) $1.24  |  Tokens: 171707k
+- **Cost**: 💰 TOTAL ~$75.37: Claude $16.95, Codex-5.5 $31.14, Codex-mini $8.78, Cursor $17.23, Claude (subprocess) $1.27  |  Tokens: 177443k
 - **Issue**: #6797: https://github.com/character-ai/larch/issues/6797
 - **Plan review**: N/A
 - **Plan coverage**: 39/51 firm headings; band: middle; disposition: none; todos_left: 0
