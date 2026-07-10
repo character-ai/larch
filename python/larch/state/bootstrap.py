@@ -430,7 +430,20 @@ def _persist_run_flags(st: BootstrapState) -> bool:
     return True
 
 
+def _ensure_plugin_root_env(st: BootstrapState) -> None:
+    plugin_env = Path(st.implement_tmpdir) / "plugin-root.env"
+    if not plugin_env.is_file():
+        _cli("session", "write-env", "--plugin-root-only", "--output", str(plugin_env), "--value", str(_REPO_ROOT))
+
+
+def _restore_resume_progress(st: BootstrapState) -> None:
+    st.run_id = st.read_session(key="LARCH_RUN_ID") or st.resolve_run_id()
+    if _activatable_run_id(st.run_id):
+        _cli("progress", "activate", "--repo-root", str(Path.cwd()), "--run-id", st.run_id)
+
+
 def _phase_infra(st: BootstrapState) -> None:
+    _cli("progress", "clear", "--repo-root", str(Path.cwd()))
     branch = _cli("pr", "create-branch", "--check")
     if branch.returncode != 0:
         st.emit_step_failed("create-branch")
@@ -469,10 +482,10 @@ def _phase_infra(st: BootstrapState) -> None:
         st.cursor_present = st.read_session(key="CURSOR_PRESENT")
         st.codex_binary_found = st.read_session(key="CODEX_BINARY_FOUND")
         st.cursor_binary_found = st.read_session(key="CURSOR_BINARY_FOUND")
-        if not (Path(st.implement_tmpdir) / "plugin-root.env").is_file():
-            _cli("session", "write-env", "--plugin-root-only", "--output", str(Path(st.implement_tmpdir) / "plugin-root.env"), "--value", str(_REPO_ROOT))
+        _restore_resume_progress(st)
+        _ensure_plugin_root_env(st)
     else:
-        setup_args = ["session", "setup", "--prefix", "claude-implement", "--check-reviewers"]
+        setup_args = ["session", "setup", "--prefix", "claude-implement"]
         if st.skip_branch_check == "true":
             setup_args.append("--skip-branch-check")
         if st.opts.skip_codex_probe:
@@ -507,6 +520,19 @@ def _phase_infra(st: BootstrapState) -> None:
         _cli("token", "mark", "Step 0 — preflight")
         env = {**os.environ, "LARCH_TIMING_SKILL": "implement"}
         _cli("timing", "mark", "Step 0 — preflight", env=env)
+        reviewer_args = ["agent", "check-reviewers"]
+        if st.opts.skip_codex_probe:
+            reviewer_args.append("--skip-codex-probe")
+        if st.opts.skip_cursor_probe:
+            reviewer_args.append("--skip-cursor-probe")
+        reviewer = _cli(*reviewer_args)
+        reviewer_kv = _parse_kv(reviewer.stdout)
+        if reviewer.returncode == 0:
+            st.codex_present = reviewer_kv.get("CODEX_PRESENT", st.codex_present)
+            st.cursor_present = reviewer_kv.get("CURSOR_PRESENT", st.cursor_present)
+            st.codex_binary_found = reviewer_kv.get("CODEX_BINARY_FOUND", st.codex_binary_found)
+            st.cursor_binary_found = reviewer_kv.get("CURSOR_BINARY_FOUND", st.cursor_binary_found)
+            _write_base_session_env(st)
     _install_statusline_best_effort()
     if st.implement_tmpdir and not _write_larch_run_sh(st.implement_tmpdir):
         st.emit_step_failed("larch-run")

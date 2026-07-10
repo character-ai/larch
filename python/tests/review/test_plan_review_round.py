@@ -871,13 +871,20 @@ def test_execute_round_records_progress_breadcrumb_sequence(
     _ = feature_file.write_text("feature\n", encoding="utf-8")
     breadcrumbs: list[tuple[str, str, str]] = []
 
-    def fake_append_breadcrumb(repo_root: str | Path, skill: str, step: str, text: str) -> bool:
+    def fake_resolve_owned_run_id(**_kwargs: object) -> str:
+        return "test-run-id"
+
+    def fake_append_breadcrumb_for_run(
+        repo_root: str | Path, run_id: str, skill: str, step: str, text: str
+    ) -> bool:
         assert isinstance(repo_root, Path)
+        assert run_id == "test-run-id"
         breadcrumbs.append((skill, step, text))
         return True
 
     _install_execute_round_fake(monkeypatch, design)
-    monkeypatch.setattr(plan_review_round.progress_file, "append_breadcrumb", fake_append_breadcrumb)
+    monkeypatch.setattr(plan_review_round.progress_file, "resolve_owned_run_id", fake_resolve_owned_run_id)
+    monkeypatch.setattr(plan_review_round.progress_file, "append_breadcrumb_for_run", fake_append_breadcrumb_for_run)
 
     rc, values = plan_review_round.execute_round(
         design=design,

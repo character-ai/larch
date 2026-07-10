@@ -269,7 +269,7 @@ def test_deactivate_run_removes_current_and_preserves_run_log(tmp_path: Path, mo
     run_dir = progress_file.run_progress_dir(repo, run_id)
     log_path = progress_file.run_progress_path(repo, run_id)
 
-    assert progress_file.deactivate_run(repo)
+    assert progress_file.deactivate_run(repo, "implement-20260708.1")
 
     assert not progress_file.current_run_path(repo).exists()
     assert run_dir.is_dir()
@@ -282,7 +282,7 @@ def test_deactivate_run_missing_clone_dir_is_no_create(tmp_path: Path, monkeypat
     repo.mkdir()
     clone_dir = progress_file.progress_clone_dir(repo)
 
-    assert not progress_file.deactivate_run(repo)
+    assert not progress_file.deactivate_run(repo, "implement-20260708.1")
     assert not clone_dir.exists()
 
 
@@ -296,7 +296,7 @@ def test_deactivate_run_refuses_symlinked_current(tmp_path: Path, monkeypatch: p
     clone_dir.mkdir(parents=True)
     progress_file.current_run_path(repo).symlink_to(target)
 
-    assert not progress_file.deactivate_run(repo)
+    assert not progress_file.deactivate_run(repo, "implement-20260708.1")
 
     assert progress_file.current_run_path(repo).is_symlink()
     assert target.read_text(encoding="utf-8") == "implement-20260708.1\n"
@@ -311,7 +311,7 @@ def test_deactivate_run_refuses_invalid_current(tmp_path: Path, monkeypatch: pyt
     current_path = progress_file.current_run_path(repo)
     current_path.write_text("bad run id\n", encoding="utf-8")
 
-    assert not progress_file.deactivate_run(repo)
+    assert not progress_file.deactivate_run(repo, "implement-20260708.1")
     assert current_path.read_text(encoding="utf-8") == "bad run id\n"
 
 
@@ -325,7 +325,7 @@ def test_deactivate_run_refuses_symlinked_clone_dir(tmp_path: Path, monkeypatch:
     progress_file.progress_clone_dir(repo).symlink_to(outside_clone, target_is_directory=True)
     (outside_clone / progress_file.CURRENT_RUN_FILENAME).write_text("implement-20260708.1\n", encoding="utf-8")
 
-    assert not progress_file.deactivate_run(repo)
+    assert not progress_file.deactivate_run(repo, "implement-20260708.1")
     assert (outside_clone / progress_file.CURRENT_RUN_FILENAME).read_text(encoding="utf-8") == "implement-20260708.1\n"
 
 
@@ -866,7 +866,19 @@ def test_statusline_cli_registered_as_machine_stdout() -> None:
     assert ("progress", "session-reset") not in cli._MACHINE_STDOUT_KEYS
     assert ("progress", "activate") in cli._REGISTRY
     assert ("progress", "activate") not in cli._MACHINE_STDOUT_KEYS
+    assert ("progress", "clear") in cli._REGISTRY
+    assert ("progress", "clear") not in cli._MACHINE_STDOUT_KEYS
     assert ("progress", "report") not in cli._REGISTRY
+
+
+def test_clear_active_run_removes_prior_pointer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    progress_file.activate_run(repo, "prior-run")
+
+    assert progress_file.clear_active_run(repo)
+    assert progress_file.read_active_run_id(repo) is None
 
 
 def test_session_reset_progress_clears_startup_statusline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -955,10 +967,10 @@ def test_session_reset_progress_skips_live_bgjob(tmp_path: Path, monkeypatch: py
     run_id = "implement-20260708.1"
     progress_file.activate_run(repo, run_id)
 
-    def clone_has_live_bgjob(_repo_root: Path) -> bool:
+    def run_has_live_bgjob(_repo_root: Path, _run_id: str) -> bool:
         return True
 
-    monkeypatch.setattr(statusline, "_clone_has_live_bgjob", clone_has_live_bgjob)
+    monkeypatch.setattr(statusline, "_run_has_live_bgjob", run_has_live_bgjob)
 
     assert not statusline.session_reset_progress(json.dumps({"source": "startup", "cwd": str(repo)}))
     assert progress_file.read_active_run_id(repo) == run_id
@@ -971,6 +983,7 @@ def test_timing_mark_appends_progress_breadcrumb(tmp_path: Path, monkeypatch: py
     monkeypatch.chdir(repo)
     monkeypatch.setenv("LARCH_TEST_CACHE_HOME", str(tmp_path / "cache"))
     monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
+    monkeypatch.setenv("LARCH_RUN_ID", "design-20260708.1")
     progress_file.activate_run(repo, "design-20260708.1")
 
     assert timing.timing_mark_main(["--ledger", str(ledger), "design Step 2b: plan"]) == 0

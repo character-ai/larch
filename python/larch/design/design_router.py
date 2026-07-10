@@ -212,6 +212,8 @@ def init_runparams_main(argv: Sequence[str]) -> int:
             str(design_tmpdir),
             "--session-id",
             parsed["--session-id"],
+            "--run-id",
+            parsed["--session-id"],
             "--issue-number",
             parsed["--issue"],
             "--claude-pid",

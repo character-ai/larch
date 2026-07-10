@@ -1,4 +1,4 @@
-# pyright: reportPrivateUsage=false, reportUnusedCallResult=false
+# pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportAttributeAccessIssue=false
 """Tests for finalize.py."""
 
 from __future__ import annotations
@@ -11,9 +11,10 @@ import pytest
 
 from larch.issue import execution_issues
 from larch.state import finalize
-from larch.report import run_logs
+from larch.report import run_logs, progress_file
 from larch.errors import ShipError
-from larch.core.proc import CommandResult
+from larch.core.proc import CommandResult, Runner
+from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
 
@@ -1056,3 +1057,55 @@ def test_implement_finalize_accepts_cache_root_state_file(
     ])
     assert rc == 0
     assert "FINALIZE_SUBCOMMAND=teardown" in capsys.readouterr().out
+
+
+def test_teardown_deactivates_run_before_tmpdir_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Teardown calls deactivate_run with the effective run ID."""
+    runner = RecordingRunner()
+    ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
+    _ = run_logs.init_run(ctx)
+
+    deactivate_calls: list[tuple[object, str]] = []
+
+    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append((repo_root, run_id))
+        return True
+
+    monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
+
+    def fake_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
+        return True
+
+    def fake_kill(*, runner: Runner, ctx: RunContext) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
+        return True
+
+    monkeypatch.setattr(finalize, "_teardown_log_flush", fake_flush)
+    monkeypatch.setattr(finalize, "kill_session_background_processes", fake_kill)
+
+    result = finalize.teardown(runner=runner, ctx=ctx, cwd=str(tmp_path))
+    assert result.outcome.name == "OK"
+    assert len(deactivate_calls) == 1
+    assert deactivate_calls[0][1] == "run-abc"
+
+
+def test_teardown_uses_persisted_repo_root_outside_clone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
+    (tmp_path / "session-env.sh").write_text(f"REPO_ROOT={repo}\nLARCH_RUN_ID=run-abc\n", encoding="utf-8")
+    deactivate_calls: list[tuple[object, str]] = []
+
+    monkeypatch.setattr(finalize, "_teardown_log_flush", lambda **_kwargs: True)
+    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kwargs: True)
+    monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
+    monkeypatch.setattr(progress_file, "deactivate_run", lambda repo_root, run_id: deactivate_calls.append((repo_root, run_id)) or True)
+
+    _ = finalize.teardown(runner=RecordingRunner(), ctx=ctx, cwd=str(outside))
+
+    assert deactivate_calls == [(repo.resolve(), "run-abc")]

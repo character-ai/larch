@@ -162,7 +162,10 @@ def _breadcrumb(*, step: str, detail: str = "") -> None:
 
 
 def _progress_note(*, step: str, text: str) -> None:
-    _ = progress_file.append_breadcrumb(Path.cwd(), "implement", step, text)
+    implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    run_id = progress_file.resolve_owned_run_id(tmpdir=implement_tmpdir or None)
+    if run_id is not None:
+        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "implement", step, text)
 
 
 def _state_bool(*, value: bool) -> str:

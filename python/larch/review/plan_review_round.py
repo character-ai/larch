@@ -15,7 +15,7 @@ from typing import cast
 
 from larch.agents import collect_results
 from larch import io as larch_io
-from larch.core import logging_util
+from larch.core import config, logging_util
 from larch.report import progress_file
 from larch.review import review_aggregate
 from larch.review import voting
@@ -36,8 +36,10 @@ def _emit(*, key: str, value: object = "") -> None:
     print(f"{key}={value}")
 
 
-def _progress_note(*, step: str, text: str) -> None:
-    _ = progress_file.append_breadcrumb(Path.cwd(), "design", step, text)
+def _progress_note(*, step: str, text: str, tmpdir: Path | None = None) -> None:
+    run_id = progress_file.resolve_owned_run_id(tmpdir=tmpdir)
+    if run_id is not None:
+        _ = progress_file.append_breadcrumb_for_run(Path.cwd(), run_id, "design", step, text)
 
 
 def _parse_kv(text: str) -> dict[str, str]:
@@ -66,7 +68,8 @@ def _run_cli_with_progress(
     step: str,
     text: str,
 ) -> subprocess.CompletedProcess[str]:
-    _progress_note(step=step, text=text)
+    raw_tmpdir = (env or {}).get("DESIGN_TMPDIR") or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
+    _progress_note(step=step, text=text, tmpdir=Path(raw_tmpdir) if raw_tmpdir else None)
     return _run_cli(argv=argv, env=env)
 
 

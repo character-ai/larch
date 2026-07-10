@@ -532,6 +532,13 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
+    "file": "larch/design/design_step0.py",
+    "qualified_symbol": "step0_session_main",
+    "callee": "run",
+    "occurrence": 4,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
     "file": "larch/design/design_step0_env.py",
     "qualified_symbol": "_run_parse_argv",
     "callee": "run",

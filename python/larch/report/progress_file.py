@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import hashlib
+import fcntl
 import os
 import re
 import stat
@@ -22,6 +23,7 @@ from larch import io as larch_io
 PROGRESS_DIRNAME = "progress"
 PROGRESS_SUFFIX = ".log"
 CURRENT_RUN_FILENAME = "current"
+CURRENT_RUN_LOCK_FILENAME = ".current.lock"
 RUN_BREADCRUMB_FILENAME = "breadcrumbs.log"
 _HASH_HEX_CHARS = 16
 _NEWLINE_CHARS = "\n\r"
@@ -29,7 +31,7 @@ _PRINTABLE_ASCII_MIN = 32
 _ASCII_DELETE = 127
 _C1_CONTROL_MIN = 0x80
 _C1_CONTROL_MAX = 0x9F
-_RUN_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9._-]+")
+_RUN_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"[A-Za-z0-9._-]{1,128}")
 _CLONE_HASH_PATTERN: Final[re.Pattern[str]] = re.compile(r"[0-9a-f]{16}")
 
 
@@ -75,6 +77,58 @@ def validate_run_id(run_id: str) -> str:
         msg = "run ID must contain only letters, digits, dot, underscore, or dash"
         raise ValueError(msg)
     return run_id
+
+
+def _persisted_run_id_candidates(tmpdir: str | Path) -> list[str]:
+    candidates: list[str] = []
+    root = Path(tmpdir)
+    for path in (root / "session-env.sh", root / "source-env.sh"):
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        candidates.extend(
+            raw[len(prefix):].strip().strip("'\"")
+            for raw in lines
+            for prefix in ("LARCH_RUN_ID=", "export LARCH_RUN_ID=")
+            if raw.startswith(prefix)
+        )
+    return candidates
+
+
+def resolve_owned_run_id(
+    *,
+    explicit: str | None = None,
+    tmpdir: str | Path | None = None,
+    env: dict[str, str] | None = None,
+) -> str | None:
+    """Resolve a process-owned run ID without consulting the active pointer."""
+    env_map = os.environ if env is None else env
+    candidates = [value for value in (explicit, env_map.get("LARCH_RUN_ID")) if value]
+    if tmpdir is not None:
+        candidates.extend(_persisted_run_id_candidates(tmpdir))
+    for candidate in candidates:
+        with contextlib.suppress(ValueError):
+            return validate_run_id(candidate)
+    return None
+
+
+def resolve_persisted_repo_root(*, tmpdir: str | Path) -> Path | None:
+    """Resolve the persisted consumer root for a session-owned run."""
+    root = Path(tmpdir)
+    for path in (root / "source-env.sh", root / "session-env.sh"):
+        try:
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            for prefix in ("REPO_ROOT=", "export REPO_ROOT="):
+                if raw.startswith(prefix):
+                    candidate = Path(raw[len(prefix):].strip().strip("'\""))
+                    if candidate.is_absolute() and candidate.is_dir():
+                        with contextlib.suppress(OSError):
+                            return candidate.resolve()
+    return None
 
 
 def progress_clone_dir(repo_root: str | Path) -> Path:
@@ -345,14 +399,33 @@ def _append_line_in_dir(dir_fd: int, name: str, line: str) -> None:
                 os.close(fd)
 
 
+@contextlib.contextmanager
+def _current_pointer_lock(clone_dir_fd: int):
+    lock_fd = os.open(
+        CURRENT_RUN_LOCK_FILENAME,
+        _nofollow_file_flags(append=True),
+        0o600,
+        dir_fd=clone_dir_fd,
+    )
+    try:
+        if not stat.S_ISREG(os.fstat(lock_fd).st_mode):
+            raise OSError("refusing non-regular progress pointer lock")
+        fcntl.flock(lock_fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        with contextlib.suppress(OSError):
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
+
+
 def activate_run(repo_root: str | Path, run_id: str) -> None:
     safe_run_id = validate_run_id(run_id)
-    clone_dir = progress_clone_dir(repo_root)
-    clone_dir_fd = _ensure_directory_fd(clone_dir)
+    clone_dir_fd = _ensure_directory_fd(progress_clone_dir(repo_root))
     try:
-        run_dir_fd = _open_or_create_subdir(clone_dir_fd, safe_run_id)
-        os.close(run_dir_fd)
-        _atomic_write_in_dir(clone_dir_fd, CURRENT_RUN_FILENAME, f"{safe_run_id}\n", mode=0o600, temp_prefix=".current.")
+        with _current_pointer_lock(clone_dir_fd):
+            run_dir_fd = _open_or_create_subdir(clone_dir_fd, safe_run_id)
+            os.close(run_dir_fd)
+            _atomic_write_in_dir(clone_dir_fd, CURRENT_RUN_FILENAME, f"{safe_run_id}\n", mode=0o600, temp_prefix=".current.")
     finally:
         os.close(clone_dir_fd)
 
@@ -402,17 +475,36 @@ def read_active_run_id(repo_root: str | Path) -> str | None:
         os.close(clone_dir_fd)
 
 
-def deactivate_run(repo_root: str | Path) -> bool:
-    """Remove the active-run pointer for ``repo_root`` without deleting run logs."""
+def deactivate_run(repo_root: str | Path, expected_run_id: str) -> bool:
+    """Clear ``current`` only when it still names ``expected_run_id``."""
     try:
-        clone_dir_fd: int = _open_existing_directory_fd(progress_clone_dir(repo_root))
+        safe_run_id = validate_run_id(expected_run_id)
+        clone_dir_fd = _open_existing_directory_fd(progress_clone_dir(repo_root))
         try:
-            stat_result: os.stat_result = os.lstat(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
-            if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISREG(stat_result.st_mode):
-                return False
-            if _read_active_run_id_from_dirfd(clone_dir_fd) is None:
-                return False
-            os.unlink(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+            with _current_pointer_lock(clone_dir_fd):
+                stat_result = os.lstat(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+                if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISREG(stat_result.st_mode):
+                    return False
+                if _read_active_run_id_from_dirfd(clone_dir_fd) != safe_run_id:
+                    return False
+                os.unlink(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+        finally:
+            os.close(clone_dir_fd)
+    except (OSError, TypeError, ValueError):
+        return False
+    return True
+
+
+def clear_active_run(repo_root: str | Path) -> bool:
+    """Clear the active-run pointer regardless of its prior owner."""
+    try:
+        clone_dir_fd = _open_existing_directory_fd(progress_clone_dir(repo_root))
+        try:
+            with _current_pointer_lock(clone_dir_fd):
+                stat_result = os.lstat(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
+                if stat.S_ISLNK(stat_result.st_mode) or not stat.S_ISREG(stat_result.st_mode):
+                    return False
+                os.unlink(CURRENT_RUN_FILENAME, dir_fd=clone_dir_fd)
         finally:
             os.close(clone_dir_fd)
     except (OSError, TypeError, ValueError):
@@ -622,4 +714,27 @@ def progress_activate_main(argv: list[str] | None = None) -> int:
     except (OSError, TypeError, ValueError) as exc:
         print(f"progress activate failed: {exc}", file=sys.stderr)
         return 2
+    return 0
+
+
+def progress_deactivate_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress deactivate")
+    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
+    _ = parser.add_argument("--run-id", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    _ = deactivate_run(args.repo_root, args.run_id)
+    return 0
+
+
+def progress_clear_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py progress clear")
+    _ = parser.add_argument("--repo-root", default=str(Path.cwd()))
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    _ = clear_active_run(args.repo_root)
     return 0

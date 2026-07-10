@@ -82,28 +82,21 @@ def _tail_breadcrumbs(path: Path, *, count: int) -> list[str]:
     return clean[-count:]
 
 
-def _clone_has_live_bgjob(repo_root: Path) -> bool:
+def _run_has_live_bgjob(repo_root: Path, run_id: str) -> bool:
     with contextlib.suppress(Exception):
-        repo_real = repo_root.resolve()
-        for _path, entry in registry.iter_entries():
-            if entry is None:
-                continue
-            with contextlib.suppress(OSError):
-                if entry.clone_path.resolve() != repo_real:
-                    continue
-                if registry.child_liveness(entry).live:
-                    return True
+        return registry.has_live_entry(repo_root=repo_root, run_id=run_id)
     return False
 
 
-def _age_suffix(*, path: Path, repo_root: Path, now: float, stale_after_s: int, hide_after_s: int) -> str | None:
+def _age_suffix(*, path: Path, repo_root: Path, run_id: str, now: float, thresholds: tuple[int, int]) -> str | None:
+    stale_after_s, hide_after_s = thresholds
     try:
         age_s = max(0, int(now - path.stat().st_mtime))
     except OSError:
         return None
     if age_s < stale_after_s:
         return ""
-    if _clone_has_live_bgjob(repo_root):
+    if _run_has_live_bgjob(repo_root, run_id):
         return ""
     if age_s >= hide_after_s:
         return None
@@ -119,12 +112,6 @@ def _truncate(text: str, *, columns: int) -> str:
     return text[: columns - 1] + "…"
 
 
-def _active_progress_path(repo_root: Path) -> Path | None:
-    run_id: str | None = progress_file.read_active_run_id(repo_root)
-    if run_id is None:
-        return None
-    return progress_file.run_progress_path(repo_root, run_id)
-
 
 def session_reset_progress(stdin_text: str, env: dict[str, str] | None = None) -> bool:
     env_map = os.environ if env is None else env
@@ -134,9 +121,12 @@ def session_reset_progress(stdin_text: str, env: dict[str, str] | None = None) -
     if _session_source_from_payload(payload) not in RESET_SESSION_SOURCES:
         return False
     repo_root = _repo_from_payload(payload)
-    if repo_root is None or _clone_has_live_bgjob(repo_root):
+    if repo_root is None:
         return False
-    return progress_file.deactivate_run(repo_root)
+    run_id = progress_file.read_active_run_id(repo_root)
+    if run_id is None or _run_has_live_bgjob(repo_root, run_id):
+        return False
+    return progress_file.deactivate_run(repo_root, run_id)
 
 
 def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> str:
@@ -146,9 +136,10 @@ def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> 
     if repo_root is None:
         return ""
     line_count = _positive_int(env_map.get("LARCH_STATUSLINE_LINES"), default=1, max_value=MAX_LINES)
-    path = _active_progress_path(repo_root)
-    if path is None:
+    run_id = progress_file.read_active_run_id(repo_root)
+    if run_id is None:
         return ""
+    path = progress_file.run_progress_path(repo_root, run_id)
     rows = _tail_breadcrumbs(path, count=line_count)
     if not rows:
         return ""
@@ -156,9 +147,12 @@ def render_statusline(*, stdin_text: str, env: dict[str, str] | None = None) -> 
     suffix = _age_suffix(
         path=path,
         repo_root=repo_root,
+        run_id=run_id,
         now=now,
-        stale_after_s=_positive_int(env_map.get("LARCH_STATUSLINE_STALE_AFTER_S"), default=DEFAULT_STALE_AFTER_S),
-        hide_after_s=_positive_int(env_map.get("LARCH_STATUSLINE_HIDE_AFTER_S"), default=DEFAULT_HIDE_AFTER_S),
+        thresholds=(
+            _positive_int(env_map.get("LARCH_STATUSLINE_STALE_AFTER_S"), default=DEFAULT_STALE_AFTER_S),
+            _positive_int(env_map.get("LARCH_STATUSLINE_HIDE_AFTER_S"), default=DEFAULT_HIDE_AFTER_S),
+        ),
     )
     if suffix is None:
         return ""

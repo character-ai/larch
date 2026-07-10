@@ -1884,3 +1884,55 @@ def test_write_design_env_persists_claude_source_file(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stderr
     assert f"LARCH_CLAUDE_SOURCE_FILE={source_file}\n" in out.read_text(encoding="utf-8")
+
+
+def test_write_design_env_persists_larch_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """write-design-env --run-id writes LARCH_RUN_ID to the output source-env."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    result = session_env.write_design_env_main([
+        "--output", str(out),
+        "--design-tmpdir", str(design),
+        "--session-id", "sid-1",
+        "--run-id", "custom-run-42",
+        "--claude-pid", "12345",
+        "--repo-root", str(tmp_path),
+    ])
+    assert result == 0
+    content = out.read_text(encoding="utf-8")
+    assert "LARCH_RUN_ID=custom-run-42" in content
+
+
+def test_write_design_env_preserves_prior_larch_run_id_on_refresh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Refreshing write-design-env without --run-id keeps the prior LARCH_RUN_ID."""
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    _ = session_env.write_design_env_main([
+        "--output", str(out),
+        "--design-tmpdir", str(design),
+        "--session-id", "sid-1",
+        "--run-id", "initial-run-id",
+        "--claude-pid", "12345",
+        "--repo-root", str(tmp_path),
+    ])
+    _ = session_env.write_design_env_main([
+        "--output", str(out),
+        "--design-tmpdir", str(design),
+        "--session-id", "sid-1",
+        "--claude-pid", "12345",
+        "--repo-root", str(tmp_path),
+    ])
+    content = out.read_text(encoding="utf-8")
+    assert "LARCH_RUN_ID=initial-run-id" in content

@@ -34,6 +34,7 @@ from larch.design import (
 from larch.design import design_pause
 from larch.design import design_publish
 from larch.core import logging_util
+from larch.report import progress_file
 from larch.core import proc as proc_module
 from larch.state import session_env
 from larch.state import stall_recovery
@@ -609,6 +610,38 @@ def test_step0_session_progress_activate_uses_parsed_run_id_before_timing_and_fa
     progress_cmd = commands[progress_idx]
     assert _cmd_arg(progress_cmd, "--run-id") == "explicit-run"
     assert progress_idx < timing_idx
+
+
+def test_step0_session_refreshes_reviewer_values_before_writing_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(list(cmd))
+        if cmd[2:4] == ["session", "setup"]:
+            return subprocess.CompletedProcess(cmd, 0, f"SESSION_TMPDIR={design}\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
+        if cmd[2:4] == ["agent", "check-reviewers"]:
+            return subprocess.CompletedProcess(cmd, 0, "CODEX_PRESENT=true\nCURSOR_PRESENT=true\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n", "")
+        if cmd[2:4] == ["agent", "degraded-tools-gate"]:
+            return subprocess.CompletedProcess(cmd, 0, "DEGRADED=false\nBOTH_DOWN=false\n", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
+
+    assert design_lifecycle.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]) == 0
+    probe_idx = next(index for index, cmd in enumerate(commands) if cmd[2:4] == ["agent", "check-reviewers"])
+    write_idx = next(index for index, cmd in enumerate(commands) if cmd[2:4] == ["session", "write-design-env"])
+    write_cmd = commands[write_idx]
+    assert probe_idx < write_idx
+    assert _cmd_arg(write_cmd, "--codex-present") == "true"
+    assert _cmd_arg(write_cmd, "--cursor-present") == "true"
 
 
 def test_init_runparams_refresh_preserves_step0_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -6313,3 +6346,67 @@ def test_step2b_drafter_cleans_rc12_rc13_sidecars_at_start(
     design_lifecycle.step2b_drafter_main([])
     assert not (design / ".drafter-next-action-rc12.txt").exists()
     assert not (design / ".drafter-next-action-rc13.txt").exists()
+
+
+def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """step6_cleanup_core calls deactivate_run with the persisted run ID before cleanup."""
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    (design / "source-env.sh").write_text(
+        "LARCH_RUN_ID=step6-run-77\n", encoding="utf-8"
+    )
+    _write_step5c_status(design)
+
+    deactivate_calls: list[tuple[object, str]] = []
+
+    def fake_deactivate(_repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append((_repo_root, run_id))
+        return True
+
+    def fake_cleanup(_argv: list[str]) -> int:
+        return 0
+
+    def fake_reap(_pid: str) -> None:
+        pass
+
+    monkeypatch.setattr(design_step6, "deactivate_run", fake_deactivate)  # lint-monkeypatch-binding: ok direct-from-import-binding-in-design_step6
+    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
+    monkeypatch.setattr(session_env, "reap_pid_residuals", fake_reap)
+
+    rc = design_lifecycle.step6_cleanup_core(_step6_args(env_path))
+    assert rc == 0
+    assert len(deactivate_calls) == 1
+    assert deactivate_calls[0][1] == "step6-run-77"
+
+
+def test_step_final_summary_deactivates_run_on_rendered_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """step_final_summary_core calls _try_deactivate_design_run on the rendered summary path."""
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text(
+        "LARCH_RUN_ID=terminal-run-9\n", encoding="utf-8"
+    )
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+
+    deactivate_calls: list[str] = []
+
+    def fake_deactivate(_repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append(run_id)
+        return True
+
+    monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
+
+    def fake_rendered(*, design_tmpdir: object, ctx: object, final_summary_path: object) -> int:  # noqa: ARG001  # pylint: disable=unused-argument
+        return 0
+
+    monkeypatch.setattr(design_terminal, "_run_rendered_final_summary", fake_rendered)
+
+    argv = [*_step6_args(env_path), "--summary-outcome", "complete"]
+    design_terminal.step_final_summary_core(argv)
+
+    assert len(deactivate_calls) == 1
+    assert deactivate_calls[0] == "terminal-run-9"

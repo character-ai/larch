@@ -7,6 +7,8 @@ import os
 import stat
 from pathlib import Path
 
+from larch.report import progress_file
+
 import pytest
 
 from larch.report import timing
@@ -470,3 +472,49 @@ def test_timing_lock_timeout_skips_append(tmp_path: Path, monkeypatch: pytest.Mo
     monkeypatch.setattr(fcntl_mod, "flock", _blocked_flock)
     timing.TimingLedger(ledger).mark("blocked")
     assert ledger.read_text(encoding="utf-8") == ""
+
+
+def test_append_progress_mark_uses_run_aware_breadcrumb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_append_progress_mark uses append_breadcrumb_for_run with the owned run ID."""
+    monkeypatch.setenv("LARCH_RUN_ID", "timing-run-55")
+    monkeypatch.chdir(tmp_path)
+
+    breadcrumb_calls: list[tuple[str, str, str, str]] = []
+
+    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+        breadcrumb_calls.append((run_id, skill, step, text))
+        return True
+
+    monkeypatch.setattr(progress_file, "append_breadcrumb_for_run", fake_append)
+
+    timing._append_progress_mark(skill="implement", label="ship PR")  # pyright: ignore[reportPrivateUsage]
+
+    assert len(breadcrumb_calls) == 1
+    run_id, skill, _step, text = breadcrumb_calls[0]
+    assert run_id == "timing-run-55"
+    assert skill == "implement"
+    assert "started" in text
+
+
+def test_append_progress_mark_skips_when_no_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_append_progress_mark does not call append_breadcrumb_for_run when no run ID is set."""
+    monkeypatch.delenv("LARCH_RUN_ID", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    breadcrumb_calls: list[object] = []
+
+    def fake_append_no_id(
+        _repo: object, run_id: str, skill: str, step: str, text: str
+    ) -> bool:
+        breadcrumb_calls.append((run_id, skill, step, text))
+        return True
+
+    monkeypatch.setattr(progress_file, "append_breadcrumb_for_run", fake_append_no_id)
+
+    timing._append_progress_mark(skill="implement", label="CI monitor")  # pyright: ignore[reportPrivateUsage]
+
+    assert len(breadcrumb_calls) == 0

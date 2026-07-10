@@ -8,6 +8,7 @@ from pathlib import Path
 
 from larch.bgjob import daemon, model, registry, wait
 from larch.core import config, process_identity
+from larch.report.progress_file import resolve_owned_run_id, validate_run_id
 
 
 def _add_common_job_args(parser: argparse.ArgumentParser, *, tmpdir_required: bool = True) -> None:
@@ -20,7 +21,7 @@ def _build_spec(args: argparse.Namespace) -> model.JobSpec:
     step = model.validate_slug(str(args.step), label="step")
     tmpdir = model.checked_dir(Path(args.tmpdir), label="tmpdir")
     clone_path = Path.cwd().resolve()
-    run_id = model.validate_slug(str(args.run_id), label="run-id") if args.run_id else model.default_run_id(
+    run_id = resolve_owned_run_id(explicit=str(args.run_id) or None, tmpdir=tmpdir) or model.default_run_id(
         tmpdir=tmpdir,
         clone_path=clone_path,
     )
@@ -84,7 +85,7 @@ def wait_main(argv: list[str] | None = None) -> int:
         return 2
     try:
         step = model.validate_slug(str(args.step), label="step")
-        run_id = model.validate_slug(str(args.run_id), label="run-id") if args.run_id else None
+        run_id = validate_run_id(str(args.run_id)) if args.run_id else None
         return wait.wait_once(
             tmpdir=Path(tmpdir_raw),
             step=step,

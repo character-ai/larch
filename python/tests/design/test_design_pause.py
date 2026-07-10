@@ -772,3 +772,44 @@ def test_pause_load_accepts_step5b5_marker(
     assert rc == 0
     assert "LOAD_OK=true" in out
     assert "STEP=5b.5" in out
+
+
+def test_pause_save_deactivates_run_on_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
+) -> None:
+    """pause_save_main calls deactivate_run with the effective run ID on success."""
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    _ = (design / "source-env.sh").write_text(
+        f"LARCH_RUN_ID=effective-run-42\nexport SESSION_ID=effective-run-42\nREPO_ROOT={repo_root}\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_a, **_kw: "body")  # type: ignore[attr-defined]
+
+    def fake_run(cmd: list[str], *_a: object, **_kw: object) -> subprocess.CompletedProcess[str]:
+        if "log-publish" in cmd:
+            return subprocess.CompletedProcess(cmd, 0, stdout="PUBLISH_OK=true\n", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
+
+    deactivate_calls: list[tuple[object, str]] = []
+
+    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append((repo_root, run_id))
+        return True
+
+    monkeypatch.setattr(design_pause.progress_file, "deactivate_run", fake_deactivate)  # type: ignore[attr-defined]
+
+    rc = design_pause.pause_save_main(
+        ["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"]
+    )
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "PAUSE_OK=true" in out
+    assert len(deactivate_calls) == 1
+    assert deactivate_calls[0][1] == "effective-run-42"

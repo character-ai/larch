@@ -165,6 +165,11 @@ def step0_session_main(argv: Sequence[str]) -> int:
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
     bootstrap._install_statusline_best_effort()
+    repo_root = consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
+    _run_best_effort(
+        command=_cli_cmd(plugin_root, "progress", "clear", "--repo-root", str(repo_root)),
+        env=os.environ,
+    )
     setup = subprocess.run(
         _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
         stdout=subprocess.PIPE,
@@ -188,26 +193,32 @@ def step0_session_main(argv: Sequence[str]) -> int:
     _run_best_effort(command=_cli_cmd(plugin_root, "token", "mark", "design Step 0: session setup"), env=env)
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
-    repo_root = consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
-    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
-    if codex_binary:
-        wdce.extend(["--codex-binary-found", codex_binary])
-    if cursor_binary:
-        wdce.extend(["--cursor-binary-found", cursor_binary])
+    active_run_id = parsed.get("run_id", "") or session_id
+    reviewer_probe = subprocess.run(
+        _cli_cmd(plugin_root, "agent", "check-reviewers"),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if reviewer_probe.stdout:
+        print(reviewer_probe.stdout, end="" if reviewer_probe.stdout.endswith("\n") else "\n")
+    reviewer_kv = _parse_stdout_kv(reviewer_probe.stdout)
+    if reviewer_probe.returncode != 0:
+        reviewer_kv = {}
+    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
+    for flag, value in (
+        ("--codex-present", reviewer_kv.get("CODEX_PRESENT", kv.get("CODEX_PRESENT", [""]))[-1]),
+        ("--cursor-present", reviewer_kv.get("CURSOR_PRESENT", kv.get("CURSOR_PRESENT", [""]))[-1]),
+        ("--codex-binary-found", reviewer_kv.get("CODEX_BINARY_FOUND", [codex_binary])[-1]),
+        ("--cursor-binary-found", reviewer_kv.get("CURSOR_BINARY_FOUND", [cursor_binary])[-1]),
+    ):
+        if value:
+            wdce.extend([flag, value])
     rc = subprocess.run(wdce, check=False).returncode
     if rc != 0:
         return rc
-    active_run_id = parsed.get("run_id", "") or session_id
     _run_best_effort(
-        command=_cli_cmd(
-            plugin_root,
-            "progress",
-            "activate",
-            "--repo-root",
-            str(repo_root),
-            "--run-id",
-            active_run_id,
-        ),
+        command=_cli_cmd(plugin_root, "progress", "activate", "--repo-root", str(repo_root), "--run-id", active_run_id),
         env=env,
     )
     _run_best_effort(
@@ -222,9 +233,9 @@ def step0_session_main(argv: Sequence[str]) -> int:
             "--skill",
             "design",
             "--codex-present",
-            kv.get("CODEX_PRESENT", ["false"])[-1] or "false",
+            reviewer_kv.get("CODEX_PRESENT", kv.get("CODEX_PRESENT", ["false"]))[-1] or "false",
             "--cursor-present",
-            kv.get("CURSOR_PRESENT", ["false"])[-1] or "false",
+            reviewer_kv.get("CURSOR_PRESENT", kv.get("CURSOR_PRESENT", ["false"]))[-1] or "false",
             "--codex-binary-found",
             codex_binary or "false",
             "--cursor-binary-found",
@@ -464,6 +475,8 @@ def _refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int:
         str(ctx.design_tmpdir),
         "--session-id",
         session_id,
+        "--run-id",
+        ctx.env.get("LARCH_RUN_ID", "") or session_id,
         "--issue-number",
         issue_number,
         "--claude-pid",
@@ -718,6 +731,11 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
     design_tmpdir = Path(env["DESIGN_TMPDIR"])
     print(f"**⚠ /design: aborted by operator: {ns.reason}**")
     _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 0", tool=ns.tool, exit_code=0, category="Warnings", output_file=design_tmpdir / "execution-issues.md")
+    from larch.report import progress_file  # noqa: PLC0415 - deferred import, only the operator-abort cleanup path needs progress_file
+    run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
+    repo_root = progress_file.resolve_persisted_repo_root(tmpdir=design_tmpdir)
+    if run_id and repo_root is not None:
+        _ = progress_file.deactivate_run(repo_root, run_id)
     cleanup_rc = subprocess.run(_cli_cmd(plugin_root, "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)), check=False).returncode
     if cleanup_rc != 0:
         return cleanup_rc

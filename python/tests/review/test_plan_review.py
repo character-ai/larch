@@ -4239,3 +4239,25 @@ def test_tally_plan_review_rejected_oos_stays_out_of_aggregate_pool(tmp_path: Pa
     accepted = accepted_path.read_text(encoding="utf-8") if accepted_path.exists() else ""
     assert not pool_path.exists() or "important follow-up" not in pool_path.read_text(encoding="utf-8")
     assert "important follow-up" not in accepted
+
+
+def test_plan_review_progress_note_uses_run_aware_breadcrumb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """plan_review._progress_note uses append_breadcrumb_for_run with the owned run ID."""
+    monkeypatch.setenv("LARCH_RUN_ID", "pr-run-11")
+    monkeypatch.chdir(tmp_path)
+
+    breadcrumb_calls: list[tuple[str, str, str, str]] = []
+
+    def fake_append(_repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+        breadcrumb_calls.append((run_id, skill, step, text))
+        return True
+
+    monkeypatch.setattr(plan_review.progress_file, "append_breadcrumb_for_run", fake_append)
+
+    plan_review._progress_note(step="3", text="dispatching reviewers")  # pyright: ignore[reportPrivateUsage]
+
+    assert len(breadcrumb_calls) == 1
+    assert breadcrumb_calls[0][0] == "pr-run-11"
+    assert breadcrumb_calls[0][3] == "dispatching reviewers"

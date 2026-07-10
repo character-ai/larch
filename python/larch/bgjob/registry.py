@@ -10,6 +10,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.bgjob import model
 from larch.core import process_identity
+from larch.report.progress_file import resolve_owned_run_id
 
 
 def _identity_rows(prefix: str, identity: process_identity.RecordedProcessIdentity | None) -> list[tuple[str, str]]:
@@ -118,7 +119,7 @@ def read_entry(path: Path) -> model.RegistryEntry | None:
             return None
         return model.RegistryEntry(
             step=model.validate_slug(rows["STEP"], label="step"),
-            run_id=model.validate_slug(rows["RUN_ID"], label="run-id"),
+            run_id=model.validate_run_id(rows["RUN_ID"]),
             tmpdir=tmpdir,
             log_dir=log_dir,
             clone_path=Path(rows.get("CLONE_PATH", ".")).resolve(),
@@ -137,7 +138,7 @@ def read_entry(path: Path) -> model.RegistryEntry | None:
 
 def read_for(*, tmpdir: Path, step: str, run_id: str | None = None) -> tuple[Path, model.RegistryEntry | None]:
     clone_path = Path.cwd().resolve()
-    active_run_id = run_id or model.default_run_id(tmpdir=tmpdir, clone_path=clone_path)
+    active_run_id = resolve_owned_run_id(explicit=run_id, tmpdir=tmpdir) or model.default_run_id(tmpdir=tmpdir, clone_path=clone_path)
     path = model.registry_path(run_id=active_run_id, step=step)
     return path, read_entry(path)
 
@@ -175,3 +176,22 @@ def daemon_liveness(entry: model.RegistryEntry) -> model.LivenessVerdict:
 
 def entry_expired(entry: model.RegistryEntry) -> bool:
     return time.time() - entry.start_epoch > entry.budget_s
+
+
+def has_live_entry(*, repo_root: Path, run_id: str) -> bool:
+    """Return whether an in-budget background job is live for this run and clone."""
+    try:
+        safe_run_id = model.validate_run_id(run_id)
+        repo_real = repo_root.resolve()
+    except (OSError, ValueError):
+        return False
+    for _path, entry in iter_entries():
+        if entry is None or entry.run_id != safe_run_id or entry_expired(entry):
+            continue
+        try:
+            same_clone = entry.clone_path.resolve() == repo_real
+        except OSError:
+            continue
+        if same_clone and (child_liveness(entry).live or daemon_liveness(entry).live):
+            return True
+    return False

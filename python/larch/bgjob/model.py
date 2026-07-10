@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core import config, process_identity
+from larch.report.progress_file import validate_run_id
 
 
 @dataclass(frozen=True)
@@ -145,7 +146,7 @@ def registry_root() -> Path:
 
 
 def registry_path(*, run_id: str, step: str, root: Path | None = None) -> Path:
-    run_slug = validate_slug(run_id, label="run-id")
+    run_slug = validate_run_id(run_id)
     step_slug = validate_slug(step, label="step")
     registry = registry_root() if root is None else checked_dir(root, label="registry-root", must_exist=False)
     registry.mkdir(parents=True, exist_ok=True)
