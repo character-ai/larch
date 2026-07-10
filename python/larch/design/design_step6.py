@@ -175,7 +175,7 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
         return 0
 
     try:
-        session_env._validate_claude_pid(parsed.claude_pid)  # pyright: ignore[reportPrivateUsage] - sibling module private helper validates PID consistently
+        session_env._validate_claude_pid(parsed.claude_pid)  # pyright: ignore[reportPrivateUsage]  # sibling module private helper validates PID consistently
     except ValueError as exc:
         _core_diagnostic(f"design-step6-cleanup.sh: {exc}")
         return CONFIGURATION_ERROR_RC
