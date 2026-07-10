@@ -1075,10 +1075,10 @@ def test_teardown_deactivates_run_before_tmpdir_removal(
 
     monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
 
-    def fake_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:  # noqa: ARG001
+    def fake_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
         return True
 
-    def fake_kill(*, runner: Runner, ctx: RunContext) -> bool:  # noqa: ARG001
+    def fake_kill(*, runner: Runner, ctx: RunContext) -> bool:  # noqa: ARG001  # pylint: disable=unused-argument
         return True
 
     monkeypatch.setattr(finalize, "_teardown_log_flush", fake_flush)

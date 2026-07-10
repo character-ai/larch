@@ -6370,7 +6370,7 @@ def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
     def fake_reap(_pid: str) -> None:
         pass
 
-    monkeypatch.setattr(design_step6, "deactivate_run", fake_deactivate)
+    monkeypatch.setattr(design_step6, "deactivate_run", fake_deactivate)  # lint-monkeypatch-binding: ok direct-from-import-binding-in-design_step6
     monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fake_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fake_reap)
 
@@ -6400,7 +6400,7 @@ def test_step_final_summary_deactivates_run_on_rendered_path(
 
     monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
 
-    def fake_rendered(*, design_tmpdir: object, ctx: object, final_summary_path: object) -> int:  # noqa: ARG001
+    def fake_rendered(*, design_tmpdir: object, ctx: object, final_summary_path: object) -> int:  # noqa: ARG001  # pylint: disable=unused-argument
         return 0
 
     monkeypatch.setattr(design_terminal, "_run_rendered_final_summary", fake_rendered)

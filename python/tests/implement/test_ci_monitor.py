@@ -3531,7 +3531,7 @@ def test_verify_job_locally_uses_run_aware_breadcrumb(
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
-    def fake_per_job(*, name: str, shard: str) -> tuple[str, ...] | None:  # noqa: ARG001
+    def fake_per_job(*, name: str, shard: str) -> tuple[str, ...] | None:  # noqa: ARG001  # pylint: disable=unused-argument
         return ("true",)
 
     monkeypatch.setattr(ci_monitor.progress_file, "append_breadcrumb_for_run", fake_append)
@@ -3566,7 +3566,7 @@ def test_verify_job_locally_skips_breadcrumb_without_run_id(
         breadcrumb_calls.append((run_id, skill, step, text))
         return True
 
-    def fake_per_job_cmd(*, name: str, shard: str) -> tuple[str, ...] | None:  # noqa: ARG001
+    def fake_per_job_cmd(*, name: str, shard: str) -> tuple[str, ...] | None:  # noqa: ARG001  # pylint: disable=unused-argument
         return ("true",)
 
     monkeypatch.setattr(ci_monitor.progress_file, "append_breadcrumb_for_run", fake_append_no_run)
