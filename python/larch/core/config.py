@@ -910,6 +910,17 @@ RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: Final = "architectural-invariant-outcome"
 GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION: Final = "52.4.16"
 INVARIANT_SHIP_OUTCOME_MIN_LARCH_VERSION: Final = "52.4.16"
 
+NOTE_STATE_AUTHORED: Final = "authored"
+NOTE_STATE_DETERMINISTIC_CLEAN: Final = "deterministic-clean"
+NOTE_STATE_UNAVAILABLE: Final = "unavailable"
+NOTE_STATE_TOKENS: Final[frozenset[str]] = frozenset({
+    NOTE_STATE_AUTHORED,
+    NOTE_STATE_DETERMINISTIC_CLEAN,
+    NOTE_STATE_UNAVAILABLE,
+})
+REASON_DETERMINISTIC_CLEAN: Final = "deterministic-clean"
+REASON_UNAVAILABLE: Final = "unavailable"
+
 TOKEN_SIDECAR_KEYS: Final[frozenset[str]] = frozenset({
     "input_tokens",
     "output_tokens",

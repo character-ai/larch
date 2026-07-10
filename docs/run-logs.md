@@ -115,6 +115,24 @@ remediation. `architectural-guideline-outcome.json` keeps the existing
 `pinned`, `clean`, or `dropped` guideline contract with stable reason token,
 redacted detail, `head_sha`, `base_ref`, status, and `assessment_kind`.
 
+Durable notes record `NOTE_STATE` as `authored`, `deterministic-clean`, or
+`unavailable`. Authored and deterministic-clean notes keep separate
+`AUTHORED_DIFF_FINGERPRINT` and `COVERED_DIFF_FINGERPRINT` values.
+`DIFF_FINGERPRINT` remains the covered-input compatibility field. Safe HEAD
+advancement compares the stored covered `HEAD_SHA` with current HEAD using a
+rename-suppressed NUL-delimited path diff. It advances only when every added or
+deleted path is under `larch-logs/**` or is `docs/**/*.md`. It then refreshes
+the complete base-to-current-HEAD snapshot, covered fingerprint, and HEAD
+identity together. The authored fingerprint does not change.
+
+Consumption validates the live HEAD, base, identities, regular-file snapshot,
+and snapshot fingerprint even when the stored HEAD already matches. Git errors,
+malformed paths, unsafe increments, stale identities, and missing or symlinked
+inputs fail closed. Prior metadata with a valid non-empty `DIFF_FINGERPRINT` is
+read as an authored note whose authored and covered identities match. Older
+notes without enough identity require reassessment. `unavailable` is a
+non-violation fallback and cannot replace a recorded invariant violation.
+
 The artifacts are written for terminal Step 8 results. Runs that still
 need architectural assessment do not write partial outcomes. The audit scan treats missing artifacts below
 `GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION`, and runs that did not reach Step 8,

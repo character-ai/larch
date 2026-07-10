@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core import architectural_guidelines
+from larch.core import config
 from larch.core import logging_util
 from larch.core import redact
 from larch.errors import ShipError
@@ -34,6 +35,8 @@ REASON_NOTE_READ_FAILED = "note-read-failed"
 REASON_NOTE_REDACTION_FAILED = "note-redaction-failed"
 REASON_COMPOSE_MATERIALIZATION_FAILED = "compose-materialization-failed"
 REASON_UNKNOWN = "unknown"
+REASON_DETERMINISTIC_CLEAN = config.REASON_DETERMINISTIC_CLEAN
+REASON_UNAVAILABLE = config.REASON_UNAVAILABLE
 GUIDELINE_SHIP_REASON_TOKENS = frozenset(
     {
         REASON_NOTE_PINNED,
@@ -43,6 +46,8 @@ GUIDELINE_SHIP_REASON_TOKENS = frozenset(
         REASON_NOTE_READ_FAILED,
         REASON_NOTE_REDACTION_FAILED,
         REASON_COMPOSE_MATERIALIZATION_FAILED,
+        REASON_DETERMINISTIC_CLEAN,
+        REASON_UNAVAILABLE,
         REASON_UNKNOWN,
     }
 )
@@ -56,6 +61,8 @@ INVARIANT_SHIP_REASON_TOKENS = frozenset(
         REASON_NOTE_REDACTION_FAILED,
         REASON_COMPOSE_MATERIALIZATION_FAILED,
         REASON_VIOLATION_NOTE,
+        REASON_DETERMINISTIC_CLEAN,
+        REASON_UNAVAILABLE,
         REASON_UNKNOWN,
     }
 )
@@ -70,6 +77,7 @@ class GuidelinesGateResult:
     guidelines_status: str = ""
     assessment_kind: str = ""
     reason: str = ""
+    note_state: str = config.NOTE_STATE_AUTHORED
 
 
 @dataclass(frozen=True)
@@ -109,6 +117,7 @@ class InvariantsGateResult:
     invariants_status: str = ""
     assessment_kind: str = ""
     reason: str = ""
+    note_state: str = config.NOTE_STATE_AUTHORED
 
 
 @dataclass(frozen=True)
@@ -178,7 +187,15 @@ def _classify_ship_outcome(
         guidelines_status = "absent"
     assessment_kind = result.assessment_kind or _assessment_kind(result.note)
     reason = result.reason
-    if guidelines_status == "absent":
+    if result.note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
+        outcome = OUTCOME_CLEAN
+        reason = REASON_DETERMINISTIC_CLEAN
+        assessment_kind = "clean"
+    elif result.note_state == config.NOTE_STATE_UNAVAILABLE:
+        outcome = OUTCOME_DROPPED
+        reason = REASON_UNAVAILABLE
+        assessment_kind = ""
+    elif guidelines_status == "absent":
         outcome = OUTCOME_CLEAN
         reason = REASON_GUIDELINES_ABSENT
         assessment_kind = ""
@@ -250,7 +267,15 @@ def _classify_invariant_ship_outcome(
         invariants_status = "absent"
     assessment_kind = result.assessment_kind or _invariant_assessment_kind(result.note)
     reason = result.reason
-    if invariants_status == "absent":
+    if result.note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
+        outcome = OUTCOME_CLEAN
+        reason = REASON_DETERMINISTIC_CLEAN
+        assessment_kind = "clean"
+    elif result.note_state == config.NOTE_STATE_UNAVAILABLE:
+        outcome = OUTCOME_DROPPED
+        reason = REASON_UNAVAILABLE
+        assessment_kind = ""
+    elif invariants_status == "absent":
         outcome = OUTCOME_CLEAN
         reason = REASON_INVARIANTS_ABSENT
         assessment_kind = ""
@@ -406,6 +431,14 @@ def _read_current_guidelines_note(
             note=redacted_note,
             guidelines_status=metadata.get("GUIDELINES_STATUS", "present") or "present",
             assessment_kind=metadata.get("ASSESSMENT_KIND", "") or _assessment_kind(redacted_note),
+            note_state=metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED,
+            reason=(
+                REASON_DETERMINISTIC_CLEAN
+                if metadata.get("NOTE_STATE") == config.NOTE_STATE_DETERMINISTIC_CLEAN
+                else REASON_UNAVAILABLE
+                if metadata.get("NOTE_STATE") == config.NOTE_STATE_UNAVAILABLE
+                else ""
+            ),
         )
     except ShipError as exc:
         warning_logged = _log_guidelines_ship_warning(
@@ -565,6 +598,14 @@ def _read_current_invariant_note(
             note=redacted_note,
             invariants_status=metadata.get("INVARIANTS_STATUS", "present") or "present",
             assessment_kind=metadata.get("ASSESSMENT_KIND", "") or _invariant_assessment_kind(redacted_note),
+            note_state=metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED,
+            reason=(
+                REASON_DETERMINISTIC_CLEAN
+                if metadata.get("NOTE_STATE") == config.NOTE_STATE_DETERMINISTIC_CLEAN
+                else REASON_UNAVAILABLE
+                if metadata.get("NOTE_STATE") == config.NOTE_STATE_UNAVAILABLE
+                else ""
+            ),
         )
     except ShipError as exc:
         warning_logged = _log_guidelines_ship_warning(

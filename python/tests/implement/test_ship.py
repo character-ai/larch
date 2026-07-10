@@ -7673,3 +7673,160 @@ def test_guidelines_warning_append_failure_warns_stderr(
     assert warning_logged is False
     assert "architectural-guidelines warning append failed: append failed" in captured.err
 # pyright: reportUnusedFunction=false
+
+
+def test_guideline_ship_outcome_classifies_note_states() -> None:
+    deterministic = ship_guidelines._classify_ship_outcome(
+        result=ship_guidelines.GuidelinesGateResult(
+            note="mechanical clean",
+            guidelines_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_DETERMINISTIC_CLEAN,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+    unavailable = ship_guidelines._classify_ship_outcome(
+        result=ship_guidelines.GuidelinesGateResult(
+            note="unavailable",
+            guidelines_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+
+    assert (deterministic.outcome, deterministic.reason, deterministic.assessment_kind) == (
+        ship_guidelines.OUTCOME_CLEAN,
+        ship_guidelines.REASON_DETERMINISTIC_CLEAN,
+        "clean",
+    )
+    assert (unavailable.outcome, unavailable.reason, unavailable.assessment_kind) == (
+        ship_guidelines.OUTCOME_DROPPED,
+        ship_guidelines.REASON_UNAVAILABLE,
+        "",
+    )
+
+
+def test_invariant_unavailable_state_is_not_a_violation() -> None:
+    outcome = ship_guidelines._classify_invariant_ship_outcome(
+        result=ship_guidelines.InvariantsGateResult(
+            note="unavailable",
+            invariants_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+
+    assert outcome.outcome == ship_guidelines.OUTCOME_DROPPED
+    assert outcome.reason == ship_guidelines.REASON_UNAVAILABLE
+    assert outcome.assessment_kind == ""
+
+
+def test_guideline_ship_outcome_authored_state_clean() -> None:
+    result = ship_guidelines._classify_ship_outcome(
+        result=ship_guidelines.GuidelinesGateResult(
+            note=ship.architectural_guidelines.CLEAN_PRESENTATION_NOTE,
+            guidelines_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+    assert result.outcome == ship_guidelines.OUTCOME_CLEAN
+    assert result.reason == ship_guidelines.REASON_CLEAN_NOTE
+    assert result.assessment_kind == "clean"
+
+
+def test_guideline_ship_outcome_authored_state_deviation() -> None:
+    result = ship_guidelines._classify_ship_outcome(
+        result=ship_guidelines.GuidelinesGateResult(
+            note="G-Py-1: deviates because of X",
+            guidelines_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+    assert result.outcome == ship_guidelines.OUTCOME_PINNED
+    assert result.reason == ship_guidelines.REASON_NOTE_PINNED
+    assert result.assessment_kind == "deviation"
+
+
+def test_invariant_authored_violation_takes_precedence_over_unavailable() -> None:
+    unavailable = ship_guidelines._classify_invariant_ship_outcome(
+        result=ship_guidelines.InvariantsGateResult(
+            note="unavailable",
+            invariants_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+    violation = ship_guidelines._classify_invariant_ship_outcome(
+        result=ship_guidelines.InvariantsGateResult(
+            note="I-Test-1: violated",
+            invariants_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+    assert unavailable.outcome == ship_guidelines.OUTCOME_DROPPED
+    assert violation.outcome == ship_guidelines.OUTCOME_VIOLATION
+
+
+def test_guideline_outcome_validator_rejects_unavailable_with_clean_assessment_kind() -> None:
+    error = ship.architectural_guidelines.validate_guideline_ship_outcome_record({
+        "schema_version": "1", "phase": "implement", "step": "8",
+        "outcome": ship_guidelines.OUTCOME_DROPPED,
+        "reason": ship_guidelines.REASON_UNAVAILABLE,
+        "detail": "",
+        "guidelines_status": "present",
+        "head_sha": "abc",
+        "base_ref": "origin/main",
+        "assessment_kind": "clean",
+    })
+    assert error is not None
+
+
+def test_invariant_outcome_validator_rejects_unavailable_paired_with_violation() -> None:
+    error = ship.architectural_guidelines.validate_invariant_ship_outcome_record({
+        "schema_version": "1", "phase": "implement", "step": "8",
+        "outcome": "violation",
+        "reason": ship_guidelines.REASON_UNAVAILABLE,
+        "detail": "",
+        "invariants_status": "present",
+        "head_sha": "abc",
+        "base_ref": "origin/main",
+        "assessment_kind": "violation",
+    })
+    assert error is not None
+
+
+def test_invariant_outcome_validator_rejects_deterministic_clean_paired_with_deviation() -> None:
+    error = ship.architectural_guidelines.validate_invariant_ship_outcome_record({
+        "schema_version": "1", "phase": "implement", "step": "8",
+        "outcome": "clean",
+        "reason": ship_guidelines.REASON_DETERMINISTIC_CLEAN,
+        "detail": "",
+        "invariants_status": "present",
+        "head_sha": "abc",
+        "base_ref": "origin/main",
+        "assessment_kind": "violation",
+    })
+    assert error is not None
+
+
+def test_guideline_outcome_validator_rejects_deterministic_clean_paired_with_deviation() -> None:
+    error = ship.architectural_guidelines.validate_guideline_ship_outcome_record({
+        "schema_version": "1", "phase": "implement", "step": "8",
+        "outcome": ship_guidelines.OUTCOME_PINNED,
+        "reason": ship_guidelines.REASON_DETERMINISTIC_CLEAN,
+        "detail": "",
+        "guidelines_status": "present",
+        "head_sha": "abc",
+        "base_ref": "origin/main",
+        "assessment_kind": "deviation",
+    })
+    assert error is not None
