@@ -2953,6 +2953,15 @@
   },
   {
     "file": "tests/implement/test_checks.py",
+    "qualified_symbol": "test_checks_repair_loop_main_exhausted_falls_back_to_main_agent",
+    "facade_module": "larch.implement.checks_lint_fix",
+    "attribute": "run_relevant_checks",
+    "defining_module": "larch.implement.checks_run_relevant",
+    "occurrence": 2,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_checks.py",
     "qualified_symbol": "test_checks_repair_loop_main_main_agent_edit_envelope",
     "facade_module": "larch.implement.checks_lint_fix",
     "attribute": "run_relevant_checks",

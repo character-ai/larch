@@ -63,6 +63,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" stall-recovery record-escalation -
 
 Stable lint-fix site/trigger tokens come from repair-loop stdout (for example `step3` / `main-agent-required`, `step5-self-review` / `main-agent-required`, `step5-mav` / `main-agent-required`, `step6` / `main-agent-required`). Use the parsed values, not the capture-site label.
 
+When `LOOP_STATUS=exhausted` and `LINT_FIX_LEDGER_READY=true`, supported sites enter this branch with `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` set to the final repair-loop failure log. Treat that log as the sole repair diagnosis, superseding any earlier `DIGEST_FILE` binding until the main agent reruns the pinned composite launcher. Use `STDERR_TAIL_PATH` and `CODER_LOG_FILE` only as optional context when present. Apply inline repairs, then rerun the pinned composite launcher.
+
 Read tail paths when present.
 Repair via main-agent Edit/Write.
 
@@ -82,7 +84,7 @@ On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FIL
 If a new `DIGEST_FILE` is present on re-entry, replace the previous digest for prompt-side diagnosis. Keep the updated `REDACTED_LOG_FILE` as the repair-loop input.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.
-Repeat until repair-loop `NEXT_ACTION` is `continue` or `stall`; `continue` still means re-run the same composite launcher before success routing. On bgjob `WAIT`, run the identical wait again with no intervening prose or tools. On Step 6, both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`; never re-enter Step 6 repair via bare `checks-commit-route`.
+Repeat until repair-loop `NEXT_ACTION` is `continue`, `main-agent-edit`, or `stall`; `continue` still means re-run the same composite launcher before success routing. On bgjob `WAIT`, run the identical wait again with no intervening prose or tools. On Step 6, both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`; never re-enter Step 6 repair via bare `checks-commit-route`.
 Preserve the structural `FAILURE_REASON` handling in section 1 on each re-entry.
 
 ### `NEXT_ACTION=stall`
