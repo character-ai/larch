@@ -2769,6 +2769,48 @@ def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: 
     assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "Implement via fake launcher"
 
 
+def test_step2_dispatch_resolves_omitted_difficulty_for_cursor(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=MODERATE\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    captured: dict[str, str] = {}
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        captured["difficulty"] = st.difficulty
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.write_text(
+            json.dumps({
+                "schema_version": "1",
+                "status": "complete",
+                "files_touched": [{"path": "implemented.txt", "lines_added": 1, "lines_removed": 0}],
+                "tests_added_or_modified": [],
+                "summary_bullets": ["Implement the feature"],
+                "commit_message": "Implement via fake launcher",
+                "todos_left": [],
+                "oos_observations": [],
+                "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
+            }),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    _patch_successful_step2(monkeypatch)
+
+    assert implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "cursor",
+        "--cursor-binary-found", "true",
+    ]) == 0
+    assert captured["difficulty"] == difficulty.MODERATE
+
+
 def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
@@ -7730,3 +7772,69 @@ def test_step2_dispatch_invalid_architectural_knowledge_warns_without_ack_requir
     issues = tmp / "execution-issues.md"
     assert issues.is_file()
     assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" in issues.read_text(encoding="utf-8")
+
+
+def test_launcher_args_forwards_cursor_difficulty(tmp_path: Path) -> None:
+    st = cast(
+        "implement_dispatch.DispatchState",
+        SimpleNamespace(
+            tool_tag="cursor",
+            transcript_path=tmp_path / "transcript.txt",
+            sidecar_log=tmp_path / "sidecar.log",
+            manifest_path=tmp_path / "manifest.json",
+            qa_pending_path=tmp_path / "qa.json",
+            launch_scout_manifest=tmp_path / "scout.json",
+            plan_file=tmp_path / "plan.txt",
+            feature_file=tmp_path / "feature.txt",
+            plugin_root=tmp_path,
+            difficulty=difficulty.MODERATE,
+            answers_file=None,
+        ),
+    )
+
+    argv = dispatch_step2._launcher_args(st)
+
+    assert argv[argv.index("--difficulty") + 1] == difficulty.MODERATE
+
+
+def test_resolve_implement_rater_model_uses_moderate_cursor_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+
+    model = dispatch_step2._resolve_implement_rater_model(
+        tool="cursor",
+        session_env=tmp / "session-env.sh",
+        difficulty_tier=difficulty.MODERATE,
+    )
+
+    assert model == "grok-4.5"
+
+
+@pytest.mark.parametrize(
+    ("tool", "difficulty_tier", "expected_model"),
+    [
+        ("codex", difficulty.TRIVIAL, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.TRIVIAL]),
+        ("codex", difficulty.MODERATE, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE]),
+        ("codex", difficulty.HARD, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.HARD]),
+        ("codex", "", config.CODEX_DEFAULT_MODEL),
+        ("cursor", difficulty.MODERATE, config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE]),
+    ],
+)
+def test_resolve_implement_rater_model_routing_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tool: str,
+    difficulty_tier: str,
+    expected_model: str,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+
+    assert dispatch_step2._resolve_implement_rater_model(
+        tool=tool,
+        session_env=tmp / "session-env.sh",
+        difficulty_tier=difficulty_tier,
+    ) == expected_model

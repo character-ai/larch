@@ -17,6 +17,7 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import architectural_guidelines
+from larch.calibration import difficulty
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
@@ -964,7 +965,11 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
         return 0
     cursor_auth_export_env()
     try:
-        model_args = list(resolve_model_args("cursor", with_effort=True).argv)
+        default_model = config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY.get(
+            difficulty.normalize_tier(args.difficulty),
+            config.CURSOR_DEFAULT_MODEL,
+        )
+        model_args = list(resolve_model_args("cursor", with_effort=True, default_model=default_model).argv)
     except ValueError as exc:
         _write(path=sidecar, text=f"agent model-args: {exc}\n")
         _write_stderr_tail(source=sidecar, output=output)

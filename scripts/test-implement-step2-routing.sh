@@ -7,6 +7,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 IMPLEMENT_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 BOOTSTRAP_SH="$REPO_ROOT/python/larch/state/bootstrap.py"
 DESIGN_SKILL="$REPO_ROOT/skills/design/SKILL.md"
+DISPATCH_PY="$REPO_ROOT/python/larch/implement/dispatch_step2.py"
 
 fail() {
     echo "FAIL: $1" >&2
@@ -33,7 +34,11 @@ assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selec
 role_out="$(python3 "$REPO_ROOT/python/cli.py" external-defaults role --role implement.step2_coder)"
 printf '%s\n' "$role_out" | grep -Fq 'KIND=waterfall' || fail "step2 coder role kind missing"
 printf '%s\n' "$role_out" | grep -Fq 'ORDER=codex,cursor,claude' || fail "step2 coder registry order changed"
-assert_contains "$BOOTSTRAP_SH" 'external_defaults.tool_order("implement.step2_coder")' "implicit registry-backed coder preference"
+assert_contains "$BOOTSTRAP_SH" 'from larch.calibration.difficulty import resolve_step2_effective_difficulty' "shared difficulty resolver import"
+assert_contains "$BOOTSTRAP_SH" 'config.CODER_TOOL_ORDER_BY_DIFFICULTY.get(' "difficulty-keyed coder preference"
+assert_contains "$BOOTSTRAP_SH" 'external_defaults.tool_order("implement.step2_coder")' "invalid-difficulty registry fallback"
+assert_contains "$DISPATCH_PY" 'difficulty.resolve_step2_effective_difficulty(tmpdir)' "shared dispatch difficulty resolver"
+assert_not_contains "$DISPATCH_PY" 'def _resolve_step2_difficulty' "duplicate dispatch difficulty resolver"
 assert_contains "$BOOTSTRAP_SH" 'for candidate in order:' "single selected coder loop"
 assert_contains "$BOOTSTRAP_SH" 'st.coder = "claude"' "claude terminal waterfall"
 assert_contains "$IMPLEMENT_SKILL" 'step-0-bootstrap.sh --mode initial' "Step 0 bootstrap invoke wrapper"

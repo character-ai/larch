@@ -466,6 +466,13 @@ def test_cursor_model_args_uses_plugin_option(monkeypatch: pytest.MonkeyPatch) -
     assert agents.resolve_model_args("cursor", with_effort=True).argv == ("--model", "cursor-test-model")
 
 
+def test_resolve_cursor_model_honors_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.ENV_LARCH_CURSOR_MODEL, raising=False)
+    monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, raising=False)
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "grok-4.5")
+
+
 def test_resolve_model_args_ctx_absent_primary_uses_plugin_fallback() -> None:
     from larch.core.ctx import Ctx  # noqa: PLC0415
 
@@ -4317,7 +4324,11 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
     monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
     monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
     monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    def fake_resolve_model_args(_tool: str, **kwargs: object) -> agents.ModelArgResult:
+        assert kwargs["default_model"] == "grok-4.5"
+        return agents.ModelArgResult(("--model", "grok-4.5"))
+
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", fake_resolve_model_args)
     monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
     monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(_ci_launcher, "_append", fake_append)
@@ -4346,6 +4357,8 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
             str(feature),
             "--agent-prompt",
             str(agent_prompt),
+            "--difficulty",
+            config.DIFFICULTY_TIER_MODERATE,
             "--timeout",
             "5",
         ],

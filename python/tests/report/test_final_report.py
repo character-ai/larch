@@ -846,3 +846,38 @@ def test_write_final_report_warn_count_zero_for_static_straggler_suppression(tmp
     rc, url, err = final_report.write_final_report(tmp_path, comment_only=True, skip_tracking_upsert=True)
     assert (rc, url, err) == (0, "", "")
     assert "**Warnings**: 0" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+
+
+def test_cursor_token_argv_splits_mixed_model_buckets() -> None:
+    data: dict[str, object] = {
+        "BUCKETS_cursor_by_model": {
+            "grok-4.5": {"input": 1_000_000, "cache_read": 1_000_000, "output": 1_000_000},
+            "composer-2.5": {"input": 1_000_000, "cache_read": 1_000_000, "output": 1_000_000},
+        },
+    }
+    bucket: dict[str, object] = {
+        "input": 2_000_000,
+        "cache_read": 2_000_000,
+        "output": 2_000_000,
+    }
+
+    argv = final_report._cursor_token_argv(data=data, bucket=bucket)
+    cost = dict(
+        line.split("=", 1)
+        for line in final_report.report_tokens_cost.token_cost_from_args(argv).splitlines()
+    )
+
+    assert argv[argv.index("--cursor-grok-4-5-input-tokens") + 1] == "1000000"
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "1000000"
+    assert cost["CURSOR_COST"] == "12.45"
+    assert cost["CURSOR_TOKENS"] == "6000000"
+    assert not any(key.startswith("CURSOR_") and key.endswith("_COST") for key in cost if key != "CURSOR_COST")
+
+
+def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:
+    bucket: dict[str, object] = {"input": 100, "cache_read": 20, "output": 10}
+
+    argv = final_report._cursor_token_argv(data={}, bucket=bucket)
+
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "100"
+    assert "--cursor-grok-4-5-input-tokens" not in argv

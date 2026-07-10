@@ -108,7 +108,7 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
         return 2
     cursor_binary_found = _binary_available(session_env=session_env, key="CURSOR_BINARY_FOUND", binary="cursor")
     codex_binary_found = _binary_available(session_env=session_env, key="CODEX_BINARY_FOUND", binary="codex")
-    difficulty_arg = args.difficulty or _resolve_step2_difficulty(tmpdir)
+    difficulty_arg = args.difficulty or difficulty.resolve_step2_effective_difficulty(tmpdir)
     child = [
         sys.executable,
         str(Path(plugin_root) / "python" / "cli.py"),
@@ -260,7 +260,7 @@ def _launcher_args(st: DispatchState) -> list[str]:
     cap = os.environ.get("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT", "")
     if cap:
         args.extend(["--token-budget-cap", cap])
-    if st.tool_tag == "codex" and st.difficulty:
+    if st.tool_tag in {"codex", "cursor"} and st.difficulty:
         args.extend(["--difficulty", st.difficulty])
     if st.answers_file is not None:
         args.extend(["--answers-file", str(st.answers_file)])
@@ -336,15 +336,6 @@ def _read_design_difficulty_prior(tmpdir: Path) -> str:
     return larch_io.read_kv(path=prior, key="DESIGN_DIFFICULTY", default="", first_match=True, on_error_default=True)
 
 
-def _resolve_step2_difficulty(tmpdir: Path) -> str:
-    override = larch_io.read_kv(path=tmpdir / "run-flags.sh", key="DIFFICULTY_OVERRIDE", default="", first_match=True, on_error_default=True)
-    normalized_override = difficulty.normalize_tier(override)
-    if normalized_override:
-        return normalized_override
-    prior = _read_design_difficulty_prior(tmpdir)
-    return difficulty.normalize_tier(prior)
-
-
 def _step2_panel_skipped(tmpdir: Path) -> str:
     requested = larch_io.read_kv(path=tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default="false", first_match=True, on_error_default=True)
     return "self-review" if requested == "true" else ""
@@ -373,7 +364,7 @@ def _resolve_implement_rater_model(*, tool: str, session_env: Path, difficulty_t
         value = _first_model_value(
             session_env=session_env,
             keys=(config.ENV_LARCH_CURSOR_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL),
-            default=config.CURSOR_DEFAULT_MODEL,
+            default=config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY.get(difficulty_tier, config.CURSOR_DEFAULT_MODEL),
         )
     elif tool == "codex":
         tier_model = config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY.get(difficulty_tier, config.CODEX_DEFAULT_MODEL)
@@ -512,6 +503,8 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         _err(f"implement step2-dispatch: --tmpdir not a directory: {tmpdir_raw}")
         return 2
     tmpdir = tmpdir_raw.resolve()
+    if not args.difficulty:
+        args.difficulty = difficulty.resolve_step2_effective_difficulty(tmpdir)
     os.environ["IMPLEMENT_TMPDIR"] = str(tmpdir)
     if (tmpdir / "session-id").is_file():
         session_id = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()

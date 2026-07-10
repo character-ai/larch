@@ -742,3 +742,39 @@ def test_token_cost_argv_cursor_without_by_model_falls_back_to_sum_bucket() -> N
     argv = token_cost_argv(record)
     assert "--cursor-auto-input-tokens" not in argv
     assert argv[argv.index("--cursor-input-tokens") + 1] == "100"
+
+
+def test_cursor_grok_tokens_price_at_direct_rates(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = token_cost_main([
+        "--cursor-grok-4-5-input-tokens", "1000000",
+        "--cursor-grok-4-5-cache-read-tokens", "1000000",
+        "--cursor-grok-4-5-output-tokens", "1000000",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "CURSOR_COST=8.50" in out
+
+
+def test_token_cost_argv_splits_cursor_grok_by_model() -> None:
+    report = {
+        "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30, "total": 390},
+        "BUCKETS_cursor_by_model": {
+            "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+            "composer-2.5": {"input": 200, "cache_read": 40, "output": 20},
+        },
+    }
+    record = RunRecord(
+        number=1, title="", url="", started_at="", closed_at="", workflow="implement",
+        claude=VendorTotals(), codex=VendorTotals(), cursor=VendorTotals(total=390),
+        phase_rows=(), raw_report=report,
+    )
+
+    argv = token_cost_argv(record)
+    cost = dict(
+        line.split("=", 1)
+        for line in token_cost_from_args(argv[4:]).splitlines()
+    )
+
+    assert argv[argv.index("--cursor-grok-4-5-input-tokens") + 1] == "100"
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "200"
+    assert cost["CURSOR_TOKENS"] == "390"

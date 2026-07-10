@@ -34,6 +34,7 @@ CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M = config.CURSOR_TEAMS_TOKEN_RATE_SURCHAR
 
 # Published Cursor composer-2.5 list rates before the Teams surcharge.
 CURSOR_COMPOSER_BASE = {"input": 0.50, "cache_read": 0.20, "output": 2.50}
+CURSOR_GROK_4_5_BASE = {"input": 2.00, "cache_read": 0.50, "output": 6.00}
 
 DEFAULT_RATE_TABLE_PER_M = {
     ("codex", "gpt-5.6-sol"): {
@@ -67,6 +68,7 @@ DEFAULT_RATE_TABLE_PER_M = {
         "cache_read": CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
         "output": CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
     },
+    ("cursor", "grok-4.5"): CURSOR_GROK_4_5_BASE,
     # Auto mode: flat rate card, no Teams surcharge. Auto bundles input+cache-write.
     ("cursor", config.CURSOR_AUTO_MODEL): {
         "input": 1.25,
@@ -299,14 +301,8 @@ def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]
     ]
 
 
-def _cursor_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]:
-    """Cursor token flags, split by model when BUCKETS_cursor_by_model is present.
-
-    Auto-model rows route to --cursor-auto-* flags; all other models (composer-2.5,
-    unknown, and model-less legacy) fold into --cursor-* flags priced at surcharged
-    non-auto rates. Falls back to BUCKETS_cursor (priced as composer-2.5) when no
-    per-model split exists.
-    """
+def cursor_argv_from_buckets(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]:
+    """Split Cursor tokens into Composer-compatible, grok-4.5, and Auto flags."""
     by_model = _as_mapping(record.raw_report.get("BUCKETS_cursor_by_model"))
     if not by_model:
         return [
@@ -314,22 +310,35 @@ def _cursor_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str
             "--cursor-cache-read-tokens", str(safe_int(value=bucket.get("cache_read"))),
             "--cursor-output-tokens", str(safe_int(value=bucket.get("output"))),
         ]
-    non_auto_in = non_auto_cr = non_auto_out = 0
+    composer_in = composer_cr = composer_out = 0
+    grok_in = grok_cr = grok_out = 0
     auto_in = auto_cr = auto_out = 0
     for model, raw_mb in by_model.items():
         mb = _as_mapping(raw_mb)
+        values = (
+            safe_int(value=mb.get("input")),
+            safe_int(value=mb.get("cache_read")),
+            safe_int(value=mb.get("output")),
+        )
         if model == config.CURSOR_AUTO_MODEL:
-            auto_in += safe_int(value=mb.get("input"))
-            auto_cr += safe_int(value=mb.get("cache_read"))
-            auto_out += safe_int(value=mb.get("output"))
+            auto_in += values[0]
+            auto_cr += values[1]
+            auto_out += values[2]
+        elif model == "grok-4.5":
+            grok_in += values[0]
+            grok_cr += values[1]
+            grok_out += values[2]
         else:
-            non_auto_in += safe_int(value=mb.get("input"))
-            non_auto_cr += safe_int(value=mb.get("cache_read"))
-            non_auto_out += safe_int(value=mb.get("output"))
+            composer_in += values[0]
+            composer_cr += values[1]
+            composer_out += values[2]
     return [
-        "--cursor-input-tokens", str(non_auto_in),
-        "--cursor-cache-read-tokens", str(non_auto_cr),
-        "--cursor-output-tokens", str(non_auto_out),
+        "--cursor-input-tokens", str(composer_in),
+        "--cursor-cache-read-tokens", str(composer_cr),
+        "--cursor-output-tokens", str(composer_out),
+        "--cursor-grok-4-5-input-tokens", str(grok_in),
+        "--cursor-grok-4-5-cache-read-tokens", str(grok_cr),
+        "--cursor-grok-4-5-output-tokens", str(grok_out),
         "--cursor-auto-input-tokens", str(auto_in),
         "--cursor-auto-cache-read-tokens", str(auto_cr),
         "--cursor-auto-output-tokens", str(auto_out),
@@ -403,7 +412,7 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
             elif vendor == "codex":
                 argv.extend(_codex_argv(record=record, bucket=bucket))
             else:
-                argv.extend(_cursor_argv(record=record, bucket=bucket))
+                argv.extend(cursor_argv_from_buckets(record=record, bucket=bucket))
         else:
             argv.extend([f"--{flag_prefix}-tokens", str(_aggregate_tokens(totals=totals, vendor=vendor))])
     return argv
@@ -452,6 +461,9 @@ _FLAG_NAMES = {
     "--cursor-input-tokens": "u_in",
     "--cursor-cache-read-tokens": "u_cr",
     "--cursor-output-tokens": "u_out",
+    "--cursor-grok-4-5-input-tokens": "u_grok_in",
+    "--cursor-grok-4-5-cache-read-tokens": "u_grok_cr",
+    "--cursor-grok-4-5-output-tokens": "u_grok_out",
     "--cursor-auto-input-tokens": "u_auto_in",
     "--cursor-auto-cache-read-tokens": "u_auto_cr",
     "--cursor-auto-output-tokens": "u_auto_out",
@@ -538,6 +550,7 @@ def _pricing_from_counts(
     d_bucket = any(counts[k] > 0 for k in ("d_in", "d_cached", "d_out"))
     d_mini_bucket = any(counts[k] > 0 for k in ("d_mini_in", "d_mini_cached", "d_mini_out"))
     u_bucket = any(counts[k] > 0 for k in ("u_in", "u_cr", "u_out"))
+    u_grok_bucket = any(counts[k] > 0 for k in ("u_grok_in", "u_grok_cr", "u_grok_out"))
     u_auto_bucket = any(counts[k] > 0 for k in ("u_auto_in", "u_auto_cr", "u_auto_out"))
     cs_bucket = any(counts[k] > 0 for k in ("cs_in", "cs_cr", "cs_cw5", "cs_cw1", "cs_out"))
     cs_model_buckets = [
@@ -587,13 +600,19 @@ def _pricing_from_counts(
         # Blended fallback has no model breakdown; attribute to the default model.
         codex_5_5 = codex
         codex_mini = 0.0
-    if u_bucket or u_auto_bucket:
-        u_tokens = (counts["u_in"] + counts["u_cr"] + counts["u_out"]
-                    + counts["u_auto_in"] + counts["u_auto_cr"] + counts["u_auto_out"])
+    if u_bucket or u_grok_bucket or u_auto_bucket:
+        u_tokens = (
+            counts["u_in"] + counts["u_cr"] + counts["u_out"]
+            + counts["u_grok_in"] + counts["u_grok_cr"] + counts["u_grok_out"]
+            + counts["u_auto_in"] + counts["u_auto_cr"] + counts["u_auto_out"]
+        )
         cursor = round(
             _cost_bucket(tokens=counts["u_in"], rate=rates.cursor_input)
             + _cost_bucket(tokens=counts["u_cr"], rate=rates.cursor_cache_read)
             + _cost_bucket(tokens=counts["u_out"], rate=rates.cursor_output)
+            + _cost_bucket(tokens=counts["u_grok_in"], rate=CURSOR_GROK_4_5_BASE["input"])
+            + _cost_bucket(tokens=counts["u_grok_cr"], rate=CURSOR_GROK_4_5_BASE["cache_read"])
+            + _cost_bucket(tokens=counts["u_grok_out"], rate=CURSOR_GROK_4_5_BASE["output"])
             + _cost_bucket(tokens=counts["u_auto_in"], rate=rates.cursor_auto_input)
             + _cost_bucket(tokens=counts["u_auto_cr"], rate=rates.cursor_auto_cache_read)
             + _cost_bucket(tokens=counts["u_auto_out"], rate=rates.cursor_auto_output),

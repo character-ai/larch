@@ -287,6 +287,16 @@ WATERFALL_MAX_TIERS: Final = 3
 
 CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
 CURSOR_AUTO_MODEL: Final = "auto"
+CODER_TOOL_ORDER_BY_DIFFICULTY: Final[dict[str, tuple[str, ...]]] = {
+    DIFFICULTY_TIER_TRIVIAL: ("codex", "cursor", "claude"),
+    DIFFICULTY_TIER_MODERATE: ("cursor", "codex", "claude"),
+    DIFFICULTY_TIER_HARD: ("codex", "cursor", "claude"),
+}
+CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
+    DIFFICULTY_TIER_TRIVIAL: CURSOR_DEFAULT_MODEL,
+    DIFFICULTY_TIER_MODERATE: "grok-4.5",
+    DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
+}
 
 
 @dataclass(frozen=True)
@@ -362,7 +372,7 @@ def _waterfall_role(role_id: str, *, order: tuple[ToolName, ...], doc_phase: str
 
 
 ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
-    "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick exactly one first-eligible coder; --coder reorders the two external tools, then Claude."),
+    "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick Cursor first for MODERATE and Codex first for TRIVIAL or HARD; --coder reorders the two external tools, then Claude."),
     "implement.lint_fix_coder": _waterfall_role("implement.lint_fix_coder", order=("claude", "codex", "cursor"), doc_phase="Lint/checks", doc_role="Repair local lint/check failures", doc_skills="/implement, /review", doc_fallback="Claude, then Codex, then Cursor; main agent required after external tiers fail."),
     "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("codex", "cursor", "claude"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Codex fix, then Cursor auto, then Claude Sonnet 4.6 1M."),
     "implement.rebase_conflict_fixer": _waterfall_role("implement.rebase_conflict_fixer", order=("claude", "codex", "cursor"), doc_phase="Rebase conflicts", doc_role="Resolve rebase conflicts", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),

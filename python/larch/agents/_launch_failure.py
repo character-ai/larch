@@ -231,7 +231,7 @@ def resolve_model_args(
         return reject_blank(value=default_value, context="default model")
 
     if tool == "cursor":
-        model = resolve(env_name=config.ENV_LARCH_CURSOR_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, default_value=config.CURSOR_DEFAULT_MODEL)
+        model = resolve(env_name=config.ENV_LARCH_CURSOR_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, default_value=default_model or config.CURSOR_DEFAULT_MODEL)
         return ModelArgResult(("--model", model))
 
     role_defaults = {

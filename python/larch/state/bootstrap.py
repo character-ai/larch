@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from larch.calibration.difficulty import resolve_step2_effective_difficulty
 from larch.state import dirty_tree
 from larch.core import config, external_defaults
 from larch import io as larch_io
@@ -1110,10 +1111,17 @@ def _phase_coder(st: BootstrapState) -> None:
     if st.opts.self_implement_requested == "true" or st.opts.coder_opt == "claude":
         st.coder = "claude"
     else:
-        order = list(external_defaults.tool_order("implement.step2_coder"))
         if st.opts.coder_opt in {"codex", "cursor"}:
             other = "cursor" if st.opts.coder_opt == "codex" else "codex"
             order = [st.opts.coder_opt, other, "claude"]
+        else:
+            effective_difficulty = resolve_step2_effective_difficulty(Path(st.implement_tmpdir))
+            order = list(
+                config.CODER_TOOL_ORDER_BY_DIFFICULTY.get(
+                    effective_difficulty,
+                    external_defaults.tool_order("implement.step2_coder"),
+                )
+            )
         for candidate in order:
             if candidate == "codex" and st.codex_available != "true":
                 continue
