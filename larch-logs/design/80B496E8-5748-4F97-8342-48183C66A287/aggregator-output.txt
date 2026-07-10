@@ -1,0 +1,34 @@
+### FINDING_1: Shared difficulty resolver targets nonexistent module
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements
+- **Severity**: major
+- **Concern**: The plan assigns the shared Step 2 effective-difficulty resolver to `python/larch/core/difficulty.py`, but the existing difficulty implementation lives in `python/larch/calibration/difficulty.py`, which bootstrap and dispatch already import. Implementing the listed path could create a second authority, leave callers unchanged, or cause bootstrap and dispatch to diverge on precedence and normalization behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add resolve_step2_effective_difficulty(tmpdir) to python/larch/calibration/difficulty.py (move _resolve_step2_difficulty from dispatch_step2.py). Update the plan path and imports in bootstrap.py and dispatch_step2.py.
+  - From Cursor-Innovation: Change the firm plan item to update python/larch/calibration/difficulty.py and python/tests/calibration/test_difficulty.py, then import the shared resolver from larch.calibration.difficulty in bootstrap and dispatch.
+  - From Codex-Innovation: Place the shared resolver in the existing `python/larch/calibration/difficulty.py`, or explicitly update both import sites and define the new module's complete ownership and compatibility contract.
+  - From Cursor-Pragmatic: Retarget the plan to `python/larch/calibration/difficulty.py`: add a shared Step 2 effective-difficulty resolver there and have bootstrap plus `dispatch_step2.py` import it.
+  - From Cursor-Requirements: Retarget the firm change to `python/larch/calibration/difficulty.py`: add an import-safe `resolve_step2_effective_difficulty(tmpdir)` there and switch bootstrap plus dispatch to import it from `larch.calibration.difficulty`.
+  - From Codex-Requirements: Move the resolver change to `python/larch/calibration/difficulty.py` and keep both callers on that existing module
+
+### FINDING_2: Cursor component-cost KVs are omitted from token-cost output
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: minor
+- **Concern**: `token_cost_from_args` emits KVs according to a hardcoded order tuple that does not include `CURSOR_GROK_4_5_COST` or `CURSOR_COMPOSER_2_5_COST`. These computed component costs therefore cannot reach `final_report` or `pr_body`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend the order sequence in token_cost_from_args to include CURSOR_GROK_4_5_COST and CURSOR_COMPOSER_2_5_COST immediately before CURSOR_COST, or the plan must drop those KVs entirely.
+
+### FINDING_3: Final report may retain duplicated or incorrect Cursor argv assembly
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: minor
+- **Concern**: The final-report plan does not concretely replace the existing Cursor argv branch, which aggregates `BUCKETS_cursor` and ignores `BUCKETS_cursor_by_model`. A separate or unchanged implementation can continue pricing grok-4.5 usage at Composer rates and drift from the shared Cursor pricing helper.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Require final_report to build Cursor argv via report_tokens_cost._cursor_argv (or token_cost_argv) from the enriched report record, not a second inline cursor branch.
+  - From Cursor-Pragmatic: Specify adding a `_cursor_token_argv` helper parallel to `_codex_token_argv` (grok-4.5, Composer, Auto split) and call it from `_token_argv_from_report`; cover it in `python/tests/report/test_final_report.py`.
+  - From Cursor-Requirements: Replace the cursor block in `_token_argv_from_report` with the shared `report_tokens_cost._cursor_argv` path (via `RunRecord.raw_report` that includes `BUCKETS_cursor_by_model`, or via `token_cost_argv`), and add a final-report test with mixed grok/composer buckets asserting grok flags are emitted.
+
+### FINDING_4: Direct Step 2 dispatch may skip shared difficulty resolution
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: major
+- **Concern**: The plan replaces `_resolve_step2_difficulty` but does not require `step2_dispatch_main` to resolve difficulty when `--difficulty` is empty. Direct `step2-dispatch` callers and tests that rely on `run-flags.sh` or `difficulty-prior.env` could launch Cursor without a tier, leaving MODERATE runs on the Composer default instead of applying `--model grok-4.5`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: After parsing args in `step2_dispatch_main`, set `args.difficulty = shared_resolver(tmpdir)` when empty before `_dispatch_state`, matching the run-dispatch wrapper contract.

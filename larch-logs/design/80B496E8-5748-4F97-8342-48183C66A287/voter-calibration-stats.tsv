@@ -1,0 +1,2 @@
+tool	yes_votes	valid_yes_severity_count	major	minor	nit	missing_severity	high_rate	calibration_score	uncalibrated
+codex	978	978	530	441	7	0	0.542	1.000	false

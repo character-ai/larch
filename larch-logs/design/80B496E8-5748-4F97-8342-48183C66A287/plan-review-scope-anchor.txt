@@ -1,0 +1,34 @@
+switch /implement coder MODERATE only from Codex/5.6 Sol to Cursor/Grok 4.5, and remember to update report_tokens_cost.py with ("cursor", "grok-4.5") rate.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Route MODERATE `/implement` Step 2 coder to Cursor/grok-4.5 instead of Codex/gpt-5.6-sol.
+- Pass grok-4.5 as the default model to the cursor implement launcher for MODERATE.
+- Add `("cursor", "grok-4.5")` to the rate table in `report_tokens_cost.py`.
+
+### Non-goals
+- Change coder preference for TRIVIAL or HARD difficulty tiers.
+- Change any reviewer, voter, or fix-coder model.
+- Alter the Cursor auto-mode or composer-2.5 rate entries.
+
+### Approach sketch
+- Add `CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY` constant in `config.py` (MODERATE → "grok-4.5").
+- In `_phase_coder` (`bootstrap.py`): when no explicit `--coder` requested, read the difficulty prior; for MODERATE use `["cursor", "codex", "claude"]` order.
+- In `dispatch_step2.py` `_launcher_args`: pass `--difficulty` to cursor launcher (extends existing codex-only pattern).
+- In `launch_cursor_implement_main` (`_ci_launcher.py`): use `CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY` to pick grok-4.5 default model for MODERATE.
+- In `resolve_model_args` (`_launch_failure.py`): honor `default_model` for cursor (parity with codex).
+- In `_resolve_implement_rater_model` (`dispatch_step2.py`): use `CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY` for cursor difficulty model.
+- Add rate entry in `report_tokens_cost.py` with $0.25/M Teams surcharge applied.
+
+### Surfaces in scope
+- `python/larch/core/config.py`
+- `python/larch/state/bootstrap.py`
+- `python/larch/implement/dispatch_step2.py`
+- `python/larch/agents/_ci_launcher.py`
+- `python/larch/agents/_launch_failure.py`
+- `python/larch/report/report_tokens_cost.py`
+
+### Open questions
+- None.
