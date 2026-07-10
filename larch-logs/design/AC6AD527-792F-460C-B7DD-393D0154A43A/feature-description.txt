@@ -1,0 +1,112 @@
+# [BUG] /implement --merge: client pre-commit hook aborts run-log commit; ship stalls pre-PR and step8-shippr recovery deadlocks on pre-terminal 'stalled' label
+
+## Summary
+
+`/implement --merge` cannot ship on a client repo whose pre-commit hooks modify files (formatters, `end-of-file-fixer`, `trailing-whitespace`) when that repo also tracks `larch-logs/`. Two defects compound:
+
+- **Part A: the run-log commit is not hook-tolerant.** `_commit_run` (`python/larch/report/run_log_commit.py`) runs a plain `git commit`, so client pre-commit hooks fire. A fixer hook rewrites larch-generated log files that lack trailing newlines and exits non-zero. The commit aborts. The Step 8 ship driver stalls at `STALL_STEP=pr-create-guideline-outcome-refresh` before PR creation.
+- **Part B: the `step8-shippr` recovery deadlocks.** The first stall writes terminal state. The reship never resets it. Each reship re-renders `final-summary.md` with the `stalled` heading, then refuses its own run-log commit via the pre-terminal guard, then stalls again. The loop repeats to the retry cap. No PR is ever created.
+
+In the observed run the code fix was correct and reviewed clean; only shipping failed. The operator merged by hand.
+
+This issue carries an operator-approved fix direction (see "Required fix"). Code facts were verified against `52.5.21` sources. Line numbers are as of that version and may drift; function names are the stable anchors.
+
+## Environment and evidence
+
+- larch `52.5.20`, `/implement --merge -f 500`, client repo `character-tech/dev-tools` (tracks `larch-logs/`).
+- Client `.pre-commit-config.yaml` applies `ruff`, `ruff-format`, `end-of-file-fixer`, and `trailing-whitespace` to all files, with no `larch-logs/` exclude (pre-commit-hooks v5.0.0, ruff v0.8.6).
+- `RUN_ID=6F4525F9-047F-4C1D-9A22-EDB045BA57AB`. Full run logs were merged by hand at `character-tech/dev-tools` PR #501 (commit `feb0a6d`): `larch-logs/implement/6F4525F9-047F-4C1D-9A22-EDB045BA57AB/`. See `final-summary.md`, `round-1/oos.md`, `round-1/review-round-summary.md`.
+
+## Observed failure
+
+1. Step 8 stalled at `STALL_STEP=pr-create-guideline-outcome-refresh`, `EXIT_CODE=4`, empty `PR_NUMBER`. Handoff detail: `end-of-file-fixer` added trailing newlines to `round-1/oos.md` and `round-1/review-round-summary.md`, exited non-zero, and the run-log commit aborted.
+2. Step 18a classified `FAILURE_CLASS=transient-infra`, `RESUME_HINT=step8-shippr`, and reshipped.
+3. The reship stalled at the same step with a different detail: `commit-failed: refusing pre-terminal run-log commit with terminal outcome label 'stalled'; commit only neutral in-progress labels before terminal reconciliation`.
+4. Every subsequent reship repeated step 3 until the retry cap. Terminal outcome: stalled, no PR.
+
+The same hook class also aborted the Step 2 dispatcher's implementation commit once (`STATUS=bailed REASON=commit-failed`); Step 18a `step2-impl` recovered it. That surface is out of scope here (see "Out of scope").
+
+## Root cause
+
+**Part A.** The commit tail of `_commit_run` (`python/larch/report/run_log_commit.py`, ~lines 497-506) runs `git add -- <rels>`, `git diff --cached --quiet -- <rels>`, then `git commit -m <subject> -- <rels>` with hooks enabled and no retry. A file-modifying hook fixes the staged files in the worktree and exits non-zero, so the commit aborts even though the fixed content would commit cleanly on a second attempt.
+
+**Part B.** The first stall calls `_write_terminal_state` (`python/larch/implement/ship_pr.py:254`), which writes terminal state to two files: `ship-pr-state.sh` gets `PHASE=stalled` with `STALL_TRACKING=true`, and `_write_terminal_finalize_if_terminal` (`python/larch/implement/ship_result.py:202`) writes a terminal overlay into `finalize-state.sh`. Nothing on the `step8-shippr` reship path resets either file. `_stall_signal_is_terminal` (`python/larch/state/_normalize.py:166`) returns terminal when ship `PHASE=stalled` or when finalize `STALL_TRACKING` is truthy, so `normalized_outcome_values` keeps yielding `stalled`. Inside `flush_logs_pre` (`python/larch/report/run_log_flush.py:721`), `_stage_pre_commit` re-renders `final-summary.md` from that state (~lines 602-637), then `_preterminal_outcome_refresh_skip` (~line 765) reads the same file, finds `stalled` in `config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS`, and returns a `RefreshSkip` with reason `commit-failed`. `_flush_guideline_outcome_before_pr` (`python/larch/implement/ship.py:247`) treats that reason as fatal, writes terminal state again, and raises `Stalled`. The guard (from #5676 / #5970) blocks its own recovery.
+
+## Verified code facts that constrain the fix
+
+1. **`_commit_run` is the single live choke point.** `flush_logs_pre` calls it directly (`run_log_flush.py:769`), `commit_larch_logs` delegates to it, and the `run-log commit` CLI (`larch_log_commit_main`) routes every skill through it, including `/design` flushes. The runner-based variant `_larch_log_commit` (`run_log_commit.py:513`) is re-exported via `larch.report.run_logs` and exercised only by tests; verify it has no live callers before leaving it unchanged.
+2. **The flush refuses a file it just rewrote.** `flush_logs_pre` re-renders `final-summary.md` and then blocks on its own render. The stale input is the state in `ship-pr-state.sh` and `finalize-state.sh`, not the summary file itself. Fixing the state is the correct repair; editing the summary in place is not.
+3. **A sibling backstop already exists and validates the direction.** `_reconcile_stalled_summary_backstop` (`run_log_flush.py:568`) rewrites a stalled summary, but only when the manifest proves the run `merged`. The pre-PR reship case was never handled.
+4. **Part B alone does not converge.** Each refresh wholesale-replaces `larch-logs/implement/<RUN_ID>/` in the repo from the tmpdir copy (`_replace_staged_tree_or_error`), wiping the hook's fixes. With only Part B fixed, every reship re-copies unclean files, the hook re-fixes and re-fails, and the run stalls to the cap anyway. Part A is the fix that ships this class of run; Part B is the recovery-correctness fix for any other commit failure at that step. Both are required.
+5. **The two flush callsites in the ship driver map every unrecognized skip reason to a stall.** `_flush_guideline_outcome_before_pr` and `_flush_invariant_outcome_before_pr` (`ship.py:247`, `ship.py:298`) warn-and-continue only on `no-logs-commit`, `run-log-incomplete`, and matching `volatile-only`; everything else stalls. This is intentional fail-closed behavior and must not be relaxed.
+6. **Non-terminal ship-state writes already self-clean.** `_write_ship_state` (`python/larch/implement/ship_state.py`) pops `_TERMINAL_ONLY_STATE_KEYS`, and `_NON_STALL_STATE_KEYS` when `stall_tracking` is false, whenever it writes a non-terminal phase. The reset in Fix 2 can reuse this path instead of inventing new state surgery.
+
+## Required fix (operator-approved direction)
+
+### Fix 1: hook-tolerant run-log commit (Part A)
+
+In `_commit_run` (`python/larch/report/run_log_commit.py`): when `git commit` exits non-zero, re-run the commit tail (`git add` → `git diff --cached --quiet` → `git commit`) exactly once.
+
+- Rationale: file-modifying hooks leave their fixes in the worktree and are idempotent, so the retry adopts the fixes and passes. Checking-only hooks (secret scanners, commit-msg policy) fail the retry identically and surface as today.
+- Keep the retry unconditional on non-zero commit rc. Do not parse hook output to decide whether to retry. One retry also heals transient races (for example `index.lock`).
+- If the retry's `git diff --cached --quiet` reports nothing staged (the hook restored HEAD content), return the existing unchanged/success shape.
+- **Do not use `git commit --no-verify`.** It would commit hook-unclean files into the client repo (client CI running `pre-commit run --all-files` then fails on their mainline) and would bypass client checking hooks such as secret scanners. Larch is a guest in the client repo; adopting the client's hook fixes is the correct behavior and also keeps committed logs hook-clean by that client's own rules.
+- The fix lands once in `_commit_run` and covers all consumers (fact 1). Leave `_larch_log_commit` unchanged after verifying it has no live callers, or align it; do not fork behavior between the two.
+
+### Fix 2: de-terminalize state at ship-driver re-entry (Part B)
+
+At drive re-entry in the Python ship driver, after the `ResumePlan` is derived from existing state (`python/larch/implement/ship_resume.py` reads `PHASE` / `RESUME_PHASE`; the reset must not disturb those inputs) and before the first `run_logs.flush_logs_pre` of the drive:
+
+- If `ship-pr-state.sh` has `PHASE=stalled`, write a normal non-terminal ship state (reuse the `_write_ship_state` non-terminal path per fact 6): `PHASE` set to the drive's next in-progress phase value (do not invent a new label), `STALL_TRACKING=false`, terminal-only keys cleared.
+- Neutralize the stale terminal overlay in `finalize-state.sh` written by `_write_terminal_finalize_if_terminal`. Deleting the file restores the documented mid-flight contract (`finalize-state.sh` exists only on terminal outcomes); rewriting `STALL_TRACKING=false` is acceptable if deletion breaks a consumer. The invariant: after the reset, `_stall_signal_is_terminal` returns false for the resumed drive, and `normalized_outcome_values` yields the neutral `shipping` outcome for a pre-PR reship.
+- Emit a breadcrumb recording the de-terminalization and the prior label.
+- The reset lives in the Python driver only. Prompt-side orchestrator code must never write `finalize-state.sh` or session env (AGENTS.md).
+- **Do not modify the guard.** `_check_preterminal_commit_blocked`, `_preterminal_outcome_commit_blocked`, and `config.PRETERMINAL_FORBIDDEN_OUTCOME_LABELS` stay as they are. No bypass flag. After the reset, the refresh re-renders a non-terminal summary and the guard passes naturally. If the reshipped drive stalls again, `_write_terminal_state` re-marks both files; convergence stays bounded by the existing reship caps.
+
+### Fix 3: distinct refresh-skip reason for the pre-terminal refusal (observability only)
+
+`_preterminal_outcome_refresh_skip` (`run_log_flush.py:710`) currently reports reason `commit-failed`, which masked the deadlock as a hook failure in the observed run.
+
+- Add a dedicated reason constant (for example `REFRESH_SKIP_PRETERMINAL_OUTCOME`) in `python/larch/core/config.py` and use it there.
+- Behavior must stay identical: mirror the new reason everywhere `REFRESH_SKIP_COMMIT_FAILED` participates in membership or branching. Audit sites: `config.REFRESH_SKIP_MERGE_OK` (`config.py:826`), `run_log_flush.py:1180`, `step_7a.py:155`. The `ship.py` callsites at lines 262-267 and 312-318 map exceptions to `commit-failed` and are unaffected. The two flush callsites must keep stalling on the new reason (with Fix 2 in place, hitting it on a live drive means state is genuinely terminal, and fail-closed is correct).
+- Check `python/larch/state/_classify.py` so the stall classifier routes a detail carrying the new reason deliberately rather than by fallback.
+
+### Fix 4: actionable detail when the retry also fails
+
+When the retried commit still fails and the output matches the pre-commit shape (for example contains `files were modified by this hook`), append a one-line remedy to the surfaced error detail: rerun with `--no-logs-commit`, or add `larch-logs/` to the client's `.pre-commit-config.yaml` `exclude`. The detail travels through the existing `RefreshSkip.error` → stall-detail path. No new preflight detection machinery.
+
+### Fix 5: hardening (hook-clean emission and byte-compare audit)
+
+- Emit larch run-log text files with exactly one trailing newline. Known offenders from the incident: `round-1/oos.md` and `round-1/review-round-summary.md`. Fix the writer helpers, not individual files.
+- Audit the byte-compare paths `_committed_guideline_outcome_matches` (`ship.py:223`) and `_committed_invariant_outcome_matches` (`ship.py:235`). After Fix 1, the committed copy may be hook-modified (for example a trailing newline appended to `architectural-guideline-outcome.json`), so a strict byte compare against the tmpdir sidecar can false-negative and fail the volatile-only skip path. Either emit the sidecars hook-clean (trailing newline) or compare with conservative normalization (trailing whitespace and final newline).
+
+## Out of scope
+
+- **Step 2 dispatcher implementation-commit retry.** Same failure class, different surface (`python/larch/implement/dispatch_commit_route.py`, `implementation-commit-failed`): source files, where hooks legitimately apply. File separately.
+- **Preflight detect-and-warn for client hook configs.** Fix 4 replaces it; retry-once handles the fixer class outright.
+- **Any change to pre-terminal guard semantics or labels.**
+
+## Acceptance criteria
+
+1. In a hermetic repo whose pre-commit hook appends missing trailing newlines and exits 1 when it modified files, `_commit_run` commits the run logs on the second attempt, the committed files are hook-clean, and the success envelope is unchanged.
+2. With a checking-only hook that always fails, `_commit_run` fails after exactly two attempts and the surfaced detail includes the `--no-logs-commit` / pre-commit `exclude` remedy.
+3. Given `ship-pr-state.sh` with `PHASE=stalled` plus a `finalize-state.sh` terminal overlay (as written by `_write_terminal_state` for a pre-PR stall), driver re-entry resets state so that `normalized_outcome_values` yields `shipping` and `flush_logs_pre` passes the pre-terminal check after re-render.
+4. A genuinely terminal state outside a drive re-entry still refuses: existing `_check_preterminal_commit_blocked` / `_preterminal_outcome_refresh_skip` tests keep passing, with only the reason string updated per Fix 3.
+5. The new skip reason is mirrored at every `REFRESH_SKIP_COMMIT_FAILED` membership site with no behavior change (`step_7a.py:155`, `config.REFRESH_SKIP_MERGE_OK`, `run_log_flush.py:1180`).
+6. End-to-end shape, as far as the existing ship test harness models it: a simulated first stall at `pr-create-guideline-outcome-refresh` followed by a reship converges to the PR-create path instead of the deadlock. If the harness cannot model the full loop, the state-reset unit tests plus the flush-pass test cover it.
+
+## Testing
+
+- **Hermetic fixture (required).** A temp git repo on a feature branch with `chdir` into it. Run-log commit tests that skip this setup fail only on push-to-main via the default-branch guard and look like cross-shard flakes. Install an executable `.git/hooks/pre-commit` that emulates `end-of-file-fixer`: for each staged file, append a newline when the last byte is not one, and exit 1 if it modified anything, else 0. Adjust to what the pathspec commit exposes to hooks.
+- Retry tests live with the existing commit tests (`python/tests/report/test_run_logs.py`); reason-mapping tests in `python/tests/report/test_run_log_flush.py`; state-reset tests in `python/tests/implement/test_ship_state.py` / `python/tests/implement/test_ship.py`. Prefer extending existing files; new test files need tree-unique basenames.
+- Suggested commands: `python -m pytest python/tests/report/test_run_logs.py -k commit`, `python -m pytest python/tests/report/test_run_log_flush.py -k 'preterminal or refresh'`, `python -m pytest python/tests/implement/test_ship.py -k 'guideline or stall'`, `python -m pytest python/tests/implement/test_ship_state.py`, then `python3 python/cli.py checks run-relevant`.
+
+## Repro
+
+Run `/implement --merge <issue>` in a repo that (a) tracks `larch-logs/` and (b) has a pre-commit `end-of-file-fixer` / `trailing-whitespace` / formatter hook with no `larch-logs/` exclude, on any issue whose run emits a log file without a trailing newline. The ship driver stalls at the run-log refresh, and the `step8-shippr` recovery deadlocks on the pre-terminal `stalled` label.
+
+## References
+
+- Prior work on the `stalled` label and guard: #5676, #5970, #5646; stale finalize-PHASE overlay: #5169.
+- Sequencing: #6788 (main-health `skip`) is in flight and touches `python/larch/implement/ship.py` and `skills/implement/SKILL.md` in different regions; land it first. After #6788, this issue is the remaining blocker for autonomous `--merge` runs in `character-tech/dev-tools`.
+- Evidence run: `character-tech/dev-tools` PR #501, `larch-logs/implement/6F4525F9-047F-4C1D-9A22-EDB045BA57AB/`.

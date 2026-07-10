@@ -1,0 +1,167 @@
+## Approach
+
+Implement the five approved fixes as one coupled repair.
+
+1. Make `_commit_run` retry the git commit tail exactly once after a non-zero `git commit`.
+   - Factor the `git add` -> `git diff --cached --quiet` -> `git commit` tail into a small helper.
+   - Retry only after the commit step fails.
+   - Do not use `--no-verify`.
+   - If the retry finds no staged diff, return the existing unchanged success shape with `SECRET_SCRUB_VIOLATIONS`.
+   - If the retry also fails and the combined output matches the pre-commit fixer shape, append one remedy line that mentions `--no-logs-commit` and adding a `larch-logs/` exclude to `.pre-commit-config.yaml`.
+
+2. De-terminalize ship state on Python ship-driver re-entry.
+   - Add a small helper in `ship.py` after `_resume_plan` is computed and before any `flush_logs_pre` can run.
+   - Only act when `ship-pr-state.sh` has `PHASE=stalled`.
+   - Use `_write_ship_state` with the next existing in-progress phase for the selected `ResumePlan`.
+   - Clear stale stall fields through the normal non-terminal write path.
+   - Remove `finalize-state.sh` when it is a regular file. Refuse symlink or non-regular shapes rather than writing through them.
+   - Emit a breadcrumb with the prior phase and new phase.
+   - Do not change prompt-side orchestration or session-env writers.
+
+3. Add a dedicated pre-terminal refusal skip reason.
+   - Add `REFRESH_SKIP_PRETERMINAL_OUTCOME`.
+   - Return it from `_preterminal_outcome_refresh_skip`.
+   - Mirror behavior wherever `REFRESH_SKIP_COMMIT_FAILED` currently means “allowed for merge refresh” or “blocks direct commit because the error is pre-terminal”.
+   - Keep the ship-driver flush callsites fail-closed. The new reason must still stall there.
+
+4. Normalize run-log text emission.
+   - Add one shared helper at the run-log batch write boundary for non-empty text: strip trailing newlines and append exactly one newline.
+   - Apply it to replace batches, append batches, round artifacts, and shared archetype artifacts emitted through the run-log batch module.
+   - Preserve validation semantics. JSON and JSONL payloads remain valid with a trailing newline.
+   - Keep empty artifacts empty unless a specific writer already emits a newline.
+
+5. Make volatile-only sidecar comparisons hook-tolerant.
+   - Normalize trailing whitespace and final newline for `_committed_guideline_outcome_matches` and `_committed_invariant_outcome_matches`.
+   - Keep the comparison conservative. Only normalize the hook-fixer class, not arbitrary JSON semantics.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/run_log_commit.py
+
+- Add a private commit-tail helper for `_commit_run`.
+- Retry the helper once after a failed commit.
+- Preserve existing return envelopes for success, unchanged, volatile-only, scrub failures, and add failures.
+- Add a small pre-commit fixer-output detector and remedy appender for retry failure detail.
+- Leave `_larch_log_commit` unchanged unless implementation re-verifies a live production caller. If it is changed, keep behavior aligned instead of forking semantics.
+
+### UPDATED: python/larch/implement/ship.py
+
+- Add the re-entry de-terminalization helper.
+- Call it after `_resume_plan` and blocked-resume handling, before fresh or resumed paths can flush.
+- Map resume starts to existing in-progress phases:
+  - `fresh`: `pr-prep`
+  - `pre-pr-compose` and `open-pr`: `config.SHIP_ROUTE_ACTION_ASSESSMENTS`
+  - post-merge starts: their existing post-merge phase labels
+- Delete stale `finalize-state.sh` only inside the allowed tmpdir and only when it is a regular file.
+- Normalize guideline and invariant sidecar byte comparisons for trailing whitespace and final newline.
+
+### UPDATED: python/larch/core/config.py
+
+- Add `REFRESH_SKIP_PRETERMINAL_OUTCOME`.
+- Add it to `REFRESH_SKIP_MERGE_OK`.
+- Keep it out of `REFRESH_SKIP_POST_ENSURE_PR_OK` unless existing behavior demands otherwise.
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+- Return the new reason from `_preterminal_outcome_refresh_skip`.
+- Include the new reason in refresh CLI reporting wherever commit-failed and recovery-failed are printed as `REFRESH_COMMITTED=false`.
+- Keep `_check_preterminal_outcome_label`, `_preterminal_outcome_commit_blocked`, and forbidden labels unchanged.
+
+### UPDATED: python/larch/implement/step_7a.py
+
+- Update `_refresh_skip_blocks_direct_commit` to block on `REFRESH_SKIP_PRETERMINAL_OUTCOME`.
+- Keep existing error-text fallback if needed for backward compatibility with old run logs or monkeypatched tests.
+
+### UPDATED: python/larch/state/_classify.py
+
+- Add deliberate routing for details that carry the new pre-terminal reason.
+- Preserve the observed route: transient infra with `step8-shippr` when the stall detail is the pre-PR refresh deadlock shape.
+- Avoid broadening unrelated commit failures.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+- Add the shared run-log text normalization helper.
+- Apply it in `_write_batch`, `_append_batch`, `_stage_round_artifact`, and `_atomic_write` call paths owned by run-log artifacts.
+- Keep redaction before publish.
+- Keep validation before or after normalization in a way that preserves existing JSON and JSONL contracts.
+
+### UPDATED: python/larch/report/run_logs.py
+
+- Normalize round-artifact and shared archetype writes before comparing and writing.
+- Keep duplicate basename, deny-list, and debug-artifact behavior unchanged.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+- Add hermetic git tests for `_commit_run`:
+  - fixer pre-commit hook appends missing final newline, fails first commit, passes retry, and commits hook-clean logs.
+  - checking hook fails both attempts and surfaces the remedy line.
+  - retry diff-quiet path returns unchanged success when the hook restores HEAD content.
+- Update existing newline-sensitive batch and round-artifact tests to expect normalized final newlines.
+
+### UPDATED: python/tests/report/test_run_log_flush.py
+
+- Update pre-terminal refusal assertions to expect `REFRESH_SKIP_PRETERMINAL_OUTCOME`.
+- Add coverage that `flush_logs_pre` still refuses a genuinely terminal pre-terminal summary.
+- Add coverage that neutral `shipping` still commits.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+- Add a pre-PR stalled-state re-entry test:
+  - seed `ship-pr-state.sh` with `PHASE=stalled`.
+  - seed `finalize-state.sh` with terminal stall overlay.
+  - run the ship path far enough to reach the first pre-PR refresh.
+  - assert the state is de-terminalized before refresh and PR creation can continue.
+- Update existing refresh-skip tests to keep fail-closed behavior for the new reason.
+
+### UPDATED: python/tests/implement/test_ship_state.py
+
+- Add focused coverage that non-terminal `_write_ship_state` clears terminal-only and stall-only fields when `stall_tracking` is false.
+- Cover the state shape used by the re-entry reset.
+
+### UPDATED: python/tests/implement/test_step_7a.py
+
+- Update the direct-commit block test for `REFRESH_SKIP_PRETERMINAL_OUTCOME`.
+- Keep one compatibility case if the helper still accepts old `commit-failed` plus pre-terminal text.
+
+### UPDATED: python/tests/core/test_config.py
+
+- Assert `REFRESH_SKIP_PRETERMINAL_OUTCOME` is in `REFRESH_SKIP_MERGE_OK`.
+- Assert it is not in post-ensure allowed sets unless implementation finds an existing consumer that requires it.
+
+## Edge cases
+
+- A checking-only pre-commit hook still fails after two commit attempts.
+- A file-modifying hook that restores staged files to HEAD returns unchanged success.
+- A hook that modifies only files outside the pathspec still fails or succeeds according to git’s normal behavior.
+- A stale `finalize-state.sh` symlink must not be unlinked or overwritten silently.
+- A resumed drive that stalls again must re-mark terminal state through `_write_terminal_state`.
+- `--no-logs-commit` remains a skip path, not a retry path.
+- Existing pre-terminal forbidden labels remain forbidden.
+
+## Failure modes when non-trivial
+
+- Retrying the wrong tail can double-copy or double-scrub run logs. Retry only the git add/diff/commit tail after the copy is complete.
+- Resetting state before `_resume_plan` would erase the phase used to decide resume route. Keep reset after plan derivation.
+- Deleting `finalize-state.sh` too broadly could erase terminal evidence outside ship re-entry. Limit the reset to `run_ship`.
+- Broad newline normalization can perturb golden tests and JSON fixtures. Normalize only non-empty text and keep schema validation.
+- Relaxing `ship.py` refresh skip handling would violate fail-closed behavior. Do not add a warn-and-continue branch for the new reason.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python -m pytest python/tests/report/test_run_logs.py -k 'commit_run or write_round or batch'`
+- `python -m pytest python/tests/report/test_run_log_flush.py -k 'preterminal or refresh'`
+- `python -m pytest python/tests/implement/test_ship.py -k 'guideline or stalled or reentry or refresh'`
+- `python -m pytest python/tests/implement/test_ship_state.py`
+- `python -m pytest python/tests/implement/test_step_7a.py -k preterminal`
+- `python -m pytest python/tests/core/test_config.py -k refresh`
+
+Then run the relevant checker:
+
+- `python3 python/cli.py checks run-relevant`
+
+difficulty: HARD
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 820
