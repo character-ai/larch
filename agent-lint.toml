@@ -339,6 +339,13 @@ exclude = [
   "skills/implement/scripts/step-8-oos-checkpoint.md",
   "skills/implement/scripts/test-step-8-oos-checkpoint.sh",
   "skills/implement/scripts/test-step-8-oos-checkpoint.md",
+  # Dormant Step 8 CI fixer lane: the wrapper is intentionally NOT wired into
+  # skills/implement/SKILL.md yet, so S030/orphaned-skill-files flags both the
+  # wrapper and its sibling test harness. The dormancy is contract-enforced by
+  # test-step-8-ci-fixer.sh (not_contains 'step-8-ci-fixer.sh' in SKILL.md),
+  # so a SKILL.md reference is prohibited; exclude both until the lane is wired.
+  "skills/implement/scripts/step-8-ci-fixer.sh",
+  "skills/implement/scripts/test-step-8-ci-fixer.sh",
   "python/test_execution_issues.py",
   "python/cli.py stall-recovery",
   "python/larch/state/stall_recovery.py",
