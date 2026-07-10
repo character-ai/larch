@@ -18,7 +18,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Final, NoReturn
 
@@ -277,6 +277,11 @@ def _repair_loop_action(
     if loop.status == "ok":
         return "continue"
     if loop.status == "main-agent-required":
+        return "main-agent-edit"
+    if _is_pre_ship_site(lint_site) and loop.status in {
+        "head-changed",
+        "dispatch-failed",
+    }:
         return "main-agent-edit"
     if (
         _is_pre_ship_site(lint_site)
@@ -938,7 +943,8 @@ def _run_codex(  # noqa: PLR0913,RUF100
     result = runner.run(argv, cwd=repo_root)
     launcher_exit = _parse_launcher_exit(result.stdout)
     if launcher_exit is None:
-        launcher_exit = _read_done_exit(codex_log) or result.returncode
+        done_exit = _read_done_exit(codex_log)
+        launcher_exit = result.returncode if result.returncode != 0 else done_exit
     token_record = codex_log.with_suffix(codex_log.suffix + ".token-record")
     if token_record.is_file() and token_record.stat().st_size > 0:
         _ = _run_token_command(runner=runner, argv=["python3", str(agent_cli), "token", "append-record", "--input", str(token_record), "--tmpdir", str(implement_tmpdir)], purpose="token append-record", cwd=repo_root)
@@ -979,7 +985,8 @@ def _run_claude(
     )
     launcher_exit = _parse_launcher_exit(result.stdout)
     if launcher_exit is None:
-        launcher_exit = _read_done_exit(output) or result.returncode
+        done_exit = _read_done_exit(output)
+        launcher_exit = result.returncode if result.returncode != 0 else done_exit
     return launcher_exit
 
 
@@ -994,9 +1001,9 @@ def _parse_launcher_exit(text: str) -> int | None:
 def _read_done_exit(output: Path) -> int:
     done = output.with_suffix(output.suffix + ".done")
     if not done.is_file():
-        return 0
+        return 1
     raw = done.read_text(encoding="utf-8", errors="replace").strip()
-    return int(raw) if raw.isdigit() else 0
+    return int(raw) if raw.isdigit() else 1
 
 
 def _write_failed_agent_stderr_tail(
@@ -1145,9 +1152,50 @@ def _post_dispatch_forbidden_revert(
 
 def _coder_stderr_tail(*, run_dir: Path, log_name: str) -> str:
     candidate = run_dir / f"{log_name}.stderr-tail"
-    if candidate.is_file() and candidate.stat().st_size > 0:
-        return str(candidate)
-    return ""
+    target = candidate.with_name(f"{candidate.name}.redacted")
+    try:
+        root = run_dir.resolve()
+        resolved = candidate.resolve()
+        if not resolved.is_relative_to(root) or not candidate.is_file() or candidate.is_symlink():
+            return ""
+        text = candidate.read_text(encoding="utf-8", errors="replace")[-4096:]
+        if not text:
+            return ""
+        target.write_text(redact.redact(text), encoding="utf-8")
+        target.chmod(0o600)
+        if target.is_symlink() or not target.is_file() or not target.resolve().is_relative_to(root):
+            return ""
+    except OSError:
+        with contextlib.suppress(OSError):
+            target.unlink(missing_ok=True)
+        return ""
+    return str(target)
+
+
+def _classify_attempt_issue(*, launcher_rc: int, run_dir: Path, log_name: str, useful_delta: bool) -> str:
+    """Return a bounded failure classification before writing public evidence."""
+    if launcher_rc == config.PROC_TIMEOUT_EXIT_CODE:
+        return "timeout"
+    text = ""
+    for path in (run_dir / log_name, run_dir / f"{log_name}.stderr-tail"):
+        try:
+            if path.is_file() and not path.is_symlink():
+                text += path.read_text(encoding="utf-8", errors="replace")[-8192:]
+        except OSError:
+            pass
+    lowered = text.lower()
+    if any(token in lowered for token in ("not found", "no such file", "missing binary", "command not found")):
+        return "missing-binary"
+    if any(token in lowered for token in ("authentication", "not authenticated", "unauthorized", "login required", "preflight")):
+        return "authentication-preflight"
+    if launcher_rc != 0:
+        return "launcher-failure"
+    return "" if useful_delta else "no-op"
+
+
+def _with_tier_ledger(outcome: FixOutcome, tier_ledger: Path) -> FixOutcome:
+    """Preserve initialized ledger evidence on every post-initialization return."""
+    return outcome if outcome.tier_ledger_path else replace(outcome, tier_ledger_path=str(tier_ledger))
 
 
 def _redacted_attempt_log(*, run_dir: Path, log_name: str) -> str:
@@ -1396,8 +1444,14 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
         run_parent_path.mkdir(parents=True, exist_ok=True)
         tier_ledger: Path = _initialize_tier_ledger(run_parent_path)
     except OSError:
+        _append_attempt_execution_issue(
+            issue_log=allowed_root / "execution-issues.md",
+            tier="none",
+            issue_kind="ledger-failure",
+            attempt_log="",
+        )
         return FixOutcome(
-            status="failed", delta_paths=(), failure_reason="isolated-artifact-failed",
+            status="failed", delta_paths=(), failure_reason="tier-ledger-failed",
             commit_sha=None, head_changed=False, coder_tool=None,
         )
     baseline_tracked: tuple[str, ...] = _capture_tracked_paths(runner, cwd=cwd)
@@ -1434,6 +1488,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
     coder_log_path: str = ""
     run_dir: Path | None = None
     last_stderr_tail: str = ""
+    last_attempt_log: str = ""
     useful_delta_paths: tuple[str, ...] = ()
     attempted_tiers: list[str] = []
     remaining_budget: int = external_defaults.fixer_lane_budget_sec(
@@ -1539,30 +1594,50 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 tier_ledger_path=str(tier_ledger),
             )
         useful_delta: bool = bool(useful_delta_paths) or current_attempt_head != attempt_head
-        issue_kind: str = "" if launcher_rc == 0 else (
-            "timeout" if launcher_rc == config.PROC_TIMEOUT_EXIT_CODE else "launcher-failure"
+        issue_kind = _classify_attempt_issue(
+            launcher_rc=launcher_rc,
+            run_dir=run_dir,
+            log_name=log_name,
+            useful_delta=useful_delta,
         )
-        _append_tier_ledger(
-            tier_ledger,
-            row=_TierLedgerRow(
-                sequence=sequence, tier=tier,
-                outcome_class=(
-                    "useful-delta" if useful_delta else "no-useful-delta"
+        try:
+            _append_tier_ledger(
+                tier_ledger,
+                row=_TierLedgerRow(
+                    sequence=sequence, tier=tier,
+                    outcome_class=(
+                        "useful-delta" if useful_delta else "no-useful-delta"
+                    ),
+                    exit_status=launcher_rc, elapsed_ms=elapsed_ms,
+                    useful_delta=useful_delta, execution_issue_kind=issue_kind,
                 ),
-                exit_status=launcher_rc, elapsed_ms=elapsed_ms,
-                useful_delta=useful_delta, execution_issue_kind=issue_kind,
-            ),
-        )
+            )
+        except OSError:
+            _append_attempt_execution_issue(
+                issue_log=allowed_root / "execution-issues.md",
+                tier=tier,
+                issue_kind="ledger-failure",
+                attempt_log="",
+            )
+            return _with_tier_ledger(
+                FixOutcome(
+                    status="failed", delta_paths=(), failure_reason="tier-ledger-failed",
+                    commit_sha=None, head_changed=False, coder_tool=tier,
+                ),
+                tier_ledger,
+            )
         tail: str = _coder_stderr_tail(run_dir=run_dir, log_name=log_name)
         if tail:
             last_stderr_tail = tail
         attempt_log = _redacted_attempt_log(run_dir=run_dir, log_name=log_name)
-        _append_attempt_execution_issue(
-            issue_log=allowed_root / "execution-issues.md",
-            tier=tier,
-            issue_kind=issue_kind,
-            attempt_log=attempt_log,
-        )
+        last_attempt_log = attempt_log
+        if issue_kind != "no-op":
+            _append_attempt_execution_issue(
+                issue_log=allowed_root / "execution-issues.md",
+                tier=tier,
+                issue_kind=issue_kind,
+                attempt_log=attempt_log,
+            )
         if useful_delta:
             coder_tool = tier
             coder_log_path = attempt_log
@@ -1578,6 +1653,9 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             commit_sha=None,
             head_changed=False,
             coder_tool=coder_tool,
+            coder_log_path=last_attempt_log,
+            stderr_tail_path=last_stderr_tail,
+            tier_ledger_path=str(tier_ledger),
         )
     if _head_change_invalid_after_dispatch(
         runner,
@@ -1594,6 +1672,9 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             commit_sha=None,
             head_changed=True,
             coder_tool=coder_tool,
+            coder_log_path=last_attempt_log,
+            stderr_tail_path=last_stderr_tail,
+            tier_ledger_path=str(tier_ledger),
         )
     commit_sha: str | None = None
     head_changed = False
@@ -1621,6 +1702,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                     commit_sha=None,
                     head_changed=False,
                     coder_tool=coder_tool,
+                    tier_ledger_path=str(tier_ledger),
                 )
             return FixOutcome(
                 status="failed",
@@ -1629,6 +1711,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
             )
         if _post_dispatch_forbidden_revert(
             runner,
@@ -1642,6 +1725,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
             )
         commit_sha = current_head
         head_changed = True
@@ -1658,6 +1742,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                 commit_sha=None,
                 head_changed=False,
                 coder_tool=coder_tool,
+                tier_ledger_path=str(tier_ledger),
             )
         current_tracked = _capture_tracked_paths(runner, cwd=cwd)
         current_untracked = _capture_untracked_paths(runner, cwd=cwd)
@@ -1695,6 +1780,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                     commit_sha=None,
                     head_changed=False,
                     coder_tool=coder_tool,
+                    tier_ledger_path=str(tier_ledger),
                 )
             commit_result = git.commit_with_trailer(
                 runner,
@@ -1711,6 +1797,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
                     commit_sha=None,
                     head_changed=False,
                     coder_tool=coder_tool,
+                    tier_ledger_path=str(tier_ledger),
                 )
             try:
                 commit_sha = git.rev_parse(runner, "HEAD", cwd=cwd)
@@ -1780,12 +1867,16 @@ def _handle_fix_outcome(
             loop.status = "exhausted"
         elif fix.failure_reason == "head-changed-after-dispatch":
             loop.status = "head-changed"
+            loop.stderr_tail_path = fix.stderr_tail_path
+            loop.coder_log_path = fix.coder_log_path
         else:
             loop.status = "main-agent-required"
             loop.stderr_tail_path = fix.stderr_tail_path
             loop.coder_log_path = fix.coder_log_path
         return False
     loop.status = "dispatch-failed"
+    loop.stderr_tail_path = fix.stderr_tail_path
+    loop.coder_log_path = fix.coder_log_path
     return False
 
 
