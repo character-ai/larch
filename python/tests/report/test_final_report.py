@@ -122,6 +122,34 @@ def test_write_final_report_module_renders_summary(tmp_path: Path, monkeypatch) 
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
+def test_write_final_report_renders_cursor_cost_lanes(tmp_path: Path) -> None:
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {
+                "composer-2.5": {"input": 100, "cache_read": 20, "output": 10},
+                "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+                "auto": {"input": 100, "cache_read": 20, "output": 10},
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "Cursor $" in summary
+    assert "Composer $" in summary
+    assert "Grok $" in summary
+    assert "Auto $" in summary
+
+
 def test_final_report_code_review_line_ignores_stale_ship_state(tmp_path: Path) -> None:
     _write_minimal_state(tmp_path)
     ship = tmp_path / "ship-pr-state.sh"
@@ -271,6 +299,64 @@ def test_final_report_token_fields_uses_manifest_main_model_and_claude_sub_by_mo
     assert fields["cost_unavailable"] is False
     assert fields["claude_cost"] == "3.00"
     assert fields["claude_sub_cost"] == "1.00"
+
+
+def test_final_report_token_fields_cursor_lanes_require_valid_model_map(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {
+                "composer-2.5": {"input": 200, "cache_read": 40, "output": 20},
+                "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+
+    assert fields["cursor_composer_cost"] is not None
+    assert fields["cursor_grok_cost"] is not None
+    assert fields["cursor_auto_cost"] is not None
+
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {"grok-4.5": "invalid"},
+        }),
+        encoding="utf-8",
+    )
+
+    fallback_fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+
+    assert fallback_fields["cursor_composer_cost"] is None
+    assert fallback_fields["cursor_grok_cost"] is None
+    assert fallback_fields["cursor_auto_cost"] is None
+
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": "invalid",
+        }),
+        encoding="utf-8",
+    )
+
+    top_level_fallback_fields = final_report._final_report_token_fields(
+        implement_tmpdir=tmp_path,
+        run_id="run1",
+    )
+
+    assert top_level_fallback_fields["cursor_composer_cost"] is None
+    assert top_level_fallback_fields["cursor_grok_cost"] is None
+    assert top_level_fallback_fields["cursor_auto_cost"] is None
 
 
 def test_final_report_token_fields_enriches_claude_sub_by_model_from_ledger(tmp_path: Path) -> None:
@@ -867,11 +953,13 @@ def test_cursor_token_argv_splits_mixed_model_buckets() -> None:
         for line in final_report.report_tokens_cost.token_cost_from_args(argv).splitlines()
     )
 
-    assert argv[argv.index("--cursor-grok-4-5-input-tokens") + 1] == "1000000"
+    assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "1000000"
     assert argv[argv.index("--cursor-input-tokens") + 1] == "1000000"
     assert cost["CURSOR_COST"] == "12.45"
     assert cost["CURSOR_TOKENS"] == "6000000"
-    assert not any(key.startswith("CURSOR_") and key.endswith("_COST") for key in cost if key != "CURSOR_COST")
+    assert cost["CURSOR_COMPOSER_COST"] == "3.95"
+    assert cost["CURSOR_GROK_COST"] == "8.50"
+    assert cost["CURSOR_AUTO_COST"] == "0.00"
 
 
 def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:
@@ -879,5 +967,5 @@ def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:
 
     argv = final_report._cursor_token_argv(data={}, bucket=bucket)
 
-    assert argv[argv.index("--cursor-input-tokens") + 1] == "100"
-    assert "--cursor-grok-4-5-input-tokens" not in argv
+    assert argv == ["--cursor-tokens", "130"]
+    assert "--cursor-grok-input-tokens" not in argv

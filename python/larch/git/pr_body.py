@@ -562,6 +562,15 @@ def _codex_cost_segment(kwargs: Mapping[str, object]) -> str:
 
 
 
+def _cursor_cost_segment(kwargs: Mapping[str, object]) -> str:
+    aggregate = _fmt_money(_money_value(kwargs.get("cursor_cost", 0)))
+    components = tuple(kwargs.get(key) for key in ("cursor_composer_cost", "cursor_grok_cost", "cursor_auto_cost"))
+    if any(value is None for value in components):
+        return f"Cursor {aggregate}"
+    composer, grok, auto = (_fmt_money(_money_value(value)) for value in components)
+    return f"Cursor {aggregate} (Composer {composer}, Grok {grok}, Auto {auto})"
+
+
 def _plan_coverage_summary_lines(kwargs: Mapping[str, object]) -> list[str]:
     line = str(kwargs.get("plan_coverage_line") or "")
     return [f"- **Plan coverage**: {line}"] if line else []
@@ -576,7 +585,7 @@ def render_run_summary(**kwargs: object) -> str:
     if kwargs.get("cost_unavailable") or total_cost == "N/A":
         cost = "N/A"
     else:
-        cost = f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))}: Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, {_codex_cost_segment(kwargs)}, Cursor {_fmt_money(_money_value(kwargs.get('cursor_cost', 0)))}, Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  Tokens: {int((total_tokens + 500) / 1000)}k"
+        cost = f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))}: Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, {_codex_cost_segment(kwargs)}, {_cursor_cost_segment(kwargs)}, Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  Tokens: {int((total_tokens + 500) / 1000)}k"
     issue_number = str(kwargs.get("issue_number") or "")
     issue_url = str(kwargs.get("issue_url") or "")
     issue = "N/A"
@@ -653,7 +662,7 @@ _CLAUDE_SUB_MODEL_TOKEN_ARGS = tuple(
         "output-tokens",
     )
 )
-_TOKEN_COST_ARGS = ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens", "claude-input-tokens", "claude-cache-read-tokens", "claude-cache-write-5m-tokens", "claude-cache-write-1h-tokens", "claude-output-tokens", "codex-input-tokens", "codex-cached-input-tokens", "codex-output-tokens", "codex-mini-input-tokens", "codex-mini-cached-input-tokens", "codex-mini-output-tokens", "cursor-input-tokens", "cursor-cache-read-tokens", "cursor-output-tokens", "claude-sub-input-tokens", "claude-sub-cache-read-tokens", "claude-sub-cache-write-5m-tokens", "claude-sub-cache-write-1h-tokens", "claude-sub-output-tokens", *_CLAUDE_SUB_MODEL_TOKEN_ARGS)
+_TOKEN_COST_ARGS = ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens", "claude-input-tokens", "claude-cache-read-tokens", "claude-cache-write-5m-tokens", "claude-cache-write-1h-tokens", "claude-output-tokens", "codex-input-tokens", "codex-cached-input-tokens", "codex-output-tokens", "codex-mini-input-tokens", "codex-mini-cached-input-tokens", "codex-mini-output-tokens", "cursor-input-tokens", "cursor-cache-read-tokens", "cursor-output-tokens", "cursor-grok-input-tokens", "cursor-grok-cache-read-tokens", "cursor-grok-output-tokens", "cursor-auto-input-tokens", "cursor-auto-cache-read-tokens", "cursor-auto-output-tokens", "claude-sub-input-tokens", "claude-sub-cache-read-tokens", "claude-sub-cache-write-5m-tokens", "claude-sub-cache-write-1h-tokens", "claude-sub-output-tokens", *_CLAUDE_SUB_MODEL_TOKEN_ARGS)
 
 
 def _summary_token_argv(args: argparse.Namespace) -> list[str]:
@@ -694,6 +703,9 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     codex_gpt_5_5_cost: object = "N/A"
     codex_gpt_5_4_mini_cost: object = "N/A"
     cursor_cost: object = "N/A"
+    cursor_composer_cost: object | None = None
+    cursor_grok_cost: object | None = None
+    cursor_auto_cost: object | None = None
     claude_sub_cost: object = "N/A"
     total_tokens = sum(int(getattr(args, a.replace("-", "_")) or 0) for a in ("claude-tokens", "codex-tokens", "cursor-tokens", "claude-sub-tokens"))
     if not cost_unavailable:
@@ -706,6 +718,9 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
             codex_gpt_5_5_cost = larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_5_COST", default="N/A")
             codex_gpt_5_4_mini_cost = larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_4_MINI_COST", default="N/A")
             cursor_cost = larch_io.kv_value(text=cost_kv, key="CURSOR_COST", default="N/A")
+            cursor_composer_cost = (larch_io.kv_value(text=cost_kv, key="CURSOR_COMPOSER_COST", default="") or None)
+            cursor_grok_cost = (larch_io.kv_value(text=cost_kv, key="CURSOR_GROK_COST", default="") or None)
+            cursor_auto_cost = (larch_io.kv_value(text=cost_kv, key="CURSOR_AUTO_COST", default="") or None)
             claude_sub_cost = larch_io.kv_value(text=cost_kv, key="CLAUDE_SUB_COST", default="N/A")
             total_tokens = int(larch_io.kv_value(text=cost_kv, key="TOTAL_TOKENS", default="N/A") or total_tokens)
         except Exception:
@@ -747,6 +762,9 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
         codex_gpt_5_5_cost=codex_gpt_5_5_cost,
         codex_gpt_5_4_mini_cost=codex_gpt_5_4_mini_cost,
         cursor_cost=cursor_cost,
+        cursor_composer_cost=cursor_composer_cost,
+        cursor_grok_cost=cursor_grok_cost,
+        cursor_auto_cost=cursor_auto_cost,
         claude_sub_cost=claude_sub_cost,
         note_lines=note_lines,
         manifest_path=args.manifest_path,

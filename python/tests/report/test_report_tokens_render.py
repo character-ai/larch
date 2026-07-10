@@ -241,6 +241,90 @@ def test_title_for_skill_prefixes() -> None:
     assert title_for_skill("implement", timestamp="2026-01-01 00:00 UTC").startswith("[Implement Analysis Report]")
 
 
+def _lane_record(*, zero_auto: bool = False) -> RunRecord:
+    return RunRecord(
+        number=9,
+        title="Issue #9",
+        url="https://example.invalid/9",
+        started_at="2026-01-01T00:00:00Z",
+        closed_at="2026-01-02T00:00:00Z",
+        workflow="implement",
+        claude=VendorTotals(total=10),
+        codex=VendorTotals(total=20),
+        cursor=VendorTotals(total=30),
+        phase_rows=(),
+        raw_report={},
+        claude_cost=1.0,
+        codex_cost=2.0,
+        cursor_cost=3.0,
+        total_cost=6.0,
+        priced_by_token_cost=True,
+        cursor_composer_cost=1.50,
+        cursor_grok_cost=1.00,
+        cursor_auto_cost=0.00 if zero_auto else 0.50,
+    )
+
+
+def test_vendor_breakdown_shows_cursor_lanes(tmp_path: Path) -> None:
+    body, _sections, _cache = render(skill="implement", records=(_lane_record(),), temp_root=tmp_path)
+    assert "Cursor Composer" in body
+    assert "Cursor Grok" in body
+    assert "Cursor Auto" in body
+    assert "$1.50" in body
+    assert "$1.00" in body
+
+
+def test_vendor_breakdown_shows_cursor_lanes_with_zero_valued_auto(tmp_path: Path) -> None:
+    body, _sections, _cache = render(skill="implement", records=(_lane_record(zero_auto=True),), temp_root=tmp_path)
+    assert "Cursor Composer" in body
+    assert "Cursor Auto" in body
+
+
+def test_top_run_shows_cursor_lane_split(tmp_path: Path) -> None:
+    body, _sections, _cache = render(skill="implement", records=(_lane_record(),), temp_root=tmp_path)
+    assert "Composer" in body
+    assert "Grok" in body
+
+
+def test_trends_include_cursor_lane_when_available(tmp_path: Path) -> None:
+    body, _sections, _cache = render(skill="implement", records=(_lane_record(), _lane_record()), temp_root=tmp_path)
+    assert "Cursor Composer cost" in body
+    assert "Cursor Grok cost" in body
+    assert "Cursor Auto cost" in body
+
+
+def test_trends_omit_cursor_lane_when_unavailable(tmp_path: Path) -> None:
+    body, _sections, _cache = render(skill="implement", records=(_record(), _record()), temp_root=tmp_path)
+    assert "Cursor Composer cost" not in body
+    assert "Cursor Grok cost" not in body
+
+
+def test_cache_json_gains_cursor_lane_fields(tmp_path: Path) -> None:
+    _body, _sections, cache = render(skill="implement", records=(_lane_record(),), temp_root=tmp_path)
+    text = cache.read_text(encoding="utf-8")
+    assert '"cursor_composer_cost"' in text
+    assert '"cursor_grok_cost"' in text
+    assert '"cursor_auto_cost"' in text
+
+
+def test_legacy_record_renders_only_aggregate_cursor(tmp_path: Path) -> None:
+    body, _sections, cache = render(skill="implement", records=(_record(),), temp_root=tmp_path)
+    # Vendor breakdown must not include per-lane rows for legacy records
+    breakdown, _, _ = body.partition("\n\n## Rates")
+    assert "| Cursor Composer |" not in breakdown
+    assert "| Cursor Grok |" not in breakdown
+    text = cache.read_text(encoding="utf-8")
+    assert '"cursor_composer_cost": null' in text
+
+
+def test_vendor_breakdown_mixed_lane_and_legacy_records(tmp_path: Path) -> None:
+    body, _sections, _cache = render(skill="implement", records=(_record(), _lane_record()), temp_root=tmp_path)
+    # Mixed records: not all have lanes, so per-lane breakdown rows are suppressed
+    breakdown, _, _ = body.partition("\n\n## Rates")
+    assert "| Cursor Composer |" not in breakdown
+    assert "| Cursor Grok |" not in breakdown
+
+
 def test_render_fallback_temp_root_registers_exit_cleanup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     original_mkdtemp = tempfile.mkdtemp
     registered: list[tuple[Callable[..., object], tuple[object, ...], dict[str, object]]] = []

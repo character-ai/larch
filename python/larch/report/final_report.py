@@ -255,20 +255,10 @@ def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object
 
 
 def _cursor_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
-    record = report_tokens_cost.RunRecord(
-        number=0,
-        title="",
-        url="",
-        started_at="",
-        closed_at="",
-        workflow="",
-        claude=report_tokens_cost.VendorTotals(),
-        codex=report_tokens_cost.VendorTotals(),
-        cursor=report_tokens_cost.VendorTotals(),
-        phase_rows=(),
-        raw_report=data,
+    return report_tokens_cost.cursor_argv_from_buckets(
+        by_model=data.get("BUCKETS_cursor_by_model"),
+        bucket=bucket,
     )
-    return report_tokens_cost.cursor_argv_from_buckets(record=record, bucket=bucket)
 
 
 def _manifest_main_model(run_dir: Path) -> str:
@@ -390,6 +380,9 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
         "codex_gpt_5_5_cost": larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_5_COST", default="N/A"),
         "codex_gpt_5_4_mini_cost": larch_io.kv_value(text=cost_kv, key="CODEX_GPT_5_4_MINI_COST", default="N/A"),
         "cursor_cost": larch_io.kv_value(text=cost_kv, key="CURSOR_COST", default="N/A"),
+        "cursor_composer_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_COMPOSER_COST", default="") or None),
+        "cursor_grok_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_GROK_COST", default="") or None),
+        "cursor_auto_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_AUTO_COST", default="") or None),
         "claude_sub_cost": larch_io.kv_value(text=cost_kv, key="CLAUDE_SUB_COST", default="N/A"),
         "total_tokens": int(larch_io.kv_value(text=cost_kv, key="TOTAL_TOKENS", default="N/A") or 0),
     }
