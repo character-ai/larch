@@ -795,6 +795,157 @@ def test_commit_run_refuses_placeholder_run_id(tmp_path: Path) -> None:
     assert not (repo / "larch-logs" / "implement" / "run-1").exists()
 
 
+def _write_commit_run_source(log_root: Path, *, run_id: str = "run-abc", text: str = "content\n") -> None:
+    src = log_root / "implement" / run_id
+    src.mkdir(parents=True)
+    _ = (src / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
+    _ = (src / "artifact.txt").write_text(text, encoding="utf-8")
+
+
+def _install_pre_commit_hook(repo: Path, body: str) -> Path:
+    hook = repo / ".git" / "hooks" / "pre-commit"
+    _ = hook.write_text("#!/bin/sh\nset -eu\n" + body, encoding="utf-8")
+    hook.chmod(0o755)
+    return hook
+
+
+def test_commit_run_retries_after_fixer_pre_commit_hook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
+    log_root = tmp_path / "larch-logs"
+    _write_commit_run_source(log_root, text="missing final newline")
+    counter = repo / ".git" / "hook-count"
+    _install_pre_commit_hook(
+        repo,
+        """
+count=0
+if [ -f .git/hook-count ]; then
+  count=$(cat .git/hook-count)
+fi
+count=$((count + 1))
+printf '%s\\n' "$count" > .git/hook-count
+target='larch-logs/implement/run-abc/artifact.txt'
+if [ "$count" = "1" ]; then
+  printf '\\n' >> "$target"
+  git add "$target"
+  printf 'files were modified by this hook\\n' >&2
+  exit 1
+fi
+exit 0
+""",
+    )
+    original_copy = run_log_commit._copy_tree_to_repo_after_completeness  # pyright: ignore[reportPrivateUsage]
+    copy_count = 0
+
+    def counting_copy(**kwargs: Any) -> tuple[list[str], Path, int, str | None, int]:
+        nonlocal copy_count
+        copy_count += 1
+        return original_copy(**kwargs)
+
+    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo_after_completeness", counting_copy)
+
+    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root=log_root,
+        skill="implement",
+        run_id="run-abc",
+        cwd=str(repo),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert counter.read_text(encoding="utf-8").strip() == "2"
+    assert copy_count == 1
+    assert (repo / "larch-logs" / "implement" / "run-abc" / "artifact.txt").read_text(encoding="utf-8") == "missing final newline\n"
+
+
+def test_commit_run_reports_pre_commit_remedy_after_retry_failure(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
+    log_root = tmp_path / "larch-logs"
+    _write_commit_run_source(log_root)
+    counter = repo / ".git" / "hook-count"
+    _install_pre_commit_hook(
+        repo,
+        """
+count=0
+if [ -f .git/hook-count ]; then
+  count=$(cat .git/hook-count)
+fi
+count=$((count + 1))
+printf '%s\\n' "$count" > .git/hook-count
+printf 'ruff.....................................................................Failed\\n' >&2
+printf 'hook id: ruff\\n' >&2
+exit 1
+""",
+    )
+
+    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root=log_root,
+        skill="implement",
+        run_id="run-abc",
+        cwd=str(repo),
+    )
+
+    assert result.returncode != 0
+    assert counter.read_text(encoding="utf-8").strip() == "2"
+    assert "--no-logs-commit" in result.stderr
+    assert ".pre-commit-config.yaml" in result.stderr
+    assert "larch-logs/" in result.stderr
+
+
+def test_commit_run_retry_returns_unchanged_when_hook_restores_head(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    dest = repo / "larch-logs" / "implement" / "run-abc"
+    dest.mkdir(parents=True)
+    _ = (dest / "manifest.json").write_text('{"issue_number": 1}\n', encoding="utf-8")
+    _ = (dest / "artifact.txt").write_text("old\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "seed"], cwd=repo, check=True, capture_output=True)
+    log_root = tmp_path / "larch-logs"
+    _write_commit_run_source(log_root, text="new\n")
+    def skip_manifest_update(_manifest: Path) -> None:
+        return
+
+    monkeypatch.setattr(run_log_commit, "_update_commit_manifest_with_warning", skip_manifest_update)
+    _install_pre_commit_hook(
+        repo,
+        """
+target='larch-logs/implement/run-abc/artifact.txt'
+printf 'old\\n' > "$target"
+git add "$target"
+printf 'files were modified by this hook\\n' >&2
+exit 1
+""",
+    )
+
+    result = run_log_commit._commit_run(  # pyright: ignore[reportPrivateUsage]
+        log_root=log_root,
+        skill="implement",
+        run_id="run-abc",
+        cwd=str(repo),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.argv == ("true",)
+    assert "SECRET_SCRUB_VIOLATIONS=0" in result.stdout
+    assert (dest / "artifact.txt").read_text(encoding="utf-8") == "old\n"
+
+
 def test_refresh_only_sidecars_not_written_to_batch_dir(tmp_path: Path) -> None:
     # Refresh JSON files must NOT be written to batch_dir (issue #3708 Phase 1).
     state = tmp_path / "state.env"
@@ -1090,7 +1241,7 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
 
     skip1 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
     assert skip1.skipped
-    assert skip1.reason == config.REFRESH_SKIP_COMMIT_FAILED
+    assert skip1.reason == config.REFRESH_SKIP_PRETERMINAL_OUTCOME
     stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
     assert ": stalled" in stalled_summary
     assert "- **Outcome**: ❌ STALLED" in stalled_summary
@@ -2091,6 +2242,50 @@ def test_larch_log_commit_main_refuses_preterminal_stalled_summary(
     assert rc != 0
     assert "pre-terminal" in captured.err
     assert "LARCH_LOG_COMMIT_SHA" not in captured.out
+
+
+def test_larch_log_commit_main_allows_legacy_commit_failed_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    monkeypatch.chdir(repo)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": cast("dict[str, Any]", {}),
+        "status": "partial",
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "session-transcript.jsonl").write_text("[]\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement final summary: commit-failed\n", encoding="utf-8")
+    commits: list[str] = []
+
+    def fake_commit_run(**_kwargs: object) -> CommandResult:
+        commits.append("commit")
+        return CommandResult(("run-log", "commit"), 0, "a" * 40 + "\n", "", 0.0)
+
+    monkeypatch.setattr(run_log_commit, "_commit_run", fake_commit_run)
+    monkeypatch.setattr(run_log_commit, "_emit_larch_log_envelope", lambda *_a, **_k: None)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    rc = run_logs.larch_log_commit_main(
+        [
+            "--log-root",
+            str(tmp_path / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-abc",
+        ]
+    )
+
+    assert rc == 0
+    assert commits == ["commit"]
 
 
 def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:

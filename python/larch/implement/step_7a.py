@@ -150,6 +150,10 @@ def _append_diagram_warning(*, implement_tmpdir: Path, message: str) -> None:
 
 def _refresh_skip_blocks_direct_commit(refresh: run_logs.RefreshSkip) -> bool:
     error: str = refresh.error.lower() if refresh.error else ""
+    if not refresh.skipped:
+        return False
+    if refresh.reason == config.REFRESH_SKIP_PRETERMINAL_OUTCOME:
+        return True
     return (
         refresh.skipped
         and refresh.reason == config.REFRESH_SKIP_COMMIT_FAILED

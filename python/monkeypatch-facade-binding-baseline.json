@@ -6877,6 +6877,24 @@
   },
   {
     "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_run_ship_destalls_before_first_pre_pr_flush",
+    "facade_module": "larch.implement.ship",
+    "attribute": "_resume_plan",
+    "defining_module": "larch.implement.ship_resume",
+    "occurrence": 1,
+    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_run_ship_destalls_before_first_pre_pr_flush",
+    "facade_module": "larch.report.run_logs",
+    "attribute": "flush_logs_pre",
+    "defining_module": "larch.report.run_log_flush",
+    "occurrence": 3,
+    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_run_ship_merge_loop_rebase_refreshes_guidelines_gate",
     "facade_module": "larch.implement.ship",
     "attribute": "_post_ensure_flush_and_push",
@@ -7219,30 +7237,30 @@
   },
   {
     "file": "tests/implement/test_step_7a.py",
-    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_commit_failed",
+    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_refresh_skip",
     "facade_module": "larch.report.run_logs",
     "attribute": "_render_token_timing_batches",
     "defining_module": "larch.report.run_log_flush",
     "occurrence": 2,
-    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
   },
   {
     "file": "tests/implement/test_step_7a.py",
-    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_commit_failed",
+    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_refresh_skip",
     "facade_module": "larch.report.run_logs",
     "attribute": "_stage_vendor_failure_diagnostics",
     "defining_module": "larch.report.run_log_flush",
     "occurrence": 3,
-    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
   },
   {
     "file": "tests/implement/test_step_7a.py",
-    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_commit_failed",
+    "qualified_symbol": "test_step7a_skips_run_log_commit_after_preterminal_refresh_skip",
     "facade_module": "larch.report.run_logs",
     "attribute": "flush_logs_pre",
     "defining_module": "larch.report.run_log_flush",
     "occurrence": 4,
-    "reason": "imported binding in consuming module; patching there is intentional for test isolation"
+    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
   },
   {
     "file": "tests/issue/test_analyze_issues.py",
@@ -8548,6 +8566,15 @@
     "defining_module": "larch.report.run_log_batch",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/report/test_run_logs.py",
+    "qualified_symbol": "test_larch_log_commit_main_allows_legacy_commit_failed_summary",
+    "facade_module": "larch.report.run_log_commit",
+    "attribute": "_emit_larch_log_envelope",
+    "defining_module": "larch.report.run_log_batch",
+    "occurrence": 2,
+    "reason": "consuming module accesses via imported binding; patching facade module attribute is the correct intercept point for call-time attribute lookup"
   },
   {
     "file": "tests/report/test_run_logs.py",

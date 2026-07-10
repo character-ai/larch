@@ -220,6 +220,17 @@ def _write_phase14_flag(tmpdir: str, *, reason: str) -> None:
         )
 
 
+def _normalize_hook_fixed_bytes(content: bytes) -> bytes:
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        return content
+    lines: list[str] = [line.rstrip() for line in text.splitlines()]
+    if not lines:
+        return b""
+    return ("\n".join(lines) + "\n").encode("utf-8")
+
+
 def _committed_guideline_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
     run_id = run_logs.effective_run_id(ctx)
     if not run_id:
@@ -227,7 +238,12 @@ def _committed_guideline_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
     sidecar = architectural_guidelines.guideline_ship_outcome_path(Path(ctx.tmpdir))
     committed = Path(cwd) / "larch-logs" / "implement" / run_id / architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
     try:
-        return sidecar.is_file() and committed.is_file() and sidecar.read_bytes() == committed.read_bytes()
+        return (
+            sidecar.is_file()
+            and committed.is_file()
+            and _normalize_hook_fixed_bytes(sidecar.read_bytes())
+            == _normalize_hook_fixed_bytes(committed.read_bytes())
+        )
     except OSError:
         return False
 
@@ -239,9 +255,65 @@ def _committed_invariant_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
     sidecar = architectural_guidelines.invariant_ship_outcome_path(Path(ctx.tmpdir))
     committed = Path(cwd) / "larch-logs" / "implement" / run_id / architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR
     try:
-        return sidecar.is_file() and committed.is_file() and sidecar.read_bytes() == committed.read_bytes()
+        return (
+            sidecar.is_file()
+            and committed.is_file()
+            and _normalize_hook_fixed_bytes(sidecar.read_bytes())
+            == _normalize_hook_fixed_bytes(committed.read_bytes())
+        )
     except OSError:
         return False
+
+
+def _pre_pr_reentry_phase(resume: ResumePlan) -> str:
+    if resume.start == "fresh":
+        return "pr-prep"
+    return config.SHIP_ROUTE_ACTION_ASSESSMENTS
+
+
+def _destall_pre_pr_reentry(
+    *,
+    ctx: RunContext,
+    resume: ResumePlan,
+    runner: Runner,
+    repo_root: str,
+) -> RunContext | ShipResult:
+    _ = (runner, repo_root)
+    if resume.start not in {"fresh", "pre-pr-compose", "open-pr"}:
+        return ctx
+    if not ctx.state_file:
+        return ctx
+    prior_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="PHASE")
+    if prior_phase != "stalled":
+        return ctx
+    tmpdir = Path(ctx.tmpdir)
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
+    finalize_state = tmpdir / "finalize-state.sh"
+    if finalize_state.exists() or finalize_state.is_symlink():
+        try:
+            resolved = finalize_state.resolve(strict=False)
+            _ = resolved.relative_to(tmpdir.resolve(strict=False))
+        except (OSError, ValueError):
+            return ShipResult(Outcome.STALLED, detail="invalid finalize-state path")
+        if finalize_state.is_symlink() or not finalize_state.is_file():
+            return ShipResult(Outcome.STALLED, detail="non-regular finalize-state on pre-PR reentry")
+        try:
+            finalize_state.unlink()
+        except OSError as exc:
+            return ShipResult(Outcome.STALLED, detail=f"cannot remove stale finalize-state: {exc}")
+    phase = _pre_pr_reentry_phase(resume)
+    reset_ctx = ctx.with_(stall_tracking=False, stall_step="")
+    _write_ship_state(
+        reset_ctx,
+        phase=phase,
+        iteration=resume.iteration,
+        rebase_count=resume.rebase_count,
+        fix_attempts=resume.fix_attempts,
+        transient_retries=resume.transient_retries,
+    )
+    _breadcrumb(step="pre-pr-reentry", detail=f"de-terminalized prior phase {prior_phase} -> {phase}")
+    return reset_ctx
 
 
 def _flush_guideline_outcome_before_pr(
@@ -1371,6 +1443,10 @@ def run_ship(
 
         if resume.start == "fresh":
             fresh_context = _hydrate_fresh_context(ctx=ctx, resume=resume)
+            destalled = _destall_pre_pr_reentry(ctx=fresh_context, resume=resume, runner=runner, repo_root=repo_root)
+            if isinstance(destalled, ShipResult):
+                return destalled
+            fresh_context = destalled
             # Upfront local lint/tests phase removed by request: open the PR
             # immediately and let CI surface failures (no pre-PR `make py-test`
             # / relevant-checks run). The post-CI fix path is unaffected; only
@@ -1453,6 +1529,10 @@ def run_ship(
             pr_context = fresh_context
         else:
             pr_context = _hydrate_resume_context(ctx=ctx, resume=resume)
+            destalled = _destall_pre_pr_reentry(ctx=pr_context, resume=resume, runner=runner, repo_root=repo_root)
+            if isinstance(destalled, ShipResult):
+                return destalled
+            pr_context = destalled
 
         _write_ship_state(
             pr_context,

@@ -61,12 +61,14 @@ def test_ci_status_query_timeout_is_bounded() -> None:
     assert config.CI_STATUS_QUERY_TIMEOUT_SEC < config.CI_WAIT_TIMEOUT_SEC
 
 
-def test_pre_rebase_flush_commit_failed_fails_closed() -> None:
+def test_refresh_skip_pre_rebase_flush_commit_failed_fails_closed() -> None:
     # commit-failed is tolerated as a generic pre-merge flush skip, but the
     # pre-rebase / post-ensure merge gates must fail closed on it so a squash-merge
     # cannot carry a stale log snapshot (issue #4930, NEVER #16).
     assert config.REFRESH_SKIP_COMMIT_FAILED in config.REFRESH_SKIP_MERGE_OK
     assert config.REFRESH_SKIP_COMMIT_FAILED not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
+    assert config.REFRESH_SKIP_PRETERMINAL_OUTCOME in config.REFRESH_SKIP_MERGE_OK
+    assert config.REFRESH_SKIP_PRETERMINAL_OUTCOME not in config.REFRESH_SKIP_POST_ENSURE_PR_OK
 
 
 def test_documented_constants_exist() -> None:

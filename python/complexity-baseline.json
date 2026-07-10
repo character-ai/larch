@@ -2601,7 +2601,13 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 57
+    "metric": 59
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_destall_pre_pr_reentry",
+    "metric": 8
   },
   {
     "file": "larch/implement/ship.py",
@@ -2619,13 +2625,13 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "run_ship",
-    "metric": 27
+    "metric": 29
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 62
+    "metric": 64
   },
   {
     "file": "larch/implement/ship.py",
@@ -2649,7 +2655,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 196
+    "metric": 202
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -4395,7 +4401,7 @@
     "file": "larch/report/run_log_commit.py",
     "code": "C901",
     "qualified_symbol": "_commit_run",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/report/run_log_commit.py",
@@ -5811,7 +5817,7 @@
     "file": "larch/state/_classify.py",
     "code": "C901",
     "qualified_symbol": "_classify_text",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/state/_classify.py",
@@ -5823,7 +5829,7 @@
     "file": "larch/state/_classify.py",
     "code": "PLR0911",
     "qualified_symbol": "_classify_text",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/state/_classify.py",
@@ -5835,7 +5841,7 @@
     "file": "larch/state/_classify.py",
     "code": "PLR0912",
     "qualified_symbol": "_classify_text",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "larch/state/_classify.py",
