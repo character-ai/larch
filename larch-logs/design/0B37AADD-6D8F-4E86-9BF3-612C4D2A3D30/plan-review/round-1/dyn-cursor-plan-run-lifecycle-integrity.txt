@@ -1,0 +1,34 @@
+Reviewing the plan against the codebase: tracing active-run identity, pointer clearing, and async breadcrumb writers.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/bgjob/model.py:76-79 python/larch/report/statusline.py:85-96 skills/design/scripts/design-step3-review.sh:358-364	Active-run bgjob matching uses progress run_id but bgjob registry stores tmpdir hash slug	Production bgjob starts omit --run-id so registry RUN_ID is sha256(tmpdir)[:16] while progress activate uses SESSION_ID or --run-id UUID. Matching entry.run_id to current will never succeed so resume/compact/startup reset will not preserve live Step 3/5/8 work and stale-suppression will not track the active run's own bgjobs.	Resolve progress run_id from entry.tmpdir session state (session-id source-env LARCH_RUN_ID) before comparing to current or pass the activated progress run_id into every bgjob start wrapper.
+1	in_scope	major	correctness	python/larch/report/statusline.py:24-25 python/larch/report/statusline.py:129-139 python/larch/report/progress_file.py:127-129 python/tests/report/test_progress_statusline.py:901-912	[SCOPE-REDUCTION] resume and compact reset with bgjob-only preservation clears foreground runs	Plan adds resume and compact to RESET_SESSION_SOURCES and only blocks reset when a matching live in-budget bgjob exists. Most /design and /implement steps before the first bgjob write through append_breadcrumb which no-ops without current. Claude --continue or compact mid-run clears current and silences the statusline for the rest of the run. End-of-run deactivate already fixes finished-run resume stale status without resume reset.	Keep resume and compact as no-op reset sources or gate reset on an active in-progress run signal (persisted tmpdir still live or fresh breadcrumb mtime) not only bgjob liveness.
+1	in_scope	minor	correctness	python/larch/design/design_pause.py:195-209 python/larch/design/design_step0.py:200-209	Pause-save and deactivate may use SESSION_ID while progress activated a custom --run-id	Step 0 activates parsed run_id or session_id but pause-save binds RUN_ID from SESSION_ID only. With --run-id the pointer names the custom id so compare-and-clear deactivate and pause marker RUN_ID can diverge and leave a stale active pointer after pause.	In design_pause resolve RUN_ID from the same persisted source as activation (run-params run_id source-env LARCH_RUN_ID or activated id) not SESSION_ID alone.
+1	out_of_scope	minor	architecture	python/larch/state/finalize.py:744-748	Finalize preserve-live-work check likely runs after bgjob kill	Success teardown calls kill_session_background_processes before tmpdir removal so a post-kill live-work guard can never preserve the pointer. Harm is limited because successful runs should deactivate anyway.	Run live-work preservation before kill_session_background_processes or limit the preserve branch to stall or standalone cleanup paths that skip kill.
+
+## Findings
+
+### 1. code-quality / architecture — bgjob `run_id` ≠ progress `run_id` (`python/larch/bgjob/model.py:76-79`, `python/larch/report/statusline.py:85-96`, `skills/design/scripts/design-step3-review.sh:358-364`)
+
+Approach 3 says to match registry `entry.run_id` to the active progress run. In production those IDs live in different namespaces. Bgjob `default_run_id` hashes the tmpdir (`python/larch/bgjob/model.py:76-79`). Launchers such as `design-step3-review.sh` never pass `--run-id`, so registry rows carry the hash slug. Progress activation uses the session UUID or an operator `--run-id` (`python/larch/design/design_step0.py:200-209`).
+
+**Scenario:** Step 3 review is live. SessionStart runs with `source=resume`. The new predicate finds no registry row whose `run_id` equals the UUID in `current`, so reset clears the pointer while work continues. Reproduction item 4 in the plan (preserve B when B's bgjob is live) fails in real runs.
+
+**Suggested revision:** Match on tmpdir-derived progress identity (read `session-id` / `LARCH_RUN_ID` from `entry.tmpdir`) or thread the activated progress run id into all `bgjob start` calls.
+
+### 2. code-quality / correctness — `[SCOPE-REDUCTION]` resume/compact reset (`python/larch/report/statusline.py:24-25`, `python/larch/report/statusline.py:129-139`, `python/larch/report/progress_file.py:127-129`)
+
+The plan expands `RESET_SESSION_SOURCES` to include `resume` and `compact`, replacing today's no-op behavior tested at `python/tests/report/test_progress_statusline.py:901-912`. Preservation requires a matching live in-budget bgjob. Foreground steps before the first bgjob only write via `append_breadcrumb`, which returns false when `current` is missing (`python/larch/report/progress_file.py:127-129`).
+
+**Scenario:** Operator runs `/design`, hits context limit, and restarts with `--continue` during Step 1d (no bgjob yet). SessionStart `source=resume` clears `current`. The statusline stays blank until a new run activates, even though the same run is still active.
+
+**Suggested revision:** Do not reset on `resume`/`compact`, or require a stronger in-progress signal than bgjob liveness. Lifecycle deactivate at terminal boundaries already addresses finished-run stale status on resume (issue scenario 2) with less surface area.
+
+### 3. code-quality / correctness — pause `RUN_ID` vs custom `--run-id` (`python/larch/design/design_pause.py:195-209`, `python/larch/design/design_step0.py:200-209`)
+
+Pause-save sets `RUN_ID` from `SESSION_ID` in `source-env.sh`. Step 0 may activate a different `--run-id`. Compare-and-clear deactivation then fails to clear the pointer the run actually activated.
+
+**Suggested revision:** Resolve the pause/deactivate run id from the same persisted activation source Step 0 uses, not `SESSION_ID` alone.
+
+### [OUT_OF_SCOPE] Finalize kill order (`python/larch/state/finalize.py:744-748`)
+
+Teardown kills session background processes before tmpdir removal. A post-kill "preserve live bgjob" branch in finalize would never fire on the success path. Low impact if deactivation always runs on terminal outcomes.

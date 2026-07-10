@@ -1,0 +1,1 @@
+Fix stale statusline state across the full run lifecycle. Add run-matched deactivation, activate or clear progress before slow Step 0 probes, scope bgjob liveness to the active run, and make asynchronous writers use their owning run ID. Cover success, bail, pause, resume, orphan, and cross-run race cases.

@@ -1,0 +1,259 @@
+## Approach
+
+1. Add a run-aware `progress deactivate` command around the existing hardened pointer removal.
+   - Require lifecycle callers to supply their run ID.
+   - Clear `current` only when it still names that run.
+   - Keep SessionStart reset able to clear the active pointer after its own liveness check.
+   - Preserve run directories and breadcrumb logs.
+
+2. Remove the stale window at new-job entry.
+   - Clear the prior pointer before design or implement setup can block on preflight or reviewer probes.
+   - Separate reviewer probing from session creation where needed.
+   - Activate the new session or requested run ID as soon as it is known, before reviewer probes.
+   - Re-activate the persisted run ID on `--resume-plan-tail`.
+
+3. Scope statusline liveness to the active run.
+   - Read the active run ID once and use it for rendering and bgjob matching.
+   - Treat only a live, in-budget registry entry with the same clone and `entry.run_id` as active work.
+   - Apply that predicate to SessionStart reset, stale marking, and the one-hour hide.
+   - Add `resume` and `compact` to reset sources.
+   - Preserve `current` when the active run itself still owns live work.
+
+4. Stop cross-run breadcrumb contamination.
+   - Resolve a writer's run ID from its explicit command input or persisted process/session state.
+   - Route asynchronous review, CI, ship, and timing writes through `append_breadcrumb_for_run`.
+   - Do not fall back to `current` in daemon-capable paths.
+   - Keep missing or invalid identity best-effort and fail-silent, matching existing progress telemetry behavior.
+
+5. Deactivate at terminal lifecycle boundaries.
+   - Design: successful pause-save, terminal failure staging, Step 0 abort, and Step 6 completion or terminal preservation.
+   - Implement: teardown and standalone cleanup, including success and bail/stall outcomes.
+   - Run deactivation only after required terminal state or pause artifacts succeed.
+   - Use compare-and-clear semantics so a late old-run cleanup cannot clear a newer run.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/progress_file.py
+
+- Extend `deactivate_run` with an optional expected run ID and perform the match inside the existing fd-relative, symlink-safe traversal before unlinking `current`.
+- Add `progress_deactivate_main`.
+- Define CLI behavior for missing state, mismatched ownership, invalid run IDs, and unsafe paths without reimplementing pointer deletion.
+- Add or refine a small helper for resolving a process-owned run ID from explicit or persisted session values if this avoids duplicated writer logic. The helper must not consult `current`.
+
+### UPDATED: python/larch/report/statusline.py
+
+- Expand `RESET_SESSION_SOURCES` to include `resume` and `compact`.
+- Replace clone-wide bgjob detection with an active-run predicate that checks canonical clone path, exact registry `run_id`, process liveness, and the configured budget.
+- Carry the active run ID with its breadcrumb path so reset and age decisions use one identity.
+- Preserve an active pointer only when that run's own live, in-budget work exists.
+- Let unrelated or orphaned old-run jobs neither veto reset nor suppress stale and hide behavior.
+
+### UPDATED: python/larch/cli.py
+
+- Register `progress deactivate`.
+- Keep it out of machine-stdout command sets unless the implementation introduces a documented machine grammar.
+
+### UPDATED: python/larch/design/design_step0.py
+
+- Clear any prior active pointer at Step 0 entry.
+- Split session creation from reviewer probing so the new design run can activate after `SESSION_ID` is available but before external reviewer probes.
+- Use the requested `--run-id` when present, otherwise the session ID.
+- Preserve current degraded-tools output and failure handling while merging the separately collected probe KVs.
+
+### UPDATED: python/larch/state/bootstrap.py
+
+- Clear the prior pointer before implement preflight and setup work.
+- Create the session without the bundled reviewer probe, resolve and activate the run, then perform the probe and persist its results.
+- On `--resume-plan-tail`, resolve `LARCH_RUN_ID` or the persisted session identity and re-activate it before later progress writes.
+- Keep activation best-effort, but preserve existing bootstrap routing and failure contracts.
+
+### UPDATED: python/larch/design/design_pause.py
+
+- After publish, marker write, and pause completion succeed, deactivate the saved design run with its `RUN_ID`.
+- Do not clear progress when pause-save fails and the run remains active or recoverable.
+- Resolve the repository root from trusted persisted design state rather than ambient cwd.
+
+### UPDATED: python/larch/design/design_terminal.py
+
+- Deactivate after terminal failure state has been staged successfully.
+- Use the staged run identity and persisted repository root.
+- Keep failed staging recoverable and visible rather than clearing progress prematurely.
+
+### UPDATED: python/larch/design/design_step6.py
+
+- Deactivate the design run on terminal Step 6 paths, including artifact-preserving terminal outcomes.
+- Do not deactivate when Step 5c work is still live or when pause-save owns the terminal transition.
+- Deactivate before deleting the tmpdir, using persisted `SESSION_ID` and `REPO_ROOT`.
+
+### UPDATED: python/larch/state/finalize.py
+
+- Deactivate the implement run during teardown and standalone cleanup through `ctx.run_id`.
+- Perform deactivation before tmpdir deletion.
+- Preserve the pointer when the same run still has legitimate live, in-budget background work.
+- Use run-matched removal so delayed teardown from an old process cannot clear a newer run.
+
+### UPDATED: python/larch/review/review_core_body.py
+
+- Pass the review command's explicit run ID to progress writes.
+- Route reviewer dispatch, collection, aggregation, voting, and check breadcrumbs to that run's log.
+
+### UPDATED: python/larch/review/review_and_fix.py
+
+- Bind progress writes to the run ID already resolved from CLI and session state.
+- Ensure resumed or delayed review processes retain their original run identity.
+
+### UPDATED: python/larch/review/plan_review.py
+
+- Resolve the design run ID from the design session state.
+- Write plan-review loop breadcrumbs directly to that run rather than following `current`.
+
+### UPDATED: python/larch/review/plan_review_round.py
+
+- Carry the design run ID through round command wrappers and explicit progress writes.
+- Preserve current command and result contracts.
+
+### UPDATED: python/larch/implement/ci_monitor.py
+
+- Thread the owning implement run ID into local verification and CI-fix progress writes.
+- Ensure an old CI monitor cannot append to a newly activated run.
+- Prefer existing `RunContext` or explicit `run_id` inputs over environment fallback.
+
+### UPDATED: python/larch/implement/ship_state.py
+
+- Make ship progress writes run-aware.
+- Resolve identity from the ship `RunContext` or persisted ship state and call the explicit run writer.
+- Keep logging breadcrumbs separate from statusline progress breadcrumbs.
+
+### UPDATED: python/larch/report/timing.py
+
+- Make timing-derived progress marks use the process-owned design or implement run ID.
+- Continue recording timing data when progress identity is absent or invalid.
+- Do not use `current` as a fallback for timing writers that may outlive their run.
+
+### UPDATED: python/tests/report/test_progress_statusline.py
+
+- Cover the new deactivate CLI and compare-and-clear behavior.
+- Verify a stale old-run deactivation cannot clear a newer pointer.
+- Replace resume and compact preservation expectations with scoped reset expectations.
+- Test matching active-run bgjobs versus unrelated same-clone bgjobs.
+- Test live, expired, dead, malformed, and cross-clone registry entries.
+- Verify only matching live in-budget work suppresses stale marking and hiding.
+- Reproduce an old-run explicit writer after a new run activates and assert each log remains isolated.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+- Assert Step 0 clears stale progress before setup, activates before reviewer probing, and keeps degraded-tool routing intact.
+- Cover Step 0 abort, terminal failure, Step 6 success, preserved terminal state, in-flight refusal, and pause ownership.
+- Verify lifecycle cleanup cannot clear a replacement run.
+
+### UPDATED: python/tests/design/test_design_pause.py
+
+- Assert successful pause-save deactivates its run only after all durable pause steps succeed.
+- Assert publish or marker failures retain the active pointer.
+- Cover a newer-run pointer replacing the paused run before cleanup.
+
+### UPDATED: python/tests/state/test_bootstrap.py
+
+- Assert fresh implement bootstrap clears stale state and activates before reviewer probes.
+- Assert `--resume-plan-tail` restores the persisted run as active.
+- Preserve probe retry, session-env, and routing expectations.
+
+### UPDATED: python/tests/state/test_finalize.py
+
+- Cover deactivation for successful teardown, bail or stall teardown, and standalone cleanup.
+- Verify same-run live background work is preserved where required.
+- Verify compare-and-clear protects a newer run and cleanup still completes.
+
+### UPDATED: python/tests/review/test_plan_review.py
+
+- Assert plan-review breadcrumbs target the persisted design run after `current` changes.
+
+### UPDATED: python/tests/review/test_plan_review_round.py
+
+- Update progress test doubles for run-aware calls.
+- Assert round subprocess breadcrumbs retain the owning run ID.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+- Assert delayed review progress uses the review's resolved run ID rather than the active pointer.
+
+### UPDATED: python/tests/implement/test_ci_monitor.py
+
+- Cover explicit run propagation through local verification and CI-fix paths.
+- Assert an old monitor cannot refresh a newer run's log.
+
+### UPDATED: python/tests/implement/test_ship_state.py
+
+- Cover run-aware ship progress identity and missing-identity fail-silent behavior.
+
+### UPDATED: python/tests/report/test_timing.py
+
+- Assert timing marks write to the process-owned run.
+- Verify timing ledger success remains independent from progress-write success.
+
+### UPDATED: docs/progress-reporting.md
+
+- Document silent end-of-run clearing.
+- Document Step 0 clear and early activation behavior.
+- State that startup, clear, resume, and compact reset stale pointers unless the active run owns live in-budget work.
+- Explain that asynchronous writers use their own run IDs and cannot follow a later run's pointer.
+- Retain the one-active-run-per-clone user contract.
+
+### UPDATED: SECURITY.md
+
+- Document run-matched pointer deletion and explicit run-scoped daemon writes as integrity protections.
+- Note that progress pointer and log operations retain symlink and invalid-state refusal.
+- Describe the protection against an old process clearing or contaminating a newer run.
+
+## Edge cases
+
+- `current` is absent, malformed, symlinked, non-regular, or changes between read and removal.
+- A new run activates while an old run is entering teardown.
+- A registry row matches the clone but not the active run.
+- A matching row is alive but over budget, or the daemon is alive after its child exits.
+- SessionStart receives malformed JSON, no source, no repository, or statusline opt-out.
+- Step 0 fails before a session ID exists.
+- A custom run ID differs from the session ID.
+- `--resume-plan-tail` has missing or invalid persisted run identity.
+- Pause publication or marker creation fails.
+- Design Step 6 preserves artifacts but has no live work.
+- Progress identity is missing in a telemetry-only writer. The primary operation must continue.
+- A daemon writes after its run has been deactivated. Its old log may receive the row, but the row must not render unless that run is active again.
+
+## Failure modes
+
+- Do not clear a pointer merely because a lifecycle process believes it owns the clone. Require an exact run-ID match.
+- Do not treat unrelated same-clone bgjobs as evidence that the active run is alive.
+- Do not hide the active run when its own live, in-budget work remains.
+- Do not make progress telemetry failures fail review, CI, ship, timing, pause publication, or terminal cleanup.
+- Do not delete run logs during deactivation.
+- Do not weaken existing fd-relative and symlink protections.
+- Do not reintroduce reviewer probe results after activation in an order that changes degraded-tools routing.
+- Do not let lifecycle deactivation happen before required pause or terminal artifacts verify.
+
+## Testing strategy
+
+- Run focused Python tests for every changed module:
+  - `python/tests/report/test_progress_statusline.py`
+  - `python/tests/design/test_design_lifecycle.py`
+  - `python/tests/design/test_design_pause.py`
+  - `python/tests/state/test_bootstrap.py`
+  - `python/tests/state/test_finalize.py`
+  - the listed review, CI, ship, and timing tests.
+- Run the SessionStart statusline harness to preserve hook ordering and silent stdout behavior.
+- Run the CLI registry tests for the new verb.
+- Run Python lint and type checks only for changed Python files.
+- Run the existing design structure and implement Step 18 harnesses if lifecycle call placement changes their pinned behavior.
+- Repeat the issue reproduction with two run IDs:
+  1. Finish or deactivate run A and confirm no status renders.
+  2. Enter run B Step 0 and confirm run A never renders.
+  3. Keep an unrelated run-A bgjob live and confirm resume or startup clears A.
+  4. Keep run B's own live in-budget bgjob and confirm SessionStart preserves B.
+  5. Write from an old run-A process after B activates and confirm only A's log changes.
+
+difficulty: HARD
+diff_added: 760
+diff_deleted: 190
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 950
