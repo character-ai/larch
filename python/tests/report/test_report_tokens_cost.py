@@ -376,6 +376,21 @@ def test_render_cost_line_cli_emits_terminal_grammar(capsys: pytest.CaptureFixtu
     assert "Tokens:" in out
 
 
+def test_render_cost_line_includes_compact_cursor_lanes(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = render_cost_line_main([
+        "--cursor-input-tokens", "1000000",
+        "--cursor-grok-input-tokens", "1000000",
+        "--cursor-auto-input-tokens", "1000000",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Cursor $" in out
+    assert "(Composer $" in out
+    assert ", Grok $" in out
+    assert ", Auto $" in out
+
+
 def test_display_rates_shipped_defaults_snapshot() -> None:
     assert DEFAULT_VENDOR_MODEL == {
         "codex": "gpt-5.6-sol",
@@ -779,6 +794,23 @@ def test_token_cost_argv_splits_cursor_grok_by_model() -> None:
     assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "100"
     assert argv[argv.index("--cursor-input-tokens") + 1] == "200"
     assert cost["CURSOR_TOKENS"] == "390"
+
+
+def test_cursor_three_lanes_price_and_sum_together() -> None:
+    rates = display_rates(environ={})
+    parsed = _parsed_cost([
+        "--cursor-input-tokens", "1000000",
+        "--cursor-grok-input-tokens", "1000000",
+        "--cursor-auto-input-tokens", "1000000",
+    ])
+
+    composer = rates.cursor_input
+    grok = rates.cursor_grok_input
+    auto = rates.cursor_auto_input
+    assert parsed["CURSOR_COMPOSER_COST"] == f"{composer:.2f}"
+    assert parsed["CURSOR_GROK_COST"] == f"{grok:.2f}"
+    assert parsed["CURSOR_AUTO_COST"] == f"{auto:.2f}"
+    assert parsed["CURSOR_COST"] == f"{composer + grok + auto:.2f}"
 
 
 def test_cursor_grok_tokens_emit_component_costs_in_wire_order() -> None:

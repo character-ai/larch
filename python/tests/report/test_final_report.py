@@ -122,6 +122,34 @@ def test_write_final_report_module_renders_summary(tmp_path: Path, monkeypatch) 
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
+def test_write_final_report_renders_cursor_cost_lanes(tmp_path: Path) -> None:
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": {
+                "composer-2.5": {"input": 100, "cache_read": 20, "output": 10},
+                "grok-4.5": {"input": 100, "cache_read": 20, "output": 10},
+                "auto": {"input": 100, "cache_read": 20, "output": 10},
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "Cursor $" in summary
+    assert "Composer $" in summary
+    assert "Grok $" in summary
+    assert "Auto $" in summary
+
+
 def test_final_report_code_review_line_ignores_stale_ship_state(tmp_path: Path) -> None:
     _write_minimal_state(tmp_path)
     ship = tmp_path / "ship-pr-state.sh"
@@ -310,6 +338,25 @@ def test_final_report_token_fields_cursor_lanes_require_valid_model_map(tmp_path
     assert fallback_fields["cursor_composer_cost"] is None
     assert fallback_fields["cursor_grok_cost"] is None
     assert fallback_fields["cursor_auto_cost"] is None
+
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1, "total": 1}},
+            "BUCKETS_claude": {"input": 1},
+            "BUCKETS_cursor": {"input": 300, "cache_read": 60, "output": 30},
+            "BUCKETS_cursor_by_model": "invalid",
+        }),
+        encoding="utf-8",
+    )
+
+    top_level_fallback_fields = final_report._final_report_token_fields(
+        implement_tmpdir=tmp_path,
+        run_id="run1",
+    )
+
+    assert top_level_fallback_fields["cursor_composer_cost"] is None
+    assert top_level_fallback_fields["cursor_grok_cost"] is None
+    assert top_level_fallback_fields["cursor_auto_cost"] is None
 
 
 def test_final_report_token_fields_enriches_claude_sub_by_model_from_ledger(tmp_path: Path) -> None:
