@@ -36,7 +36,6 @@ from larch.review.review_pipeline_shared import (
     _write_text,
 )
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
-from larch import io as larch_io
 from larch.core import config
 from larch.review.review_prune import (
     derive_prune_status,
@@ -313,19 +312,6 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
             row=row,
         )
 
-
-
-def _forced_plan_fidelity_active() -> bool:
-    raw_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    if not raw_tmpdir:
-        return False
-    return larch_io.read_kv(
-        path=Path(raw_tmpdir) / "plan-coverage.env",
-        key="PLAN_FIDELITY_FORCED",
-        default="false",
-        first_match=True,
-        on_error_default=True,
-    ) == "true"
 
 
 def _append_forced_plan_fidelity_row(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool, cursor_slots_available: bool, tier: str) -> None:
