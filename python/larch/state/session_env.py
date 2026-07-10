@@ -828,12 +828,12 @@ def _step0_parsed_env_path(pid: str) -> Path:
 
 def reap_pid_residuals(claude_pid: str) -> None:
     _validate_claude_pid(claude_pid)
-    targets: tuple[Path, Path, Path] = (
-        _design_symlink_path(claude_pid),
-        _design_run_path(claude_pid),
-        _step0_parsed_env_path(claude_pid),
-    )
-    for target in targets:
+    symlink_path = _design_symlink_path(claude_pid)
+    _validate_design_current_env_link(symlink_path=symlink_path, pid=claude_pid)
+    with suppress(FileNotFoundError):
+        symlink_path.unlink()
+
+    for target in (_design_run_path(claude_pid), _step0_parsed_env_path(claude_pid)):
         larch_io.assert_no_symlink_path_or_ancestors(target)
         with suppress(FileNotFoundError):
             target.unlink()

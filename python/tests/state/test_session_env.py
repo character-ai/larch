@@ -1194,6 +1194,32 @@ def test_reap_pid_residuals_refuses_symlinked_ancestors(tmp_path: Path, monkeypa
     assert target.is_file()
 
 
+def test_reap_pid_residuals_removes_leaf_design_symlink_and_residuals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "home"
+    sessions = home / ".cache" / "larch" / "sessions"
+    home.mkdir()
+    sessions.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+
+    link_target = tmp_path / "design-target-123.sh"
+    link_target.write_text("sentinel\n", encoding="utf-8")
+    link = sessions / "current-design-env-123.sh"
+    link.symlink_to(link_target)
+    run_path = sessions / "design-run-123.sh"
+    run_path.write_text("run\n", encoding="utf-8")
+    parsed_path = sessions / "step0-parsed-123.env"
+    parsed_path.write_text("parsed\n", encoding="utf-8")
+
+    session_env.reap_pid_residuals("123")
+
+    assert not link.exists()
+    assert link_target.is_file()
+    assert not run_path.exists()
+    assert not parsed_path.exists()
+
+
 def test_read_key_emits_on_fd3_under_quiet_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
