@@ -28,6 +28,7 @@ from larch.design.design_session import (
     _rehydrate_wrapper_env,
     _touch,
 )
+from larch.design.design_step0_env import CONFIGURATION_ERROR_RC
 from larch.design.design_step2b import _read_simple_env
 from larch.design.design_step5c import STEP5C_STATUS_ALLOW_KEYS, STEP6_INFO_ICON
 
@@ -174,6 +175,11 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
         return 0
 
     try:
+        session_env._validate_claude_pid(parsed.claude_pid)  # pyright: ignore[reportPrivateUsage]
+    except ValueError as exc:
+        _core_diagnostic(f"design-step6-cleanup.sh: {exc}")
+        return CONFIGURATION_ERROR_RC
+    try:
         design_tmpdir = _validate_design_tmpdir_arg(design_tmpdir_raw)
     except _CoreUsageError as exc:
         _core_diagnostic(f"design-step6-cleanup.sh: {exc}")
@@ -185,7 +191,11 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
     cleanup_rc = session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
     if cleanup_rc != 0:
         return cleanup_rc
-    session_env.reap_pid_residuals(parsed.claude_pid)
+    try:
+        session_env.reap_pid_residuals(parsed.claude_pid)
+    except (OSError, ValueError) as exc:
+        _core_diagnostic(f"design-step6-cleanup.sh: {exc}")
+        return 1
     return 0
 
 

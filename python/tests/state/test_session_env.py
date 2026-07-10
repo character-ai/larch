@@ -1175,6 +1175,25 @@ def test_cleanup_tmpdir_allowlist_and_cache_roots(tmp_path: Path, monkeypatch: p
     assert bad.returncode == 1
 
 
+def test_reap_pid_residuals_refuses_symlinked_ancestors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    redirect = tmp_path / "redirect"
+    home.mkdir()
+    redirect.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    cache_root = home / ".cache"
+    cache_root.mkdir()
+    (redirect / "sessions").mkdir()
+    target = redirect / "sessions" / "current-design-env-123.sh"
+    target.write_text("sentinel\n", encoding="utf-8")
+    (cache_root / "larch").symlink_to(redirect)
+
+    with pytest.raises(OSError, match="symlinked"):
+        session_env.reap_pid_residuals("123")
+
+    assert target.is_file()
+
+
 def test_read_key_emits_on_fd3_under_quiet_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))

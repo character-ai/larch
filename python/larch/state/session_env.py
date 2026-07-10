@@ -834,6 +834,7 @@ def reap_pid_residuals(claude_pid: str) -> None:
         _step0_parsed_env_path(claude_pid),
     )
     for target in targets:
+        larch_io.assert_no_symlink_path_or_ancestors(target)
         with suppress(FileNotFoundError):
             target.unlink()
 

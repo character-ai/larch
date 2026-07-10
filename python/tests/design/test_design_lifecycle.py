@@ -1263,6 +1263,33 @@ def test_step0_abort_cleanup_does_not_reap_when_tmpdir_cleanup_fails(
     assert parsed_path.is_file()
 
 
+def test_step0_abort_cleanup_rejects_invalid_claude_pid_before_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+
+    def fail_run(_cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("cleanup must not run after invalid --claude-pid")
+
+    monkeypatch.setattr(subprocess, "run", fail_run)
+    rc = design_lifecycle.step0_abort_cleanup_main([
+        "--session-env-path",
+        str(env_path),
+        "--claude-pid",
+        "bogus",
+        "--plugin-root",
+        str(CLI.parent.parent),
+    ])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "Invalid --claude-pid" in err
+    assert "cleanup must not run" not in err
+
+
 def test_step0_parsed_cache_path_uses_session_env_helper() -> None:
     assert design_step0_env._parsed_cache_path("123") == session_env._step0_parsed_env_path("123")  # pyright: ignore[reportPrivateUsage]
 
@@ -5415,6 +5442,37 @@ def test_step6_cleanup_does_not_reap_when_tmpdir_cleanup_fails(
     monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fail_cleanup)
     monkeypatch.setattr(session_env, "reap_pid_residuals", fail_reap)
     assert design_lifecycle.step6_cleanup_core(_step6_args(env_path)) == 1
+
+
+def test_step6_cleanup_rejects_invalid_claude_pid_before_touch_or_cleanup(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    _write_step5c_status(design)
+
+    def fail_touch(_path: Path) -> None:
+        raise AssertionError("step-6 marker must not be written after invalid --claude-pid")
+
+    def fail_require() -> int:
+        raise AssertionError("plugin-root validation must not run after invalid --claude-pid")
+
+    def fail_cleanup(_argv: list[str]) -> int:
+        raise AssertionError("cleanup must not run after invalid --claude-pid")
+
+    def fail_reap(_claude_pid: str) -> None:
+        raise AssertionError("reap must not run after invalid --claude-pid")
+
+    monkeypatch.setattr(design_step6, "_touch", fail_touch)
+    monkeypatch.setattr(design_step6, "_design_require_plugin_root", fail_require)
+    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", fail_cleanup)
+    monkeypatch.setattr(session_env, "reap_pid_residuals", fail_reap)
+
+    rc = design_lifecycle.step6_cleanup_core(["--session-env-path", str(env_path), "--claude-pid", "bogus"])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "Invalid --claude-pid" in err
 
 
 def test_step6_combined_skips_cleanup_when_prelude_saves_pause(

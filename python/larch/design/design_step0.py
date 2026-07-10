@@ -710,13 +710,22 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
     if not env.get("DESIGN_TMPDIR"):
         print("/design Step 0 abort-cleanup: DESIGN_TMPDIR required", file=sys.stderr)
         return 1
+    try:
+        session_env._validate_claude_pid(ns.claude_pid)  # pyright: ignore[reportPrivateUsage]
+    except ValueError as exc:
+        print(f"design-step0-abort-cleanup.sh: {exc}", file=sys.stderr)
+        return CONFIGURATION_ERROR_RC
     design_tmpdir = Path(env["DESIGN_TMPDIR"])
     print(f"**⚠ /design: aborted by operator: {ns.reason}**")
     _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 0", tool=ns.tool, exit_code=0, category="Warnings", output_file=design_tmpdir / "execution-issues.md")
     cleanup_rc = subprocess.run(_cli_cmd(plugin_root, "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)), check=False).returncode
     if cleanup_rc != 0:
         return cleanup_rc
-    session_env.reap_pid_residuals(ns.claude_pid)
+    try:
+        session_env.reap_pid_residuals(ns.claude_pid)
+    except (OSError, ValueError) as exc:
+        print(f"design-step0-abort-cleanup.sh: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
