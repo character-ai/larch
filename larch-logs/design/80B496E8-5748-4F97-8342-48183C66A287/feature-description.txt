@@ -1,0 +1,3 @@
+# switch /implement coder MODERATE only from Codex/5.6 Sol to Cursor/Grok 4.5,…
+
+switch /implement coder MODERATE only from Codex/5.6 Sol to Cursor/Grok 4.5, and remember to update report_tokens_cost.py with ("cursor", "grok-4.5") rate.
