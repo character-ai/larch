@@ -1,0 +1,52 @@
+# Grok-aware Cursor pricing and cost wire
+
+Partition piece 1 of 4 split from #6825.
+
+**Scope**: python/larch/report/report_tokens_models.py, python/larch/report/report_tokens_cost.py, python/larch/report/report_tokens_render.py, python/larch/report/final_report.py, python/larch/git/pr_body.py, and their tests.
+
+**Firm headings**: python/larch/report/report_tokens_models.py, python/larch/report/report_tokens_cost.py, python/larch/report/report_tokens_render.py, python/larch/report/final_report.py, python/larch/git/pr_body.py, python/tests/report/test_report_tokens_cost.py, python/tests/report/test_report_tokens_render.py, python/tests/report/test_final_report.py, python/tests/git/test_pr_body.py
+
+**Acceptance**:
+
+Add ("cursor","grok-4.5") rate row at 2.00/0.50/6.00 without Teams surcharge. Classify BUCKETS_cursor_by_model into composer/grok/auto lanes. Emit additive per-model cursor cost fields while preserving aggregate CURSOR_COST. Render per-model cursor splits in token reports, final reports, and PR summaries; fall back to aggregate for legacy artifacts.
+
+**Dependencies (from panel)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# Switch /implement Step 2 coder MODERATE tier from Codex gpt-5.6-sol to Cursor grok-4.5; add ("cursor","grok-4.5") rate row
+
+## Goal
+
+Route the `/implement` Step 2 coder to Cursor `grok-4.5` for the MODERATE difficulty tier only. Keep TRIVIAL on Codex `gpt-5.6-terra` and HARD on Codex `gpt-5.6-sol`. Price the new lane in `/report-tokens` with a `("cursor", "grok-4.5")` rate row.
+
+## Pricing rationale (verified 2026-07-10)
+
+- Cursor lists Grok 4.5 as a first-party model: input $2.00/M, cache read $0.50/M, output $6.00/M, no cache-write charge.
+- Pinned (non-Auto) Grok 4.5 is exempt from the $0.25/M Cursor Token Rate. Sources: cursor.com/docs/models-and-pricing, cursor.com/help/models-and-usage/token-rate, and a Cursor staff reply in forum thread 165207: "Grok 4.5 is still treated as a first-party model and is exempt from Cursor Token Rate."
+- Codex `gpt-5.6-sol` costs input $5.00/M, cached input $0.50/M, output $30.00/M.
+- Observed Step 2 codex coder volume (481 runs in larch-logs): median 174k input, 6.65M cache read, 23k output per run. At those volumes Grok 4.5 costs about $3.81/run vs $4.88/run for Sol, roughly 22% cheaper at equal volumes.
+- Grok 4.5 usage draws from the Cursor first-party included pool, not the per-token API pool.
+
+## Current behavior (references verified at v52.5.23 HEAD)
+
+1. Coder vendor selection is the `implement.step2_coder` waterfall with static order `("codex", "cursor", "claude")`: `python/larch/core/config.py:363`. Consumed via `external_defaults.tool_order("implement.step2_coder")` at `python/larch/state/bootstrap.py:1113`.
+2. The codex coder model is difficulty-keyed: `CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY` (`python/larch/core/config.py:654`) maps TRIVIAL to `gpt-5.6-terra` and MODERATE/HARD to `CODEX_DEFAULT_MODEL` = `gpt-5.6-sol` (config.py:650). Consumers: `python/larch/implement/dispatch_step2.py:378` and `python/larch/agents/_ci_launcher.py:834`.
+3. The cursor coder model has no difficulty awareness: `python/larch/implement/dispatch_step2.py:374-375` resolves `LARCH_CURSOR_MODEL`, then `CLAUDE_PLUGIN_OPTION_CURSOR_MODEL`, then `CURSOR_DEFAULT_MODEL = "composer-2.5"` (config.py:286).
+4. Rate table: `DEFAULT_RATE_TABLE_PER_M` in `python/larch/report/report_tokens_cost.py` has one cursor row, `("cursor", "composer-2.5")`, with the Teams Token Rate surcharge added to input, cache_read, and output (lines 64-69). Model-less cursor rows fall back to `DEFAULT_VENDOR_MODEL["cursor"] = "composer-2.5"` (lines 17-21 and 125-136).
+5. Cursor sidecar token rows carry a per-row `model` and aggregate into `BUCKETS_cursor_by_model`, parallel to the codex buckets: `python/larch/report/tokens.py:1099-1105`. Rows with an empty model default to `composer-2.5` (tokens.py:1105).
+
+## Work items
+
+1. **Difficulty-aware vendor order.** Add a difficulty-keyed order map for the Step 2 coder in `python/larch/core/config.py`, for example `CODER_TOOL_ORDER_BY_DIFFICULTY`: TRIVIAL `("codex", "cursor", "claude")`, MODERATE `("cursor", "codex", "claude")`, HARD `("codex", "cursor", "claude")`. Wire the `tool_order("implement.step2_coder")` consumer at `python/larch/state/bootstrap.py:1113` to pick by the resolved difficulty tier. Preserve the documented `--coder` semantics (an explicit `--coder` reorders the two external tools ahead of Claude) for every tier.
+2. **Difficulty-aware cursor model.** Add `CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY` next to `CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY` (config.py:654): TRIVIAL `CURSOR_DEFAULT_MODEL`, MODERATE `"grok-4.5"`, HARD `CURSOR_DEFAULT_MODEL`. In `dispatch_step2.py:374-375`, keep the env and plugin override precedence unchanged; replace only the static `default=config.CURSOR_DEFAULT_MODEL` with the per-difficulty lookup. Confirm `_ci_launcher.py` has no parallel cursor-model default that also needs the map.
+3. **Fallback rule.** When Cursor is unavailable at MODERATE, the waterfall falls through to Codex, which must keep `gpt-5.6-sol`. No change to `CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY`.

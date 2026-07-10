@@ -1,0 +1,1 @@
+Add three-lane Cursor pricing for composer, Grok 4.5, and Auto. Preserve `CURSOR_COST` and legacy aggregate rendering. Extend token analysis, final reports, PR summaries, and focused regression tests.
