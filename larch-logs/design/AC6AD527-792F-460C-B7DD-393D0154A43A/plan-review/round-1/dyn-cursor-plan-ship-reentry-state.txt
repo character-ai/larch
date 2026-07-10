@@ -1,0 +1,47 @@
+Reviewing the plan against ship driver, resume, and pre-terminal guard code paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/implement/ship_state.py:317-366, python/larch/implement/dispatch_ship.py:546, python/larch/implement/ship.py:1305-1308	Fix 2 must pass ctx.with_(stall_tracking=False, stall_step="") into _write_ship_state	After a terminal stall, ship-pr-state.sh has STALL_TRACKING=true and dispatch_ship._ship_pre_fix_context copies that into RunContext (dispatch_ship.py:546). _write_ship_state only pops STALL_TRACKING/STALL_STEP when ctx.stall_tracking is false (ship_state.py:317-319); otherwise it rewrites them true (363-366). De-terminalization would leave PHASE updated but stall flags intact, so normalized_outcome_values and the pre-terminal guard still see a terminal stall.	In the de-terminalization helper (ship.py after blocked-resume handling), call _write_ship_state with ctx.with_(stall_tracking=False, stall_step="") (optionally after _hydrate_resume_context). Extend the re-entry test to assert STALL_TRACKING=false and empty STALL_STEP in ship-pr-state.sh before the first flush_logs_pre.
+1	in_scope	minor	correctness	python/larch/state/_tokens.py:177-184, python/larch/state/_normalize.py:184-188, plan Edge cases / UPDATED python/larch/implement/ship.py	Symlinked finalize-state.sh refusal needs fail-closed behavior, not skip-only	The plan refuses to delete symlink finalize-state.sh (good), but _read_state_file treats symlinks as files (path.is_file()) and still loads STALL_TRACKING from the target (_tokens.py:177-184). Skipping deletion without aborting leaves _stall_signal_is_terminal true via finalize (_normalize.py:187), so Part B recovery can remain deadlocked on the pre-terminal guard.	If finalize-state.sh under the allowed tmpdir is not a regular file (symlink, directory, etc.), emit a breadcrumb and return ShipResult STALLED (or raise ShipError mapped to stall). Do not proceed to flush_logs_pre. Add a focused test with a symlink finalize-state.sh.
+1	in_scope	minor	architecture	python/larch/state/_classify.py:144-189, plan Fix 3 / UPDATED python/larch/state/_classify.py	_classify.py routing for REFRESH_SKIP_PRETERMINAL_OUTCOME is underspecified	Fix 3 requires deliberate classifier routing for the new reason. The plan names _classify.py but not the matcher. Without an explicit rule, a detail carrying pre-terminal-outcome may fall through _classify_text to unrecoverable/fallback and lose the observed transient-infra + step8-shippr resume shape tied to pr-create-guideline-outcome-refresh stalls.	Add a narrow _classify_text branch (or DIRECT_BAIL-style map) keyed on the new reason token and/or stall_step pr-create-guideline-outcome-refresh that preserves FAILURE_CLASS=transient-infra and RESUME_HINT=step8-shippr; add a classifier unit test for the new detail string.
+
+## Review summary
+
+The plan places de-terminalization at the right point: after `_resume_plan` and `_blocked_resume_result`, and before any branch can call `flush_logs_pre` (including `reconcile_committed_stalled_summary_if_recovered` on the `merged` path at `ship.py:1315-1321`). It preserves resume inputs by deriving the target phase from `ResumePlan.start`, not from stale `PHASE=stalled`. It keeps prompt-side writers untouched and does not relax `_flush_guideline_outcome_before_pr` / `_flush_invariant_outcome_before_pr` fail-closed allowlists (`ship.py:273-284`).
+
+### Finding 1 (major): `RunContext.stall_tracking` must be cleared for Fix 2
+
+The plan says `STALL_TRACKING=false` but does not require clearing `RunContext` before `_write_ship_state`. That is required on the live reship path because `dispatch_ship._ship_pre_fix_context` seeds `stall_tracking` from the stalled state file.
+
+```546:547:python/larch/implement/dispatch_ship.py
+        stall_tracking=_ship_pre_fix_truthy(state.get("STALL_TRACKING", "")),
+        stall_step=state.get("STALL_STEP", ""),
+```
+
+```317:366:python/larch/implement/ship_state.py
+        if not ctx.stall_tracking:
+            for key in _NON_STALL_STATE_KEYS:
+                _ = fields.pop(key, None)
+    ...
+        if terminal_outcome is not None or ctx.stall_tracking or "STALL_TRACKING" not in fields:
+            fields["STALL_TRACKING"] = _state_bool(value=ctx.stall_tracking)
+        if terminal_outcome is not None or ctx.stall_step or "STALL_STEP" not in fields:
+            fields["STALL_STEP"] = ctx.stall_step
+```
+
+Without `ctx.with_(stall_tracking=False, stall_step="")`, Fix 2 can update `PHASE` while leaving terminal stall fields, so `normalized_outcome_values` still yields `stalled` and `_preterminal_outcome_refresh_skip` still blocks (`run_log_flush.py:710-717`).
+
+### Finding 2 (minor): symlink `finalize-state.sh` must fail closed
+
+The plan’s symlink edge case is correct on security grounds, but refusal alone is incomplete: `_read_state_file` still reads symlink targets (`_tokens.py:177-184`), so `_stall_signal_is_terminal` can remain true (`_normalize.py:184-188`). The helper should stall when finalize cannot be removed as a regular file.
+
+### Finding 3 (minor): classifier routing needs a concrete rule
+
+Fix 3 and acceptance criterion 5 require `_classify.py` updates. The plan lists the file but not the matching rule. A narrow matcher for the new reason (preserving `transient-infra` / `step8-shippr` for the pre-PR refresh deadlock shape) avoids observability regressions if state reset is partial.
+
+### What the plan gets right
+
+- **Timing**: Insertion at `run_ship` after `ship.py:1305-1308` is before `fresh` postbump flush (`1391`), guideline refresh (`_flush_guideline_outcome_before_pr`), and merged reconcile flush.
+- **Phase mapping**: `fresh` → `pr-prep`, `pre-pr-compose`/`open-pr` → `assessments` (`config.SHIP_ROUTE_ACTION_ASSESSMENTS`), `merged` → `postmerge` matches existing writers (`ship.py:1324-1331`, `1457-1464`).
+- **Pre-terminal guard**: New reason mirrored into `REFRESH_SKIP_MERGE_OK` like `REFRESH_SKIP_COMMIT_FAILED` preserves existing merge-refresh semantics; guideline/invariant flush sites still stall on any non-allowlisted skip (`ship.py:273-284`). `_check_preterminal_outcome_label` / forbidden labels stay unchanged per plan.
+- **Post-merge / done resumes**: De-terminalize only when `PHASE=stalled`; `done` and blocked starts return before flush; merged reconcile runs only after the reset point.
+- **Commit retry**: Factoring `git add` → `diff --cached --quiet` → `git commit` from `_commit_run` (`run_log_commit.py:497-506`) with a single retry matches the failure mode analysis (copy/scrub before tail).

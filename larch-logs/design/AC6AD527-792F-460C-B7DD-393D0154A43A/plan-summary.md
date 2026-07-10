@@ -1,0 +1,1 @@
+Plan: add retry-once hook tolerance to the run-log commit chokepoint, reset stale terminal ship state on Python ship re-entry, split the pre-terminal skip reason, normalize run-log text output to one trailing newline, and cover the recovery path with hermetic git and ship-state tests.
