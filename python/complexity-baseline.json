@@ -2316,6 +2316,12 @@
     "metric": 54
   },
   {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0915",
+    "qualified_symbol": "render_run_summary_main",
+    "metric": 53
+  },
+  {
     "file": "larch/git/push.py",
     "code": "C901",
     "qualified_symbol": "_checkpoint_rebase_result",
@@ -4401,7 +4407,7 @@
     "file": "larch/report/report_tokens_cost.py",
     "code": "PLR0913",
     "qualified_symbol": "_emit_cost_line",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/report/report_tokens_plot.py",
