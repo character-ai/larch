@@ -212,14 +212,14 @@ def test_next_untried_tier_reports_exhaustion_regardless_of_availability() -> No
 
 def test_next_untried_tier_rejects_invalid_inputs_and_role_kinds() -> None:
     with pytest.raises(external_defaults.ExternalDefaultError, match="invalid attempted tier"):
-        external_defaults.next_untried_tier(
+        _ = external_defaults.next_untried_tier(
             "implement.ci_recovery_fixer",
             ("unknown",),
         )
     with pytest.raises(external_defaults.ExternalDefaultError, match="kind=waterfall"):
-        external_defaults.next_untried_tier("review.panel", ())
+        _ = external_defaults.next_untried_tier("review.panel", ())
     with pytest.raises(external_defaults.ExternalDefaultError, match="unknown role"):
-        external_defaults.next_untried_tier("missing.role", ())
+        _ = external_defaults.next_untried_tier("missing.role", ())
 
 
 def test_fixer_lane_budget_reserves_a_full_timeout_per_configured_tier() -> None:
