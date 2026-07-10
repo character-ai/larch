@@ -94,7 +94,7 @@ def _validate_ci_args(args: argparse.Namespace) -> tuple[bool, int]:
     if args.role not in {"fix", "resolve-conflict"}:
         _err("agent launch-ci: --role must be fix or resolve-conflict")
         return False, 2
-    if not _is_positive_int(args.timeout) or not _valid_model_token(args.model):
+    if not _is_positive_int(args.timeout) or (args.model and not _valid_model_token(args.model)):
         _err("agent launch-ci: --timeout must be a positive integer" if not _is_positive_int(args.timeout) else "agent launch-ci: --model must be a single non-empty token")
         return False, 2
     if not Path(args.output).is_absolute() or not _validate_meta_path(label="--output", value=args.output):
@@ -169,7 +169,7 @@ def _ci_parser(prog: str) -> argparse.ArgumentParser:
     parser.add_argument("--failure-log", default="")
     parser.add_argument("--timeout", default="1800")
     parser.add_argument("--timing-task-kind", default="")
-    parser.add_argument("--model", default=config.CLAUDE_CI_RECOVERY_MODEL)
+    parser.add_argument("--model", default="")
     return parser
 
 
@@ -234,6 +234,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
         return rc
     output = Path(args.output)
     paths = LauncherPaths.from_output(output)
+    model = args.model or (config.CLAUDE_CI_RECOVERY_MODEL if args.role == "fix" else config.CLAUDE_CI_FIX_MODEL)
     prompt = _ci_prompt(tool="Codex", args=args)
     _write(path=paths.prompt, text=prompt)
     workdir = _resolve_review_codex_workdir(str(Path.cwd()))
@@ -255,6 +256,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             _append_ci_failure(output, tool="codex", launcher_exit=1, site="ci fixer")
             return 0
+        resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
         child = [
             "codex",
             "exec",
@@ -288,7 +290,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
         hooks=(
             lambda: _post_codex_events(events=paths.events, sidecar=paths.sidecar),
             lambda: _record_launch_timing(tool="codex", task_kind=args.timing_task_kind or "codex-ci", start_s=start, output=output, exit_code=result.exit_code),
-            lambda: _record_usage_from_events_and_emit_token(events=paths.events, sidecar=paths.sidecar, label="codex_ci_fix", token_record=paths.token_record),
+            lambda: _record_usage_from_events_and_emit_token(events=paths.events, sidecar=paths.sidecar, label="codex_ci_fix", token_record=paths.token_record, model=resolved_model),
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-codex-ci\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
             lambda: _write_timeout_stall_json(paths.stall_json, tool="codex", exit_code=result.exit_code, timeout_seconds=int(args.timeout, 10), overwrite=True),
             lambda: _promote_inner_done(output),
@@ -815,6 +817,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
             _write_stderr_tail(source=sidecar, output=output)
             _emit_implement_launcher_envelope(args=args, launcher_exit=1)
             return 0
+        resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
         events = paths.events
         child = [
             "codex",
@@ -855,7 +858,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
         hooks=(
             lambda: _post_codex_events(events=events, sidecar=sidecar),
             lambda: _record_implement_timing(tool="codex", task_kind=task_kind, start=start, output=output, exit_code=result.exit_code),
-            lambda: _record_usage_from_events(events=events, sidecar=sidecar, label=config.CODEX_IMPLEMENT_RAW_LABEL),
+            lambda: _record_usage_from_events(events=events, sidecar=sidecar, label=config.CODEX_IMPLEMENT_RAW_LABEL, model=resolved_model),
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), workdir])}\n"),
             lambda: _append_implement_failure_if_nonzero(tool="codex", output=output, sidecar_log=sidecar, exit_code=result.exit_code),
             lambda: _promote_inner_done(output),
@@ -987,6 +990,7 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
     if not ok:
         return rc
     paths = LauncherPaths.from_output(output := Path(args.output))
+    model = args.model or (config.CLAUDE_CI_RECOVERY_MODEL if args.role == "fix" else config.CLAUDE_CI_FIX_MODEL)
     prompt = _ci_prompt(tool="Claude", args=args)
     _write(path=paths.prompt, text=prompt)
     if shutil.which("claude") is None:
@@ -1000,7 +1004,7 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         "--output-format",
         "json",
         "--model",
-        args.model,
+        model,
         "--add-dir",
         cwd,
         "--allowedTools",
@@ -1066,7 +1070,7 @@ def launch_claude_ci_main(argv: list[str] | None = None) -> int:
         check=False,
     )
     if parsed_obj is not None:
-        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_ci_fix", model=args.model)
+        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_ci_fix", model=model)
     _write(path=paths.done, text=f"{exit_code}\n")
     _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="ci fixer")
     _emit_ci_launcher_result(output=output, launcher_exit=exit_code, tool="claude")

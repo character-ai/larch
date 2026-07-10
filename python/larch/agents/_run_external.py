@@ -626,20 +626,21 @@ def _record_usage_from_events(*, events: Path, sidecar: Path, label: str, token_
             text=f"TOOL=codex\n{model_line}INPUT={totals.uncached_input_tokens}\nOUTPUT={totals.output_tokens}\nCACHE_READ={totals.cached_input_tokens}\nTOTAL={totals.total_tokens}\nRAW={label}\n"
         )
         return
-    proc.run(
-        [
-            sys.executable,
-            str(_PY_CLI),
-            "token",
-            "record-vendor",
-            "codex",
-            f"input={totals.uncached_input_tokens}",
-            f"cache_read={totals.cached_input_tokens}",
-            f"output={totals.output_tokens}",
-            f"total={totals.total_tokens}",
-            f"raw={label}",
-        ],
-    )
+    argv = [
+        sys.executable,
+        str(_PY_CLI),
+        "token",
+        "record-vendor",
+        "codex",
+        f"input={totals.uncached_input_tokens}",
+        f"cache_read={totals.cached_input_tokens}",
+        f"output={totals.output_tokens}",
+        f"total={totals.total_tokens}",
+        f"raw={label}",
+    ]
+    if model:
+        argv.append(f"model={model}")
+    proc.run(argv)
 
 
 def _mirror_codex_quota_from_events(*, events: Path, sidecar: Path) -> None:
@@ -1150,8 +1151,8 @@ def _emit_token_record_if_present(token_record: Path) -> None:
         _emit_kv(key="TOKEN_RECORD", value=str(token_record))
 
 
-def _record_usage_from_events_and_emit_token(*, events: Path, sidecar: Path, label: str, token_record: Path) -> None:
-    _record_usage_from_events(events=events, sidecar=sidecar, label=label, token_record=token_record)
+def _record_usage_from_events_and_emit_token(*, events: Path, sidecar: Path, label: str, token_record: Path, model: str = "") -> None:
+    _record_usage_from_events(events=events, sidecar=sidecar, label=label, token_record=token_record, model=model)
     _emit_token_record_if_present(token_record)
 
 

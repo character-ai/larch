@@ -3613,10 +3613,10 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
         order.append("timing")
 
     def fake_record_usage(events: Path, sidecar: Path, label: str, token_record: Path | None = None, *, model: str = "") -> None:  # noqa: ARG001  # pylint: disable=unused-argument
-        _ = model
         order.append("usage")
         assert token_record == paths.token_record
-        _ = paths.token_record.write_text("TOKEN=1\n", encoding="utf-8")
+        assert model == "gpt-5.6-terra"
+        _ = paths.token_record.write_text(f"TOOL=codex\nMODEL={model}\nTOKEN=1\n", encoding="utf-8")
 
     def fake_emit_kv(key: str, value: str | int) -> None:
         if key == "TOKEN_RECORD":
@@ -3638,7 +3638,7 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
 
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
     monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(("--model", "gpt-5.6-terra")))
     monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(_run_external, "_write", fake_write)
     monkeypatch.setattr(_ci_launcher, "_append", fake_append)
@@ -3667,6 +3667,7 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
 
     assert rc == 0
     assert order == ["events", "timing", "usage", "token", "meta", "stall", "promote", "failure", "emit"]
+    assert "MODEL=gpt-5.6-terra" in paths.token_record.read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
     assert stdout.index("TOKEN_RECORD=") < stdout.index("LAUNCHER_EXIT=")
 
@@ -3788,7 +3789,7 @@ def test_launch_claude_ci_records_timing_and_token_sidecars(
     token_record = output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "TOOL=claude" in token_record
     assert "TOTAL=17" in token_record
-    assert f"MODEL={config.CLAUDE_CI_FIX_MODEL}" in token_record
+    assert f"MODEL={config.CLAUDE_SONNET_4_6_MODEL}" in token_record
 
 
 @pytest.mark.parametrize(
@@ -4193,7 +4194,7 @@ def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
 
     def fake_record_usage(events: Path, sidecar: Path, label: str, token_record: Path | None = None, *, model: str = "") -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         _ = token_record
-        _ = model
+        assert model == "gpt-5.6-terra"
         order.append("usage")
 
     def fake_append_failure(**kwargs: object) -> None:  # type: ignore[reportAny]
@@ -4219,7 +4220,7 @@ def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
     monkeypatch.setattr(_ci_launcher, "_safe_codex_home_dir", fake_safe_home)
     monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(("--model", "gpt-5.6-terra")))
     monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
     monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(_ci_launcher, "_append", fake_append)
@@ -4961,9 +4962,51 @@ def test_launch_claude_ci_uses_opus_default_and_write_capable_argv(
     assert rc == 0
     argv = argv_log.read_text(encoding="utf-8").splitlines()
     assert "-p" in argv
-    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert config.CLAUDE_CI_RECOVERY_MODEL in argv
     assert "Read,Edit,Write" in argv
     assert "You are using Claude" not in argv
+
+
+def test_launch_claude_ci_resolve_conflict_uses_opus_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    claude = bin_dir / "claude"
+    argv_log = tmp_path / "argv.log"
+    _ = claude.write_text(
+        "#!/usr/bin/env bash\n"
+        "printf '%s\\n' \"$@\" > \"$CLAUDE_ARGV_LOG\"\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"result\":\"fixed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3}}'\n",
+        encoding="utf-8",
+    )
+    claude.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{agents.os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_ARGV_LOG", str(argv_log))
+    output = tmp_path / "claude-ci.out"
+    rc = agents.launch_claude_ci_main(
+        [
+            "--role",
+            "resolve-conflict",
+            "--output",
+            str(output),
+            "--run-id",
+            "run",
+            "--repo",
+            "o/r",
+            "--timeout",
+            "5",
+        ],
+    )
+    assert rc == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert "-p" in argv
+    assert config.CLAUDE_CI_FIX_MODEL in argv
+    assert "Read,Edit,Write" in argv
+    token_record = output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
+    assert f"MODEL={config.CLAUDE_CI_FIX_MODEL}" in token_record
 
 
 def test_launch_claude_lint_fix_uses_stdin_and_write_capable_argv(

@@ -367,7 +367,7 @@ def _first_model_value(*, session_env: Path, keys: tuple[str, ...], default: str
     return default
 
 
-def _resolve_implement_rater_model(*, tool: str, session_env: Path) -> str:
+def _resolve_implement_rater_model(*, tool: str, session_env: Path, difficulty_tier: str = "") -> str:
     if tool == "cursor":
         value = _first_model_value(
             session_env=session_env,
@@ -375,10 +375,11 @@ def _resolve_implement_rater_model(*, tool: str, session_env: Path) -> str:
             default=config.CURSOR_DEFAULT_MODEL,
         )
     elif tool == "codex":
+        tier_model = config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY.get(difficulty_tier, config.CODEX_DEFAULT_MODEL)
         value = _first_model_value(
             session_env=session_env,
             keys=(config.ENV_LARCH_CODEX_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL),
-            default=config.CODEX_DEFAULT_MODEL,
+            default=tier_model,
         )
     else:
         value = "unknown"
@@ -405,7 +406,7 @@ def _write_step2_difficulty_record(*, st: DispatchState, manifest: dict[str, obj
         "--rater-tool",
         st.tool_tag,
         "--rater-model",
-        _resolve_implement_rater_model(tool=st.tool_tag, session_env=st.tmpdir / "session-env.sh"),
+        _resolve_implement_rater_model(tool=st.tool_tag, session_env=st.tmpdir / "session-env.sh", difficulty_tier=st.difficulty),
         "--raw-rating-file",
         str(raw),
         "--implement-raw-rating-file",
