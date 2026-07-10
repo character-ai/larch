@@ -1,0 +1,98 @@
+## Summary
+
+When `checks repair-loop` exhausts its helper repair iterations and returns `LOOP_STATUS=exhausted`, it emits `NEXT_ACTION=stall` instead of `NEXT_ACTION=main-agent-edit`. The stall-recovery classifier then classifies step3/step6 stalls as `FAILURE_CLASS=contract-failure / RESUME_HINT=none`, so the main agent never gets a repair opportunity. The main agent can often fix trivial lint violations (missing blank lines, unused variable warnings, path format errors) in seconds using Edit calls. Helper phases must not be the final stall decider.
+
+## Original report
+
+repair-loop should never return STALL; main agent must always get a repair opportunity. Only main agent can declare STALL, never a helper.
+
+Context: during /implement run F608FD97 (issue #6806), `checks repair-loop --site step3` ran for 1170 seconds, returned `LOOP_STATUS=exhausted NEXT_ACTION=stall`. The checks failures were trivially fixable lint violations (MD012 double blank lines, SC2034 unused vars, S030 wrong path format in comment). The stall-recovery classifier then produced `FAILURE_CLASS=contract-failure / RESUME_HINT=none`, so no main-agent repair attempt was ever made. The main agent could have fixed all three issue types in seconds with Edit calls.
+
+Desired behavior: repair-loop exhaustion should return `NEXT_ACTION=main-agent-edit` (not `NEXT_ACTION=stall`). Main agent then inspects the failures, applies inline edits, and re-runs the checks composite. Only if the main agent itself cannot fix the failures does it declare STALL. Helper phases (repair-loop, lint-fix) must never be the final stall decider.
+
+## Reproduction scenario
+
+1. Run `/implement <issue-N>` on a branch that has trivially fixable lint violations (MD012, SC2034, S030).
+2. Step 3 emits `NEXT_ACTION=checks-failed`; the Checks Failure Entry Macro invokes `checks repair-loop --site step3`.
+3. The lint-fix agents run for several minutes, make some changes, but fail to fully resolve all lint errors.
+4. `run_check_fix_loop` exhausts its iteration cap; `loop.status = "exhausted"`.
+5. `_repair_loop_action` falls through to `return "stall"` because "exhausted" matches none of the early-return branches.
+6. The repair loop emits `NEXT_ACTION=stall LOOP_STATUS=exhausted`.
+7. The main agent seeds `STALL_TRACKING=true` and enters Step 18.
+8. `stall-recovery classify` is called; since `STALL_STEP=3`, `_classify_text` returns `("contract-failure", "none", "step-contract")` immediately.
+9. No main-agent edit attempt is ever made.
+
+## Expected behavior
+
+After `run_check_fix_loop` exhausts its iterations (status `exhausted`), `_repair_loop_action` should return `"main-agent-edit"` (same as for `"no-changes-stale"` on supported sites). The main agent then reads the failure log, applies inline edits to fix the remaining lint violations, and re-runs the checks composite. Only if the main agent itself cannot clear the checks failures does it declare STALL and enter Step 18.
+
+## Observed behavior
+
+`_repair_loop_action` in `python/larch/implement/checks_lint_fix.py` returns `"stall"` for `LOOP_STATUS=exhausted` because the function only catches `"ok"` (continue), `"main-agent-required"` (main-agent-edit), and `"no-changes-stale"` on supported sites (main-agent-edit). The `"exhausted"` status falls through to the unconditional `return "stall"` at line 276.
+
+The stall-recovery classifier (`python/larch/state/_classify.py`, `_classify_text`) compounds this: any stall with `step in {"3", "6"}` immediately returns `("contract-failure", "none", "step-contract")` before inspecting the failure text, so even if the repair loop did reach stall legitimately, the classifier gives no resume path.
+
+## Root cause analysis
+
+**Primary root cause**: `_repair_loop_action` in `python/larch/implement/checks_lint_fix.py` lines 258-276 has no branch for `loop.status == "exhausted"`. The existing "no-changes-stale" branch (via `_populate_no_changes_stale_ledger`) only fires when the fixer made no changes at all. When the fixer made partial changes but checks still fail after all iterations, the status is `"exhausted"` and the function returns `"stall"` unconditionally.
+
+**Contributing factor**: `_classify_text` in `python/larch/state/_classify.py` lines 171-172 hard-codes `step in {"3", "6"}` to `"contract-failure"`. This means any stall routed through step3/step6 is declared unrecoverable before the failure text is examined, so legitimate helper-exhaustion stalls on step3 get the same classification as genuine contract violations.
+
+The `_NO_CHANGES_STALE_MAIN_AGENT_SITES` frozenset already includes `"step3"`, `"step5-self-review"`, `"step5-mav"`, and `"step6"`, showing the design intent that those sites should route exhausted helpers to the main agent. The `"exhausted"` status is simply missing from the routing logic.
+
+## Evidence
+
+- `python/larch/implement/checks_lint_fix.py` line 276: `return "stall"` is the unconditional fallback for any status not matching "ok", "main-agent-required", or "no-changes-stale"-on-supported-site.
+- `python/larch/implement/checks_lint_fix.py` lines 283-308: `_populate_no_changes_stale_ledger` guards on `loop.status != "no-changes-stale"` and returns `False` for "exhausted", so the ledger is never populated and the function never returns "main-agent-edit" for exhausted loops.
+- `python/larch/implement/checks_lint_fix.py` lines 58-63: `_NO_CHANGES_STALE_MAIN_AGENT_SITES` already includes "step3", "step5-self-review", "step5-mav", "step6", confirming design intent.
+- `python/larch/state/_classify.py` lines 171-172: `if step in {"3", "6"}: return "contract-failure", "none", "step-contract"` runs before any failure-text inspection, classifying all step3/step6 stalls as unrecoverable.
+- Run log `larch-logs/implement/F608FD97-BB14-4D89-B631-EFCE3F9A7D16/manifest.json`: `"status": "partial"`, `"stalled_at_step": null`, confirming the run stalled before any stall step was recorded.
+- `python/tests/implement/test_checks.py` lines 4264-4318: there is a test (`test_checks_repair_loop_main_step6_no_changes_stale_falls_back_to_main_agent`) for the "no-changes-stale" → "main-agent-edit" path on step6, but no equivalent test for "exhausted" → "main-agent-edit" on step3.
+
+## Affected files
+
+- `python/larch/implement/checks_lint_fix.py`: `_repair_loop_action` (primary fix: add "exhausted" → "main-agent-edit" branch with ledger population), `_populate_no_changes_stale_ledger` or a new parallel helper for "exhausted" status.
+- `python/larch/state/_classify.py`: `_classify_text` (secondary: reconsider the step3/step6 hard-code; it blocks all recovery from legitimately exhausted loops when the primary fix is absent, but becomes less critical once the primary fix lands).
+- `python/tests/implement/test_checks.py`: add tests covering "exhausted" → "main-agent-edit" on step3 and step6.
+- `skills/implement/references/checks-repair-loop.md`: verify the section-4 "Repeat until repair-loop NEXT_ACTION is `continue` or `stall`" loop exit condition still matches after the fix (the loop may now exit on "main-agent-edit" from an exhausted path, which is already handled in section 4).
+
+## Suggested fix(es)
+
+1. In `_repair_loop_action`, add a branch for `loop.status == "exhausted"` that mirrors the "no-changes-stale" path: populate the ledger (using the existing `_populate_no_changes_stale_ledger` logic extended to cover "exhausted", or a new parallel helper `_populate_exhausted_ledger`) and return `"main-agent-edit"`. Apply this to the same site set as `_NO_CHANGES_STALE_MAIN_AGENT_SITES` (or all non-ship-pr sites).
+2. Optionally, review `_classify_text` in `_classify.py`: the step3/step6 hard-code to "contract-failure" was designed for genuine contract violations, not helper exhaustion. After the primary fix, this path is only reached when the main agent itself declares STALL on step3/step6, which may be appropriately classified as a contract failure. If that is correct, no change is needed here; document the intent.
+3. Add unit tests: a test for `checks_repair_loop_main` with `--site step3`, a fixer that makes some changes each iteration but leaves checks failing, and verify `NEXT_ACTION=main-agent-edit LOOP_STATUS=exhausted` and the `LINT_FIX_LEDGER_*` fields.
+
+## Open questions
+
+- Should the "exhausted" → "main-agent-edit" routing apply to all sites in `_NO_CHANGES_STALE_MAIN_AGENT_SITES`, or to all non-ship-pr-ci sites? Ship-pr-ci sites (step `"8"`) may have a different recovery contract.
+- Should the ledger for "exhausted" status use a different `ledger_trigger` token than `"main-agent-required"`, to distinguish helper exhaustion from the fixer explicitly returning `"main-agent-required"`?
+- Is the `_classify_text` step3/step6 hard-code to "contract-failure" still correct for main-agent-initiated stalls after this fix, or should those stalls get a more descriptive classification?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Route `checks repair-loop` exhaustion (`LOOP_STATUS=exhausted`) to `NEXT_ACTION=main-agent-edit` instead of `stall`, so the main agent always gets a repair opportunity on supported sites.
+- Soften the stall-recovery classifier so a legitimately-exhausted step3/step6 stall gets a recoverable resume hint instead of an unconditional `contract-failure/none`.
+- Cover both changes with unit tests; verify the repair-loop reference doc still matches.
+
+### Non-goals
+- No change to ship-pr-ci-* exhaustion contract (`NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX`).
+- No new ledger trigger token; reuse `main-agent-required`.
+- No change to genuine main-agent-declared contract-failure classification.
+
+### Approach sketch
+- In `checks_lint_fix.py`, add an `exhausted` branch to `_repair_loop_action` that populates the ledger and returns `main-agent-edit`, gated on the existing `_NO_CHANGES_STALE_MAIN_AGENT_SITES` set.
+- Generalize `_populate_no_changes_stale_ledger` (or add a thin parallel helper) so it also fires for `exhausted`.
+- In `_classify.py` `_classify_text`, make the `step in {"3","6"}` short-circuit conditional: recoverable lint/checks-exhaustion text yields a resume hint; genuine contract failures still return `contract-failure/none`.
+- Add tests for `exhausted → main-agent-edit` on step3 and step6, plus a classifier test for the softened path.
+
+### Surfaces in scope
+- `python/larch/implement/checks_lint_fix.py`
+- `python/larch/state/_classify.py`
+- `python/tests/implement/test_checks.py` (+ the `_classify` test module if separate)
+- `skills/implement/references/checks-repair-loop.md` (verify only)
+
+### Open questions
+- Exact resume-hint token/class for softened step3/step6 exhaustion — resolve during drafting from existing `_classify_text` lint-failure conventions.

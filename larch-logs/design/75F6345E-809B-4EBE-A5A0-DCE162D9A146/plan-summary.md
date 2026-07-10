@@ -1,0 +1,1 @@
+Route exhausted repair helpers to the main agent on supported sites. Preserve ship-pr behavior and genuine contract-failure classification. Add focused repair-loop, classifier, and documentation coverage.

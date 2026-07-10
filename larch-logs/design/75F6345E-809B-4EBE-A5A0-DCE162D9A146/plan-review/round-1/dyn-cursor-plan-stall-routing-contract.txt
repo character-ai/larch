@@ -1,0 +1,81 @@
+Tracing repair-loop exhaustion through the main-agent edit path and stall recovery. Reading the relevant implementation and tests.
+Reviewing the plan against the current repair-loop, ledger, classifier, and stall-recovery contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/implement/checks_lint_fix.py:283-308,417-421	Exhausted ledger reuses argv --checks-log instead of last failed redacted log	After partial helper edits run_check_fix_loop keeps advancing redacted_log_for_dispatch (lines 1689-1701) but _populate_no_changes_stale_ledger always validates args.checks_log; main-agent-edit can read stale failures while the tree already reflects helper deltas	Mirror no-changes-stale only when loop.last_fix_status == no-changes; for exhausted store the final in-loop redacted path on LoopResult and populate LINT_FIX_LEDGER_FAILURE_DETAIL_LOG from that path after resolve_checks_log_path
+1	in_scope	major	risk-integration	python/larch/state/_classify.py:270-277,skills/implement/references/checks-repair-loop.md:88-92	Helper-exhaustion classifier predicate may never see repair-loop exhaustion markers	classify evidence is failure-detail-log plus optional state files; repair-loop stall binding copies FAILURE_REASON/EXIT_CODE only and never persists LOOP_STATUS=exhausted into classify inputs so step3/step6 can stay step-contract even after classifier changes	Either wire exhaustion markers into classify evidence on repair-loop NEXT_ACTION=stall or drop the _classify.py/_resume_hint_for work and rely on the primary main-agent-edit path
+1	in_scope	major	correctness	skills/implement/references/stall-recovery.md:60	Plan omits stall-recovery retry dispatch update for lint-failure helper exhaustion	Doc ties RESUME_HINT=checks-commit-route-retry to FAILURE_CLASS=transient-infra with checks-leg-abandoned/checks-child-sigterm and says Step 6 gets no automatic retry; lint-failure plus checks-commit-route-retry from the plan would not re-enter run-step-checks.sh or step-6-entry.sh --force-checks true	Add ### MAY_UPDATE stall-recovery.md documenting lint-failure helper-exhaustion retry for steps 3 and 6 with the same launchers as checks-repair-loop.md section 2
+1	in_scope	minor	architecture	python/larch/state/_classify.py:171-172	[SCOPE-REDUCTION] Secondary classifier/resume-hint edits may be unnecessary bulk	Once _repair_loop_action returns main-agent-edit on supported sites the orchestrator never reaches Step 18 for helper exhaustion; classifier changes only help ledger-fail or legacy stall paths that still lack exhaustion evidence	Keep checks_lint_fix.py and checks-repair-loop.md changes; defer _classify.py and test_stall_recovery.py unless stall-path evidence wiring is included
+
+## Findings
+
+### 1. Correctness — stale ledger log on partial-fix exhaustion (`checks_lint_fix.py`)
+
+The plan generalizes `_populate_no_changes_stale_ledger` to accept `exhausted` while still passing `args.checks_log` from `checks_repair_loop_main`:
+
+```417:421:python/larch/implement/checks_lint_fix.py
+    action = _repair_loop_action(
+        loop=loop,
+        lint_site=lint_site,
+        checks_log=args.checks_log,
+        allowed_tmpdir=canonical_tmp,
+```
+
+That matches today's `no-changes-stale` behavior (see `test_checks_repair_loop_main_step6_no_changes_stale_falls_back_to_main_agent`), but the two statuses differ. In dispatch-first mode, an exhausted loop updates `redacted_log_for_dispatch` after each failed recheck:
+
+```1689:1701:python/larch/implement/checks_lint_fix.py
+            redacted_path = _redacted_log_for_dispatch(
+                checks,
+                allowed_tmpdir=canonical_tmp,
+            )
+            ...
+            redacted_log_for_dispatch = redacted_path
+```
+
+After partial helper edits, the remaining failures live in that latest redacted file, not the original `--checks-log`. Pointing `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` at the argv log can send the main agent at errors the helpers already fixed.
+
+### 2. Risk-integration — classifier predicate may not see exhaustion evidence (`_classify.py`, `checks-repair-loop.md`)
+
+The plan adds a `_classify_text` predicate for explicit helper-exhaustion evidence before the step 3/6 `step-contract` short-circuit. `classify` builds evidence from the validated failure-detail log (and state files only when the log is missing):
+
+```270:277:python/larch/state/_classify.py
+    evidence = detail
+    if not detail_log_valid:
+        for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
+            state_path = tmpdir / name
+            evidence = f"{evidence}\n{_read_optional_evidence(state_path)}"
+```
+
+The repair-loop stall branch binds `FAILURE_REASON` and related composite keys, not `LOOP_STATUS=exhausted`:
+
+```88:92:skills/implement/references/checks-repair-loop.md
+### `NEXT_ACTION=stall`
+
+Before skipping to Step 18, bind `EXIT_CODE`, `FAILURE_REASON` (into `IMPLEMENT_BAIL_REASON` and `FINAL_BAIL_REASON`), `STALL_STEP`, and `PHASE` from captured composite stdout when those prompt-side values are not already set.
+```
+
+So the secondary classifier path from the bug report may still classify step 3/6 as `contract-failure` even after `_classify.py` changes, unless exhaustion markers are persisted into classify inputs.
+
+### 3. Correctness — missing `stall-recovery.md` dispatch contract
+
+The plan updates `_resume_hint_for` so helper exhaustion on steps 3 and 6 yields `checks-commit-route-retry`, but it does not list `skills/implement/references/stall-recovery.md`. That doc currently documents retry only for `FAILURE_CLASS=transient-infra` with `checks-leg-abandoned` or `checks-child-sigterm`, and explicitly states Step 6 does not get automatic retry dispatch:
+
+```60:60:skills/implement/references/stall-recovery.md
+5. **Retry dispatch.** ... `RESUME_HINT=checks-commit-route-retry` (`FAILURE_CLASS=transient-infra`, `MATCHED_CLASSIFIER_PATTERN=checks-leg-abandoned` or `MATCHED_CLASSIFIER_PATTERN=checks-child-sigterm`) means ... Step 6 classifies `checks-child-sigterm` accurately but does not get automatic retry dispatch.
+```
+
+Step 18a loads this file for retry dispatch. Without an update, a `lint-failure` / `checks-commit-route-retry` classification (especially on step 6 with `--force-checks true`) has no normative launcher path.
+
+### 4. Architecture — [SCOPE-REDUCTION] consider dropping secondary classifier work
+
+The primary fix in `_repair_loop_action` (exhausted → `main-agent-edit` on `_NO_CHANGES_STALE_MAIN_AGENT_SITES`) addresses the reported bug on the happy path. The hard-coded step 3/6 contract branch:
+
+```171:172:python/larch/state/_classify.py
+    if step in {"3", "6"}:
+        return "contract-failure", "none", "step-contract"
+```
+
+only matters when repair-loop still returns `NEXT_ACTION=stall`. If that path is rare after the primary fix, the `_classify.py` and `test_stall_recovery.py` additions add surface without a wired evidence path (finding 2). Minimum-change option: ship `checks_lint_fix.py` + `checks-repair-loop.md` first; add classifier/resume-hint changes only together with stall evidence propagation and `stall-recovery.md`.
+
+### [OUT_OF_SCOPE] Missing step5 exhausted repair-loop tests
+
+The plan Approach covers `step5-self-review` and `step5-mav`, but mandated tests are only for step3 and step6. Those sites share `_NO_CHANGES_STALE_MAIN_AGENT_SITES` (`checks_lint_fix.py:58-63`) and step5-mav has distinct `--checks-site` wiring (`checks-repair-loop.md:30-31`). One shared-code-path test may suffice; explicit step5 exhausted coverage would reduce regression risk on a non-trivial launcher pair.
