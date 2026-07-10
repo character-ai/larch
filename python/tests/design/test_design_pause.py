@@ -781,8 +781,11 @@ def test_pause_save_deactivates_run_on_success(
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
     _ = (design / "source-env.sh").write_text(
-        "LARCH_RUN_ID=effective-run-42\nexport SESSION_ID=effective-run-42\n", encoding="utf-8"
+        f"LARCH_RUN_ID=effective-run-42\nexport SESSION_ID=effective-run-42\nREPO_ROOT={repo_root}\n",
+        encoding="utf-8",
     )
 
     monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_a, **_kw: "body")  # type: ignore[attr-defined]
