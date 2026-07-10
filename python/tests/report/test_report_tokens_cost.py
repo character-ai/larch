@@ -741,14 +741,14 @@ def test_token_cost_argv_cursor_without_by_model_falls_back_to_sum_bucket() -> N
     )
     argv = token_cost_argv(record)
     assert "--cursor-auto-input-tokens" not in argv
-    assert argv[argv.index("--cursor-input-tokens") + 1] == "100"
+    assert argv[argv.index("--cursor-tokens") + 1] == "330"
 
 
 def test_cursor_grok_tokens_price_at_direct_rates(capsys: pytest.CaptureFixture[str]) -> None:
     rc = token_cost_main([
-        "--cursor-grok-4-5-input-tokens", "1000000",
-        "--cursor-grok-4-5-cache-read-tokens", "1000000",
-        "--cursor-grok-4-5-output-tokens", "1000000",
+        "--cursor-grok-input-tokens", "1000000",
+        "--cursor-grok-cache-read-tokens", "1000000",
+        "--cursor-grok-output-tokens", "1000000",
     ])
     assert rc == 0
     out = capsys.readouterr().out
@@ -775,6 +775,38 @@ def test_token_cost_argv_splits_cursor_grok_by_model() -> None:
         for line in token_cost_from_args(argv[4:]).splitlines()
     )
 
-    assert argv[argv.index("--cursor-grok-4-5-input-tokens") + 1] == "100"
+    assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "100"
     assert argv[argv.index("--cursor-input-tokens") + 1] == "200"
     assert cost["CURSOR_TOKENS"] == "390"
+
+
+def test_cursor_grok_rate_row_and_overrides_ignore_surcharge() -> None:
+    row = DEFAULT_RATE_TABLE_PER_M[("cursor", "grok-4.5")]
+    assert row == {"input": 2.0, "cache_read": 0.5, "output": 6.0}
+    rates = display_rates(environ={
+        "LARCH_CURSOR_TEAMS_SURCHARGE_PER_M": "9",
+        "LARCH_CURSOR_GROK_INPUT_RATE_PER_M": "3",
+    })
+    assert rates.cursor_grok_input == 3.0
+    assert rates.cursor_grok_cache_read == 0.5
+    assert rates.cursor_grok_output == 6.0
+
+
+def test_cursor_partial_malformed_model_map_falls_back_to_aggregate() -> None:
+    report = {
+        "BUCKETS_cursor": {"input": 100, "cache_read": 200, "output": 30},
+        "BUCKETS_cursor_by_model": {
+            "grok-4.5": {"input": 5, "cache_read": 6, "output": 7},
+            "broken": "not-a-bucket",
+        },
+    }
+    record = RunRecord(
+        number=0, title="t", url="", started_at="", closed_at="", workflow="implement",
+        claude=VendorTotals(), codex=VendorTotals(), cursor=VendorTotals(), phase_rows=(), raw_report=report,
+    )
+    argv = token_cost_argv(record)[4:]
+    assert argv[argv.index("--cursor-tokens") + 1] == "330"
+    assert "--cursor-grok-input-tokens" not in argv
+    wire = token_cost_from_args(argv)
+    assert "CURSOR_COMPOSER_COST=" not in wire
+    assert "CURSOR_GROK_COST=" not in wire

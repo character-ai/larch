@@ -77,6 +77,9 @@ class RunRecord:
     claude_sub: VendorTotals = VendorTotals()
     claude_sub_cost: float = 0.0
     main_model: str = ""
+    cursor_composer_cost: float | None = None
+    cursor_grok_cost: float | None = None
+    cursor_auto_cost: float | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +111,9 @@ class DisplayRates:
     cursor_auto_input: float = 0.0
     cursor_auto_cache_read: float = 0.0
     cursor_auto_output: float = 0.0
+    cursor_grok_input: float = 0.0
+    cursor_grok_cache_read: float = 0.0
+    cursor_grok_output: float = 0.0
 
 
 def safe_int(*, value: object, default: int = 0) -> int:

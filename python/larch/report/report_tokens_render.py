@@ -32,6 +32,20 @@ def _md_cell(value: object) -> str:
     return " ".join(text.splitlines()) or "unknown"
 
 
+
+def _cursor_lane_values(record: RunRecord) -> tuple[float, float, float] | None:
+    values = (record.cursor_composer_cost, record.cursor_grok_cost, record.cursor_auto_cost)
+    if any(value is None for value in values):
+        return None
+    return values  # type: ignore[return-value]  # all members narrowed by the guard
+
+
+def _cursor_cost_text(record: RunRecord) -> str:
+    lanes = _cursor_lane_values(record)
+    if lanes is None:
+        return _money(record.cursor_cost)
+    return f"{_money(record.cursor_cost)} (Composer {_money(lanes[0])}, Grok {_money(lanes[1])}, Auto {_money(lanes[2])})"
+
 def _summary(records: tuple[RunRecord, ...], *, actual_spend: float | None) -> str:
     total = sum(record.total_cost for record in records)
     lines = [
@@ -87,6 +101,12 @@ def _vendor_breakdown(records: tuple[RunRecord, ...]) -> str:
         f"| Cursor | {_money(sum(record.cursor_cost for record in records))} | {sum(aggregate_vendor_tokens(record=record, vendor='cursor') for record in records):,} |",
         f"| Claude (subprocess) | {_money(sum(record.claude_sub_cost for record in records))} | {sum(aggregate_vendor_tokens(record=record, vendor='claude_sub') for record in records):,} |",
     ]
+    if records and all(_cursor_lane_values(record) is not None for record in records):
+        lines[6:6] = [
+            f"| Cursor Composer | {_money(sum(record.cursor_composer_cost or 0.0 for record in records))} | — |",
+            f"| Cursor Grok | {_money(sum(record.cursor_grok_cost or 0.0 for record in records))} | — |",
+            f"| Cursor Auto | {_money(sum(record.cursor_auto_cost or 0.0 for record in records))} | — |",
+        ]
     return "\n".join(lines)
 
 
@@ -110,7 +130,7 @@ def _top_runs(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
         pricing = "python-pricing" if record.priced_by_token_cost else "fallback"
         lines.append(
             f"| {issue} | {_md_cell(_date(record.started_at) or 'unknown')} | "
-            f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} | {_money(record.claude_sub_cost)} |",
+            f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_cursor_cost_text(record)} | {_money(record.claude_sub_cost)} |",
         )
     return "\n".join(lines)
 
@@ -162,7 +182,9 @@ def _trend_table(*, title: str, records: list[RunRecord], attr: str) -> str:
         if day is None:
             missing += 1
             continue
-        by_day[day] += float(getattr(record, attr))
+        value = getattr(record, attr)
+        if value is not None:
+            by_day[day] += float(value)
     lines = [
         f"### {title}",
         "",
@@ -181,12 +203,17 @@ def _trends(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
         ("Claude cost", "claude_cost"),
         ("Codex cost", "codex_cost"),
         ("Cursor cost", "cursor_cost"),
+        ("Cursor Composer cost", "cursor_composer_cost"),
+        ("Cursor Grok cost", "cursor_grok_cost"),
+        ("Cursor Auto cost", "cursor_auto_cost"),
         ("Claude (subprocess) cost", "claude_sub_cost"),
     )
     groups: dict[str, list[RunRecord]] = workflow_groups(_skill=skill, records=records)
     lines = ["## Per-day cost trends", ""]
     for group_name in sorted(groups):
         for label, attr in labels:
+            if attr.startswith("cursor_") and attr != "cursor_cost" and not any(getattr(record, attr) is not None for record in groups[group_name]):
+                continue
             lines.append(_trend_table(title=label, records=groups[group_name], attr=attr))
             lines.append("")
     return "\n".join(lines).rstrip()
@@ -213,7 +240,9 @@ def _rates_text(rates: DisplayRates) -> str:
         "",
         f"Claude: input {rates.claude_input}/M, cache read {rates.claude_cache_read}/M, output {rates.claude_output}/M.",
         f"Codex: input {rates.codex_input}/M, cached input {rates.codex_cached_input}/M, output {rates.codex_output}/M.",
-        f"Cursor: input {rates.cursor_input}/M, cache read {rates.cursor_cache_read}/M, output {rates.cursor_output}/M.",
+        f"Cursor Composer: input {rates.cursor_input}/M, cache read {rates.cursor_cache_read}/M, output {rates.cursor_output}/M.",
+        f"Cursor Grok: input {rates.cursor_grok_input}/M, cache read {rates.cursor_grok_cache_read}/M, output {rates.cursor_grok_output}/M.",
+        f"Cursor Auto: input {rates.cursor_auto_input}/M, cache read {rates.cursor_auto_cache_read}/M, output {rates.cursor_auto_output}/M.",
     ])
 
 
@@ -240,6 +269,9 @@ def _write_cache(*, path: Path, _skill: Skill, records: tuple[RunRecord, ...]) -
                 "claude_cost": record.claude_cost,
                 "codex_cost": record.codex_cost,
                 "cursor_cost": record.cursor_cost,
+                "cursor_composer_cost": record.cursor_composer_cost,
+                "cursor_grok_cost": record.cursor_grok_cost,
+                "cursor_auto_cost": record.cursor_auto_cost,
                 "claude_sub_cost": record.claude_sub_cost,
                 "total_cost": record.total_cost,
                 "pricing_source": "python-pricing" if record.priced_by_token_cost else "python-blended-fallback",

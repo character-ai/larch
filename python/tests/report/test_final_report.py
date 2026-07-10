@@ -867,11 +867,13 @@ def test_cursor_token_argv_splits_mixed_model_buckets() -> None:
         for line in final_report.report_tokens_cost.token_cost_from_args(argv).splitlines()
     )
 
-    assert argv[argv.index("--cursor-grok-4-5-input-tokens") + 1] == "1000000"
+    assert argv[argv.index("--cursor-grok-input-tokens") + 1] == "1000000"
     assert argv[argv.index("--cursor-input-tokens") + 1] == "1000000"
     assert cost["CURSOR_COST"] == "12.45"
     assert cost["CURSOR_TOKENS"] == "6000000"
-    assert not any(key.startswith("CURSOR_") and key.endswith("_COST") for key in cost if key != "CURSOR_COST")
+    assert cost["CURSOR_COMPOSER_COST"] == "3.95"
+    assert cost["CURSOR_GROK_COST"] == "8.50"
+    assert cost["CURSOR_AUTO_COST"] == "0.00"
 
 
 def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:
@@ -879,5 +881,5 @@ def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:
 
     argv = final_report._cursor_token_argv(data={}, bucket=bucket)
 
-    assert argv[argv.index("--cursor-input-tokens") + 1] == "100"
-    assert "--cursor-grok-4-5-input-tokens" not in argv
+    assert argv == ["--cursor-tokens", "130"]
+    assert "--cursor-grok-input-tokens" not in argv
