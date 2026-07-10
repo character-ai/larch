@@ -254,6 +254,23 @@ def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object
     ]
 
 
+def _cursor_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
+    record = report_tokens_cost.RunRecord(
+        number=0,
+        title="",
+        url="",
+        started_at="",
+        closed_at="",
+        workflow="",
+        claude=report_tokens_cost.VendorTotals(),
+        codex=report_tokens_cost.VendorTotals(),
+        cursor=report_tokens_cost.VendorTotals(),
+        phase_rows=(),
+        raw_report=data,
+    )
+    return report_tokens_cost.cursor_argv_from_buckets(record=record, bucket=bucket)
+
+
 def _manifest_main_model(run_dir: Path) -> str:
     data = _json_object(run_dir / "manifest.json")
     roster = _object_map(data.get("model_roster"))
@@ -303,11 +320,7 @@ def _token_argv_from_report(data: Mapping[str, object]) -> list[str]:
             elif vendor == "codex":
                 argv.extend(_codex_token_argv(data=data, bucket=bucket))
             else:
-                argv.extend([
-                    "--cursor-input-tokens", str(_safe_int(bucket.get("input"))),
-                    "--cursor-cache-read-tokens", str(_safe_int(bucket.get("cache_read"))),
-                    "--cursor-output-tokens", str(_safe_int(bucket.get("output"))),
-                ])
+                argv.extend(_cursor_token_argv(data=data, bucket=bucket))
             continue
         totals = _object_map(data.get(vendor))
         nested_totals = _object_map(totals.get("totals"))

@@ -7730,3 +7730,42 @@ def test_step2_dispatch_invalid_architectural_knowledge_warns_without_ack_requir
     issues = tmp / "execution-issues.md"
     assert issues.is_file()
     assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" in issues.read_text(encoding="utf-8")
+
+
+def test_launcher_args_forwards_cursor_difficulty(tmp_path: Path) -> None:
+    st = cast(
+        "implement_dispatch.DispatchState",
+        SimpleNamespace(
+            tool_tag="cursor",
+            transcript_path=tmp_path / "transcript.txt",
+            sidecar_log=tmp_path / "sidecar.log",
+            manifest_path=tmp_path / "manifest.json",
+            qa_pending_path=tmp_path / "qa.json",
+            launch_scout_manifest=tmp_path / "scout.json",
+            plan_file=tmp_path / "plan.txt",
+            feature_file=tmp_path / "feature.txt",
+            plugin_root=tmp_path,
+            difficulty=difficulty.MODERATE,
+            answers_file=None,
+        ),
+    )
+
+    argv = dispatch_step2._launcher_args(st)
+
+    assert argv[argv.index("--difficulty") + 1] == difficulty.MODERATE
+
+
+def test_resolve_implement_rater_model_uses_moderate_cursor_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+
+    model = dispatch_step2._resolve_implement_rater_model(
+        tool="cursor",
+        session_env=tmp / "session-env.sh",
+        difficulty_tier=difficulty.MODERATE,
+    )
+
+    assert model == "grok-4.5"

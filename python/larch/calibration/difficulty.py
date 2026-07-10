@@ -129,6 +129,28 @@ class DifficultyRecord:
     escalated_round: bool | None = None
 
 
+def resolve_step2_effective_difficulty(tmpdir: Path) -> str:
+    """Resolve Step 2 difficulty with operator override before design prior."""
+    override = larch_io.read_kv(
+        path=tmpdir / "run-flags.sh",
+        key="DIFFICULTY_OVERRIDE",
+        default="",
+        first_match=True,
+        on_error_default=True,
+    )
+    normalized_override = normalize_tier(override)
+    if normalized_override:
+        return normalized_override
+    prior = larch_io.read_kv(
+        path=tmpdir / "difficulty-prior.env",
+        key="DESIGN_DIFFICULTY",
+        default="",
+        first_match=True,
+        on_error_default=True,
+    )
+    return normalize_tier(prior)
+
+
 def tier_valid(value: str) -> bool:
     return value in _TIER_RANK
 

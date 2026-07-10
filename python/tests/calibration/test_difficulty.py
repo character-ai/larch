@@ -354,3 +354,17 @@ def test_resolve_panel_tier_audits_existing_unresolved_record(tmp_path: Path) ->
     assert resolved.panel_tier == difficulty.HARD
     assert data["audit_evaluated"] is True
     assert data["panel_tier"] == difficulty.HARD
+
+
+def test_resolve_step2_effective_difficulty_override_precedes_prior(tmp_path: Path) -> None:
+    _ = (tmp_path / "run-flags.sh").write_text("DIFFICULTY_OVERRIDE= moderate \n", encoding="utf-8")
+    _ = (tmp_path / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=HARD\n", encoding="utf-8")
+
+    assert difficulty.resolve_step2_effective_difficulty(tmp_path) == difficulty.MODERATE
+
+
+def test_resolve_step2_effective_difficulty_invalid_inputs_fail_closed(tmp_path: Path) -> None:
+    _ = (tmp_path / "run-flags.sh").write_text("DIFFICULTY_OVERRIDE=unknown\n", encoding="utf-8")
+    _ = (tmp_path / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=also-unknown\n", encoding="utf-8")
+
+    assert difficulty.resolve_step2_effective_difficulty(tmp_path) == ""
