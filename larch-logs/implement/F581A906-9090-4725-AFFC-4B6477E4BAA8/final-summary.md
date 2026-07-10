@@ -73,7 +73,7 @@ Warnings (1):
 
 - **Outcome**: shipping
 - **Duration**: 00:57:43
-- **Cost**: 💰 TOTAL ~$19.95: Claude $3.77, Codex-5.6 $10.59, Codex-mini $0.08, Cursor $5.18, Claude (subprocess) $0.33  |  Tokens: 28819k
+- **Cost**: 💰 TOTAL ~$20.13: Claude $3.94, Codex-5.6 $10.59, Codex-mini $0.08, Cursor $5.18, Claude (subprocess) $0.34  |  Tokens: 29366k
 - **Issue**: #6820: https://github.com/character-ai/larch/issues/6820
 - **Plan review**: N/A
 - **Plan coverage**: 9/10 firm headings; band: advisory; disposition: none; todos_left: 0
