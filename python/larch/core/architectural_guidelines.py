@@ -880,11 +880,15 @@ def write_invariant_staged_assessment(  # noqa: PLR0913 - mirrors guideline arti
 
 def _note_identity(metadata: dict[str, str]) -> tuple[str, str, str] | None:
     legacy_fingerprint = metadata.get("DIFF_FINGERPRINT", "").strip()
-    note_state = metadata.get("NOTE_STATE", "").strip() or config.NOTE_STATE_AUTHORED
+    new_format = any(key in metadata for key in ("NOTE_STATE", "AUTHORED_DIFF_FINGERPRINT", "COVERED_DIFF_FINGERPRINT"))
+    note_state = metadata.get("NOTE_STATE", "").strip() or ("" if new_format else config.NOTE_STATE_AUTHORED)
     if note_state not in config.NOTE_STATE_TOKENS:
         return None
-    authored_fingerprint = metadata.get("AUTHORED_DIFF_FINGERPRINT", "").strip() or legacy_fingerprint
-    covered_fingerprint = metadata.get("COVERED_DIFF_FINGERPRINT", "").strip() or legacy_fingerprint
+    authored_fingerprint = metadata.get("AUTHORED_DIFF_FINGERPRINT", "").strip()
+    covered_fingerprint = metadata.get("COVERED_DIFF_FINGERPRINT", "").strip()
+    if not new_format:
+        authored_fingerprint = legacy_fingerprint
+        covered_fingerprint = legacy_fingerprint
     if note_state == config.NOTE_STATE_UNAVAILABLE:
         return note_state, authored_fingerprint, covered_fingerprint
     if not authored_fingerprint or not covered_fingerprint:
@@ -1492,8 +1496,20 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0913 - fail-closed covera
         try:
             meta_tmp.replace(meta_path)
         except OSError:
-            _write_text_atomic(path=snapshot_path, text=previous_snapshot)
-            _write_text_atomic(path=meta_path, text=previous_metadata)
+            restored = False
+            try:
+                if _read_regular_text_no_follow(snapshot_path) != previous_snapshot:
+                    _write_text_atomic(path=snapshot_path, text=previous_snapshot)
+                if _read_regular_text_no_follow(meta_path) != previous_metadata:
+                    _write_text_atomic(path=meta_path, text=previous_metadata)
+                restored = (
+                    _read_regular_text_no_follow(snapshot_path) == previous_snapshot
+                    and _read_regular_text_no_follow(meta_path) == previous_metadata
+                )
+            except (OSError, UnicodeDecodeError):
+                restored = False
+            if not restored:
+                raise RuntimeError("could not restore architectural assessment coverage artifacts")
             return False
     except (OSError, UnicodeDecodeError):
         return False

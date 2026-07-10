@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 
 from larch.core import architectural_guidelines as ag
+from larch.implement import ship_guidelines
 from larch.report import run_log_flush
 from test_support import make_run_context
 
@@ -2413,6 +2414,48 @@ def test_coverage_advancement_docs_only_note_remains_consumable(tmp_path: Path) 
         ag.diff_fingerprint(ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"))
         == metadata["COVERED_DIFF_FINGERPRINT"]
     )
+    prepared = ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
+    assert prepared.status == "current"
+    loaded = ship_guidelines.load_or_prepare_guidelines_note(
+        implement_tmpdir=str(tmpdir),
+        head_sha=h2,
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+    assert loaded.needs_assessment is False
+
+
+def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    tmpdir = tmp_path / "implement"
+    (repo / ag.INVARIANTS_FILENAME).write_text("### I-Test-1: Keep tests direct\n", encoding="utf-8")
+    (repo / "python").mkdir(parents=True, exist_ok=True)
+    (repo / "python" / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", ag.INVARIANTS_FILENAME, "python/impl.py")
+    _git(repo, "commit", "-m", "add invariant and impl")
+    h1 = _git_head(repo)
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha=h1,
+        base_ref="origin/main",
+        diff_text=ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"),
+        invariant=True,
+    )
+    (repo / "larch-logs").mkdir()
+    (repo / "larch-logs" / "run.log").write_text("log\n", encoding="utf-8")
+    _git(repo, "add", "larch-logs/run.log")
+    _git(repo, "commit", "-m", "logs only")
+    h2 = _git_head(repo)
+
+    prepared = ag.prepare_invariant_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=h2)
+    assert prepared.status == "current"
+    loaded = ship_guidelines.load_or_prepare_invariants_note(
+        implement_tmpdir=str(tmpdir),
+        head_sha=h2,
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+    assert loaded.needs_assessment is False
 
 
 def test_coverage_advancement_rejects_snapshot_not_matching_stored_head(tmp_path: Path) -> None:
@@ -2564,6 +2607,23 @@ def test_consumption_rejects_note_with_no_covered_identity(tmp_path: Path) -> No
         encoding="utf-8",
     )
     assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="abc", base_ref="origin/main")
+
+
+def test_consumption_rejects_partial_new_format_metadata(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    diff_text = "diff --git a/docs/a.md b/docs/a.md\n"
+    ag.write_deterministic_clean_note(
+        implement_tmpdir=tmpdir,
+        head_sha="head-a",
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    metadata_path = tmpdir / ag.DURABLE_NOTE_ENV
+    metadata_path.write_text(
+        metadata_path.read_text(encoding="utf-8").replace("AUTHORED_DIFF_FINGERPRINT=", "AUTHORED_DIFF_FINGERPRINT=\n", 1),
+        encoding="utf-8",
+    )
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a", base_ref="origin/main")
 
 
 def test_consumption_accepts_prior_format_metadata(tmp_path: Path) -> None:
