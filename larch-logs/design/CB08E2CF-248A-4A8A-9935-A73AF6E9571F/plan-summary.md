@@ -1,0 +1,1 @@
+Cut over Step 8 CI repair to the existing identity-bound bgjob waterfall. Remove Agent dispatch, default-path CI evidence reads, the 10-attempt main-agent fallback, and obsolete configuration. Preserve `LARCH_CI_FIXER=0` as the sole 30-attempt inline path. Update structural, integration, transcript, exhaustion, invariant-evidence, and token-attribution coverage.

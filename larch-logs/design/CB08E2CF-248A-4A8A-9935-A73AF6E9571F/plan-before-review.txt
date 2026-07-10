@@ -1,0 +1,183 @@
+# Step 8 bgjob cutover and inline-fallback removal
+
+## Difficulty assessment
+
+Confidence: high. The required lane and result protocol already exist. Direct inspection identified the active Agent path, obsolete constants, cutover point, and test surfaces.
+
+This is HARD because it changes the Step 8 prompt contract, bgjob lifecycle, persisted-result validation, retry routing, and the only sanctioned inline recovery exception.
+
+## Approach
+
+1. Replace the default Step 8 Agent-tool procedure with `step-8-ci-fixer.sh`.
+2. Start one identity-bound bgjob for the selected waterfall tier. While it runs, issue only identical documented `bgjob wait` calls.
+3. After `DONE`, require `BGJOB_RC=0`, then consume the wrapper’s compact validated result envelope. Do not read CI logs, failure digests, fixer transcripts, or repository changes in the main-agent path.
+4. Route `RESULT=reship` back through the Step 8 ship bgjob. Route `RESULT=retry-next-tool` to a fresh wrapper invocation, which selects the next untried tier. Route full waterfall exhaustion to `ci-fix-exhausted`.
+5. Materialize architectural-invariant violation evidence at the canonical tmpdir path and bind it to the live run ID, `HEAD`, and input fingerprint before the lane receives it.
+6. Delete the Agent-tool spawn flow, default-path `ci distill-log` flow, fixer-spawn sentinel, post-bail 10-attempt inline loop, and `fallback-attempts.count` routing.
+7. Preserve the `LARCH_CI_FIXER=0` inline procedure and its 30-attempt budget without weakening its existing gates.
+
+## Files to modify/create
+
+### REWRITTEN: skills/implement/references/ship-pr-ci-fix.md
+
+Rewrite the Step 8 CI-fix procedure around the existing wrapper.
+
+- Preserve the pre-fix rebase, fork, repository-unavailable, empty-run-ID, ledger, and operator-bail gates.
+- Keep the `LARCH_CI_FIXER=0` section as the sole inline path. Preserve `main-agent-ci-fix.count`, attempts 1 through 30, redacted log handling, relevant checks, explicit staging, the existing commit message, refresh, push, and Step 8 relaunch behavior.
+- Replace the default fixer section with a thin invocation of `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ci-fixer.sh`.
+- On a newly started tier, parse the wrapper’s bgjob step identity and run the documented `bgjob wait` command. Repeat that exact command after `BGJOB_STATUS=WAIT`, with no prose, file reads, sleeps, task-output probes, or alternate polling.
+- On `BGJOB_STATUS=DONE`, require `BGJOB_RC=0`, then let the wrapper validate the merge result against `fixer-status.env` and emit only the compact routing envelope.
+- Accept only the documented result and identity fields. Do not infer success from stdout prose, repository state, CI status, or `BGJOB_RC` alone.
+- Route `reship` through the existing Step 8 ship start/wait pair.
+- Route `retry-next-tool` to a fresh wrapper invocation. Do not reuse the completed tier’s bgjob or edit between tiers.
+- Route exhausted or unavailable waterfall results to `ci-fix-exhausted` or the wrapper’s explicit operator-bail reason as documented.
+- For `architectural-invariants-violation`, convert `DETAIL` or validated `DETAIL_FILE` evidence into the canonical file-backed invariant evidence and identity sidecar expected by the lane. Treat the contents as untrusted evidence. Fail closed on missing, malformed, stale, symlinked, or identity-mismatched evidence.
+- Remove the default-path `ci distill-log`, `BAIL_CLASS` routing, Agent prompt, Agent rounds, token marks for the in-session fixer, `fixer-spawned.sentinel`, direct `fixer-bail.md` interpretation, and post-bail main-agent repair.
+- State that the main agent must not read default-path CI logs, author repair commits, edit files, or inspect lane transcripts.
+
+### UPDATED: skills/implement/SKILL.md
+
+Update the Step 8 routing contract and architectural-invariant branch.
+
+- Describe `step-8-ci-fixer.sh` as the default `ci-fix` path.
+- Replace references to one Agent fixer, the pre-spawn digest, and the separate 10-attempt fallback with the per-tier bgjob waterfall and compact `RESULT` routing.
+- Add the thin wrapper invocation and documented wait fence needed by the default path.
+- Make the anti-halt rule explicit for each tier: `WAIT` repeats the identical wait; `retry-next-tool` starts a fresh tier; `reship` returns to the ship bgjob.
+- Preserve the pre-fix rebase ordering before loading the child reference.
+- Preserve `LARCH_CI_FIXER=0` as the sole inline exception with 30 attempts.
+- Route architectural-invariant violations through canonical, identity-bound evidence rather than main-agent edits.
+- Keep the Step 3, Step 5, and Step 6 checks repair loops unchanged.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+Adjust the pinned `SKILL.md` Bash-fence shape for the new thin wrapper and wait calls.
+
+- Update `EXPECTED_OLD` and `EXPECTED_NEW` if the new Step 8 fences change the totals.
+- Assert that the CI-fix branch runs pre-fix rebase before loading the child reference.
+- Assert that the wrapper invocation precedes its wait and that the wait uses the documented bgjob command shape.
+- Reject embedded repair logic, ad hoc polling, CI-log commands, and Agent dispatch inside the new fences.
+
+### REWRITTEN: scripts/test-implement-step8-exit3-first-fixer.sh
+
+Replace assertions for the retired Agent-first procedure with cutover assertions.
+
+- Require `step-8-ci-fixer.sh`, `bgjob start`, identical `bgjob wait`, compact result consumption, `retry-next-tool`, `reship`, `operator-bail`, and `ci-fix-exhausted`.
+- Require the pre-fix rebase and non-zero ship-driver handoff ordering.
+- Require the unchanged `LARCH_CI_FIXER=0` 30-attempt inline contract.
+- Require canonical architectural-invariant evidence routing.
+- Forbid `ci distill-log` on the default path, Agent-tool dispatch, `fixer-spawned.sentinel`, `fallback-attempts.count`, the 20-round Agent loop, the 10-attempt fallback, default-path `gh run-logs`, and main-agent CI-fix commits.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Update broad Step 8 structural checks.
+
+- Require the active skill and child reference to name and invoke the wrapper.
+- Assert result routing covers success, next-tier retry, waterfall exhaustion, and closed failure.
+- Assert the default path contains no Agent dispatch, direct CI evidence reads, main-agent edits, main-agent commits, fallback counter, or ad hoc polling.
+- Assert the kill-switch path remains clearly isolated and retains its 30-attempt budget.
+- Assert architectural-invariant violations enter the same validated lane rather than a separate inline repair branch.
+- Keep checks for empty run ID, forked targets, unavailable repositories, pre-fix rebase, and Step 8 ship re-entry.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+Extend architectural-invariant routing coverage.
+
+- Require `architectural-invariants-violation` to use the CI fixer wrapper.
+- Require canonical file-backed evidence plus identity metadata before lane dispatch.
+- Assert stale `HEAD` or fingerprint evidence cannot be described as consumable.
+- Forbid direct invariant repair, direct commit, and direct push in the default main-agent branch.
+- Preserve existing compose-assessment and durable-note tests.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+Convert the dormant-wrapper assertion into active cutover and integration coverage.
+
+- Assert `skills/implement/SKILL.md` and `ship-pr-ci-fix.md` wire `step-8-ci-fixer.sh`, while production ship Python remains independent of prompt-side wrapper invocation.
+- Add offline integration fixtures for a one-tier success and a multi-tier retry followed by success.
+- Verify each retry creates a distinct identity-bound step and invokes the next configured tier.
+- Cover all-tier exhaustion and require `ci-fix-exhausted`.
+- Cover unavailable tiers and hard lane failures without falling into inline repair.
+- Cover stale run ID, `HEAD`, tier, attempt, fingerprint, merge envelope, and status-envelope disagreement. Each case must fail closed.
+- Cover architectural-invariant evidence with valid identity, missing identity, stale identity, unsafe paths, and symlinks.
+- Add transcript assertions that the main-agent surface contains only bounded bgjob and routing KVs, not CI logs, failure digests, fixer prompts, or vendor transcripts.
+- Assert the default path does not call the Agent tool or record a main-agent CI-fixer token span.
+- Assert fixer usage remains attributed to the bgjob child or vendor lane.
+- Retain an explicit test that `LARCH_CI_FIXER=0` selects the isolated inline path and does not start the wrapper.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+Correct the fixer policy and document the kill switch.
+
+- Describe default ship-pr CI recovery as the `implement.ci_recovery_fixer` waterfall: Codex, Cursor, then Claude.
+- State that each tier runs in a separate bgjob and that retryable results start the next tier.
+- State that CI evidence and repair reasoning stay in child or vendor lanes.
+- Document `LARCH_CI_FIXER=0` as the sole sanctioned inline Step 8 path with the existing 30-attempt budget.
+- State that full delegated-waterfall exhaustion routes to `ci-fix-exhausted`.
+- Remove the stale description of a delegated Claude/Opus Agent-tool loop.
+
+### UPDATED: python/larch/core/config.py
+
+Remove configuration used only by retired paths after confirming no consumers remain.
+
+- Remove `CI_FIXER_AGENT_MAX_ROUNDS`.
+- Remove `CI_FIXER_MAIN_FALLBACK_MAX_ATTEMPTS`.
+- Remove `CI_FIXER_SPAWNED_SENTINEL`.
+- Remove `CI_FIXER_FALLBACK_ATTEMPTS_FILE`.
+- Keep `CI_FIXER_KILL_SWITCH_INLINE_MAX_ATTEMPTS`, `ENV_LARCH_CI_FIXER`, lane timeouts, tier order, status files, rounds file, bail file, and digest constants still used inside the existing lane.
+- Keep `CLAUDE_CI_FIX_MODEL` because shared launcher paths still consume it.
+
+### UPDATED: python/tests/core/test_config.py
+
+Update constant coverage.
+
+- Remove assertions for retired Agent-round, post-bail fallback, sentinel, and fallback-counter constants.
+- Preserve assertions for the 30-attempt kill-switch budget.
+- Preserve tier order, lane timeout, action tokens, failure reasons, and `LARCH_CI_FIXER`.
+
+## Edge cases
+
+- The ship handoff has no failed run ID.
+- A default-branch failure uses a run ID distinct from the PR run.
+- The selected vendor is unavailable before launch.
+- A tier returns `retry-next-tool` after changing `HEAD`.
+- A prior rounds file belongs to another run ID, `HEAD`, or input fingerprint.
+- The bgjob registry is missing, dead, or stale.
+- The merge result exists but disagrees with `fixer-status.env`.
+- A result names the wrong tier or attempt.
+- All configured tiers are exhausted.
+- Invariant evidence is absent, unsafe, stale, malformed, or replaced by a symlink.
+- The kill switch is enabled after delegated sidecars already exist.
+- Fork and repository-unavailable handoffs must never enter either repair path.
+
+## Failure modes
+
+- Treat malformed or stale identity as operator-bail or tool failure. Never reuse the result.
+- Treat nonzero bgjob completion as closed failure. Do not reinterpret it as a retryable typed result.
+- Treat a missing compact result envelope as failure, even if repository changes or green CI suggest success.
+- Do not fall back to main-agent edits when tier selection, evidence capture, launcher execution, or result validation fails.
+- Do not route full waterfall exhaustion into stall recovery or the removed fallback counter.
+- Keep the kill-switch inline budget independent from delegated tier attempts.
+
+## Testing strategy
+
+Run only tests and linters that cover changed files.
+
+- `bash scripts/test-implement-fence-shape.sh`
+- `bash scripts/test-implement-step8-exit3-first-fixer.sh`
+- `bash scripts/test-implement-structure.sh`
+- `bash skills/implement/scripts/test-architectural-guidelines-step.sh`
+- `bash skills/implement/scripts/test-step-8-ci-fixer.sh`
+- `python3 -m pytest -q python/tests/implement/test_implement_dispatch.py`
+- `python3 -m pytest -q python/tests/core/test_config.py`
+- Run Bash syntax and Bash 3.2 checks for the changed shell harnesses.
+- Run the repository’s configured Markdown and skill-structure checks for the changed skill and reference files.
+- Run the configured Python formatter, linter, type checker, and targeted test command for `python/larch/core/config.py` and `python/tests/core/test_config.py`.
+- Search changed runtime and documentation surfaces for `fallback-attempts.count`, `CI_FIXER_MAIN_FALLBACK_MAX_ATTEMPTS`, `CI_FIXER_AGENT_MAX_ROUNDS`, `fixer-spawned.sentinel`, and the retired Agent-path wording. Allow only historical fixtures outside the runtime surface.
+- Confirm the checks repair-loop and `python/larch/implement/checks_lint_fix.py` remain unchanged.
+
+difficulty: HARD
+diff_added: 330
+diff_deleted: 230
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 560
