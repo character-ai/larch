@@ -34,7 +34,6 @@ test "$b" -ge 1 || fail 'design_summary.py must pass --claude-input-tokens to re
 pass 'design_summary.py render-run-summary per-bucket argv shape'
 
 design_skill="$REPO/skills/design/SKILL.md"
-finalize_step5="$REPO/skills/design/references/finalize-step5.md"
 finalize_step5_failures="$REPO/skills/design/references/finalize-step5-failures.md"
 shared_final_summary="$REPO/skills/shared/final-summary-emit.md"
 
