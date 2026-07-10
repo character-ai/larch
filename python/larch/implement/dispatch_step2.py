@@ -712,7 +712,10 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         except ShipError as exc:
             _append_warning(st=st, text=f"Step 7a.1 — plan coverage compute failed closed: {exc}")
             return st.emit_bailed("plan-coverage-compute-failed")
-        if plan_coverage.disposition_required and is_quota_failure(tool=st.coder, sidecar=st.sidecar_log):
+        if plan_coverage.disposition_required and (
+            is_quota_failure(tool=st.coder, sidecar=st.sidecar_log)
+            or is_quota_failure(tool=st.coder, sidecar=st.transcript_path)
+        ):
             return st.emit_bailed("quota")
         uncovered = list(plan_coverage.untouched_paths)
         if uncovered:

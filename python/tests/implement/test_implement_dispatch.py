@@ -5721,6 +5721,7 @@ def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.M
         output = kwargs["output"]
         captured["cmd"] = cmd
         captured["capture_stdout_only"] = kwargs["capture_stdout_only"]
+        captured["stderr_path"] = kwargs["stderr_path"]
         output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
@@ -5735,6 +5736,7 @@ def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.M
     assert "--workspace" in cmd
     assert cmd[cmd.index("--workspace") + 1] == str(resolved)
     assert "--" not in cmd
+    assert captured["stderr_path"] == tmp_path / "sidecar.log"
 def _auth_lines(out: str) -> int:
     return sum(1 for line in out.splitlines() if line.startswith("ORCHESTRATOR_EDIT_AUTHORITY="))
 
@@ -6527,6 +6529,51 @@ def test_step2_dispatch_bails_on_quota_when_plan_coverage_requires_disposition(
     assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=true" not in out
     assert _git(repo, "rev-parse", "HEAD").stdout.strip() == baseline_head
     assert _git(repo, "status", "--porcelain").stdout.strip() == "M README.md"
+
+
+def test_step2_dispatch_bails_on_quota_in_transcript_when_coverage_is_incomplete(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Files to modify/create\n"
+        "### UPDATED: `README.md`\n"
+        "### UPDATED: `docs/expected.md`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "README.md").write_text("partial edit\n", encoding="utf-8")
+        st.transcript_path.write_text("Error: usage limit reached\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: partial quota edit")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
+
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "cursor",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=quota" in out
 
 
 def test_step2_dispatch_completes_full_coverage_despite_quota_sidecar(
