@@ -1,0 +1,460 @@
+## Approach
+
+Adopt the issue as source of truth for GPT-5.6 ids, rates, and `claude-sonnet-4-6[1m]`. Do not split the change. The routing constants, launcher behavior, panel/voter dispatch, and pricing rows must land together so external launches and `/report-tokens` stay coherent.
+
+Use one shared mechanism for most model selection:
+
+- Extend Codex role model resolution to use `env override > caller default_model > role default`.
+- Add difficulty-to-model maps in `config.py`.
+- Thread `default_model` through `agent launch-review` and `agent dispatch-waterfall` so panels and voters can use tier-specific models without inventing new roles.
+- Keep `LARCH_CODEX_MODEL`, `LARCH_CODEX_REVIEW_MODEL`, `LARCH_CODEX_VOTE_MODEL`, `LARCH_CODEX_FIX_MODEL`, and the `codex_model` plugin option ahead of difficulty defaults.
+
+For Step 2 implementation routing:
+
+- Add `--difficulty TRIVIAL|MODERATE|HARD` to `implement run-dispatch`, `implement step2-dispatch`, and `agent launch-codex-implement`.
+- Read operator `--difficulty` when already persisted, else `$IMPLEMENT_TMPDIR/difficulty-prior.env` `DESIGN_DIFFICULTY`, else omit.
+- Use `gpt-5.6-terra` for TRIVIAL Codex implementers and `gpt-5.6-sol` otherwise.
+- Keep Codex reasoning effort at `high`.
+
+For Step 5 and `/review` panels:
+
+- Make `review.panel` static slots only `correctness`, `edge-cases`, and `testing` for Cursor and Codex. Delete the unemitted `generalist` Codex slot.
+- Remove the `review.panel` entry from `DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES`.
+- For TRIVIAL, emit Cursor `auto` singles only when Cursor is available.
+- If TRIVIAL Cursor is unavailable but Codex is available, emit Codex singles at `gpt-5.6-luna`.
+- For MODERATE and HARD, emit Cursor `auto` plus Codex pairs per static and selected dynamic archetype.
+- Use Codex `gpt-5.6-luna` for MODERATE panel rows and `gpt-5.6-terra` for HARD panel rows.
+- Keep missing-vendor `--no-fallback` behavior and both-externals-down behavior.
+
+For voters:
+
+- Add tier-aware `--tier` forwarding to code-review voter dispatch.
+- Use `gpt-5.6-luna` for TRIVIAL Codex voters and `gpt-5.6-terra` for MODERATE/HARD.
+- Leave design plan voter composition unchanged. It inherits the new vote-role default, `gpt-5.6-terra`.
+
+For fixer waterfalls:
+
+- Change CI recovery to Codex fix role, then Cursor `auto`, then Claude `claude-sonnet-4-6[1m]`.
+- Keep review-fix order Codex, Cursor, Claude, but pin Cursor to `auto` and Claude to `claude-sonnet-4-6[1m]`.
+- Change plan revision to Codex fix role, then Cursor `composer-2.5`, then Claude `claude-sonnet-4-6[1m]`.
+- Keep unrelated fixer roles and design-side panel composition out of scope.
+
+For pricing:
+
+- Add rate rows for `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`.
+- Keep historical `gpt-5.5` and `gpt-5.4-mini` rows.
+- Replace one-mini-model checks with `CODEX_MINI_MODELS = frozenset({"gpt-5.4-mini", "gpt-5.6-luna"})`.
+- Keep existing wire names and env names byte-stable.
+- Normalize `claude-sonnet-4-6[1m]` to `claude-sonnet-4-6` before token ledgers and by-model pricing buckets consume it.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Change:
+  - `CODEX_DEFAULT_MODEL` to `gpt-5.6-sol`.
+  - `CODEX_REVIEW_MODEL_DEFAULT` to `gpt-5.6-luna`.
+  - `CODEX_VOTE_MODEL_DEFAULT` to `gpt-5.6-terra`.
+  - `CODEX_FIX_MODEL_DEFAULT` to `gpt-5.6-terra`.
+- Add:
+  - `CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY`.
+  - `CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY`, with TRIVIAL as `""`.
+  - `CODEX_VOTE_MODEL_BY_DIFFICULTY`.
+  - `CLAUDE_SONNET_4_6_1M_MODEL = "claude-sonnet-4-6[1m]"`.
+  - A small Claude ledger model normalizer, if placed in config.
+- Remove `review.panel` from `DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES`; keep design-side overrides.
+- Update `ROLE_DEFAULTS`:
+  - `implement.ci_recovery_fixer`: `("codex", "cursor", "claude")`.
+  - `design.plan_revision`: `("codex", "cursor", "claude")`.
+  - `review.panel` slot defaults and `doc_fallback`.
+  - Fixer `doc_fallback` text.
+- Set `CLAUDE_CI_FIX_MODEL` and `CLAUDE_SUB_DEFAULT_MODEL_BY_RAW["claude_ci_fix"]` to the `[1m]` constant.
+- Set `CLAUDE_SUB_DEFAULT_MODEL_BY_RAW["claude_review_fix"]` to the `[1m]` constant.
+
+### UPDATED: python/larch/agents/_launch_failure.py
+
+- Change the Codex role path in `resolve_model_args` to resolve:
+  - role env var,
+  - then non-empty `default_model`,
+  - then role default.
+- Keep plugin `codex_model` precedence only for the default Codex role.
+- Update `agent model-args` help or description so `--default-model` is documented for role paths too.
+- Keep blank and control-character rejection unchanged.
+
+### UPDATED: python/larch/agents/_ci_launcher.py
+
+- Add `--difficulty` to `agent launch-codex-implement`.
+- Resolve Codex implementer model from `CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY` when valid.
+- Call CI Codex fixer with `codex_role="fix"`.
+- Pin CI Cursor model args to `--model auto`.
+- Ensure Claude CI uses `config.CLAUDE_CI_FIX_MODEL`, now `claude-sonnet-4-6[1m]`.
+- Normalize Claude `[1m]` suffix before token ledger recording if this launcher writes the model directly.
+
+### UPDATED: python/larch/agents/_review_launcher.py
+
+- Add `--default-model` to `agent launch-review`.
+- Pass it into `resolve_model_args` for Codex launches.
+- Keep `--model-role` semantics unchanged.
+- Pin review-fix Cursor launches to `--cursor-model auto` at the review-fix call site rather than changing all Cursor review launches.
+- Ensure Claude review-fix uses the new `[1m]` default or explicit model.
+
+### UPDATED: python/larch/agents/agent_waterfall.py
+
+- Add a global `--default-model` option.
+- Store it in `Options`.
+- Forward it to Codex `agent launch-review` invocations as `--default-model`.
+- Keep slot `model_role` precedence over global `--model-role`.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+- Invert TRIVIAL static row selection to prefer Cursor singles, with Codex `gpt-5.6-luna` singles only when Cursor is unavailable.
+- For MODERATE and HARD, keep pairs but set Codex role to `review` and pass the tier-specific default model.
+- Stop consulting `codex_review_model_role_for_archetype` for `review.panel`.
+- Set dynamic archetype rows to follow the same matrix.
+- Pass `--default-model <tier-panel-model>` to `agent dispatch-waterfall` for Codex rows.
+- Keep per-slot records and prune ledgers intact when rows drop or prune.
+
+### UPDATED: python/larch/calibration/difficulty.py
+
+- Keep tier normalization and `panel_shape_for_tier`.
+- Keep design-side role machinery.
+- Adjust helpers or comments so `codex_review_model_role_for_archetype` is no longer treated as code-review panel authority.
+- Preserve existing persisted difficulty record fields unless a test proves a field must be broadened.
+
+### UPDATED: python/larch/agents/agent_voters.py
+
+- Add optional `--tier TRIVIAL|MODERATE|HARD`.
+- Use `CODEX_VOTE_MODEL_BY_DIFFICULTY[tier]` as the dispatch-waterfall `--default-model` when known.
+- Fall back to the vote role default when tier is absent.
+- Keep voter waterfall order and both-externals-down behavior unchanged.
+
+### UPDATED: python/larch/review/review_core_body.py
+
+- Forward the resolved review tier to `agent dispatch-voters`.
+- Update both voter-dispatch call paths in the file.
+- Keep design plan voters out of scope.
+
+### UPDATED: python/larch/implement/dispatch_step2.py
+
+- In `run_dispatch_main`, derive the Step 2 difficulty argument from persisted run state:
+  - operator override if available in run flags or session env,
+  - else `DESIGN_DIFFICULTY` from `difficulty-prior.env`,
+  - else omit.
+- Add `--difficulty` to `implement step2-dispatch`.
+- Validate it against `DIFFICULTY_TIERS`.
+- Store it in dispatch state or pass it directly to `_launcher_args`.
+- Forward it only to the external Codex implementer launcher when present.
+
+### UPDATED: python/larch/implement/dispatch_manifest.py
+
+- Add an optional `difficulty` field to `DispatchState` if `dispatch_step2.py` needs it for `_launcher_args`.
+- Keep this additive and internal only.
+
+### UPDATED: python/larch/design/plan_quality.py
+
+- Reorder plan revision through `ROLE_DEFAULTS`.
+- Pass explicit `--model claude-sonnet-4-6[1m]` to the Claude plan-revision launcher.
+- Leave the shared `claude_review` role default unchanged.
+- Keep plan-revision Cursor on `composer-2.5`.
+
+### UPDATED: python/larch/report/report_tokens_cost.py
+
+- Add GPT-5.6 rate rows and refresh pricing comments.
+- Add `CODEX_MINI_MODELS`.
+- Replace `model == CODEX_MINI_MODEL` with membership in cost-bucket routing.
+- Change human label `Codex-5.5` to `Codex-5.6`.
+- Keep all wire flags, env vars, and KV names unchanged.
+- Ensure `rate_row("codex")` can resolve `gpt-5.6-sol`.
+
+### UPDATED: python/larch/report/final_report.py
+
+- Route `gpt-5.4-mini` and `gpt-5.6-luna` into the mini display bucket.
+- Keep every other Codex model in the default display bucket.
+- Update comments from `gpt-5.5` to `gpt-5.6` where they describe current defaults.
+
+### UPDATED: python/larch/design/design_summary.py
+
+- Use `CODEX_MINI_MODELS` for design-summary Codex bucket splitting.
+- Keep wire names unchanged.
+
+### UPDATED: python/larch/report/progress_report.py
+
+- Use `CODEX_MINI_MODELS` for live progress cost rows.
+- Normalize Claude subprocess `[1m]` model values before by-model grouping if this is the first consumer that sees raw ledger rows.
+
+### UPDATED: python/analysis/codex_role_costs.py
+
+- Use `CODEX_MINI_MODELS` for mini membership.
+- Price known Codex models exactly where the analyzer already has per-model rows and the change stays small.
+- Update role-default assumptions and comments.
+
+### UPDATED: python/larch/report/tokens.py
+
+- Normalize `claude-sonnet-4-6[1m]` to `claude-sonnet-4-6` when parsing sidecars, recording vendor ledger rows, and grouping Claude subprocess buckets.
+- Keep historical rows tolerant.
+- Add regression coverage for suffixed and unsuffixed Sonnet model ids.
+
+### UPDATED: python/larch/agents/_run_external.py
+
+- Normalize Claude `[1m]` model strings before writing token sidecars or calling `token record-vendor`.
+- Leave Codex and Cursor model strings untouched.
+
+### UPDATED: python/larch/agents/_claude_runner.py
+
+- Normalize Claude `[1m]` model strings before writing token sidecars.
+- Still pass the suffixed model verbatim to the `claude --model` process.
+
+### UPDATED: python/larch/git/pr_body.py
+
+- Change the human label from `Codex-5.5` to `Codex-5.6`.
+- Keep `Codex-mini` and all argument names byte-stable.
+
+### UPDATED: .claude-plugin/plugin.json
+
+- Update `codex_model` option text:
+  - default is `gpt-5.6-sol`;
+  - Step 2 Codex coder is difficulty-routed unless pinned;
+  - panel, voter, and fixer routing use role and tier defaults unless their env vars pin them.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+- Refresh Codex model defaults, role defaults, rates, panel composition, voter models, and fixer waterfalls.
+- Update Codex effort scope while keeping effort `high`.
+- Replace `Codex-5.5` prose with `Codex-5.6` where it describes the current display bucket.
+- Document the mini bucket as `gpt-5.4-mini` plus `gpt-5.6-luna`.
+- Keep byte-stable env names and flags.
+
+### UPDATED: docs/external-reviewers.md
+
+- Update code-review panel row shapes by tier.
+- Update plan revision order and models.
+- Update review-fix and CI recovery waterfalls.
+- Keep design-side panel composition unchanged.
+
+### UPDATED: docs/review-agents.md
+
+- Update the public Step 5 mirror:
+  - TRIVIAL Cursor singles with Codex floor,
+  - MODERATE/HARD Cursor plus Codex pairs,
+  - no generic Codex reviewer,
+  - voter tier routing.
+- Keep `--no-fallback`, pruning, and both-externals-down prose intact.
+
+### UPDATED: docs/voting-process.md
+
+- Update Codex voter model routing by tier for `/review` and `/implement` Step 5.
+- State that design plan voters keep composition and inherit the new vote role default.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Update Step 5 banner text to describe the new panel matrix.
+- Do not add, remove, or convert Bash fences.
+
+### UPDATED: skills/implement/references/step2-dispatch.md
+
+- Document the new `--difficulty` forwarding path.
+- State the precedence: operator override, then design prior, then omitted.
+- State that it affects only Codex Step 2 model routing.
+
+### MAY_UPDATE: docs/topology.md
+
+- Regenerate or update only if topology tests or projection checks derive changed role docs or slot rows into this generated file.
+
+### MAY_UPDATE: skills/shared/topology.tsv
+
+- Regenerate or update only if the topology projection source rows are expected to include the changed role docs or slot rows.
+
+### UPDATED: python/tests/agents/test_agents.py
+
+- Update default model expectations.
+- Add Codex implementer `--difficulty` cases:
+  - TRIVIAL uses `gpt-5.6-terra`;
+  - absent uses `gpt-5.6-sol`;
+  - `LARCH_CODEX_MODEL` wins.
+- Add role-path `default_model` precedence cases.
+- Add CI launcher model cases:
+  - Codex CI uses fix role `gpt-5.6-terra`;
+  - Cursor CI pins `auto`;
+  - Claude CI uses `claude-sonnet-4-6[1m]`.
+
+### UPDATED: python/tests/agents/test_review_dispatch.py
+
+- Assert exact panel composition by tier.
+- Assert TRIVIAL Cursor-down Codex floor at `gpt-5.6-luna`.
+- Assert no `default` role rows for `review.panel`.
+- Assert dynamic archetypes follow the same matrix.
+
+### UPDATED: python/tests/agents/test_agent_voters.py
+
+- Add tier-aware voter model assertions:
+  - TRIVIAL `gpt-5.6-luna`;
+  - MODERATE/HARD `gpt-5.6-terra`.
+- Keep both-externals-down behavior unchanged.
+
+### UPDATED: python/tests/agents/test_agent_waterfall.py
+
+- Cover `--default-model` parsing and forwarding to Codex launch-review.
+- Update registry waterfall order assertions for CI recovery and plan revision.
+
+### UPDATED: python/tests/agents/test_launch_review.py
+
+- Update launcher parser and monkeypatch helpers for `default_model`.
+- Add a focused Codex launch-review test that verifies role env wins over `--default-model`.
+
+### UPDATED: python/tests/agents/test_external_dispatch.py
+
+- Update slot/default role expectations for `review.panel` if existing fixtures include the removed generalist slot or code-review panel overrides.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Cover `implement run-dispatch` and `implement step2-dispatch` forwarding of difficulty to Codex launches.
+- Keep Q/A redispatch and Claude fallback behavior unchanged.
+
+### UPDATED: python/tests/report/test_report_tokens_cost.py
+
+- Update vendor-default rate assertions to `gpt-5.6-sol`.
+- Keep historical `gpt-5.5` and `gpt-5.4-mini` row assertions.
+- Add mini membership cases for `gpt-5.4-mini` and `gpt-5.6-luna`.
+- Add default bucket case for `gpt-5.6-terra`.
+- Update human label tests to `Codex-5.6`.
+
+### UPDATED: python/tests/report/test_review_phase_detail.py
+
+- Keep historical `gpt-5.4-mini` fixtures.
+- Add Luna and Terra rows where the harness supports model splits.
+- Update current-default expectations to `gpt-5.6-sol`.
+
+### UPDATED: python/tests/report/test_tokens.py
+
+- Keep historical mini fixtures.
+- Add Claude `[1m]` normalization coverage.
+- Add Codex by-model bucket coverage for Sol, Terra, and Luna.
+
+### UPDATED: python/tests/report/test_progress_report.py
+
+- Update mini bucket routing and current default label expectations if present.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+- Update mini bucket routing and current default label expectations if present.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+- Update human label expectations from `Codex-5.5` to `Codex-5.6`.
+
+### UPDATED: python/analysis/test_codex_role_costs.py
+
+- Update role-default model assumptions.
+- Add or adjust exact per-model pricing tests for GPT-5.6 rows.
+- Keep historical `gpt-5.4-mini` coverage.
+
+## Edge cases
+
+- `LARCH_CODEX_MODEL` and plugin `codex_model` must still beat Step 2 difficulty routing.
+- Role env vars must beat caller `default_model`.
+- Blank or control-character model strings must still fail before external launch.
+- TRIVIAL panels must still review when Cursor is unavailable and Codex is available.
+- When both external reviewers are unavailable, existing Step 5 degraded behavior must not change.
+- Dynamic archetypes must not add Codex rows on TRIVIAL while Cursor is available.
+- Design plan-review panels and plan voters must not change composition.
+- Historical run logs with `gpt-5.5` and `gpt-5.4-mini` must still price.
+- `claude-sonnet-4-6[1m]` must be passed to the Claude CLI but stored as `claude-sonnet-4-6` in token ledgers.
+- Do not rename `CODEX_GPT_5_4_MINI_COST`, `codex_gpt_5_4_mini_cost`, `--codex-mini-*`, or `LARCH_CODEX_MINI_*`.
+
+## Failure modes
+
+- A missing `gpt-5.6-sol` rate row makes every default Codex cost report raise `KeyError`.
+- If role-path `default_model` is not threaded through `dispatch-waterfall`, manifests may claim one model while launches use role defaults.
+- If TRIVIAL row selection is only changed for static rows, dynamic archetypes can still spawn the wrong vendor shape.
+- If `[1m]` model strings reach ledger grouping, Claude rows can misprice or miss the Sonnet split.
+- If CI recovery order changes without launcher role changes, Codex may run the default role instead of the fix role.
+- If docs change but plugin text does not, users may pin the wrong model or expect stale panel shapes.
+- If topology projection is generated from role defaults, stale generated docs may fail checks or mislead operators.
+
+## Testing strategy
+
+Run targeted tests for changed Python surfaces:
+
+```bash
+python3 -m pytest \
+  python/tests/agents/test_agents.py \
+  python/tests/agents/test_review_dispatch.py \
+  python/tests/agents/test_agent_voters.py \
+  python/tests/agents/test_agent_waterfall.py \
+  python/tests/agents/test_launch_review.py \
+  python/tests/agents/test_external_dispatch.py \
+  python/tests/implement/test_implement_dispatch.py \
+  python/tests/report/test_report_tokens_cost.py \
+  python/tests/report/test_review_phase_detail.py \
+  python/tests/report/test_tokens.py \
+  python/tests/report/test_progress_report.py \
+  python/tests/report/test_final_report.py \
+  python/tests/git/test_pr_body.py \
+  python/analysis/test_codex_role_costs.py
+```
+
+Run focused CLI smokes:
+
+```bash
+python3 python/cli.py agent model-args --tool codex --with-effort
+python3 python/cli.py agent model-args --tool codex --with-effort --codex-role review
+python3 python/cli.py agent model-args --tool codex --with-effort --codex-role vote
+python3 python/cli.py agent model-args --tool codex --with-effort --codex-role fix
+```
+
+Run launcher stub smokes modelled on `scripts/test-token-vendor-scrapers.sh`:
+
+```bash
+python3 python/cli.py agent launch-codex-implement --difficulty TRIVIAL ...
+python3 python/cli.py agent launch-codex-implement ...
+python3 python/cli.py agent launch-codex-ci ...
+```
+
+Run dispatch dry-runs or manifest inspections for each tier:
+
+- TRIVIAL: Cursor-only rows when Cursor is up.
+- TRIVIAL Cursor-down: Codex `gpt-5.6-luna` rows.
+- MODERATE: Cursor plus Codex `gpt-5.6-luna`.
+- HARD: Cursor plus Codex `gpt-5.6-terra`.
+
+Run token analysis smoke:
+
+```bash
+python3 python/cli.py report-tokens analyze
+```
+
+Before landing, run live external probes in an environment with current CLIs:
+
+```bash
+/status
+codex exec -m gpt-5.6-sol -- 'ping'
+codex exec -m gpt-5.6-terra -- 'ping'
+codex exec -m gpt-5.6-luna -- 'ping'
+claude --model 'claude-sonnet-4-6[1m]' -p 'ping'
+```
+
+Finish with repository checks appropriate for changed files:
+
+```bash
+make py-lint
+make py-test
+```
+
+## Rollback
+
+Rollback is a revert of the full change. Interim per-session overrides remain available:
+
+- `LARCH_CODEX_MODEL`
+- `LARCH_CODEX_REVIEW_MODEL`
+- `LARCH_CODEX_VOTE_MODEL`
+- `LARCH_CODEX_FIX_MODEL`
+- plugin `codex_model`
+
+Claude fixer model changes and waterfall orders require reverting code.
+
+difficulty: HARD
+diff_added: 1600
+diff_deleted: 600
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 2200

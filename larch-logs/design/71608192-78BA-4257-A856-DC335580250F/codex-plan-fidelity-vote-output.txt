@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the plan doesn't disable `_append_forced_plan_fidelity_row`; the helper still matches the current panel behavior.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same manifest-attribution gap was already rejected in round 1, and the plan doesn't require resolved-model metadata.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- voter routing is required, but recording routed model ids is optional metadata, not a feature-path requirement.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the plan doesn't add per-row default_model forwarding, so there is no slot-level value for this path to consume.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- unsupported shared-use claim; the cited CI launchers aren't shown to feed rebase-conflict or lint-fix flows.
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the plan doesn't introduce per-row default_model fields or slot-level forwarding, so this review-panel concern has no concrete trigger.
+OOS_2: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- duplicate of FINDING_10; the shared-constant lint-fix leak is already covered there.
