@@ -44,7 +44,7 @@ codex/plan-fidelity-vote                  │                                   
 
 - **Outcome**: shipping
 - **Duration**: 00:20:38
-- **Cost**: 💰 TOTAL ~$6.88: Claude $0.41, Codex-5.5 $2.42, Codex-mini $1.37, Cursor $2.41, Claude (subprocess) $0.27  |  Tokens: 14412k
+- **Cost**: 💰 TOTAL ~$7.07: Claude $0.60, Codex-5.5 $2.42, Codex-mini $1.37, Cursor $2.41, Claude (subprocess) $0.27  |  Tokens: 14878k
 - **Issue**: #6749: https://github.com/character-ai/larch/issues/6749
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
