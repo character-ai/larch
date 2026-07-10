@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from analysis import codex_role_costs as crc
+from larch.core import config
 from larch.report.report_tokens_cost import display_rates
 
 _RATES = display_rates(environ={})
@@ -101,3 +102,34 @@ def test_implement_roles_split_cross_step_mixed_models(tmp_path: Path) -> None:
     assert abs(coder - crc._codex_cost(gpt55_bucket, _RATES, model="gpt-5.5")) < 1e-9
     assert abs(reviewer - crc._codex_cost(mini_bucket, _RATES, model="gpt-5.4-mini")) < 1e-9
     assert coder > reviewer
+
+
+def test_implement_roles_from_ledger_uses_implement_raw_label_when_step_mark_is_wrong(tmp_path: Path) -> None:
+    ledger = tmp_path / "larch-tokens-abc.jsonl"
+    _ = ledger.write_text(
+        "\n".join(
+            json.dumps(row)
+            for row in (
+                {"type": "mark", "step": "Step 0 — preflight", "ts": "2026-07-09T00:00:00Z"},
+                {
+                    "type": "vendor",
+                    "vendor": "codex",
+                    "raw": config.CODEX_IMPLEMENT_RAW_LABEL,
+                    "input": 1_000_000,
+                    "cache_read": 0,
+                    "output": 0,
+                    "ts": "2026-07-09T00:00:05Z",
+                },
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    roles = crc._implement_roles_from_ledger(ledger, _RATES)
+
+    assert roles is not None
+    coder, reviewer, other = roles
+    assert coder == _RATES.codex_input
+    assert reviewer == 0.0
+    assert other == 0.0

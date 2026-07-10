@@ -1004,16 +1004,61 @@ def _claude_sub_model(row: Mapping[str, Any]) -> str:
     return config.claude_sub_default_model(str(row.get("raw") or ""))
 
 
+def _explicit_step_for_vendor_row(*, name: str, row: Mapping[str, Any]) -> str:
+    raw = str(row.get("raw") or "")
+    if name == "codex" and raw == config.CODEX_IMPLEMENT_RAW_LABEL:
+        return config.IMPLEMENT_STEP2_LABEL
+    if name == "cursor" and raw == config.CURSOR_IMPLEMENT_RAW_LABEL:
+        return config.IMPLEMENT_STEP2_LABEL
+    return ""
+
+
+def _should_reroute_vendor_row(*, name: str, marks: list[dict[str, Any]], row: dict[str, Any], first: float) -> bool:
+    explicit_step = _explicit_step_for_vendor_row(name=name, row=row)
+    if explicit_step != config.IMPLEMENT_STEP2_LABEL:
+        return False
+    ts = _epoch(row.get("ts"))
+    if ts is None or ts < first:
+        return False
+    enclosing = _enclosing_step(marks=marks, ts=ts) or ""
+    return not enclosing.startswith(config.IMPLEMENT_STEP2_PREFIX)
+
+
+def _add_totals(left: Mapping[str, int], right: Mapping[str, int]) -> dict[str, int]:
+    keys = set(left) | set(right)
+    return {key: int(left.get(key, 0)) + int(right.get(key, 0)) for key in keys}
+
+
 def _per_step_json(*, name: str, marks: list[dict[str, Any]], rows: list[dict[str, Any]]) -> dict[str, Any]:
     first = cast("float", marks[0]["ts"])
     filtered = [row for row in rows if name == "claude" or row.get("vendor") == name]
+    total_rows = filtered
+    rerouted = [
+        row
+        for row in filtered
+        if name != "claude" and _should_reroute_vendor_row(name=name, marks=marks, row=row, first=first)
+    ]
+    if rerouted:
+        rerouted_ids = {id(row) for row in rerouted}
+        filtered = [row for row in filtered if id(row) not in rerouted_ids]
     per_step: list[dict[str, Any]] = []
     for idx, mark in enumerate(marks):
         start = cast("float", mark["ts"])
         end = cast("float | None", marks[idx + 1]["ts"] if idx + 1 < len(marks) else None)
         sl = _slice(rows=filtered, start=start, end=end)
         per_step.append({"step": mark["step"], "totals": _totals(sl)})
-    return {"per_step": per_step, "totals": _totals(_slice(rows=filtered, start=first, end=None))}
+    if rerouted:
+        synthetic_totals = _totals(rerouted)
+        step2_idx = next(
+            (idx for idx, item in enumerate(per_step) if str(item.get("step") or "").startswith(config.IMPLEMENT_STEP2_PREFIX)),
+            None,
+        )
+        if step2_idx is None:
+            per_step.append({"step": config.IMPLEMENT_STEP2_LABEL, "totals": synthetic_totals})
+        else:
+            existing_totals = cast("Mapping[str, int]", per_step[step2_idx]["totals"])
+            per_step[step2_idx]["totals"] = _add_totals(existing_totals, synthetic_totals)
+    return {"per_step": per_step, "totals": _totals(_slice(rows=total_rows, start=first, end=None))}
 
 
 def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], vendor: list[dict[str, Any]]) -> dict[str, Any]:

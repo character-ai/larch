@@ -678,6 +678,64 @@ def _implement_token_budget_hit(*, args: argparse.Namespace, tool: str, default_
     return False
 
 
+def _append_implement_token_mark_issue(summary: str) -> None:
+    tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not tmpdir or not Path(tmpdir).is_dir():
+        return
+    with contextlib.suppress(OSError):
+        proc.run(
+            [
+                sys.executable,
+                str(_PY_CLI),
+                "run-log",
+                "append-entry",
+                "--log",
+                str(Path(tmpdir) / "execution-issues.md"),
+                "--category",
+                "Warnings",
+                "--entry",
+                f"- Step 2 token mark warning: {summary}",
+            ],
+            check=False,
+        )
+
+
+def _append_implement_token_mark_sidecar(*, sidecar: Path, text: str) -> None:
+    with contextlib.suppress(OSError):
+        _append(path=sidecar, text=text)
+
+
+def _mark_external_implement_step2_token(*, sidecar: Path) -> None:
+    tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not tmpdir:
+        _append_implement_token_mark_sidecar(
+            sidecar=sidecar,
+            text="agent implement token mark: IMPLEMENT_TMPDIR missing; token mark may be unavailable\n",
+        )
+    elif not Path(tmpdir).is_dir():
+        _append_implement_token_mark_sidecar(
+            sidecar=sidecar,
+            text=f"agent implement token mark: IMPLEMENT_TMPDIR is not a directory: {tmpdir}\n",
+        )
+    try:
+        result = proc.run([sys.executable, str(_PY_CLI), "token", "mark", config.IMPLEMENT_STEP2_LABEL], check=False)
+    except OSError as exc:
+        summary = f"token mark could not run: {exc}"
+        _append_implement_token_mark_sidecar(sidecar=sidecar, text=f"agent implement token mark: {summary}\n")
+        _append_implement_token_mark_issue(summary)
+        return
+    if result.returncode == 0:
+        return
+    summary = f"token mark failed with exit {result.returncode}"
+    detail = f"agent implement token mark: {summary}\n"
+    if result.stderr:
+        detail += f"stderr:\n{result.stderr.rstrip()}\n"
+    if result.stdout:
+        detail += f"stdout:\n{result.stdout.rstrip()}\n"
+    _append_implement_token_mark_sidecar(sidecar=sidecar, text=detail)
+    _append_implement_token_mark_issue(summary)
+
+
 def _append_implement_launch_failure(*, tool: str, output: Path, sidecar: Path, launcher_exit: int, retry_count: int = 0) -> None:
     if launcher_exit == 0:
         return
@@ -776,6 +834,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
             "--",
             prompt,
         ]
+        _mark_external_implement_step2_token(sidecar=sidecar)
         start = time.time()
         with _temporary_env(name="CODEX_HOME", value=str(home)):
             result = _run_external_agent_with_auth_retries(
@@ -794,7 +853,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
         hooks=(
             lambda: _post_codex_events(events=events, sidecar=sidecar),
             lambda: _record_implement_timing(tool="codex", task_kind=task_kind, start=start, output=output, exit_code=result.exit_code),
-            lambda: _record_usage_from_events(events=events, sidecar=sidecar, label="codex_implement"),
+            lambda: _record_usage_from_events(events=events, sidecar=sidecar, label=config.CODEX_IMPLEMENT_RAW_LABEL),
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-codex-implement\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\nOUTER_LAUNCHER_KIND=codex-implement\nOUTER_LAUNCHER_ADD_DIRS_JSON={_json_array([str(session_tmpdir), workdir])}\n"),
             lambda: _append_implement_failure_if_nonzero(tool="codex", output=output, sidecar_log=sidecar, exit_code=result.exit_code),
             lambda: _promote_inner_done(output),
@@ -832,7 +891,7 @@ def _record_cursor_implement_usage(output: Path, model: str = "") -> None:
         f"cache_read={cache_read}",
         f"cache_create={cache_create}",
         f"total={total}",
-        "raw=cursor_implement",
+        f"raw={config.CURSOR_IMPLEMENT_RAW_LABEL}",
     ]
     if model:
         cmd.append(f"model={model}")
@@ -890,9 +949,10 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     if user_cfg.is_file():
         with contextlib.suppress(OSError):
             shutil.copyfile(user_cfg, Path(cfg_tmp) / "cli-config.json")
-    start = time.time()
     try:
         child = ["cursor", "agent", "-p", "--force", "--trust", "--output-format", "json", *model_args, "--workspace", workdir, wrapped_prompt]
+        _mark_external_implement_step2_token(sidecar=sidecar)
+        start = time.time()
         with _temporary_env(name="CURSOR_CONFIG_DIR", value=cfg_tmp):
             result = _run_external_agent_with_auth_retries(
                 tool="cursor",
