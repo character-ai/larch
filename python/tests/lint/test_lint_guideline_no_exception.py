@@ -130,6 +130,22 @@ def test_missing_guidelines_file_exits_2(tmp_path: Path) -> None:
     assert lgne.main(["--root", str(tmp_path)]) == 2
 
 
+@pytest.mark.parametrize(
+    "guidelines, expected",
+    [
+        ("Preamble only.\n", "no recognized guideline entries"),
+        ("### G-New-1: Truncated entry\n\n", "missing body content"),
+    ],
+)
+def test_malformed_guidelines_file_exits_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], guidelines: str, expected: str
+) -> None:
+    _write_project(tmp_path, guidelines=guidelines, baseline=[])
+
+    assert lgne.main(["--root", str(tmp_path)]) == 2
+    assert expected in capsys.readouterr().err
+
+
 def test_non_utf8_guidelines_file_exits_2(tmp_path: Path) -> None:
     _write_project(tmp_path, baseline=[])
     _ = (tmp_path / "ARCHITECTURAL_GUIDELINES.md").write_bytes(b"\xff")

@@ -38,6 +38,7 @@ class CurrentEntry:
     title: str
     start_line: int
     deviate_line: int | None = None
+    saw_body_line: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,8 @@ def _finish_entry(
 ) -> None:
     if current is None:
         return
+    if not current.saw_body_line:
+        raise BaselineError(f"{path}: guideline entry {current.guideline_id} is missing body content")
     if current.guideline_id in seen_ids:
         raise BaselineError(f"{path}: duplicate guideline id {current.guideline_id}")
     seen_ids.add(current.guideline_id)
@@ -142,6 +145,19 @@ def _updated_entry_for_deviate(current: CurrentEntry, *, line_number: int) -> Cu
         title=current.title,
         start_line=current.start_line,
         deviate_line=line_number,
+        saw_body_line=current.saw_body_line,
+    )
+
+
+def _updated_entry_for_body(current: CurrentEntry) -> CurrentEntry:
+    if current.saw_body_line:
+        return current
+    return CurrentEntry(
+        guideline_id=current.guideline_id,
+        title=current.title,
+        start_line=current.start_line,
+        deviate_line=current.deviate_line,
+        saw_body_line=True,
     )
 
 
@@ -153,9 +169,11 @@ def scan_guidelines(path: Path) -> list[Finding]:
     findings: list[Finding] = []
     seen_ids: set[str] = set()
     current: CurrentEntry | None = None
+    saw_guideline_heading = False
     for line_number, raw_line in enumerate(raw_text.splitlines(), start=1):
         heading = GUIDELINE_HEADING_RE.match(raw_line)
         if heading is not None:
+            saw_guideline_heading = True
             _finish_entry(current=current, seen_ids=seen_ids, findings=findings, path=path)
             current = CurrentEntry(
                 guideline_id=heading.group(1),
@@ -167,10 +185,16 @@ def scan_guidelines(path: Path) -> list[Finding]:
             _finish_entry(current=current, seen_ids=seen_ids, findings=findings, path=path)
             current = None
             continue
-        if current is None or NO_EXCEPTION_DEVIATE_RE.match(raw_line) is None:
+        if current is None:
+            continue
+        if raw_line.strip():
+            current = _updated_entry_for_body(current)
+        if NO_EXCEPTION_DEVIATE_RE.match(raw_line) is None:
             continue
         current = _updated_entry_for_deviate(current, line_number=line_number)
     _finish_entry(current=current, seen_ids=seen_ids, findings=findings, path=path)
+    if not saw_guideline_heading and raw_text.strip():
+        raise BaselineError(f"{path}: no recognized guideline entries")
     return findings
 
 
