@@ -1,0 +1,34 @@
+⏺ The "error" is now explained: there is no workflow named "CI" in character-tech/dev-tools. The repo only has PR, Cloudflare Waiting Room Maintenance, and pr_agent workflows. The main-health probe looks for a CI workflow on push→main, finds none, and reports error. This is a
+  probe/config mismatch, not evidence that main is broken (recent commits merged normally).
+
+  The main-health contract says MAIN_CI_STATUS=error → operator-bail with the recorded detail. Since this run is --merge (auto-merge to main, hard to reverse) and I'm overriding a documented safety gate, this is genuinely your call.
+
+Need to come up with a generic solution, but likely will have to skip this step in such a case.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Stop `/implement` operator-bailing when a repo has no workflow named "CI".
+- Report a distinct `skip` main-health status so logs stay honest: gate not applicable, not "passed".
+
+### Non-goals
+- No change to the PR-CI `decide` path or its `_VALID_CI_STATUS` set (unrelated, includes `merged`).
+- Do not skip when a "CI" workflow exists but has zero push->main runs; that stays `error`.
+- No `/design` change; it does not probe main-health.
+
+### Approach sketch
+- Detect the gh "could not find any workflows named CI" signature (rc=1) inside the main-health read path.
+- Return `MAIN_CI_STATUS=skip` for that one case, instead of catching it as `error`.
+- Add `skip` to the two status sets; make `wait_main_health` treat `skip` as terminal.
+- Teach the `/implement` consumer prose to continue on `skip`.
+
+### Surfaces in scope
+- `python/larch/implement/main_health.py`: detection, status set, wait terminal.
+- `python/larch/git/gh.py`: workflow-not-found signature helper.
+- `python/larch/implement/preflight.py`: envelope status validation set.
+- `skills/implement/SKILL.md`, `skills/implement/references/step2-main-health-fix.md`: consumer prose.
+- Tests: `test_main_health.py`, `test_preflight.py`.
+
+### Open questions
+- None.
