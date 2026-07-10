@@ -1424,7 +1424,7 @@ def _validated_note_metadata(  # noqa: PLR0911 - fail-closed metadata validator 
     return note_state, authored_fingerprint, covered_fingerprint, base_ref
 
 
-def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0913 - fail-closed coverage advancement validates each independent safety boundary
+def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - fail-closed coverage advancement validates each independent safety boundary
     *,
     implement_tmpdir: Path,
     metadata: dict[str, str],
@@ -1509,7 +1509,7 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0913 - fail-closed covera
             except (OSError, UnicodeDecodeError):
                 restored = False
             if not restored:
-                raise RuntimeError("could not restore architectural assessment coverage artifacts")
+                raise RuntimeError("could not restore architectural assessment coverage artifacts") from None
             return False
     except (OSError, UnicodeDecodeError):
         return False
