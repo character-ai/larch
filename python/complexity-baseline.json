@@ -50,6 +50,12 @@
   {
     "file": "larch/agents/_ci_launcher.py",
     "code": "C901",
+    "qualified_symbol": "_validate_ci_args",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "C901",
     "qualified_symbol": "launch_claude_ci_main",
     "metric": 13
   },
@@ -2528,12 +2534,6 @@
   {
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0913",
-    "qualified_symbol": "_wait_for_ci_ready",
-    "metric": 6
-  },
-  {
-    "file": "larch/implement/ci_monitor.py",
-    "code": "PLR0913",
     "qualified_symbol": "checks_status",
     "metric": 7
   },
@@ -2564,6 +2564,12 @@
   {
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0913",
+    "qualified_symbol": "prepare_failure_evidence",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
     "qualified_symbol": "run_ci_fix",
     "metric": 13
   },
@@ -2572,6 +2578,12 @@
     "code": "PLR0913",
     "qualified_symbol": "stage_and_push",
     "metric": 8
+  },
+  {
+    "file": "larch/implement/ci_monitor.py",
+    "code": "PLR0913",
+    "qualified_symbol": "wait_for_ci_ready",
+    "metric": 6
   },
   {
     "file": "larch/implement/ci_monitor.py",

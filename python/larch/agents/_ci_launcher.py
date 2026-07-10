@@ -103,16 +103,15 @@ def _validate_ci_args(args: argparse.Namespace) -> tuple[bool, int]:
     if args.plan_file and not Path(args.plan_file).is_absolute():
         _err("agent launch-ci: --plan-file must be an absolute path")
         return False, 2
-    if args.failure_log:
-        ok, msg = _validate_failure_log_path(Path(args.failure_log))
-        if not ok:
-            _err(f"agent launch-ci: {msg}")
-            return False, 2
-    if args.invariant_evidence:
-        ok, msg = _validate_failure_log_path(Path(args.invariant_evidence))
-        if not ok:
-            _err(f"agent launch-ci: --invariant-evidence {msg.removeprefix('--failure-log ')}")
-            return False, 2
+    for flag, value in (("--failure-log", args.failure_log), ("--invariant-evidence", args.invariant_evidence)):
+        if value:
+            ok, msg = _validate_failure_log_path(Path(value))
+            if not ok:
+                if flag == "--invariant-evidence":
+                    _err(f"agent launch-ci: {flag} {msg.removeprefix('--failure-log ')}")
+                else:
+                    _err(f"agent launch-ci: {msg}")
+                return False, 2
     if args.conflict_files:
         ok, msg = _validate_conflict_files_csv(args.conflict_files)
         if not ok:
