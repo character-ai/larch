@@ -1,0 +1,36 @@
+### FINDING_1: Incremental safety check must diff stored coverage HEAD to current HEAD
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: The incremental safety check does not explicitly identify the old Git endpoint. Without requiring a diff from the persisted `HEAD_SHA` to the current `HEAD`, an implementation could compare `BASE_REF..HEAD` or replay the full materialized diff, incorrectly treating previously assessed paths as new increments and forcing unnecessary reassessment.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: State explicitly that the rename-safe incremental check runs git diff --no-renames --name-only -z <stored HEAD_SHA>..<current HEAD>, using the durable metadata HEAD_SHA written at the last successful coverage update as the old revision.
+
+### FINDING_2: Compose prechecks must use unified live validation and advancement
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: major
+- **Concern**: The compose precheck helpers bypass the shared consumption and advancement path by calling `note_consumable` / `invariant_note_consumable` without `repo_root` and `base_ref`, while retaining a separate fingerprint-stale gate and a `root is None → current` shortcut. After removing the HEAD-match-only shortcut, safe docs-only or log-only HEAD advances cannot update coverage or reliably validate the live covered identity, so compose reuse can fail or incorrectly report `status=current`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Refactor both precheck helpers to pass resolved `repo_root` and `BASE_REF` into the consumption helpers, rely on the unified consumable result only, and delete the redundant parallel fingerprint-stale branch. Add compose-precheck tests that prove safe HEAD drift returns `status=current` without rematerialization.
+  - From Cursor-Pragmatic: Pass `repo_root=root` and the resolved `base_ref` into consumable checks, delete the `root is None → current` branch, and rely on the shared advancement plus covered-fingerprint validation inside consumable before returning `status=current`.
+
+### FINDING_3: Preserve persisted invariant violations when availability becomes unavailable
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: Unconditional clearing and rewriting of the invariant outcome sidecar can erase a previously persisted blocking `violation` before classification preserves it. Classification precedence added only in `ship_guidelines.py` is insufficient if `_invariants_gate_before_pr` clears the sidecar and `write_invariant_ship_outcome` rewrites it with `unavailable`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Specify and test a no-clobber write contract: read the existing invariant outcome sidecar (and authored violation durable note) before clear/write; when the new gate resolves to unavailable, keep the existing violation outcome and skip unavailable downgrade. Document the touch point (`ship.py` gate and/or `write_invariant_ship_outcome`) in the firm plan files.
+
+### FINDING_4: Coverage advancement must refresh the full diff snapshot and covered identity
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: major
+- **Concern**: The advancement design does not require updating `DIFF_SNAPSHOT` or the referenced diff artifact, nor does it explicitly require computing `COVERED_DIFF_FINGERPRINT` from the full materialized `base..HEAD` implementation diff. A safe post-assessment commit could therefore pair a stale snapshot or increment-only fingerprint with a new `HEAD_SHA`, causing later live consumption checks to reject the advanced coverage and trigger reassessment.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In the shared advancement helper, re-materialize the full base..HEAD implementation diff at the new HEAD, atomically update the snapshot file plus `DIFF_SNAPSHOT`, `COVERED_DIFF_FINGERPRINT`, and `HEAD_SHA` together, and add tests that a docs-only or log-only advance leaves snapshot bytes and covered identity consistent.
+  - From Cursor-Pragmatic: After incremental paths pass classification, materialize the full implementation diff at the new HEAD, set `COVERED_DIFF_FINGERPRINT` to that full-diff fingerprint (keeping `AUTHORED_DIFF_FINGERPRINT` unchanged), and test chained docs-only then log-only advances against live full-diff consumption.
+
+### FINDING_5: Define how unavailable notes are consumed without a reusable covered identity
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: major
+- **Concern**: The plan permits unavailable notes without fingerprints while also requiring every consumed note to have a non-empty covered identity. Because the ship loader checks consumability before reading `NOTE_STATE`, an unavailable note cannot reach unavailable outcome classification and instead repeatedly requests reassessment or returns the existing materialization-failed result.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Define a state-specific terminal path for unavailable artifacts that emits the unavailable outcome without claiming reusable coverage, or require every unavailable note intended for normal consumption to carry a validated covered identity. Add the corresponding loader behavior to the firm plan.
