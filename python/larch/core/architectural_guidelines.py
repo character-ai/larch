@@ -1415,7 +1415,7 @@ def _validated_note_metadata(  # noqa: PLR0911 - fail-closed metadata validator 
         return note_state, authored_fingerprint, covered_fingerprint, base_ref
     declared_snapshot = metadata.get("DIFF_SNAPSHOT", "")
     prior_format = not metadata.get("NOTE_STATE") and not metadata.get("AUTHORED_DIFF_FINGERPRINT") and not metadata.get("COVERED_DIFF_FINGERPRINT")
-    if prior_format and not declared_snapshot:
+    if prior_format:
         return note_state, authored_fingerprint, covered_fingerprint, base_ref
     if not declared_snapshot or Path(declared_snapshot) != expected_snapshot:
         return None
