@@ -56,11 +56,40 @@ INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
+_MECHANIZED_RE = re.compile(r"^\s*-\s*Mechanized:\s*(.+?)\s*$")
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 _EXECUTION_WARNINGS_CATEGORY = "Warnings"
 _APPEND_DEVIATION_OK = "ok"
 _APPEND_DEVIATION_DUPLICATE = "duplicate"
 _APPEND_DEVIATION_FAILED = "failed"
+
+
+def _append_guideline_entry(
+    entries: list[list[str]],
+    *,
+    heading: str | None,
+    detail: list[str],
+    mechanized: str | None,
+) -> None:
+    if heading is None:
+        return
+    if mechanized is not None:
+        entries.append([heading, mechanized])
+        return
+    entries.append([heading, *detail])
+
+
+def _normalized_guideline_detail(raw_line: str) -> tuple[bool, str] | None:
+    mechanized = _MECHANIZED_RE.match(raw_line)
+    if mechanized:
+        return True, f"- Mechanized: {mechanized.group(1).strip()}"
+    why = _WHY_RE.match(raw_line)
+    if why:
+        return False, f"- Why: {why.group(1).strip()}"
+    deviate = _DEVIATE_RE.match(raw_line)
+    if deviate:
+        return False, f"- Deviate when: {deviate.group(1).strip()}"
+    return None
 
 
 @dataclass(frozen=True)
@@ -265,36 +294,42 @@ def _resolve_repo_root(explicit_repo_root: str | Path | None = None) -> Path | N
 
 
 def parse_guideline_entries(raw_text: str) -> str:
-    """Return normalized G-* entries with Why and Deviate bullets only.
+    """Return normalized G-* entries for prompt consumption.
 
     Guidance and other bullets are intentionally omitted from the normalized
-    architectural knowledge snapshot.
+    architectural knowledge snapshot. Mechanized entries retain only the
+    heading and the mechanization marker.
     """
     entries: list[list[str]] = []
-    current: list[str] | None = None
+    current_heading: str | None = None
+    current_detail: list[str] = []
+    current_mechanized: str | None = None
+
     for raw_line in raw_text.splitlines():
         heading = GUIDELINE_HEADING_RE.match(raw_line)
         if heading:
-            if current is not None:
-                entries.append(current)
-            current = [f"### {heading.group(1)}: {heading.group(2).strip()}"]
+            _append_guideline_entry(entries, heading=current_heading, detail=current_detail, mechanized=current_mechanized)
+            current_heading = f"### {heading.group(1)}: {heading.group(2).strip()}"
+            current_detail = []
+            current_mechanized = None
             continue
         if _MARKDOWN_HEADING_RE.match(raw_line):
-            if current is not None:
-                entries.append(current)
-                current = None
+            _append_guideline_entry(entries, heading=current_heading, detail=current_detail, mechanized=current_mechanized)
+            current_heading = None
+            current_detail = []
+            current_mechanized = None
             continue
-        if current is None:
+        if current_heading is None:
             continue
-        why = _WHY_RE.match(raw_line)
-        if why:
-            current.append(f"- Why: {why.group(1).strip()}")
+        normalized_detail = _normalized_guideline_detail(raw_line)
+        if normalized_detail is None:
             continue
-        deviate = _DEVIATE_RE.match(raw_line)
-        if deviate:
-            current.append(f"- Deviate when: {deviate.group(1).strip()}")
-    if current is not None:
-        entries.append(current)
+        is_mechanized, line = normalized_detail
+        if is_mechanized:
+            current_mechanized = line
+        else:
+            current_detail.append(line)
+    _append_guideline_entry(entries, heading=current_heading, detail=current_detail, mechanized=current_mechanized)
     return "\n\n".join("\n".join(entry) for entry in entries).strip()
 
 

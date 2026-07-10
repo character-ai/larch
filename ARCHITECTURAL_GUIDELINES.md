@@ -75,6 +75,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ## Configuration and protocol literals
 
 ### G-Cfg-1: Define every exit code, env-var name, tunable, and wire literal once in config.py as a Final; build token sets from prior sets rather than re-listing
+- Mechanized: `python3 python/cli.py lint env-via-config-constant` covers env-var literals only; exit codes, tunables, and other wire literals remain review-guided.
 - Why: one edit point for protocol literals; aggregated sets cannot drift out of sync with their members.
 - Deviate when: a module-private constant used at one call site with no cross-module contract.
 
@@ -240,6 +241,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Deviate when: a rare reviewed fixture, tagged on that line with `# lint-bare-grep-probe: ok <reason>`.
 
 ### G-Bash-3: Keep committed shell scripts compatible with macOS system Bash 3.2 unless the script documents a narrower runtime
+- Mechanized: `make lint-bash32` covers Bash 3.2 constructs; `make lint-renderer-substitution-safety` covers the renderer replacement hazard.
 - Why: contributors and CI run on macOS, where `/bin/bash` is 3.2.57, so a Bash 4+ construct fails only there, often late or silently. Avoid associative arrays, namerefs, `mapfile`/`readarray`, case conversion (`${var^^}`/`${var,,}`), `&>>`, and coprocs; use `while IFS= read -r`, `case`/`tr`, and `>>file 2>&1`.
 - Deviate when: a script documents a narrower runtime at its top and is excluded from the sweep. Note: `make lint-bash32` mechanizes the construct list (`# lint-bash32: ok <reason>` suppresses a fixture); the residue is the renderer `&`-substitution hazard, where `${var//pat/$repl}` differs between 3.2 and 5.x (BASH_AUTHORING.md §3).
 

@@ -678,6 +678,94 @@ def test_parse_guideline_entries_omits_bullets_after_non_entry_heading() -> None
     assert "- Why: second why." in parsed
 
 
+def test_parse_guideline_entries_slims_marked_guideline_to_mechanized_line() -> None:
+    parsed = ag.parse_guideline_entries(
+        """### G-Cfg-1: Define config literals once
+- Mechanized: `python3 python/cli.py lint env-via-config-constant` covers env-var literals only.
+- Why: this must not appear.
+- Deviate when: this carve-out must not appear.
+"""
+    )
+
+    assert (
+        parsed
+        == """### G-Cfg-1: Define config literals once
+- Mechanized: `python3 python/cli.py lint env-via-config-constant` covers env-var literals only."""
+    )
+
+
+def test_parse_guideline_entries_ignores_mechanized_line_outside_guideline() -> None:
+    parsed = ag.parse_guideline_entries(
+        """- Mechanized: outside entries must not create output.
+
+### Notes
+- Mechanized: section bullets must not create output.
+
+### G-Bash-3: Keep shell scripts portable
+- Why: portability matters.
+- Deviate when: a script documents a narrower runtime.
+"""
+    )
+
+    assert (
+        parsed
+        == """### G-Bash-3: Keep shell scripts portable
+- Why: portability matters.
+- Deviate when: a script documents a narrower runtime."""
+    )
+
+
+def test_parse_guideline_entries_preserves_unmarked_guideline_normalization() -> None:
+    parsed = ag.parse_guideline_entries(
+        """Preamble ignored.
+
+### G-Py-4: Fail loudly
+- Why: loud failure preserves auditability.
+- Guidance: extra guidance is intentionally omitted.
+- Deviate when: a documented degraded path exists.
+"""
+    )
+
+    assert (
+        parsed
+        == """### G-Py-4: Fail loudly
+- Why: loud failure preserves auditability.
+- Deviate when: a documented degraded path exists."""
+    )
+
+
+def test_parse_guideline_entries_mixes_marked_and_unmarked_entries_in_order() -> None:
+    parsed = ag.parse_guideline_entries(
+        """### G-Py-4: Fail loudly
+- Why: loud failure preserves auditability.
+- Deviate when: a documented degraded path exists.
+
+### G-Bash-3: Keep shell scripts portable
+- Why: this must not appear.
+- Mechanized: `make lint-bash32` covers Bash 3.2 constructs.
+- Deviate when: this carve-out must not appear.
+
+### G-Obs-3: Record execution issues
+- Why: tmpdir-only failures vanish.
+- Deviate when: no committed log exists.
+"""
+    )
+
+    assert (
+        parsed
+        == """### G-Py-4: Fail loudly
+- Why: loud failure preserves auditability.
+- Deviate when: a documented degraded path exists.
+
+### G-Bash-3: Keep shell scripts portable
+- Mechanized: `make lint-bash32` covers Bash 3.2 constructs.
+
+### G-Obs-3: Record execution issues
+- Why: tmpdir-only failures vanish.
+- Deviate when: no committed log exists."""
+    )
+
+
 def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
