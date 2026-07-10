@@ -3221,7 +3221,8 @@ def test_dispatch_panel_dynamic_manifest_adds_review_codex_rows_for_upper_tiers(
     assert cursor_row.get("resolved_model") == "auto"
     assert codex_row.get("tool") == "codex"
     assert codex_row.get("model_role") == "review"
-    assert codex_row.get("resolved_model") == config.CODEX_REVIEW_MODEL_DEFAULT
+    expected_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[tier]
+    assert codex_row.get("resolved_model") == expected_model
 
 
 def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:
@@ -4781,11 +4782,11 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     assert proc.returncode == 0
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert [(row["slot"], row["tool"]) for row in rows] == [
-        ("correctness", "codex"),
-        ("edge-cases", "codex"),
-        ("testing", "codex"),
+        ("correctness", "cursor"),
+        ("edge-cases", "cursor"),
+        ("testing", "cursor"),
     ]
-    assert all(row.get("model_role") == "review" for row in rows if row["tool"] == "codex")
+    assert all(row.get("cursor_model") == "auto" for row in rows)
     assert "PANEL_SHAPE=singles" in proc.stdout
     assert "PANEL_TIER=TRIVIAL" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
@@ -4793,7 +4794,7 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     assert "SLOT_COUNT=3" in proc.stdout
 
 
-def test_dispatch_panel_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -> None:
+def test_dispatch_panel_hard_uses_pairs_and_terra_codex_review_role(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("plan", encoding="utf-8")
     waterfall = tmp_path / "waterfall.sh"
@@ -4819,12 +4820,12 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert {row["tool"] for row in rows} == {"codex", "cursor"}
     roles_by_slot = {str(row["slot"]): str(row.get("model_role")) for row in rows if row["tool"] == "codex"}
-    assert roles_by_slot == {"correctness": "default", "edge-cases": "default", "testing": "review"}
+    assert roles_by_slot == {"correctness": "review", "edge-cases": "review", "testing": "review"}
     resolved_by_slot = {str(row["slot"]): str(row.get("resolved_model")) for row in rows if row["tool"] == "codex"}
     assert resolved_by_slot == {
-        "correctness": config.CODEX_DEFAULT_MODEL,
-        "edge-cases": config.CODEX_DEFAULT_MODEL,
-        "testing": config.CODEX_REVIEW_MODEL_DEFAULT,
+        "correctness": "gpt-5.6-terra",
+        "edge-cases": "gpt-5.6-terra",
+        "testing": "gpt-5.6-terra",
     }
     cursor_rows = [row for row in rows if row["tool"] == "cursor"]
     assert {row["slot"] for row in cursor_rows} == {"correctness", "edge-cases", "testing"}
@@ -4890,21 +4891,7 @@ def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
     assert "EFFECTIVE_ROUND_CAP=2" in hard.stdout
 
 
-@pytest.mark.parametrize(
-    ("tier", "cursor_available", "expected_tool"),
-    [
-        (config.DIFFICULTY_TIER_TRIVIAL, True, "cursor"),
-        (config.DIFFICULTY_TIER_MODERATE, False, "codex"),
-        (config.DIFFICULTY_TIER_HARD, False, "codex"),
-    ],
-)
-def test_forced_plan_fidelity_row_uses_available_tool_and_is_prune_exempt(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    tier: str,
-    cursor_available: bool,
-    expected_tool: str,
-) -> None:
+def test_forced_plan_fidelity_row_is_disabled_for_review_panel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from larch.review import review_dispatch_panel  # noqa: PLC0415
 
     implement_tmpdir = tmp_path / "impl"
@@ -4918,22 +4905,11 @@ def test_forced_plan_fidelity_row_uses_available_tool_and_is_prune_exempt(
         manifest=manifest,
         review_tmpdir=tmp_path,
         codex_slots_available=True,
-        cursor_slots_available=cursor_available,
-        tier=tier,
+        cursor_slots_available=True,
+        tier=config.DIFFICULTY_TIER_HARD,
     )
 
-    rows = _panel_manifest_rows(manifest)
-    assert len(rows) == 1
-    assert rows[0]["slot"] == "plan-fidelity-forced"
-    assert rows[0]["tool"] == expected_tool
-    assert rows[0]["prune_exempt"] is True
-    assert rows[0]["focus_area"] == "architecture"
-    if expected_tool == "cursor":
-        assert rows[0]["cursor_model"] == "auto"
-        assert rows[0]["resolved_model"] == "auto"
-    else:
-        assert rows[0]["model_role"] == "review"
-        assert rows[0]["resolved_model"] == config.CODEX_REVIEW_MODEL_DEFAULT
+    assert _panel_manifest_rows(manifest) == []
 
 
 def test_prune_keeps_prune_exempt_rows_without_history(tmp_path: Path) -> None:

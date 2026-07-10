@@ -548,17 +548,17 @@ def _identity_lines(kwargs: Mapping[str, object]) -> list[str]:
 
 
 def _codex_cost_segment(kwargs: Mapping[str, object]) -> str:
-    """Render the per-model Codex portion of the cost line (gpt-5.5 vs gpt-5.4-mini).
+    """Render the per-model Codex portion of the cost line (gpt-5.6 default vs mini-class models).
 
     Legacy callers that pass only the model-summed codex_cost fall back to it as the
-    gpt-5.5 slot with a zero mini slot.
+    gpt-5.6 slot with a zero mini slot.
     """
     codex_5_5 = kwargs.get("codex_gpt_5_5_cost")
     codex_mini = kwargs.get("codex_gpt_5_4_mini_cost")
     if codex_5_5 is None or codex_5_5 == "N/A":
         codex_5_5 = kwargs.get("codex_cost", 0)
         codex_mini = 0
-    return f"Codex-5.5 {_fmt_money(_money_value(codex_5_5))}, Codex-mini {_fmt_money(_money_value(codex_mini))}"
+    return f"Codex-5.6 {_fmt_money(_money_value(codex_5_5))}, Codex-mini {_fmt_money(_money_value(codex_mini))}"
 
 
 

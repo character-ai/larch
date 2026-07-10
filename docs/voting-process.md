@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design`, `/review`, and `/implement` Step 5 run three Codex-primary voter slots: validity, plan-fidelity, and pragmatism. Each slot falls through to Cursor and then Claude; the panel degrades to a single Claude validity voter only when both external tools are unavailable. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design`, `/review`, and `/implement` Step 5 run three Codex-primary voter slots: validity, plan-fidelity, and pragmatism. Code-review Codex voters use `gpt-5.6-luna` for TRIVIAL and `gpt-5.6-terra` for MODERATE/HARD. Each slot falls through to Cursor and then Claude; the panel degrades to a single Claude validity voter only when both external tools are unavailable. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|

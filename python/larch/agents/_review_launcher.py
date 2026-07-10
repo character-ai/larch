@@ -112,6 +112,7 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stderr-sink", default="")
     parser.add_argument("--site", default="review Step 2")
     parser.add_argument("--model-role", choices=("default", "review", "vote", "fix"), default="default")
+    parser.add_argument("--default-model", default="")
     parser.add_argument("--cursor-model", default=None)
     parser.add_argument("--difficulty", default="")
     return parser
@@ -830,7 +831,7 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
             return 0
         try:
             try:
-                model_args = list(resolve_model_args("codex", with_effort=True, codex_role=getattr(args, "model_role", "default")).argv)
+                model_args = list(resolve_model_args("codex", with_effort=True, default_model=getattr(args, "default_model", ""), codex_role=getattr(args, "model_role", "default")).argv)
             except TypeError:
                 model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:

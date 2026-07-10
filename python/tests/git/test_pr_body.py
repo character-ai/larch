@@ -607,7 +607,7 @@ def test_render_run_summary_includes_cost_line() -> None:
     assert "💰 TOTAL" in body
     assert "**Cost**:" in body
     # Legacy callers passing only codex_cost still render the split (5.5 slot + $0.00 mini).
-    assert "Codex-5.5 $0.25" in body
+    assert "Codex-5.6 $0.25" in body
     assert "Codex-mini $0.00" in body
 
 
@@ -626,7 +626,7 @@ def test_render_run_summary_splits_codex_by_model() -> None:
         total_tokens=1000,
         cost_unavailable=False,
     )
-    assert "Codex-5.5 $0.10" in body
+    assert "Codex-5.6 $0.10" in body
     assert "Codex-mini $0.30" in body
     assert "Codex $" not in body  # the old single-Codex slot is gone
 
@@ -672,7 +672,7 @@ def test_render_run_summary_main_emits_codex_model_split(capsys: pytest.CaptureF
     ])
     assert rc == 0
     body = capsys.readouterr().out
-    assert "Codex-5.5 $" in body
+    assert "Codex-5.6 $" in body
     assert "Codex-mini $" in body
 
 

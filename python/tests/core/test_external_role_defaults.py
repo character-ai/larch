@@ -11,12 +11,12 @@ def test_all_registry_roles_are_pinned_independently() -> None:
     expected = {
         "implement.step2_coder": ("waterfall", ("codex", "cursor", "claude")),
         "implement.lint_fix_coder": ("waterfall", ("claude", "codex", "cursor")),
-        "implement.ci_recovery_fixer": ("waterfall", ("claude", "codex", "cursor")),
+        "implement.ci_recovery_fixer": ("waterfall", ("codex", "cursor", "claude")),
         "implement.rebase_conflict_fixer": ("waterfall", ("claude", "codex", "cursor")),
         "review.fix_coder": ("waterfall", ("codex", "cursor", "claude")),
         "review.dynamic_archetype_scout": ("waterfall", ("cursor", "claude")),
         "design.plan_archetype_scout": ("waterfall", ("cursor", "claude")),
-        "design.plan_revision": ("waterfall", ("cursor", "codex", "claude")),
+        "design.plan_revision": ("waterfall", ("codex", "cursor", "claude")),
         "design.brainstorm_framing": ("waterfall", ("cursor", "codex", "claude")),
         "design.brainstorm_scope": ("waterfall", ("codex", "cursor", "claude")),
     }
@@ -44,18 +44,14 @@ def test_panel_role_metadata_is_separate() -> None:
     review_slots = external_defaults.slot_defaults("review.panel")
     review_specialists = [slot for slot in review_slots if slot.slot in {"correctness", "edge-cases", "testing"}]
     assert len(review_specialists) == 6
-    assert len(review_slots) == 7
+    assert len(review_slots) == 6
     assert {(slot.slot, slot.tool) for slot in review_specialists} == {
         (slot, tool) for slot in ("correctness", "edge-cases", "testing") for tool in ("cursor", "codex")
     }
-    generic = next(slot for slot in review_slots if slot.slot == "generalist")
     deleted_auto_slot: str = "plan-fidelity-auto"
     assert not any(slot.slot == deleted_auto_slot for slot in review_slots)
-    assert generic.model_role == "default"
-    assert generic.agent == "agents/code-reviewer.md"
-    assert generic.focus_area == "code-quality"
-    assert generic.weight == 1
-    assert all(slot.model_role == "default" for slot in review_specialists if slot.tool == "codex")
+    assert not any(slot.slot == "generalist" for slot in review_slots)
+    assert all(slot.model_role == "review" for slot in review_specialists if slot.tool == "codex")
     assert all(slot.cursor_model == config.CURSOR_AUTO_MODEL for slot in review_specialists if slot.tool == "cursor")
     review_policy = external_defaults.panel_dispatch_policy("review.panel")
     assert review_policy is not None
@@ -96,10 +92,7 @@ def test_voter_and_decompose_roles() -> None:
         "pragmatic": "default",
         "requirements": "default",
     }
-    assert config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES["review.panel"] == {
-        "correctness": "default",
-        "edge-cases": "default",
-    }
+    assert "review.panel" not in config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES
 
     review_voters = external_defaults.voter_policies("review.voters")
     assert review_voters[0].primary_tool == "codex"

@@ -226,7 +226,7 @@ class TokenLedger:
             "ts": _timestamp_utc(),
         }
         if model:
-            payload["model"] = model
+            payload["model"] = config.normalize_claude_ledger_model(model) if vendor == "claude_sub" else model
         try:
             self._append(payload)
         except OSError as exc:
@@ -1000,7 +1000,7 @@ def _vendor_names(*, marks: list[dict[str, Any]], vendor: list[dict[str, Any]]) 
 def _claude_sub_model(row: Mapping[str, Any]) -> str:
     model = str(row.get("model") or "")
     if model:
-        return model
+        return config.normalize_claude_ledger_model(model)
     return config.claude_sub_default_model(str(row.get("raw") or ""))
 
 
@@ -1084,8 +1084,8 @@ def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], ven
             data["BUCKETS_codex"] = {"input": totals["input"], "cached_input": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
             # Per-model split so pricing keys on (vendor, model). Group strictly by
             # the per-row `model` value, independent of step/round/raw label; the
-            # review lane can mix gpt-5.5 and gpt-5.4-mini in one round (issue #5321).
-            # Model-less legacy rows default to gpt-5.5. BUCKETS_codex stays the sum.
+            # review lane can mix default and mini-class Codex models in one round (issue #5321).
+            # Model-less legacy rows default to gpt-5.6-sol. BUCKETS_codex stays the sum.
             by_model: dict[str, dict[str, int]] = {}
             for row in rows:
                 model = str(row.get("model") or "") or config.CODEX_DEFAULT_MODEL
@@ -1618,7 +1618,7 @@ def parse_token_record_sidecar(input_path: Path | None) -> dict[str, Any] | None
     }
     model = kv.get("MODEL", "")
     if model:
-        payload["model"] = model
+        payload["model"] = config.normalize_claude_ledger_model(model) if tool in {"claude", "claude_sub"} else model
     return payload
 
 

@@ -75,6 +75,7 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
     parser.add_argument("--implement-tmpdir", default="")
     parser.add_argument("--coder", required=True)
     parser.add_argument("--answers", default="")
+    parser.add_argument("--difficulty", choices=("", *config.DIFFICULTY_TIERS), default="")
     args = parser.parse_args(argv)
     raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
@@ -106,6 +107,7 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
         return 2
     cursor_binary_found = _binary_available(session_env=session_env, key="CURSOR_BINARY_FOUND", binary="cursor")
     codex_binary_found = _binary_available(session_env=session_env, key="CODEX_BINARY_FOUND", binary="codex")
+    difficulty_arg = args.difficulty or _resolve_step2_difficulty(tmpdir)
     child = [
         sys.executable,
         str(Path(plugin_root) / "python" / "cli.py"),
@@ -124,6 +126,8 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
         "--codex-binary-found",
         codex_binary_found,
     ]
+    if difficulty_arg:
+        child.extend(["--difficulty", difficulty_arg])
     if args.answers:
         child.extend(["--answers", args.answers])
     env = os.environ.copy()
@@ -225,6 +229,7 @@ def _dispatch_state(*, args: argparse.Namespace, repo_root: Path, tmpdir: Path, 
         bailed_no_reason_token=f"{tool}-bailed-no-reason",
         requires_head_unchanged=(tool == "cursor"),
         nonzero_exit_warn_token="WARN_CODEX_NONZERO_EXIT" if tool == "codex" else "",
+        difficulty=args.difficulty,
     )
 
 
@@ -254,6 +259,8 @@ def _launcher_args(st: DispatchState) -> list[str]:
     cap = os.environ.get("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT", "")
     if cap:
         args.extend(["--token-budget-cap", cap])
+    if st.tool_tag == "codex" and st.difficulty:
+        args.extend(["--difficulty", st.difficulty])
     if st.answers_file is not None:
         args.extend(["--answers-file", str(st.answers_file)])
     return args
@@ -326,6 +333,15 @@ def _explicit_plan_scope_paths(plan_text: str) -> list[str]:
 def _read_design_difficulty_prior(tmpdir: Path) -> str:
     prior = tmpdir / "difficulty-prior.env"
     return larch_io.read_kv(path=prior, key="DESIGN_DIFFICULTY", default="", first_match=True, on_error_default=True)
+
+
+def _resolve_step2_difficulty(tmpdir: Path) -> str:
+    override = larch_io.read_kv(path=tmpdir / "run-flags.sh", key="DIFFICULTY_OVERRIDE", default="", first_match=True, on_error_default=True)
+    normalized_override = difficulty.normalize_tier(override)
+    if normalized_override:
+        return normalized_override
+    prior = _read_design_difficulty_prior(tmpdir)
+    return difficulty.normalize_tier(prior)
 
 
 def _step2_panel_skipped(tmpdir: Path) -> str:
@@ -462,6 +478,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     parser.add_argument("--codex-binary-found", default="")
     parser.add_argument("--cursor-binary-found", default="")
     parser.add_argument("--answers", default="")
+    parser.add_argument("--difficulty", choices=("", *config.DIFFICULTY_TIERS), default="")
     args = parser.parse_args(argv)
 
     if args.coder and args.codex_available:

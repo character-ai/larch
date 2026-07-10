@@ -449,7 +449,7 @@ def test_build_launch_argv_per_tier(tier: str) -> None:
 
 def test_model_args_defaults_and_effort() -> None:
     result = agents.resolve_model_args("codex", with_effort=True)
-    assert result.argv[:2] == ("-m", "gpt-5.5")
+    assert result.argv[:2] == ("-m", "gpt-5.6-sol")
     assert "-c" in result.argv
     assert 'model_reasoning_effort="high"' in result.argv
 
@@ -2892,7 +2892,7 @@ def test_launch_codex_exec_promotes_done_and_records_outer_metadata(
     meta_text = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
     assert "OUTER_LAUNCHER=agent launch-codex-exec" in meta_text
     assert "OUTER_LAUNCHER_MODEL_ROLE=fix" in meta_text
-    assert "MODEL=gpt-5.4-mini" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
+    assert "MODEL=gpt-5.6-terra" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "TOTAL=14" in output.with_suffix(output.suffix + ".token-record").read_text(encoding="utf-8")
     assert "LAUNCHER_EXIT=0" in capsys.readouterr().out
     assert home_log.read_text(encoding="utf-8").strip()
@@ -5677,15 +5677,15 @@ def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, m
     assert render_args[render_args.index("--session-env-path") + 1] == str(session_env)
 
 
-def test_codex_role_model_resolution_ignores_default_model_and_global_env(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_codex_role_model_resolution_uses_default_model_after_role_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_CODEX_MODEL", "strong-global")
     monkeypatch.delenv("LARCH_CODEX_REVIEW_MODEL", raising=False)
     monkeypatch.delenv("LARCH_CODEX_VOTE_MODEL", raising=False)
     monkeypatch.delenv("LARCH_CODEX_FIX_MODEL", raising=False)
 
-    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
-    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
-    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "gpt-5.4-mini")
+    assert agents.resolve_model_args("codex", codex_role="review", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="vote", default_model="custom").argv[:2] == ("-m", "custom")
+    assert agents.resolve_model_args("codex", codex_role="fix", default_model="custom").argv[:2] == ("-m", "custom")
 
 
 def test_codex_default_role_preserves_default_model_contract(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5709,7 +5709,7 @@ def test_codex_role_env_rejects_control_character(monkeypatch: pytest.MonkeyPatc
         agents.resolve_model_args("codex", codex_role="vote")
 
 
-def test_model_args_main_codex_role_ignores_default_and_global_env(
+def test_model_args_main_codex_role_uses_default_model_after_role_env(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -5719,7 +5719,7 @@ def test_model_args_main_codex_role_ignores_default_and_global_env(
     rc = agents.model_args_main(["--tool", "codex", "--codex-role", "review", "--default-model", "custom"])
 
     assert rc == 0
-    assert capsys.readouterr().out.splitlines()[:2] == ["-m", "gpt-5.4-mini"]
+    assert capsys.readouterr().out.splitlines()[:2] == ["-m", "custom"]
 
 
 def test_codex_probe_blank_default_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -169,7 +169,7 @@ def _ci_parser(prog: str) -> argparse.ArgumentParser:
     parser.add_argument("--failure-log", default="")
     parser.add_argument("--timeout", default="1800")
     parser.add_argument("--timing-task-kind", default="")
-    parser.add_argument("--model", default=config.CLAUDE_CI_FIX_MODEL)
+    parser.add_argument("--model", default=config.CLAUDE_CI_RECOVERY_MODEL)
     return parser
 
 
@@ -250,7 +250,7 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
             _append_ci_failure(output, tool="codex", launcher_exit=auth_rc, site="ci fixer")
             return 0
         try:
-            model_args = list(resolve_model_args("codex", with_effort=True).argv)
+            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="fix").argv)
         except ValueError as exc:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             _append_ci_failure(output, tool="codex", launcher_exit=1, site="ci fixer")
@@ -338,7 +338,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     prompt = f" /max-mode on. Prompt: {_ci_prompt(tool='Cursor', args=args)}"
     _write(path=paths.prompt, text=prompt)
     try:
-        model_args = list(resolve_model_args("cursor", with_effort=True).argv)
+        model_args = ["--model", config.CURSOR_AUTO_MODEL]
     except ValueError as exc:
         _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}", tool="cursor")
         _append_ci_failure(output, tool="cursor", launcher_exit=1, site="ci fixer")
@@ -406,6 +406,7 @@ def _implement_parser(prog: str) -> argparse.ArgumentParser:
     parser.add_argument("--answers-file", default="")
     parser.add_argument("--timing-task-kind", default="")
     parser.add_argument("--token-budget-cap", default="")
+    parser.add_argument("--difficulty", choices=config.DIFFICULTY_TIERS, default="")
     return parser
 
 
@@ -807,7 +808,8 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
             _emit_implement_launcher_envelope(args=args, launcher_exit=auth_rc)
             return 0
         try:
-            model_args = list(resolve_model_args("codex", with_effort=True).argv)
+            default_model = config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY.get(args.difficulty, "")
+            model_args = list(resolve_model_args("codex", with_effort=True, default_model=default_model).argv)
         except ValueError as exc:
             _write(path=sidecar, text=f"agent model-args: {exc}\n")
             _write_stderr_tail(source=sidecar, output=output)
@@ -1250,7 +1252,7 @@ def launch_claude_review_fix_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--prompt-body-file", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--timeout", default="1800")
-    parser.add_argument("--model", default=config.CLAUDE_SONNET_4_6_MODEL)
+    parser.add_argument("--model", default=config.CLAUDE_SONNET_4_6_1M_MODEL)
     parser.add_argument("--timing-task-kind", default="claude-review-fix")
     args = parser.parse_args(argv)
     ok, rc = _validate_claude_review_fix_args(args)

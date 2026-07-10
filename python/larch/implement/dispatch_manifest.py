@@ -69,6 +69,7 @@ class DispatchState:
     bailed_no_reason_token: str
     requires_head_unchanged: bool
     nonzero_exit_warn_token: str = ""
+    difficulty: str = ""
     baseline_sha: str = ""
     spawn_branch: str = ""
     scout_status: str = ""

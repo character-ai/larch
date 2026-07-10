@@ -45,7 +45,7 @@ from larch.report import tokens  # noqa: E402
 from larch.core import config  # noqa: E402 - import after sys.path bootstrap above
 
 from larch.report.report_tokens_cost import (  # noqa: E402
-    CODEX_MINI_MODEL,
+    CODEX_MINI_MODELS,
     DEFAULT_VENDOR_MODEL,
     DisplayRates,
     display_rates,
@@ -137,8 +137,8 @@ def _claude_cost(bucket: dict[str, object], rates: DisplayRates) -> float:
 
 
 def _codex_cost(bucket: dict[str, object], rates: DisplayRates, *, model: str = "") -> float:
-    """Price a codex bucket at ``model``'s rates; gpt-5.4-mini vs the gpt-5.5 default."""
-    if model == CODEX_MINI_MODEL:
+    """Price a codex bucket at ``model``'s rates; gpt-5.4-mini vs the gpt-5.6 default."""
+    if model in CODEX_MINI_MODELS:
         r_in, r_cached, r_out = rates.codex_mini_input, rates.codex_mini_cached_input, rates.codex_mini_output
     else:
         r_in, r_cached, r_out = rates.codex_input, rates.codex_cached_input, rates.codex_output
@@ -190,7 +190,7 @@ def _codex_eff_per_token(report: dict[str, object], rates: DisplayRates) -> floa
 def _codex_step_cost(totals: dict[str, object], eff: float) -> float:
     # per_step totals carry no per-row model, so distribute the run's model-aware
     # effective $/token across steps by token share. Keeps the run total correct
-    # under mixed models; for all-gpt-5.5 runs the step sum equals per-bucket pricing.
+    # under mixed models; for all-gpt-5.6 runs the step sum equals per-bucket pricing.
     tokens = _bucket_tokens(totals) or _num(totals.get("total"))
     return tokens * eff
 
@@ -204,11 +204,12 @@ def _implement_step_model(step: str, by_model: dict[str, object]) -> str:
     if step.startswith(config.IMPLEMENT_STEP2_PREFIX):
         if default_model in by_model:
             return default_model
-        non_mini = [model for model in models if model != CODEX_MINI_MODEL]
+        non_mini = [model for model in models if model not in CODEX_MINI_MODELS]
         return non_mini[0] if non_mini else models[0]
     if step.startswith(REVIEWER_STEP_PREFIX):
-        if CODEX_MINI_MODEL in by_model:
-            return CODEX_MINI_MODEL
+        for mini_model in CODEX_MINI_MODELS:
+            if mini_model in by_model:
+                return mini_model
         return models[0]
     return ""
 
@@ -320,7 +321,7 @@ def _design_roles(run_dir: Path, rates: DisplayRates) -> tuple[float, float, flo
         if entry.get("type") != "vendor" or entry.get("vendor") != "codex":
             continue
         # Each ledger row carries its own model; price it at that model's rate so a
-        # single role (e.g. reviewer) that mixes gpt-5.5 + gpt-5.4-mini is exact.
+        # single role (e.g. reviewer) that mixes gpt-5.6 + gpt-5.4-mini is exact.
         cost = _codex_cost(entry, rates, model=str(entry.get("model") or ""))
         raw = str(entry.get("raw") or "")
         if raw == LEDGER_CODER_LABEL:

@@ -243,10 +243,11 @@ def resolve_model_args(
         model = resolve(env_name=config.ENV_LARCH_CODEX_MODEL, plugin_name=config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL, default_value=default_model or config.CODEX_DEFAULT_MODEL)
     else:
         env_name, default_value = role_defaults[codex_role]
+        effective_default = default_model or default_value
         if ctx is not None:
-            model = reject_blank(value=ctx.str_value(key=env_name), context=env_name) if ctx.contains(env_name) else reject_blank(value=default_value, context="default model")
+            model = reject_blank(value=ctx.str_value(key=env_name), context=env_name) if ctx.contains(env_name) else reject_blank(value=effective_default, context="default model")
         else:
-            model = reject_blank(value=os.environ[env_name], context=env_name) if env_name in os.environ else reject_blank(value=default_value, context="default model")
+            model = reject_blank(value=os.environ[env_name], context=env_name) if env_name in os.environ else reject_blank(value=effective_default, context="default model")
     argv = ["-m", model]
     warning = ""
     if with_effort:
@@ -270,7 +271,7 @@ def model_args_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py agent model-args")
     parser.add_argument("--tool", required=True)
     parser.add_argument("--with-effort", action="store_true")
-    parser.add_argument("--default-model", default="")
+    parser.add_argument("--default-model", default="", help="Default model for the default Codex role, or for role paths after their env override and before the role default.")
     parser.add_argument("--codex-role", choices=("default", "review", "vote", "fix"), default="default")
     args = parser.parse_args(argv)
     ctx = Ctx.from_mapping(os.environ)

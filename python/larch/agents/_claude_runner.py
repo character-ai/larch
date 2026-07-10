@@ -209,6 +209,7 @@ def _claude_token_raw(timing_task_kind: str) -> str:
 
 
 def _record_claude_sub_usage(*, obj: dict[str, object], raw: str, model: str) -> None:
+    model = config.normalize_claude_ledger_model(model)
     usage = obj.get("usage")
     if not isinstance(usage, dict):
         return
@@ -240,6 +241,7 @@ def _record_claude_sub_usage(*, obj: dict[str, object], raw: str, model: str) ->
 
 
 def _record_claude_ci_usage(*, obj: dict[str, object], output: Path, raw: str, model: str) -> None:
+    model = config.normalize_claude_ledger_model(model)
     usage = obj.get("usage")
     if not isinstance(usage, dict):
         return

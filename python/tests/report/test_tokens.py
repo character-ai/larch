@@ -352,7 +352,7 @@ def test_full_json_splits_codex_buckets_by_model(tmp_path: Path) -> None:
                 # gpt-5.4-mini Codex rows.
                 {"type": "vendor", "vendor": "codex", "input": 100, "cache_read": 200, "output": 30, "total": 330, "model": "gpt-5.5", "ts": "2026-06-25T00:00:01Z"},
                 {"type": "vendor", "vendor": "codex", "input": 1000, "cache_read": 2000, "output": 300, "total": 3300, "model": "gpt-5.4-mini", "ts": "2026-06-25T00:00:02Z"},
-                # Model-less legacy row defaults to gpt-5.5.
+                # Model-less legacy row defaults to the current Codex default.
                 {"type": "vendor", "vendor": "codex", "input": 5, "cache_read": 6, "output": 7, "total": 18, "ts": "2026-06-25T00:00:03Z"},
             )
         )
@@ -362,8 +362,8 @@ def test_full_json_splits_codex_buckets_by_model(tmp_path: Path) -> None:
     report = tokens.build_report_from_ledgers([ledger])
     by_model = report["BUCKETS_codex_by_model"]
     assert by_model["gpt-5.4-mini"] == {"input": 1000, "cached_input": 2000, "output": 300, "total": 3300}
-    # The gpt-5.5 row and the model-less row fold together under gpt-5.5.
-    assert by_model["gpt-5.5"] == {"input": 105, "cached_input": 206, "output": 37, "total": 348}
+    assert by_model["gpt-5.5"] == {"input": 100, "cached_input": 200, "output": 30, "total": 330}
+    assert by_model["gpt-5.6-sol"] == {"input": 5, "cached_input": 6, "output": 7, "total": 18}
     # BUCKETS_codex stays the model-summed total for back-compat.
     assert report["BUCKETS_codex"] == {"input": 1105, "cached_input": 2206, "output": 337, "total": 3648}
 
@@ -398,6 +398,7 @@ def test_full_json_splits_claude_sub_buckets_by_model_and_raw_fallback(tmp_path:
         {"type": "mark", "step": "Step 5 - review", "ts": "2026-06-25T00:00:00Z"},
         {"type": "vendor", "vendor": "claude_sub", "input": 1, "cache_read": 2, "cache_create": 3, "output": 4, "total": 10, "model": "claude-haiku-4-5", "ts": "2026-06-25T00:00:01Z"},
         {"type": "vendor", "vendor": "claude_sub", "input": 10, "output": 20, "total": 30, "raw": "claude_review", "ts": "2026-06-25T00:00:02Z"},
+        {"type": "vendor", "vendor": "claude_sub", "input": 7, "output": 8, "total": 15, "model": "claude-sonnet-4-6[1m]", "ts": "2026-06-25T00:00:02Z"},
         {"type": "vendor", "vendor": "claude_sub", "input": 100, "output": 200, "total": 300, "raw": "claude_ci_fix", "ts": "2026-06-25T00:00:03Z"},
         {"type": "vendor", "vendor": "claude_sub", "input": 1000, "output": 2000, "total": 3000, "raw": "claude_lint_fix", "ts": "2026-06-25T00:00:04Z"},
         {"type": "vendor", "vendor": "claude_sub", "input": 10000, "output": 20000, "total": 30000, "raw": "unknown", "ts": "2026-06-25T00:00:05Z"},
@@ -406,9 +407,9 @@ def test_full_json_splits_claude_sub_buckets_by_model_and_raw_fallback(tmp_path:
     report = tokens.build_report_from_ledgers([ledger])
     by_model = report["BUCKETS_claude_sub_by_model"]
     assert by_model["claude-haiku-4-5"]["cache_create_5m"] == 3
-    assert by_model["claude-sonnet-4-6"]["input"] == 10
-    assert by_model["claude-opus-4-8"]["input"] == 11100
-    assert report["BUCKETS_claude_sub"]["input"] == 11111
+    assert by_model["claude-sonnet-4-6"]["input"] == 117
+    assert by_model["claude-opus-4-8"]["input"] == 11000
+    assert report["BUCKETS_claude_sub"]["input"] == 11118
 
 
 def test_claude_sub_default_raw_keys_match_agents_outputs() -> None:
@@ -494,6 +495,20 @@ def test_append_token_record_from_sidecar_preserves_model(tmp_path: Path) -> Non
     assert row["tool"] == "codex"
     assert row["raw"] == "codex_plan_draft"
     assert row["model"] == "gpt-5.5"
+
+
+
+
+def test_append_token_record_from_sidecar_normalizes_claude_1m_model(tmp_path: Path) -> None:
+    sidecar = tmp_path / "claude.token-record"
+    _ = sidecar.write_text(
+        "TOOL=claude\nINPUT=10\nOUTPUT=2\nCACHE_READ=30\nTOTAL=42\nRAW=claude_ci_fix\nMODEL=claude-sonnet-4-6[1m]\n",
+        encoding="utf-8",
+    )
+    tokens.append_token_record_from_sidecar(input_path=sidecar, tmpdir=tmp_path)
+    row = json.loads((tmp_path / "token-report.ndjson").read_text(encoding="utf-8"))
+    assert row["tool"] == "claude"
+    assert row["model"] == "claude-sonnet-4-6"
 
 
 def test_append_token_record_from_sidecar_accepts_historical_without_model(tmp_path: Path) -> None:

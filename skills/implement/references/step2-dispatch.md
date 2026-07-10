@@ -89,13 +89,14 @@ RECOVERY_PATHS_FILE=<path-to-step2-recovery-paths.nul>
 | `--plan-file PATH` | yes | The plan to implement (passed through to Codex) |
 | `--feature-file PATH` | yes | The original feature description (passed through to Codex) |
 | `--coder VALUE` | yes | `claude`, `codex`, or `cursor`. Resolved by `/implement` Step 0 and forwarded by `python/cli.py implement run-dispatch`. |
+| `--difficulty VALUE` | no | `TRIVIAL`, `MODERATE`, or `HARD`. `run-dispatch` uses the persisted operator override first, then `DESIGN_DIFFICULTY` from `difficulty-prior.env`, and forwards it to Codex Step 2 launches when present. |
 | `--codex-available VALUE` | optional (deprecated) | `true` (maps to `--coder codex`) or `false` (maps to `--coder claude`). Emits a stderr deprecation warning. Mutually exclusive with `--coder`. |
 | `--cursor-present VALUE` | optional, deprecated | Compatibility-only probe-health flag. Ignored for routing. |
 | `--cursor-binary-found VALUE` | optional | `true`, `false`, or empty. A false value reaches the dispatcher fallback branch and returns `STATUS=claude_fallback`; empty falls back to session env or a fresh executable check. |
 | `--codex-binary-found VALUE` | optional | `true`, `false`, or empty. A false value reaches the dispatcher fallback branch and returns `STATUS=claude_fallback`; empty falls back to session env or a fresh executable check. |
 | `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |
 
-External implementer launches use a fixed 7200-second wall-clock timeout. `python/cli.py implement run-dispatch` forwards the launcher argv and `python/cli.py implement step2-dispatch` owns the fixed 7200-second timeout value.
+External implementer launches use a fixed 7200-second wall-clock timeout. `python/cli.py implement run-dispatch` forwards the launcher argv and difficulty tier. `python/cli.py implement step2-dispatch` owns the fixed 7200-second timeout value.
 
 **Outcomes** (`STATUS` values):
 - `complete` — all post-Codex mechanical checks passed; the dispatcher committed Codex's working-tree edits using `manifest.commit_message` (redacted via `python/cli.py redact secrets` immediately before `git commit -F`); on **`CODER=codex`**, the sanitized manifest is emitted at `$TMPDIR/codex-step2-out/manifest.json` (i.e. `$MANIFEST_PATH` after the codex subdir retarget); on **`CODER=cursor`**, it remains at `$TMPDIR/manifest.json` under the tmpdir root.
