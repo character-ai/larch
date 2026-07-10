@@ -4,6 +4,8 @@
 
 **Consumer**: `/design` Step 1e re-entry only.
 
+**Contract**: Gate A discussion-mode loop: render-gate shape, Ready-for-review route to Step 3, Discuss-more sub-round body, and `discussion-round2.md` accumulation. Loads only on re-entry from Gate B(c) or Gate C(b).
+
 **When to load**: unconditionally when Gate A is entered from Gate B or Gate C. Do not load on the default path.
 
 ## Gate A: Discussion Mode Loop (Step 1e)

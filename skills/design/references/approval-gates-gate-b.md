@@ -4,6 +4,8 @@
 
 **Consumer**: `/design` Step 3.5.
 
+**Contract**: Gate B post-review chooser: severity/count CLI authority, zero-findings short-circuit, auto-apply vs explicit mode, apply-pipeline brakes, settle-wrapper dispatch, and plan revision.
+
 **When to load**: unconditionally at Gate B, after the shared approval-gate core. Never skip this slice because the shared core was loaded earlier.
 
 ## Gate B: Post-Review Chooser (Step 3.5)

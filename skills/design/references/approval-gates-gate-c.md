@@ -4,6 +4,8 @@
 
 **Consumer**: `/design` Step 4b.
 
+**Contract**: Gate C final-approval loop: `--skip-approve` auto-approve carve-out, accepted-findings audit, invariant-violation remediation, presentation sequence, prompt shape, and Discuss-further routing.
+
 **When to load**: unconditionally at Gate C, after the shared approval-gate core. Never skip this slice because the shared core was loaded earlier.
 
 ## Gate C: Final-Approval Loop (Step 4b)

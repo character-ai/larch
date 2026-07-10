@@ -4,6 +4,8 @@
 
 **Consumer**: terminal `/design` failure and cancellation paths that stage a `failed-*` outcome or launch the Final summary block.
 
+**Contract**: terminal `/design` failure-path contracts: Step 5c abort handling, `python/cli.py design failure-report` report-gate authority, `design stage-terminal-state` mechanical staging, and `failed-*` sentinel precedence.
+
 **When to load**: immediately before any `failed-*` `SUMMARY_OUTCOME` export or terminal-state staging, and immediately before the Final summary block on failure paths. Load it for clarify, sprawl, outline, plan-size, Split-path judge-panel, Step 3 final-summary, and Step 5c abort paths. Do not load it at green Step 5 entry.
 
 ## Step 5c abort handling
