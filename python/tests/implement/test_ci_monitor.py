@@ -3580,3 +3580,16 @@ def test_verify_job_locally_skips_breadcrumb_without_run_id(
     )
 
     assert len(breadcrumb_calls) == 0
+
+
+def test_prepare_failure_evidence_distinguishes_ready_and_error() -> None:
+    runner = RecordingRunner({})
+    key = ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")
+    runner.sequential[key] = [
+        CommandResult(key, 0, "failure body\n", "", 0.01),
+        CommandResult(key, 1, "", "gh auth failed", 0.01),
+    ]
+    ready = ci_monitor.prepare_failure_evidence(runner, run_id="42", repo="o/r")
+    error = ci_monitor.prepare_failure_evidence(runner, run_id="42", repo="o/r")
+    assert ready.state == "ready"
+    assert error.state == "error"
