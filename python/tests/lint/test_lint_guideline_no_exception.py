@@ -131,7 +131,7 @@ def test_missing_guidelines_file_exits_2(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "guidelines, expected",
+    ("guidelines", "expected"),
     [
         ("Preamble only.\n", "no recognized guideline entries"),
         ("### G-New-1: Truncated entry\n\n", "missing body content"),
