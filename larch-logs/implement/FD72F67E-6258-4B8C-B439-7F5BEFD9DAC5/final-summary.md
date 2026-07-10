@@ -67,11 +67,19 @@ Exec Issues (3):
 Warnings (1):
   1. Step 7a.1 — 2 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/tests/report/test_report_tokens_render.py, python/tests/git/test_pr_body.py
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run FD72F67E-6258-4B8C-B439-7F5BEFD9DAC5: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:32:42
-- **Cost**: 💰 TOTAL ~$19.42: Claude $4.57, Codex-5.6 $7.94, Codex-mini $0.77, Cursor $5.76, Claude (subprocess) $0.38  |  Tokens: 35213k
+- **Cost**: 💰 TOTAL ~$20.26: Claude $5.35, Codex-5.6 $7.94, Codex-mini $0.77, Cursor $5.76, Claude (subprocess) $0.44  |  Tokens: 37583k
 - **Issue**: #6838: https://github.com/character-ai/larch/issues/6838
 - **Plan review**: N/A
 - **Plan coverage**: 9/9 firm headings; band: advisory; disposition: none; todos_left: 0
