@@ -101,6 +101,7 @@ STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
 # Subprocess / CI wait
 SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800
 CI_WAIT_TIMEOUT_SEC: Final = 1800
+FIXER_LANE_TIMEOUT_SEC: Final = 1800
 CI_WAIT_POLL_INTERVAL_SEC: Final = 10
 # Per-call subprocess timeout for the poll-time CI status queries (gh pr view /
 # gh pr checks). Dedicated and far shorter than SUBPROCESS_DEFAULT_TIMEOUT_SEC so
@@ -501,6 +502,20 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
 # Deprecated compatibility alias. Runtime consumers should use role-specific
 # external_defaults.tool_order(...) calls instead of this shared name.
 FIXER_TIER_ORDER: Final[tuple[str, ...]] = ROLE_DEFAULTS["implement.ci_recovery_fixer"].order
+FIXER_TIER_ACTION_SELECTED: Final = "selected"
+FIXER_TIER_ACTION_UNAVAILABLE: Final = "unavailable"
+FIXER_TIER_ACTION_EXHAUSTED: Final = "exhausted"
+FIXER_TIER_ACTIONS: Final[tuple[str, ...]] = (
+    FIXER_TIER_ACTION_SELECTED,
+    FIXER_TIER_ACTION_UNAVAILABLE,
+    FIXER_TIER_ACTION_EXHAUSTED,
+)
+FIXER_TIER_FAIL_REASON_UNAVAILABLE: Final = "unavailable"
+FIXER_TIER_FAIL_REASON_EXHAUSTED: Final = "exhausted"
+FIXER_TIER_FAIL_REASONS: Final[tuple[str, ...]] = (
+    FIXER_TIER_FAIL_REASON_UNAVAILABLE,
+    FIXER_TIER_FAIL_REASON_EXHAUSTED,
+)
 CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
 CLAUDE_SONNET_4_6_MODEL: Final = "claude-sonnet-4-6"
 CLAUDE_SONNET_4_6_1M_MODEL: Final = "claude-sonnet-4-6[1m]"

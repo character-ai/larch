@@ -123,3 +123,114 @@ def test_single_slot_roles_and_docs_rows() -> None:
 def test_fixer_alias_is_derived_from_ci_role() -> None:
     assert external_defaults.tool_order("implement.ci_recovery_fixer") == config.FIXER_TIER_ORDER
     assert config.ROLE_DEFAULTS["implement.ci_recovery_fixer"] is not config.ROLE_DEFAULTS["implement.rebase_conflict_fixer"]
+
+
+def test_next_untried_tier_selects_in_configured_order() -> None:
+    result = external_defaults.next_untried_tier(
+        "implement.ci_recovery_fixer",
+        (),
+        codex_present=True,
+        cursor_present=True,
+    )
+    assert result == external_defaults.TierSelectResult(
+        config.FIXER_TIER_ACTION_SELECTED,
+        "codex",
+        "",
+    )
+
+    fallback = external_defaults.next_untried_tier(
+        "implement.ci_recovery_fixer",
+        ("cursor", "codex", "codex"),
+        codex_present=True,
+        cursor_present=True,
+    )
+    assert fallback.selected_tier == "claude"
+    assert fallback.action == config.FIXER_TIER_ACTION_SELECTED
+    assert fallback.failure_reason == ""
+
+
+def test_next_untried_tier_treats_failed_or_timed_out_tier_as_attempted() -> None:
+    result = external_defaults.next_untried_tier(
+        "implement.ci_recovery_fixer",
+        ("codex",),
+        codex_present=True,
+        cursor_present=True,
+    )
+    assert result.selected_tier == "cursor"
+
+
+def test_next_untried_tier_skips_unavailable_tiers_without_exhausting() -> None:
+    result = external_defaults.next_untried_tier(
+        "implement.ci_recovery_fixer",
+        (),
+        codex_present=False,
+        cursor_present=True,
+    )
+    assert result.selected_tier == "cursor"
+
+    unavailable = external_defaults.next_untried_tier(
+        "implement.ci_recovery_fixer",
+        (),
+        codex_present=False,
+        cursor_present=False,
+        claude_present=False,
+    )
+    assert unavailable == external_defaults.TierSelectResult(
+        config.FIXER_TIER_ACTION_UNAVAILABLE,
+        "",
+        config.FIXER_TIER_FAIL_REASON_UNAVAILABLE,
+    )
+
+
+def test_next_untried_tier_gates_claude_at_launch_time() -> None:
+    result = external_defaults.next_untried_tier(
+        "implement.ci_recovery_fixer",
+        ("codex", "cursor"),
+        codex_present=True,
+        cursor_present=True,
+        claude_present=False,
+    )
+    assert result.action == config.FIXER_TIER_ACTION_UNAVAILABLE
+    assert result.selected_tier == ""
+    assert result.failure_reason == config.FIXER_TIER_FAIL_REASON_UNAVAILABLE
+
+
+def test_next_untried_tier_reports_exhaustion_regardless_of_availability() -> None:
+    result = external_defaults.next_untried_tier(
+        "implement.ci_recovery_fixer",
+        ("claude", "codex", "cursor"),
+        codex_present=False,
+        cursor_present=False,
+        claude_present=False,
+    )
+    assert result == external_defaults.TierSelectResult(
+        config.FIXER_TIER_ACTION_EXHAUSTED,
+        "",
+        config.FIXER_TIER_FAIL_REASON_EXHAUSTED,
+    )
+
+
+def test_next_untried_tier_rejects_invalid_inputs_and_role_kinds() -> None:
+    with pytest.raises(external_defaults.ExternalDefaultError, match="invalid attempted tier"):
+        external_defaults.next_untried_tier(
+            "implement.ci_recovery_fixer",
+            ("unknown",),
+        )
+    with pytest.raises(external_defaults.ExternalDefaultError, match="kind=waterfall"):
+        external_defaults.next_untried_tier("review.panel", ())
+    with pytest.raises(external_defaults.ExternalDefaultError, match="unknown role"):
+        external_defaults.next_untried_tier("missing.role", ())
+
+
+def test_fixer_lane_budget_reserves_a_full_timeout_per_configured_tier() -> None:
+    for role_id in (
+        "implement.lint_fix_coder",
+        "implement.ci_recovery_fixer",
+        "implement.rebase_conflict_fixer",
+        "review.fix_coder",
+        "design.plan_revision",
+    ):
+        assert external_defaults.fixer_lane_budget_sec(role_id) == (
+            len(external_defaults.tool_order(role_id))
+            * config.FIXER_LANE_TIMEOUT_SEC
+        )

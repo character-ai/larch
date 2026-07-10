@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
 from larch.core import config
@@ -18,6 +18,13 @@ SCOUT_ROLE_IDS = frozenset({"review.dynamic_archetype_scout", "design.plan_arche
 class ResolveResult:
     vendor: str
     skip_reason: str = ""
+
+
+@dataclass(frozen=True)
+class TierSelectResult:
+    action: str
+    selected_tier: str
+    failure_reason: str
 
 
 class ExternalDefaultError(ValueError):
@@ -71,6 +78,54 @@ def _available(tool: str, *, codex_present: bool, cursor_present: bool) -> bool:
     if tool == "claude":
         return True
     raise ExternalDefaultError(f"invalid tool {tool!r}")
+
+
+def next_untried_tier(
+    role_id: str,
+    attempted_tiers: Iterable[str],
+    *,
+    codex_present: bool = False,
+    cursor_present: bool = False,
+    claude_present: bool = True,
+) -> TierSelectResult:
+    """Select the next available tier that has not already been dispatched.
+
+    ``attempted_tiers`` contains launched or dispatched tiers regardless of
+    success, failure, or timeout. Tiers skipped only because their executable
+    was unavailable are excluded.
+    """
+    configured_tiers: tuple[str, ...] = tool_order(role_id)
+    attempted: frozenset[str] = frozenset(attempted_tiers)
+    invalid_tiers: frozenset[str] = attempted.difference(configured_tiers)
+    if invalid_tiers:
+        invalid: str = sorted(invalid_tiers)[0]
+        raise ExternalDefaultError(f"{role_id}: invalid attempted tier {invalid!r}")
+
+    if len(attempted) == len(configured_tiers):
+        return TierSelectResult(
+            config.FIXER_TIER_ACTION_EXHAUSTED,
+            "",
+            config.FIXER_TIER_FAIL_REASON_EXHAUSTED,
+        )
+
+    availability: dict[str, bool] = {
+        "codex": codex_present,
+        "cursor": cursor_present,
+        "claude": claude_present,
+    }
+    for tier in configured_tiers:
+        if tier not in attempted and availability[tier]:
+            return TierSelectResult(config.FIXER_TIER_ACTION_SELECTED, tier, "")
+    return TierSelectResult(
+        config.FIXER_TIER_ACTION_UNAVAILABLE,
+        "",
+        config.FIXER_TIER_FAIL_REASON_UNAVAILABLE,
+    )
+
+
+def fixer_lane_budget_sec(role_id: str) -> int:
+    """Return the total budget that reserves one full timeout per tier."""
+    return len(tool_order(role_id)) * config.FIXER_LANE_TIMEOUT_SEC
 
 
 def _override_result(raw: str) -> ResolveResult | None:

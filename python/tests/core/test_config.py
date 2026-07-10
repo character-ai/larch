@@ -12,6 +12,21 @@ def test_fixer_tier_order() -> None:
     assert config.CI_FIXER_MAIN_FALLBACK_MAX_ATTEMPTS == 10
     assert config.CI_FIXER_KILL_SWITCH_INLINE_MAX_ATTEMPTS == 30
     assert config.ENV_LARCH_CI_FIXER == "LARCH_CI_FIXER"
+    assert config.FIXER_LANE_TIMEOUT_SEC == 1800
+    assert config.FIXER_TIER_ACTION_SELECTED == "selected"
+    assert config.FIXER_TIER_ACTION_UNAVAILABLE == "unavailable"
+    assert config.FIXER_TIER_ACTION_EXHAUSTED == "exhausted"
+    assert config.FIXER_TIER_ACTIONS == (
+        config.FIXER_TIER_ACTION_SELECTED,
+        config.FIXER_TIER_ACTION_UNAVAILABLE,
+        config.FIXER_TIER_ACTION_EXHAUSTED,
+    )
+    assert config.FIXER_TIER_FAIL_REASON_UNAVAILABLE == "unavailable"
+    assert config.FIXER_TIER_FAIL_REASON_EXHAUSTED == "exhausted"
+    assert config.FIXER_TIER_FAIL_REASONS == (
+        config.FIXER_TIER_FAIL_REASON_UNAVAILABLE,
+        config.FIXER_TIER_FAIL_REASON_EXHAUSTED,
+    )
 
 
 def test_ship_pr_pre_push_handoff_literals() -> None:
