@@ -1,0 +1,274 @@
+## Plan
+
+This is a packaging change. Gate behavior, prompts, routing, and Python runtime stay unchanged.
+
+Approved scope:
+
+- Split `approval-gates.md` into shared core plus Gate A / B / C slices loaded only at their gates.
+- Move Step 3 runtime guidance into `plan-review-runtime.md`, including the Step 3 entry preview contract; keep `plan-review.md` as editing-only authority.
+- Split Step 5 green path from failure reporting.
+- Do not slim `discussion-rounds.md` or `design-outline.md`.
+- Do not change production Python.
+
+## Approach
+
+Split three large reference files so each gate/step loads only the slice it executes. The main wins are unconditional Gate B/C slice reads (no skip-if-loaded on gate slices), Step 3 runtime ownership of preview/large-plan-summary before reviewer launch, and promoted validation so CI proves closure and pytest regressions.
+
+Key decisions:
+
+1. **Gate slices are always read at their step.** Shared core may use skip-if-loaded when already loaded at Step 1e; Gate B and Gate C slices are unconditional MANDATORY READ at Steps 3.5 and 4b.
+2. **Step 3 preview lives in `plan-review-runtime.md`.** Load that file immediately after `design-step3-entry.sh` and before the pre-voting preview block. Gate C **See full plan** / render-gate re-fire stays in `approval-gates-gate-c.md` only.
+3. **Validation is firm, not optional.** Promote split-sensitive pytest files to `### UPDATED:` and require heatmap evidence or a recorded fallback reason.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+- Replace the three unconditional monolith `approval-gates.md` reads:
+  - Step 1e: shared core plus unconditional `approval-gates-gate-a.md`.
+  - Step 3.5: shared core (skip-if-loaded only when already loaded at Step 1e) plus unconditional `approval-gates-gate-b.md`.
+  - Step 4b: shared core (skip-if-loaded only when already loaded) plus unconditional `approval-gates-gate-c.md`.
+- Step 3 ordering fix:
+  - Run `design-step3-entry.sh` first.
+  - **MANDATORY READ** `plan-review-runtime.md` immediately after entry and **before** the pre-voting preview block.
+  - Retarget the pre-voting preview note (current line ~376) to `plan-review-runtime.md` for large-plan summary mode; remove Gate C as the preview authority.
+  - Remove the later duplicate `plan-review.md` MANDATORY READ before reviewer launch; runtime contracts come from the earlier runtime read.
+- Extend the Step 3 sweep so post-loop interpretation, MAV branches, `NEXT_ACTION=step3b-bypass` self-review, and degraded-panel fallback prose cite `plan-review-runtime.md`, not `plan-review.md`.
+- Step 5 entry reads green-path `finalize-step5.md` only.
+- Add conditional read for `finalize-step5-failures.md` on failure-reporting teardown paths only (not at Step 5 entry).
+- Sweep prose references from monolith names to slice names across Steps 1e, 2b.5, 3, 3.5, 4b, and 5.
+- Retarget `SETTLE_NEXT_ACTION=gate-b-hard-size` to `approval-gates-gate-b.md` (not the monolith).
+
+### UPDATED: skills/design/references/approval-gates.md
+
+Keep only shared approval-gate core:
+
+- Consumer and load matrix (which slice loads at which step; gate slices never skip).
+- Review-round cap and renderer parsing contract.
+- Shared severity/count contracts needed by more than one slice.
+- Shared post-apply pipeline (Gate B slice references it; settle callers include the Gate B slice in harness pins).
+- State invariants across gates; cite `plan-review-runtime.md` for runtime cumulation semantics (`accepted-plan-findings-all.md` vs current-round corpus, `plan-before-review.txt` snapshot rules).
+
+Move gate bodies to slices. Remove Step 3 large-plan summary mode from shared core (runtime owner: `plan-review-runtime.md`). Keep Gate C **See full plan** / `--without-see-full-plan` render-gate re-fire in `approval-gates-gate-c.md` only.
+
+### NEW: skills/design/references/approval-gates-gate-a.md
+
+- Gate A Step 1e re-entry only.
+- Preserve render-gate contract, **See full plan** loop, **Ready for review** route through single `design-step3-entry.sh --reentry`, and **Discuss more** flow.
+- Keep `discussion-round2` and `settle-rc-dispatch` references adjacent to branches that use them.
+
+### NEW: skills/design/references/approval-gates-gate-b.md
+
+- Gate B Step 3.5 behavior.
+- Preserve zero-findings short-circuit, default auto-apply, explicit `--per-round-approval`, resume idempotency, post-apply settle routing, pre-apply round binding.
+- Lazy-load `approval-gates-explicit.md` only after zero-findings and idempotency guards.
+
+### NEW: skills/design/references/approval-gates-gate-c.md
+
+- Gate C Step 4b behavior.
+- Preserve final preview (`--variant gatec`), invariant/guideline persistence, accepted-findings audit, `--skip-approve` strong-dissent override, prompt rendering, **See full plan**, **Discuss further**, **Re-run review panel**, Other/debate handling, panel-failed warning.
+- Own Gate C large-plan summary mode and structured **See full plan** / `Other` full-plan re-fire via `render-gate --without-see-full-plan`.
+- Gate C remains the only final approval route.
+
+### UPDATED: skills/design/references/plan-review.md
+
+Convert to editing-only authority:
+
+- Producer contracts, harness inventories, prompt-source ownership, byte-preserved templates, S030 pins, maintainer detail.
+- **When to load**: editing/maintainer work only; Step 3 runtime reads `plan-review-runtime.md`, not this file.
+- Copy the Step 3-only do-not-load step list into `plan-review-runtime.md` and point here for maintainer cross-refs.
+
+### NEW: skills/design/references/plan-review-runtime.md
+
+Step 3 runtime slice:
+
+- **When to load**: once at Step 3 entry via SKILL.md, immediately after `design-step3-entry.sh`, before pre-voting preview. Do not load during Steps 0–2b, 3.5, 3b, 4, or 5.
+- **Step 3 entry preview contract**:
+  - Default `python/cli.py plan-review preview --variant step3`.
+  - Emit under `## Plan Candidate for Review`.
+  - Large-plan summary mode: threshold parsing, outline caps, fallback preview, note text.
+  - Operator may ask "show full plan" before voting kickoff.
+  - Sentinel `.step3-entry-plan-printed` skips on re-entry.
+- Static/dynamic slot identity for the main agent.
+- Single-pass review loop interpretation and `NEXT_ACTION` routing reminders.
+- Semantic dedup for recovery/MainAgent adjudication.
+- Voter line format when MAV needs it.
+- Returned artifact interpretation (`voting-tally.md`, accepted/rejected/OOS).
+- MainAgent 0-judge fallback and `step3b-bypass` self-review contract.
+- Tiered panel summary.
+- `plan-before-review.txt` snapshot contract (Gate C audit consumes; written at Step 3 entry).
+- Point Python internals to `python/plan_review.py`; do not duplicate loop mechanics.
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+- Green-path Step 5: 5b OOS filing, 5b.5 diagram, 5c compose/publish, 5d warning replay/footer.
+- Remove `/design` auto error reporting into the failure slice.
+- **Consumer / When to load**: normal Step 5 reference at Step 5 entry only.
+
+### NEW: skills/design/references/finalize-step5-failures.md
+
+- `/design` auto error reporting: failure-report ownership, terminal-state staging, sentinel precedence, terminal failure classifications.
+- Load only on failure paths or failure-report debugging.
+
+### UPDATED: scripts/test-design-structure.sh
+
+- Add variables: `APPROVAL_GATES_GATE_A_MD`, `APPROVAL_GATES_GATE_B_MD`, `APPROVAL_GATES_GATE_C_MD`, `PLAN_REVIEW_RUNTIME_MD`, `FINALIZE_STEP5_FAILURES_MD`.
+- Migrate gate-specific `contains`/`assert` pins from `APPROVAL_GATES_MD` to the owning slice (Gate C invariant/guideline pins → gate-c; Gate B settle/round-binding pins → gate-b; Gate A render-gate pins → gate-a).
+- Keep shared-core checks on `APPROVAL_GATES_MD`.
+- Update settle-rc-dispatch caller loop to include `APPROVAL_GATES_GATE_B_MD`.
+- Retarget Step 3 pins (e.g. current lines ~473, ~644) to `PLAN_REVIEW_RUNTIME_MD` for runtime contracts; keep `PLAN_REVIEW_MD` only for editing-only authority pins.
+- Step 5: expect green-path `finalize-step5.md` at entry; conditional failure-slice load on teardown paths.
+- Negative checks: SKILL.md must not require monolith eager load on common path (Step 3 runtime, Gate B/C entry, Step 5 entry).
+- Pin Step 3 preview authority strings in `PLAN_REVIEW_RUNTIME_MD` (header, variant, summary mode, show-full-plan).
+- Pin unconditional Gate B/C slice MANDATORY READ wording in SKILL.md.
+
+### UPDATED: scripts/test-design-structure.md
+
+- Document reference split, gate-slice variables, preview ownership, and harness expectations.
+
+### UPDATED: skills/design/scripts/test-gate-b-apply-mode.sh
+
+- Gate B prose probes → `approval-gates-gate-b.md`.
+- Keep default auto-apply renderer delegation and explicit prompt checks.
+
+### UPDATED: skills/design/scripts/test-step3-review-cap.sh
+
+- Gate B continuation/loop probes → `approval-gates-gate-b.md`.
+- Keep cap and no-legacy-`--mode single` checks across SKILL.md plus gate slice.
+
+### UPDATED: skills/design/scripts/test-step3-orchestrator-fence.sh
+
+- Step 3 runtime probes → `plan-review-runtime.md`.
+- Preview/large-plan-summary pins → `plan-review-runtime.md`.
+- MAV/retally negative probes against SKILL.md, runtime slice, and gate slices as needed.
+
+### UPDATED: skills/design/scripts/test-design-step3-mav.sh
+
+- Runtime MAV probes → `plan-review-runtime.md`.
+- Authority-only checks against `plan-review.md` for maintainer contracts only.
+
+### UPDATED: skills/design/scripts/test-design-step3-mav.md
+
+- Name `plan-review-runtime.md` for runtime delegation.
+
+### UPDATED: scripts/lint-readability-preamble.tsv
+
+- Rows for new user-facing references.
+- Adjust counts for moved readability anchors.
+- Keep `__metadata__` count valid.
+- Classify `plan-review-runtime.md` as runtime prompt source; `plan-review.md` as editing-only.
+
+### UPDATED: scripts/test-effort-prose.sh
+
+- Include `plan-review-runtime.md` in prompt-source scan.
+- Keep `plan-review.md` only if it still contains prompt-surface prose.
+
+### UPDATED: scripts/test-render-cost-line-callsites.sh
+
+- Update `finalize-step5.md` / failure-slice grep targets after the split.
+
+### UPDATED: skills/shared/topology.tsv
+
+- Update plan-review topology source paths if static slot identity moves to `plan-review-runtime.md`.
+
+### UPDATED: docs/topology.md
+
+- Regenerate or edit projection to match `topology.tsv`.
+
+### UPDATED: skills/shared/review-acceptance-rubric.md
+
+- Plan-review reference bullet → `plan-review-runtime.md` for Step 3 runtime contracts.
+
+### UPDATED: skills/design/references/dialectic-clarifier.md
+
+- Common-path note: Gate C slice (not monolith).
+
+### UPDATED: skills/design/references/design-outline.md
+
+- Gate C cross-reference → shared core or Gate C slice.
+
+### UPDATED: skills/design/references/step2b5-rc-handling.md
+
+- Gate B hard-size reference → Gate B slice.
+
+### UPDATED: skills/design/references/oos-step5b-dispatch.md
+
+- Update `finalize-step5.md` references only when they point to moved failure-reporting content.
+
+### UPDATED: python/skill-closure-baseline.json
+
+- Regenerate: `python3 python/cli.py lint skill-closure-growth --write`.
+- Expect default design eager closure to include `plan-review-runtime.md` and shared core + gate slices on their load paths; exclude `plan-review.md` from eager closure; exclude Gate A slice and `finalize-step5-failures.md` from default-path eager closure.
+
+### UPDATED: python/tests/lint/test_lint_skill_closure_growth.py
+
+- Update fixtures: Step 3 MANDATORY READ targets `plan-review-runtime.md`.
+- Assert `plan-review-runtime.md` in eager closure; `plan-review.md` absent or conditional only.
+- Update any literal path assertions broken by the split.
+
+### UPDATED: python/tests/report/test_tokens.py
+
+- Update heatmap fixture paths/labels for split references (`approval-gates-gate-b.md`, `plan-review-runtime.md`, etc.).
+
+### UPDATED: python/tests/rendering/test_render_session_transcript.py
+
+- Update transcript path fixtures if they pin monolith approval-gates paths.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+- Read Gate C invariant/guideline prose from `approval-gates-gate-c.md` (not monolith).
+
+### UPDATED: python/larch/review/plan_review_gate_b.py
+
+- Update comments to cite `approval-gates-gate-b.md` where they reference Gate B prose.
+
+## Edge cases
+
+- Gate A re-entry from Gate B(c) or Gate C(b) loads Gate A slice and routes **Ready for review** through single `design-step3-entry.sh --reentry`.
+- Default run must not load Gate A slice or `finalize-step5-failures.md`.
+- Gate B zero-findings must not load `approval-gates-explicit.md`.
+- Gate B post-apply resume must not re-apply findings.
+- Gate B/C slice reads are unconditional at Steps 3.5/4b; skip-if-loaded applies only to shared core.
+- Gate C `--skip-approve` still runs accepted-findings audit and forces prompt on strong dissent.
+- Gate C **See full plan** / Other full-plan paths must not mutate state.
+- Step 3 preview must not require loading Gate C slice or `plan-review.md`.
+- Step 5 failure reporting stages terminal state only after loading the failure slice.
+
+## Failure modes
+
+- Stale MANDATORY READ on monolith keeps old file eager in closure.
+- Step 3 preview left in Gate C/shared core forces wrong eager load or undefined preview after split.
+- Skip-if-loaded on gate slices suppresses Gate B/C rules.
+- Moved sections leave harness pins on monolith variables.
+- Cross-reference pulls Gate A or failure slice onto common path.
+- Slice omits shared invariant from core.
+- Closure linter classifies new read as eager without clear conditional wording.
+- Promoted pytest fixtures not updated → green CI with broken split.
+
+## Testing strategy
+
+Run focused checks:
+
+1. `make test-design-structure`
+2. `make test-gate-b-apply-mode`
+3. `make test-step3-review-cap`
+4. `make test-step3-orchestrator-fence`
+5. `make test-design-step3-mav`
+6. `make test-effort-prose`
+7. `make test-render-cost-line-callsites`
+8. `make test-lint-readability-preamble`
+9. `python3 python/cli.py lint skill-closure-growth`
+10. `python3 python/cli.py lint skill-closure report`
+11. `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py python/tests/report/test_tokens.py python/tests/rendering/test_render_session_transcript.py python/tests/core/test_architectural_guidelines.py -q`
+12. **Required when transcript-bearing samples exist**: `python3 python/cli.py token measure-references-heatmap`; record before/after default-path reference bytes and attach summary to PR. **Required fallback when no fresh sample**: record reason in PR (e.g. "no transcript-bearing runs since split") and rely on closure report + structure harness for eager-load proof.
+
+## Difficulty
+
+HARD: prompt-contract packaging across Gate A/B/C, Step 3 preview/runtime, Step 5 finalization, structure tests, closure baselines, and promoted pytest fixtures. Behavior unchanged; a missed load directive skips a gate rule or preserves the cost problem.
+
+difficulty: HARD
+diff_added: 820
+diff_deleted: 560
+mechanical_churn: true
+oversize_override: operator
+diff_lines: 1380

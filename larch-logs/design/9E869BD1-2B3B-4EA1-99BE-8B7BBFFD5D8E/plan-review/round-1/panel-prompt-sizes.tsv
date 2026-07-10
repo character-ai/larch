@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	30423	7606	13553	3389	16870	4218		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18933	4734	13265	3317	5668	1417		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	18924	4731	13256	3314	5668	1417		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	30438	7610	13568	3392	16870	4218		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	30414	7604	13544	3386	16870	4218		0	0
+design Step 3	phase1	1	dyn-codex-plan-prompt-slice-contract	plan-review	codex	dyn-codex-plan-prompt-slice-contract.txt	19244	4811	13131	3283	6113	1529		0	0
+design Step 3	phase1	1	dyn-cursor-plan-prompt-slice-contract	plan-review	cursor	dyn-cursor-plan-prompt-slice-contract.txt	30734	7684	13419	3355	17315	4329		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	30436	7609	13566	3392	16870	4218		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	18946	4737	13278	3320	5668	1417		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	18948	4737	13280	3320	5668	1417		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	35993	8999	4459	1115	31534	7884	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	17633	4409	9131	2283	8502	2126		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	17633	4409	9131	2283	8502	2126		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	17633	4409	9131	2283	8502	2126		0	0
