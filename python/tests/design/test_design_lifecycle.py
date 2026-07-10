@@ -6313,3 +6313,67 @@ def test_step2b_drafter_cleans_rc12_rc13_sidecars_at_start(
     design_lifecycle.step2b_drafter_main([])
     assert not (design / ".drafter-next-action-rc12.txt").exists()
     assert not (design / ".drafter-next-action-rc13.txt").exists()
+
+
+def test_step6_cleanup_deactivates_run_before_tmpdir_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """step6_cleanup_core calls deactivate_run with the persisted run ID before cleanup."""
+    from larch.report import progress_file
+    from larch.design import design_step6
+
+    design, env_path = _step6_design(tmp_path, monkeypatch)
+    (design / "source-env.sh").write_text(
+        "LARCH_RUN_ID=step6-run-77\n", encoding="utf-8"
+    )
+    _write_step5c_status(design)
+
+    deactivate_calls: list[tuple[object, str]] = []
+
+    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append((repo_root, run_id))
+        return True
+
+    monkeypatch.setattr(design_step6, "deactivate_run", fake_deactivate)
+    monkeypatch.setattr(session_env, "cleanup_tmpdir_main", lambda _a: 0)
+    monkeypatch.setattr(session_env, "reap_pid_residuals", lambda _p: None)
+
+    rc = design_lifecycle.step6_cleanup_core(_step6_args(env_path))
+    assert rc == 0
+    assert len(deactivate_calls) == 1
+    assert deactivate_calls[0][1] == "step6-run-77"
+
+
+def test_step_final_summary_deactivates_run_on_rendered_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """step_final_summary_core calls _try_deactivate_design_run on the rendered summary path."""
+    from larch.report import progress_file
+    from larch.design import design_terminal
+
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text(
+        "LARCH_RUN_ID=terminal-run-9\n", encoding="utf-8"
+    )
+    env_path = _write_session_env(tmp_path, design, monkeypatch)
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design))
+
+    deactivate_calls: list[str] = []
+
+    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append(run_id)
+        return True
+
+    monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
+
+    def fake_rendered(*, design_tmpdir: object, ctx: object, final_summary_path: object) -> int:
+        return 0
+
+    monkeypatch.setattr(design_terminal, "_run_rendered_final_summary", fake_rendered)
+
+    argv = _step6_args(env_path) + ["--summary-outcome", "complete"]
+    design_terminal.step_final_summary_core(argv)
+
+    assert len(deactivate_calls) == 1
+    assert deactivate_calls[0] == "terminal-run-9"

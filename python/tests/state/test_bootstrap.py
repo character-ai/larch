@@ -2209,3 +2209,33 @@ def test_checkpoint_absorbed_1r_malformed_route_synthesizes_bail(tmp_path: Path,
     assert tail.routing.get("CHECKPOINT_NEXT") == "load-routing"
     assert tail.routing.get("REBASE_RC") == "9"
     assert tail.routing.get("REBASE_ERROR")
+
+
+def test_restore_resume_progress_reactivates_persisted_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--resume-plan-tail path re-activates the persisted LARCH_RUN_ID."""
+    from larch.state import bootstrap as bs
+
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
+    session_env_path = tmp_path / "session-env.sh"
+    session_env_path.write_text("LARCH_RUN_ID=resume-run-77\n", encoding="utf-8")
+
+    activate_calls: list[tuple[str, ...]] = []
+    real_run = bs._run  # type: ignore[attr-defined]
+
+    def fake_run(argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if len(argv) >= 4 and argv[2:4] == ["progress", "activate"]:
+            activate_calls.append(tuple(argv))
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(bs, "_run", fake_run)  # type: ignore[attr-defined]
+
+    opts = bs.BootstrapOptions(up_to_phase="coder")
+    st = bs.BootstrapState(opts, implement_tmpdir=str(tmp_path))
+    st.run_id = ""
+    bs._restore_resume_progress(st)  # pyright: ignore[reportPrivateUsage]
+
+    assert st.run_id == "resume-run-77"
+    assert any("resume-run-77" in c for c in activate_calls)

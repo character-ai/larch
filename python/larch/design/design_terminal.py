@@ -1086,6 +1086,14 @@ def _run_rendered_final_summary(*, design_tmpdir: Path, ctx: Ctx, final_summary_
     return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=final_summary_path)
 
 
+def _try_deactivate_design_run(design_tmpdir: Path) -> None:
+    with contextlib.suppress(Exception):
+        from larch.report import progress_file  # noqa: PLC0415
+        run_id = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir)
+        if run_id:
+            progress_file.deactivate_run(Path.cwd(), run_id)
+
+
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ: dict[str, str] = os.environ.copy()
     try:
@@ -1113,8 +1121,12 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if ctx.summary_outcome in {"cancelled-clarify", "failed-clarify"} and _has_nonempty_final_summary(disk_final_summary):
             return _emit_and_complete_final_summary(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary)), []
         if _is_terminal_publish_outcome(ctx.summary_outcome):
-            return _run_terminal_publish_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, final_summary_path=disk_final_summary), []
-        return _run_rendered_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, final_summary_path=final_summary_path), []
+            rc = _run_terminal_publish_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, final_summary_path=disk_final_summary)
+            _try_deactivate_design_run(design_tmpdir)
+            return rc, []
+        rc = _run_rendered_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, final_summary_path=final_summary_path)
+        _try_deactivate_design_run(design_tmpdir)
+        return rc, []
     except ValueError as exc:
         _core_diagnostic(f"design-step-final-summary.sh: {exc}")
         return 2, []

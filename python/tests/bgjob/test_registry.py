@@ -92,3 +92,33 @@ def test_default_run_id_depends_only_on_tmpdir(tmp_path: Path) -> None:
     right = model.default_run_id(tmpdir=tmp_path, clone_path=Path("/tmp/right"))
 
     assert left == right
+
+
+def test_read_for_uses_persisted_larch_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """read_for prefers LARCH_RUN_ID from session state over the tmpdir-hash default."""
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    (tmp_path / "session-env.sh").write_text(
+        "LARCH_RUN_ID=custom-uuid-run\n", encoding="utf-8"
+    )
+
+    path, _entry = registry.read_for(tmpdir=tmp_path, step="demo-step")
+
+    expected_path = model.registry_path(run_id="custom-uuid-run", step="demo-step")
+    assert path == expected_path
+
+
+def test_read_for_explicit_run_id_overrides_session_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Explicit run_id to read_for takes precedence over any persisted value."""
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    (tmp_path / "session-env.sh").write_text(
+        "LARCH_RUN_ID=ignored-run\n", encoding="utf-8"
+    )
+
+    path, _entry = registry.read_for(tmpdir=tmp_path, step="demo-step", run_id="explicit-run")
+
+    expected_path = model.registry_path(run_id="explicit-run", step="demo-step")
+    assert path == expected_path

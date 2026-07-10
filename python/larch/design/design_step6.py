@@ -11,6 +11,7 @@ from collections.abc import Mapping, Sequence
 
 from larch.bgjob import registry
 from larch.core import logging_util
+from larch.report.progress_file import deactivate_run, resolve_owned_run_id
 from larch.state import session_env
 
 from larch.design.design_core import (
@@ -64,7 +65,8 @@ def _step6_in_flight(design_tmpdir_raw: str) -> bool:
     )
     if result_env.is_file() and not result_env.is_symlink():
         return False
-    reg_path, entry = registry.read_for(tmpdir=design_tmpdir, step=DESIGN_BGJOB_STEP5C)
+    run_id = resolve_owned_run_id(tmpdir=design_tmpdir)
+    reg_path, entry = registry.read_for(tmpdir=design_tmpdir, step=DESIGN_BGJOB_STEP5C, run_id=run_id)
     if entry is None:
         return False
     if registry.child_liveness(entry).live or registry.daemon_liveness(entry).live:
@@ -192,6 +194,9 @@ def step6_cleanup_core(argv: Sequence[str]) -> int:
     if req != 0:
         return req
     _touch(design_tmpdir / ".completed" / "step-6")
+    effective_run = resolve_owned_run_id(tmpdir=design_tmpdir)
+    if effective_run:
+        deactivate_run(Path.cwd(), effective_run)
     cleanup_rc = session_env.cleanup_tmpdir_main(["--dir", str(design_tmpdir)])
     if cleanup_rc != 0:
         return cleanup_rc

@@ -17,6 +17,7 @@ from typing import cast
 from larch.git import gh
 from larch.core import proc
 from larch.core import redact
+from larch.report import progress_file
 from larch.state.session_env import validate_design_tmpdir
 
 
@@ -270,6 +271,9 @@ def pause_save_main(argv: Sequence[str]) -> int:
         return 0
     (design_tmpdir / ".pause-requested").unlink(missing_ok=True)
     _ = (design_tmpdir / ".pause-save-complete").write_text("", encoding="utf-8")
+    effective_run = progress_file.resolve_owned_run_id(tmpdir=design_tmpdir) or run_id
+    if effective_run:
+        progress_file.deactivate_run(Path.cwd(), effective_run)
     _emit([("PAUSE_OK", "true"), ("STEP", step), ("RUN_ID", run_id)])
     return 0
 

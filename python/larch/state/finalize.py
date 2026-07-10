@@ -18,6 +18,7 @@ from typing import Any
 
 from larch.core import config, process_identity
 from larch.issue import execution_issues
+from larch.report import progress_file
 from larch.git import gh
 from larch.git import git
 from larch.issue import issue_query
@@ -713,8 +714,12 @@ def teardown(
         )
     stash_ref = ""
     sentinel_written = False
-    if run_logs.effective_run_id(ctx):
+    teardown_run_id = run_logs.effective_run_id(ctx)
+    if teardown_run_id:
         _ = _teardown_log_flush(runner=runner, ctx=ctx, cwd=cwd)
+        progress_file.deactivate_run(
+            Path(cwd).resolve() if cwd else Path.cwd(), teardown_run_id
+        )
     issue_url = ""
     issue_number = ctx.issue_number or ctx.issue
     if issue_number and not ctx.repo_unavailable:

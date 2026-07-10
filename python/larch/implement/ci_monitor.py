@@ -1114,7 +1114,9 @@ def verify_job_locally(
     argv = per_job_command(name=name, shard=shard)
     if argv is None:
         return False
-    _ = progress_file.append_breadcrumb(Path(cwd or _REPO_ROOT), "implement", "8", f"running check shard {_job_token(name=name, shard=shard)}")
+    _ci_run_id = progress_file.resolve_owned_run_id()
+    if _ci_run_id is not None:
+        _ = progress_file.append_breadcrumb_for_run(Path(cwd or _REPO_ROOT), _ci_run_id, "implement", "8", f"running check shard {_job_token(name=name, shard=shard)}")
     result = runner.run(list(argv), cwd=cwd)
     return result.returncode == 0
 
@@ -1435,12 +1437,15 @@ def stage_and_push(
             _warn_stderr("ship-pr: pending CI-fix rebase lacks local verification targets; preserving pending retry")
             return False, head, delta_paths, did_rebase, True
         if (did_rebase or ci_fix_rebase_pending) and classified and classified.fixable:
-            _ = progress_file.append_breadcrumb(
-                Path(cwd or _REPO_ROOT),
-                "implement",
-                "8",
-                f"CI-fix jobs {' '.join(_job_token(name=job.name, shard=job.shard) for job in classified.fixable)}",
-            )
+            _ci_fix_run_id = progress_file.resolve_owned_run_id()
+            if _ci_fix_run_id is not None:
+                _ = progress_file.append_breadcrumb_for_run(
+                    Path(cwd or _REPO_ROOT),
+                    _ci_fix_run_id,
+                    "implement",
+                    "8",
+                    f"CI-fix jobs {' '.join(_job_token(name=job.name, shard=job.shard) for job in classified.fixable)}",
+                )
             failed_verify = [
                 _job_token(name=job.name, shard=job.shard)
                 for job in classified.fixable

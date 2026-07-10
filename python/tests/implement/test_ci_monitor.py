@@ -3518,3 +3518,57 @@ def test_poll_ci_suspend_gap_emits_breadcrumb(
     assert decision.action == "bail"
     assert decision.bail_reason == config.CI_WAIT_BAIL_POLL_BUDGET_EXHAUSTED
     assert "host suspend" in captured.err
+
+
+def test_verify_job_locally_uses_run_aware_breadcrumb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """verify_job_locally writes a breadcrumb only when resolve_owned_run_id returns a run ID."""
+    monkeypatch.setenv("LARCH_RUN_ID", "test-impl-run-7")
+    breadcrumb_calls: list[tuple[str, str, str, str]] = []
+
+    def fake_append(repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+        breadcrumb_calls.append((run_id, skill, step, text))
+        return True
+
+    monkeypatch.setattr(ci_monitor.progress_file, "append_breadcrumb_for_run", fake_append)
+    monkeypatch.setattr(ci_monitor, "per_job_command", lambda name, shard: ("true",))
+
+    fake_runner = RecordingRunner(
+        responses={("true",): _cr(("true",), 0)},
+    )
+    result = ci_monitor.verify_job_locally(
+        runner=fake_runner, name="py-test", shard="1", cwd=str(tmp_path)
+    )
+
+    assert result is True
+    assert len(breadcrumb_calls) == 1
+    run_id, skill, step, text = breadcrumb_calls[0]
+    assert run_id == "test-impl-run-7"
+    assert skill == "implement"
+    assert step == "8"
+    assert "py-test-1" in text
+
+
+def test_verify_job_locally_skips_breadcrumb_without_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """verify_job_locally writes no breadcrumb when no run ID is resolvable."""
+    monkeypatch.delenv("LARCH_RUN_ID", raising=False)
+    breadcrumb_calls: list[object] = []
+
+    monkeypatch.setattr(
+        ci_monitor.progress_file,
+        "append_breadcrumb_for_run",
+        lambda *a, **k: breadcrumb_calls.append(a),
+    )
+    monkeypatch.setattr(ci_monitor, "per_job_command", lambda name, shard: ("true",))
+
+    fake_runner = RecordingRunner(
+        responses={("true",): _cr(("true",), 0)},
+    )
+    ci_monitor.verify_job_locally(
+        runner=fake_runner, name="py-test", shard="1", cwd=str(tmp_path)
+    )
+
+    assert len(breadcrumb_calls) == 0

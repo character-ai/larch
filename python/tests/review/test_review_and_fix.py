@@ -5190,3 +5190,28 @@ def test_step5_escalates_before_lower_tier_cap(tmp_path, monkeypatch, capsys):
     data = json.loads((impl / "difficulty-rating.json").read_text(encoding="utf-8"))
     assert data["applied_tier"] == "MODERATE"
     assert data["escalations"][0]["round"] == 2
+
+
+def test_progress_note_uses_run_aware_breadcrumb(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """review_and_fix._progress_note uses append_breadcrumb_for_run with owned run ID."""
+    from larch.report import progress_file
+
+    monkeypatch.setenv("LARCH_RUN_ID", "raf-run-33")
+    monkeypatch.chdir(tmp_path)
+
+    breadcrumb_calls: list[tuple[str, str, str, str]] = []
+
+    def fake_append(repo: object, run_id: str, skill: str, step: str, text: str) -> bool:
+        breadcrumb_calls.append((run_id, skill, step, text))
+        return True
+
+    monkeypatch.setattr(progress_file, "append_breadcrumb_for_run", fake_append)
+    monkeypatch.setattr(review_and_fix.progress_file, "append_breadcrumb_for_run", fake_append)
+
+    review_and_fix._progress_note(step="5", text="round 1 done")  # pyright: ignore[reportPrivateUsage]
+
+    assert len(breadcrumb_calls) == 1
+    assert breadcrumb_calls[0][0] == "raf-run-33"
+    assert breadcrumb_calls[0][3] == "round 1 done"

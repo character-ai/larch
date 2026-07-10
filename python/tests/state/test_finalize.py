@@ -11,7 +11,7 @@ import pytest
 
 from larch.issue import execution_issues
 from larch.state import finalize
-from larch.report import run_logs
+from larch.report import run_logs, progress_file
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
 
@@ -1056,3 +1056,28 @@ def test_implement_finalize_accepts_cache_root_state_file(
     ])
     assert rc == 0
     assert "FINALIZE_SUBCOMMAND=teardown" in capsys.readouterr().out
+
+
+def test_teardown_deactivates_run_before_tmpdir_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """teardown calls deactivate_run with the effective run ID."""
+    runner = RecordingRunner()
+    ctx = _ctx(tmp_path, pr_number=3, done_rename_applied=True)
+    _ = run_logs.init_run(ctx)
+
+    deactivate_calls: list[tuple[object, str]] = []
+
+    def fake_deactivate(repo_root: object, run_id: str) -> bool:
+        deactivate_calls.append((repo_root, run_id))
+        return True
+
+    monkeypatch.setattr(progress_file, "deactivate_run", fake_deactivate)
+
+    monkeypatch.setattr(finalize, "_teardown_log_flush", lambda **_kw: True)
+    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kw: True)
+
+    result = finalize.teardown(runner=runner, ctx=ctx, cwd=str(tmp_path))
+    assert result.outcome.name == "OK"
+    assert len(deactivate_calls) == 1
+    assert deactivate_calls[0][1] == "run-abc"
