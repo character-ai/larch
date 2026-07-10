@@ -2798,7 +2798,6 @@ def test_step2_dispatch_resolves_omitted_difficulty_for_cursor(
         )
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
-    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     _patch_successful_step2(monkeypatch)
 
