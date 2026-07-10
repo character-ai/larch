@@ -42,7 +42,7 @@ if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
 from larch.report import tokens  # noqa: E402
-from larch.core import config  # noqa: E402
+from larch.core import config  # noqa: E402 - import after sys.path bootstrap above
 
 from larch.report.report_tokens_cost import (  # noqa: E402
     CODEX_MINI_MODEL,
