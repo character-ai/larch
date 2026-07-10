@@ -141,6 +141,21 @@ _DIRECT_BAIL_CLASSIFICATIONS: dict[str, tuple[str, str, str]] = {
 }
 
 
+def _ship_refresh_preterminal_stall(*, lower: str, step: str) -> bool:
+    refresh_step = "pr-create-guideline-outcome-refresh"
+    if step == refresh_step:
+        return True
+    if config.REFRESH_SKIP_PRETERMINAL_OUTCOME in lower:
+        return True
+    if f"stall_step={refresh_step}" in lower:
+        return True
+    return refresh_step in lower and (
+        "pre-terminal" in lower
+        or "terminal outcome label" in lower
+        or "preterminal" in lower
+    )
+
+
 def _classify_text(
     *,
     text: str,
@@ -163,6 +178,8 @@ def _classify_text(
         pattern = "ci-fix-exhausted-with-detail" if detail_log_valid else "terminal-bail"
         return "unrecoverable", "none", pattern
     lower = f"{bail}\n{text}".lower()
+    if _ship_refresh_preterminal_stall(lower=lower, step=step):
+        return "transient-infra", "step8-shippr", "transient-output"
     if any(token in lower for token in config.LINT_FIX_BAIL_REASON_TOKENS):
         return "lint-failure", "step5-review", "lint-fix-bail-token"
     if "submodule-edit-required-out-of-scope" in lower:

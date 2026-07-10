@@ -53,6 +53,31 @@ def test_write_ship_state_preserves_emergency_repair_fields(tmp_path: Path) -> N
     assert "MAIN_HEALTH_HEAD_SHA=abc123\n" in state
 
 
+def test_write_ship_state_clears_terminal_and_stall_fields_when_non_stalled(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\nBAIL_NEEDS_USER_INPUT=false\n"
+        "FAILED_RUN_ID=run-old\nBAIL_FAILURE_DETAIL_LOG=detail.log\n",
+        encoding="utf-8",
+    )
+
+    ship_state._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmpdir=str(tmp_path), state_file=str(state_file)).with_(stall_tracking=False, stall_step=""),
+        phase="assessments",
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=assessments\n" in state
+    assert "STALL_TRACKING=false\n" in state
+    assert "STALL_STEP=\n" in state
+    assert "EXIT_CODE=" not in state
+    assert "BAIL_REASON=" not in state
+    assert "BAIL_NEEDS_USER_INPUT=" not in state
+    assert "FAILED_RUN_ID=" not in state
+    assert "BAIL_FAILURE_DETAIL_LOG=" not in state
+
+
 def test_patch_ship_state_rejects_unknown_key(tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text("PHASE=emergency-repair\nBRANCH_NAME=feat\n", encoding="utf-8")

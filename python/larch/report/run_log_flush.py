@@ -713,7 +713,7 @@ def _preterminal_outcome_refresh_skip(ctx: RunContext) -> RefreshSkip | None:
         return None
     return RefreshSkip(
         skipped=True,
-        reason=config.REFRESH_SKIP_COMMIT_FAILED,
+        reason=config.REFRESH_SKIP_PRETERMINAL_OUTCOME,
         error=blocked,
     )
 
@@ -1178,6 +1178,7 @@ def refresh_run_logs_main(argv: list[str]) -> int:
     if skip.skipped:
         if skip.reason in {
             config.REFRESH_SKIP_COMMIT_FAILED,
+            config.REFRESH_SKIP_PRETERMINAL_OUTCOME,
             config.REFRESH_SKIP_RUN_LOG_INCOMPLETE,
             REFRESH_SKIP_RECOVERY_FAILED,
         }:

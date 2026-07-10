@@ -66,6 +66,7 @@ from larch.report.run_log_batch import (
     _is_round_sidecar_file,
     _larch_log_fail,
     _normalize_body_for_hash,
+    _normalize_run_log_text,
     _read_kv_file,
     _read_state_kv,
     _redact_batch_payload,
@@ -548,7 +549,7 @@ def larch_log_write_round_main(argv: list[str]) -> int:
             if _is_round_sidecar_file(name):
                 continue
             if name.startswith("reviewer-dyn-") and name.endswith(".md"):
-                redacted = redact.redact(item.read_text(encoding="utf-8", errors="replace"))
+                redacted = _normalize_run_log_text(redact.redact(item.read_text(encoding="utf-8", errors="replace")))
                 digest = hashlib.sha256(redacted.encode("utf-8")).hexdigest()[:12]
                 shared = args.log_root_path / "shared" / "archetypes"
                 shared.mkdir(parents=True, exist_ok=True)

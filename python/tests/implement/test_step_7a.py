@@ -130,7 +130,7 @@ def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture
     assert (tmp_path / "code-flow-diagram.md").is_file()
 
 
-def test_step7a_skips_run_log_commit_after_preterminal_commit_failed(
+def test_step7a_skips_run_log_commit_after_preterminal_refresh_skip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -157,7 +157,7 @@ def test_step7a_skips_run_log_commit_after_preterminal_commit_failed(
         "flush_logs_pre",
         lambda **_kwargs: RefreshSkip(  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
             skipped=True,
-            reason=config.REFRESH_SKIP_COMMIT_FAILED,
+            reason=config.REFRESH_SKIP_PRETERMINAL_OUTCOME,
             error="pre-terminal label stalled",
         ),
     )

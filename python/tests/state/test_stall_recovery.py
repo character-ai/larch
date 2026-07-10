@@ -148,6 +148,59 @@ def test_classify_relevant_checks_failed_detail_log(tmp_path: Path, capsys: pyte
     assert "MATCHED_CLASSIFIER_PATTERN=lint-output" in out
 
 
+def test_classify_preterminal_ship_refresh_stall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "BAIL_REASON=\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text(
+        f"REFRESH_COMMITTED=false REASON={config.REFRESH_SKIP_PRETERMINAL_OUTCOME} "
+        "ERROR=pre-terminal outcome label refused\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=step8-shippr" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=transient-output" in out
+
+
+def test_classify_refresh_stall_remedy_wins_over_lint_substring(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "BAIL_REASON=\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+    log = tmp_path / "failure.log"
+    _ = log.write_text(
+        "Remedy: rerun with --no-logs-commit, or add a larch-logs/ exclude "
+        "to the client's .pre-commit-config.yaml.\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(log),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=step8-shippr" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=lint-output" not in out
+
+
 @pytest.mark.parametrize("word", ["flint", "splinter", "plint"])
 def test_classify_bare_lint_substring_false_positives(
     word: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]

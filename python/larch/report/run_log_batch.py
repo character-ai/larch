@@ -303,6 +303,12 @@ def _atomic_write(*, path: Path, content: str) -> None:
     larch_io.atomic_write(path, content, prefix=".manifest-", nofollow=True)
 
 
+def _normalize_run_log_text(content: str) -> str:
+    if not content:
+        return content
+    return content.rstrip("\n") + "\n"
+
+
 def _read_kv_file(*, path: Path, key: str) -> str:
     return larch_io.read_kv(path=path, key=key, first_match=True, errors="strict", on_error_default=True)
 
@@ -366,9 +372,10 @@ def _write_batch(
     try:
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
-        if path.is_file() and path.read_bytes() == tmp.read_bytes():
+        text = _normalize_run_log_text(tmp.read_text(encoding="utf-8"))
+        if path.is_file() and path.read_text(encoding="utf-8", errors="replace") == text:
             return path, False, True
-        _atomic_write(path=path, content=tmp.read_text(encoding="utf-8"))
+        _atomic_write(path=path, content=text)
         return path, True, False
     finally:
         tmp.unlink(missing_ok=True)
@@ -390,9 +397,7 @@ def _append_batch(
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
         path.parent.mkdir(parents=True, exist_ok=True)
-        text = tmp.read_text(encoding="utf-8")
-        if text and not text.endswith("\n"):
-            text += "\n"
+        text = _normalize_run_log_text(tmp.read_text(encoding="utf-8"))
         with path.open("a", encoding="utf-8") as handle:
             handle.write(text)
         return path, True, False
@@ -636,4 +641,4 @@ def _stage_round_artifact(*, src: Path, name: str) -> str:
             if residual:
                 raise ShipError(f"secret survived scrubbing in round artifact {name}")
         text = scrubbed
-    return redact.redact(text)
+    return _normalize_run_log_text(redact.redact(text))

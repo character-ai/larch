@@ -265,7 +265,7 @@ def test_flush_logs_pre_refuses_preterminal_forbidden_label(
     skip = run_log_flush.flush_logs_pre(runner=run_log_flush.proc, ctx=ctx, cwd=str(tmp_path))
 
     assert skip.skipped is True
-    assert skip.reason == config.REFRESH_SKIP_COMMIT_FAILED
+    assert skip.reason == config.REFRESH_SKIP_PRETERMINAL_OUTCOME
     assert "stalled" in skip.error
 
 

@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core import config
@@ -54,6 +55,17 @@ _VOLATILE_REFRESH_BASENAMES = frozenset({
 })
 _PORCELAIN_PATH_OFFSET = 3
 _IMPLEMENT_RUN_REL_PARTS = 3
+_PRE_COMMIT_REMEDY = (
+    "Remedy: rerun with --no-logs-commit, or add a larch-logs/ exclude "
+    "to the client's .pre-commit-config.yaml."
+)
+
+
+@dataclass(frozen=True)
+class _CommitTailResult:
+    result: CommandResult
+    phase: str
+    committed: bool = False
 
 
 def _status_line_path(line: str) -> str:
@@ -441,6 +453,53 @@ def _update_commit_manifest_with_warning(manifest: Path) -> None:
         print(f"WARN: larch-log commit manifest update failed: {exc}", file=sys.stderr)
 
 
+def _commit_tail(*, repo_root: Path, rels: list[str], subject: str) -> _CommitTailResult:
+    add = _git_stdout(["git", "add", "--", *rels], cwd=repo_root)
+    if add.returncode != 0:
+        return _CommitTailResult(
+            result=CommandResult(tuple(add.args), add.returncode, add.stdout, add.stderr, 0.0),
+            phase="add",
+        )
+    diff = _git_stdout(["git", "diff", "--cached", "--quiet", "--", *rels], cwd=repo_root)
+    if diff.returncode == 0:
+        return _CommitTailResult(
+            result=CommandResult(("true",), 0, "", "", 0.0),
+            phase="unchanged",
+        )
+    commit = _git_stdout(["git", "commit", "-m", subject, "--", *rels], cwd=repo_root)
+    if commit.returncode != 0:
+        return _CommitTailResult(
+            result=CommandResult(tuple(commit.args), commit.returncode, commit.stdout, commit.stderr, 0.0),
+            phase="commit",
+        )
+    return _CommitTailResult(
+        result=CommandResult(tuple(commit.args), 0, commit.stdout, commit.stderr, 0.0),
+        phase="commit",
+        committed=True,
+    )
+
+
+def _looks_like_pre_commit_hook_failure(text: str) -> bool:
+    lower = text.lower()
+    return (
+        "files were modified by this hook" in lower
+        or "hook id:" in lower
+        or "pre-commit" in lower
+        or ("hook" in lower and "failed" in lower)
+    )
+
+
+def _with_pre_commit_remedy(result: CommandResult) -> CommandResult:
+    combined = "\n".join(part for part in (result.stdout, result.stderr) if part)
+    if not _looks_like_pre_commit_hook_failure(combined):
+        return result
+    stderr = result.stderr
+    if _PRE_COMMIT_REMEDY not in stderr:
+        suffix = "\n" if stderr and not stderr.endswith("\n") else ""
+        stderr = f"{stderr}{suffix}{_PRE_COMMIT_REMEDY}\n"
+    return CommandResult(result.argv, result.returncode, result.stdout, stderr, result.duration)
+
+
 def _commit_run(*, log_root: Path, skill: str, run_id: str, cwd: str | None, pre_scrub_violations: int = 0) -> CommandResult:
     sentinel = log_root.parent / "post-merge-sentinel"
     if sentinel.exists():
@@ -494,20 +553,20 @@ def _commit_run(*, log_root: Path, skill: str, run_id: str, cwd: str | None, pre
             cwd=str(repo_root),
         )
         return CommandResult(("larch-log-volatile-only",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
-    add = _git_stdout(["git", "add", "--", *rels], cwd=repo_root)
-    if add.returncode != 0:
-        return CommandResult(tuple(add.args), add.returncode, add.stdout, add.stderr, 0.0)
-    diff = _git_stdout(["git", "diff", "--cached", "--quiet", "--", *rels], cwd=repo_root)
-    if diff.returncode == 0:
-        return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
     subject = f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}{run_id}"
-    commit = _git_stdout(["git", "commit", "-m", subject, "--", *rels], cwd=repo_root)
-    if commit.returncode != 0:
-        return CommandResult(tuple(commit.args), commit.returncode, commit.stdout, commit.stderr, 0.0)
+    tail = _commit_tail(repo_root=repo_root, rels=rels, subject=subject)
+    if tail.result.returncode != 0 and tail.phase == "commit":
+        tail = _commit_tail(repo_root=repo_root, rels=rels, subject=subject)
+        if tail.result.returncode != 0 and tail.phase == "commit":
+            return _with_pre_commit_remedy(tail.result)
+    if tail.result.returncode != 0:
+        return tail.result
+    if not tail.committed:
+        return CommandResult(("true",), 0, f"SECRET_SCRUB_VIOLATIONS={violations}\n", "", 0.0)
     sha = _git_stdout(["git", "rev-parse", "HEAD"], cwd=repo_root)
     stdout = f"{sha.stdout.strip()}\nSECRET_SCRUB_VIOLATIONS={violations}\n"
     _ = dest
-    return CommandResult(tuple(commit.args), 0, stdout, commit.stderr, 0.0)
+    return CommandResult(tail.result.argv, 0, stdout, tail.result.stderr, 0.0)
 
 
 def _larch_log_commit(

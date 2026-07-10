@@ -81,6 +81,72 @@ def _pre_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_re
     )
 
 
+def test_destall_pre_pr_reentry_clears_terminal_overlay(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\nRUN_ID=run-abc\nREPO=owner/repo\nBRANCH_NAME=feat\n",
+        encoding="utf-8",
+    )
+    finalize_state = tmp_path / "finalize-state.sh"
+    _ = finalize_state.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "EXIT_CODE=4\nBAIL_REASON=stalled\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        branch="feat",
+        repo="owner/repo",
+        stall_tracking=True,
+        stall_step="pr-create-guideline-outcome-refresh",
+    )
+    resume = _pre_pr_resume_plan(repo="owner/repo")
+
+    reset = ship._destall_pre_pr_reentry(  # pyright: ignore[reportPrivateUsage]
+        ctx=ctx,
+        resume=resume,
+        runner=RecordingRunner(),
+        repo_root=str(tmp_path),
+    )
+
+    assert not isinstance(reset, ship.ShipResult)
+    assert reset.stall_tracking is False
+    assert reset.stall_step == ""
+    assert not finalize_state.exists()
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=assessments\n" in state
+    assert "STALL_TRACKING=false\n" in state
+    assert "STALL_STEP=\n" in state
+    assert "EXIT_CODE=" not in state
+    assert "BAIL_REASON=" not in state
+
+
+def test_destall_pre_pr_reentry_fails_closed_on_finalize_symlink(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=pr-create-guideline-outcome-refresh\n"
+        "RUN_ID=run-abc\nREPO=owner/repo\nBRANCH_NAME=feat\n",
+        encoding="utf-8",
+    )
+    target = tmp_path / "target-finalize-state.sh"
+    _ = target.write_text("PHASE=stalled\n", encoding="utf-8")
+    (tmp_path / "finalize-state.sh").symlink_to(target)
+    ctx = _ctx(tmp_path, state_file=str(state_file), branch="feat", repo="owner/repo")
+
+    result = ship._destall_pre_pr_reentry(  # pyright: ignore[reportPrivateUsage]
+        ctx=ctx,
+        resume=_pre_pr_resume_plan(repo="owner/repo"),
+        runner=RecordingRunner(),
+        repo_root=str(tmp_path),
+    )
+
+    assert isinstance(result, ship.ShipResult)
+    assert result.outcome is Outcome.STALLED
+    assert "PHASE=stalled\n" in state_file.read_text(encoding="utf-8")
+
+
 def _pin_guidelines_note_text(
     *,
     implement_tmpdir: str,
