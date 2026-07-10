@@ -729,16 +729,31 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
             with contextlib.suppress(OSError):
                 st.manifest_raw_path.unlink()
             return st.emit_bailed("commit-failed")
+        commit_args = [GIT_BIN, "-C", str(repo_root), "commit", "-F", str(commit_msg_file)]
         commit = subprocess.run(
-            [GIT_BIN, "-C", str(repo_root), "commit", "-F", str(commit_msg_file)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
+            commit_args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
         )
         if commit.returncode != 0:
-            commit_stderr.write_text(commit.stderr, encoding="utf-8", errors="replace")
-            with contextlib.suppress(OSError):
-                st.manifest_path.unlink()
-            with contextlib.suppress(OSError):
-                st.manifest_raw_path.unlink()
-            return st.emit_bailed("commit-failed")
+            retry_add = subprocess.run(
+                [GIT_BIN, "-C", str(repo_root), "add", "-A"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
+            )
+            if retry_add.returncode != 0:
+                commit_stderr.write_text(retry_add.stderr or "git add failed", encoding="utf-8", errors="replace")
+                with contextlib.suppress(OSError):
+                    st.manifest_path.unlink()
+                with contextlib.suppress(OSError):
+                    st.manifest_raw_path.unlink()
+                return st.emit_bailed("commit-failed")
+            commit = subprocess.run(
+                commit_args, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, check=False
+            )
+            if commit.returncode != 0:
+                commit_stderr.write_text(commit.stderr, encoding="utf-8", errors="replace")
+                with contextlib.suppress(OSError):
+                    st.manifest_path.unlink()
+                with contextlib.suppress(OSError):
+                    st.manifest_raw_path.unlink()
+                return st.emit_bailed("commit-failed")
         with contextlib.suppress(OSError):
             commit_stderr.unlink()
         _invoke_cli(["run-log", "flush"], cwd=repo_root)
