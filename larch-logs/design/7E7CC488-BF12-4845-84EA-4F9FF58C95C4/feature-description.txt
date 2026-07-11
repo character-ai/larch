@@ -1,0 +1,24 @@
+# [FEATURE] Explicit outcome field for architectural assessment notes
+
+## Summary
+
+PR #6885 (issue #6882) replaced the exact-match assessment-note classifiers with tolerant prose classification. That unblocked verbose clean notes, but the gate now leans open:
+
+- A note is a violation only when it names a specific `I-*`/`G-*` id and does not lead with the clean sentence (`_invariant_assessment_kind` in `python/larch/core/architectural_guidelines.py`; the same shape twice in `python/larch/implement/ship_guidelines.py`).
+- A real violation note that describes the problem without naming an id classifies as clean and ships.
+- The classifier logic is triplicated across the two modules. The shared regexes reduce drift but do not remove it.
+
+## Proposal
+
+Make the outcome explicit at persist time; stop inferring it from prose.
+
+- The /design persist verb already accepts an explicit assessment flag (`persist-design-assessment --assessment clean`). Mirror that for the /implement assessment wrappers: the author passes an explicit outcome, and `architectural-invariant-outcome.json` and the guideline outcome carry that field.
+- Demote prose classification to a consistency cross-check: an explicit clean outcome plus a note that names `I-*`/`G-*` ids without the clean lead fails closed with a re-author request.
+- Collapse the three classifier copies into one shared helper.
+
+## Acceptance
+
+- Outcome JSON carries an author-supplied outcome field.
+- Prose-only inference no longer decides ship routing.
+- Mismatch between explicit outcome and note structure fails closed.
+- One shared classifier implementation. Regression tests cover clean-with-rationale, id-free violation notes, and mismatch.
