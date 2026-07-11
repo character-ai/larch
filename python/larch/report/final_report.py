@@ -552,18 +552,14 @@ def _plan_coverage_summary_line(
         )
     except ShipError as exc:
         if _is_stale_live_coverage_mismatch(exc):
+            if not (implement_tmpdir / "post-merge-sentinel").is_file():
+                raise
             persisted_coverage = scope_disposition.load_coverage(implement_tmpdir)
             if persisted_coverage is None:
-                if (
-                    scope_disposition.disposition_path(implement_tmpdir).exists()
-                    or scope_disposition.disposition_path(implement_tmpdir).is_symlink()
-                ):
-                    _ = scope_disposition.load_disposition(implement_tmpdir)
-                    raise ShipError("scope disposition exists without trusted coverage") from exc
-            else:
-                _ = scope_disposition.load_disposition(
-                    implement_tmpdir, coverage=persisted_coverage
-                )
+                raise ShipError(_STALE_LIVE_COVERAGE_MISMATCH) from exc
+            _ = scope_disposition.load_disposition(
+                implement_tmpdir, coverage=persisted_coverage
+            )
             return ""
         raise
     if coverage is None:

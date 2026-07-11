@@ -1069,20 +1069,26 @@ def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:
     assert "--cursor-grok-input-tokens" not in argv
 
 
-def test_plan_coverage_summary_omits_line_on_stale_live_mismatch(
+def test_plan_coverage_summary_recovers_post_merge_stale_live_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "session-env.sh").write_text(
         f"REPO_ROOT={tmp_path}\n",
         encoding="utf-8",
     )
+    (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
     def boom(*, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None) -> None:
         _ = tmpdir, repo_root, manifest_path
         raise ShipError("coverage artifact does not match live repository inputs")
 
     monkeypatch.setattr(scope_disposition, "load_live_coverage", boom)
-    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: None)
+    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: object())
+    monkeypatch.setattr(
+        scope_disposition,
+        "load_disposition",
+        lambda _tmpdir, *, coverage=None: None,  # noqa: ARG005
+    )
 
     assert final_report._plan_coverage_summary_line(tmp_path) == ""
 
@@ -1105,7 +1111,7 @@ def test_plan_coverage_summary_propagates_non_mismatch_ship_error(
         _ = final_report._plan_coverage_summary_line(tmp_path)
 
 
-def test_write_final_report_succeeds_without_plan_coverage_on_stale_mismatch(
+def test_write_final_report_fails_before_post_merge_on_stale_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_minimal_state(tmp_path)
@@ -1120,13 +1126,28 @@ def test_write_final_report_succeeds_without_plan_coverage_on_stale_mismatch(
         raise ShipError("coverage artifact does not match live repository inputs")
 
     monkeypatch.setattr(scope_disposition, "load_live_coverage", boom)
+    with pytest.raises(ShipError, match="coverage artifact does not match live repository inputs"):
+        _ = final_report.write_final_report(tmp_path, comment_only=True)
+
+
+def test_plan_coverage_summary_post_merge_stale_mismatch_requires_persisted_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "session-env.sh").write_text(
+        f"REPO_ROOT={tmp_path}\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
+
+    def stale(*, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None) -> None:
+        _ = tmpdir, repo_root, manifest_path
+        raise ShipError("coverage artifact does not match live repository inputs")
+
+    monkeypatch.setattr(scope_disposition, "load_live_coverage", stale)
     monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: None)
 
-    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
-    assert (rc, url, err) == (0, "", "")
-    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
-    assert "firm headings" not in summary
-    assert "## /implement run run1" in summary
+    with pytest.raises(ShipError, match="coverage artifact does not match live repository inputs"):
+        _ = final_report._plan_coverage_summary_line(tmp_path)
 
 
 def test_plan_coverage_summary_stale_mismatch_propagates_invalid_persisted_coverage(
@@ -1136,6 +1157,7 @@ def test_plan_coverage_summary_stale_mismatch_propagates_invalid_persisted_cover
         f"REPO_ROOT={tmp_path}\n",
         encoding="utf-8",
     )
+    (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
     def stale(*, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None) -> None:
         _ = tmpdir, repo_root, manifest_path

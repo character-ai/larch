@@ -1235,6 +1235,7 @@ def test_teardown_stale_live_coverage_missing_persisted_coverage_raises(
         "_rename_issue",
         lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
     )
+    (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
     with pytest.raises(ShipError, match=_STALE_LIVE):
         _ = finalize.teardown(
