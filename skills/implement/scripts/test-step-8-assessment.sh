@@ -817,6 +817,8 @@ INV_RC=$?
 set -e
 assert_rc "$INV_RC" 0 'invalid-retry: exits 0'
 assert_contains 'ASSESSMENT_STATUS=fail-closed' "$INV_OUT" 'invalid-retry: fail-closed after second invalid'
+assert_contains 'BGJOB_RC=1' "$INV_OUT" 'invalid-retry: fail-closed normalizes zero rc'
+assert_not_contains 'BGJOB_RC=0' "$INV_OUT" 'invalid-retry: fail-closed never reports zero rc'
 START_COUNT=$(cat "$IMPL_TMP/.test-start-count" 2>/dev/null || echo 0)
 if [ "$START_COUNT" = "2" ]; then
   pass 'invalid-retry: two starts'
@@ -901,6 +903,91 @@ if [ "$START_COUNT" = "1" ]; then
 else
   fail "live-timeout-retry: expected 1 start got $START_COUNT"
 fi
+
+# --- live DEAD without an envelope retries seeded attempt 1 ---
+setup_impl dead-no-envelope
+FP_EXPECTED=$(expected_fingerprint)
+printf 'live\n' >"$IMPL_TMP/.test-registry-state"
+cat >"$IMPL_TMP/bgjob/implement-step8-assessment.merge.env" <<ENV
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$FP_EXPECTED
+ASSESSMENT_ATTEMPT=1
+ENV
+printf '1:DEAD\n' >"$IMPL_TMP/.test-wait-script"
+printf '1:timeout:fail-closed\n' >"$IMPL_TMP/.test-start-seq"
+printf 'yes\n' >"$IMPL_TMP/.test-wait-reset-on-start"
+set +e
+DEAD_OUT=$(run_helper 2>"$TMP_ROOT/dead-no-envelope.err")
+DEAD_RC=$?
+set -e
+assert_rc "$DEAD_RC" 0 'dead-no-envelope: exits 0'
+assert_contains 'ASSESSMENT_STATUS=fail-closed' "$DEAD_OUT" 'dead-no-envelope: publishes terminal failure'
+assert_contains 'ASSESSMENT_ATTEMPT=2' "$DEAD_OUT" 'dead-no-envelope: retries as attempt 2'
+START_COUNT=$(cat "$IMPL_TMP/.test-start-count" 2>/dev/null || echo 0)
+if [ "$START_COUNT" = "1" ]; then
+  pass 'dead-no-envelope: starts exactly one retry'
+else
+  fail "dead-no-envelope: expected 1 retry start got $START_COUNT"
+fi
+
+# --- completed malformed terminal envelope retries before acceptance ---
+setup_impl malformed-completed
+FP_EXPECTED=$(expected_fingerprint)
+cat >"$IMPL_TMP/bgjob/implement-step8-assessment.result.env" <<ENV
+BGJOB_RC=0
+STEP=implement-step8-assessment
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$FP_EXPECTED
+ASSESSMENT_STATUS=complete
+ASSESSMENT_ATTEMPT=1
+ENV
+printf '1:0:complete\n' >"$IMPL_TMP/.test-start-seq"
+set +e
+MALFORMED_OUT=$(run_helper 2>"$TMP_ROOT/malformed-completed.err")
+MALFORMED_RC=$?
+set -e
+assert_rc "$MALFORMED_RC" 0 'malformed-completed: exits 0'
+assert_contains 'ASSESSMENT_STATUS=complete' "$MALFORMED_OUT" 'malformed-completed: replacement succeeds'
+START_COUNT=$(cat "$IMPL_TMP/.test-start-count" 2>/dev/null || echo 0)
+if [ "$START_COUNT" = "1" ]; then
+  pass 'malformed-completed: starts attempt 2 after invalid cache'
+else
+  fail "malformed-completed: expected 1 retry start got $START_COUNT"
+fi
+
+
+# --- stale completed identities restart at attempt 1 for every input field ---
+for identity_field in HEAD_SHA BASE_REF DIFF_FINGERPRINT; do
+  setup_impl "identity-drift-$identity_field"
+  FP_EXPECTED=$(expected_fingerprint)
+  cat >"$IMPL_TMP/bgjob/implement-step8-assessment.result.env" <<ENV
+BGJOB_RC=0
+STEP=implement-step8-assessment
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$FP_EXPECTED
+ASSESSMENT_STATUS=complete
+ASSESSMENT_ATTEMPT=1
+ASSESSMENT_RESULTS=invariants:clean,guidelines:clean
+ENV
+  case "$identity_field" in
+    HEAD_SHA) sed -i '' 's/HEAD_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/HEAD_SHA=dddddddddddddddddddddddddddddddddddddddd/' "$IMPL_TMP/architectural-guideline-materialize.env" ;;
+    BASE_REF) sed -i '' 's/BASE_REF=origin\/main/BASE_REF=origin\/release/' "$IMPL_TMP/architectural-guideline-materialize.env" ;;
+    DIFF_FINGERPRINT) sed -i '' 's/DIFF_FINGERPRINT=cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc/DIFF_FINGERPRINT=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee/' "$IMPL_TMP/architectural-guideline-materialize.env" ;;
+  esac
+  printf '1:0:complete\n' >"$IMPL_TMP/.test-start-seq"
+  set +e
+  DRIFT_OUT=$(run_helper 2>"$TMP_ROOT/identity-drift-$identity_field.err")
+  DRIFT_RC=$?
+  set -e
+  assert_rc "$DRIFT_RC" 0 "identity-drift-$identity_field: exits 0"
+  assert_contains 'ASSESSMENT_ATTEMPT=1' "$DRIFT_OUT" "identity-drift-$identity_field: restarts at attempt 1"
+  START_COUNT=$(cat "$IMPL_TMP/.test-start-count" 2>/dev/null || echo 0)
+  if [ "$START_COUNT" = "1" ]; then
+    pass "identity-drift-$identity_field: clears stale result before fresh start"
+  else
+    fail "identity-drift-$identity_field: expected 1 fresh start got $START_COUNT"
+  fi
+done
 
 printf '\nPassed: %s Failed: %s\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

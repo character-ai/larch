@@ -510,6 +510,7 @@ emit_terminal_stdout() {
 }
 
 terminal_is_success() {
+  [ "${TERM_BGJOB_STATUS:-}" = "DONE" ] || return 1
   [ "${TERM_STEP:-}" = "$STEP" ] || return 1
   identity_matches "${TERM_KINDS:-}" "${TERM_FP:-}" || return 1
   [ "${TERM_STATUS:-}" = "complete" ] || return 1
@@ -520,6 +521,7 @@ terminal_is_success() {
 }
 
 terminal_is_fail_closed() {
+  [ "${TERM_BGJOB_STATUS:-}" = "DONE" ] || return 1
   [ "${TERM_STEP:-}" = "$STEP" ] || return 1
   identity_matches "${TERM_KINDS:-}" "${TERM_FP:-}" || return 1
   [ "${TERM_STATUS:-}" = "fail-closed" ] || return 1
@@ -555,6 +557,10 @@ handle_terminal_outcome() {
   fi
   if [ "${TERM_ATTEMPT:-}" = "2" ]; then
     HANDLE_ACTION=emit-fail-closed
+    return 0
+  fi
+  if [ -z "${TERM_KINDS:-}" ] && [ -z "${TERM_FP:-}" ] && { [ "${TERM_ATTEMPT:-}" = "1" ] || [ -z "${TERM_ATTEMPT:-}" ]; }; then
+    HANDLE_ACTION=retry
     return 0
   fi
   if terminal_retryable; then
@@ -594,11 +600,10 @@ run_wait_validate_path() {
 
 publish_fail_closed_terminal() {
   local attempt=${1:-2}
-  local rc=${TERM_BGJOB_RC:-1}
+  local rc=${TERM_BGJOB_RC:-}
   local merge_env result_env
   merge_env=$(merge_env_path)
   result_env=$(result_env_path)
-  [ -n "$rc" ] || rc=1
   write_merge_kvs "$merge_env" \
     ASSESSMENT_REQUESTED_KINDS "$ASSESSMENT_REQUESTED_KINDS" \
     ASSESSMENT_COVERED_FINGERPRINT "$ASSESSMENT_COVERED_FINGERPRINT" \
@@ -608,8 +613,9 @@ publish_fail_closed_terminal() {
   if [ -f "$result_env" ] && [ ! -L "$result_env" ]; then
     local existing_rc
     existing_rc=$(read_env_key BGJOB_RC "$result_env")
-    [ -n "$existing_rc" ] && rc=$existing_rc
+    [ -n "$existing_rc" ] && [ "$existing_rc" != "0" ] && rc=$existing_rc
   fi
+  [ -n "$rc" ] && [ "$rc" != "0" ] || rc=1
   {
     printf 'BGJOB_RC=%s\n' "$rc"
     printf 'STEP=%s\n' "$STEP"
@@ -783,8 +789,16 @@ if [ "${CURRENT_ATTEMPT:-}" = "" ]; then
     if identity_matches "${ENV_KINDS:-}" "${ENV_FP:-}"; then
       run_wait_validate_path true
       case "$HANDLE_ACTION" in
-        emit-success|emit-fail-closed)
+        emit-success)
           emit_terminal_stdout
+          exit 0
+          ;;
+        emit-fail-closed)
+          if terminal_is_fail_closed; then
+            emit_terminal_stdout
+          else
+            publish_fail_closed_terminal 2
+          fi
           exit 0
           ;;
         retry)
