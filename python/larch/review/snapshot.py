@@ -156,12 +156,23 @@ def _snapshot_inventory(path: Path) -> tuple[str, ...]:
 
 def _snapshot_artifact_identity(root: Path) -> tuple[tuple[str, int, int], ...]:
     identity: list[tuple[str, int, int]] = []
-    for path in sorted(root.rglob("*")):
+    for name in (
+        "pre-coder-head.txt",
+        "pre-coder-tracked-paths.txt",
+        "pre-coder-untracked-paths.txt",
+    ):
+        path = root / name
         if path.is_symlink():
             raise OSError(f"unsafe snapshot artifact: {path}")
         if path.is_file():
-            stat = path.stat()
-            identity.append((str(path.relative_to(root)), stat.st_size, stat.st_mtime_ns))
+            identity.append((name, path.stat().st_size, zlib.crc32(path.read_bytes())))
+    diffs_dir = root / "pre-coder-path-diffs"
+    if diffs_dir.exists() or diffs_dir.is_symlink():
+        larch_io.validate_trusted_directory(diffs_dir, root=root)
+        for path in sorted(diffs_dir.iterdir()):
+            if not larch_io.trusted_file_present(path, root=diffs_dir):
+                raise OSError(f"unsafe snapshot patch artifact: {path}")
+            identity.append((f"pre-coder-path-diffs/{path.name}", path.stat().st_size, zlib.crc32(path.read_bytes())))
     return tuple(identity)
 
 
@@ -170,6 +181,22 @@ def _validate_pre_coder_snapshot(round_dir: Path) -> ValidatedPreCoderSnapshot:
     if not snap_dir.exists() and not snap_dir.is_symlink():
         return ValidatedPreCoderSnapshot(mode="missing", root=snap_dir)
     _validate_snapshot_root(snap_dir)
+    allowed_root_entries = {
+        "pre-coder-head.txt",
+        "pre-coder-tracked-paths.txt",
+        "pre-coder-untracked-paths.txt",
+        "pre-coder-path-diffs",
+        "attempt-pre-tracked-paths.txt",
+        "attempt-pre-untracked-paths.txt",
+        "attempt-pre-path-diffs",
+    }
+    for artifact in snap_dir.iterdir():
+        if artifact.name not in allowed_root_entries:
+            raise OSError(f"unexpected snapshot root artifact: {artifact}")
+        if artifact.name.endswith("-diffs"):
+            larch_io.validate_trusted_directory(artifact, root=snap_dir)
+        elif not larch_io.trusted_file_present(artifact, root=snap_dir):
+            raise OSError(f"unsafe snapshot root artifact: {artifact}")
     head_path = snap_dir / "pre-coder-head.txt"
     tracked_path = snap_dir / "pre-coder-tracked-paths.txt"
     untracked_path = snap_dir / "pre-coder-untracked-paths.txt"
@@ -212,6 +239,21 @@ def _validate_pre_coder_snapshot(round_dir: Path) -> ValidatedPreCoderSnapshot:
         untracked_paths=untracked,
         artifact_identity=_snapshot_artifact_identity(snap_dir),
     )
+
+
+def revalidate_pre_coder_snapshot(snapshot: ValidatedPreCoderSnapshot) -> None:
+    """Reject snapshots changed since their trusted identity was captured."""
+    current = _validate_pre_coder_snapshot(snapshot.root.parent)
+    if current.mode != snapshot.mode:
+        raise OSError("pre-coder snapshot changed after validation")
+    expected = dict(snapshot.artifact_identity)
+    actual = dict(current.artifact_identity)
+    if set(expected) != set(actual):
+        raise OSError("pre-coder snapshot changed after validation")
+    for name, (size, checksum) in expected.items():
+        current_size, current_checksum = actual[name]
+        if current_size != size or current_checksum != checksum:
+            raise OSError("pre-coder snapshot changed after validation")
 
 
 def _snapshot_mode(round_dir: Path) -> Literal["full", "head_untracked", "missing"]:

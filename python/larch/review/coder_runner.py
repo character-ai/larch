@@ -38,6 +38,7 @@ from larch.review.snapshot import (
     _collect_self_review_stage_paths,
     _finalize_failed_cleanup,
     _prepare_or_validate_pre_coder_snapshot,
+    revalidate_pre_coder_snapshot,
     _round_has_full_pre_coder_snapshot,
     _write_attempt_pre_tracked_paths,
     pre_coder_snapshot_dir,
@@ -448,7 +449,12 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
             else:
                 os.environ[key] = value
     tool_log = round_dir / "coder-output.log"
-    snapshot = _prepare_or_validate_pre_coder_snapshot(round_dir)
+    try:
+        snapshot = _prepare_or_validate_pre_coder_snapshot(round_dir)
+    except OSError:
+        result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
+        _write_env(path=result_file, values=_coder_env(result))
+        return result
     mode = snapshot.mode
     pre_head = snapshot.pre_head
     current_head = _git_head()
@@ -468,15 +474,20 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         return result
     attempts = [(tool, runner_by_tool[tool]) for tool in fix_coder_order if tool in runner_by_tool]
     for tool, runner in attempts:
-        _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
+        try:
+            _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
+        except OSError:
+            result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
+            _write_env(path=result_file, values=_coder_env(result))
+            return result
         if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):
             if not _cleanup_failed_coder_attempt(round_dir):
                 result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
                 _write_env(path=result_file, values=_coder_env(result))
                 return result
             continue
-        _write_text(path=round_dir / "coder-tool.txt", text=tool + "\n")
         revert_count = _post_dispatch_submodule_revert(round_dir=round_dir, submodules=submodules)
+        _write_text(path=round_dir / "coder-tool.txt", text=tool + "\n")
         if revert_count > 0:
             if not _cleanup_failed_coder_attempt(round_dir):
                 result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, revert_count)

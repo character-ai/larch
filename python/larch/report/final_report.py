@@ -531,6 +531,9 @@ def _plan_coverage_summary_line(
     repo_root = progress_file.resolve_persisted_repo_root(tmpdir=implement_tmpdir)
     if repo_root is None:
         if scope_disposition.load_coverage(implement_tmpdir) is None:
+            if scope_disposition.disposition_path(implement_tmpdir).exists() or scope_disposition.disposition_path(implement_tmpdir).is_symlink():
+                _ = scope_disposition.load_disposition(implement_tmpdir)
+                raise ShipError("scope disposition exists without trusted coverage")
             return ""
         raise ShipError("persisted repository root is required for coverage validation")
     coverage = scope_disposition.load_live_coverage(
@@ -539,6 +542,9 @@ def _plan_coverage_summary_line(
         manifest_path=manifest_path,
     )
     if coverage is None:
+        if scope_disposition.disposition_path(implement_tmpdir).exists() or scope_disposition.disposition_path(implement_tmpdir).is_symlink():
+            _ = scope_disposition.load_disposition(implement_tmpdir)
+            raise ShipError("scope disposition exists without trusted coverage")
         return ""
     record = scope_disposition.load_disposition(implement_tmpdir, coverage=coverage)
     disposition = record.disposition if record is not None else "none"
