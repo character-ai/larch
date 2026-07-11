@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import pytest
 
@@ -12,16 +12,33 @@ from larch.implement import scope_disposition
 
 
 class FakeRunner:
+    """Test double with independent symbolic-ref and merge-base controls.
+
+    Defaults model a successful live base: ``origin/main`` symbolic-ref and a
+    non-empty merge-base SHA. Explicit failure flags are required for
+    symbolic-ref or merge-base failure paths.
+    """
+
     def __init__(
         self,
         *,
-        diff_paths: Sequence[str],
+        diff_paths: Sequence[str] = (),
         status_z: str = "",
-        merge_base: str = "",
+        merge_base: str = "LIVEBASE",
+        head: str = "a" * 40,
+        remote_heads: Mapping[str, str] | None = None,
+        fail_symbolic_refs: frozenset[str] | None = None,
+        fail_merge_base: bool = False,
+        fail_diff: bool = False,
     ) -> None:
         self.diff_paths = tuple(diff_paths)
         self.status_z = status_z
         self.merge_base = merge_base
+        self.head = head
+        self.remote_heads = dict(remote_heads or {})
+        self.fail_symbolic_refs = fail_symbolic_refs or frozenset()
+        self.fail_merge_base = fail_merge_base
+        self.fail_diff = fail_diff
         self.calls: list[tuple[str, ...]] = []
 
     def run(
@@ -38,18 +55,37 @@ class FakeRunner:
         _ = timeout, cwd, env, check, stdout, stderr
         args = tuple(argv)
         self.calls.append(args)
+        if args[:3] == ("git", "symbolic-ref", "--short") and len(args) >= 4:
+            ref = args[3]
+            remote = ""
+            if ref.startswith("refs/remotes/") and ref.endswith("/HEAD"):
+                remote = ref[len("refs/remotes/") : -len("/HEAD")]
+            if remote in self.fail_symbolic_refs:
+                return CommandResult(args, 1, "", f"missing {ref}", 0.0)
+            if remote in self.remote_heads:
+                value = self.remote_heads[remote]
+                if not value:
+                    return CommandResult(args, 1, "", f"missing {ref}", 0.0)
+                return CommandResult(args, 0, f"{value}\n", "", 0.0)
+            if remote == "origin":
+                return CommandResult(args, 0, "origin/main\n", "", 0.0)
+            if remote == "upstream":
+                return CommandResult(args, 0, "upstream/main\n", "", 0.0)
+            return CommandResult(args, 1, "", f"missing {ref}", 0.0)
         if args[:3] == ("git", "diff", "--name-only"):
+            if self.fail_diff:
+                return CommandResult(args, 1, "", "invalid revision range", 0.0)
             return CommandResult(
                 args, 0, "".join(f"{path}\n" for path in self.diff_paths), "", 0.0
             )
         if args[:3] == ("git", "status", "--porcelain=v1"):
             return CommandResult(args, 0, self.status_z, "", 0.0)
         if args[:2] == ("git", "merge-base"):
-            if self.merge_base:
-                return CommandResult(args, 0, f"{self.merge_base}\n", "", 0.0)
-            return CommandResult(args, 1, "", "no merge-base", 0.0)
+            if self.fail_merge_base or not self.merge_base:
+                return CommandResult(args, 1, "", "no merge-base", 0.0)
+            return CommandResult(args, 0, f"{self.merge_base}\n", "", 0.0)
         if args[:3] == ("git", "rev-parse", "HEAD"):
-            return CommandResult(args, 0, "HEADSHA\n", "", 0.0)
+            return CommandResult(args, 0, f"{self.head}\n", "", 0.0)
         return CommandResult(args, 1, "", "unexpected", 0.0)
 
 
@@ -60,6 +96,23 @@ def _plan(paths: Sequence[str], *, may_update: Sequence[str] = ()) -> str:
     for path in may_update:
         lines.append(f"### MAY_UPDATE: {path}")
     return "\n".join(lines) + "\n"
+
+
+def _porcelain_z(records: Sequence[str]) -> str:
+    """Build porcelain -z stdout from status records.
+
+    Each record is either ``"XY path"`` or, for rename/copy, provide the old
+    path as the next record without a status prefix (matching git -z layout
+    when callers pass ``["R  new.py", "old.py"]``).
+    """
+    return "\0".join(records) + "\0"
+
+
+def _write_state(path: Path, **keys: str) -> None:
+    _ = path.write_text(
+        "".join(f"{key}={value}\n" for key, value in keys.items()),
+        encoding="utf-8",
+    )
 
 
 def test_compute_high_band_requires_disposition_and_forces_plan_fidelity(
@@ -220,7 +273,7 @@ def test_manifest_todo_non_string_after_ignored_todo_fails_closed(
         )
 
 
-def test_compute_requires_step2_baseline(tmp_path: Path) -> None:
+def test_compute_requires_step2_baseline_on_frozen_fallback(tmp_path: Path) -> None:
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
 
@@ -229,8 +282,23 @@ def test_compute_requires_step2_baseline(tmp_path: Path) -> None:
             tmpdir=tmp_path,
             repo_root=tmp_path,
             plan_file=plan_file,
-            runner=FakeRunner(diff_paths=[]),
+            runner=FakeRunner(diff_paths=[], fail_symbolic_refs=frozenset({"origin"})),
         )
+
+
+def test_live_base_computes_without_step2_baseline(tmp_path: Path) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
+
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=FakeRunner(diff_paths=["src/a.py"]),
+    )
+
+    assert coverage.touched_paths == ("src/a.py",)
+    assert not (tmp_path / "step2-baseline.txt").exists()
 
 
 def test_compute_coverage_ignores_non_plan_and_run_log_paths(tmp_path: Path) -> None:
@@ -263,33 +331,502 @@ def test_compute_coverage_ignores_non_plan_and_run_log_paths(tmp_path: Path) -> 
     assert clean.fingerprint == coverage.fingerprint
 
 
-def test_baseline_prefers_origin_main_merge_base(tmp_path: Path) -> None:
+def test_baseline_uses_resolved_origin_trunk_merge_base(tmp_path: Path) -> None:
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
-    runner = FakeRunner(diff_paths=["src/a.py"], merge_base="FRESHMB")
+    runner = FakeRunner(
+        diff_paths=["src/a.py"],
+        merge_base="FRESHMB",
+        remote_heads={"origin": "origin/trunk"},
+    )
 
     _ = scope_disposition.touched_paths_since_baseline(
         tmpdir=tmp_path, repo_root=tmp_path, runner=runner
     )
 
-    merge_base_calls = [call for call in runner.calls if call[:2] == ("git", "merge-base")]
+    symbolic_calls = [
+        call for call in runner.calls if call[:3] == ("git", "symbolic-ref", "--short")
+    ]
+    assert symbolic_calls
+    assert symbolic_calls[0][3] == "refs/remotes/origin/HEAD"
+    merge_base_calls = [
+        call for call in runner.calls if call[:2] == ("git", "merge-base")
+    ]
     assert merge_base_calls
-    assert merge_base_calls[0][2:] == ("origin/main", "HEAD")
-    diff_calls = [call for call in runner.calls if call[:3] == ("git", "diff", "--name-only")]
+    assert merge_base_calls[0][2:] == ("origin/trunk", "HEAD")
+    diff_calls = [
+        call for call in runner.calls if call[:3] == ("git", "diff", "--name-only")
+    ]
     assert diff_calls
     assert diff_calls[0][3] == "FRESHMB..HEAD"
 
 
-def test_baseline_falls_back_to_step2_without_origin_main(tmp_path: Path) -> None:
-    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
-    runner = FakeRunner(diff_paths=["src/a.py"])
+def test_forked_target_selects_upstream_default_branch(tmp_path: Path) -> None:
+    _write_state(tmp_path / "session-env.sh", FORKED_TARGET="true")
+    runner = FakeRunner(
+        diff_paths=["src/a.py"],
+        merge_base="UPMB",
+        remote_heads={"upstream": "upstream/develop", "origin": "origin/main"},
+    )
 
     _ = scope_disposition.touched_paths_since_baseline(
         tmpdir=tmp_path, repo_root=tmp_path, runner=runner
     )
 
-    diff_calls = [call for call in runner.calls if call[:3] == ("git", "diff", "--name-only")]
-    assert diff_calls
-    assert diff_calls[0][3] == "STEP2BASE..HEAD"
+    symbolic_calls = [
+        call for call in runner.calls if call[:3] == ("git", "symbolic-ref", "--short")
+    ]
+    assert symbolic_calls[0][3] == "refs/remotes/upstream/HEAD"
+    merge_base_calls = [
+        call for call in runner.calls if call[:2] == ("git", "merge-base")
+    ]
+    assert merge_base_calls[0][2] == "upstream/develop"
+    assert not any(
+        call[3] == "refs/remotes/origin/HEAD"
+        for call in runner.calls
+        if call[:3] == ("git", "symbolic-ref", "--short")
+    )
+
+
+@pytest.mark.parametrize(
+    ("ship", "session", "expected_remote"),
+    [
+        (None, {"FORKED_TARGET": "true"}, "upstream"),
+        ({"FORKED_TARGET": "true"}, None, "upstream"),
+        ({"FORKED_TARGET": "false"}, {"FORKED_TARGET": "true"}, "origin"),
+        ({"FORKED_TARGET": "true"}, {"FORKED_TARGET": "false"}, "upstream"),
+        ({"FORKED_TARGET": "yes"}, None, "origin"),
+        ({}, {"FORKED_TARGET": "true"}, "origin"),
+        (None, None, "origin"),
+    ],
+)
+def test_forked_target_state_precedence(
+    tmp_path: Path,
+    ship: dict[str, str] | None,
+    session: dict[str, str] | None,
+    expected_remote: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FORKED_TARGET", "true")
+    if ship is not None:
+        _write_state(tmp_path / "ship-pr-state.sh", **ship)
+    if session is not None:
+        _write_state(tmp_path / "session-env.sh", **session)
+    runner = FakeRunner(diff_paths=[], merge_base="MB")
+
+    resolution = scope_disposition.resolve_baseline(
+        tmpdir=tmp_path, repo_root=tmp_path, runner=runner
+    )
+
+    assert resolution.remote == expected_remote
+    symbolic_calls = [
+        call for call in runner.calls if call[:3] == ("git", "symbolic-ref", "--short")
+    ]
+    assert symbolic_calls[0][3] == f"refs/remotes/{expected_remote}/HEAD"
+
+
+def test_normal_run_ignores_unrelated_upstream_head(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        diff_paths=[],
+        merge_base="MB",
+        remote_heads={"origin": "origin/main", "upstream": "upstream/other"},
+    )
+    resolution = scope_disposition.resolve_baseline(
+        tmpdir=tmp_path, repo_root=tmp_path, runner=runner
+    )
+    assert resolution.remote == "origin"
+    assert not any(
+        "upstream" in call[3]
+        for call in runner.calls
+        if len(call) > 3 and call[1] == "symbolic-ref"
+    )
+
+
+@pytest.mark.parametrize(
+    "remote_head",
+    [
+        "",
+        "upstream/main",
+        "-origin/main",
+        "origin/",
+        "origin",
+        "other/main",
+        "origin/main^",
+        "origin/main:path",
+        "origin/main@{1}",
+    ],
+)
+def test_malformed_symbolic_ref_uses_frozen_fallback(
+    tmp_path: Path, remote_head: str, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    plan = tmp_path / "src"
+    plan.mkdir()
+    target = plan / "a.py"
+    _ = target.write_text("edited\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=["src/a.py", "src/upstream_only.py"],
+        status_z=_porcelain_z([" M src/a.py"]),
+        remote_heads={"origin": remote_head},
+        fail_diff=True,
+    )
+
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=["src/a.py", "src/upstream_only.py"],
+    )
+
+    assert touched == ("src/a.py",)
+    assert not any(call[:2] == ("git", "merge-base") for call in runner.calls)
+    assert not any(call[:3] == ("git", "diff", "--name-only") for call in runner.calls)
+    err = capsys.readouterr().err
+    assert "unresolved origin/HEAD" in err
+    assert "STEP2BASE" in err
+
+
+def test_merge_base_failure_raises_not_frozen_fallback(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=["src/a.py"],
+        remote_heads={"origin": "origin/main"},
+        fail_merge_base=True,
+    )
+
+    with pytest.raises(ShipError, match="merge-base failed for origin/main"):
+        _ = scope_disposition.touched_paths_since_baseline(
+            tmpdir=tmp_path, repo_root=tmp_path, runner=runner
+        )
+
+    assert not any(call[:3] == ("git", "diff", "--name-only") for call in runner.calls)
+
+
+def test_frozen_fallback_skips_baseline_diff_and_uses_porcelain(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("mod\n", encoding="utf-8")
+    _ = (src / "new.py").write_text("new\n", encoding="utf-8")
+    _ = (src / "renamed.py").write_text("renamed\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=["src/churn.py"],
+        status_z=_porcelain_z(
+            [
+                " M src/a.py",
+                "?? src/new.py",
+                "R  src/renamed.py",
+                "src/old.py",
+                "C  src/copied.py",
+                "src/template.py",
+            ]
+        ),
+        fail_symbolic_refs=frozenset({"origin"}),
+        fail_diff=True,
+    )
+    # Create remaining paths referenced by rename/copy for signatures.
+    _ = (src / "copied.py").write_text("copied\n", encoding="utf-8")
+
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=[
+            "src/a.py",
+            "src/new.py",
+            "src/renamed.py",
+            "src/old.py",
+            "src/copied.py",
+            "src/template.py",
+            "src/churn.py",
+        ],
+    )
+
+    assert "src/churn.py" not in touched
+    assert "src/a.py" in touched
+    assert "src/new.py" in touched
+    assert "src/renamed.py" in touched
+    assert "src/old.py" in touched
+    assert "src/copied.py" in touched
+    assert "src/template.py" in touched
+    assert not any(call[:3] == ("git", "diff", "--name-only") for call in runner.calls)
+
+
+def test_frozen_fallback_ignores_committed_upstream_churn(tmp_path: Path) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py", "src/churn.py"]), encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("local\n", encoding="utf-8")
+
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=FakeRunner(
+            diff_paths=["src/churn.py", "src/a.py"],
+            status_z=_porcelain_z([" M src/a.py"]),
+            fail_symbolic_refs=frozenset({"origin"}),
+        ),
+    )
+
+    assert coverage.touched_paths == ("src/a.py",)
+    assert "src/churn.py" in coverage.untouched_paths
+
+
+def test_frozen_fallback_invalid_range_still_returns_porcelain(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("local\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=[],
+        status_z=_porcelain_z([" M src/a.py"]),
+        fail_symbolic_refs=frozenset({"origin"}),
+        fail_diff=True,
+    )
+
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=["src/a.py"],
+    )
+
+    assert touched == ("src/a.py",)
+
+
+def test_frozen_fallback_ignores_external_commit_before_run_provenance(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=["src/a.py"],
+        status_z="",
+        head="b" * 40,
+        fail_symbolic_refs=frozenset({"origin"}),
+    )
+
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=["src/a.py"],
+    )
+
+    assert not touched
+
+
+def test_frozen_fallback_post_commit_provenance_retained(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py", "src/b.py"]), encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("implemented\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=["src/churn.py"],
+        status_z=_porcelain_z([" M src/a.py"]),
+        fail_symbolic_refs=frozenset({"origin"}),
+    )
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=runner,
+    )
+    assert coverage.touched_paths == ("src/a.py",)
+
+    # Simulate dispatcher commit: clean porcelain, content unchanged.
+    runner.status_z = ""
+    runner.head = "b" * 40
+    runner.diff_paths = ("src/a.py",)
+
+    def fake_run_cli(argv: Sequence[str]) -> CommandResult:
+        return CommandResult(tuple(argv), 0, "OK=true\n", "", 0.0)
+
+    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+    record = scope_disposition.record_disposition(
+        tmpdir=tmp_path,
+        disposition="bail-rescope",
+        repo_root=tmp_path,
+        runner=runner,
+    )
+    assert record.fingerprint == coverage.fingerprint
+    live = scope_disposition.compute_coverage(
+        tmpdir=tmp_path, repo_root=tmp_path, plan_file=plan_file, runner=runner
+    )
+    assert live.touched_paths == ("src/a.py",)
+    assert live.fingerprint == coverage.fingerprint
+
+
+def test_frozen_fallback_ignores_preexisting_provenance(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-2\n", encoding="utf-8")
+    _ = (tmp_path / scope_disposition.FALLBACK_PROVENANCE).write_text(
+        '{"schema_version":"2","session_id":"run-1","anchor_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n',
+        encoding="utf-8",
+    )
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("pre-existing\n", encoding="utf-8")
+
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=FakeRunner(
+            status_z="", fail_symbolic_refs=frozenset({"origin"})
+        ),
+        plan_paths=["src/a.py"],
+    )
+
+    assert not touched
+
+
+def test_frozen_fallback_stale_provenance_pruned_after_revert(
+    tmp_path: Path,
+) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    target = src / "a.py"
+    _ = target.write_text("edited\n", encoding="utf-8")
+    runner = FakeRunner(
+        status_z=_porcelain_z([" M src/a.py"]),
+        fail_symbolic_refs=frozenset({"origin"}),
+    )
+    first = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=runner,
+    )
+    assert first.touched_paths == ("src/a.py",)
+
+    # Commit the observed change, then revert it in a second commit.
+    runner.status_z = ""
+    runner.head = "b" * 40
+    runner.diff_paths = ("src/a.py",)
+    committed = scope_disposition.compute_coverage(
+        tmpdir=tmp_path, repo_root=tmp_path, plan_file=plan_file, runner=runner
+    )
+    assert committed.touched_paths == ("src/a.py",)
+
+    _ = target.write_text("original\n", encoding="utf-8")
+    runner.head = "c" * 40
+    runner.diff_paths = ()
+    second = scope_disposition.compute_coverage(
+        tmpdir=tmp_path, repo_root=tmp_path, plan_file=plan_file, runner=runner
+    )
+    assert not second.touched_paths
+    assert second.untouched_paths == ("src/a.py",)
+
+
+def test_frozen_fallback_anchor_diff_failure_raises_after_provenance(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("implemented\n", encoding="utf-8")
+    runner = FakeRunner(
+        status_z=_porcelain_z([" M src/a.py"]),
+        fail_symbolic_refs=frozenset({"origin"}),
+    )
+    assert scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=["src/a.py"],
+    ) == ("src/a.py",)
+
+    runner.status_z = ""
+    runner.head = "b" * 40
+    runner.fail_diff = True
+    with pytest.raises(ShipError, match="frozen fallback anchor-to-HEAD diff failed"):
+        _ = scope_disposition.touched_paths_since_baseline(
+            tmpdir=tmp_path,
+            repo_root=tmp_path,
+            runner=runner,
+            plan_paths=["src/a.py"],
+        )
+
+
+def test_frozen_fallback_diagnostic_does_not_alter_stdout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("x\n", encoding="utf-8")
+
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=FakeRunner(
+            status_z=_porcelain_z([" M src/a.py"]),
+            fail_symbolic_refs=frozenset({"origin"}),
+        ),
+    )
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "unresolved origin/HEAD" in captured.err
+    assert coverage.touched == 1
+
+
+def test_slashy_remote_default_branch_passed_to_merge_base(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        diff_paths=[],
+        merge_base="MB",
+        remote_heads={"origin": "origin/releases/stable"},
+    )
+    resolution = scope_disposition.resolve_baseline(
+        tmpdir=tmp_path, repo_root=tmp_path, runner=runner
+    )
+    assert resolution.committed_paths_trustworthy is True
+    merge_base_calls = [
+        call for call in runner.calls if call[:2] == ("git", "merge-base")
+    ]
+    assert merge_base_calls[0][2] == "origin/releases/stable"
+
+
+def test_malformed_fallback_provenance_is_ignored(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / scope_disposition.FALLBACK_PROVENANCE).write_text(
+        '{"schema_version":"1","paths":{"src/a.py":"bad"}}\n',
+        encoding="utf-8",
+    )
+    runner = FakeRunner(
+        status_z="",
+        fail_symbolic_refs=frozenset({"origin"}),
+    )
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=["src/a.py"],
+    )
+    assert not touched
 
 
 def test_record_proceed_partial_is_durable_after_all_side_effects(

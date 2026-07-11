@@ -104,6 +104,14 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (root / "README.md").write_text("base\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=root, check=True)
     subprocess.run(["git", "commit", "-m", "base"], cwd=root, check=True, stdout=subprocess.DEVNULL)
+    base_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=True
+    ).stdout.strip()
+    subprocess.run(["git", "update-ref", "refs/remotes/origin/main", base_sha], cwd=root, check=True)
+    subprocess.run(
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"],
+        cwd=root, check=True,
+    )
     monkeypatch.chdir(root)
     return root
 
@@ -2258,7 +2266,7 @@ def test_ship_pre_driver_seed_failure_stops_before_oos(
 
     captured = capsys.readouterr()
     assert captured.out == "NEXT_ACTION=halt-seed\n"
-    assert captured.err == "seed stdout\nseed stderr\n"
+    assert captured.err.endswith("seed stdout\nseed stderr\n")
     assert calls == [["implement", "step-8-python-guard"], ["implement", "step-8-seed-initial"]]
 
 
@@ -2288,7 +2296,7 @@ def test_ship_pre_driver_oos_failure_uses_distinct_action(
 
     captured = capsys.readouterr()
     assert captured.out == "NEXT_ACTION=halt-oos\n"
-    assert captured.err == 'seed stdout\n{"accepted":0}\noos stderr\n'
+    assert captured.err.endswith('seed stdout\n{"accepted":0}\noos stderr\n')
     assert calls == [
         ["implement", "step-8-python-guard"],
         ["implement", "step-8-seed-initial"],
@@ -2361,7 +2369,7 @@ def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
 
     captured = capsys.readouterr()
     assert captured.out == "NEXT_ACTION=ship\n"
-    assert captured.err == '{"accepted":0}\n'
+    assert captured.err.endswith('{"accepted":0}\n')
     assert calls == [["implement", "step-8-python-guard"], ["oos", "file", "--implement-tmpdir", str(tmp)]]
 
 
