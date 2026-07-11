@@ -15,6 +15,7 @@ from larch.core import config
 from larch.state import finalize
 from larch.core import logging_util
 from larch.core import proc
+from larch.report import progress_file
 from larch.state import session_env
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -155,6 +156,96 @@ def test_write_env_writer_guard_rejects_cr_lf_symlink_and_disallowed_keys(tmp_pa
     link.symlink_to(out)
     symlink = run_cli("write-env", "--output", str(link), "--repo-unavailable", "false")
     assert symlink.returncode == 1
+
+
+def test_write_env_persists_explicit_repo_root(tmp_path: Path) -> None:
+    repo_root = tmp_path / "consumer-repo"
+    repo_root.mkdir()
+    out = tmp_path / "session-env.sh"
+    result = run_cli(
+        "write-env",
+        "--output",
+        str(out),
+        "--repo",
+        "owner/repo",
+        "--repo-unavailable",
+        "false",
+        "--repo-root",
+        str(repo_root),
+        env={"CLAUDE_PROJECT_DIR": "", "REPO_ROOT": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    text = out.read_text(encoding="utf-8")
+    assert f"REPO_ROOT={repo_root}\n" in text
+    # The ship driver resolves the consumer root from this persisted value (issue #6880).
+    assert progress_file.resolve_persisted_repo_root(tmpdir=tmp_path) == repo_root.resolve()
+
+
+def test_write_env_repo_root_resolves_from_claude_project_dir(tmp_path: Path) -> None:
+    repo_root = tmp_path / "project-dir"
+    repo_root.mkdir()
+    out = tmp_path / "session-env.sh"
+    result = run_cli(
+        "write-env",
+        "--output",
+        str(out),
+        "--repo-unavailable",
+        "false",
+        env={"CLAUDE_PROJECT_DIR": str(repo_root), "REPO_ROOT": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"REPO_ROOT={repo_root}\n" in out.read_text(encoding="utf-8")
+
+
+def test_write_env_explicit_repo_root_wins_over_env(tmp_path: Path) -> None:
+    explicit_root = tmp_path / "explicit"
+    explicit_root.mkdir()
+    ambient_root = tmp_path / "ambient"
+    ambient_root.mkdir()
+    out = tmp_path / "session-env.sh"
+    result = run_cli(
+        "write-env",
+        "--output",
+        str(out),
+        "--repo-unavailable",
+        "false",
+        "--repo-root",
+        str(explicit_root),
+        env={"CLAUDE_PROJECT_DIR": str(ambient_root), "REPO_ROOT": str(ambient_root)},
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"REPO_ROOT={explicit_root}\n" in out.read_text(encoding="utf-8")
+
+
+def test_write_env_rejects_relative_repo_root(tmp_path: Path) -> None:
+    out = tmp_path / "session-env.sh"
+    result = run_cli(
+        "write-env",
+        "--output",
+        str(out),
+        "--repo-unavailable",
+        "false",
+        "--repo-root",
+        "relative/path",
+        env={"CLAUDE_PROJECT_DIR": "", "REPO_ROOT": ""},
+    )
+    assert result.returncode == 1
+    assert result.stderr.count("ERROR=") == 1
+    assert "Invalid --repo-root: must be an absolute path" in result.stderr
+
+
+def test_write_env_omits_repo_root_when_unset(tmp_path: Path) -> None:
+    out = tmp_path / "session-env.sh"
+    result = run_cli(
+        "write-env",
+        "--output",
+        str(out),
+        "--repo-unavailable",
+        "false",
+        env={"CLAUDE_PROJECT_DIR": "", "REPO_ROOT": ""},
+    )
+    assert result.returncode == 0, result.stderr
+    assert "REPO_ROOT" not in out.read_text(encoding="utf-8")
 
 
 def test_external_timeout_default_invalid_empty_zero_and_override(monkeypatch: pytest.MonkeyPatch) -> None:

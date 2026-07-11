@@ -44,6 +44,7 @@ TMP_ROOT = Path(TMP_FALLBACK)
 
 WRITE_ENV_KEYS = frozenset({
     "REPO",
+    "REPO_ROOT",
     "REPO_UNAVAILABLE",
     "FORKED_TARGET",
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
@@ -539,6 +540,16 @@ def _validate_repo_root_value(*, value: str, flag: str) -> None:
         raise ValueError(f"Invalid {flag}: must be an absolute path")
 
 
+def _resolve_write_env_repo_root(explicit: str) -> str:
+    # Persist REPO_ROOT for /implement (issue #6880), mirroring the /design writer:
+    # explicit --repo-root wins, else fall back to CLAUDE_PROJECT_DIR then REPO_ROOT env.
+    repo_root = explicit.strip()
+    if not repo_root:
+        repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+    _validate_repo_root_value(value=repo_root, flag="--repo-root")
+    return repo_root
+
+
 def _add_optional_design_source_file(*, values: dict[str, str], claude_source_file: str) -> None:
     if claude_source_file:
         values["LARCH_CLAUDE_SOURCE_FILE"] = claude_source_file
@@ -634,6 +645,7 @@ def write_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-env", add_help=False)
     parser.add_argument("--output")
     parser.add_argument("--repo", default="")
+    parser.add_argument("--repo-root", default="")
     parser.add_argument("--repo-unavailable")
     parser.add_argument("--codex-present", default="")
     parser.add_argument("--cursor-present", default="")
@@ -689,6 +701,7 @@ def write_env_main(argv: list[str]) -> int:
             raise ValueError("Invalid --dynamic-archetypes: must be an integer from 0 to 1")
         if args.run_id and not _SAFE_RUN_ID_RE.match(args.run_id):
             raise ValueError("Invalid --run-id: must match ^[A-Za-z0-9._-]{1,128}$")
+        repo_root = _resolve_write_env_repo_root(args.repo_root)
         data: dict[str, str] = {
             "REPO": args.repo,
             "REPO_UNAVAILABLE": args.repo_unavailable,
@@ -713,6 +726,8 @@ def write_env_main(argv: list[str]) -> int:
             data["LARCH_DYNAMIC_ARCHETYPES_MAX"] = args.dynamic_archetypes
         if args.run_id:
             data["LARCH_RUN_ID"] = args.run_id
+        if repo_root:
+            data["REPO_ROOT"] = repo_root
         if plugin_root:
             data["LARCH_CLAUDE_PLUGIN_ROOT"] = plugin_root
         _validate_writer_keys(data=data, allowed=WRITE_ENV_KEYS)
