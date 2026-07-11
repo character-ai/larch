@@ -87,7 +87,7 @@ printf 'legacy drop\n' > "$TMPDIR/architectural-guideline-drop-notice.txt"
 (
   cd "$ROOT"
   IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
-    "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" architectural-guideline-assessment-draft.md >/dev/null
+    "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" architectural-guideline-assessment-draft.md clean >/dev/null
 )
 
 test -f "$TMPDIR/architectural-guideline-note.md"
@@ -95,6 +95,19 @@ test -f "$TMPDIR/architectural-guideline-note.meta.env"
 test ! -e "$TMPDIR/architectural-guideline-staged-assessment.md"
 test ! -e "$TMPDIR/architectural-guideline-drop-notice.txt"
 cmp "$ASSESSMENT" "$TMPDIR/architectural-guideline-note.md"
+grep -Fxq "ASSESSMENT_KIND=clean" "$TMPDIR/architectural-guideline-note.meta.env"
+
+MISSING_OUTCOME_TMP="$TMPDIR/missing-outcome"
+mkdir -p "$MISSING_OUTCOME_TMP"
+cp "$TMPDIR/architectural-guideline-materialize.env" "$MISSING_OUTCOME_TMP/architectural-guideline-materialize.env"
+printf 'Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n' > "$MISSING_OUTCOME_TMP/draft.md"
+set +e
+IMPLEMENT_TMPDIR="$MISSING_OUTCOME_TMP" CLAUDE_PLUGIN_ROOT="$ROOT" \
+  "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" draft.md >/dev/null
+missing_outcome_rc=$?
+set -e
+test "$missing_outcome_rc" -eq 7
+test ! -e "$MISSING_OUTCOME_TMP/architectural-guideline-note.md"
 
 INVARIANT_ASSESSMENT="$TMPDIR/architectural-invariant-assessment-draft.md"
 printf 'Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.\n' > "$INVARIANT_ASSESSMENT"
@@ -113,7 +126,7 @@ printf 'legacy drop\n' > "$TMPDIR/architectural-invariant-drop-notice.txt"
 (
   cd "$ROOT"
   IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
-    "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" architectural-invariant-assessment-draft.md >/dev/null
+    "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" architectural-invariant-assessment-draft.md clean >/dev/null
 )
 
 test -f "$TMPDIR/architectural-invariant-note.md"

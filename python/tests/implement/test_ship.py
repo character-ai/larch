@@ -505,6 +505,7 @@ def test_ship_rebase_phase_defers_guidelines_refresh_to_compose_gate(
         base_ref="main",
     )
     ship.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="Guideline deviation note\n",
         assessed_head_sha=pre_rebase_head,
@@ -6280,7 +6281,7 @@ def test_load_or_prepare_guidelines_note_returns_current_durable_note(tmp_path: 
         implement_tmpdir=tmp_path,
         note_text="Consulted note\n",
         head_sha="head",
-        metadata={"ASSESSED_HEAD_SHA": "head", "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff")},
+        metadata={"ASSESSED_HEAD_SHA": "head", "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff"), "ASSESSMENT_KIND": "clean"},
         base_ref="origin/main",
     )
 
@@ -6639,6 +6640,7 @@ def test_load_or_prepare_guidelines_note_skips_assessment_on_prepare_failure(
 
 def test_pin_or_invalidate_guidelines_note_clears_retired_artifacts(tmp_path: Path) -> None:
     ship.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="note\n",
         assessed_head_sha="old",
@@ -6721,6 +6723,7 @@ def test_guidelines_staged_mismatch_does_not_create_drop_notice_for_final_report
     _write_minimal_final_report_state(tmp_path)
     _stub_final_report_cost_and_assessment(monkeypatch)
     ship.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="Guideline note\n",
         assessed_head_sha="old",
@@ -6871,6 +6874,7 @@ def test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body(
         )
         assert prepared.status == "assessment-required"
         ship.architectural_guidelines.write_compose_assessment(
+            outcome="clean",
             implement_tmpdir=tmp_path,
             assessment_text="Compose assessment",
             repo_root=repo,
@@ -6972,6 +6976,7 @@ def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
         )
         assert prepared.status == "assessment-required"
         ship.architectural_guidelines.write_compose_assessment(
+            outcome="clean",
             implement_tmpdir=tmp_path,
             assessment_text="Compose assessment",
             repo_root=repo,
@@ -7689,6 +7694,7 @@ def test_pin_and_load_guidelines_note_logs_redaction_failure(
 ) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="note\n",
         assessed_head_sha="old",
@@ -7715,6 +7721,7 @@ def test_guidelines_warning_append_failure_warns_stderr(
 ) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="note\n",
         assessed_head_sha="old",
@@ -7799,6 +7806,7 @@ def test_guideline_ship_outcome_authored_state_clean() -> None:
         result=ship_guidelines.GuidelinesGateResult(
             note=ship.architectural_guidelines.CLEAN_PRESENTATION_NOTE,
             guidelines_status="present",
+            assessment_kind="clean",
             note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
         ),
         head_sha="abc",
@@ -7814,6 +7822,7 @@ def test_guideline_ship_outcome_authored_state_deviation() -> None:
         result=ship_guidelines.GuidelinesGateResult(
             note="G-Py-1: deviates because of X",
             guidelines_status="present",
+            assessment_kind="deviation",
             note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
         ),
         head_sha="abc",
@@ -7838,6 +7847,7 @@ def test_invariant_authored_violation_takes_precedence_over_unavailable() -> Non
         result=ship_guidelines.InvariantsGateResult(
             note="I-Test-1: violated",
             invariants_status="present",
+            assessment_kind="violation",
             note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
         ),
         head_sha="abc",
@@ -7881,6 +7891,7 @@ def test_invariant_ship_outcome_verbose_clean_note_is_clean_not_violation() -> N
         result=ship_guidelines.InvariantsGateResult(
             note=verbose_clean,
             invariants_status="present",
+            assessment_kind="clean",
             note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
         ),
         head_sha="abc",

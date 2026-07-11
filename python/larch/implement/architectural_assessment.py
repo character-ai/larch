@@ -88,6 +88,10 @@ class _DeviationLogPending(OSError):
     """Signal that a durable deviation awaits its retryable warning-log append."""
 
 
+class _ReauthorRequired(ValueError):
+    """The assessment must be revised before durable persistence."""
+
+
 class Launcher(Protocol):
     """Injectable assessment launcher."""
 
@@ -311,6 +315,14 @@ def _already_handled(kind: str, *, repo_root: Path, implement_tmpdir: Path, head
         else architectural_guidelines.durable_note_metadata(implement_tmpdir)
     )
     base_ref: str = metadata.get("BASE_REF", "")
+    note_state: str = metadata.get("NOTE_STATE", config.NOTE_STATE_AUTHORED)
+    allowed: frozenset[str] = (
+        config.INVARIANT_ASSESSMENT_OUTCOMES
+        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        else config.GUIDELINE_ASSESSMENT_OUTCOMES
+    )
+    if note_state == config.NOTE_STATE_AUTHORED and metadata.get("ASSESSMENT_KIND", "") not in allowed:
+        return False
     consumer = architectural_guidelines.invariant_note_consumable if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.note_consumable
     if not (base_ref and consumer(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root) and _outcome_valid(kind, implement_tmpdir, metadata)):
         return False
@@ -517,13 +529,19 @@ def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpd
     if current_head != result.head_sha:
         raise _HeadDrift("HEAD changed after architectural assessment launch")
     if result.kind == config.ASSESSMENT_KIND_INVARIANTS:
-        architectural_guidelines.write_invariant_compose_assessment(
-            implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, repo_root=repo_root
-        )
+        try:
+            architectural_guidelines.write_invariant_compose_assessment(
+                implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, outcome=result.state, repo_root=repo_root
+            )
+        except architectural_guidelines.AssessmentReauthorRequired as exc:
+            raise _ReauthorRequired(str(exc)) from exc
     else:
-        architectural_guidelines.write_compose_assessment(
-            implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, repo_root=repo_root
-        )
+        try:
+            architectural_guidelines.write_compose_assessment(
+                implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, outcome=result.state, repo_root=repo_root
+            )
+        except architectural_guidelines.AssessmentReauthorRequired as exc:
+            raise _ReauthorRequired(str(exc)) from exc
     _write_outcome(result.kind, implement_tmpdir=implement_tmpdir, result=result)
     metadata = (
         architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir)
@@ -565,7 +583,7 @@ def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Pat
     state = metadata.get("ASSESSMENT_KIND", "")
     allowed = {"clean", "violation"} if kind == config.ASSESSMENT_KIND_INVARIANTS else {"clean", "deviation"}
     if state not in allowed:
-        raise ValueError(f"current {kind} note has no repairable assessment kind")
+        return config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
     if not _outcome_valid(kind, implement_tmpdir, metadata):
         result = AssessmentResult(kind, state, _read_regular(note_path, root=implement_tmpdir), (), head_sha, metadata["BASE_REF"], "", "")
         _write_outcome(kind, implement_tmpdir=implement_tmpdir, result=result)
@@ -715,6 +733,15 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
                     _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
                 except _DeviationLogPending:
                     statuses[result.kind] = "log-pending"
+                except _ReauthorRequired:
+                    invariant: bool = result.kind == config.ASSESSMENT_KIND_INVARIANTS
+                    invalidator = (
+                        architectural_guidelines.invalidate_invariant_implement_note
+                        if invariant
+                        else architectural_guidelines.invalidate_implement_note
+                    )
+                    invalidator(tmpdir)
+                    statuses[result.kind] = config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     _persist_unavailable(next(evidence for evidence in pending if evidence.kind == result.kind), implement_tmpdir=tmpdir, detail=str(exc))
                     statuses[result.kind] = "unavailable"
@@ -723,7 +750,13 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             for evidence in pending:
                 if evidence.kind in statuses:
                     continue
-                detail = invalid_detail if evidence.kind in invalid_kinds else "assessment result omitted a requested kind"
+                detail: str = invalid_detail if evidence.kind in invalid_kinds else "assessment result omitted a requested kind"
+                outcome_invalid: bool = evidence.kind in invalid_kinds and (
+                    "state is invalid" in detail or "result fields are invalid" in detail
+                )
+                if outcome_invalid:
+                    statuses[evidence.kind] = config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+                    continue
                 _persist_unavailable(evidence, implement_tmpdir=tmpdir, detail=detail)
                 statuses[evidence.kind] = "unavailable"
         except _HeadDrift:
@@ -760,6 +793,12 @@ def main(argv: list[str] | None = None) -> int:
         print("ARCHITECTURAL_ASSESSMENT_STATUS=failed")
         print(f"ARCHITECTURAL_ASSESSMENT_DETAIL={_safe_detail(str(exc), Path(args.implement_tmpdir))}")
         return config.EXIT_INTERNAL_ERROR
-    print("ARCHITECTURAL_ASSESSMENT_STATUS=ok")
+    reauthor_required: bool = any(
+        item.endswith(f":{config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}") for item in statuses
+    )
+    print(
+        f"ARCHITECTURAL_ASSESSMENT_STATUS="
+        f"{config.ASSESSMENT_STATUS_REAUTHOR_REQUIRED if reauthor_required else 'ok'}"
+    )
     print(f"ARCHITECTURAL_ASSESSMENT_RESULTS={','.join(statuses)}")
     return config.EXIT_OK

@@ -161,3 +161,7 @@ Keep this document aligned with:
 - `skills/implement/scripts/step-8-assessment.sh`
 - `skills/implement/scripts/test-step-8-assessment.sh`
 - `skills/implement/scripts/test-step-8-assessment.md`
+
+## Re-author-required terminal
+
+`re-author-required` is an allowed per-kind `ASSESSMENT_RESULTS` state. If any requested kind has that state, the adapter writes `ASSESSMENT_STATUS=re-author-required` with `BGJOB_RC=0` and preserves the request identity and full results. This envelope is terminal and rejoinable, but it is not successful coverage and is not retryable. The parent routes it to `NEXT_ACTION=assessments` and must not invoke `step-8-ship.sh`.

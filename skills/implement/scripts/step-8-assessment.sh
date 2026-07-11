@@ -354,6 +354,7 @@ for token in tokens:
         "violation",
         "log-pending",
         "unavailable",
+        "re-author-required",
     }:
         raise SystemExit(1)
 if seen != kinds:
@@ -519,6 +520,17 @@ terminal_is_success() {
   return 0
 }
 
+terminal_is_reauthor_required() {
+  [ "${TERM_BGJOB_STATUS:-}" = "DONE" ] || return 1
+  [ "${TERM_STEP:-}" = "$STEP" ] || return 1
+  identity_matches "${TERM_KINDS:-}" "${TERM_FP:-}" || return 1
+  [ "${TERM_STATUS:-}" = "re-author-required" ] || return 1
+  case "${TERM_ATTEMPT:-}" in 1|2) ;; *) return 1 ;; esac
+  [ "${TERM_BGJOB_RC:-}" = "0" ] || return 1
+  validate_results_coverage "${TERM_RESULTS:-}" "$ASSESSMENT_REQUESTED_KINDS" || return 1
+  case ",${TERM_RESULTS:-}," in *:re-author-required,*) return 0 ;; *) return 1 ;; esac
+}
+
 terminal_is_fail_closed() {
   [ "${TERM_BGJOB_STATUS:-}" = "DONE" ] || return 1
   [ "${TERM_STEP:-}" = "$STEP" ] || return 1
@@ -543,6 +555,10 @@ handle_terminal_outcome() {
   # Sets HANDLE_ACTION=emit-success|emit-fail-closed|retry|fresh-identity|error
   if terminal_is_success; then
     HANDLE_ACTION=emit-success
+    return 0
+  fi
+  if terminal_is_reauthor_required; then
+    HANDLE_ACTION=emit-reauthor
     return 0
   fi
   if terminal_is_fail_closed; then
@@ -632,7 +648,7 @@ publish_fail_closed_terminal() {
 }
 
 run_child() {
-  local kinds_csv attempt fp out status results line status_seen results_seen
+  local kinds_csv attempt fp out status envelope_status results line status_seen results_seen
   [ -n "$MERGE_RESULT_ENV" ] || die "--merge-result-env is required in child mode"
   safe_regular_path_under_tmpdir "$MERGE_RESULT_ENV" || die "unsafe merge-result-env"
   kinds_csv=$(read_env_key ASSESSMENT_REQUESTED_KINDS "$MERGE_RESULT_ENV")
@@ -679,11 +695,13 @@ run_child() {
   done <<EOF
 $out
 EOF
-  if [ "$child_rc" -ne 0 ] || [ "$status_seen" != true ] || [ "$results_seen" != true ] || [ "$status" != "ok" ]; then
+  if [ "$child_rc" -ne 0 ] || [ "$status_seen" != true ] || [ "$results_seen" != true ] || { [ "$status" != "ok" ] && [ "$status" != "re-author-required" ]; }; then
     printf 'step-8-assessment.sh: child assessment failed status=%s rc=%s\n' "${status:-missing}" "$child_rc" >&2
     exit 1
   fi
   reject_nl "$results" || die "newline in assessment results"
+  envelope_status=complete
+  [ "$status" != "re-author-required" ] || envelope_status=re-author-required
   validate_results_coverage "$results" "$kinds_csv" || {
     printf 'step-8-assessment.sh: ASSESSMENT_RESULTS coverage mismatch\n' >&2
     exit 1
@@ -692,7 +710,7 @@ EOF
     ASSESSMENT_REQUESTED_KINDS "$kinds_csv" \
     ASSESSMENT_COVERED_FINGERPRINT "$fp" \
     ASSESSMENT_ATTEMPT "$attempt" \
-    ASSESSMENT_STATUS "complete" \
+    ASSESSMENT_STATUS "$envelope_status" \
     ASSESSMENT_RESULTS "$results"
   exit 0
 }
@@ -746,6 +764,10 @@ if [ "$REGISTRY_STATE" = "live" ]; then
         emit_terminal_stdout
         exit 0
         ;;
+      emit-reauthor)
+        emit_terminal_stdout
+        exit 0
+        ;;
       emit-fail-closed)
         if [ "${TERM_STATUS:-}" = "fail-closed" ] && [ "${TERM_ATTEMPT:-}" = "2" ]; then
           emit_terminal_stdout
@@ -792,7 +814,11 @@ if [ "${CURRENT_ATTEMPT:-}" = "" ]; then
           emit_terminal_stdout
           exit 0
           ;;
-        emit-fail-closed)
+        emit-reauthor)
+        emit_terminal_stdout
+        exit 0
+        ;;
+      emit-fail-closed)
           if terminal_is_fail_closed; then
             emit_terminal_stdout
           else

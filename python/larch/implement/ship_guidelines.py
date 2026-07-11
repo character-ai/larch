@@ -149,29 +149,33 @@ class InvariantsShipOutcome:
 
 
 def _assessment_kind(note: str) -> str:
-    # Tolerant classification (issue #6882): a clean note may carry rationale beyond
-    # the exact presentation line, so a note whose first line is the clean note is
-    # clean even when later prose references a G-* entry. A note is a deviation only
-    # when it names a specific G-* guideline without leading with the clean line.
-    if not note.strip():
-        return ""
-    first_line = note.split("\n", 1)[0].strip()
-    if first_line == architectural_guidelines.CLEAN_PRESENTATION_NOTE:
-        return "clean"
-    return "deviation" if architectural_guidelines.NOTE_GUIDELINE_ID_RE.search(note) else "clean"
+    """Compatibility alias for the shared prose consistency classifier."""
+    return architectural_guidelines.classify_assessment_prose(
+        note,
+        clean_lead=architectural_guidelines.CLEAN_PRESENTATION_NOTE,
+        identifier_pattern=architectural_guidelines.NOTE_GUIDELINE_ID_RE,
+        non_clean_outcome=config.ASSESSMENT_OUTCOME_DEVIATION,
+    )
 
 
 def _invariant_assessment_kind(note: str) -> str:
-    # Tolerant classification (issue #6882): a clean note may carry rationale beyond
-    # the exact presentation line, so a note whose first line is the clean note is
-    # clean even when later prose references an I-* entry. A note is a violation only
-    # when it names a specific I-* invariant without leading with the clean line.
-    if not note.strip():
-        return ""
-    first_line = note.split("\n", 1)[0].strip()
-    if first_line == architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE:
-        return "clean"
-    return "violation" if architectural_guidelines.NOTE_INVARIANT_ID_RE.search(note) else "clean"
+    """Compatibility alias for the shared prose consistency classifier."""
+    return architectural_guidelines.classify_assessment_prose(
+        note,
+        clean_lead=architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE,
+        identifier_pattern=architectural_guidelines.NOTE_INVARIANT_ID_RE,
+        non_clean_outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
+    )
+
+
+def _authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool:
+    allowed: frozenset[str] = (
+        config.INVARIANT_ASSESSMENT_OUTCOMES if invariant else config.GUIDELINE_ASSESSMENT_OUTCOMES
+    )
+    if outcome not in allowed:
+        return False
+    classified: str = _invariant_assessment_kind(note) if invariant else _assessment_kind(note)
+    return outcome != config.ASSESSMENT_OUTCOME_CLEAN or classified == config.ASSESSMENT_OUTCOME_CLEAN
 
 
 def _bounded_detail(text: str) -> str:
@@ -195,7 +199,7 @@ def _classify_ship_outcome(
     guidelines_status = result.guidelines_status
     if guidelines_status not in {"present", "absent", "invalid"}:
         guidelines_status = "absent"
-    assessment_kind = result.assessment_kind or _assessment_kind(result.note)
+    assessment_kind = result.assessment_kind
     reason = result.reason
     if result.note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
         outcome = OUTCOME_CLEAN
@@ -275,7 +279,7 @@ def _classify_invariant_ship_outcome(
     invariants_status = result.invariants_status
     if invariants_status not in {"present", "absent", "invalid"}:
         invariants_status = "absent"
-    assessment_kind = result.assessment_kind or _invariant_assessment_kind(result.note)
+    assessment_kind = result.assessment_kind
     reason = result.reason
     if result.note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
         outcome = OUTCOME_CLEAN
@@ -437,11 +441,22 @@ def _read_current_guidelines_note(
     try:
         redacted_note = pr_body.redact_pr_body(note).strip()
         metadata = architectural_guidelines.durable_note_metadata(tmpdir)
+        note_state: str = metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED
+        assessment_kind: str = metadata.get("ASSESSMENT_KIND", "")
+        if note_state == config.NOTE_STATE_AUTHORED and not _authored_outcome_valid(
+            note=redacted_note, outcome=assessment_kind, invariant=False
+        ):
+            return GuidelinesGateResult(
+                needs_assessment=True,
+                detail=config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
+                guidelines_status=metadata.get("GUIDELINES_STATUS", "present") or "present",
+                reason=config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED,
+            )
         return GuidelinesGateResult(
             note=redacted_note,
             guidelines_status=metadata.get("GUIDELINES_STATUS", "present") or "present",
-            assessment_kind=metadata.get("ASSESSMENT_KIND", "") or _assessment_kind(redacted_note),
-            note_state=metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED,
+            assessment_kind=assessment_kind,
+            note_state=note_state,
             reason=(
                 REASON_DETERMINISTIC_CLEAN
                 if metadata.get("NOTE_STATE") == config.NOTE_STATE_DETERMINISTIC_CLEAN
@@ -604,11 +619,22 @@ def _read_current_invariant_note(
     try:
         redacted_note = pr_body.redact_pr_body(note).strip()
         metadata = architectural_guidelines.invariant_durable_note_metadata(tmpdir)
+        note_state: str = metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED
+        assessment_kind: str = metadata.get("ASSESSMENT_KIND", "")
+        if note_state == config.NOTE_STATE_AUTHORED and not _authored_outcome_valid(
+            note=redacted_note, outcome=assessment_kind, invariant=True
+        ):
+            return InvariantsGateResult(
+                needs_assessment=True,
+                detail=config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
+                invariants_status=metadata.get("INVARIANTS_STATUS", "present") or "present",
+                reason=config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED,
+            )
         return InvariantsGateResult(
             note=redacted_note,
             invariants_status=metadata.get("INVARIANTS_STATUS", "present") or "present",
-            assessment_kind=metadata.get("ASSESSMENT_KIND", "") or _invariant_assessment_kind(redacted_note),
-            note_state=metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED,
+            assessment_kind=assessment_kind,
+            note_state=note_state,
             reason=(
                 REASON_DETERMINISTIC_CLEAN
                 if metadata.get("NOTE_STATE") == config.NOTE_STATE_DETERMINISTIC_CLEAN
