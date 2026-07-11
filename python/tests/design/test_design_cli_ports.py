@@ -43,6 +43,9 @@ AGENT_EXPECTED = {
     ("agent", "launch-codex-drafter"): ("larch.agents.agents", "launch_codex_drafter_main"),
     ("agent", "launch-claude-drafter"): ("larch.agents.agents", "launch_claude_drafter_main"),
 }
+ARCHITECTURAL_ASSESSMENT_EXPECTED = {
+    ("architectural-assessment", "run"): ("larch.implement.architectural_assessment", "main"),
+}
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main"),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main"),
@@ -84,6 +87,9 @@ def test_design_port_registry_entries_are_machine_stdout() -> None:
     assert ("plan-review", "persist-accepted-audit") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in AGENT_EXPECTED.items():
         assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+    for key, target in ARCHITECTURAL_ASSESSMENT_EXPECTED.items():
+        assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
+        assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
     for key, target in ARCHITECTURAL_GUIDELINES_EXPECTED.items():
         assert cli._REGISTRY[key] == target  # pyright: ignore[reportPrivateUsage]
         assert key in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
