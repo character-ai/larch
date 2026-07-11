@@ -473,6 +473,27 @@ def test_resolve_cursor_model_honors_caller_default(monkeypatch: pytest.MonkeyPa
     assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "grok-4.5")
 
 
+def test_resolve_cursor_model_env_override_beats_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-override")
+    monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, raising=False)
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-env-override")
+
+
+def test_resolve_cursor_model_plugin_override_beats_caller_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.ENV_LARCH_CURSOR_MODEL, raising=False)
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-override")
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-plugin-override")
+
+
+def test_resolve_cursor_model_larch_env_wins_over_plugin_and_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-wins")
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-loses")
+
+    assert agents.resolve_model_args("cursor", default_model="grok-4.5").argv == ("--model", "cursor-env-wins")
+
+
 def test_resolve_model_args_ctx_absent_primary_uses_plugin_fallback() -> None:
     from larch.core.ctx import Ctx  # noqa: PLC0415
 
@@ -4004,7 +4025,9 @@ def test_launch_cursor_ci_fix_uses_resolved_cursor_model(
     def fake_resolve(tool: str, **kwargs: object) -> agents.ModelArgResult:
         assert tool == "cursor"
         assert kwargs["with_effort"] is True
-        return agents.ModelArgResult(("--model", "composer-2.5"))
+        # Non-Step-2 CI fixer must not pass a difficulty-mapped default_model.
+        assert kwargs.get("default_model", "") in ("", None)
+        return agents.ModelArgResult(("--model", config.CURSOR_DEFAULT_MODEL))
 
     def fake_run(**kwargs: object) -> agents.RunExternalAgentResult:
         captured.update(kwargs)
@@ -4024,7 +4047,92 @@ def test_launch_cursor_ci_fix_uses_resolved_cursor_model(
         "--role", "fix", "--output", str(output), "--run-id", "run", "--repo", "o/r", "--timeout", "5",
     ]) == 0
     cmd = list(captured["cmd"])
-    assert cmd[cmd.index("--model") + 1] == "composer-2.5"
+    assert cmd[cmd.index("--model") + 1] == config.CURSOR_DEFAULT_MODEL
+
+
+@pytest.mark.parametrize(
+    ("difficulty_tier", "expected_model"),
+    [
+        (config.DIFFICULTY_TIER_TRIVIAL, config.CURSOR_DEFAULT_MODEL),
+        (config.DIFFICULTY_TIER_MODERATE, "grok-4.5"),
+        (config.DIFFICULTY_TIER_HARD, config.CURSOR_DEFAULT_MODEL),
+    ],
+)
+def test_launch_cursor_implement_selects_model_by_difficulty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    difficulty_tier: str,
+    expected_model: str,
+) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    agent_prompt = tmp_path / "agent.md"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = feature.write_text("feature\n", encoding="utf-8")
+    _ = agent_prompt.write_text("body\n", encoding="utf-8")
+    output = session / "cursor-impl.out"
+    sidecar = tmp_path / "cursor-impl.log"
+    captured_cmd: list[str] = []
+    recorded_usage_model: dict[str, str] = {}
+
+    def fake_run_external_agent_with_auth_retries(**kwargs: object) -> agents.RunExternalAgentResult:
+        cmd = kwargs["cmd"]
+        assert isinstance(cmd, list)
+        captured_cmd.extend(str(part) for part in cmd)
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        _ = output_path.write_text('{"usage":{"inputTokens":1,"outputTokens":1}}\n', encoding="utf-8")
+        _ = agents.LauncherPaths.from_output(output_path).inner_done.write_text("0\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output_path)
+
+    def fake_record_usage(output_path: Path, model: str = "") -> None:  # noqa: ARG001
+        recorded_usage_model["model"] = model
+
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    monkeypatch.delenv(config.ENV_LARCH_CURSOR_MODEL, raising=False)
+    monkeypatch.delenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, raising=False)
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", fake_record_usage)
+    monkeypatch.setattr(_ci_launcher, "_append_implement_launch_failure", lambda **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_emit_implement_launcher_envelope", lambda **_kwargs: None)
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+
+    rc = agents.launch_cursor_implement_main(
+        [
+            "--transcript-path",
+            str(output),
+            "--sidecar-log",
+            str(sidecar),
+            "--manifest-path",
+            str(session / "manifest.json"),
+            "--qa-pending-path",
+            str(session / "qa-pending.json"),
+            "--scout-manifest-path",
+            str(session / "scout.json"),
+            "--plan-file",
+            str(plan),
+            "--feature-file",
+            str(feature),
+            "--agent-prompt",
+            str(agent_prompt),
+            "--difficulty",
+            difficulty_tier,
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    assert captured_cmd[captured_cmd.index("--model") + 1] == expected_model
+    assert recorded_usage_model["model"] == expected_model
+
 
 def test_launch_cursor_ci_finalize_order_and_stall_guard(
     tmp_path: Path,
