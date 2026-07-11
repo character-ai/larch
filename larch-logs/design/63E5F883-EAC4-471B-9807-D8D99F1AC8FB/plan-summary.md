@@ -1,0 +1,1 @@
+Close two trusted-artifact gaps. Make PR mutation gates fail closed when a declared implement context has an invalid tmpdir. Route coder decisions through complete snapshot validation. Finish the five consumer regression suites omitted from #6852.
