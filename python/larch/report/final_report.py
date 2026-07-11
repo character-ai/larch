@@ -18,6 +18,7 @@ from typing import cast
 from larch.core import architectural_guidelines
 from larch.state import closeout
 from larch.core import config
+from larch.core import logging_util
 from larch.report import exec_issue_detail
 from larch import io as larch_io
 from larch.git import pr_body
@@ -576,6 +577,34 @@ def _plan_coverage_summary_line(
         f"todos_left: {coverage.todos_left_count}{followup}"
     )
 
+
+def _plan_coverage_summary_line_or_empty(
+    implement_tmpdir: Path, *, manifest_path: Path | None = None
+) -> str:
+    """Optional plan-coverage line for the final report; never fatal.
+
+    The final report is written after merge, when live coverage no longer
+    matches the persisted fingerprint (the same stale-live mismatch #6908
+    recovers in teardown). That expected mismatch must not abort the whole
+    report before summary-final.md is written, so degrade to an empty line.
+    Genuine integrity failures (corrupt or unreadable artifacts) are not stale
+    mismatches and still propagate so they fail loudly.
+    """
+    try:
+        return _plan_coverage_summary_line(
+            implement_tmpdir, manifest_path=manifest_path
+        )
+    except ShipError as exc:
+        if not _is_stale_live_coverage_mismatch(exc):
+            raise
+        logging_util.BreadcrumbWriter().emit(
+            "final report: live coverage no longer matches repository inputs; "
+            "omitting optional plan-coverage line",
+            quiet=False,
+        )
+        return ""
+
+
 def _manifest_pr_number(data: Mapping[str, object]) -> int:
     for key in ("pr_number", "PR_NUMBER"):
         value = data.get(key)
@@ -848,6 +877,9 @@ def write_final_report(
         ship=ship,
         final=final,
     )
+    plan_coverage_line = _plan_coverage_summary_line_or_empty(
+        implement_tmpdir, manifest_path=run_dir / "manifest.json"
+    )
     summary_body = pr_body.render_run_summary(
         skill="implement",
         outcome=outcome,
@@ -860,9 +892,7 @@ def write_final_report(
         pr_number=pr_number,
         pr_url=pr_url,
         plan_review_line=derived["plan_review_line"],
-        plan_coverage_line=_plan_coverage_summary_line(
-            implement_tmpdir, manifest_path=run_dir / "manifest.json"
-        ),
+        plan_coverage_line=plan_coverage_line,
         difficulty_line=_difficulty_summary_line(run_dir),
         dynamic_archetypes_line=_dynamic_archetypes_line(implement_tmpdir),
         code_review_line=derived["code_review_line"],

@@ -1111,9 +1111,15 @@ def test_plan_coverage_summary_propagates_non_mismatch_ship_error(
         _ = final_report._plan_coverage_summary_line(tmp_path)
 
 
-def test_write_final_report_fails_before_post_merge_on_stale_mismatch(
+def test_write_final_report_omits_coverage_line_on_stale_mismatch_without_sentinel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Stale post-merge coverage must not abort the final report (#6947).
+
+    With no post-merge-sentinel, _plan_coverage_summary_line re-raises the
+    stale-live mismatch; write_final_report degrades the optional coverage line
+    to empty and still writes summary-final.md.
+    """
     _write_minimal_state(tmp_path)
     (tmp_path / "session-env.sh").write_text(
         f"REPO=o/r\nMODE=N/A\nREPO_ROOT={tmp_path}\n",
@@ -1126,7 +1132,37 @@ def test_write_final_report_fails_before_post_merge_on_stale_mismatch(
         raise ShipError("coverage artifact does not match live repository inputs")
 
     monkeypatch.setattr(scope_disposition, "load_live_coverage", boom)
-    with pytest.raises(ShipError, match="coverage artifact does not match live repository inputs"):
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "## /implement run run1" in summary
+    assert "**Plan coverage**" not in summary
+
+
+def test_write_final_report_propagates_non_mismatch_coverage_ship_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Genuine coverage-integrity failures still fail the report loudly (#6947).
+
+    Only the canonical stale-live mismatch degrades; a corrupt/unreadable
+    coverage artifact must not be silently swallowed.
+    """
+    _write_minimal_state(tmp_path)
+    (tmp_path / "session-env.sh").write_text(
+        f"REPO=o/r\nMODE=N/A\nREPO_ROOT={tmp_path}\n",
+        encoding="utf-8",
+    )
+    _stub_cost_and_assessment(monkeypatch)
+
+    def boom(*, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None) -> None:
+        _ = tmpdir, repo_root, manifest_path
+        raise ShipError("coverage artifact unreadable or malformed: bad json")
+
+    monkeypatch.setattr(scope_disposition, "load_live_coverage", boom)
+
+    with pytest.raises(ShipError, match="unreadable or malformed"):
         _ = final_report.write_final_report(tmp_path, comment_only=True)
 
 
