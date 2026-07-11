@@ -330,6 +330,5 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ## Fail-closed gates
 
 ### G-Gate-1: Land a fail-closed gate with or after every producer that satisfies it
-- Why: gates that land before their producers or author guidance stall valid runs or turn routine changes into failures (#6880, #6882, #6875).
-- Guidance: land a fail-closed gate in the same change or release as every producer that satisfies it, or later, never earlier. Update author guidance with every new ship-blocking contract. Before a gate reads persisted state, verify every live writer path persists it and test the producer and gate together.
-- Deviate when: a separate migration completes the producer and gate wire-up in the same release. A gate and its producer in one artifact are already atomic.
+- Why: gates that land before their producers or author guidance stall valid runs or turn routine changes into failures (#6880, #6882, #6875). Land a fail-closed gate in the same change or release as every producer that satisfies it, or later, never earlier; update author guidance in the same change or release as every new ship-blocking contract, or later, never earlier. Before a gate reads persisted state, verify every live writer path persists it and test the producer and gate together.
+- Deviate when: a separate migration completes the producer and gate wire-up only when it lands in the same change as the gate or in an earlier same-release change already released before the gate becomes consumer-visible. A gate and its producer in one artifact are already atomic.
