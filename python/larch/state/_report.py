@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from larch.core import config
+from larch.issue import title_match
 from larch.state import session_env as _session_env_report
 from larch.state._tokens import (
     _DEFAULT_CLASSIFICATION_FILE,
@@ -670,11 +671,11 @@ def compose_report(args: argparse.Namespace) -> int:
         return _compose_error("unsafe title and root-cause summary")
     skill_label = _report_skill_label(profile=profile, prefix=prefix)
     if kind == "terminal-failure":
-        title = f"[Bug] {skill_label} terminal: {title} ({_safe_class_value(read_kv(path=class_file, key='FAILURE_CLASS', default='unrecoverable'))} at {_safe_step_value(read_kv(path=class_file, key='STALL_STEP', default=''))})"
+        title = f"{title_match.BUG_PREFIX} {skill_label} terminal: {title} ({_safe_class_value(read_kv(path=class_file, key='FAILURE_CLASS', default='unrecoverable'))} at {_safe_step_value(read_kv(path=class_file, key='STALL_STEP', default=''))})"
     else:
         site = _first_escalation_field(field_name="site", ledger=ledger, fallback=fallback)
         trigger = _first_escalation_field(field_name="trigger", ledger=ledger, fallback=fallback)
-        title = f"[Bug] {skill_label} escalation: {title} ({site or 'redacted'}:{trigger or 'redacted'})"
+        title = f"{title_match.BUG_PREFIX} {skill_label} escalation: {title} ({site or 'redacted'}:{trigger or 'redacted'})"
     report_sig = _report_dedup_signature(kind=kind, class_file=class_file, ledger=ledger, fallback=fallback, profile=profile, prefix=prefix, skill_label=skill_label)
 
     if surface == "issue-input":

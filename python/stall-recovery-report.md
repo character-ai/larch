@@ -112,17 +112,19 @@ Tier B bail-token rendering derives from `python/larch/core/config.py` `STALL_RE
 
 ## Titles
 
-Terminal reports use:
+Terminal reports use the canonical bug prefix:
 
 ```text
-[Bug] /implement terminal: <safe-root-cause-summary> (<class> at <step>)
+[BUG] /implement terminal: <safe-root-cause-summary> (<class> at <step>)
 ```
 
 Escalation-success reports use:
 
 ```text
-[Bug] /implement escalation: <safe-root-cause-summary> (<site>:<trigger>)
+[BUG] /implement escalation: <safe-root-cause-summary> (<site>:<trigger>)
 ```
+
+Mixed-case `[Bug]` is accepted only as historical input for matching and title stripping; generated titles always use `[BUG]`.
 
 Explicit title text comes from `stall-recovery-title.txt`. If it is unsafe, composition falls back to the validated root-cause summary. If neither is safe, composition fails closed and requires a rewrite. The full heading and body are redacted after composition.
 

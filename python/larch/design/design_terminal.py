@@ -23,6 +23,7 @@ from larch import io as larch_io
 from larch.core import config, logging_util, proc
 from larch.git import gh
 from larch.core.ctx import Ctx
+from larch.issue import title_match
 from larch.state import stall_recovery
 from larch.state import session_env as _session_env_dt
 
@@ -741,7 +742,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
 
     def write_fallback_chat(reason: str) -> None:
         chat_print.write_text(
-            "### [Bug] /design report fallback required\n\n"
+            f"### {title_match.BUG_PREFIX} /design report fallback required\n\n"
             "The /design failure reporter could not safely file an issue.\n\n"
             "| Field | Value |\n|---|---|\n"
             f"| Outcome | `{outcome}` |\n"
@@ -859,7 +860,10 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             else:
                 first = body_file.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
                 title = (
-                    first[0].removeprefix("### ").removeprefix("[Bug] ")
+                    first[0]
+                    .removeprefix("### ")
+                    .removeprefix(f"{title_match.BUG_PREFIX} ")
+                    .removeprefix("[Bug] ")
                     if first
                     else "/design terminal failure"
                 )

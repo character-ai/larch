@@ -192,7 +192,7 @@ reject_tier_b_public_file_if_unsafe() {
 
 reject_tier_b_comment_if_unsafe() {
     local body_file=$1 comment_file=$2 err=$3 validate_tmpdir=${4:-}
-    if grep -Eq '<!-- larch-stall:signature=|^### \[Bug\] /(implement|design)|^## /(implement|design) .* report$|^## Report metadata$|^## Sanitized stall report$|^## Validated failure-detail log$|^## Run-log pointer$' "$comment_file"; then
+    if grep -Eq '<!-- larch-stall:signature=|^### \[(BUG|Bug)\] /(implement|design)|^## /(implement|design) .* report$|^## Report metadata$|^## Sanitized stall report$|^## Validated failure-detail log$|^## Run-log pointer$' "$comment_file"; then
         echo "file-failure-report-cross-repo.sh: tier-b comment contains raw report body section" >"$err"
         return 0
     fi

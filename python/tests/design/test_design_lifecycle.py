@@ -3696,7 +3696,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
         del stderr_path
         if callable_obj is stall_recovery.compose_report_main:
             output = Path(argv[argv.index("--output-file") + 1])
-            output.write_text("### [Bug] Tier A escalation\n\nBody.\n", encoding="utf-8")
+            output.write_text("### [BUG] Tier A escalation\n\nBody.\n", encoding="utf-8")
             if stdout_path is not None:
                 stdout_path.write_text(
                     "STALL_RECOVERY_REPORT_KIND=escalation-success\n",
