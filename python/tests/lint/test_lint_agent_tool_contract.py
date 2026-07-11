@@ -171,6 +171,104 @@ def test_malformed_inline_list_is_tool_failure(tmp_path: Path, capsys: CaptureFi
     assert "lint-agent-tool-contract: agents/malformed.md: malformed inline tools list" in stderr
 
 
+def test_output_mandate_without_fail_closed_flagged(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_agent(
+        tmp_path,
+        "agents/mandate-only.md",
+        frontmatter="name: mandate-only\n",
+        body="Read the bundle files.\nEmit strict JSONL only.\n",
+    )
+
+    code, stdout, stderr = _run_lint(tmp_path, capsys)
+
+    assert code == 1
+    assert stderr == ""
+    assert "agents/mandate-only.md:5: " + latc.OUTPUT_MANDATE_MESSAGE in stdout
+    assert latc.FINDING_MESSAGE not in stdout
+
+
+def test_output_mandate_with_never_invent_passes(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_agent(
+        tmp_path,
+        "agents/mandate-safe.md",
+        frontmatter="name: mandate-safe\n",
+        body=(
+            "Read the bundle files.\n"
+            "Emit strict JSONL only.\n"
+            "Never invent file content; emit NEEDS_DEEP when Read fails.\n"
+        ),
+    )
+
+    assert _run_lint(tmp_path, capsys) == (0, "", "")
+
+
+def test_output_mandate_without_read_intent_passes(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_agent(
+        tmp_path,
+        "agents/mandate-no-read.md",
+        frontmatter="name: mandate-no-read\n",
+        body="Emit strict JSONL only.\n",
+    )
+
+    assert _run_lint(tmp_path, capsys) == (0, "", "")
+
+
+def test_read_tool_granted_still_requires_fail_closed(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_agent(
+        tmp_path,
+        "agents/read-with-mandate.md",
+        frontmatter="name: read-with-mandate\ntools: [Read]\n",
+        body="Read the bundle files.\nEmit strict JSONL only.\n",
+    )
+
+    code, stdout, stderr = _run_lint(tmp_path, capsys)
+
+    assert code == 1
+    assert stderr == ""
+    assert "agents/read-with-mandate.md:6: " + latc.OUTPUT_MANDATE_MESSAGE in stdout
+    assert latc.FINDING_MESSAGE not in stdout
+
+
+def test_output_mandate_suppression_scopes_to_v2(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_agent(
+        tmp_path,
+        "agents/both-violations-v2-suppressed.md",
+        frontmatter="name: both-v2-suppressed\ntools: []\n",
+        body=(
+            "Read the bundle files.\n"
+            "Emit strict JSONL only.\n"
+            "<!-- lint-agent-output-mandate: ok fixture -->\n"
+        ),
+    )
+    _write_agent(
+        tmp_path,
+        "agents/both-violations-v1-suppressed.md",
+        frontmatter="name: both-v1-suppressed\ntools: []\n",
+        body=(
+            "Read the bundle files.\n"
+            "Emit strict JSONL only.\n"
+            "<!-- lint-agent-tool-contract: ok fixture -->\n"
+        ),
+    )
+
+    code, stdout, stderr = _run_lint(tmp_path, capsys)
+
+    assert code == 1
+    assert stderr == ""
+    v2_suppressed_lines = [
+        line for line in stdout.splitlines() if line.startswith("agents/both-violations-v2-suppressed.md:")
+    ]
+    v1_suppressed_lines = [
+        line for line in stdout.splitlines() if line.startswith("agents/both-violations-v1-suppressed.md:")
+    ]
+    assert v2_suppressed_lines == [
+        "agents/both-violations-v2-suppressed.md:5: " + latc.FINDING_MESSAGE,
+    ]
+    assert v1_suppressed_lines == [
+        "agents/both-violations-v1-suppressed.md:6: " + latc.OUTPUT_MANDATE_MESSAGE,
+    ]
+
+
 def test_live_tree_is_clean(capsys: CaptureFixture) -> None:
     repo_root: Path = Path(__file__).resolve().parents[3]
 

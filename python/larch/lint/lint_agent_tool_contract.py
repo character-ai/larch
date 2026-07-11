@@ -2,9 +2,9 @@
 
 Scans shipped and dev-only agent definition files for YAML frontmatter that
 restricts tools to an explicit list without ``Read`` while the prompt body asks
-the agent to read files or bundles. A future lint could also inspect
-machine-parsed-only output mandates that lack fail-closed language; this v1
-only enforces the concrete tools/read-intent contract.
+the agent to read files or bundles. It also rejects prompts that mandate
+machine-parsed-only output (strict JSON or JSONL) while carrying no fail-closed
+instruction for unreadable evidence.
 """
 
 from __future__ import annotations
@@ -22,6 +22,30 @@ FINDING_MESSAGE = (
     "add Read, drop the instruction, or suppress with lint-agent-tool-contract: ok <reason>"
 )
 SUPPRESSION_RE = re.compile(r"<!--\s*lint-agent-tool-contract:\s*ok\s+(\S[^>]*?)\s*-->")
+OUTPUT_MANDATE_MESSAGE = (
+    "agent mandates machine-parsed-only output but its prompt has no fail-closed "
+    "instruction for unreadable evidence; add a designated cannot-read outcome and "
+    "never-invent language, or suppress with lint-agent-output-mandate: ok <reason>"
+)
+OUTPUT_MANDATE_SUPPRESSION_RE = re.compile(r"<!--\s*lint-agent-output-mandate:\s*ok\s+(\S[^>]*?)\s*-->")
+# Detect mandates that the agent's entire output be machine-parsed content.
+OUTPUT_MANDATE_RES = (
+    re.compile(r"\bstrict\s+JSONL?\b", re.IGNORECASE),
+    re.compile(
+        r"\b(?:emit|output|return|respond\s+with|reply\s+with)\s+(?:strict\s+|valid\s+)?JSONL?\s+only\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\bonly\s+(?:emit|output|return)\s+(?:strict\s+|valid\s+)?JSONL?\b", re.IGNORECASE),
+    re.compile(r"\boutput\s+must\s+be\s+(?:strict\s+|valid\s+)?JSONL?\b", re.IGNORECASE),
+)
+# Detect fail-closed language that disarms the output-mandate finding.
+FAIL_CLOSED_RES = (
+    re.compile(r"\bnever\s+(?:invent|fabricate|guess)\b", re.IGNORECASE),
+    re.compile(r"\bunreadable\b", re.IGNORECASE),
+    re.compile(r"\b(?:cannot|can't|could\s+not|unable\s+to)\s+(?:read|open)\b", re.IGNORECASE),
+    re.compile(r"\bRead\s+fails\b", re.IGNORECASE),
+    re.compile(r"\bfail[\s-]+closed\b", re.IGNORECASE),
+)
 MIN_QUOTED_LENGTH = 2
 TOOLS_KEY_RE = re.compile(r"^tools\s*:\s*(.*)$")
 BLOCK_LIST_ITEM_RE = re.compile(r"^\s+-\s*(.+)$")
@@ -43,6 +67,7 @@ READ_INTENT_RES = (READ_FILE_INTENT_RE, OPEN_FILE_INTENT_RE, USE_READ_INTENT_RE)
 class Finding:
     file: str
     lineno: int
+    message: str
 
 
 @dataclass(frozen=True)
@@ -202,6 +227,19 @@ def first_read_intent_line(body: str, *, body_start_line: int) -> int | None:
     return None
 
 
+def first_output_mandate_line(body: str, *, body_start_line: int) -> int | None:
+    """Return the first body line mandating machine-parsed-only output."""
+    for offset, line in enumerate(body.split("\n")):
+        if any(pattern.search(line) for pattern in OUTPUT_MANDATE_RES):
+            return body_start_line + offset
+    return None
+
+
+def has_fail_closed_language(body: str) -> bool:
+    """Return True when the body carries any fail-closed instruction."""
+    return any(pattern.search(body) for pattern in FAIL_CLOSED_RES)
+
+
 def scan_file(path: Path, *, root: Path) -> list[Finding]:
     """Return agent tool-contract findings for one Markdown file."""
     relpath: str = _rel(path=path, root=root)
@@ -216,12 +254,22 @@ def scan_file(path: Path, *, root: Path) -> list[Finding]:
         declaration: ToolsDeclaration | None = parse_tools_declaration(frontmatter.text)
     except ValueError as exc:
         raise RuntimeError(f"{relpath}: {exc}") from exc
-    if declaration is None or not declaration.explicit_list or "Read" in declaration.tools:
-        return []
+    findings: list[Finding] = []
     read_line: int | None = first_read_intent_line(frontmatter.body, body_start_line=frontmatter.body_start_line)
-    if read_line is None or SUPPRESSION_RE.search(source) is not None:
-        return []
-    return [Finding(file=relpath, lineno=read_line)]
+    tools_finding_applies: bool = (
+        declaration is not None and declaration.explicit_list and "Read" not in declaration.tools
+    )
+    if tools_finding_applies and read_line is not None and SUPPRESSION_RE.search(source) is None:
+        findings.append(Finding(file=relpath, lineno=read_line, message=FINDING_MESSAGE))
+    mandate_line: int | None = first_output_mandate_line(frontmatter.body, body_start_line=frontmatter.body_start_line)
+    if (
+        read_line is not None
+        and mandate_line is not None
+        and not has_fail_closed_language(frontmatter.body)
+        and OUTPUT_MANDATE_SUPPRESSION_RE.search(source) is None
+    ):
+        findings.append(Finding(file=relpath, lineno=mandate_line, message=OUTPUT_MANDATE_MESSAGE))
+    return findings
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
@@ -251,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"lint-agent-tool-contract: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
     for finding in sorted(findings, key=lambda item: (item.file, item.lineno)):
-        print(f"{finding.file}:{finding.lineno}: {FINDING_MESSAGE}")
+        print(f"{finding.file}:{finding.lineno}: {finding.message}")
     return 1 if findings else 0
 
 
