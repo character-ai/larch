@@ -1,0 +1,227 @@
+## Plan
+
+# Step 8 bgjob cutover and inline-fallback removal
+
+## Difficulty assessment
+
+Confidence: medium-high. The default wrapper and lane exist, but the cutover must first close their current protocol gaps: invariant-only execution without a failed CI run, authoritative failed-run handoff, immutable launch identity, and a single wait owner.
+
+This is HARD because it changes the Step 8 prompt contract, bgjob lifecycle, wrapper interface, persisted-result validation, retry routing, architectural-invariant evidence handling, and the only sanctioned inline recovery exception.
+
+## Approach
+
+1. Replace the default Step 8 Agent-tool procedure with an explicit three-phase wrapper protocol per waterfall tier:
+   1. **start**: invoke `step-8-ci-fixer.sh` to select or resume the next tier and emit `BGJOB_STATUS=STARTED` plus the dynamic `STEP`, immutable launch identity, and no routable result;
+   2. **wait**: capture that emitted `STEP` and run only the documented `bgjob wait --max-wait-s 270 --step "$STEP"` command, repeating the byte-identical command after `BGJOB_STATUS=WAIT`;
+   3. **finalize**: after `BGJOB_STATUS=DONE` and `BGJOB_RC=0`, invoke `step-8-ci-fixer.sh --finalize --step "$STEP"` to validate the bgjob result against `fixer-status.env` and emit the sole compact routable `RESULT=*` envelope.
+2. Make the prompt own the only wait loop. Remove the wrapper’s internal `bgjob wait --max-wait-s 0` behavior so neither start nor finalize performs a hidden or alternate wait.
+3. Require finalize to load the immutable launch identity recorded at start—`RUN_ID`, `STARTING_HEAD`, `INPUT_FINGERPRINT`, `TIER`, `ATTEMPT`, and `STEP`—rather than recomputing it from a repaired checkout. Validate `FINAL_HEAD` separately.
+4. Treat `NEEDS_USER_REASON=architectural-invariants-violation` as the first executable Step 8 branch, before empty `FAILED_RUN_ID` handling. It uses an invariant-only lane invocation that does not resolve or require a failed CI run.
+5. Materialize architectural-invariant evidence through one sanctioned helper path before each invariant-tier start. Use canonical files:
+   - `$IMPLEMENT_TMPDIR/architectural-invariants.md`
+   - `$IMPLEMENT_TMPDIR/architectural-invariants.md.identity.env`
+   
+   The sidecar must contain `RUN_ID`, `STARTING_HEAD`, `INPUT_FINGERPRINT`, `TIER`, `ATTEMPT`, and `STEP`; compute `INPUT_FINGERPRINT` as the SHA-256 digest of `git diff --binary HEAD`. The helper must reject unsafe paths, symlinks, malformed KVs, and identity disagreement before the lane receives evidence.
+6. Add the lane carve-out needed by the dependency on Piece 3: for invariant-primary invocations, skip failed-run resolution and CI-log collection, consume only the validated invariant evidence, and require the complete identity sidecar to match the immutable launch identity.
+7. For ordinary CI failures, have the wrapper read a numeric `FAILED_RUN_ID`, and `MAIN_FAILED_RUN_ID` where present, from `.ship-route-exit-handoff.env` before PR re-resolution. A valid handoff value is authoritative.
+8. Route `RESULT=reship` back through the existing Step 8 ship bgjob. Route `RESULT=retry-next-tool` through a fresh start/wait/finalize sequence that captures a new dynamic step slug and uses the next configured tier. Route exhaustion to `ci-fix-exhausted`.
+9. Delete the Agent-tool spawn flow, default-path `ci distill-log` flow, fixer-spawn sentinel, post-bail 10-attempt inline loop, and `fallback-attempts.count` routing. Preserve `LARCH_CI_FIXER=0` as the sole inline path with its unchanged 30-attempt budget.
+
+## Files to modify/create
+
+### REWRITTEN: skills/implement/references/ship-pr-ci-fix.md
+
+Rewrite the Step 8 CI-fix procedure around the active wrapper protocol.
+
+- Preserve the pre-fix rebase, fork, repository-unavailable, ledger, and operator-bail gates.
+- Make `NEEDS_USER_REASON=architectural-invariants-violation` the first executable branch, before empty `FAILED_RUN_ID` handling and ordinary CI-failure dispatch.
+- In that branch, run the single sanctioned invariant-evidence materialization helper before each tier start. It must write the canonical evidence file and sidecar paths, compute `INPUT_FINGERPRINT` with `git diff --binary HEAD | shasum -a 256`, and bind the sidecar to `RUN_ID`, `STARTING_HEAD`, `INPUT_FINGERPRINT`, `TIER`, `ATTEMPT`, and `STEP`.
+- Invoke `step-8-ci-fixer.sh` in explicit start mode. Parse and retain the emitted dynamic `STEP=` from `BGJOB_STATUS=STARTED`; do not derive, hardcode, or reuse a prior tier’s slug.
+- Run only the documented `python3 python/cli.py bgjob wait --step "$STEP" --max-wait-s 270` command while the tier is active. On `BGJOB_STATUS=WAIT`, repeat the exact same command with no prose, file reads, sleeps, task-output probes, wrapper calls, or alternate polling.
+- On `BGJOB_STATUS=DONE`, require `BGJOB_RC=0`, then call the wrapper’s explicit finalize mode with the captured `STEP`. Only finalize may validate `fixer-status.env`, merge/status agreement, result identity, and emit routable compact KVs.
+- Forbid direct consumption of `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env`, `fixer-status.env`, lane transcripts, failure digests, CI logs, or repository state by the main-agent path.
+- For ordinary CI-failure dispatch, require the wrapper to prefer valid `FAILED_RUN_ID` and `MAIN_FAILED_RUN_ID` handoff values from `.ship-route-exit-handoff.env`; apply the empty-run-ID operator bail only after the invariant-primary branch.
+- Route `reship` through the existing Step 8 ship start/wait pair. Route `retry-next-tool` to a fresh start/wait/finalize cycle with a distinct dynamic step. Route waterfall exhaustion to `ci-fix-exhausted`.
+- Keep `LARCH_CI_FIXER=0` as the sole inline path. Preserve `main-agent-ci-fix.count`, attempts 1 through 30, redacted-log handling, relevant checks, explicit staging, existing commit message, refresh, push, and Step 8 relaunch behavior.
+- Remove the default-path Agent prompt, Agent rounds, token marks for the in-session fixer, `ci distill-log`, `BAIL_CLASS` routing, `fixer-spawned.sentinel`, direct `fixer-bail.md` interpretation, and post-bail main-agent repair.
+- State that the main agent must not read default-path CI evidence, author repair commits, edit repository files, or inspect fixer transcripts.
+
+### UPDATED: skills/implement/SKILL.md
+
+Update the Step 8 routing contract.
+
+- Describe `step-8-ci-fixer.sh` as the default `ci-fix` path and document its start/wait/finalize choreography.
+- Require capture and verbatim reuse of the dynamic `STEP` emitted by each start invocation.
+- Make the anti-halt rule explicit: `WAIT` repeats the identical wait command; `retry-next-tool` starts a fresh tier with a new step; `reship` returns to the ship bgjob.
+- State that start and finalize do not perform `bgjob wait`; the Step 8 prompt owns the sole wait protocol.
+- Preserve pre-fix rebase ordering before loading the child reference.
+- Make architectural-invariant routing first-class and first-ordered: materialize validated canonical evidence, use invariant-only lane mode, and do not require `FAILED_RUN_ID`.
+- Preserve `LARCH_CI_FIXER=0` as the sole inline exception with 30 attempts.
+- Keep the Step 3, Step 5, and Step 6 checks repair loops unchanged.
+
+### UPDATED: skills/implement/scripts/step-8-ci-fixer.sh
+
+Make the wrapper compatible with the documented Step 8 protocol.
+
+- Add explicit start and finalize modes, or an equivalent unambiguous interface.
+- Remove all internal `bgjob wait` calls, including `--max-wait-s 0`.
+- In start mode, create and persist an immutable launch envelope keyed by dynamic `STEP`, containing `RUN_ID`, `STARTING_HEAD`, `INPUT_FINGERPRINT`, `TIER`, `ATTEMPT`, and invariant-mode metadata where applicable.
+- In finalize mode, require `--step`, load the persisted launch envelope, validate the completed bgjob result and `fixer-status.env` against that identity, and validate `FINAL_HEAD` without recomputing `STARTING_HEAD`.
+- Read valid `FAILED_RUN_ID` and `MAIN_FAILED_RUN_ID` from `.ship-route-exit-handoff.env` before PR re-resolution; use a valid handoff run ID as authoritative.
+- Support invariant-primary execution without numeric failed-run resolution. Pass canonical invariant evidence to the lane and reject missing, malformed, stale, symlinked, unsafe, or identity-mismatched evidence.
+- Emit no routable `RESULT` from start mode. Emit compact routing KVs only from successful finalize validation.
+
+### UPDATED: python/larch/implement/ci_fixer_lane.py
+
+Add the invariant-primary lane carve-out required for this cutover.
+
+- When the invocation is explicitly architectural-invariant primary, skip failed-run resolution and `_collect_evidence` CI-log collection.
+- Consume only `$IMPLEMENT_TMPDIR/architectural-invariants.md` after validating its canonical sidecar.
+- Require exact matching `RUN_ID`, `STARTING_HEAD`, `INPUT_FINGERPRINT`, `TIER`, `ATTEMPT`, and `STEP`; reject missing or mismatched values before exposing evidence to a fixer.
+- Preserve ordinary CI-failure collection and validation behavior unchanged.
+- Fail closed on stale run ID, stale head, stale fingerprint, wrong tier, wrong attempt, unsafe evidence paths, symlinks, malformed sidecars, and merge/status disagreement.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+Adjust pinned `SKILL.md` fence shape.
+
+- Update expected fence totals as needed.
+- Require wrapper start, dynamic `STEP` capture, the documented identical wait command, and wrapper finalize ordering.
+- Assert pre-fix rebase precedes child-reference loading.
+- Reject embedded repair logic, direct result-env reads, ad hoc polling, CI-log commands, and Agent dispatch inside default-path fences.
+- Assert retry tiers use a newly captured step slug rather than a hardcoded or prior slug.
+
+### REWRITTEN: scripts/test-implement-step8-exit3-first-fixer.sh
+
+Replace Agent-first assertions with cutover assertions.
+
+- Require invariant-primary handling before empty-run-ID bail.
+- Require invariant evidence materialization, start/wait/finalize sequencing, compact result consumption, `retry-next-tool`, `reship`, `operator-bail`, and `ci-fix-exhausted`.
+- Require the pre-fix rebase and non-zero ship-driver handoff ordering.
+- Require the unchanged `LARCH_CI_FIXER=0` 30-attempt inline contract.
+- Forbid default-path `ci distill-log`, Agent-tool dispatch, `fixer-spawned.sentinel`, `fallback-attempts.count`, the 20-round Agent loop, the 10-attempt fallback, direct bgjob result reads, default-path `gh run-logs`, and main-agent CI-fix commits.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Update broad Step 8 structural checks.
+
+- Require active wrapper wiring in the skill and child reference.
+- Assert the per-tier start/wait/finalize protocol, dynamic-step reuse, retry isolation, success routing, exhaustion, and closed failure.
+- Assert no Agent dispatch, direct CI-evidence reads, main-agent edits, main-agent commits, fallback counter, wrapper-internal wait contract, or ad hoc polling on the default path.
+- Assert the kill-switch path remains isolated and retains its 30-attempt budget.
+- Assert invariant-primary routing precedes ordinary failed-run validation and uses the validated lane rather than inline repair.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+Extend architectural-invariant routing coverage.
+
+- Require `architectural-invariants-violation` to be the first executable Step 8 branch.
+- Require the exact canonical evidence and sidecar paths, SHA-256 fingerprint source, and required `RUN_ID`, `STARTING_HEAD`, `INPUT_FINGERPRINT`, `TIER`, `ATTEMPT`, and `STEP` fields.
+- Assert invariant-primary dispatch can proceed without `FAILED_RUN_ID` and skips CI-log collection.
+- Assert stale run ID, head, fingerprint, tier, attempt, missing sidecar, unsafe paths, and symlinks cannot be described as consumable.
+- Forbid direct invariant repair, direct commit, and direct push in the default main-agent branch.
+- Preserve existing compose-assessment and durable-note tests.
+
+### UPDATED: skills/implement/scripts/test-step-8-ci-fixer.sh
+
+Convert dormant-wrapper checks into active-cutover coverage.
+
+- Require wrapper invocation from `SKILL.md` and `ship-pr-ci-fix.md`.
+- Preserve the assertion that production ship Python remains independent of prompt-side wrapper wiring.
+- Require start mode, no internal wait, captured dynamic `STEP`, finalize mode, compact-result-only routing, and authoritative failed-run handoff handling.
+- Require invariant-primary no-run-id support and immutable launch identity across a repaired `HEAD`.
+- Forbid Agent dispatch and default-path `ci distill-log`.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+Convert dormant-wrapper coverage into active integration coverage.
+
+- Assert the skill and child reference wire the wrapper while production ship Python remains independent.
+- Add offline fixtures for one-tier success, multi-tier retry followed by success, all-tier exhaustion, unavailable tiers, hard lane failure, and authoritative failed-run handoff.
+- Verify every retry starts a distinct identity-bound step and invokes the next configured tier.
+- Verify finalize uses the original launch identity after a fixer changes `HEAD`.
+- Cover stale run ID, head, tier, attempt, fingerprint, merge envelope, and status-envelope disagreement; every case must fail closed.
+- Cover invariant evidence with valid identity, no failed run, stale run ID, stale head, stale fingerprint, wrong tier or attempt, missing identity, unsafe paths, and symlinks.
+- Add transcript assertions that main-agent output contains only bounded bgjob and routing KVs, not CI logs, failure digests, fixer prompts, vendor transcripts, or direct result-env content.
+- Assert no Agent-tool call or main-agent CI-fixer token span occurs on the default path; fixer usage remains attributed to the bgjob child or vendor lane.
+- Retain the explicit `LARCH_CI_FIXER=0` test: it selects the isolated inline path and does not start the wrapper.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+Correct the fixer policy and document the kill switch.
+
+- Describe default ship-pr CI recovery as the `implement.ci_recovery_fixer` waterfall: Codex, Cursor, then Claude.
+- State that each tier uses a separate bgjob, the main agent performs the documented wait loop, and retryable results start a fresh next-tier bgjob.
+- State that CI evidence and repair reasoning remain in child or vendor lanes.
+- Document invariant-primary recovery as validated file-backed evidence that may proceed without a failed CI run.
+- Document `LARCH_CI_FIXER=0` as the sole sanctioned inline Step 8 path with its existing 30-attempt budget.
+- State that delegated-waterfall exhaustion routes to `ci-fix-exhausted`.
+- Remove the stale delegated Claude/Opus Agent-tool loop description.
+
+### UPDATED: python/larch/core/config.py
+
+Remove configuration used only by retired paths after confirming no consumers remain.
+
+- Remove `CI_FIXER_AGENT_MAX_ROUNDS`.
+- Remove `CI_FIXER_MAIN_FALLBACK_MAX_ATTEMPTS`.
+- Remove `CI_FIXER_SPAWNED_SENTINEL`.
+- Remove `CI_FIXER_FALLBACK_ATTEMPTS_FILE`.
+- Keep `CI_FIXER_KILL_SWITCH_INLINE_MAX_ATTEMPTS`, `ENV_LARCH_CI_FIXER`, lane timeouts, tier order, status files, rounds file, bail file, digest constants still used inside the lane, and `CLAUDE_CI_FIX_MODEL`.
+
+### UPDATED: python/tests/core/test_config.py
+
+Update constant coverage.
+
+- Remove assertions for retired Agent-round, post-bail fallback, sentinel, and fallback-counter constants.
+- Preserve assertions for the 30-attempt kill-switch budget, tier order, lane timeout, action tokens, failure reasons, and `LARCH_CI_FIXER`.
+
+## Edge cases
+
+- An architectural-invariant violation occurs on a green PR with no failed run ID.
+- The ship handoff has no failed run ID for an ordinary CI failure.
+- A default-branch failure uses a run ID distinct from the PR run.
+- `FAILED_RUN_ID` and `MAIN_FAILED_RUN_ID` disagree or are malformed.
+- The selected vendor is unavailable before launch.
+- A tier returns `retry-next-tool` after changing `HEAD`.
+- Finalization occurs after a successful fixer changes `HEAD`.
+- A prior rounds file, result envelope, or invariant evidence sidecar belongs to another run ID, head, fingerprint, tier, attempt, or step.
+- The bgjob registry is missing, dead, or stale.
+- The merge result exists but disagrees with `fixer-status.env`.
+- All configured tiers are exhausted.
+- The kill switch is enabled after delegated sidecars already exist.
+- Fork and repository-unavailable handoffs must never enter either repair path.
+
+## Failure modes
+
+- Treat malformed, stale, unsafe, or identity-mismatched evidence as operator-bail or closed lane failure; never reuse it.
+- Treat nonzero bgjob completion as closed failure. Do not reinterpret it as a retryable typed result.
+- Treat a missing finalize envelope as failure, even if repository changes or green CI suggest success.
+- Do not permit wrapper start or finalize to wait internally.
+- Do not fall back to main-agent edits when tier selection, evidence materialization, launcher execution, finalize validation, or result validation fails.
+- Do not route full waterfall exhaustion into stall recovery or the removed fallback counter.
+- Keep the kill-switch inline budget independent from delegated tier attempts.
+
+## Testing strategy
+
+Run only tests and linters that cover changed files.
+
+- `bash scripts/test-implement-fence-shape.sh`
+- `bash scripts/test-implement-step8-exit3-first-fixer.sh`
+- `bash scripts/test-implement-structure.sh`
+- `bash skills/implement/scripts/test-architectural-guidelines-step.sh`
+- `bash skills/implement/scripts/test-step-8-ci-fixer.sh`
+- `python3 -m pytest -q python/tests/implement/test_implement_dispatch.py`
+- `python3 -m pytest -q python/tests/core/test_config.py`
+- Run focused tests for `python/larch/implement/ci_fixer_lane.py` and its existing or added invariant-evidence coverage.
+- Run Bash syntax and Bash 3.2 checks for changed shell harnesses.
+- Run configured Markdown and skill-structure checks for changed skill and reference files.
+- Run configured Python formatter, linter, type checker, and targeted tests for changed Python files.
+- Search changed runtime and documentation surfaces for `fallback-attempts.count`, `CI_FIXER_MAIN_FALLBACK_MAX_ATTEMPTS`, `CI_FIXER_AGENT_MAX_ROUNDS`, `fixer-spawned.sentinel`, internal wrapper waits, and retired Agent-path wording. Allow only historical fixtures outside the runtime surface.
+- Confirm the checks repair-loop and `python/larch/implement/checks_lint_fix.py` remain unchanged.
+
+difficulty: HARD
+diff_added: 430
+diff_deleted: 250
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 680
