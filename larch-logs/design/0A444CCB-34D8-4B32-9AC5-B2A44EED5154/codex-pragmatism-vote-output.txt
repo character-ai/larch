@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The proposed v2 tests already pin independence from a Read-enabled declaration; missing/scalar variants are additional coverage, not necessary to complete or verify the specified feature.
