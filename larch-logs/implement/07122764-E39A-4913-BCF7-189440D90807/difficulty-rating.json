@@ -1,17 +1,24 @@
 {
-  "applied_tier": "TRIVIAL",
-  "audit_evaluated": null,
+  "applied_tier": "MODERATE",
+  "audit_evaluated": true,
   "audit_upgrade": null,
   "codex_model_role": "review",
   "confidence": "high",
   "design_tier": null,
-  "escalated_round": null,
-  "escalations": [],
+  "escalated_round": true,
+  "escalations": [
+    {
+      "from_tier": "TRIVIAL",
+      "round": 2,
+      "to_tier": "MODERATE",
+      "trigger": "high-severity"
+    }
+  ],
   "floors_applied": [],
   "implement_tier": "TRIVIAL",
   "override_source": "none",
   "panel_skipped": null,
-  "panel_tier": "TRIVIAL",
+  "panel_tier": "MODERATE",
   "predicted_tier": "TRIVIAL",
   "rater": "implement",
   "rater_model": "gpt-5.6-terra",
