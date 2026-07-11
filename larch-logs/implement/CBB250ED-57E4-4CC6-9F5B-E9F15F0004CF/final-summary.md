@@ -69,7 +69,7 @@ codex/apply                        │                                 ███
 Exec Issues (0):
 Warnings (1):
   1. Step 7a.1 — 9 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/review/round_runner.py, python/larch/review/coder_runner.py, python/l...
-    Plan fidelity gap—listed files not modified. Investigate whether plan over-specified or implementation incomplete.
+    Material: plan listed 9 paths but implementation didn't touch them, requiring operator verification of incomplete implementation vs over-broad planning.
 
 ## Architectural invariants
 
@@ -79,18 +79,19 @@ Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
-## /implement run CBB250ED-57E4-4CC6-9F5B-E9F15F0004CF: shipping
+## /implement run CBB250ED-57E4-4CC6-9F5B-E9F15F0004CF: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:58:16
-- **Cost**: 💰 TOTAL ~$32.35: Claude $7.79, Codex-5.6 $16.19, Codex-mini $0.09, Cursor $5.80 (Composer $0.00, Grok $0.00, Auto $5.80), Claude (subprocess) $2.48  |  Tokens: 47885k
+- **Cost**: 💰 TOTAL ~$41.55: Claude $16.93, Codex-5.6 $16.19, Codex-mini $0.09, Cursor $5.80 (Composer $0.00, Grok $0.00, Auto $5.80), Claude (subprocess) $2.54  |  Tokens: 61044k
 - **Issue**: #6852: https://github.com/character-ai/larch/issues/6852
+- **PR**: #6866: https://github.com/character-ai/larch/pull/6866
 - **Plan review**: N/A
 - **Plan coverage**: 15/19 firm headings; band: middle; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 23/24 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +950/-325, larch-logs +1614/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6864
 - **Exec issues**: 0
 - **Warnings**: 1
