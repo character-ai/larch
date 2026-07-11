@@ -325,6 +325,30 @@ repos:
         always_run: true
         files: ^python/.*\.py$
 
+      - id: lint-markdown-heading-fence-state
+        name: Lint Markdown heading regexes without fence state
+        entry: python3 python/cli.py lint markdown-heading-fence-state
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/.*\.py$|^python/markdown-heading-fence-state-baseline\.json$
+
+      - id: lint-self-disarmable-gate
+        name: Lint self-disarmable hard gates (I-Gate-1)
+        entry: python3 python/cli.py lint self-disarmable-gate
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/larch/design/.*\.py$
+
+      - id: lint-unreachable-branch
+        name: Lint unreachable same-value branch bodies
+        entry: python3 python/cli.py lint unreachable-branch
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/larch/.*\.py$|^python/unreachable-branch-baseline\.json$
+
       - id: lint-env-via-config-constant
         name: Lint bare env literals in python/
         entry: python3 python/cli.py lint env-via-config-constant

@@ -54,6 +54,10 @@ a post-flush manifest completeness check that asserts the expected artifact set,
 or its recorded execution-issue entries, before the run-log commit, with
 regression tests in `python/tests/report/test_run_log_flush.py`.
 
+### I-Commit-1: A committed run-log field embeds its content, never a pointer into a session-tmpdir file
+
+A field written into a committed run-log artifact under `larch-logs/` either embeds the redacted content it needs downstream or omits the field. It never stores a path into the session or system tmpdir (for example `$TMPDIR`, `IMPLEMENT_TMPDIR`, or `/var/folders/...`). A reader of a committed run log must be able to adjudicate the run from the committed artifact alone, without reaching into a session tmpdir that no longer exists. Evidence of violation: rejected and neutral finding bodies were absent from committed logs and survived only as pointers into session-tmpdir files that were never staged, so post-hoc adjudication could not evaluate whether a rejection was sound (#6027). Mechanical backing: a commit-time scan of staged `larch-logs/` content for session- and system-tmpdir path prefixes, with a failing check that rejects the commit; extend the run-log flush path that already stages redacted bodies so every voted finding commits its body through the existing redaction pipeline.
+
 ### I-Outcome-1: A committed outcome label for an in-flight run is neutral
 
 A pre-terminal run-log snapshot commits only neutral in-progress labels such as
