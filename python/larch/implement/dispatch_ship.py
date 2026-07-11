@@ -835,7 +835,7 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _assessment_handoff_detail(*, handoff: Path, implement_tmpdir: Path, fields: Mapping[str, str]) -> str:
+def _assessment_handoff_detail(*, implement_tmpdir: Path, fields: Mapping[str, str]) -> str:
     detail = fields.get("DETAIL", "")
     detail_file = fields.get("DETAIL_FILE", "")
     if detail and detail_file:
@@ -853,8 +853,7 @@ def _assessment_handoff_detail(*, handoff: Path, implement_tmpdir: Path, fields:
         raise ValueError(f"unsafe DETAIL_FILE: {exc}") from exc
 
 
-def _normalize_assessment_handoff(*, implement_tmpdir: Path) -> tuple[str, tuple[str, ...]]:
-    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+def _read_handoff_fields(*, handoff: Path) -> tuple[list[str], dict[str, str]]:
     try:
         if handoff.is_symlink() or not handoff.is_file():
             raise ValueError("missing or unsafe .ship-route-exit-handoff.env")
@@ -869,13 +868,19 @@ def _normalize_assessment_handoff(*, implement_tmpdir: Path) -> tuple[str, tuple
         if key in fields:
             raise ValueError(f"duplicate handoff key: {key}")
         fields[key] = value
+    return lines, fields
+
+
+def _normalize_assessment_handoff(*, implement_tmpdir: Path) -> tuple[str, tuple[str, ...]]:
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    lines, fields = _read_handoff_fields(handoff=handoff)
     action = fields.get("NEXT_ACTION", "")
     if action == "invariants-assessment":
         raw_kinds = "invariants"
     elif action == "guidelines-assessment":
         raw_kinds = "guidelines"
     elif action == "assessments":
-        raw_kinds = _assessment_handoff_detail(handoff=handoff, implement_tmpdir=implement_tmpdir, fields=fields)
+        raw_kinds = _assessment_handoff_detail(implement_tmpdir=implement_tmpdir, fields=fields)
     else:
         raise ValueError("NEXT_ACTION is not an assessment handoff")
     if not raw_kinds or raw_kinds.strip() != raw_kinds or any(char.isspace() for char in raw_kinds):

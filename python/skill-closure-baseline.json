@@ -38,9 +38,9 @@
     "skill_md_lines": 692
   },
   {
-    "closure_content_estimated_tokens": 44955,
-    "closure_estimated_tokens": 45075,
-    "closure_lines": 1330,
+    "closure_content_estimated_tokens": 44967,
+    "closure_estimated_tokens": 45087,
+    "closure_lines": 1334,
     "conditional_content_estimated_tokens": 24137,
     "conditional_estimated_tokens": 24195,
     "conditional_files": [
@@ -69,9 +69,9 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 32713,
-    "skill_md_estimated_tokens": 32793,
-    "skill_md_lines": 837
+    "skill_md_content_estimated_tokens": 32725,
+    "skill_md_estimated_tokens": 32805,
+    "skill_md_lines": 841
   },
   {
     "closure_content_estimated_tokens": 46709,
