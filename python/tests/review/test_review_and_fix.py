@@ -2274,6 +2274,25 @@ def test_collect_round_stage_paths_with_empty_baseline_returns_empty(tmp_path, m
 
 
 @pytest.mark.commit_fixes
+def test_revalidate_pre_coder_snapshot_round_trips_validated_snapshot(tmp_path):
+    round_dir = _tmp_impl(tmp_path) / "round-1"
+    round_dir.mkdir()
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text("abc123\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    validated = snapshot._validate_pre_coder_snapshot(round_dir)
+    # Regression (#6864): revalidate re-reads validated.root directly instead of
+    # re-deriving the snapshot dir from root.parent (which is never the round_dir
+    # pre_coder_snapshot_dir maps from), so a freshly validated snapshot must
+    # round-trip without raising "changed after validation".
+    snapshot.revalidate_pre_coder_snapshot(validated)
+    (snap / "pre-coder-head.txt").write_text("tampered\n", encoding="utf-8")
+    with pytest.raises(OSError, match="changed after validation"):
+        snapshot.revalidate_pre_coder_snapshot(validated)
+
+
+@pytest.mark.commit_fixes
 def test_collect_round_stage_paths_since_committed_requires_post_coder_head(tmp_path, monkeypatch):
     round_dir = _tmp_impl(tmp_path) / "round-1"
     round_dir.mkdir()
