@@ -1120,7 +1120,7 @@ def _stub_teardown_side_effects(
     crumbs: list[str] = []
 
     class _Writer:
-        def emit(self, message: str, *, quiet: bool = True) -> None:  # noqa: ARG002
+        def emit(self, message: str, *, quiet: bool = True) -> None:  # pylint: disable=unused-argument
             crumbs.append(message)
 
     (tmp_path / "session-env.sh").write_text(
