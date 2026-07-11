@@ -35,4 +35,13 @@ set -e
 printf '%s\n' "$OUT" | command grep -Fq 'RESULT=operator-bail'
 printf '%s\n' "$OUT" | command grep -Fq 'REASON=missing-repo-root'
 
+mkdir -p "$TMP/unsafe-impl"
+ln -s "$TMP" "$TMP/unsafe-impl/ci-fixer"
+set +e
+OUT=$(IMPLEMENT_TMPDIR="$TMP/unsafe-impl" CLAUDE_PLUGIN_ROOT="$TMP/plugin" bash "$WRAPPER" --start 2>&1)
+RC=$?
+set -e
+[ "$RC" -eq 0 ]
+printf '%s\n' "$OUT" | command grep -Fq 'REASON=unsafe-handoff-dir'
+
 printf '%s\n' 'step-8-ci-fixer harness: ok'

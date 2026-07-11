@@ -677,6 +677,30 @@ def test_fixer_lane_rejects_pr_only_identity_before_result_path_validation(tmp_p
         ci.ci_fixer_lane._validated_run_identity(args)
 
 
+def test_fixer_lane_invariant_primary_requires_matching_evidence_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    handoff = impl / "ci-fixer"
+    handoff.mkdir(parents=True)
+    evidence = impl / "architectural-invariants.md"
+    identity = evidence.with_suffix(evidence.suffix + ".identity.env")
+    evidence.write_text("evidence\n", encoding="utf-8")
+    identity.write_text(
+        "MODE=invariant-primary\nRUN_ID=run-1\nSTARTING_HEAD=" + "a" * 40
+        + "\nINPUT_FINGERPRINT=" + "b" * 64
+        + "\nTIER=codex\nATTEMPT=1\nSTEP=stale\n",
+        encoding="utf-8",
+    )
+    args = ci.ci_fixer_lane._parse_args([
+        "--mode", "invariant-primary", "--repo-root", str(tmp_path), "--implement-tmpdir", str(impl),
+        "--handoff-dir", str(handoff), "--repo", "o/r", "--run-id", "run-1", "--tier", "codex",
+        "--attempt", "1", "--starting-head", "a" * 40, "--input-fingerprint", "b" * 64,
+        "--bgjob-result-env", str(impl / "bgjob" / "placeholder.merge.env"), "--invariant-evidence", str(evidence),
+    ])
+    monkeypatch.setattr(ci.ci_fixer_lane, "_canonical_dir", lambda raw, **_kwargs: Path(raw))
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="invariant evidence identity mismatch"):
+        ci.ci_fixer_lane._validated_invariant(args, tmpdir=impl)
+
+
 def test_fixer_lane_rejects_error_logs_as_raw_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     impl = tmp_path / "impl"
     handoff = impl / "ci-fixer"

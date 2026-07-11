@@ -31,6 +31,30 @@ path=Path(sys.argv[1])
 if not path.is_absolute() or path.is_symlink() or not path.is_dir(): raise SystemExit(1)
 PY
 }
+safe_child_dir() {
+  python3 - "$1" "$2" <<'PY'
+from pathlib import Path
+import sys
+root=Path(sys.argv[1])
+child=Path(sys.argv[2])
+root=root.resolve(strict=True)
+if child.parent.resolve(strict=True) != root or child.is_symlink(): raise SystemExit(1)
+child.mkdir(mode=0o700, exist_ok=True)
+resolved=child.resolve(strict=True)
+if not resolved.is_dir() or resolved.parent != root: raise SystemExit(1)
+PY
+}
+safe_child_file() {
+  python3 - "$1" "$2" <<'PY'
+from pathlib import Path
+import sys
+root=Path(sys.argv[1])
+path=Path(sys.argv[2])
+root=root.resolve(strict=True)
+if path.parent.resolve(strict=True) != root or path.is_symlink(): raise SystemExit(1)
+if path.exists() and not path.is_file(): raise SystemExit(1)
+PY
+}
 
 MODE_ARG=${1:-}
 STEP_ARG=
@@ -45,7 +69,8 @@ fi
 safe_root "$IMPLEMENT_TMPDIR" || fail unsafe-tmpdir
 HANDOFF_DIR="$IMPLEMENT_TMPDIR/ci-fixer"
 BGJOB_DIR="$IMPLEMENT_TMPDIR/bgjob"
-mkdir -p "$HANDOFF_DIR" "$BGJOB_DIR"
+safe_child_dir "$IMPLEMENT_TMPDIR" "$HANDOFF_DIR" || fail unsafe-handoff-dir
+safe_child_dir "$IMPLEMENT_TMPDIR" "$BGJOB_DIR" || fail unsafe-bgjob-dir
 SESSION="$IMPLEMENT_TMPDIR/session-env.sh"
 STATE="$IMPLEMENT_TMPDIR/ship-pr-state.sh"
 ROUTE="$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env"
@@ -57,6 +82,7 @@ PR_NUMBER=${PR_NUMBER:-$(read_key PR_NUMBER "$STATE")} || fail invalid-ship-stat
 
 if [ "$MODE_ARG" = "--finalize" ]; then
   LAUNCH="$HANDOFF_DIR/launch-$STEP_ARG.env"
+  safe_child_file "$HANDOFF_DIR" "$LAUNCH" || fail unsafe-launch-envelope
   [ -f "$LAUNCH" ] && [ ! -L "$LAUNCH" ] || fail missing-launch-envelope
   MODE=$(read_key MODE "$LAUNCH") || fail invalid-launch-envelope
   RUN_ID=$(read_key RUN_ID "$LAUNCH") || fail invalid-launch-envelope
@@ -68,6 +94,7 @@ if [ "$MODE_ARG" = "--finalize" ]; then
   LINEAGE=$(read_key LINEAGE "$LAUNCH") || fail invalid-launch-envelope
   [ "$STEP" = "$STEP_ARG" ] || fail launch-step-mismatch
   MERGE_ENV="$BGJOB_DIR/$STEP.merge.env"
+  safe_child_file "$BGJOB_DIR" "$MERGE_ENV" || fail unsafe-merge-result
   STATUS="$HANDOFF_DIR/fixer-status.env"
   [ -f "$MERGE_ENV" ] && [ ! -L "$MERGE_ENV" ] && [ -f "$STATUS" ] && [ ! -L "$STATUS" ] || fail missing-result
   OUT=$(python3 - "$MERGE_ENV" "$STATUS" "$MODE" "$STEP" "$RUN_ID" "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" <<'PY'
@@ -91,6 +118,7 @@ for key in ("RESULT","REASON","MODE","RUN_ID","ATTEMPT","TIER","STARTING_HEAD","
     print(f"{key}={left.get(key,'')}")
 PY
   ) || fail merge-status-disagreement
+  safe_child_file "$HANDOFF_DIR" "$LINEAGE" || fail unsafe-lineage
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" "$(printf '%s\n' "$OUT" | sed -n 's/^RESULT=//p')" "$(printf '%s\n' "$OUT" | sed -n 's/^FINAL_HEAD=//p')" >>"$LINEAGE"
   printf '%s\n' "$OUT"
   exit 0
@@ -121,6 +149,7 @@ else
 fi
 LINEAGE_KEY=$(printf '%s\0%s' "$MODE" "$RUN_ID" | shasum -a 256 | awk '{print substr($1,1,20)}')
 LINEAGE="$HANDOFF_DIR/lineage-$LINEAGE_KEY.tsv"
+safe_child_file "$HANDOFF_DIR" "$LINEAGE" || fail unsafe-lineage
 ATTEMPTED=$(awk -F '\t' '{print $2}' "$LINEAGE" 2>/dev/null | paste -sd, - || true)
 SELECT=$(python3 - "$CLAUDE_PLUGIN_ROOT" "$ATTEMPTED" <<'PY'
 from pathlib import Path
@@ -132,12 +161,14 @@ print(f"{result.action}\t{result.tier}\t{result.reason}")
 PY
 ) || fail tier-selection-failed
 ACTION=$(printf '%s' "$SELECT" | cut -f1); TIER=$(printf '%s' "$SELECT" | cut -f2); REASON=$(printf '%s' "$SELECT" | cut -f3)
-[ "$ACTION" = selected ] || fail "${REASON:-ci-fix-exhausted}"
+[ "$ACTION" = selected ] || fail ci-fix-exhausted
 ATTEMPT=$(( $(awk 'END{print NR+0}' "$LINEAGE" 2>/dev/null || printf 0) + 1 ))
 SUFFIX=$(printf '%s\0%s\0%s\0%s\0%s\0%s' "$MODE" "$RUN_ID" "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" | shasum -a 256 | awk '{print substr($1,1,16)}')
 STEP="implement-step8-ci-fixer-${ATTEMPT}-${TIER}-${SUFFIX}"
 LAUNCH="$HANDOFF_DIR/launch-$STEP.env"
 MERGE_ENV="$BGJOB_DIR/$STEP.merge.env"
+safe_child_file "$HANDOFF_DIR" "$LAUNCH" || fail unsafe-launch-envelope
+safe_child_file "$BGJOB_DIR" "$MERGE_ENV" || fail unsafe-merge-result
 printf 'MODE=%s\nRUN_ID=%s\nSTARTING_HEAD=%s\nINPUT_FINGERPRINT=%s\nTIER=%s\nATTEMPT=%s\nSTEP=%s\nLINEAGE=%s\n' "$MODE" "$RUN_ID" "$STARTING_HEAD" "$INPUT_FINGERPRINT" "$TIER" "$ATTEMPT" "$STEP" "$LINEAGE" >"$LAUNCH.tmp"
 chmod 600 "$LAUNCH.tmp" && mv "$LAUNCH.tmp" "$LAUNCH"
 CHILD=(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ci fixer-lane --mode "$MODE" --repo-root "$REPO_ROOT" --implement-tmpdir "$IMPLEMENT_TMPDIR" --handoff-dir "$HANDOFF_DIR" --repo "$REPO" --run-id "$RUN_ID" --tier "$TIER" --attempt "$ATTEMPT" --starting-head "$STARTING_HEAD" --input-fingerprint "$INPUT_FINGERPRINT" --bgjob-result-env "$MERGE_ENV")

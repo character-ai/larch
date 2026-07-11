@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from larch.core import config
 from larch.implement import invariant_evidence
 
 
@@ -35,3 +36,39 @@ def test_rejects_stale_durable_note(tmp_path: Path) -> None:
     argv[argv.index("--starting-head") + 1] = "c" * 40
     assert invariant_evidence.main(argv) != 0
     assert not (tmp_path / "architectural-invariants.md").exists()
+
+
+def test_bounds_complete_rendered_evidence_body(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(config, "CI_FIXER_INVARIANT_EVIDENCE_MAX_BYTES", 700)
+    argv = _args(tmp_path)
+    (tmp_path / "architectural-invariant-note.md").write_text("note " * 100, encoding="utf-8")
+    (tmp_path / ".ship-route-exit-handoff.env").write_text("DETAIL=route " + "x" * 500 + "\n", encoding="utf-8")
+
+    assert invariant_evidence.main(argv) == 0
+    output = tmp_path / "architectural-invariants.md"
+    assert output.stat().st_size <= config.CI_FIXER_INVARIANT_EVIDENCE_MAX_BYTES
+
+
+def test_rejects_duplicate_metadata_without_partial_artifacts(tmp_path: Path) -> None:
+    argv = _args(tmp_path)
+    (tmp_path / "architectural-invariant-note.meta.env").write_text(
+        "HEAD_SHA=" + "a" * 40 + "\nHEAD_SHA=" + "a" * 40 + "\n",
+        encoding="utf-8",
+    )
+
+    assert invariant_evidence.main(argv) != 0
+    assert not (tmp_path / "architectural-invariants.md").exists()
+    assert not (tmp_path / "architectural-invariants.md.identity.env").exists()
+
+
+def test_rejects_symlinked_route_handoff_without_partial_artifacts(tmp_path: Path) -> None:
+    argv = _args(tmp_path)
+    outside = tmp_path.parent / "outside-handoff.env"
+    outside.write_text("DETAIL=bad\n", encoding="utf-8")
+    handoff = tmp_path / ".ship-route-exit-handoff.env"
+    handoff.unlink()
+    handoff.symlink_to(outside)
+
+    assert invariant_evidence.main(argv) != 0
+    assert not (tmp_path / "architectural-invariants.md").exists()
+    assert not (tmp_path / "architectural-invariants.md.identity.env").exists()
