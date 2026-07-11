@@ -2376,6 +2376,60 @@ def test_populate_sensitive_corpus_rejects_outside_tmpdir(tmp_path: Path, capsys
     assert "--sensitive-corpus-file outside implement tmpdir" in capsys.readouterr().err
 
 
+def test_chat_print_cross_repo_helper_uses_authoritative_mutation_triple(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    context_file = tmp_path / "session-env.sh"
+    _ = context_file.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n",
+        encoding="utf-8",
+    )
+    out_file = tmp_path / "stall-recovery-chat-print.md"
+    _ = out_file.write_text("report\n", encoding="utf-8")
+    sensitive_file = tmp_path / "stall-recovery-sensitive-corpus.env"
+    _ = sensitive_file.write_text("sensitive\n", encoding="utf-8")
+    auth_calls: list[dict[str, object]] = []
+    helper_calls: list[list[str]] = []
+
+    def allow_mutation(**kwargs: object) -> tuple[bool, str]:
+        auth_calls.append(kwargs)
+        return True, "session"
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[0].endswith("resolve-upstream-larch-repo.sh"):
+            return subprocess.CompletedProcess(cmd, 0, stdout="owner/repo\n", stderr="")
+        helper_calls.append(cmd)
+        return subprocess.CompletedProcess(
+            cmd,
+            0,
+            stdout="FILE_FAILURE_REPORT_STATUS=filed\nFILE_FAILURE_REPORT_URL=https://github.com/owner/repo/issues/1\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", allow_mutation)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_sr_report.subprocess, "run", fake_run)
+
+    _sr_report._emit_chat_print_filing_status(  # pyright: ignore[reportPrivateUsage]
+        tmpdir=tmp_path,
+        out_file=out_file,
+        title="Report title",
+        sensitive_file=sensitive_file,
+        prefix="stall-recovery",
+    )
+
+    assert auth_calls == [{
+        "context_file": context_file,
+        "operator_mode": False,
+        "run_id": "run-1",
+        "trusted_root": tmp_path,
+    }]
+    assert len(helper_calls) == 1
+    helper_argv = helper_calls[0]
+    assert helper_argv[helper_argv.index("--mutation-context") + 1] == str(context_file)
+    assert helper_argv[helper_argv.index("--run-id") + 1] == "run-1"
+    assert helper_argv[helper_argv.index("--trusted-root") + 1] == str(tmp_path)
+
 def test_dedup_tier_a_report_rejects_outside_body_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     with tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8") as handle:
         _ = handle.write("# body\n")
@@ -2419,7 +2473,13 @@ def test_dedup_tier_a_report_normalizes_helper_output(
         )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", lambda **_kw: (True, "session"))  # pyright: ignore[reportPrivateUsage, reportUnknownLambdaType, reportUnknownArgumentType]
+    auth_calls: list[dict[str, object]] = []
+
+    def allow_mutation(**kwargs: object) -> tuple[bool, str]:
+        auth_calls.append(kwargs)
+        return True, "session"
+
+    monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", allow_mutation)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
 
@@ -2436,6 +2496,12 @@ def test_dedup_tier_a_report_normalizes_helper_output(
     assert f"STALL_RECOVERY_REPORT_ISSUE_URL={issue_url}" in out
     assert "STALL_RECOVERY_REPORT_ISSUE_NUMBER=6192" in out
     assert "FILE_FAILURE_REPORT_STATUS=" not in out
+    assert auth_calls == [{
+        "context_file": ctx,
+        "operator_mode": False,
+        "run_id": "run-1",
+        "trusted_root": tmp_path,
+    }]
 
 
 def test_dedup_tier_a_report_uses_prefixed_compose_slices(
@@ -2486,7 +2552,13 @@ def test_dedup_tier_a_report_uses_prefixed_compose_slices(
     ctx = tmp_path / "session-env.sh"
     _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", lambda **_kw: (True, "session"))  # pyright: ignore[reportPrivateUsage, reportUnknownLambdaType, reportUnknownArgumentType]
+    auth_calls: list[dict[str, object]] = []
+
+    def allow_mutation(**kwargs: object) -> tuple[bool, str]:
+        auth_calls.append(kwargs)
+        return True, "session"
+
+    monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", allow_mutation)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
     monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "")
     rc = stall_recovery.dedup_tier_a_report_main([
@@ -2503,6 +2575,15 @@ def test_dedup_tier_a_report_uses_prefixed_compose_slices(
     assert str(prefixed_attempts) in cmd
     assert str(prefixed_escalation) in cmd
     assert str(prefixed_root) in cmd
+    assert cmd[cmd.index("--mutation-context") + 1] == str(ctx)
+    assert cmd[cmd.index("--run-id") + 1] == "run-1"
+    assert cmd[cmd.index("--trusted-root") + 1] == str(tmp_path)
+    assert auth_calls == [{
+        "context_file": ctx,
+        "operator_mode": False,
+        "run_id": "run-1",
+        "trusted_root": tmp_path,
+    }]
 
 
 def test_redact_text_strips_ghp_token() -> None:

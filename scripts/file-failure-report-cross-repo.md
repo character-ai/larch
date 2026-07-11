@@ -6,7 +6,7 @@
 
 Required inputs are `--repo OWNER/REPO` and `--body-file PATH`. Create paths also require `--title TITLE`. `--dedup-only` runs the Tier A pre-pass without creating an issue.
 
-Non-dry-run calls require `--mutation-context PATH` pointing to a valid live-run session env file (e.g. `$IMPLEMENT_TMPDIR/session-env.sh` or `$DESIGN_TMPDIR/source-env.sh`). The file must be a regular, readable, non-symlink file containing `LARCH_LIVE_MUTATION_OK=true`. Callers passing this file must be real live-run drivers; tests must not provide it. Dry-run paths are always authorization-free and make no `gh` calls.
+Non-dry-run calls require `--mutation-context PATH`, `--run-id ID`, and `--trusted-root PATH`. Trusted callers pass the authoritative implement or design session tmpdir as `--trusted-root`, its matching live run ID, and the session env file as an immediate child of that root. The shared Python checker requires a canonical session root, a regular non-symlink context file, `LARCH_LIVE_MUTATION_OK=true`, and matching run identity. The helper does not protect against a caller that controls every argument and the filesystem state. Dry-run paths are authorization-free and make no `gh` calls.
 
 Refusal emits `FILE_FAILURE_REPORT_STATUS=mutation-refused` and `FILE_FAILURE_REPORT_FALLBACK_REASON=unauthorized-mutation:<reason>`.
 
@@ -46,8 +46,8 @@ Tier B callers must not pass raw ledger TSV, raw root-cause files, full report b
 - `--dedup-only` no match emits `FILE_FAILURE_REPORT_STATUS=no-match`.
 - Tier A `--dedup-only` lookup failure or marker-missing emits `FILE_FAILURE_REPORT_STATUS=lookup-failed-open` and exits 0.
 - Non-dedup missing marker, lookup failure, auth failure, network failure, comment failure, or create failure emits `FILE_FAILURE_REPORT_STATUS=fallback-print-required` with `FILE_FAILURE_REPORT_FALLBACK_REASON=<token>` and exits 0.
-- Authorization refusal (missing, invalid, or denied context file) emits `FILE_FAILURE_REPORT_STATUS=mutation-refused` and `FILE_FAILURE_REPORT_FALLBACK_REASON=unauthorized-mutation:<reason>` with exits 0.
-- `--dry-run` validates inputs and marker rules, emits `FILE_FAILURE_REPORT_STATUS=dry-run`, and makes no `gh` calls. Dry-run requires no `--mutation-context`.
+- Authorization refusal (missing, invalid, outside-root, run-mismatched, or denied authorization input) emits `FILE_FAILURE_REPORT_STATUS=mutation-refused` and `FILE_FAILURE_REPORT_FALLBACK_REASON=unauthorized-mutation:<reason>` with exits 0.
+- `--dry-run` validates inputs and marker rules, emits `FILE_FAILURE_REPORT_STATUS=dry-run`, and makes no `gh` calls. Dry-run requires no mutation authorization arguments.
 
 ## Prefix-aware Tier B sensitive corpus
 

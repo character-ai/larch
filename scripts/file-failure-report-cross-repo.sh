@@ -8,13 +8,13 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 STALL_RECOVERY_CLI=(python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery)
 
 usage() {
-    echo "file-failure-report-cross-repo.sh: usage: $0 --repo OWNER/REPO --body-file PATH --title TITLE [--mutation-context PATH --run-id ID] [--dedup-only] [--attempts-file PATH] [--escalation-ledger-file PATH] [--root-cause-file PATH] [--sensitive-corpus-file PATH] [--publication-tier tier-a|tier-b] [--dry-run]" >&2
+    echo "file-failure-report-cross-repo.sh: usage: $0 --repo OWNER/REPO --body-file PATH --title TITLE [--mutation-context PATH --run-id ID --trusted-root PATH] [--dedup-only] [--attempts-file PATH] [--escalation-ledger-file PATH] [--root-cause-file PATH] [--sensitive-corpus-file PATH] [--publication-tier tier-a|tier-b] [--dry-run]" >&2
 }
 
 status_refused() { emit_kv FILE_FAILURE_REPORT_STATUS mutation-refused; emit_kv FILE_FAILURE_REPORT_FALLBACK_REASON "unauthorized-mutation:$1"; }
 
 check_mutation_auth() {
-    local context_file=$1 run_id=$2
+    local context_file=$1 run_id=$2 trusted_root=$3
     if [ "${LARCH_ISSUE_MUTATION_DENY:-}" = "true" ]; then
         status_refused test-denied
         return 1
@@ -27,7 +27,11 @@ check_mutation_auth() {
         status_refused missing-run-id
         return 1
     fi
-    if ! python3 "$PLUGIN_ROOT/python/cli.py" session check-live-mutation-auth --context-file "$context_file" --run-id "$run_id" --trusted-root "$(dirname "$context_file")" >/dev/null 2>&1; then
+    if [ -z "$trusted_root" ]; then
+        status_refused missing-trusted-root
+        return 1
+    fi
+    if ! python3 "$PLUGIN_ROOT/python/cli.py" session check-live-mutation-auth --context-file "$context_file" --run-id "$run_id" --trusted-root "$trusted_root" >/dev/null 2>&1; then
         status_refused invalid-context-file
         return 1
     fi
@@ -211,6 +215,7 @@ publication_tier="tier-a"
 dry_run=false
 mutation_context=""
 run_id=""
+trusted_root=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -226,6 +231,7 @@ while [ $# -gt 0 ]; do
         --dry-run) dry_run=true; shift ;;
         --mutation-context) [ $# -ge 2 ] || { usage; exit 2; }; mutation_context=$2; shift 2 ;;
         --run-id) [ $# -ge 2 ] || { usage; exit 2; }; run_id=$2; shift 2 ;;
+        --trusted-root) [ $# -ge 2 ] || { usage; exit 2; }; trusted_root=$2; shift 2 ;;
         *) usage; exit 2 ;;
     esac
 done
@@ -257,7 +263,7 @@ if [ -n "$sensitive_corpus_file" ] && ! validate_read_file "$sensitive_corpus_fi
 fi
 
 if [ "$dry_run" != true ]; then
-    if ! check_mutation_auth "${mutation_context:-}" "${run_id:-}"; then
+    if ! check_mutation_auth "${mutation_context:-}" "${run_id:-}" "${trusted_root:-}"; then
         exit 0
     fi
 fi

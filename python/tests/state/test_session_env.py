@@ -2079,6 +2079,29 @@ def test_check_live_mutation_auth_session_valid(tmp_path: Path, monkeypatch: pyt
     assert reason == config.LIVE_MUTATION_SESSION_MODE
 
 
+def test_check_live_mutation_auth_rejects_context_outside_trusted_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    trusted_root = tmp_path / "claude-implement-trusted"
+    outside_root = tmp_path / "claude-implement-outside"
+    trusted_root.mkdir()
+    outside_root.mkdir()
+    ctx = outside_root / "session-env.sh"
+    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+
+    authorized, reason = session_env.check_live_mutation_auth(
+        context_file=ctx,
+        operator_mode=False,
+        run_id="run-1",
+        trusted_root=trusted_root,
+    )
+
+    assert authorized is False
+    assert reason == config.LIVE_MUTATION_REFUSAL_REASON
+
+
 def test_check_live_mutation_auth_no_context(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     authorized, reason = session_env.check_live_mutation_auth(context_file=None, operator_mode=False)

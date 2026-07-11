@@ -24,7 +24,7 @@ You should receive an acknowledgment within 72 hours. We will work with you to u
 Scoped GitHub issue create, comment, close, and label operations require explicit live-run authorization. The guarded boundary covers `python3 python/cli.py issue create-one`, the cross-repository stall-report filing helper (`scripts/file-failure-report-cross-repo.sh`), Tier-A dedup before terminal reporter filing, `/design` salvage reconciliation comment and close operations, OOS blocker probes, label provisioning and edits, issue filing and cleanup, and `audit-runs close-priors`.
 
 **Authorization routes:**
-- **Session-backed live runs**: The real `/implement` bootstrap and `/design` Step 0 driver write `LARCH_LIVE_MUTATION_OK=true` into `session-env.sh` / `source-env.sh`. Callers pass the explicit context file. The validator checks that the file is a regular non-symlink file under a trusted session root, that the key is `true`, and that the run identity matches when both sides provide it.
+- **Session-backed live runs**: The real `/implement` bootstrap and `/design` Step 0 driver write `LARCH_LIVE_MUTATION_OK=true` into `session-env.sh` / `source-env.sh`. Callers pass the explicit context file, matching run ID, and authoritative session tmpdir as the trusted root. The validator checks that the file is a regular non-symlink immediate child of that canonical root, that the key is `true`, and that the run identity matches.
 - **Direct operator commands**: Pass `--operator-invoked` to the CLI boundary. This route is for `/larch:issue`, `/larch:audit-runs`, and other direct operator-invoked commands; it is not set by test fixtures or session inheritance.
 - **Dry-run**: Always authorization-free and makes no `gh` calls.
 
