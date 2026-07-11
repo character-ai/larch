@@ -2192,13 +2192,6 @@
   },
   {
     "file": "larch/implement/dispatch_commit_route.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: SLF001",
-    "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/implement/dispatch_commit_route.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,
@@ -2439,13 +2432,6 @@
     "file": "larch/implement/scope_disposition.py",
     "suppression_kind": "noqa",
     "text": "noqa: PLC0415 # lint-layering: ok scope extraction lives in issue-wire",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/implement/scope_disposition.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLR0911",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
