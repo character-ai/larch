@@ -58,6 +58,10 @@ _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 # anywhere in a note's prose, not just as a Markdown heading. See issue #6882.
 NOTE_INVARIANT_ID_RE = re.compile(r"I-[A-Za-z0-9-]+-\d+")
 NOTE_GUIDELINE_ID_RE = re.compile(r"G-[A-Za-z0-9-]+-\d+")
+# A note whose first sentence affirms "no violations/deviations" leads clean, so a
+# supporting I-*/G-* reference in that same sentence must not flip it to non-clean.
+# See issue #6955.
+_CLEAN_ASSESSMENT_LEAD_RE = re.compile(r"^\W*no\b[^.;\n]*\b(?:violation|deviation)s?\b", re.IGNORECASE)
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
 _MECHANIZED_RE = re.compile(r"^\s*-\s*Mechanized:\s*(.+?)\s*$")
@@ -1728,7 +1732,7 @@ def classify_assessment_prose(
     if not note.strip():
         return ""
     first_line: str = note.split("\n", 1)[0].strip()
-    if first_line == clean_lead:
+    if first_line == clean_lead or _CLEAN_ASSESSMENT_LEAD_RE.search(first_line):
         return config.ASSESSMENT_OUTCOME_CLEAN
     return non_clean_outcome if identifier_pattern.search(note) else config.ASSESSMENT_OUTCOME_CLEAN
 
