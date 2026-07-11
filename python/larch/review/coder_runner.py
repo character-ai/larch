@@ -271,7 +271,7 @@ def _run_coder_codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bo
         "--workdir", str(Path.cwd()),
         "--add-dir", str(round_dir),
         "--add-dir", str(Path.cwd()),
-        "--sandbox", "full-auto",
+        "--sandbox", "workspace-write",
         "--with-effort",
         "--model-role", "fix",
         "--usage-label", "codex_review_fix",

@@ -5852,10 +5852,10 @@ def test_codex_launcher_builds_exec_argv_and_dynamic_prompt(tmp_path: Path, monk
     cmd = captured["cmd"]
     assert rc == 0
     assert isinstance(cmd, list)
-    assert cmd[:4] == ["codex", "exec", "--full-auto", "-C"]
+    assert cmd[:5] == ["codex", "exec", "--sandbox", "workspace-write", "-C"]
     assert cmd.count("--add-dir") == 2
     assert str(tmp_path / "out") in cmd
-    assert cmd[4] == str(resolved)
+    assert cmd[5] == str(resolved)
     add_dir_values = [cmd[index + 1] for index, value in enumerate(cmd) if value == "--add-dir"]
     assert str(resolved) in add_dir_values
     assert f'projects."{resolved}".trust_level="trusted"' in cmd

@@ -114,7 +114,8 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
             cmd = [
                 "codex",
                 "exec",
-                "--full-auto",
+                "--sandbox",
+                "workspace-write",
                 "-C",
                 str(workdir),
                 *model_args,
@@ -230,7 +231,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
     prompt_group.add_argument("--prompt-file")
     parser.add_argument("--workdir", default=None)
     parser.add_argument("--add-dir", action="append", default=[])
-    parser.add_argument("--sandbox", choices=("full-auto", "read-only"), default="full-auto")
+    parser.add_argument("--sandbox", choices=("workspace-write", "read-only"), default="workspace-write")
     parser.add_argument("--with-effort", action="store_true")
     parser.add_argument("--model-role", choices=("default", "fix"), default="default")
     parser.add_argument("--usage-label", default="codex_exec")
@@ -263,7 +264,7 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason=f"model args failed: {exc}")
             return 0
-        sandbox_args = ["--full-auto"] if args.sandbox == "full-auto" else ["--sandbox", "read-only"]
+        sandbox_args = ["--sandbox", "workspace-write"] if args.sandbox == "workspace-write" else ["--sandbox", "read-only"]
         add_dir_args = [value for d in add_dirs for value in ("--add-dir", d)]
         child = [
             "codex",

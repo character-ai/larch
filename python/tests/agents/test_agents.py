@@ -2297,7 +2297,7 @@ def test_run_negotiation_round_codex_success_paths_and_args(
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
     cmd = seen["cmd"]
     assert isinstance(cmd, list)
-    assert cmd[:3] == ["codex", "exec", "--full-auto"]
+    assert cmd[:4] == ["codex", "exec", "--sandbox", "workspace-write"]
     assert str(tmp_path) in cmd
     assert "--json" in cmd
     assert str(output) in cmd

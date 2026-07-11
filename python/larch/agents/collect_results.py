@@ -487,7 +487,7 @@ def _build_codex_exec_retry_args(*, plan: RetryPlan, meta: RetryMeta, records: l
     if meta.outer_launcher_kind != "codex-exec":
         _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_KIND must be codex-exec")
         return None
-    if meta.outer_launcher_sandbox not in {"full-auto", "read-only"}:
+    if meta.outer_launcher_sandbox not in {"workspace-write", "read-only"}:
         _mark_retry_metadata_invalid(records=records, idx=plan.index, orig_output=plan.orig_output, reason="Retry metadata invalid: OUTER_LAUNCHER_SANDBOX invalid")
         return None
     if meta.outer_launcher_with_effort not in {"true", "false"}:

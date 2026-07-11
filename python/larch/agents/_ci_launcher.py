@@ -285,7 +285,8 @@ def launch_codex_ci_main(argv: list[str] | None = None) -> int:
         child = [
             "codex",
             "exec",
-            "--full-auto",
+            "--sandbox",
+            "workspace-write",
             "-C",
             workdir,
             "--add-dir",
@@ -850,7 +851,8 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
         child = [
             "codex",
             "exec",
-            "--full-auto",
+            "--sandbox",
+            "workspace-write",
             "-C",
             workdir,
             "--add-dir",
