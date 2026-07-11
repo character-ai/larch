@@ -30,6 +30,7 @@ from larch.report.tokens import (
     _estimate_tokens_for_bytes,  # pyright: ignore[reportPrivateUsage]
     _locked_tsv_append,  # pyright: ignore[reportPrivateUsage]
 )
+from larch.implement.self_edit_log import digest_paths, record_self_edits
 
 _RCC_MAX_ITER_CAP: Final = 6
 CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
@@ -1027,6 +1028,21 @@ class _FdTextWriter:
         return None
 
 
+def _record_precommit_self_edits(
+    *, repo: Path, regular: tuple[str, ...], before_digests: dict[str, str], canonical_tmp: Path
+) -> None:
+    """Record files the pre-commit ruff/whitespace autofix rewrote in place, so the
+    orchestrator does not misread its own subprocess's edit as a concurrent runner
+    (issue #6876).
+    """
+    after_digests = digest_paths(repo, regular)
+    self_edited = [path for path in regular if after_digests.get(path) != before_digests.get(path)]
+    if self_edited:
+        _ = record_self_edits(
+            tmpdir=canonical_tmp, source="pre-commit-autofix", paths=self_edited, repo_root=repo
+        )
+
+
 def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
     runner: Runner,
     *,
@@ -1080,7 +1096,9 @@ def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
         return 1
 
     _write_log(log_fd=log_fd, text=f"=== Running pre-commit on {len(regular)} changed file(s) ===\n")
+    before_digests = digest_paths(repo, regular)
     precommit = _run_logged(runner=runner, argv=["pre-commit", "run", "--files", *regular], cwd=cwd, log_fd=log_fd, env=env)
+    _record_precommit_self_edits(repo=repo, regular=regular, before_digests=before_digests, canonical_tmp=canonical_tmp)
     if precommit.returncode != 0:
         return precommit.returncode
     phases_run += 1

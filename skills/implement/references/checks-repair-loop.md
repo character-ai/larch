@@ -117,3 +117,19 @@ Step 5 MAV and coder-main-agent-required terminal checks stalls are routing summ
 The failure path is in-step.
 It is not a halt.
 Do not end the turn, summarize, or write a handoff message.
+
+## 6. Self-edit attribution (never halt on your own subprocess's edit)
+
+The `checks repair-loop` lint-fix tiers and the Step 3 pre-commit ruff autofix edit tracked files in place. Every path they change is recorded to `$IMPLEMENT_TMPDIR/self-edit-log.tsv` (one row per path: recorded epoch seconds, source, path, post-edit sha256).
+
+Before concluding that a tracked file which changed between two of your own actions was touched by a concurrent or external runner — and before halting or asking the operator about a parallel session on that basis — consult the log:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" checks self-edit-log show --tmpdir "$IMPLEMENT_TMPDIR" --path <changed-path> --repo-root "$(git rev-parse --show-toplevel)"
+```
+
+- `SELF_EDIT_ATTRIBUTED=true`: one of this run's own spawned subprocesses changed that path. Do not treat it as an external edit and do not halt for a concurrent runner on that path.
+- `SELF_EDIT_CONTENT_MATCHES=true`: the file's current content is exactly what your subprocess produced, confirming nothing has changed it since.
+- `SELF_EDIT_ATTRIBUTED=false`: the path is absent from the log; only then may you treat the change as external.
+
+`ps` and `stat` mtime cannot attribute an edit once the spawning subprocess has exited, so the log is the authority. Omit `--path` to dump every recorded self-edit (`SELF_EDIT_COUNT` plus one `SELF_EDIT` line per row).
