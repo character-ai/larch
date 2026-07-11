@@ -1162,6 +1162,7 @@ def test_teardown_stale_live_coverage_renames_done_when_not_partial(
         "_rename_issue",
         lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
     )
+    (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
     result = finalize.teardown(
         runner=RecordingRunner(),
@@ -1204,6 +1205,7 @@ def test_teardown_stale_live_coverage_skips_done_rename_for_proceed_partial(
         "_rename_issue",
         lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
     )
+    (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
     result = finalize.teardown(
         runner=RecordingRunner(),
@@ -1235,6 +1237,68 @@ def test_teardown_stale_live_coverage_missing_persisted_coverage_raises(
     )
 
     with pytest.raises(ShipError, match=_STALE_LIVE):
+        _ = finalize.teardown(
+            runner=RecordingRunner(),
+            ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),
+            cwd=str(tmp_path),
+        )
+
+    assert rename_calls == []
+
+
+def test_teardown_stale_live_coverage_before_post_merge_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _stub_teardown_side_effects(monkeypatch, tmp_path)
+    rename_calls: list[str] = []
+
+    def boom(*_a: object, **_k: object) -> str:
+        raise ShipError(_STALE_LIVE)
+
+    monkeypatch.setattr(finalize.scope_disposition, "disposition_link_kind", boom)
+    monkeypatch.setattr(
+        finalize,
+        "_rename_issue",
+        lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
+    )
+
+    with pytest.raises(ShipError, match=_STALE_LIVE):
+        _ = finalize.teardown(
+            runner=RecordingRunner(),
+            ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),
+            cwd=str(tmp_path),
+        )
+
+    assert rename_calls == []
+
+
+def test_teardown_stale_live_coverage_invalid_persisted_disposition_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _stub_teardown_side_effects(monkeypatch, tmp_path)
+    rename_calls: list[str] = []
+
+    def boom(*_a: object, **_k: object) -> str:
+        raise ShipError(_STALE_LIVE)
+
+    monkeypatch.setattr(finalize.scope_disposition, "disposition_link_kind", boom)
+    monkeypatch.setattr(finalize.scope_disposition, "load_coverage", lambda _tmpdir: object())
+    monkeypatch.setattr(
+        finalize.scope_disposition,
+        "load_disposition",
+        lambda _tmpdir, *, coverage=None: (
+            _ := coverage,
+            (_ for _ in ()).throw(ShipError("invalid persisted disposition")),
+        )[1],
+    )
+    monkeypatch.setattr(
+        finalize,
+        "_rename_issue",
+        lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
+    )
+    (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
+
+    with pytest.raises(ShipError, match="invalid persisted disposition"):
         _ = finalize.teardown(
             runner=RecordingRunner(),
             ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),

@@ -1082,6 +1082,7 @@ def test_plan_coverage_summary_omits_line_on_stale_live_mismatch(
         raise ShipError("coverage artifact does not match live repository inputs")
 
     monkeypatch.setattr(scope_disposition, "load_live_coverage", boom)
+    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: None)
 
     assert final_report._plan_coverage_summary_line(tmp_path) == ""
 
@@ -1119,9 +1120,33 @@ def test_write_final_report_succeeds_without_plan_coverage_on_stale_mismatch(
         raise ShipError("coverage artifact does not match live repository inputs")
 
     monkeypatch.setattr(scope_disposition, "load_live_coverage", boom)
+    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: None)
 
     rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
     assert (rc, url, err) == (0, "", "")
     summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
     assert "firm headings" not in summary
     assert "## /implement run run1" in summary
+
+
+def test_plan_coverage_summary_stale_mismatch_propagates_invalid_persisted_coverage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "session-env.sh").write_text(
+        f"REPO_ROOT={tmp_path}\n",
+        encoding="utf-8",
+    )
+
+    def stale(*, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None) -> None:
+        _ = tmpdir, repo_root, manifest_path
+        raise ShipError("coverage artifact does not match live repository inputs")
+
+    monkeypatch.setattr(scope_disposition, "load_live_coverage", stale)
+    monkeypatch.setattr(
+        scope_disposition,
+        "load_coverage",
+        lambda _tmpdir: (_ for _ in ()).throw(ShipError("coverage artifact unreadable or malformed")),
+    )
+
+    with pytest.raises(ShipError, match="unreadable or malformed"):
+        _ = final_report._plan_coverage_summary_line(tmp_path)

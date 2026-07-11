@@ -696,6 +696,7 @@ def _teardown_disposition_link_kind(
     tmpdir: Path | None,
     repo_root: Path,
     manifest_path: Path | None,
+    allow_persisted_recovery: bool,
 ) -> str:
     """Resolve closes/part-of for done-rename; recover from exact stale-live mismatch."""
     try:
@@ -706,6 +707,8 @@ def _teardown_disposition_link_kind(
         )
     except ShipError as exc:
         if not _is_stale_live_coverage_mismatch(exc):
+            raise
+        if not allow_persisted_recovery:
             raise
         if tmpdir is None:
             raise ShipError(_STALE_LIVE_COVERAGE_MISMATCH) from exc
@@ -744,6 +747,7 @@ def teardown(
             tmpdir=tmpdir if ctx.tmpdir else None,
             repo_root=persisted_repo_root,
             manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
+            allow_persisted_recovery=(tmpdir / "post-merge-sentinel").is_file(),
         )
         if link_kind != "part-of":
             rename_branch = "B"
