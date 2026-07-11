@@ -126,9 +126,15 @@ def materialize(args: argparse.Namespace) -> tuple[Path, Path]:
     body = _bound_rendered("\n".join(sections).rstrip() + "\n")
     output = root / "architectural-invariants.md"
     sidecar = root / "architectural-invariants.md.identity.env"
-    larch_io.atomic_write(output, body, mode=0o600, nofollow=True)
+    larch_io.atomic_write(output, body, mode=0o600, prefix=".architectural-invariants-", nofollow=True)
     try:
-        larch_io.write_kvs(path=sidecar, values=[(key, identity[key]) for key in _IDENTITY_KEYS], mode=0o600)
+        larch_io.atomic_write(
+            sidecar,
+            larch_io.format_kvs([(key, identity[key]) for key in _IDENTITY_KEYS]),
+            mode=0o600,
+            prefix=".architectural-invariants-identity-",
+            nofollow=True,
+        )
     except OSError:
         output.unlink(missing_ok=True)
         raise

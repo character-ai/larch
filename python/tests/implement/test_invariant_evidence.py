@@ -72,3 +72,15 @@ def test_rejects_symlinked_route_handoff_without_partial_artifacts(tmp_path: Pat
     assert invariant_evidence.main(argv) != 0
     assert not (tmp_path / "architectural-invariants.md").exists()
     assert not (tmp_path / "architectural-invariants.md.identity.env").exists()
+
+
+def test_ignores_symlinked_legacy_identity_sidecar_temp(tmp_path: Path) -> None:
+    argv = _args(tmp_path)
+    outside = tmp_path.parent / "outside-identity.env"
+    outside.write_text("unchanged\n", encoding="utf-8")
+    temp = tmp_path / ".architectural-invariants.md.identity.env.tmp"
+    temp.symlink_to(outside)
+
+    assert invariant_evidence.main(argv) == 0
+    assert outside.read_text(encoding="utf-8") == "unchanged\n"
+    assert (tmp_path / "architectural-invariants.md.identity.env").is_file()

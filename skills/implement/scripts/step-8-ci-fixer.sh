@@ -119,6 +119,11 @@ for key in ("RESULT","REASON","MODE","RUN_ID","ATTEMPT","TIER","STARTING_HEAD","
 PY
   ) || fail merge-status-disagreement
   safe_child_file "$HANDOFF_DIR" "$LINEAGE" || fail unsafe-lineage
+  FINAL_HEAD=$(printf '%s\n' "$OUT" | sed -n 's/^FINAL_HEAD=//p')
+  case "$FINAL_HEAD" in ''|*[!0-9a-f]*) fail invalid-final-head ;; esac
+  [ "${#FINAL_HEAD}" -ge 40 ] && [ "${#FINAL_HEAD}" -le 64 ] || fail invalid-final-head
+  LIVE_HEAD=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null) || fail invalid-live-head
+  [ "$FINAL_HEAD" = "$LIVE_HEAD" ] || fail final-head-drift
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" "$(printf '%s\n' "$OUT" | sed -n 's/^RESULT=//p')" "$(printf '%s\n' "$OUT" | sed -n 's/^FINAL_HEAD=//p')" >>"$LINEAGE"
   printf '%s\n' "$OUT"
   exit 0
@@ -169,8 +174,14 @@ LAUNCH="$HANDOFF_DIR/launch-$STEP.env"
 MERGE_ENV="$BGJOB_DIR/$STEP.merge.env"
 safe_child_file "$HANDOFF_DIR" "$LAUNCH" || fail unsafe-launch-envelope
 safe_child_file "$BGJOB_DIR" "$MERGE_ENV" || fail unsafe-merge-result
-printf 'MODE=%s\nRUN_ID=%s\nSTARTING_HEAD=%s\nINPUT_FINGERPRINT=%s\nTIER=%s\nATTEMPT=%s\nSTEP=%s\nLINEAGE=%s\n' "$MODE" "$RUN_ID" "$STARTING_HEAD" "$INPUT_FINGERPRINT" "$TIER" "$ATTEMPT" "$STEP" "$LINEAGE" >"$LAUNCH.tmp"
-chmod 600 "$LAUNCH.tmp" && mv "$LAUNCH.tmp" "$LAUNCH"
+LAUNCH_CONTENT=$(printf 'MODE=%s\nRUN_ID=%s\nSTARTING_HEAD=%s\nINPUT_FINGERPRINT=%s\nTIER=%s\nATTEMPT=%s\nSTEP=%s\nLINEAGE=%s\n' "$MODE" "$RUN_ID" "$STARTING_HEAD" "$INPUT_FINGERPRINT" "$TIER" "$ATTEMPT" "$STEP" "$LINEAGE")
+python3 - "$CLAUDE_PLUGIN_ROOT" "$LAUNCH" "$LAUNCH_CONTENT" <<'PY' || fail unsafe-launch-envelope
+from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(sys.argv[1]) / "python"))
+from larch import io
+io.atomic_write(sys.argv[2], sys.argv[3], create_parent=False, mode=0o600, prefix=".launch-", nofollow=True)
+PY
 CHILD=(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ci fixer-lane --mode "$MODE" --repo-root "$REPO_ROOT" --implement-tmpdir "$IMPLEMENT_TMPDIR" --handoff-dir "$HANDOFF_DIR" --repo "$REPO" --run-id "$RUN_ID" --tier "$TIER" --attempt "$ATTEMPT" --starting-head "$STARTING_HEAD" --input-fingerprint "$INPUT_FINGERPRINT" --bgjob-result-env "$MERGE_ENV")
 if [ "$MODE" = invariant-primary ]; then
   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ci materialize-invariant-evidence --implement-tmpdir "$IMPLEMENT_TMPDIR" --route-handoff "$ROUTE" --mode "$MODE" --run-id "$RUN_ID" --starting-head "$STARTING_HEAD" --input-fingerprint "$INPUT_FINGERPRINT" --tier "$TIER" --attempt "$ATTEMPT" --step "$STEP" >/dev/null || fail invariant-evidence-failed
