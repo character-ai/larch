@@ -2319,7 +2319,7 @@
     "file": "larch/git/pr_body.py",
     "code": "PLR0913",
     "qualified_symbol": "compose_pr_body",
-    "metric": 8
+    "metric": 9
   },
   {
     "file": "larch/git/pr_body.py",
@@ -5049,13 +5049,13 @@
     "file": "larch/review/coder_runner.py",
     "code": "PLR0911",
     "qualified_symbol": "apply_findings_with_coder",
-    "metric": 12
+    "metric": 15
   },
   {
     "file": "larch/review/coder_runner.py",
     "code": "PLR0912",
     "qualified_symbol": "apply_findings_with_coder",
-    "metric": 20
+    "metric": 23
   },
   {
     "file": "larch/review/coder_runner.py",
@@ -5457,13 +5457,13 @@
     "file": "larch/review/review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "step5",
-    "metric": 32
+    "metric": 33
   },
   {
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0911",
     "qualified_symbol": "step5",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5481,7 +5481,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "step5",
-    "metric": 34
+    "metric": 35
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5499,7 +5499,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 153
+    "metric": 159
   },
   {
     "file": "larch/review/review_collect.py",
@@ -5817,7 +5817,7 @@
     "file": "larch/review/round_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 159
+    "metric": 158
   },
   {
     "file": "larch/review/round_runner.py",
@@ -5834,7 +5834,19 @@
   {
     "file": "larch/review/snapshot.py",
     "code": "C901",
+    "qualified_symbol": "_validate_pre_coder_snapshot_dir",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/snapshot.py",
+    "code": "C901",
     "qualified_symbol": "_verify_post_cleanup_state",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/snapshot.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_validate_pre_coder_snapshot_dir",
     "metric": 15
   },
   {

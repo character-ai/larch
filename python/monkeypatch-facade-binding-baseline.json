@@ -932,7 +932,7 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_cleanup_failed_coder_attempt",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 12,
+    "occurrence": 11,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -941,16 +941,7 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_collect_round_stage_paths",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 11,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/agents/test_external_dispatch.py",
-    "qualified_symbol": "test_review_fix_coder_attempts_claude_before_main_agent",
-    "facade_module": "larch.review.coder_runner",
-    "attribute": "_ensure_pre_coder_snapshot",
-    "defining_module": "larch.review.snapshot",
-    "occurrence": 4,
+    "occurrence": 10,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -959,16 +950,16 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_git_head",
     "defining_module": "larch.review._raf_util",
-    "occurrence": 6,
+    "occurrence": 5,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
     "file": "tests/agents/test_external_dispatch.py",
     "qualified_symbol": "test_review_fix_coder_attempts_claude_before_main_agent",
     "facade_module": "larch.review.coder_runner",
-    "attribute": "_snapshot_mode",
+    "attribute": "_prepare_or_validate_pre_coder_snapshot",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 5,
+    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -977,16 +968,7 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_collect_round_stage_paths",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 11,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/agents/test_external_dispatch.py",
-    "qualified_symbol": "test_review_fix_coder_prompt_size_telemetry_allows_claude_first",
-    "facade_module": "larch.review.coder_runner",
-    "attribute": "_ensure_pre_coder_snapshot",
-    "defining_module": "larch.review.snapshot",
-    "occurrence": 4,
+    "occurrence": 10,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -995,16 +977,16 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_git_head",
     "defining_module": "larch.review._raf_util",
-    "occurrence": 6,
+    "occurrence": 5,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
     "file": "tests/agents/test_external_dispatch.py",
     "qualified_symbol": "test_review_fix_coder_prompt_size_telemetry_allows_claude_first",
     "facade_module": "larch.review.coder_runner",
-    "attribute": "_snapshot_mode",
+    "attribute": "_prepare_or_validate_pre_coder_snapshot",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 5,
+    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1013,7 +995,7 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "append_panel_prompt_size",
     "defining_module": "larch.report.tokens",
-    "occurrence": 12,
+    "occurrence": 11,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1022,7 +1004,7 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_cleanup_failed_coder_attempt",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 12,
+    "occurrence": 11,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1031,16 +1013,7 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_collect_round_stage_paths",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 11,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/agents/test_external_dispatch.py",
-    "qualified_symbol": "test_review_fix_coder_uses_review_fix_role",
-    "facade_module": "larch.review.coder_runner",
-    "attribute": "_ensure_pre_coder_snapshot",
-    "defining_module": "larch.review.snapshot",
-    "occurrence": 4,
+    "occurrence": 10,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -1049,16 +1022,16 @@
     "facade_module": "larch.review.coder_runner",
     "attribute": "_git_head",
     "defining_module": "larch.review._raf_util",
-    "occurrence": 6,
+    "occurrence": 5,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
     "file": "tests/agents/test_external_dispatch.py",
     "qualified_symbol": "test_review_fix_coder_uses_review_fix_role",
     "facade_module": "larch.review.coder_runner",
-    "attribute": "_snapshot_mode",
+    "attribute": "_prepare_or_validate_pre_coder_snapshot",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 5,
+    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
@@ -10173,7 +10146,16 @@
     "file": "tests/review/test_review_pipeline.py",
     "qualified_symbol": "test_apply_findings_with_coder_logs_panel_prompt_size",
     "facade_module": "larch.review.coder_runner",
-    "attribute": "_ensure_pre_coder_snapshot",
+    "attribute": "_git_head",
+    "defining_module": "larch.review._raf_util",
+    "occurrence": 3,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/review/test_review_pipeline.py",
+    "qualified_symbol": "test_apply_findings_with_coder_logs_panel_prompt_size",
+    "facade_module": "larch.review.coder_runner",
+    "attribute": "_prepare_or_validate_pre_coder_snapshot",
     "defining_module": "larch.review.snapshot",
     "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
@@ -10182,18 +10164,9 @@
     "file": "tests/review/test_review_pipeline.py",
     "qualified_symbol": "test_apply_findings_with_coder_logs_panel_prompt_size",
     "facade_module": "larch.review.coder_runner",
-    "attribute": "_git_head",
-    "defining_module": "larch.review._raf_util",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/review/test_review_pipeline.py",
-    "qualified_symbol": "test_apply_findings_with_coder_logs_panel_prompt_size",
-    "facade_module": "larch.review.coder_runner",
-    "attribute": "_snapshot_mode",
+    "attribute": "revalidate_pre_coder_snapshot",
     "defining_module": "larch.review.snapshot",
-    "occurrence": 3,
+    "occurrence": 4,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
