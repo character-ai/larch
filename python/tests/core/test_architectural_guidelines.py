@@ -2247,6 +2247,13 @@ def test_validate_invariant_ship_outcome_record_accepts_violation() -> None:
         # A note that neither leads with the clean line nor names an invariant leans
         # clean rather than blocking the ship on ambiguous prose.
         ("No specific invariant applies to this diff.", "clean"),
+        # Issue #6955: a clean verdict that references a supporting I-* id in the same
+        # sentence still leads clean; the id must not flip it to violation.
+        ("No invariant violations identified. The change is consistent with I-Gate-1.", "clean"),
+        ("No invariant violations identified.", "clean"),
+        ("No violations found; the change respects I-Gate-1 and I-Gate-2.", "clean"),
+        # A note that leads with a violation statement naming an invariant stays violation.
+        ("I-Gate-1 is violated: the gate disarms on gated data.", "violation"),
     ],
 )
 def test_invariant_assessment_kind_tolerates_verbose_clean_notes(note: str, expected: str) -> None:
@@ -2825,3 +2832,19 @@ def test_explicit_clean_accepts_canonical_lead_with_identifier_rationale(tmp_pat
         diff_text="diff",
     )
     assert ag._read_env(tmp_path / ag.STAGED_ASSESSMENT_ENV)["ASSESSMENT_KIND"] == "clean"
+
+
+def test_explicit_clean_accepts_inline_clean_lead_with_invariant_id(tmp_path: Path) -> None:
+    # Issue #6955: a clean verdict phrased inline with a supporting I-* reference must
+    # not be rejected as a clean/prose mismatch and forced back into re-authoring.
+    note = "No invariant violations identified. The change is consistent with I-Gate-1."
+    ag.write_invariant_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text=note,
+        assessed_head_sha="head",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        outcome="clean",
+        diff_text="diff",
+    )
+    assert ag._read_env(tmp_path / ag.INVARIANT_STAGED_ASSESSMENT_ENV)["ASSESSMENT_KIND"] == "clean"
