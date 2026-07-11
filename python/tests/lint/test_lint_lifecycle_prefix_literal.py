@@ -193,7 +193,7 @@ def test_composition_via_bug_prefix_constant_is_clean(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    assert llpll.scan_file(path, larch_dir=larch_dir, token_infos=llpll.build_token_map()) == []
+    assert not llpll.scan_file(path, larch_dir=larch_dir, token_infos=llpll.build_token_map())
 
 
 def test_nested_concat_reports_matching_literal_once(tmp_path: Path) -> None:
