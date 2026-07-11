@@ -1,0 +1,32 @@
+Reviewing the plan against the live `/learn-from-bugs` and `/issue` contracts; reading the skill files and related helpers first.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	skills/issue/SKILL.md:113-113	Generic batch bodies with unfenced ### headings split items	--file batch files that embed complete invariant or guideline entries using repo heading patterns like ### I-Gate-1: or ### G-Fix-1: are parsed as multiple /issue items; bodies truncate, MALFORMED items drop, and filing diverges from the report	In skills/learn-from-bugs/SKILL.md require #### or deeper for in-body headings, fence append-ready text blocks, or a pre-filing issue parse-input --dry-run gate; ban unfenced ### lines inside filed bodies except the top-level item title row
+1	in_scope	major	correctness	skills/learn-from-bugs/SKILL.md:136-139	Step 5 can still run approval gates in --file mode	Plan places the --file branch after the marker commit but leaves Step 5 as unconditional Stop here by default with per-action AskUserQuestion follow-ups; a --file run can still prompt for apply actions before or instead of auto-filing	Bind FILE_MODE in Step 1 and make Step 5 branch exclusively: if FILE_MODE skip the approval-gated bullets entirely and run only the --file filing procedure; default mode keeps current Step 5 unchanged
+1	in_scope	major	completeness	skills/learn-from-bugs/SKILL.md:81-84	Hook-shaped residuals are omitted from --file filing	Report section 5 already classifies hook best-home proposals and default Step 5 has Update hook contracts; planned --file categories list lints, invariants, guidelines, regression tests, and still-broken code but not hooks, so hook work is never auto-filed in --file mode	Add hook-contract proposals to --file residuals with self-contained bodies naming hooks/hooks.json, sibling docs, harness updates, acceptance checks, and backing issues
+1	in_scope	major	correctness	skills/learn-from-bugs/SKILL.md:28-39	Scope asks for -s alias but plan rejects it	Binding scope requires --file/-s; the plan adds -f and explicitly rejects -s, so operators following the issue cannot use the documented -s alias	Accept -s as an alias for --file in Step 1 or document a deliberate rejection with README/docs/skills.md aligned to -f only; do not silently drop -s
+1	in_scope	major	correctness	skills/learn-from-bugs/SKILL.md:141-141	Partial /issue failure lacks a fail-closed parent contract	Plan edge case says to surface failures but the planned SKILL handoff only mentions counters; without ISSUES_FAILED, ISSUE_i_FAILED, parse-input exit checks, and non-zero /issue exit handling, --file can report success after orphans or malformed batch drops	Mirror decompose-panel partial-filing rules: capture /issue stdout, abort success claims when ISSUES_FAILED>0 or parse-input fails, list per-item failures and URLs, and keep RUN_DIR artifacts for repair
+1	out_of_scope	minor	risk-integration	skills/learn-from-bugs/SKILL.md:planned --file handoff	No mandatory parse-input --dry-run before create	Without a dry-run gate, batch boundary mistakes are discovered only after GitHub writes begin	Add an optional pre-filing issue --dry-run preview step that compares ITEMS_TOTAL to the grouped proposal count
+
+### 1. [code-quality] Generic `###` batch boundaries (`skills/issue/SKILL.md:113`)
+
+The `/issue` generic batch parser treats any unfenced line starting with `### ` as a new item boundary. The plan requires filed bodies to include complete invariant and guideline text that uses repo-native headings such as `### I-Gate-1:` and `### G-Fix-1:` (`ARCHITECTURAL_INVARIANTS.md`, `ARCHITECTURAL_GUIDELINES.md`). Those lines will split one intended issue into several batch items or yield malformed entries. OOS-shaped `### OOS_N:` lines are absorbed in generic bodies (`python/tests/issue/test_issue_create.py` issue #132), but invariant and guideline IDs are not.
+
+### 2. [correctness] Step 5 / `--file` exclusivity (`skills/learn-from-bugs/SKILL.md:136-139`)
+
+Current Step 5 opens with unconditional approval-gated follow-ups. The plan adds a `--file` branch after the marker commit but does not guard Step 5 entry. Without an explicit `FILE_MODE` branch, `--file` runs can still hit the default apply gates and violate the no-apply contract.
+
+### 3. [architecture] Hook proposals missing from `--file` residuals (`skills/learn-from-bugs/SKILL.md:81-84`, `:144`)
+
+The report already proposes hook-shaped preventions and default Step 5 can update hook contracts. The planned `--file` category list omits hooks, so hook residuals would remain report-only even in auto-file mode.
+
+### 4. [correctness] `-s` alias dropped vs binding scope (`skills/learn-from-bugs/SKILL.md:28-39`)
+
+The scope anchor requires `--file/-s`. The plan adds `-f`, rejects `-s`, and does not document the deviation in the planned doc updates. That is a completeness gap against the stated feature.
+
+### 5. [risk-integration] Partial child failure under-reporting (planned `--file` `/issue` handoff)
+
+Research and decompose filing paths treat `ISSUES_FAILED>0`, sentinel verification, and stdout parsing as mechanical contracts. The plan’s edge case prose is not enough; the SKILL needs explicit fail-closed steps so `--file` does not claim full filing after dedup drops, dep-link orphans, or parse-input failure.
+
+### [OUT_OF_SCOPE] Optional `--dry-run` preview before batch create
+
+A pre-filing `issue parse-input` or `/issue --dry-run` gate would catch boundary mistakes early. Useful, but not required for the feature to function once finding 1 is fixed.

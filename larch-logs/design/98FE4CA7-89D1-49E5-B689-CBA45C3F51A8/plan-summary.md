@@ -1,0 +1,1 @@
+Enhance `/learn-from-bugs` at the prompt layer. Add missing-regression-test proposals and an approval-free `--file`/`-f` issue-filing path. Keep the Python digest and coverage model unchanged. Update public docs and add a structural harness for the new workflow contract.
