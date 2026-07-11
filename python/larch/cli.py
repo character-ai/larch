@@ -158,6 +158,10 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("implement", "step-8-oos-checkpoint"): ("larch.implement.implement_dispatch", "step8_oos_checkpoint_main"),
     ("implement", "step-18-gate-finalize"): ("larch.implement.implement_dispatch", "step_18_gate_finalize_main"),
     ("implement", "run-step-checks"): ("larch.implement.implement_dispatch", "run_step_checks_main"),
+    ("implement", "checks-result-identity"): (
+        "larch.implement.checks_result_identity",
+        "checks_result_identity_main",
+    ),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main"),
     ("architectural-assessment", "run"): ("larch.implement.architectural_assessment", "main"),
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main"),

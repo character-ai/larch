@@ -68,9 +68,19 @@ def test_checks_commit_route_step3_does_not_touch_legacy_sidecars(
 def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    plugin_root = Path(__file__).resolve().parents[3]
 
-    def fake_run_cli_forward(args: Sequence[str]) -> int:
-        assert list(args) == ["checks", "run-relevant", "--site", "step5", "--tmpdir", str(tmp)]
+    def fake_run_cli_forward(args: Sequence[str], **_kwargs: object) -> int:
+        assert list(args) == [
+            "checks",
+            "run-relevant",
+            "--site",
+            "step5",
+            "--tmpdir",
+            str(tmp),
+            "--repo-root",
+            str(plugin_root),
+        ]
         return 0
 
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
@@ -105,7 +115,8 @@ def _session(tmp_path: Path) -> Path:
     (tmp / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     plugin_root = Path(__file__).resolve().parents[3]
     (tmp / "session-env.sh").write_text(
-        f"CURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nLARCH_CLAUDE_PLUGIN_ROOT={plugin_root}\n",
+        f"CURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n"
+        f"LARCH_CLAUDE_PLUGIN_ROOT={plugin_root}\nREPO_ROOT={plugin_root}\n",
         encoding="utf-8",
     )
     return tmp
@@ -3852,11 +3863,62 @@ def test_run_relevant_checks_for_site_does_not_allow_skip(
     assert captured == {"RELEVANT_CHECKS_OK": "true", "SITE": "step6"}
     assert calls == [
         (
-            ["checks", "run-relevant", "--site", "step6", "--tmpdir", str(impl)],
+            [
+                "checks",
+                "run-relevant",
+                "--site",
+                "step6",
+                "--tmpdir",
+                str(impl),
+                "--repo-root",
+                str(Path(__file__).resolve().parents[3]),
+            ],
             1234,
             "checks_run_relevant_main:step6",
         )
     ]
+
+
+def test_run_relevant_checks_binds_persisted_root_over_claude_project_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    foreign = tmp_path / "foreign"
+    foreign.mkdir()
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(foreign))
+    captured_env: dict[str, str] = {}
+    captured_cwd: list[Path | None] = []
+
+    def fake_run_leg(
+        *,
+        argv: Sequence[str],
+        deadline_ms: int,
+        label: str,
+        cwd: Path | None = None,
+        env: dict[str, str] | None = None,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        _ = (deadline_ms, label)
+        captured_cwd.append(cwd)
+        if env is not None:
+            captured_env.update(env)
+        assert "--repo-root" in argv
+        root_idx = list(argv).index("--repo-root") + 1
+        assert Path(argv[root_idx]) == Path(__file__).resolve().parents[3]
+        return subprocess.CompletedProcess(list(argv), 0, "RELEVANT_CHECKS_OK=true SITE=step3\n", "")
+
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
+    captured, timed_out = dispatch_commit_route._run_relevant_checks_for_site(
+        implement_tmpdir=impl,
+        checks_site="step3",
+        deadline_ms=1000,
+    )
+    assert not timed_out
+    assert captured.get("RELEVANT_CHECKS_OK") == "true"
+    assert captured_cwd == [Path(__file__).resolve().parents[3]]
+    assert captured_env.get("CLAUDE_PROJECT_DIR") == str(Path(__file__).resolve().parents[3])
+    assert captured_env.get("REPO_ROOT") == str(Path(__file__).resolve().parents[3])
 
 
 def test_checks_commit_route_ok_envelope_continues_through_real_helper(
@@ -3899,7 +3961,16 @@ def test_checks_commit_route_ok_envelope_continues_through_real_helper(
     out = capsys.readouterr().out
     assert rc == 0
     assert checks_calls == [
-        ["checks", "run-relevant", "--site", "step5-self-review", "--tmpdir", str(impl)]
+        [
+            "checks",
+            "run-relevant",
+            "--site",
+            "step5-self-review",
+            "--tmpdir",
+            str(impl),
+            "--repo-root",
+            str(Path(__file__).resolve().parents[3]),
+        ]
     ]
     assert commit_calls == ["step5-self-review"]
     assert "RELEVANT_CHECKS_OK=true SITE=step5-self-review" in out
@@ -3942,7 +4013,16 @@ def test_checks_step5_resume_ok_envelope_runs_resume_without_continue_action(
     out = capsys.readouterr().out
     assert rc == 0
     assert checks_calls == [
-        ["checks", "run-relevant", "--site", "step5-review-fixes", "--tmpdir", str(impl)]
+        [
+            "checks",
+            "run-relevant",
+            "--site",
+            "step5-review-fixes",
+            "--tmpdir",
+            str(impl),
+            "--repo-root",
+            str(Path(__file__).resolve().parents[3]),
+        ]
     ]
     assert resume_calls == [("3", 5678)]
     assert "RELEVANT_CHECKS_OK=true SITE=step5-review-fixes" in out
@@ -3982,9 +4062,29 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
     assert 'BUDGET_S="14700"' in run_step_checks
     assert "step_checks_live_registry_exists" in run_step_checks
-    assert "step_checks_result_env_state" in run_step_checks
+    assert "checks-result-identity" in run_step_checks
+    assert "CHECKS_INPUT_HEAD_SHA" in run_step_checks
+    assert "validate_child_identity" in run_step_checks
+    assert "step_checks_result_env_state" not in run_step_checks
     assert 'RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"' in run_step_checks
     assert 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0' in run_step_checks
+    step6_entry = (root / "skills" / "implement" / "scripts" / "step-6-entry.sh").read_text(encoding="utf-8")
+    assert "checks-result-identity" in step6_entry
+    assert "CHECKS_INPUT_HEAD_SHA" in step6_entry
+    assert "validate_child_identity" in step6_entry
+    assert "skip-to-7a" in step6_entry
+    assert "step6_result_env_state" not in step6_entry
+    dispatch_commit = (root / "python" / "larch" / "implement" / "dispatch_commit_route.py").read_text(
+        encoding="utf-8"
+    )
+    assert "_session_validated_repo_root" in dispatch_commit
+    assert '"--repo-root"' in dispatch_commit or "'--repo-root'" in dispatch_commit
+    assert "CLAUDE_PROJECT_DIR" in dispatch_commit
+    identity_mod = (root / "python" / "larch" / "implement" / "checks_result_identity.py").read_text(
+        encoding="utf-8"
+    )
+    assert "CHECKS_TERMINAL_ACTIONS" in identity_mod
+    assert "identity-integrity-failed" in identity_mod or "CHECKS_IDENTITY_INTEGRITY_FAILED_ACTION" in identity_mod
     assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
     assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill
