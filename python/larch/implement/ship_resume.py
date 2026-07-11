@@ -227,6 +227,31 @@ def _invalid_state_plan(
     )
 
 
+def _local_merged(*, ctx: RunContext, state_phase: str, merge_result: str) -> bool:
+    """True when durable state shows the PR merge already completed.
+
+    Counts the merge-completion signals recorded before the auto-checkout that
+    follows a merge. Consulted by the gh-skipped resume path and, before the
+    checkout guards, to finalize a post-merge resume whose local checkout was
+    moved off the (now deleted) feature branch onto ``main`` (issue #6930).
+    """
+    pr_closed_signal = _state_bool_text(run_logs.read_state_kv(state_file=ctx.state_file, key="PR_CLOSED"))
+    postmerge_phase_signal = state_phase == "postmerge"
+    merge_result_signal = merge_result in config.POST_MERGE_MERGE_RESULTS
+    postmerge_sentinel_signal = (Path(ctx.tmpdir) / "post-merge-sentinel").is_file()
+    manifest_done_signal = run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE and postmerge_sentinel_signal
+    signal_count = sum(
+        bool(signal)
+        for signal in (
+            pr_closed_signal,
+            postmerge_phase_signal,
+            merge_result_signal,
+            manifest_done_signal,
+        )
+    )
+    return signal_count >= _MIN_GH_SKIPPED_MERGE_SIGNALS
+
+
 def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumePlan:
     counters: run_logs.ResumeCounters = run_logs.read_resume_counters(ctx.state_file)
     durable: run_logs.DurableFlags = run_logs.read_durable_flags(state_file=ctx.state_file, ctx=ctx)
@@ -313,7 +338,29 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
 
     current_branch = _try_current_branch(runner, cwd=cwd)
     expected_branch = repair_branch or state_branch or ctx.branch_name or ctx.branch
-    if not current_branch:
+    cannot_verify_branch = not current_branch
+    branch_mismatch = bool(expected_branch) and current_branch != expected_branch
+    protected_branch = current_branch in {"main", "master"} and not durable.forked_target and not durable.forked
+    # A post-merge auto-checkout lands the tree on `main` and deletes the feature
+    # branch, so the guards below would bail with `checkout-mismatch` even though
+    # the merge already completed. When durable state shows the merge finished,
+    # route to post-merge finalization instead (issue #6930). The checkout anomaly
+    # is required: an on-branch resume with stale merge signals must still fall
+    # through to the gh re-check below, which can discover a closed-but-unmerged PR.
+    if (cannot_verify_branch or branch_mismatch or protected_branch) and _local_merged(
+        ctx=ctx, state_phase=state_phase, merge_result=merge_result
+    ):
+        return _resume_from_state(
+            start="done" if state_phase == "done" else "merged",
+            counters=counters,
+            durable=durable,
+            pr_number=run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number),
+            pr_url=pr_url,
+            merge_result=_valid_merge_result(merge_result),
+            branch_name=current_branch or expected_branch,
+            repo=state_repo,
+        )
+    if cannot_verify_branch:
         return _resume_from_state(
             start="blocked-checkout-mismatch",
             counters=counters,
@@ -325,7 +372,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             repo=state_repo,
             detail=f"cannot verify current checkout branch; expected {expected_branch or '<unknown>'}",
         )
-    if expected_branch and current_branch != expected_branch:
+    if branch_mismatch:
         return _resume_from_state(
             start="blocked-checkout-mismatch",
             counters=counters,
@@ -337,7 +384,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             repo=state_repo,
             detail=f"checkout branch mismatch: expected {expected_branch}, current {current_branch}",
         )
-    if current_branch in {"main", "master"} and not durable.forked_target and not durable.forked:
+    if protected_branch:
         return _resume_from_state(
             start="blocked-checkout-mismatch",
             counters=counters,
@@ -471,21 +518,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             detail=f"PR state {viewed.state} is not resumable",
         )
 
-    pr_closed_signal = _state_bool_text(run_logs.read_state_kv(state_file=ctx.state_file, key="PR_CLOSED"))
-    postmerge_phase_signal = state_phase == "postmerge"
-    merge_result_signal = merge_result in config.POST_MERGE_MERGE_RESULTS
-    postmerge_sentinel_signal = (Path(ctx.tmpdir) / "post-merge-sentinel").is_file()
-    manifest_done_signal = run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE and postmerge_sentinel_signal
-    local_merged_signal_count = sum(
-        bool(signal)
-        for signal in (
-            pr_closed_signal,
-            postmerge_phase_signal,
-            merge_result_signal,
-            manifest_done_signal,
-        )
-    )
-    local_merged = local_merged_signal_count >= _MIN_GH_SKIPPED_MERGE_SIGNALS
+    local_merged = _local_merged(ctx=ctx, state_phase=state_phase, merge_result=merge_result)
     if state_phase == "done":
         if local_merged:
             return _resume_from_state(
