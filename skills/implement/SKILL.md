@@ -1,7 +1,9 @@
 ---
 # Referenced implement script files:
 # skills/implement/scripts/step-architectural-invariants-write-compose.md
+# skills/implement/scripts/step-architectural-invariants-write-compose.sh
 # skills/implement/scripts/step-architectural-guidelines-write-compose.md
+# skills/implement/scripts/step-architectural-guidelines-write-compose.sh
 # skills/implement/scripts/step-8-assessment.sh
 # skills/implement/scripts/step-8-assessment.md
 # skills/implement/scripts/test-architectural-guidelines-step.sh
