@@ -3207,7 +3207,7 @@ def test_failure_report_reconciles_failed_publish_tail_after_salvage(tmp_path: P
     _write_prior_failed_publish_tail_report(tmp_path, success=True)
     calls: list[dict[str, str]] = []
 
-    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
         calls.append({"report_issue": report_issue, "repo": repo})
         return True, "reconciled"
 
@@ -3226,7 +3226,7 @@ def test_failure_report_reconcile_is_idempotent(tmp_path: Path, monkeypatch: pyt
     _write_prior_failed_publish_tail_report(tmp_path, success=True)
     calls: list[dict[str, str]] = []
 
-    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
         calls.append({"report_issue": report_issue})
         return True, "reconciled"
 
@@ -3240,7 +3240,7 @@ def test_failure_report_reconcile_skipped_without_success_evidence(tmp_path: Pat
     _write_prior_failed_publish_tail_report(tmp_path, success=False)
     called = {"n": 0}
 
-    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
         called["n"] += 1
         return True, "reconciled"
 
@@ -3255,7 +3255,7 @@ def test_failure_report_reconcile_skipped_when_not_publish_tail(tmp_path: Path, 
     _write_prior_failed_publish_tail_report(tmp_path, success=True, publish_tail=False)
     called = {"n": 0}
 
-    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
         called["n"] += 1
         return True, "reconciled"
 
@@ -3267,7 +3267,7 @@ def test_failure_report_reconcile_skipped_when_not_publish_tail(tmp_path: Path, 
 def test_failure_report_reconcile_failure_leaves_report_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_prior_failed_publish_tail_report(tmp_path, success=True)
 
-    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
         return False, "gh issue close failed"
 
     monkeypatch.setattr(design_terminal, "_reconcile_post_recovery_comment", fake_comment)  # pyright: ignore[reportPrivateUsage]

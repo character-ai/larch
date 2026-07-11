@@ -2139,7 +2139,7 @@ def test_publish_fresh_result_initialization_failure_returns_5_without_publish(
 
     assert rc == 5
     assert "publish result checkpoint failed at initialized" in capsys.readouterr().err
-    assert publish_calls == []
+    assert not publish_calls
 
 
 def test_publish_checkpoint_failure_propagates_instead_of_using_stale_state(
@@ -2159,7 +2159,7 @@ def test_publish_checkpoint_failure_propagates_instead_of_using_stale_state(
     def fail_second_checkpoint(**kwargs: object) -> bool:
         nonlocal calls
         calls += 1
-        return real_write(**kwargs) if calls == 1 else False  # type: ignore[arg-type]
+        return real_write(**kwargs) if calls == 1 else False  # type: ignore[arg-type]  # pylint: disable=missing-kwoa
 
     monkeypatch.setattr(design_publish, "_write_result_env", fail_second_checkpoint)
     with pytest.raises(OSError, match="plan-write"):

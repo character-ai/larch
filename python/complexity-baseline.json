@@ -1376,8 +1376,14 @@
   {
     "file": "larch/design/design_publish.py",
     "code": "C901",
+    "qualified_symbol": "_run_log_publish_after_capture",
+    "metric": 11
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "code": "C901",
     "qualified_symbol": "publish_core",
-    "metric": 49
+    "metric": 52
   },
   {
     "file": "larch/design/design_publish.py",
@@ -1389,19 +1395,19 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_core",
-    "metric": 21
+    "metric": 23
   },
   {
     "file": "larch/design/design_publish.py",
     "code": "PLR0912",
     "qualified_symbol": "publish_core",
-    "metric": 50
+    "metric": 53
   },
   {
     "file": "larch/design/design_publish.py",
     "code": "PLR0915",
     "qualified_symbol": "publish_core",
-    "metric": 158
+    "metric": 175
   },
   {
     "file": "larch/design/design_router.py",
@@ -1629,31 +1635,37 @@
     "file": "larch/design/design_step5c.py",
     "code": "C901",
     "qualified_symbol": "step5c_core",
-    "metric": 19
+    "metric": 25
   },
   {
     "file": "larch/design/design_step5c.py",
     "code": "PLR0911",
     "qualified_symbol": "step5c_core",
-    "metric": 10
+    "metric": 12
   },
   {
     "file": "larch/design/design_step5c.py",
     "code": "PLR0912",
     "qualified_symbol": "step5c_core",
-    "metric": 22
+    "metric": 28
+  },
+  {
+    "file": "larch/design/design_step5c.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_step5c_render_publish_failure_detail",
+    "metric": 6
   },
   {
     "file": "larch/design/design_step5c.py",
     "code": "PLR0913",
     "qualified_symbol": "_step5c_write_status",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/design/design_step5c.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 93
+    "metric": 122
   },
   {
     "file": "larch/design/design_step6.py",
@@ -1737,7 +1749,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "failure_report_core",
-    "metric": 71
+    "metric": 72
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1755,13 +1767,25 @@
     "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "stage_terminal_state_core",
-    "metric": 18
+    "metric": 20
+  },
+  {
+    "file": "larch/design/design_terminal.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_reconcile_failed_publish_tail_report",
+    "metric": 8
+  },
+  {
+    "file": "larch/design/design_terminal.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_validated_publish_state",
+    "metric": 7
   },
   {
     "file": "larch/design/design_terminal.py",
     "code": "PLR0911",
     "qualified_symbol": "failure_report_core",
-    "metric": 19
+    "metric": 20
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1773,13 +1797,13 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0912",
     "qualified_symbol": "failure_report_core",
-    "metric": 21
+    "metric": 22
   },
   {
     "file": "larch/design/design_terminal.py",
     "code": "PLR0912",
     "qualified_symbol": "stage_terminal_state_core",
-    "metric": 17
+    "metric": 19
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1791,7 +1815,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "failure_report_core",
-    "metric": 225
+    "metric": 226
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1803,7 +1827,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "stage_terminal_state_core",
-    "metric": 64
+    "metric": 78
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -5858,6 +5882,12 @@
   {
     "file": "larch/state/_classify.py",
     "code": "C901",
+    "qualified_symbol": "_classify_generic_from_terminal_state",
+    "metric": 11
+  },
+  {
+    "file": "larch/state/_classify.py",
+    "code": "C901",
     "qualified_symbol": "_classify_text",
     "metric": 16
   },
@@ -6033,7 +6063,7 @@
     "file": "larch/state/_validate.py",
     "code": "C901",
     "qualified_symbol": "_terminal_state_value_valid",
-    "metric": 15
+    "metric": 21
   },
   {
     "file": "larch/state/_validate.py",
@@ -6045,7 +6075,7 @@
     "file": "larch/state/_validate.py",
     "code": "PLR0911",
     "qualified_symbol": "_terminal_state_value_valid",
-    "metric": 15
+    "metric": 21
   },
   {
     "file": "larch/state/_validate.py",
@@ -6057,7 +6087,7 @@
     "file": "larch/state/_validate.py",
     "code": "PLR0912",
     "qualified_symbol": "_terminal_state_value_valid",
-    "metric": 14
+    "metric": 20
   },
   {
     "file": "larch/state/_validate.py",
