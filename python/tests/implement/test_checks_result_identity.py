@@ -208,6 +208,40 @@ def test_child_validation_rejects_drift(tmp_path: Path) -> None:
         cri.validate_child_identity(repo_root=repo, expected=seeded)
 
 
+def test_classify_live_seed_rejects_duplicate_keys_and_schema_mismatch(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    live = cri.compute_identity(repo_root=repo)
+    merge = tmp_path / "merge.env"
+    merge.write_text(
+        "\n".join(
+            [
+                *[f"{key}={value}" for key, value in live.as_rows()],
+                f"{config.CHECKS_INPUT_FP_SCHEMA_KEY}=unknown-schema",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    duplicate = cri.classify_live_seed(merge_env=merge, live=live)
+    assert duplicate.state == config.CHECKS_RESULT_STATE_INCOMPLETE
+    assert duplicate.reason == "missing-identity"
+
+    merge.write_text(
+        "\n".join(
+            [
+                f"{config.CHECKS_INPUT_HEAD_SHA_KEY}={live.head_sha}",
+                f"{config.CHECKS_INPUT_TREE_FP_KEY}={live.tree_fingerprint}",
+                f"{config.CHECKS_INPUT_FP_SCHEMA_KEY}=unknown-schema",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    schema = cri.classify_live_seed(merge_env=merge, live=live)
+    assert schema.state == config.CHECKS_RESULT_STATE_INCOMPLETE
+    assert schema.reason == "missing-identity"
+
+
 def test_integrity_failure_not_reusable(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     live = cri.compute_identity(repo_root=repo)

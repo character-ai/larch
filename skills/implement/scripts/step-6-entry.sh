@@ -129,6 +129,16 @@ validate_child_identity() {
         --expected-schema "$schema"
 }
 
+post_publish_identity_matches() {
+    local checks_out=$1
+    # A successful Step 6 composite intentionally commits or rebases after its
+    # checks leg, so its launch identity is no longer the expected final one.
+    if printf '%s\n' "$checks_out" | grep -Fxq 'COMMIT_ROUTE_OUTCOME=continue'; then
+        return 0
+    fi
+    validate_child_identity "$REPO_ROOT" "$LAUNCH_HEAD" "$LAUNCH_FP" "$LAUNCH_SCHEMA" >/dev/null
+}
+
 write_integrity_failure() {
     local out=$1 reason=$2
     printf '%s\n' \
@@ -181,7 +191,7 @@ if [ "$BGJOB_CHILD" = "true" ]; then
     CHECKS_OUT=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry "${ORIGINAL_ARGS[@]}")
     rc=$?
     set -e
-    if ! validate_child_identity "$REPO_ROOT" "$LAUNCH_HEAD" "$LAUNCH_FP" "$LAUNCH_SCHEMA" >/dev/null; then
+    if ! post_publish_identity_matches "$CHECKS_OUT"; then
         write_integrity_failure "$MERGE_RESULT_ENV_TMP" "pre-publish-identity-mismatch"
         if [ -L "$MERGE_RESULT_ENV" ]; then
             exit 2

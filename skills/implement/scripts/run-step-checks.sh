@@ -139,6 +139,16 @@ validate_child_identity() {
         --expected-schema "$schema"
 }
 
+post_publish_identity_matches() {
+    local checks_out=$1
+    # A successful composite intentionally commits or rebases after its checks
+    # leg, so its launch identity is no longer the expected final identity.
+    if [ -n "$COMMIT_SITE" ] && printf '%s\n' "$checks_out" | grep -Fxq 'COMMIT_ROUTE_OUTCOME=continue'; then
+        return 0
+    fi
+    validate_child_identity "$REPO_ROOT" "$LAUNCH_HEAD" "$LAUNCH_FP" "$LAUNCH_SCHEMA" >/dev/null
+}
+
 write_integrity_failure() {
     local out=$1 step=$2 reason=$3
     printf '%s\n' \
@@ -210,7 +220,7 @@ if [ "$BGJOB_CHILD" = "true" ]; then
     CHECKS_OUT="$("${CHILD_CMD[@]}")"
     rc=$?
     set -e
-    if ! validate_child_identity "$REPO_ROOT" "$LAUNCH_HEAD" "$LAUNCH_FP" "$LAUNCH_SCHEMA" >/dev/null; then
+    if ! post_publish_identity_matches "$CHECKS_OUT"; then
         write_integrity_failure "$MERGE_RESULT_ENV_TMP" "$STEP" "pre-publish-identity-mismatch"
         if [ -L "$MERGE_RESULT_ENV" ]; then
             exit 2
