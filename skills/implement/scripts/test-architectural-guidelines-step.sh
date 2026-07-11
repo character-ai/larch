@@ -45,7 +45,7 @@ contains "$SKILL" 'Only a Bash-tool timeout while this adapter invocation remain
 contains "$SKILL" 'Capture `ASSESSMENT_REQUESTED_KINDS` from the normalization fence stdout.' 'normalization stdout binding'
 contains "$SKILL" 'adapter `ASSESSMENT_REQUESTED_KINDS` equal to that captured canonical binding' 'terminal kind binding'
 contains "$SKILL" 'complete `ASSESSMENT_RESULTS` coverage for exactly those requested kinds' 'terminal result coverage'
-contains "$SKILL" 'Any non-timeout adapter error, nonzero `BGJOB_RC`, malformed or missing KV, stale or mismatched identity, kind mismatch, incomplete result coverage, failed fingerprint validation, or status other than `complete` routes to existing Step 8 `tool-failure` handling.' 'terminal failure routing'
+contains "$SKILL" 'Any non-timeout adapter error, nonzero `BGJOB_RC`, malformed or missing KV, stale or mismatched identity, kind mismatch, incomplete result coverage, failed fingerprint validation, or status other than `complete` or a validated terminal `re-author-required` envelope routes to existing Step 8 `tool-failure` handling.' 'terminal failure routing'
 contains "$SKILL" 'After all requested results persist and validate, return to the Step 8 ship launcher above exactly once. Do not relaunch once per kind.' 'single ship relaunch'
 not_contains "$SKILL" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-invariants-present.md` completely. Author' 'no invariant prompt authorship'
 not_contains "$SKILL" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely. Invariant assessment' 'no guideline prompt authorship'
