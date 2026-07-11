@@ -54,6 +54,7 @@ from typing import cast
 from larch.core import architectural_guidelines
 from larch.implement import ci_monitor
 from larch.implement import main_health
+from larch.implement import scope_disposition
 from larch.core import config
 from larch.issue import file_oos
 from larch.state import finalize

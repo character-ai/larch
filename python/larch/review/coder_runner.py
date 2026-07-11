@@ -38,7 +38,6 @@ from larch.review.snapshot import (
     _collect_round_stage_paths,
     _collect_self_review_stage_paths,
     _ensure_pre_coder_snapshot,
-    _finalize_failed_cleanup,
     _round_has_full_pre_coder_snapshot,
     _snapshot_mode,
     _write_attempt_pre_tracked_paths,

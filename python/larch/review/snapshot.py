@@ -686,7 +686,6 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
 
 
 def _round_diff_base(round_dir: Path, *, since_committed: bool) -> str:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
     if since_committed:
         return _read_post_coder_head(round_dir)
     return _validated_pre_coder_snapshot_head(round_dir)

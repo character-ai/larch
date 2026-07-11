@@ -67,6 +67,10 @@ def _repo_root_for_context(*, ctx: RunContext, cwd: str | None) -> Path:
     return Path(cwd or ".").resolve()
 
 
+def _repo_root_from_cwd(cwd: str | None) -> Path:
+    return Path(cwd or ".").resolve()
+
+
 def _require_scope_disposition(
     *, ctx: RunContext, cwd: str | None, runner: Runner = proc
 ) -> None:

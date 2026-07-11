@@ -15,6 +15,7 @@ import os
 import re
 import shutil
 import stat
+import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TypeAlias, cast
