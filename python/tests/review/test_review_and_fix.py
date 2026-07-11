@@ -2368,7 +2368,7 @@ def test_stage_and_commit_round_passes_repo_root_as_cwd(tmp_path, monkeypatch):
     round_dir.mkdir()
     repo_root = str(tmp_path / "repo")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
-    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda _rd: ["python/a.py"])  # type: ignore[arg-type]
+    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda _rd, **_kwargs: ["python/a.py"])  # type: ignore[arg-type]
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "abc123")
     monkeypatch.setattr(coder_runner, "_step5_repo_root", lambda: repo_root)
     captured_cwds: list[object] = []
@@ -3440,7 +3440,7 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
         tool_log.write_text("codex noop\n", encoding="utf-8")
         return True
 
-    def fail_commit(*, round_num: int, round_dir: Path) -> review_and_fix.RoundCommitResult:
+    def fail_commit(*, round_num: int, round_dir: Path, snapshot: object = None) -> review_and_fix.RoundCommitResult:
         review_and_fix._run(["git", "add", "tracked.txt"])
         return review_and_fix.RoundCommitResult()
 
@@ -3478,7 +3478,7 @@ def test_apply_findings_with_coder_stale_index_lock_status_skips_cleanup(
         tool_log.write_text("cursor\n", encoding="utf-8")
         return True
 
-    def stale_commit(*, round_num: int, round_dir: Path) -> review_and_fix.RoundCommitResult:
+    def stale_commit(*, round_num: int, round_dir: Path, snapshot: object = None) -> review_and_fix.RoundCommitResult:
         return review_and_fix.RoundCommitResult(failure_reason="stale-index-lock")
 
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", cursor)
@@ -3614,6 +3614,7 @@ def test_apply_findings_with_coder_legacy_head_only_not_upgraded_to_full(
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", lambda *_a, **_k: False)
     monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda *_a, **_k: False)
@@ -3638,6 +3639,7 @@ def test_apply_findings_with_coder_head_only_no_edit_preserves_preexisting_untra
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", lambda *_a, **_k: False)
     monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda *_a, **_k: False)
@@ -3711,6 +3713,7 @@ def test_apply_findings_with_coder_head_only_successful_noedit_falls_through_wit
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         tool_log.write_text("noop\n", encoding="utf-8")
@@ -3869,6 +3872,7 @@ def test_apply_findings_with_coder_head_untracked_preserves_staged_carryover(
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
@@ -3897,6 +3901,7 @@ def test_apply_findings_with_coder_head_untracked_failed_cleans_new_untracked(
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "new-untracked.txt").write_text("coder\n", encoding="utf-8")

@@ -177,7 +177,10 @@ def _snapshot_artifact_identity(root: Path) -> tuple[tuple[str, tuple[int, int]]
 
 
 def _validate_pre_coder_snapshot(round_dir: Path) -> ValidatedPreCoderSnapshot:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
+    return _validate_pre_coder_snapshot_dir(pre_coder_snapshot_dir(round_dir))
+
+
+def _validate_pre_coder_snapshot_dir(snap_dir: Path) -> ValidatedPreCoderSnapshot:
     if not snap_dir.exists() and not snap_dir.is_symlink():
         return ValidatedPreCoderSnapshot(mode="missing", root=snap_dir)
     _validate_snapshot_root(snap_dir)
@@ -243,7 +246,7 @@ def _validate_pre_coder_snapshot(round_dir: Path) -> ValidatedPreCoderSnapshot:
 
 def revalidate_pre_coder_snapshot(snapshot: ValidatedPreCoderSnapshot) -> None:
     """Reject snapshots changed since their trusted identity was captured."""
-    current = _validate_pre_coder_snapshot(snapshot.root.parent)
+    current = _validate_pre_coder_snapshot_dir(snapshot.root)
     if current.mode != snapshot.mode:
         raise OSError("pre-coder snapshot changed after validation")
     expected = dict(snapshot.artifact_identity)
