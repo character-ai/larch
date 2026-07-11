@@ -1,0 +1,10 @@
+{
+  "highest_closed_issue_number_scanned": 6826,
+  "repo": "character-ai/larch",
+  "run_date": "2026-07-11T04:51:13Z",
+  "scan_started_at": "2026-07-11T04:44:51Z",
+  "schema_version": 1,
+  "search": "[BUG] in:title",
+  "selected_count": 24,
+  "state": "closed"
+}
