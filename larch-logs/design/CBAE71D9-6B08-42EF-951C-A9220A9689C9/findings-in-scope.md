@@ -1,0 +1,15 @@
+### FINDING_1: Clarify `--coder` override semantics
+- **Reviewer(s)**: Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: minor
+- **Concern**: The planned `--coder` description conflates explicit external-tool overrides with `--coder claude`. Scenario: `--coder claude` selects Claude directly and does not retain Codex or Cursor as fallbacks, while `--coder codex` and `--coder cursor` reorder the external tools and retain the remaining tools as fallbacks.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Describe `--coder codex` and `--coder cursor` as external-tool overrides with the other external tool and Claude as fallbacks; document separately that `--coder claude` selects Claude directly
+  - From Codex-Pragmatic: Limit the fallback wording to `--coder=codex` and `--coder=cursor`, and state separately that `--coder=claude` selects Claude directly
+  - From Codex-Requirements: Clarify that `--coder codex` or `--coder cursor` reorders the external tools and keeps the remaining tools as fallbacks, while `--coder claude` selects Claude directly
+
+### FINDING_2: Update the stale `LARCH_CURSOR_MODEL` documentation
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: minor
+- **Concern**: The plan omits revising the stale `LARCH_CURSOR_MODEL` bullet that conflates the Step 2 coder default with voter and fix/coder defaults. After the MODERATE Step 2 `grok-4.5` default lands, the existing `composer-2.5` wording would contradict it and blur the distinction between difficulty-specific Step 2 defaults and the global fallback.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add an explicit task under the LARCH_CURSOR_MODEL update to revise or remove line 196: split Step 2 coder defaults from voter/fix/review-panel defaults, and qualify the When-not-set composer-2.5 bullet as the global fallback for roles without a difficulty-specific Step 2 map
