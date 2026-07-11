@@ -124,6 +124,7 @@ class FollowupIssue:
 class FallbackProvenance:
     session_id: str
     anchor_head: str
+    path_signatures: dict[str, str]
 
 
 @dataclass(frozen=True)
@@ -438,30 +439,61 @@ def _parse_fallback_provenance(parsed: object) -> FallbackProvenance | None:
     data = cast("Mapping[str, object]", parsed)
     session_id = data.get("session_id")
     anchor_head = data.get("anchor_head")
-    if (
-        str(data.get("schema_version") or "") != "2"
-        or not isinstance(session_id, str)
-        or not isinstance(anchor_head, str)
-        or not session_id
-        or not re.fullmatch(r"[0-9a-f]{40,64}", anchor_head)
+    raw_signatures = data.get("path_signatures")
+    if str(data.get("schema_version") or "") != "3":
+        return None
+    if not isinstance(session_id, str) or not session_id:
+        return None
+    if not isinstance(anchor_head, str) or not re.fullmatch(
+        r"[0-9a-f]{40,64}", anchor_head
     ):
         return None
-    return FallbackProvenance(session_id=session_id, anchor_head=anchor_head)
+    if not isinstance(raw_signatures, dict):
+        return None
+    signatures = cast("dict[object, object]", raw_signatures)
+    path_signatures: dict[str, str] = {}
+    for path, signature in signatures.items():
+        if (
+            not isinstance(path, str)
+            or not isinstance(signature, str)
+            or not path
+            or "\0" in path
+            or not re.fullmatch(r"[0-9a-f]{64}|missing|unreadable", signature)
+        ):
+            return None
+        path_signatures[path] = signature
+    return FallbackProvenance(
+        session_id=session_id,
+        anchor_head=anchor_head,
+        path_signatures=path_signatures,
+    )
 
 
 def _write_fallback_provenance(
     tmpdir: Path, provenance: FallbackProvenance
 ) -> None:
     payload = {
-        "schema_version": "2",
+        "schema_version": "3",
         "session_id": provenance.session_id,
         "anchor_head": provenance.anchor_head,
+        "path_signatures": provenance.path_signatures,
     }
     larch_io.trusted_atomic_write(
         _fallback_provenance_path(tmpdir),
         _json_text(payload),
         root=tmpdir,
     )
+
+
+def _fallback_path_signature(*, repo_root: Path, path: str) -> str:
+    try:
+        target = (repo_root / path).resolve()
+        root = repo_root.resolve()
+        if root not in target.parents or not target.is_file() or target.is_symlink():
+            return "missing"
+        return hashlib.sha256(target.read_bytes()).hexdigest()
+    except OSError:
+        return "unreadable"
 
 
 def _frozen_fallback_touched_paths(
@@ -488,26 +520,45 @@ def _frozen_fallback_touched_paths(
         return tuple(sorted(porcelain_plan))
     current_head = head.stdout.strip()
     provenance = _read_fallback_provenance(tmpdir)
+    active_provenance = (
+        provenance if provenance is not None and provenance.session_id == session_id else None
+    )
     committed_plan: set[str] = set()
-    if provenance is not None and provenance.session_id == session_id:
+    if active_provenance is not None:
         diff = _git(
             runner,
-            ["diff", "--name-only", f"{provenance.anchor_head}..{current_head}"],
+            ["diff", "--name-only", f"{active_provenance.anchor_head}..{current_head}"],
             cwd=repo_root,
         )
-        if diff.returncode == 0:
-            committed_plan.update(
-                path for path in diff.stdout.splitlines() if path in plan_paths
+        if diff.returncode != 0:
+            raise ShipError("frozen fallback anchor-to-HEAD diff failed")
+        committed_plan.update(
+            path
+            for path in diff.stdout.splitlines()
+            if (
+                path in active_provenance.path_signatures
+                and _fallback_path_signature(repo_root=repo_root, path=path)
+                == active_provenance.path_signatures[path]
             )
+        )
     if session_id:
+        path_signatures = dict(active_provenance.path_signatures) if active_provenance else {}
+        path_signatures.update(
+            {
+                path: _fallback_path_signature(repo_root=repo_root, path=path)
+                for path in porcelain_plan
+            }
+        )
         _write_fallback_provenance(
             tmpdir,
             FallbackProvenance(
                 session_id=session_id,
-                anchor_head=(provenance.anchor_head if provenance and provenance.session_id == session_id else current_head),
+                anchor_head=(active_provenance.anchor_head if active_provenance else current_head),
+                path_signatures=path_signatures,
             ),
         )
-    return tuple(sorted(porcelain_plan | committed_plan))
+    verified_porcelain: set[str] = porcelain_plan if session_id else set()
+    return tuple(sorted(verified_porcelain | committed_plan))
 
 
 def _fallback_session_id(tmpdir: Path) -> str:

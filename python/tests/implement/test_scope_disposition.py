@@ -459,6 +459,7 @@ def test_malformed_symbolic_ref_uses_frozen_fallback(
     tmp_path: Path, remote_head: str, capsys: pytest.CaptureFixture[str]
 ) -> None:
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     plan = tmp_path / "src"
     plan.mkdir()
     target = plan / "a.py"
@@ -505,6 +506,7 @@ def test_frozen_fallback_skips_baseline_diff_and_uses_porcelain(
     tmp_path: Path,
 ) -> None:
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     src = tmp_path / "src"
     src.mkdir()
     _ = (src / "a.py").write_text("mod\n", encoding="utf-8")
@@ -557,6 +559,7 @@ def test_frozen_fallback_ignores_committed_upstream_churn(tmp_path: Path) -> Non
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(_plan(["src/a.py", "src/churn.py"]), encoding="utf-8")
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     src = tmp_path / "src"
     src.mkdir()
     _ = (src / "a.py").write_text("local\n", encoding="utf-8")
@@ -580,6 +583,7 @@ def test_frozen_fallback_invalid_range_still_returns_porcelain(
     tmp_path: Path,
 ) -> None:
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     src = tmp_path / "src"
     src.mkdir()
     _ = (src / "a.py").write_text("local\n", encoding="utf-8")
@@ -598,6 +602,28 @@ def test_frozen_fallback_invalid_range_still_returns_porcelain(
     )
 
     assert touched == ("src/a.py",)
+
+
+def test_frozen_fallback_ignores_external_commit_before_run_provenance(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=["src/a.py"],
+        status_z="",
+        head="b" * 40,
+        fail_symbolic_refs=frozenset({"origin"}),
+    )
+
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=["src/a.py"],
+    )
+
+    assert not touched
 
 
 def test_frozen_fallback_post_commit_provenance_retained(
@@ -666,7 +692,7 @@ def test_frozen_fallback_ignores_preexisting_provenance(tmp_path: Path) -> None:
         plan_paths=["src/a.py"],
     )
 
-    assert touched == ()
+    assert not touched
 
 
 def test_frozen_fallback_stale_provenance_pruned_after_revert(
@@ -675,6 +701,7 @@ def test_frozen_fallback_stale_provenance_pruned_after_revert(
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     src = tmp_path / "src"
     src.mkdir()
     target = src / "a.py"
@@ -691,14 +718,54 @@ def test_frozen_fallback_stale_provenance_pruned_after_revert(
     )
     assert first.touched_paths == ("src/a.py",)
 
-    # Commit simulation then revert content to a different digest.
+    # Commit the observed change, then revert it in a second commit.
     runner.status_z = ""
+    runner.head = "b" * 40
+    runner.diff_paths = ("src/a.py",)
+    committed = scope_disposition.compute_coverage(
+        tmpdir=tmp_path, repo_root=tmp_path, plan_file=plan_file, runner=runner
+    )
+    assert committed.touched_paths == ("src/a.py",)
+
     _ = target.write_text("original\n", encoding="utf-8")
+    runner.head = "c" * 40
+    runner.diff_paths = ()
     second = scope_disposition.compute_coverage(
         tmpdir=tmp_path, repo_root=tmp_path, plan_file=plan_file, runner=runner
     )
-    assert second.touched_paths == ()
+    assert not second.touched_paths
     assert second.untouched_paths == ("src/a.py",)
+
+
+def test_frozen_fallback_anchor_diff_failure_raises_after_provenance(
+    tmp_path: Path,
+) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("implemented\n", encoding="utf-8")
+    runner = FakeRunner(
+        status_z=_porcelain_z([" M src/a.py"]),
+        fail_symbolic_refs=frozenset({"origin"}),
+    )
+    assert scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=runner,
+        plan_paths=["src/a.py"],
+    ) == ("src/a.py",)
+
+    runner.status_z = ""
+    runner.head = "b" * 40
+    runner.fail_diff = True
+    with pytest.raises(ShipError, match="frozen fallback anchor-to-HEAD diff failed"):
+        _ = scope_disposition.touched_paths_since_baseline(
+            tmpdir=tmp_path,
+            repo_root=tmp_path,
+            runner=runner,
+            plan_paths=["src/a.py"],
+        )
 
 
 def test_frozen_fallback_diagnostic_does_not_alter_stdout(
@@ -707,6 +774,7 @@ def test_frozen_fallback_diagnostic_does_not_alter_stdout(
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     src = tmp_path / "src"
     src.mkdir()
     _ = (src / "a.py").write_text("x\n", encoding="utf-8")
@@ -758,7 +826,7 @@ def test_malformed_fallback_provenance_is_ignored(tmp_path: Path) -> None:
         runner=runner,
         plan_paths=["src/a.py"],
     )
-    assert touched == ()
+    assert not touched
 
 
 def test_record_proceed_partial_is_durable_after_all_side_effects(
