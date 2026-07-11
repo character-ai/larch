@@ -7776,6 +7776,50 @@ def test_invariant_authored_violation_takes_precedence_over_unavailable() -> Non
     assert violation.outcome == ship_guidelines.OUTCOME_VIOLATION
 
 
+def test_invariant_assessment_kind_tolerates_verbose_clean_note() -> None:
+    # Issue #6882: a clean note may carry rationale beyond the exact line, even
+    # rationale that references an I-* entry, and must still classify as clean.
+    verbose_clean = (
+        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
+        + "\nThe adapter realizes I-Stale-1 by caching the fingerprint."
+    )
+    assert ship_guidelines._invariant_assessment_kind(verbose_clean) == "clean"
+    assert ship_guidelines._invariant_assessment_kind("I-Stale-1: violated") == "violation"
+    assert ship_guidelines._invariant_assessment_kind(
+        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
+    ) == "clean"
+
+
+def test_guideline_assessment_kind_tolerates_verbose_clean_note() -> None:
+    verbose_clean = (
+        ship.architectural_guidelines.CLEAN_PRESENTATION_NOTE
+        + "\nThis path respects G-Py-1 by avoiding shell composition."
+    )
+    assert ship_guidelines._assessment_kind(verbose_clean) == "clean"
+    assert ship_guidelines._assessment_kind("G-Py-1: deviates because of X") == "deviation"
+
+
+def test_invariant_ship_outcome_verbose_clean_note_is_clean_not_violation() -> None:
+    # Regression for the reported ship-blocking path (#6882): a verbose clean note
+    # must route to a clean outcome, not NEXT_ACTION=ci-fix with a violation reason.
+    verbose_clean = (
+        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
+        + "\nThe adapter realizes I-Stale-1 by caching the fingerprint."
+    )
+    outcome = ship_guidelines._classify_invariant_ship_outcome(
+        result=ship_guidelines.InvariantsGateResult(
+            note=verbose_clean,
+            invariants_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+    assert outcome.outcome == ship_guidelines.OUTCOME_CLEAN
+    assert outcome.reason == ship_guidelines.REASON_CLEAN_NOTE
+    assert outcome.assessment_kind == "clean"
+
+
 def test_guideline_outcome_validator_rejects_unavailable_with_clean_assessment_kind() -> None:
     error = ship.architectural_guidelines.validate_guideline_ship_outcome_record({
         "schema_version": "1", "phase": "implement", "step": "8",

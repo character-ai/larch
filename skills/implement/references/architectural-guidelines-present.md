@@ -17,8 +17,8 @@ Required artifacts:
 
 Write exactly one assessment body to `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md`:
 
-- Clean path: `Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.`
-- Deviation path: a short bullet list naming each deviation and rationale.
+- Clean path: `Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.` Optional rationale may follow on subsequent lines; the durable wrapper classifies the note as clean when its first line is this clean sentence, even if later prose references a `G-*` entry.
+- Deviation path: a short bullet list naming each deviation and rationale. A note is classified as a deviation only when it names a specific `G-*` guideline and does not lead with the clean sentence.
 
 If deviations are genuine, also append the deviation notes under `Warnings` with the pinned helper:
 

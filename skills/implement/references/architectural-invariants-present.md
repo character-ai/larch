@@ -17,8 +17,8 @@ Required artifacts:
 
 Write exactly one assessment body to `$IMPLEMENT_TMPDIR/architectural-invariant-assessment-draft.md`:
 
-- Clean path: `Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.`
-- Violation path: concise bullets naming each violated `I-*` entry and why the current final diff violates it.
+- Clean path: `Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.` Optional rationale may follow on subsequent lines; the durable wrapper classifies the note as clean when its first line is this clean sentence, even if later prose references an `I-*` entry.
+- Violation path: concise bullets naming each violated `I-*` entry and why the current final diff violates it. A note is classified as a violation only when it names a specific `I-*` invariant and does not lead with the clean sentence.
 
 Persist the durable note with this wrapper:
 

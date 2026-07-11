@@ -149,19 +149,29 @@ class InvariantsShipOutcome:
 
 
 def _assessment_kind(note: str) -> str:
+    # Tolerant classification (issue #6882): a clean note may carry rationale beyond
+    # the exact presentation line, so a note whose first line is the clean note is
+    # clean even when later prose references a G-* entry. A note is a deviation only
+    # when it names a specific G-* guideline without leading with the clean line.
     if not note.strip():
         return ""
-    if note.rstrip("\n") == architectural_guidelines.CLEAN_PRESENTATION_NOTE:
+    first_line = note.split("\n", 1)[0].strip()
+    if first_line == architectural_guidelines.CLEAN_PRESENTATION_NOTE:
         return "clean"
-    return "deviation"
+    return "deviation" if architectural_guidelines.NOTE_GUIDELINE_ID_RE.search(note) else "clean"
 
 
 def _invariant_assessment_kind(note: str) -> str:
+    # Tolerant classification (issue #6882): a clean note may carry rationale beyond
+    # the exact presentation line, so a note whose first line is the clean note is
+    # clean even when later prose references an I-* entry. A note is a violation only
+    # when it names a specific I-* invariant without leading with the clean line.
     if not note.strip():
         return ""
-    if note.rstrip("\n") == architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE:
+    first_line = note.split("\n", 1)[0].strip()
+    if first_line == architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE:
         return "clean"
-    return "violation"
+    return "violation" if architectural_guidelines.NOTE_INVARIANT_ID_RE.search(note) else "clean"
 
 
 def _bounded_detail(text: str) -> str:

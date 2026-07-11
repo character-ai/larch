@@ -2144,6 +2144,33 @@ def test_validate_invariant_ship_outcome_record_accepts_violation() -> None:
 
 
 @pytest.mark.parametrize(
+    ("note", "expected"),
+    [
+        ("", ""),
+        ("   \n  ", ""),
+        (ag.CLEAN_INVARIANT_PRESENTATION_NOTE, "clean"),
+        (ag.CLEAN_INVARIANT_PRESENTATION_NOTE + "\n", "clean"),
+        # Issue #6882: a clean note may carry rationale beyond the exact line.
+        (ag.CLEAN_INVARIANT_PRESENTATION_NOTE + "\nThe adapter realizes the invariant.", "clean"),
+        # The reported case: rationale that even references an I-* entry stays clean
+        # because the first line is the clean sentence.
+        (ag.CLEAN_INVARIANT_PRESENTATION_NOTE + "\nThe adapter realizes I-Stale-1 by caching.", "clean"),
+        # A clean first line with trailing whitespace still classifies as clean.
+        (ag.CLEAN_INVARIANT_PRESENTATION_NOTE + "  \nextra rationale", "clean"),
+        # A note that names a specific invariant, without leading with the clean line,
+        # is the violation signal per the documented contract.
+        ("I-Test-1: violated by the new cache", "violation"),
+        ("- I-Stale-1: stale fingerprint slips through\n- I-Fresh-2: not refreshed", "violation"),
+        # A note that neither leads with the clean line nor names an invariant leans
+        # clean rather than blocking the ship on ambiguous prose.
+        ("No specific invariant applies to this diff.", "clean"),
+    ],
+)
+def test_invariant_assessment_kind_tolerates_verbose_clean_notes(note: str, expected: str) -> None:
+    assert ag._invariant_assessment_kind(note) == expected
+
+
+@pytest.mark.parametrize(
     ("path", "expected"),
     [
         ("larch-logs/run/log.txt", True),
