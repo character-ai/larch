@@ -173,7 +173,7 @@ import shutil,sys
 sys.path.insert(0,str(Path(sys.argv[1])/"python"))
 from larch.core import external_defaults
 result=external_defaults.next_untried_tier("implement.ci_recovery_fixer",tuple(filter(None,sys.argv[2].split(','))),codex_present=shutil.which("codex") is not None,cursor_present=shutil.which("cursor") is not None,claude_present=shutil.which("claude") is not None)
-print(f"{result.action}\t{result.tier}\t{result.reason}")
+print(f"{result.action}\t{result.selected_tier}\t{result.failure_reason}")
 PY
 ) || fail tier-selection-failed
 ACTION=$(printf '%s' "$SELECT" | cut -f1); TIER=$(printf '%s' "$SELECT" | cut -f2); REASON=$(printf '%s' "$SELECT" | cut -f3)
