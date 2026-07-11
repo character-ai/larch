@@ -5923,6 +5923,12 @@
   },
   {
     "file": "larch/state/_classify.py",
+    "code": "C901",
+    "qualified_symbol": "classify",
+    "metric": 12
+  },
+  {
+    "file": "larch/state/_classify.py",
     "code": "PLR0911",
     "qualified_symbol": "_classify_text",
     "metric": 16
@@ -5943,7 +5949,7 @@
     "file": "larch/state/_classify.py",
     "code": "PLR0915",
     "qualified_symbol": "classify",
-    "metric": 51
+    "metric": 60
   },
   {
     "file": "larch/state/_corpus.py",

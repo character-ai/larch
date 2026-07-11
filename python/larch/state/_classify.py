@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import re
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -38,6 +39,7 @@ from larch.state._tokens import (
 )
 from larch.state._detail_log import _read_failure_detail_log_with_sidecar_fallback, _read_optional_evidence
 from larch.state._escalation import _artifact_path, _validate_artifact_prefix
+from larch.state._normalize import _TERMINAL_MERGE_RESULTS
 from larch.state._validate import _validated_terminal_state_values
 
 
@@ -221,6 +223,34 @@ def _classify_short_circuit(*, abandoned_bgjob_step: str | None, any_stall: bool
     return None
 
 
+@dataclass(frozen=True)
+class _PostmergeFlushContext:
+    any_stall: bool
+    phase: str
+    step: str
+    state: dict[str, str]
+    evidence: str
+    bail: str
+
+
+def _expected_postmerge_flush(context: _PostmergeFlushContext) -> bool:
+    lower = f"{context.bail}\n{context.evidence}".lower()
+    unexpected_markers = (
+        "redaction-failed",
+        "post-merge-refresh-failed",
+        "manifest-recovery-failed",
+        "commit-failed",
+    )
+    return bool(
+        context.any_stall
+        and context.phase == "postmerge"
+        and context.step == "postmerge-flush"
+        and context.state.get("MERGE_RESULT", "").strip() in _TERMINAL_MERGE_RESULTS
+        and config.REFRESH_SKIP_PRETERMINAL_OUTCOME in lower
+        and not any(marker in lower for marker in unexpected_markers)
+    )
+
+
 def classify(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     primary_state_file = getattr(args, "primary_state_file", "") or ""
@@ -274,14 +304,29 @@ def classify(args: argparse.Namespace) -> int:
             evidence = f"{evidence}\n{_read_optional_evidence(state_path)}"
     short_circuit = _classify_short_circuit(abandoned_bgjob_step=abandoned_bgjob_step, any_stall=any_stall)
     raw_exit_code = args.exit_code or st.get("EXIT_CODE", "unknown")
-    klass, _hint, pattern = short_circuit or _classify_text(
-        text=evidence,
-        bail=bail,
+    final_hint = False
+    result = short_circuit
+    postmerge_context = _PostmergeFlushContext(
+        any_stall=any_stall,
+        phase=phase,
         step=step,
-        detail_log_valid=detail_log_valid,
-        exit_code=raw_exit_code,
+        state=st,
+        evidence=evidence,
+        bail=bail,
     )
-    hint = _resume_hint_for(klass=klass, step=step, phase=phase, pattern=pattern)
+    if result is None and _expected_postmerge_flush(postmerge_context):
+        result = ("operator-action", "none", "postmerge-flush-expected")
+        final_hint = True
+    if result is None:
+        result = _classify_text(
+            text=evidence,
+            bail=bail,
+            step=step,
+            detail_log_valid=detail_log_valid,
+            exit_code=raw_exit_code,
+        )
+    klass, classified_hint, pattern = result
+    hint = classified_hint if final_hint else _resume_hint_for(klass=klass, step=step, phase=phase, pattern=pattern)
     evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
     signature = hashlib.sha256(
         f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode(),
@@ -290,7 +335,13 @@ def classify(args: argparse.Namespace) -> int:
         attempts = Path(args.attempts_file)
         if not _validate_attempts_file_path(tmpdir=tmpdir, path=attempts):
             return 1
-        if attempts.is_file() and klass not in {"contract-failure", "unrecoverable"} and _latest_attempt_signature(attempts) == signature:
+        repeat_exempt_patterns = {"postmerge-flush-expected"}
+        if (
+            attempts.is_file()
+            and klass not in {"contract-failure", "unrecoverable"}
+            and pattern not in repeat_exempt_patterns
+            and _latest_attempt_signature(attempts) == signature
+        ):
             klass = "same-cause-repeat"
             hint = "none"
             pattern = "same-cause-repeat"
