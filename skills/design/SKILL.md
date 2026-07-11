@@ -108,7 +108,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session \
 If `session setup` exits non-zero, the block prints its captured stdout/stderr first (including any raw `PREFLIGHT_ERROR=...` line). Then print the normalized skill-level message and abort:
 **⚠ /design: session setup failed. Investigate `PREFLIGHT_ERROR` and re-run.**
 This writes `$DESIGN_TMPDIR/source-env.sh`, refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh`, and writes `~/.cache/larch/sessions/design-run-$PPID.sh` so later launcher fences resolve on every Bash block. `--issue-number "$ISSUE_NUMBER"` should be appended on the Step 0b follow-up writer invocation once that value is bound. The writer accepts a re-invocation to refresh keys.
-**Execution-issues logging**: failing Bash tools, external reviewer launch/collector statuses other than `OK`, and Agent fallback failures must first capture full stdout/stderr or returned text to `$DESIGN_TMPDIR/*-failure.log`, then append it verbatim with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure` under `External Reviewer Issues`; include `${OUTPUT}.diag` for collector failures. Do not summarize or truncate. Exception: Step 5b.5 diagram generation and sanitizer rejection append bounded `Warnings` lines only (`reason=`, `exit-code=`, `site=design Step 5b.5`) via `design_diagram_log.py`; raw generator/sanitizer output and diagram bodies stay out of committed logs.
+**Execution-issues logging**: capture failing Bash, reviewer/collector, and Agent fallback output in `$DESIGN_TMPDIR/*-failure.log`, then append it verbatim with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure` under `External Reviewer Issues`; include `${OUTPUT}.diag` for collector failures. Exception: Step 5b.5 may log only bounded diagram-generation warnings via `design_diagram_log.py`; Step 5c owns sanitizer-rejection warnings/logging. Never log diagram bodies or raw generator/sanitizer output.
 **Degraded-tools gate (#3207).** The Step 0a session wrapper owns the design degraded-tools gate immediately after `session write-design-env` succeeds. Maintainer contract pointer: `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`. It invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags from the session setup envelope and `--skill design`.
 Parse `STEP0_STATUS`, `DEGRADED`, `BOTH_DOWN`, optional `DEGRADED_HARD_FAIL`, and optional `DEGRADED_PROMPT_REQUIRED` from the Step 0a wrapper stdout (ignore unrelated lines). Branch on `STEP0_STATUS` before any later Step 0 work:
 
@@ -578,7 +578,7 @@ When annotate returns `annotate-label-failed`, `.oos-priority-label-pending` exi
 
 ### 5b.5: Post-approval architecture diagram
 
-Gate C already returned **Approve** or `--skip-approve` auto-approved, and Step 5b has finished on a success, skip, or non-blocking failure path. Run this step before Step 5c on every happy path.
+Run after Gate C approval and Step 5b, before Step 5c.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode diagram
@@ -586,11 +586,9 @@ Gate C already returned **Approve** or `--skip-approve` auto-approved, and Step 
 
 Print: `> **🔶 /design 5b.5: arch diagram**`
 
-Parse `DIAGRAM_REQUIRED=` from the entry wrapper output. If `DIAGRAM_REQUIRED=false`, the wrapper removed stale diagram files, wrote `architecture-diagram.skipped`, emitted the skip breadcrumb, and wrote `.completed/step-5b.5`. Continue to Step 5c. Do not print diagram content.
+Parse `DIAGRAM_REQUIRED=`. If false, the wrapper writes the skip artifact and completion marker; continue without diagram content. If true, quietly write only `architecture-diagram.candidate.md` per `finalize-step5.md`: no Claude-authored lead-in, safe-content reading, content/write/validation narration, success, or transition recap. Harness tool lines, including `Write(...)`, `Wrote N lines`, and command counts, are outside this contract. Keep required `🔶` breadcrumbs and generation-failure-only `⚠ 5b.5` warnings. Do not run `python3 python/cli.py mermaid sanitize`, `design-step3b-sanitize.sh`, or another sanitizer; promote/reject, move/delete the candidate; or write `.completed/step-5b.5`, `architecture-diagram.md`, or `architecture-diagram.skipped`. Step 5c owns them and sanitizer-rejection logging.
 
-If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, bounded failure logging, and candidate-writing rules. Write only `architecture-diagram.candidate.md`; Step 5c sanitizes, promotes, or skips it before publishing.
-
-> **Continue to Step 5c IMMEDIATELY** after the skip marker exists or the candidate write/failure-log path is complete.
+> **Continue to Step 5c IMMEDIATELY.** No sanitizer pre-check or free-form recap.
 
 ### 5c: Write `larch:plan` to GitHub + publish
 
