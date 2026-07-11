@@ -3769,7 +3769,7 @@ def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mi
     _patch_coder_basics(monkeypatch)
     (repo / "tracked.txt").write_text("user edit\n", encoding="utf-8")
     round_dir = tmp_path / "impl" / "round-1"
-    review_and_fix._write_pre_coder_snapshot(round_dir)
+    snapshot._write_pre_coder_snapshot(round_dir)
     assert snapshot._snapshot_mode(round_dir) == "full"
     cursor_calls: list[bool] = []
     original_matches = snapshot._path_matches_pre_coder_snapshot
@@ -3840,7 +3840,7 @@ def test_apply_findings_with_coder_stale_snapshot_entry_finalizes_before_failed(
     monkeypatch.chdir(repo)
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
-    review_and_fix._write_pre_coder_snapshot(round_dir)
+    snapshot._write_pre_coder_snapshot(round_dir)
     (repo / "tracked.txt").write_text("committed advance\n", encoding="utf-8")
     review_and_fix._run(["git", "add", "tracked.txt"])
     review_and_fix._run(["git", "commit", "--quiet", "-m", "advance head"])

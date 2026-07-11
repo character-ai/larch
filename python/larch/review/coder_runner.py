@@ -24,7 +24,6 @@ from larch.review._raf_util import (
     _git_head,
     _parse_env_lines,
     _plugin_root,
-    _read_text,
     _run,
     _step5_repo_root,
     _write_env,

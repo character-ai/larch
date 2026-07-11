@@ -752,13 +752,6 @@ def disposition_deferred_inventory(
     )
 
 
-def _optional_tmpdir(tmpdir: Path | None) -> Path | None:
-    if tmpdir is not None:
-        return tmpdir
-    raw = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    return Path(raw) if raw else None
-
-
 def _parse_cli_kv(text: str) -> dict[str, str]:
     return larch_io.parse_kv(text, cr_strip="strip")
 
