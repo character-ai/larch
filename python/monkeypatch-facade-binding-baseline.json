@@ -793,6 +793,51 @@
   },
   {
     "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_implement_selects_model_by_difficulty",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_resolve_review_codex_workdir",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 4,
+    "reason": "facade patching via consuming module for Cursor implement launcher test"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_implement_selects_model_by_difficulty",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 5,
+    "reason": "facade patching via consuming module for Cursor implement launcher test"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_implement_selects_model_by_difficulty",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_export_env",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 3,
+    "reason": "facade patching via consuming module for Cursor implement launcher test"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_implement_selects_model_by_difficulty",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_preflight",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 1,
+    "reason": "facade patching via consuming module for Cursor implement launcher test"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_implement_selects_model_by_difficulty",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_preread_service_token",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 2,
+    "reason": "facade patching via consuming module for Cursor implement launcher test"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
     "qualified_symbol": "test_record_timing_wrappers_delegate_to_launch_timing",
     "facade_module": "larch.agents._ci_launcher",
     "attribute": "_record_launch_timing",
