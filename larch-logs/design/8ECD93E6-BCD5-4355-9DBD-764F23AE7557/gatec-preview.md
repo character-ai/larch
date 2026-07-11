@@ -1,0 +1,182 @@
+## Final Design Plan
+
+The plan is very large. Showing the full plan body below.
+
+## Plan
+
+## Approach
+
+Extend the existing lifecycle-prefix ratchet, then add a separate text-surface lint.
+
+For Python composition detection:
+
+- Add `fstring_compose`, `concat_compose`, and `format_compose` to `CONTEXT_KINDS`.
+- Reuse `build_token_map()` and its canonical constant guidance.
+- Normalize candidate literals by stripping trailing ASCII spaces and applying `casefold()`.
+- Match a token when the normalized literal equals it or starts with the token followed by a space or colon.
+- Inspect only:
+  - String `ast.Constant` parts directly inside `ast.JoinedStr`.
+  - String `ast.Constant` operands directly attached to `ast.BinOp` with `ast.Add`.
+  - A string-literal receiver of `.format(...)`.
+- Preserve scope tracking, occurrence identities, inline pragmas, and baseline behavior.
+- Avoid duplicate findings while recursively walking nested concatenations and calls.
+
+The expanded lint will expose the current `f"[BUG] in:title closed:{boundary}"` composition in `python/larch/issue/audit_runs.py`. Replace that literal with `title_match.BUG_PREFIX` or an equivalent direct import from the same owner. Do not add a new baseline row.
+
+For prompt and script surfaces:
+
+- Add `lint prefix-case-variant`.
+- Reuse the lifecycle lint's canonical token map instead of maintaining a second token list.
+- Scan sorted, regular, non-symlink Markdown files under `skills/`, `.claude/skills/`, and `agents/`.
+- Read the residual Bash inventory through `larch.core.residual_bash.read_residual_paths(..., check_exists=True)`.
+- Find bracketed tokens line by line. Flag a token when its casefolded bytes identify a canonical lifecycle or bug token but its original bytes differ.
+- Allow canonical forms such as `[BUG]`, `[DONE]`, and `[STALLED]`.
+- Suppress one line only with a trailing, reason-bearing pragma:
+  - Markdown: `<!-- lint-prefix-case-variant: ok <reason> -->`
+  - Bash: `# lint-prefix-case-variant: ok <reason>`
+- Treat an empty-reason pragma as ineffective.
+- Fail closed on unreadable files, invalid residual Bash manifests, missing manifest entries, symlinks, or non-regular scan targets.
+- Land without a baseline or `--write` mode.
+- Preserve intentional legacy wrong-case headings in the residual-Bash test fixture by adding a reason-bearing trailing Bash suppression to **every** affected fixture line: both `printf` payload lines containing `### [Bug]` headings and both `assert_eq` expected-message lines containing `[Bug]`. The suppressions document that those lines deliberately exercise legacy-heading rejection; they do not exempt production script behavior.
+
+Register the new CLI verb. Add explicit Make targets for both prefix lints and include them in `make lint`. Also add the new lint to `py-lint-checks-fast`, beside `lifecycle-prefix-literal` and `shared-convention-regex`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/lint/lint_lifecycle_prefix_literal.py
+
+- Expand `CONTEXT_KINDS`.
+- Add a composition-literal matcher using the fixed equality, space, and colon boundaries.
+- Extend `_collect_scope()` to record the three new AST contexts.
+- Preserve deterministic traversal, occurrence numbering, suppression handling, and existing error output.
+
+### UPDATED: python/tests/lint/test_lint_lifecycle_prefix_literal.py
+
+- Replace the existing assertion that all f-strings are ignored with focused display-string and composition cases.
+- Cover positive and negative f-string composition.
+- Cover positive and negative `+` concatenation.
+- Cover positive and negative `.format(...)` composition.
+- Verify composition through `title_match.BUG_PREFIX` remains clean.
+- Cover space and colon boundaries without accepting unrelated suffixes.
+- Verify nested AST shapes do not double-report one literal.
+- Verify a composition finding can be baselined and then warns instead of failing.
+- Retain tests for production-only scope, pragmas, occurrences, malformed baselines, and shrink-only regeneration.
+
+### UPDATED: python/larch/issue/audit_runs.py
+
+- Compose the GitHub search string from `title_match.BUG_PREFIX`.
+- Preserve the exact resulting search query and existing local filtering behavior.
+- Adjust the import to use the shared owner without changing unrelated audit logic.
+
+### MAY_UPDATE: python/lifecycle-prefix-literal-baseline.json
+
+- Run the documented regeneration command after fixing live composition findings.
+- Commit this file only if regeneration removes obsolete rows or otherwise produces a shrink-only change.
+- Reject any new composition baseline row.
+
+### NEW: python/larch/lint/lint_prefix_case_variant.py
+
+- Implement deterministic Markdown and residual Bash discovery.
+- Reuse the canonical lifecycle and bug token map.
+- Detect byte-different, casefold-equivalent bracketed tokens.
+- Parse the two surface-specific trailing suppression forms with mandatory reasons.
+- Emit file, line, observed token, and canonical token guidance.
+- Return `0` for a clean scan, `1` for findings, and `2` for configuration or read failures.
+- Expose `main(argv) -> int` with a fixture-friendly `--root`.
+
+### NEW: python/tests/lint/test_lint_prefix_case_variant.py
+
+- Build isolated fixture roots with Markdown trees and a residual Bash manifest.
+- Flag `[Bug]` in Markdown and `[bug]` in Bash.
+- Allow exact-case `[BUG]` and other canonical lifecycle tokens.
+- Verify both suppression forms work only with non-empty reasons.
+- Verify unrelated bracketed text and canonical tokens embedded in prose remain allowed.
+- Verify all configured Markdown roots and residual Bash entries are scanned.
+- Verify deterministic multi-finding output.
+- Verify missing, unreadable, symlinked, or malformed scan inputs fail closed with exit `2`.
+
+### UPDATED: scripts/test-file-failure-report-cross-repo.sh
+
+- Add a trailing `# lint-prefix-case-variant: ok <reason>` suppression to each of the four manifest-scanned legacy `[Bug]` fixture lines:
+  - The two `printf` payload lines that embed legacy `### [Bug]` headings.
+  - The two `assert_eq` expected-string message lines that describe those legacy `[Bug]` headings.
+- Give each suppression a non-empty reason identifying the intentional legacy wrong-case heading fixture or its paired assertion.
+- Preserve the fixture payloads and assertion messages, including their legacy-case `[Bug]` values and existing test purpose: they must continue exercising rejection of legacy raw headings rather than silently changing those values to canonical case.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("lint", "prefix-case-variant")` to the new module-level `main`.
+
+### UPDATED: Makefile
+
+- Add `.PHONY` entries and direct targets for `lint-lifecycle-prefix-literal` and `lint-prefix-case-variant`.
+- Add both targets to the local `lint` prerequisite list.
+- Add `prefix-case-variant` to the `py-lint-checks-fast` parallel check list. Keep the existing lifecycle entry.
+- Keep baseline regeneration routed through `regen-lifecycle-prefix-literal-baseline`.
+
+### UPDATED: docs/linting.md
+
+- Document the three new composition contexts and their token-boundary rule.
+- Document the prompt and residual Bash scan surfaces.
+- Document canonical-case behavior, suppression syntax, required reasons, and the no-baseline policy.
+- Document that intentional residual-Bash fixture variants, including paired assertion messages, require line-local, reason-bearing suppressions.
+- State how the two prefix lints enter local `make lint` and the Python fast lint sweep.
+- Keep references symbol-based rather than line-number-based.
+
+## Edge cases
+
+- A trailing space in `f"[BUG] {value}"` is stripped before matching.
+- A literal such as `"[BUG]: {value}"` matches through the colon boundary.
+- A literal such as `"[BUGFIX] "` does not match `[BUG]`.
+- Dynamic composition using `title_match.BUG_PREFIX` contains no forbidden string constant.
+- Nested concatenations report each matching literal once.
+- Exact canonical tokens in instructions remain valid on Markdown and Bash surfaces.
+- A suppression affects only its line and must trail the content it suppresses.
+- Each of the four intentional `[Bug]` residual-Bash fixture lines—two heading payload lines and two assertion-message lines—has its own trailing reason-bearing suppression; an unrelated line remains subject to the hard ban.
+- Files that appear through more than one discovery route are de-duplicated before scanning.
+- The new lint does not scan generated logs, general documentation, Python source, or Bash outside the residual manifest.
+
+## Failure modes
+
+- Fail with exit `2` if canonical tokens are empty or collide after normalization.
+- Fail with exit `2` if a source cannot be read or parsed where parsing is required.
+- Fail with exit `2` if the residual Bash manifest is invalid or names a missing, symlinked, or non-regular file.
+- Fail with exit `1` for an unsuppressed new composition or case variant.
+- Refuse baseline regeneration if a new finding lacks a preserved or explicit reason.
+- Do not weaken either lint or add an L2 baseline to make the repository pass.
+
+## Testing strategy
+
+Run focused tests:
+
+- `python3 -m pytest python/tests/lint/test_lint_lifecycle_prefix_literal.py -q`
+- `python3 -m pytest python/tests/lint/test_lint_prefix_case_variant.py -q`
+
+Run the two ratchets repo-wide:
+
+- `python3 python/cli.py lint lifecycle-prefix-literal`
+- `python3 python/cli.py lint prefix-case-variant`
+
+Validate the intentional residual-Bash fixture exemptions:
+
+- Confirm all four scanned legacy `[Bug]` fixture lines in `scripts/test-file-failure-report-cross-repo.sh` have trailing, non-empty `lint-prefix-case-variant` reasons: the two `printf` heading payload lines and the two paired `assert_eq` expected-message lines.
+- Confirm the fixture payloads and assertion messages remain legacy-case values so their existing heading-rejection coverage is retained.
+- Confirm the repo-wide `python3 python/cli.py lint prefix-case-variant` run has zero findings after those line-local suppressions.
+
+Validate baseline migration:
+
+- `make regen-lifecycle-prefix-literal-baseline`
+- Confirm the baseline did not grow and contains no composition row for `python/larch/issue/audit_runs.py`.
+- Re-run `python3 python/cli.py lint lifecycle-prefix-literal`.
+
+Validate integration and changed Python files:
+
+- Use `make -n lint` to confirm both direct lint targets are prerequisites.
+- Run ruff on the changed Python modules and tests.
+- Run the repository type checker required for changed lint modules.
+- Confirm a temporary fixture containing `f"[BUG] x"` reports `fstring_compose`.
+- Confirm the repository case-variant scan has zero findings and no baseline file.
+
+difficulty: MODERATE
+oversize_override: operator
+diff_lines: 583
