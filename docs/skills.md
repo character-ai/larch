@@ -171,7 +171,7 @@ Create one or more GitHub issues with LLM-based semantic duplicate detection. Su
 
 ### `/learn-from-bugs`
 
-**Arguments**: `[-n COUNT] [--state closed|open|all] [--repo OWNER/REPO] [--search QUERY] [--file|-s] [verbal description]`
+**Arguments**: `[-n COUNT] [--state closed|open|all] [--repo OWNER/REPO --root PATH] [--search QUERY] [--file|-s] [verbal description]`
 
 **Source**: [`skills/learn-from-bugs/SKILL.md`](../skills/learn-from-bugs/SKILL.md)
 
