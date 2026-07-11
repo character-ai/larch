@@ -1761,7 +1761,7 @@ def _validate_authored_outcome(*, note: str, outcome: str, invariant: bool) -> s
     return outcome
 
 
-def _invariant_assessment_kind(note: str) -> str:
+def _invariant_assessment_kind(note: str) -> str:  # type: ignore[reportUnusedFunction]  # reason: tested compatibility alias, routing uses persisted metadata
     """Compatibility alias for tests; routing must use persisted metadata."""
     return classify_assessment_prose(
         note,
