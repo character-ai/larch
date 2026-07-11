@@ -131,7 +131,7 @@ def test_scope_excludes_config_title_match_tests_helpers_and_vendor_dirs(tmp_pat
     assert llpll.main(["--root", str(tmp_path)]) == 0
 
 
-def test_display_strings_docstrings_comments_and_fstrings_are_not_flagged(tmp_path: Path) -> None:
+def test_display_strings_docstrings_and_comments_are_not_flagged(tmp_path: Path) -> None:
     _write_project(
         tmp_path,
         files={
@@ -139,7 +139,6 @@ def test_display_strings_docstrings_comments_and_fstrings_are_not_flagged(tmp_pa
                 'def run(title):\n'
                 '    """[DONE] is displayed in docs."""\n'
                 '    message = "[DONE]"\n'
-                '    print(f"[DONE] {title}")\n'
                 '    # title.startswith("[DONE]")\n'
             )
         },
@@ -147,6 +146,84 @@ def test_display_strings_docstrings_comments_and_fstrings_are_not_flagged(tmp_pa
     )
 
     assert llpll.main(["--root", str(tmp_path)]) == 0
+
+
+@pytest.mark.parametrize(
+    ("body", "context", "token"),
+    [
+        ('    print(f"[BUG] {title}")\n', "fstring_compose", "[BUG]"),
+        ('    print(f"[BUG]: {title}")\n', "fstring_compose", "[BUG]"),
+        ('    title = "[BUG]" + suffix\n', "concat_compose", "[BUG]"),
+        ('    title = prefix + "[DONE] " + suffix\n', "concat_compose", "[DONE]"),
+        ('    title = "[BUG] {}".format(suffix)\n', "format_compose", "[BUG]"),
+        ('    title = "[DONE]: {}".format(suffix)\n', "format_compose", "[DONE]"),
+    ],
+)
+def test_composition_positions_are_detected(
+    tmp_path: Path, body: str, context: str, token: str
+) -> None:
+    findings = _scan_body(tmp_path, body)
+
+    assert [(finding.context, finding.token) for finding in findings] == [(context, token)]
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        '    print(f"[BUGFIX] {title}")\n',
+        '    title = "[BUGFIX]" + suffix\n',
+        '    title = "[BUGFIX] {}".format(suffix)\n',
+        '    title = BUG_PREFIX + " in:title"\n',
+    ],
+)
+def test_composition_negatives_are_clean(tmp_path: Path, body: str) -> None:
+    findings = _scan_body(tmp_path, body)
+
+    assert not findings
+
+
+def test_composition_via_bug_prefix_constant_is_clean(tmp_path: Path) -> None:
+    larch_dir = tmp_path / "python" / "larch"
+    larch_dir.mkdir(parents=True)
+    path = larch_dir / "mod.py"
+    _ = path.write_text(
+        "from larch.issue.title_match import BUG_PREFIX\n"
+        "def run(x):\n"
+        '    return f"{BUG_PREFIX} {x}"\n',
+        encoding="utf-8",
+    )
+
+    assert not llpll.scan_file(path, larch_dir=larch_dir, token_infos=llpll.build_token_map())
+
+
+def test_nested_concat_reports_matching_literal_once(tmp_path: Path) -> None:
+    findings = _scan_body(tmp_path, '    title = "pre" + "[BUG]" + "post"\n')
+
+    assert [(finding.context, finding.token) for finding in findings] == [
+        ("concat_compose", "[BUG]")
+    ]
+
+
+def test_baselined_composition_warns_instead_of_failing(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/mod.py": _source('    print(f"[BUG] {title}")\n')},
+        baseline=[
+            _record(
+                token="[BUG]",  # noqa: S106 - fixture token literal for lint row
+                constant="title_match.BUG_PREFIX",
+                context="fstring_compose",
+                reason="kept",
+            )
+        ],
+    )
+
+    assert llpll.main(["--root", str(tmp_path)]) == 0
+    assert "matched [BUG] in fstring_compose; use title_match.BUG_PREFIX instead" in (
+        capsys.readouterr().err
+    )
 
 
 def test_pragma_like_string_literals_do_not_suppress_findings(tmp_path: Path) -> None:

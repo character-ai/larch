@@ -24,7 +24,7 @@ from larch.core import proc
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_SHIP_OUTCOME_SIDECAR
 from larch.git import gh
 from larch.issue import learn_from_bugs
-from larch.issue.title_match import bug_title_match
+from larch.issue.title_match import BUG_PREFIX, bug_title_match
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
 
@@ -148,7 +148,7 @@ def _bugs_backlog_nudge_issue_rows(*, repo: str, boundary: str) -> list[dict[str
             "--repo",
             repo,
             "--search",
-            f"[BUG] in:title closed:>{boundary}",
+            f"{BUG_PREFIX} in:title closed:>{boundary}",
             "--limit",
             "100000",
             "--json",
