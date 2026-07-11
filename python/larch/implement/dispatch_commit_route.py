@@ -179,7 +179,7 @@ def _checks_pass(captured: dict[str, str]) -> bool:
 
 def _session_validated_repo_root(implement_tmpdir: Path) -> Path:
     """Resolve persisted session REPO_ROOT; fail closed when absent or invalid."""
-    from larch.implement.checks_result_identity import (  # noqa: PLC0415
+    from larch.implement.checks_result_identity import (  # noqa: PLC0415 - deferred import, only the session repo-root resolution path needs checks_result_identity
         ChecksIdentityError,
         resolve_session_repo_root,
     )
