@@ -102,3 +102,24 @@ play-acted tool calls and fabricated JSONL verdicts, and the dispatching
 skill's inlining assumption failed at the configured caps (#6671). Mechanical
 backing: `python3 python/cli.py lint agent-tool-contract` over agent
 frontmatter, plus fail-closed prompt language in the triage agent definition.
+
+## Ship lifecycle
+
+### I-Ship-1: A recovery route never applies pre-merge mutations to a merged or closed PR
+
+Once a run's PR is merged or closed, no recovery, retry, or resume route may
+schedule or perform a pre-merge mutation on that PR: no rebase, no force-push
+of the PR branch, no reopen-and-reship. A failure observed after merge routes
+only to postmerge-scoped recovery: rerun the failed check, finalize as merged,
+or stop at NEEDS_USER_INPUT. Generic outcome-to-route conversions must not
+assume the pre-merge shape; the mutation choke point carries the PR-state
+guard. Evidence of violation: the postmerge transient retry converted through
+the generic reship path and requested a pre-fix rebase for a closed PR
+(#6668), after the #6610 fix repaired only the literal repro. Mechanical
+backing: the PR_CLOSED=true no-op guard on the pre-fix rebase in
+python/larch/implement/dispatch_ship.py, with regression tests
+test_ship_pre_fix_rebase_closed_pr_skips_physical_rebase and
+test_ship_pre_fix_rebase_closed_pr_does_not_override_conflict_handoff in
+python/tests/implement/test_implement_dispatch.py; extend the guard and tests
+when a new recovery route can reach a rebase or push for a closed or merged
+PR.

@@ -275,6 +275,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: stale prose pointing at a renamed entity is the top recurring OOS source, and a green test suite does not catch it. Grep `docs/`, `skills/**/SKILL.md`, `README.md`, `SECURITY.md`, and `.github/workflows/` for the old token.
 - Deviate when: n/a; the sweep is cheap and the failure mode is silent.
 
+### G-Md-3: File a bug report with structured Summary, Root cause analysis, and Suggested fix(es) sections
+- Why: title-only and pasted-run-summary bug reports carry no root-cause statement, so /analyze-bugs cannot verify their fixes and /learn-from-bugs cannot cluster them (#6115, #6192, #5753); in the 2026-07-11 mining window, the structured minority of reports drove every recurring-cluster identification.
+- Guidance: state what broke, why it broke, and the suggested fix under those three headings; paste evidence such as run summaries or transcripts below the headings, not instead of them. When the reporter cannot yet explain the root cause, say so explicitly under Root cause analysis rather than omitting the section.
+- Deviate when: capturing a live failure before evidence evaporates; file the stub immediately, then backfill the sections before the issue closes.
+
 ## Migration discipline
 
 ### G-Mig-1: Inventory environmental assumptions before a platform migration
