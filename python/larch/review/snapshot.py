@@ -396,8 +396,14 @@ def _snapshot_pre_coder_tracked_state(
 
 
 def _write_attempt_pre_tracked_paths(
-    *, round_dir: Path, pre_head: str, mode: str
+    *,
+    round_dir: Path,
+    pre_head: str,
+    mode: str,
+    snapshot: ValidatedPreCoderSnapshot | None = None,
 ) -> None:
+    if snapshot is not None:
+        revalidate_pre_coder_snapshot(snapshot)
     snap_dir = pre_coder_snapshot_dir(round_dir)
     larch_io.ensure_trusted_directory(snap_dir)
     tracked = _capture_round_tracked_paths()
@@ -723,7 +729,11 @@ def _finalize_failed_cleanup(
     return False
 
 
-def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
+def _cleanup_failed_coder_attempt(
+    round_dir: Path, *, snapshot: ValidatedPreCoderSnapshot | None = None
+) -> bool:
+    if snapshot is not None:
+        revalidate_pre_coder_snapshot(snapshot)
     mode = _snapshot_mode(round_dir)
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_head = _read_text(snap_dir / "pre-coder-head.txt").strip()
@@ -786,8 +796,13 @@ def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
 
 
 def _collect_round_stage_paths(
-    round_dir: Path, *, since_committed: bool = False
+    round_dir: Path,
+    *,
+    since_committed: bool = False,
+    snapshot: ValidatedPreCoderSnapshot | None = None,
 ) -> list[str]:
+    if snapshot is not None:
+        revalidate_pre_coder_snapshot(snapshot)
     mode = _snapshot_mode(round_dir)
     if mode not in {"full", "head_untracked"}:
         return []

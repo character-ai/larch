@@ -40,6 +40,7 @@ from larch.review.snapshot import (
     _prepare_or_validate_pre_coder_snapshot,
     revalidate_pre_coder_snapshot,
     _round_has_full_pre_coder_snapshot,
+    ValidatedPreCoderSnapshot,
     _write_attempt_pre_tracked_paths,
     pre_coder_snapshot_dir,
 )
@@ -313,8 +314,13 @@ def _run_coder_claude(*, round_dir: Path, prompt_body: str, tool_log: Path) -> b
     return False
 
 
-def _stage_and_commit_round(*, round_num: int, round_dir: Path) -> RoundCommitResult:
-    paths = _collect_round_stage_paths(round_dir)
+def _stage_and_commit_round(
+    *,
+    round_num: int,
+    round_dir: Path,
+    snapshot: ValidatedPreCoderSnapshot | None = None,
+) -> RoundCommitResult:
+    paths = _collect_round_stage_paths(round_dir, snapshot=snapshot)
     stage_file = round_dir / "coder-stage-paths.txt"
     _write_text(path=stage_file, text="\n".join(paths) + ("\n" if paths else ""))
     if not paths:
@@ -457,66 +463,80 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         return result
     mode = snapshot.mode
     pre_head = snapshot.pre_head
-    current_head = _git_head()
-    if pre_head and current_head and current_head != pre_head:
-        _append_text(
-            path=round_dir / "coder-cleanup.log",
-            text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n"
-        )
-        _finalize_failed_cleanup(
-            round_dir,
-            pre_head=pre_head,
-            mode=mode,
-            reason="stale pre-coder snapshot",
-        )
+    try:
+        revalidate_pre_coder_snapshot(snapshot)
+        current_head = _git_head()
+        if pre_head and current_head and current_head != pre_head:
+            _append_text(
+                path=round_dir / "coder-cleanup.log",
+                text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n"
+            )
+            _finalize_failed_cleanup(
+                round_dir,
+                pre_head=pre_head,
+                mode=mode,
+                reason="stale pre-coder snapshot",
+            )
+            result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
+            _write_env(path=result_file, values=_coder_env(result))
+            return result
+    except OSError:
         result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
         _write_env(path=result_file, values=_coder_env(result))
         return result
     attempts = [(tool, runner_by_tool[tool]) for tool in fix_coder_order if tool in runner_by_tool]
-    for tool, runner in attempts:
-        try:
-            _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
-        except OSError:
-            result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
-            _write_env(path=result_file, values=_coder_env(result))
-            return result
-        if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):
-            if not _cleanup_failed_coder_attempt(round_dir):
-                result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
-                _write_env(path=result_file, values=_coder_env(result))
-                return result
-            continue
-        revert_count = _post_dispatch_submodule_revert(round_dir=round_dir, submodules=submodules)
-        _write_text(path=round_dir / "coder-tool.txt", text=tool + "\n")
-        if revert_count > 0:
-            if not _cleanup_failed_coder_attempt(round_dir):
-                result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, revert_count)
-                _write_env(path=result_file, values=_coder_env(result))
-                return result
-            result = CoderResult(3, tool, "submodule-violation", str(tool_log), scrubbed_count, scrub_count, revert_count)
-            _write_env(path=result_file, values=_coder_env(result))
-            return result
-        stage_paths = _collect_round_stage_paths(round_dir)
-        if not stage_paths:
-            if not _cleanup_failed_coder_attempt(round_dir):
-                result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
-                _write_env(path=result_file, values=_coder_env(result))
-                return result
-            continue
-        round_commit = RoundCommitResult()
-        if round_num is not None and round_num > 0:
-            round_commit = _stage_and_commit_round(round_num=round_num, round_dir=round_dir)
-            if round_commit.failure_reason == "stale-index-lock":
-                result = CoderResult(2, tool, "stale-index-lock", str(tool_log), scrubbed_count, scrub_count, 0)
-                _write_env(path=result_file, values=_coder_env(result))
-                return result
-            if not round_commit.sha:
-                if not _cleanup_failed_coder_attempt(round_dir):
+    tool = "none"
+    try:
+        for tool, runner in attempts:
+            _write_attempt_pre_tracked_paths(
+                round_dir=round_dir,
+                pre_head=pre_head,
+                mode=mode,
+                snapshot=snapshot,
+            )
+            if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):
+                if not _cleanup_failed_coder_attempt(round_dir, snapshot=snapshot):
                     result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
                     _write_env(path=result_file, values=_coder_env(result))
                     return result
                 continue
-        result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, round_commit.sha)
+            revert_count = _post_dispatch_submodule_revert(round_dir=round_dir, submodules=submodules)
+            _write_text(path=round_dir / "coder-tool.txt", text=tool + "\n")
+            if revert_count > 0:
+                if not _cleanup_failed_coder_attempt(round_dir, snapshot=snapshot):
+                    result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, revert_count)
+                    _write_env(path=result_file, values=_coder_env(result))
+                    return result
+                result = CoderResult(3, tool, "submodule-violation", str(tool_log), scrubbed_count, scrub_count, revert_count)
+                _write_env(path=result_file, values=_coder_env(result))
+                return result
+            stage_paths = _collect_round_stage_paths(round_dir, snapshot=snapshot)
+            if not stage_paths:
+                if not _cleanup_failed_coder_attempt(round_dir, snapshot=snapshot):
+                    result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
+                    _write_env(path=result_file, values=_coder_env(result))
+                    return result
+                continue
+            round_commit = RoundCommitResult()
+            if round_num is not None and round_num > 0:
+                round_commit = _stage_and_commit_round(
+                    round_num=round_num, round_dir=round_dir, snapshot=snapshot
+                )
+                if round_commit.failure_reason == "stale-index-lock":
+                    result = CoderResult(2, tool, "stale-index-lock", str(tool_log), scrubbed_count, scrub_count, 0)
+                    _write_env(path=result_file, values=_coder_env(result))
+                    return result
+                if not round_commit.sha:
+                    if not _cleanup_failed_coder_attempt(round_dir, snapshot=snapshot):
+                        result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
+                        _write_env(path=result_file, values=_coder_env(result))
+                        return result
+                    continue
+            result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, round_commit.sha)
+            _write_env(path=result_file, values=_coder_env(result))
+            return result
+    except OSError:
+        result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
         _write_env(path=result_file, values=_coder_env(result))
         return result
     _record_main_agent_required_vendor_task(round_dir)

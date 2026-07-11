@@ -633,7 +633,9 @@ def render_deferred_inventory(
 def resolve_implement_manifest(
     tmpdir: Path, manifest_path: Path | None = None
 ) -> Path | None:
-    if manifest_path is not None and _artifact_present(manifest_path):
+    if manifest_path is not None:
+        if not _artifact_present(manifest_path):
+            raise ShipError("declared implement manifest is missing")
         return manifest_path
     for candidate in (
         tmpdir / "manifest.json",
@@ -722,6 +724,9 @@ def disposition_link_kind(
         repo_root=repo_root,
         manifest_path=context.manifest_path,
     )
+    if coverage is None and _artifact_present(disposition_path(context.tmpdir)):
+        _ = load_disposition(context.tmpdir, coverage=None)
+        raise ShipError("scope disposition exists without trusted coverage")
     record = load_disposition(context.tmpdir, coverage=coverage)
     return "part-of" if record and record.disposition == "proceed-partial" else "closes"
 
