@@ -1,0 +1,16 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Previously raised as an OOS direct-mutation path; it is not necessary to prevent the specified filing-boundary defect.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The follow-on mutations are real, but gating them expands beyond the required filing-boundary feature.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This duplicates the prior OOS add-blocked-by observation and is not required for the feature path.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This duplicates the prior OOS tracking-issue lifecycle observation rather than a necessary feature-path defect.
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Label-only design OOS mutations are legitimate concerns but exceed the filing-boundary scope.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Dependency wiring need not receive an authorization argument unless the out-of-scope sibling mutator is newly gated.
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This repeats the previously rejected shared-validator concern and proposes unnecessary architecture.
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior tracking-issue OOS observation.
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior audit-comment OOS observation.
+OOS_4: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior decomposition close-original OOS observation.
+OOS_5: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior tracking-issue lifecycle OOS observation.
+OOS_6: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- Duplicate of OOS_2.
