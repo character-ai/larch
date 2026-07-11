@@ -440,12 +440,11 @@ def _parse_fallback_provenance(parsed: object) -> FallbackProvenance | None:
     session_id = data.get("session_id")
     anchor_head = data.get("anchor_head")
     raw_signatures = data.get("path_signatures")
-    if str(data.get("schema_version") or "") != "3":
-        return None
-    if not isinstance(session_id, str) or not session_id:
-        return None
-    if not isinstance(anchor_head, str) or not re.fullmatch(
-        r"[0-9a-f]{40,64}", anchor_head
+    if (
+        not isinstance(session_id, str)
+        or not session_id
+        or not isinstance(anchor_head, str)
+        or not re.fullmatch(r"[0-9a-f]{40,64}", anchor_head)
     ):
         return None
     if not isinstance(raw_signatures, dict):
