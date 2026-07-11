@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly makes every best-effort post-merge flush skip a silent success; retaining per-reason stalls would exceed the approved scope.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The broader skip behavior is intentional in the approved design, and narrowing it to checkout drift is not necessary to deliver this feature.

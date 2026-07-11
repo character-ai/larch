@@ -1,0 +1,6 @@
+## Guideline deviation assessment (Gate C, against plan.txt)
+
+- G-Py-4 (fail loudly; never silently swallow): noted deviation, sanctioned. The plan makes `run_postmerge_phase` treat a `finalize_postmerge_logs` skip as a silent non-event (no warning, no stall) after a successful merge. This is a documented, narrow degraded path the caller handles, which G-Py-4 explicitly permits. The skip is a structured `RefreshSkip` return value, not a swallowed exception. Post-merge nothing is actionable (PR merged, feature branch deleted, checkout on main), and the operator explicitly decided in Round 1 that a dropped post-merge log tail is normal and must not stall or warn.
+- G-Sec-3 (redact secrets; fail closed): not deviated. The change does not alter redaction. A `redaction-failed` skip already fails closed by not publishing; reporting OK afterward is not a security regression.
+- G-Obs-3 (record failures into the committed run log): not deviated. The pre-merge (pre-push) flush that commits the run log is untouched; the post-merge tail has no remaining commit window, so its omission cannot be recorded into a committed log.
+- G-Fix-1 (fix the class): the one sibling (`merge.py._post_flush`) is intentionally different and already non-fatal for the reported reason; documented in the PR rather than changed.
