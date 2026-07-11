@@ -64,10 +64,10 @@ cursor/apply             │                                                    
 
 - **Outcome**: shipping
 - **Duration**: 04:24:52
-- **Cost**: 💰 TOTAL ~$55.08: Claude $31.49, Codex-5.6 $13.92, Codex-mini $0.07, Cursor $5.45 (Composer $0.00, Grok $0.00, Auto $5.45), Claude (subprocess) $4.15  |  Tokens: 83735k
+- **Cost**: 💰 TOTAL ~$56.18: Claude $32.59, Codex-5.6 $13.92, Codex-mini $0.07, Cursor $5.45 (Composer $0.00, Grok $0.00, Auto $5.45), Claude (subprocess) $4.15  |  Tokens: 85749k
 - **Issue**: #6845: https://github.com/character-ai/larch/issues/6845
 - **Plan review**: N/A
-- **Plan coverage**: 12/12 firm headings; band: advisory; disposition: none; todos_left: 1
+- **Plan coverage**: 12/12 firm headings; band: advisory; disposition: proceed-partial; todos_left: 1; follow-up #6870
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 15/23 accepted
