@@ -16,7 +16,11 @@ path=Path(sys.argv[2])
 if not path.is_file() or path.is_symlink(): raise SystemExit(0)
 seen={}
 for raw in path.read_text(encoding="utf-8", errors="strict").splitlines():
-    if not raw or "=" not in raw: raise SystemExit(2)
+    # Tolerate benign shell/env content (blank lines, comments, `export ` prefixes,
+    # lowercase ledger keys) by skipping it. Only raise on genuine integrity
+    # violations: a duplicate uppercase key or a control character in a value.
+    if not raw or "=" not in raw:
+        continue
     key,value=raw.split("=",1)
     if not re.fullmatch(r"[A-Z][A-Z0-9_]*",key):
         continue
@@ -105,9 +109,14 @@ import re, sys
 def rows(path):
     out={}
     for raw in Path(path).read_text(encoding="utf-8",errors="strict").splitlines():
-        if not raw or "=" not in raw: raise SystemExit(2)
+        # Tolerate benign lines (blank, comment, non-uppercase) like read_key;
+        # only a duplicate uppercase key is an integrity violation.
+        if not raw or "=" not in raw:
+            continue
         key,value=raw.split("=",1)
-        if key in out or not re.fullmatch(r"[A-Z][A-Z0-9_]*",key): raise SystemExit(2)
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*",key):
+            continue
+        if key in out: raise SystemExit(2)
         out[key]=value
     return out
 left,right=rows(sys.argv[1]),rows(sys.argv[2])

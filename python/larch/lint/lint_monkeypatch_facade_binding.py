@@ -622,6 +622,52 @@ def _record_key(record: Record) -> tuple[str, str, str, str, str, int]:
     )
 
 
+def _rename_fingerprint(
+    key: tuple[str, str, str, str, str, int],
+) -> tuple[str, str, str, str, int]:
+    """Drop ``qualified_symbol`` (index 1) from a baseline identity.
+
+    Two monkeypatch findings that differ only in the test function that owns
+    them (a rename) share this fingerprint, so a stale baseline row can be
+    paired with the live finding that replaced it without matching on the
+    symbol an external implementer renamed.
+    """
+    return (key[0], key[2], key[3], key[4], key[5])
+
+
+def _rename_pairs(
+    baseline_records: list[Record],
+    new_findings: list[Finding],
+    live_keys: frozenset[tuple[str, str, str, str, str, int]],
+) -> dict[tuple[str, str, str, str, int], tuple[str, str]]:
+    """Pair stale baseline rows with new live findings across a test rename.
+
+    Returns ``fingerprint -> (old qualified_symbol, reason)`` for the stale
+    baseline rows (rows whose full identity is no longer live). A pair forms
+    only when exactly one stale row and exactly one new finding share the
+    fingerprint, so an ambiguous rename (two rows or two findings sharing it)
+    still requires an explicit reason instead of a silent carry-over.
+    """
+    stale_counts: dict[tuple[str, str, str, str, int], int] = {}
+    stale_rows: dict[tuple[str, str, str, str, int], Record] = {}
+    for record in baseline_records:
+        full = _record_key(record)
+        if full in live_keys:
+            continue
+        fingerprint = _rename_fingerprint(full)
+        stale_counts[fingerprint] = stale_counts.get(fingerprint, 0) + 1
+        stale_rows[fingerprint] = record
+    new_counts: dict[tuple[str, str, str, str, int], int] = {}
+    for finding in new_findings:
+        fingerprint = _rename_fingerprint(finding.key())
+        new_counts[fingerprint] = new_counts.get(fingerprint, 0) + 1
+    return {
+        fingerprint: (stale_rows[fingerprint]["qualified_symbol"], stale_rows[fingerprint]["reason"])
+        for fingerprint, count in stale_counts.items()
+        if count == 1 and new_counts.get(fingerprint, 0) == 1
+    }
+
+
 def _finding_sort_key(finding: Finding) -> tuple[str, str, str, str, str, int]:
     return finding.key()
 
@@ -726,14 +772,20 @@ def _records_for_write(
     baseline_path: Path,
     initial_reason: str | None,
 ) -> list[Record]:
-    preserved: dict[tuple[str, str, str, str, str, int], str] = {}
+    baseline_records: list[Record] = []
     if baseline_path.is_file():
-        preserved = {_record_key(record): record["reason"] for record in load_baseline(baseline_path)}
+        baseline_records = load_baseline(baseline_path)
+    preserved = {_record_key(record): record["reason"] for record in baseline_records}
+    active = sorted(_active_findings(findings), key=_finding_sort_key)
+    live_keys = frozenset(finding.key() for finding in active)
+    new_findings = [finding for finding in active if finding.key() not in preserved]
+    rename_pairs = _rename_pairs(baseline_records, new_findings, live_keys)
     reason_default = initial_reason.strip() if initial_reason is not None else None
     records: list[Record] = []
     missing: list[str] = []
-    for finding in sorted(_active_findings(findings), key=_finding_sort_key):
-        reason = preserved.get(finding.key()) or reason_default
+    for finding in active:
+        pair = rename_pairs.get(_rename_fingerprint(finding.key()))
+        reason = preserved.get(finding.key()) or (pair[1] if pair else None) or reason_default
         if reason is None:
             missing.append(format_key(finding.key()))
             continue
@@ -788,14 +840,17 @@ def _run_check(python_dir: Path, *, baseline_path: Path) -> int:
     except BaselineError as exc:
         print(f"lint-monkeypatch-facade-binding: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
+    active = sorted(_active_findings(findings), key=_finding_sort_key)
     baseline_keys = frozenset(_record_key(record) for record in baseline_records)
     new_findings: list[Finding] = []
     warned: list[Finding] = []
-    for finding in sorted(_active_findings(findings), key=_finding_sort_key):
+    for finding in active:
         if finding.key() in baseline_keys:
             warned.append(finding)
         else:
             new_findings.append(finding)
+    live_keys = frozenset(finding.key() for finding in active)
+    rename_pairs = _rename_pairs(baseline_records, new_findings, live_keys)
     for finding in warned:
         print(
             "warning: "
@@ -805,11 +860,20 @@ def _run_check(python_dir: Path, *, baseline_path: Path) -> int:
             file=sys.stderr,
         )
     for finding in new_findings:
+        pair = rename_pairs.get(_rename_fingerprint(finding.key()))
+        suffix = ""
+        if pair is not None:
+            suffix = (
+                f"; likely rename of baselined symbol '{pair[0]}' to "
+                f"'{finding.qualified_symbol}', run "
+                "`python3 python/cli.py lint monkeypatch-facade-binding --write` "
+                "to migrate the baseline"
+            )
         print(
             f"{finding.file}:{finding.lineno}:{finding.qualified_symbol} patches "
             f"{finding.facade_module}.{finding.attribute}, imported from {finding.defining_module} "
             f"occurrence {finding.occurrence}; patch the defining module, or patch the "
-            "consuming module's own binding",
+            f"consuming module's own binding{suffix}",
             file=sys.stderr,
         )
     return 1 if new_findings else 0
