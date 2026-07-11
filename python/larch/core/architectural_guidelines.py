@@ -689,7 +689,7 @@ def _read_env(path: Path) -> dict[str, str]:
         return {}
     try:
         raw_text = path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
         return {}
     values: dict[str, str] = {}
     for line in raw_text.splitlines():
@@ -1149,7 +1149,7 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
             outcome=metadata.get("ASSESSMENT_KIND", ""),
             diff_text=diff_text,
         )
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
         return False
     return True
 
@@ -1187,7 +1187,7 @@ def _pin_note_from_live_diff(
                 base_ref=resolved_base,
             )
             pinned = True
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
         pinned = False
     return pinned
 
@@ -1759,6 +1759,15 @@ def _validate_authored_outcome(*, note: str, outcome: str, invariant: bool) -> s
     if outcome == config.ASSESSMENT_OUTCOME_CLEAN and classified != config.ASSESSMENT_OUTCOME_CLEAN:
         raise AssessmentReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)
     return outcome
+
+
+def authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool:
+    """Return whether authored outcome metadata is consistent with its note."""
+    try:
+        _validate_authored_outcome(note=note, outcome=outcome, invariant=invariant)
+    except AssessmentReauthorRequired:
+        return False
+    return True
 
 
 def _invariant_assessment_kind(note: str) -> str:  # type: ignore[reportUnusedFunction]  # reason: tested compatibility alias, routing uses persisted metadata

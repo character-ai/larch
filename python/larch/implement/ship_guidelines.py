@@ -169,13 +169,7 @@ def _invariant_assessment_kind(note: str) -> str:
 
 
 def _authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool:
-    allowed: frozenset[str] = (
-        config.INVARIANT_ASSESSMENT_OUTCOMES if invariant else config.GUIDELINE_ASSESSMENT_OUTCOMES
-    )
-    if outcome not in allowed:
-        return False
-    classified: str = _invariant_assessment_kind(note) if invariant else _assessment_kind(note)
-    return outcome != config.ASSESSMENT_OUTCOME_CLEAN or classified == config.ASSESSMENT_OUTCOME_CLEAN
+    return architectural_guidelines.authored_outcome_valid(note=note, outcome=outcome, invariant=invariant)
 
 
 def _bounded_detail(text: str) -> str:

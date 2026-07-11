@@ -1269,6 +1269,31 @@ def test_pin_note_from_live_diff_returns_false_on_durable_write_failure(
     assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
 
 
+def test_pin_note_from_live_diff_returns_false_for_invalid_staged_outcome(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        outcome="clean",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("stale staged diff"),
+        base_ref="origin/main",
+        diff_text="stale staged diff",
+    )
+    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8").replace("ASSESSMENT_KIND=clean", "ASSESSMENT_KIND="),
+        encoding="utf-8",
+    )
+
+    assert not ag._pin_note_from_live_diff(
+        implement_tmpdir=tmpdir,
+        head_sha="head-b",
+        resolved_base="origin/main",
+        live_diff=("current live diff", ag.diff_fingerprint("current live diff")),
+    )
+
+
 def test_materialize_live_diff_returns_none_on_os_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1291,6 +1316,41 @@ def test_refresh_staged_assessment_for_current_head_returns_false_when_missing_a
         head_sha="head-b",
         base_ref="origin/main",
         repo_root=repo,
+    )
+
+
+@pytest.mark.parametrize("outcome", ["", "unknown"])
+def test_refresh_staged_assessment_for_current_head_returns_false_for_invalid_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        outcome="clean",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("staged diff"),
+        base_ref="origin/main",
+        diff_text="staged diff",
+    )
+    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8").replace("ASSESSMENT_KIND=clean", f"ASSESSMENT_KIND={outcome}"),
+        encoding="utf-8",
+    )
+    def materialize_live_diff(*, repo_root: Path, resolved_base: str) -> tuple[str, str]:
+        del repo_root, resolved_base
+        return "live diff", ag.diff_fingerprint("live diff")
+
+    monkeypatch.setattr(ag, "_materialize_live_diff", materialize_live_diff)
+
+    assert not ag.refresh_staged_assessment_for_current_head(
+        tmpdir,
+        head_sha="head-b",
+        base_ref="origin/main",
+        repo_root=_repo(tmp_path / "git"),
     )
 
 
