@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import config
+from larch import io as larch_io
 from larch.core import redact
 from larch.errors import ShipError
 from larch.implement import checks
@@ -61,16 +62,22 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
     baseline_file = implement_tmpdir / "step2-baseline.txt"
     if not plan_file.is_file() or not baseline_file.is_file():
         return 0
-    repo_root = _resolve_repo_root()
-    if repo_root is None:
-        print("scope-disposition: git rev-parse --show-toplevel failed", file=sys.stderr)
+    repo_root_file = implement_tmpdir / "repo-root.txt"
+    try:
+        repo_root = Path(
+            larch_io.read_trusted_text(repo_root_file, root=implement_tmpdir).strip()
+        ).resolve()
+    except (OSError, ValueError):
+        print("scope-disposition: persisted repository root is unavailable", file=sys.stderr)
+        return 2
+    if not repo_root.is_dir():
+        print("scope-disposition: persisted repository root is not a directory", file=sys.stderr)
         return 2
     manifest_path = implement_tmpdir / "manifest.json"
     if not manifest_path.is_file():
         codex_manifest = implement_tmpdir / "codex-step2-out" / "manifest.json"
         if codex_manifest.is_file():
             manifest_path = codex_manifest
-    persisted_coverage = scope_disposition.load_coverage(implement_tmpdir)
     try:
         coverage = scope_disposition.compute_and_write_coverage(
             tmpdir=implement_tmpdir,
@@ -78,9 +85,6 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
             manifest_path=manifest_path,
         )
     except ShipError as exc:
-        if persisted_coverage is not None and not persisted_coverage.disposition_required:
-            scope_disposition._emit_coverage(persisted_coverage)  # noqa: SLF001
-            return 0
         print(f"scope-disposition: coverage recompute failed: {exc}", file=sys.stderr)
         return 4
     _emit_kv(key="PLAN_COVERAGE_TOTAL", value=str(coverage.total))

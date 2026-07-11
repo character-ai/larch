@@ -26,7 +26,9 @@ from larch.report import review_phase_detail
 from larch.review.batch_report import _count_code_review_findings  # pyright: ignore[reportPrivateUsage]
 from larch.state import stall_recovery
 from larch.report import tokens
+from larch.report import progress_file
 from larch.implement import scope_disposition
+from larch.errors import ShipError
 from larch.calibration import difficulty
 
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
@@ -525,10 +527,17 @@ def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
 
 
 def _plan_coverage_summary_line(implement_tmpdir: Path) -> str:
-    coverage = scope_disposition.load_coverage(implement_tmpdir)
+    repo_root = progress_file.resolve_persisted_repo_root(tmpdir=implement_tmpdir)
+    if repo_root is None:
+        if scope_disposition.load_coverage(implement_tmpdir) is None:
+            return ""
+        raise ShipError("persisted repository root is required for coverage validation")
+    coverage = scope_disposition.load_live_coverage(
+        tmpdir=implement_tmpdir, repo_root=repo_root
+    )
     if coverage is None:
         return ""
-    record = scope_disposition.load_disposition(implement_tmpdir)
+    record = scope_disposition.load_disposition(implement_tmpdir, coverage=coverage)
     disposition = record.disposition if record is not None else "none"
     followup = f"; follow-up #{record.followup_issue_number}" if record is not None and record.followup_issue_number else ""
     return (

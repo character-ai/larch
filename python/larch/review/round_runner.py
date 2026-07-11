@@ -59,7 +59,7 @@ from larch.review.batch_report import (
     write_rejected_findings_aggregate,
 )
 from larch.review.coder_runner import CoderResult, apply_findings_with_coder
-from larch.review.snapshot import _write_pre_coder_snapshot
+from larch.review.snapshot import _write_post_coder_head, _write_pre_coder_snapshot
 from larch.review.review_types import ReviewCoreStatus, parse_findings
 
 ReviewCoreImpl = Callable[[list[str]], int]
@@ -1070,13 +1070,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         status = "classifier-failed"
         exit_code = 2
     if status == "fix-applied":
-        with contextlib.suppress(FileNotFoundError):
-            (round_dir / "post-coder-head.txt").unlink()
         head = _git_head()
         if head:
-            post = round_dir / "post-coder-head.txt"
-            _write_text(path=post, text=head + "\n")
-            post.chmod(0o444)
+            _write_post_coder_head(round_dir, head)
     prior_accepted, prior_rejected, prior_exonerated, prior_neutral = _prior_summary_counts(implement_tmpdir=implement_tmpdir, round_num=round_num)
     total_accepted = prior_accepted + accepted_count
     total_rejected = prior_rejected + rejected_count

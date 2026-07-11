@@ -548,6 +548,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         _err("implement step2-dispatch: must be invoked from within a git working tree (git rev-parse --show-toplevel failed)")
         return 2
     repo_root = Path(repo_result.stdout.strip()).resolve()
+    larch_io.trusted_atomic_write(
+        tmpdir / "repo-root.txt", str(repo_root) + "\n", root=tmpdir
+    )
     st = _dispatch_state(args=args, repo_root=repo_root, tmpdir=tmpdir, plugin_root=plugin_root)
     _append_architectural_knowledge_warnings(st)
     if not (plugin_root / "agents" / f"{st.tool_tag}-implementer.md").is_file():

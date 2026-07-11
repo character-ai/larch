@@ -10,22 +10,50 @@ from __future__ import annotations
 
 import contextlib
 import os
-import shutil
 import zlib
 from pathlib import Path
 from typing import Literal
 
+from larch import io as larch_io
 from larch.core import config
 from larch.review._raf_util import (
     _git_head,
     _git_output,
     _git_status_porcelain,
     _git_stdout,
-    _read_text,
     _run,
-    _write_text,
     _append_text,
 )
+
+
+def _read_text(path: Path) -> str:
+    """Read a snapshot artifact without following symlinks."""
+    return larch_io.read_trusted_text(path, root=path.parent, errors="replace")
+
+
+def _write_text(*, path: Path, text: str) -> None:
+    """Publish a snapshot artifact through the trusted writer."""
+    larch_io.ensure_trusted_directory(path.parent)
+    larch_io.trusted_atomic_write(path, text, root=path.parent)
+
+
+def _write_post_coder_head(round_dir: Path, head: str) -> None:
+    """Persist the post-coder commit through the trusted round artifact writer."""
+    path = round_dir / "post-coder-head.txt"
+    larch_io.ensure_trusted_directory(round_dir)
+    larch_io.trusted_atomic_write(path, head + "\n", root=round_dir, mode=0o444)
+    path.chmod(0o444)
+
+
+def _read_post_coder_head(round_dir: Path) -> str:
+    path = round_dir / "post-coder-head.txt"
+    if not larch_io.trusted_file_present(path, root=round_dir):
+        return ""
+    return larch_io.read_trusted_text(path, root=round_dir, errors="replace").strip()
+
+
+def _validate_snapshot_root(path: Path) -> Path:
+    return larch_io.validate_trusted_directory(path)
 
 
 def pre_coder_snapshot_dir(round_dir: Path) -> Path:
@@ -47,6 +75,7 @@ def pre_coder_snapshot_dir(round_dir: Path) -> Path:
 
 
 def _clear_stale_pre_coder_snapshot_artifacts(snap_dir: Path) -> None:
+    _validate_snapshot_root(snap_dir)
     for name in (
         "pre-coder-head.txt",
         "pre-coder-tracked-paths.txt",
@@ -54,12 +83,22 @@ def _clear_stale_pre_coder_snapshot_artifacts(snap_dir: Path) -> None:
         "attempt-pre-tracked-paths.txt",
         "attempt-pre-untracked-paths.txt",
     ):
-        with contextlib.suppress(FileNotFoundError):
-            (snap_dir / name).unlink()
+        artifact = snap_dir / name
+        if artifact.exists() or artifact.is_symlink():
+            if not larch_io.trusted_file_present(artifact, root=snap_dir):
+                raise OSError(
+                    f"snapshot artifact disappeared during cleanup: {artifact}"
+                )
+            artifact.unlink()
     for dirname in ("pre-coder-path-diffs", "attempt-pre-path-diffs"):
         diffs = snap_dir / dirname
-        if diffs.is_dir():
-            shutil.rmtree(diffs, ignore_errors=True)
+        if diffs.exists() or diffs.is_symlink():
+            larch_io.validate_trusted_directory(diffs, root=snap_dir)
+            for artifact in diffs.iterdir():
+                if not larch_io.trusted_file_present(artifact, root=diffs):
+                    raise OSError(f"unsafe snapshot patch artifact: {artifact}")
+                artifact.unlink()
+            diffs.rmdir()
 
 
 def _harden_pre_coder_snapshot_perms(snap_dir: Path) -> None:
@@ -97,9 +136,22 @@ def _capture_round_untracked_paths() -> list[str]:
 
 def _snapshot_mode(round_dir: Path) -> Literal["full", "head_untracked", "missing"]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
-    if (snap_dir / "pre-coder-tracked-paths.txt").is_file():
+    if not snap_dir.exists() and not snap_dir.is_symlink():
+        return "missing"
+    _validate_snapshot_root(snap_dir)
+    tracked = larch_io.trusted_file_present(
+        snap_dir / "pre-coder-tracked-paths.txt", root=snap_dir
+    )
+    head = larch_io.trusted_file_present(snap_dir / "pre-coder-head.txt", root=snap_dir)
+    untracked = larch_io.trusted_file_present(
+        snap_dir / "pre-coder-untracked-paths.txt", root=snap_dir
+    )
+    # Lightweight presence classification: callers gracefully degrade to [] for
+    # legacy/partial snapshots, and deep artifact validation happens at the
+    # trusted read/write boundary (read_trusted_text/trusted_file_present).
+    if tracked and head and untracked:
         return "full"
-    if (snap_dir / "pre-coder-head.txt").is_file():
+    if head and not tracked:
         return "head_untracked"
     return "missing"
 
@@ -118,7 +170,7 @@ def _ensure_pre_coder_untracked_baseline(round_dir: Path, *, mode: str) -> None:
     baseline = snap_dir / "pre-coder-untracked-paths.txt"
     if baseline.exists():
         return
-    snap_dir.mkdir(parents=True, exist_ok=True)
+    larch_io.ensure_trusted_directory(snap_dir)
     _write_text(path=baseline, text="")
     with contextlib.suppress(OSError):
         baseline.chmod(0o444)
@@ -139,7 +191,10 @@ def _tracked_paths_vs_ref(pre_head: str) -> list[str]:
         return _capture_round_tracked_paths()
     seen: set[str] = set()
     paths: list[str] = []
-    for subargs in (["diff", "--name-only", pre_head], ["diff", "--cached", "--name-only", pre_head]):
+    for subargs in (
+        ["diff", "--name-only", pre_head],
+        ["diff", "--cached", "--name-only", pre_head],
+    ):
         for path in _git_output(subargs).splitlines():
             if path and path not in seen:
                 seen.add(path)
@@ -160,7 +215,9 @@ def _restore_path_to_ref(*, pre_head: str, path: str) -> None:
             target.unlink()
 
 
-def _apply_patch_file(path: Path, *, cached: bool = False, log: Path | None = None) -> bool:
+def _apply_patch_file(
+    path: Path, *, cached: bool = False, log: Path | None = None
+) -> bool:
     if not path.is_file() or not path.stat().st_size:
         return True
     argv = ["git", "apply"]
@@ -172,7 +229,7 @@ def _apply_patch_file(path: Path, *, cached: bool = False, log: Path | None = No
         if log is not None:
             _append_text(
                 path=log,
-                text=f"git apply failed ({path.name}): {result.stderr}{result.stdout}\n"
+                text=f"git apply failed ({path.name}): {result.stderr}{result.stdout}\n",
             )
         return False
     return True
@@ -211,44 +268,69 @@ def _remove_untracked_delta_paths(paths: list[str]) -> None:
             parent.rmdir()
 
 
-def _snapshot_pre_coder_tracked_state(*, _round_dir: Path, pre_head: str, snap_dir: Path) -> None:
+def _snapshot_pre_coder_tracked_state(
+    *, _round_dir: Path, pre_head: str, snap_dir: Path
+) -> None:
     paths_file = snap_dir / "pre-coder-tracked-paths.txt"
     diffs_dir = snap_dir / "pre-coder-path-diffs"
-    diffs_dir.mkdir(parents=True, exist_ok=True)
+    larch_io.ensure_trusted_directory(diffs_dir)
     tracked = _capture_round_tracked_paths()
     _write_text(path=paths_file, text="\n".join(tracked) + ("\n" if tracked else ""))
     untracked = _capture_round_untracked_paths()
-    _write_text(path=snap_dir / "pre-coder-untracked-paths.txt", text="\n".join(untracked) + ("\n" if untracked else ""))
+    _write_text(
+        path=snap_dir / "pre-coder-untracked-paths.txt",
+        text="\n".join(untracked) + ("\n" if untracked else ""),
+    )
     for path in tracked:
         safe = _safe_patch_name(path)
         wt = diffs_dir / f"{safe}.patch"
         idx = diffs_dir / f"{safe}.cached.patch"
-        wt.write_text(_git_stdout(["diff", pre_head, "--", path]), encoding="utf-8")
-        idx.write_text(_git_stdout(["diff", "--cached", pre_head, "--", path]), encoding="utf-8")
+        _write_text(path=wt, text=_git_stdout(["diff", pre_head, "--", path]))
+        _write_text(
+            path=idx, text=_git_stdout(["diff", "--cached", pre_head, "--", path])
+        )
 
 
-def _write_attempt_pre_tracked_paths(*, round_dir: Path, pre_head: str, mode: str) -> None:
+def _write_attempt_pre_tracked_paths(
+    *, round_dir: Path, pre_head: str, mode: str
+) -> None:
     snap_dir = pre_coder_snapshot_dir(round_dir)
-    snap_dir.mkdir(parents=True, exist_ok=True)
+    larch_io.ensure_trusted_directory(snap_dir)
     tracked = _capture_round_tracked_paths()
-    _write_text(path=snap_dir / "attempt-pre-tracked-paths.txt", text="\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(
+        path=snap_dir / "attempt-pre-tracked-paths.txt",
+        text="\n".join(tracked) + ("\n" if tracked else ""),
+    )
     diffs_dir = snap_dir / "attempt-pre-path-diffs"
-    if diffs_dir.is_dir():
-        shutil.rmtree(diffs_dir, ignore_errors=True)
-    diffs_dir.mkdir(parents=True, exist_ok=True)
+    if diffs_dir.exists() or diffs_dir.is_symlink():
+        larch_io.validate_trusted_directory(diffs_dir, root=snap_dir)
+        for artifact in diffs_dir.iterdir():
+            if not larch_io.trusted_file_present(artifact, root=diffs_dir):
+                raise OSError(f"unsafe snapshot patch artifact: {artifact}")
+            artifact.unlink()
+    else:
+        larch_io.ensure_trusted_directory(diffs_dir)
     for path in tracked:
         safe = _safe_patch_name(path)
-        (diffs_dir / f"{safe}.patch").write_text(_git_stdout(["diff", pre_head, "--", path]), encoding="utf-8")
-        (diffs_dir / f"{safe}.cached.patch").write_text(
-            _git_stdout(["diff", "--cached", pre_head, "--", path]),
-            encoding="utf-8",
+        _write_text(
+            path=diffs_dir / f"{safe}.patch",
+            text=_git_stdout(["diff", pre_head, "--", path]),
+        )
+        _write_text(
+            path=diffs_dir / f"{safe}.cached.patch",
+            text=_git_stdout(["diff", "--cached", pre_head, "--", path]),
         )
     if mode == "head_untracked":
         untracked = _capture_round_untracked_paths()
-        _write_text(path=snap_dir / "attempt-pre-untracked-paths.txt", text="\n".join(untracked) + ("\n" if untracked else ""))
+        _write_text(
+            path=snap_dir / "attempt-pre-untracked-paths.txt",
+            text="\n".join(untracked) + ("\n" if untracked else ""),
+        )
 
 
-def _path_matches_pre_coder_snapshot(*, round_dir: Path, pre_head: str, path: str) -> bool:
+def _path_matches_pre_coder_snapshot(
+    *, round_dir: Path, pre_head: str, path: str
+) -> bool:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     safe = _safe_patch_name(path)
     wt_snap = snap_dir / "pre-coder-path-diffs" / f"{safe}.patch"
@@ -260,7 +342,9 @@ def _path_matches_pre_coder_snapshot(*, round_dir: Path, pre_head: str, path: st
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _path_matches_attempt_snapshot(*, round_dir: Path, pre_head: str, path: str) -> bool:
+def _path_matches_attempt_snapshot(
+    *, round_dir: Path, pre_head: str, path: str
+) -> bool:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     safe = _safe_patch_name(path)
     wt_snap = snap_dir / "attempt-pre-path-diffs" / f"{safe}.patch"
@@ -272,11 +356,15 @@ def _path_matches_attempt_snapshot(*, round_dir: Path, pre_head: str, path: str)
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
-def _round_coder_delta_paths(*, round_dir: Path, diff_base: str, snapshot_head: str | None = None) -> list[str]:
+def _round_coder_delta_paths(
+    *, round_dir: Path, diff_base: str, snapshot_head: str | None = None
+) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_tracked = snap_dir / "pre-coder-tracked-paths.txt"
     pre_tracked_set: set[str] = (
-        {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
+        {line for line in _read_text(pre_tracked).splitlines() if line}
+        if pre_tracked.is_file()
+        else set()
     )
     compare_head = snapshot_head if snapshot_head is not None else diff_base
     deltas: list[str] = []
@@ -284,7 +372,9 @@ def _round_coder_delta_paths(*, round_dir: Path, diff_base: str, snapshot_head: 
     for path in _tracked_paths_vs_ref(diff_base):
         if not path or path in seen:
             continue
-        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(round_dir=round_dir, pre_head=compare_head, path=path):
+        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(
+            round_dir=round_dir, pre_head=compare_head, path=path
+        ):
             continue
         seen.add(path)
         deltas.append(path)
@@ -294,16 +384,24 @@ def _round_coder_delta_paths(*, round_dir: Path, diff_base: str, snapshot_head: 
 def _round_coder_untracked_delta_paths(round_dir: Path) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     pre_untracked = _read_pre_coder_untracked_baseline(snap_dir)
-    return [path for path in _capture_round_untracked_paths() if path not in pre_untracked]
+    return [
+        path for path in _capture_round_untracked_paths() if path not in pre_untracked
+    ]
 
 
 def _round_attempt_untracked_delta_paths(round_dir: Path) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     baseline = snap_dir / "attempt-pre-untracked-paths.txt"
     if not baseline.is_file():
-        return _round_coder_untracked_delta_paths(round_dir) if _snapshot_mode(round_dir) == "full" else []
+        return (
+            _round_coder_untracked_delta_paths(round_dir)
+            if _snapshot_mode(round_dir) == "full"
+            else []
+        )
     pre_untracked = {line for line in _read_text(baseline).splitlines() if line}
-    return [path for path in _capture_round_untracked_paths() if path not in pre_untracked]
+    return [
+        path for path in _capture_round_untracked_paths() if path not in pre_untracked
+    ]
 
 
 def _round_attempt_tracked_delta_paths(*, round_dir: Path, pre_head: str) -> list[str]:
@@ -318,7 +416,9 @@ def _round_attempt_tracked_delta_paths(*, round_dir: Path, pre_head: str) -> lis
     for path in sorted(attempt_set):
         if path in seen:
             continue
-        if not _path_matches_attempt_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
+        if not _path_matches_attempt_snapshot(
+            round_dir=round_dir, pre_head=pre_head, path=path
+        ):
             seen.add(path)
             deltas.append(path)
     for path in _tracked_paths_vs_ref(pre_head):
@@ -329,7 +429,8 @@ def _round_attempt_tracked_delta_paths(*, round_dir: Path, pre_head: str) -> lis
     return deltas
 
 
-def _restore_path_from_patches(*,
+def _restore_path_from_patches(
+    *,
     pre_head: str,
     path: str,
     wt_patch: Path,
@@ -357,8 +458,16 @@ def _restore_pre_coder_tracked_state(*, round_dir: Path, pre_head: str) -> None:
         safe = _safe_patch_name(path)
         wt_snap = diffs_dir / f"{safe}.patch"
         idx_snap = diffs_dir / f"{safe}.cached.patch"
-        if not _path_matches_pre_coder_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
-            _restore_path_from_patches(pre_head=pre_head, path=path, wt_patch=wt_snap, idx_patch=idx_snap, log=restore_log)
+        if not _path_matches_pre_coder_snapshot(
+            round_dir=round_dir, pre_head=pre_head, path=path
+        ):
+            _restore_path_from_patches(
+                pre_head=pre_head,
+                path=path,
+                wt_patch=wt_snap,
+                idx_patch=idx_snap,
+                log=restore_log,
+            )
 
 
 def _restore_attempt_baseline_tracked_state(*, round_dir: Path, pre_head: str) -> None:
@@ -377,27 +486,44 @@ def _restore_attempt_baseline_tracked_state(*, round_dir: Path, pre_head: str) -
         safe = _safe_patch_name(path)
         wt_snap = diffs_dir / f"{safe}.patch"
         idx_snap = diffs_dir / f"{safe}.cached.patch"
-        if not _path_matches_attempt_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
-            _restore_path_from_patches(pre_head=pre_head, path=path, wt_patch=wt_snap, idx_patch=idx_snap, log=restore_log)
+        if not _path_matches_attempt_snapshot(
+            round_dir=round_dir, pre_head=pre_head, path=path
+        ):
+            _restore_path_from_patches(
+                pre_head=pre_head,
+                path=path,
+                wt_patch=wt_snap,
+                idx_patch=idx_snap,
+                log=restore_log,
+            )
 
 
 def _has_coder_worktree_deltas(round_dir: Path, *, pre_head: str, mode: str) -> bool:
     return bool(
         _round_coder_delta_paths(round_dir=round_dir, diff_base=pre_head)
-        or (mode in {"full", "head_untracked"} and _round_coder_untracked_delta_paths(round_dir))
+        or (
+            mode in {"full", "head_untracked"}
+            and _round_coder_untracked_delta_paths(round_dir)
+        )
     )
 
 
-def _verify_post_cleanup_state(round_dir: Path, *, pre_head: str, mode: str) -> tuple[bool, str]:
+def _verify_post_cleanup_state(
+    round_dir: Path, *, pre_head: str, mode: str
+) -> tuple[bool, str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     details: list[str] = []
     if mode == "full":
         tracked_file = snap_dir / "pre-coder-tracked-paths.txt"
         pre_tracked: set[str] = (
-            {line for line in _read_text(tracked_file).splitlines() if line} if tracked_file.is_file() else set()
+            {line for line in _read_text(tracked_file).splitlines() if line}
+            if tracked_file.is_file()
+            else set()
         )
         for path in sorted(pre_tracked):
-            if not _path_matches_pre_coder_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
+            if not _path_matches_pre_coder_snapshot(
+                round_dir=round_dir, pre_head=pre_head, path=path
+            ):
                 details.append(f"pre-coder snapshot mismatch: {path}")
         coder_deltas = _round_coder_delta_paths(round_dir=round_dir, diff_base=pre_head)
         if coder_deltas:
@@ -405,33 +531,45 @@ def _verify_post_cleanup_state(round_dir: Path, *, pre_head: str, mode: str) -> 
         untracked = _round_coder_untracked_delta_paths(round_dir)
         if untracked:
             details.append("untracked coder deltas remain: " + ", ".join(untracked))
-        for path in _git_output(["diff", "--cached", "--name-only", pre_head]).splitlines():
+        for path in _git_output(
+            ["diff", "--cached", "--name-only", pre_head]
+        ).splitlines():
             if not path:
                 continue
             safe = _safe_patch_name(path)
             expected = snap_dir / "pre-coder-path-diffs" / f"{safe}.cached.patch"
-            if path not in pre_tracked or _git_stdout(["diff", "--cached", pre_head, "--", path]) != _read_text(expected):
+            if path not in pre_tracked or _git_stdout(
+                ["diff", "--cached", pre_head, "--", path]
+            ) != _read_text(expected):
                 details.append(f"unexpected cached delta remains: {path}")
         return (not details, "\n".join(details))
     if mode == "head_untracked":
         _ensure_pre_coder_untracked_baseline(round_dir, mode=mode)
         attempt_file = snap_dir / "attempt-pre-tracked-paths.txt"
         attempt_paths: set[str] = (
-            {line for line in _read_text(attempt_file).splitlines() if line} if attempt_file.is_file() else set()
+            {line for line in _read_text(attempt_file).splitlines() if line}
+            if attempt_file.is_file()
+            else set()
         )
         for path in sorted(attempt_paths):
-            if not _path_matches_attempt_snapshot(round_dir=round_dir, pre_head=pre_head, path=path):
+            if not _path_matches_attempt_snapshot(
+                round_dir=round_dir, pre_head=pre_head, path=path
+            ):
                 details.append(f"attempt snapshot mismatch: {path}")
         untracked = _round_attempt_untracked_delta_paths(round_dir)
         if untracked:
             details.append("attempt untracked deltas remain: " + ", ".join(untracked))
         outside = [
             path
-            for path in _round_attempt_tracked_delta_paths(round_dir=round_dir, pre_head=pre_head)
+            for path in _round_attempt_tracked_delta_paths(
+                round_dir=round_dir, pre_head=pre_head
+            )
             if path not in attempt_paths
         ]
         if outside:
-            details.append("tracked deltas outside attempt remain: " + ", ".join(outside))
+            details.append(
+                "tracked deltas outside attempt remain: " + ", ".join(outside)
+            )
         return (not details, "\n".join(details))
     dirty = _git_status_porcelain()
     if dirty:
@@ -439,7 +577,9 @@ def _verify_post_cleanup_state(round_dir: Path, *, pre_head: str, mode: str) -> 
     return (not details, "\n".join(details))
 
 
-def _finalize_failed_cleanup(round_dir: Path, *, pre_head: str, mode: str, reason: str) -> bool:
+def _finalize_failed_cleanup(
+    round_dir: Path, *, pre_head: str, mode: str, reason: str
+) -> bool:
     log = round_dir / "coder-cleanup.log"
     _append_text(path=log, text=f"cleanup failure: {reason}\n")
     ok, detail = _verify_post_cleanup_state(round_dir, pre_head=pre_head, mode=mode)
@@ -457,16 +597,25 @@ def _finalize_failed_cleanup(round_dir: Path, *, pre_head: str, mode: str, reaso
     elif mode == "missing":
         restore = _run(["git", "restore", "--staged", "."])
         if restore.returncode != 0:
-            _append_text(path=log, text="git restore --staged failed:\n" + restore.stderr + restore.stdout)
+            _append_text(
+                path=log,
+                text="git restore --staged failed:\n" + restore.stderr + restore.stdout,
+            )
         tracked = _run(["git", "restore", "."])
         if tracked.returncode != 0:
-            _append_text(path=log, text="git restore failed:\n" + tracked.stderr + tracked.stdout)
+            _append_text(
+                path=log, text="git restore failed:\n" + tracked.stderr + tracked.stdout
+            )
     ok, detail = _verify_post_cleanup_state(round_dir, pre_head=pre_head, mode=mode)
     if not ok and detail:
-        _append_text(path=log, text="post-finalize verification failed:\n" + detail + "\n")
+        _append_text(
+            path=log, text="post-finalize verification failed:\n" + detail + "\n"
+        )
     status = _git_status_porcelain()
     if status:
-        _append_text(path=log, text="remaining porcelain after finalize:\n" + status + "\n")
+        _append_text(
+            path=log, text="remaining porcelain after finalize:\n" + status + "\n"
+        )
     return False
 
 
@@ -478,7 +627,7 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
     if pre_head and current_head and current_head != pre_head:
         _append_text(
             path=round_dir / "coder-cleanup.log",
-            text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n"
+            text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n",
         )
         return _finalize_failed_cleanup(
             round_dir,
@@ -487,7 +636,9 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
             reason="stale pre-coder snapshot",
         )
     if mode == "missing" or not pre_head:
-        return _finalize_failed_cleanup(round_dir, pre_head=pre_head, mode=mode, reason="missing pre-coder snapshot")
+        return _finalize_failed_cleanup(
+            round_dir, pre_head=pre_head, mode=mode, reason="missing pre-coder snapshot"
+        )
     _ensure_pre_coder_untracked_baseline(round_dir, mode=mode)
     if not _has_coder_worktree_deltas(round_dir, pre_head=pre_head, mode=mode):
         return True
@@ -503,49 +654,57 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
         return True
     if detail:
         _append_text(path=round_dir / "coder-cleanup.log", text=detail + "\n")
-    return _finalize_failed_cleanup(round_dir, pre_head=pre_head, mode=mode, reason="verification failed")
+    return _finalize_failed_cleanup(
+        round_dir, pre_head=pre_head, mode=mode, reason="verification failed"
+    )
 
 
 def _round_diff_base(round_dir: Path, *, since_committed: bool) -> str:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
     if since_committed:
-        post_head_file = round_dir / "post-coder-head.txt"
-        if post_head_file.is_file() and post_head_file.stat().st_size:
-            return _read_text(post_head_file).strip()
+        return _read_post_coder_head(round_dir)
+    return _validated_pre_coder_snapshot_head(round_dir)
+
+
+def _validated_pre_coder_snapshot_head(round_dir: Path) -> str:
+    snap_dir = pre_coder_snapshot_dir(round_dir)
+    if _snapshot_mode(round_dir) == "missing":
         return ""
-    pre_head_file = snap_dir / "pre-coder-head.txt"
-    if pre_head_file.is_file() and pre_head_file.stat().st_size:
-        return _read_text(pre_head_file).strip()
-    return ""
+    head = larch_io.read_trusted_text(
+        snap_dir / "pre-coder-head.txt", root=snap_dir, errors="replace"
+    ).strip()
+    if not head:
+        return ""
+    return head
 
 
 def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
     snap_dir = pre_coder_snapshot_dir(round_dir)
-    return (
-        (snap_dir / "pre-coder-tracked-paths.txt").is_file()
-        and (snap_dir / "pre-coder-untracked-paths.txt").is_file()
-    )
+    return (snap_dir / "pre-coder-tracked-paths.txt").is_file() and (
+        snap_dir / "pre-coder-untracked-paths.txt"
+    ).is_file()
 
 
-def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False) -> list[str]:
-    diff_base = _round_diff_base(round_dir, since_committed=since_committed)
-    if not diff_base:
-        return []
+def _collect_round_stage_paths(
+    round_dir: Path, *, since_committed: bool = False
+) -> list[str]:
     mode = _snapshot_mode(round_dir)
     if mode not in {"full", "head_untracked"}:
         return []
+    diff_base = _round_diff_base(round_dir, since_committed=since_committed)
+    if not diff_base:
+        return []
     if mode == "full" and not _round_has_full_pre_coder_snapshot(round_dir):
         return []
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    pre_head_file = snap_dir / "pre-coder-head.txt"
-    snapshot_head = _read_text(pre_head_file).strip() if pre_head_file.is_file() and pre_head_file.stat().st_size else ""
+    snapshot_head = _validated_pre_coder_snapshot_head(round_dir)
     snapshot_kw: dict[str, str] = {}
     if snapshot_head and snapshot_head != diff_base:
         snapshot_kw["snapshot_head"] = snapshot_head
     paths: list[str] = []
     seen: set[str] = set()
     tracked = (
-        _round_coder_delta_paths(round_dir=round_dir, diff_base=diff_base, **snapshot_kw)
+        _round_coder_delta_paths(
+            round_dir=round_dir, diff_base=diff_base, **snapshot_kw
+        )
         if mode == "full"
         else _round_attempt_tracked_delta_paths(round_dir=round_dir, pre_head=diff_base)
     )
@@ -567,13 +726,14 @@ def _collect_round_stage_paths(round_dir: Path, *, since_committed: bool = False
 
 # --- self-review snapshot ---
 
+
 def _self_review_snapshot_dir(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / "self-review-snapshot"
 
 
 def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
-    snap_dir.mkdir(parents=True, exist_ok=True)
+    larch_io.ensure_trusted_directory(snap_dir, root=implement_tmpdir)
     for name in (
         "pre-self-review-head.txt",
         "pre-self-review-tracked-paths.txt",
@@ -582,31 +742,44 @@ def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
         with contextlib.suppress(FileNotFoundError):
             (snap_dir / name).unlink()
     diffs_dir = snap_dir / "pre-self-review-path-diffs"
-    if diffs_dir.is_dir():
-        shutil.rmtree(diffs_dir, ignore_errors=True)
+    if diffs_dir.exists() or diffs_dir.is_symlink():
+        larch_io.validate_trusted_directory(diffs_dir, root=snap_dir)
+        for artifact in diffs_dir.iterdir():
+            if not larch_io.trusted_file_present(artifact, root=diffs_dir):
+                raise OSError(f"unsafe self-review patch artifact: {artifact}")
+            artifact.unlink()
     head = _git_head()
     if not head:
         return ""
     _write_text(path=snap_dir / "pre-self-review-head.txt", text=head + "\n")
     tracked = _capture_round_tracked_paths()
-    _write_text(path=snap_dir / "pre-self-review-tracked-paths.txt", text="\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(
+        path=snap_dir / "pre-self-review-tracked-paths.txt",
+        text="\n".join(tracked) + ("\n" if tracked else ""),
+    )
     untracked = _capture_round_untracked_paths()
     _write_text(
         path=snap_dir / "pre-self-review-untracked-paths.txt",
-        text="\n".join(untracked) + ("\n" if untracked else "")
+        text="\n".join(untracked) + ("\n" if untracked else ""),
     )
-    diffs_dir.mkdir(parents=True, exist_ok=True)
+    if not diffs_dir.exists():
+        larch_io.ensure_trusted_directory(diffs_dir, root=snap_dir)
     for path in tracked:
         safe = path.replace("/", "__").replace("\\", "__")
-        (diffs_dir / f"{safe}.patch").write_text(_git_output(["diff", head, "--", path]), encoding="utf-8")
-        (diffs_dir / f"{safe}.cached.patch").write_text(
-            _git_output(["diff", "--cached", head, "--", path]),
-            encoding="utf-8",
+        _write_text(
+            path=diffs_dir / f"{safe}.patch",
+            text=_git_output(["diff", head, "--", path]),
+        )
+        _write_text(
+            path=diffs_dir / f"{safe}.cached.patch",
+            text=_git_output(["diff", "--cached", head, "--", path]),
         )
     return head
 
 
-def _path_matches_pre_self_review_snapshot(*, implement_tmpdir: Path, pre_head: str, path: str) -> bool:
+def _path_matches_pre_self_review_snapshot(
+    *, implement_tmpdir: Path, pre_head: str, path: str
+) -> bool:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     safe = path.replace("/", "__").replace("\\", "__")
     wt_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.patch"
@@ -618,18 +791,45 @@ def _path_matches_pre_self_review_snapshot(*, implement_tmpdir: Path, pre_head: 
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
+def _validated_self_review_snapshot_head(implement_tmpdir: Path) -> str:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    larch_io.validate_trusted_directory(snap_dir, root=implement_tmpdir)
+    head = larch_io.read_trusted_text(
+        snap_dir / "pre-self-review-head.txt", root=snap_dir, errors="replace"
+    ).strip()
+    tracked = larch_io.read_trusted_text(
+        snap_dir / "pre-self-review-tracked-paths.txt", root=snap_dir, errors="replace"
+    ).splitlines()
+    _ = larch_io.read_trusted_text(
+        snap_dir / "pre-self-review-untracked-paths.txt", root=snap_dir, errors="replace"
+    )
+    if not head or any(not path for path in tracked):
+        raise OSError(f"invalid self-review snapshot: {snap_dir}")
+    safe_names = [_safe_patch_name(path) for path in tracked]
+    if len(tracked) != len(set(tracked)) or len(safe_names) != len(set(safe_names)):
+        raise OSError(f"invalid self-review snapshot inventory: {snap_dir}")
+    # Patch artifacts are validated when read via read_trusted_text; do not
+    # require a complete diffs set here so callers degrade gracefully when the
+    # delta computation is supplied externally.
+    return head
+
+
 def _self_review_delta_paths(*, implement_tmpdir: Path, pre_head: str) -> list[str]:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     pre_tracked = snap_dir / "pre-self-review-tracked-paths.txt"
     pre_tracked_set: set[str] = (
-        {line for line in _read_text(pre_tracked).splitlines() if line} if pre_tracked.is_file() else set()
+        {line for line in _read_text(pre_tracked).splitlines() if line}
+        if pre_tracked.is_file()
+        else set()
     )
     deltas: list[str] = []
     seen: set[str] = set()
     for path in _git_output(["diff", "--name-only", pre_head]).splitlines():
         if not path or path in seen:
             continue
-        if path in pre_tracked_set and _path_matches_pre_self_review_snapshot(implement_tmpdir=implement_tmpdir, pre_head=pre_head, path=path):
+        if path in pre_tracked_set and _path_matches_pre_self_review_snapshot(
+            implement_tmpdir=implement_tmpdir, pre_head=pre_head, path=path
+        ):
             continue
         seen.add(path)
         deltas.append(path)
@@ -639,24 +839,29 @@ def _self_review_delta_paths(*, implement_tmpdir: Path, pre_head: str) -> list[s
 def _self_review_untracked_delta_paths(implement_tmpdir: Path) -> list[str]:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     pre_untracked = {
-        line for line in _read_text(snap_dir / "pre-self-review-untracked-paths.txt").splitlines() if line
+        line
+        for line in _read_text(
+            snap_dir / "pre-self-review-untracked-paths.txt"
+        ).splitlines()
+        if line
     }
-    return [path for path in _capture_round_untracked_paths() if path not in pre_untracked]
+    return [
+        path for path in _capture_round_untracked_paths() if path not in pre_untracked
+    ]
 
 
 def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
     if not (implement_tmpdir / "self-review-accepted.md").is_file():
         return []
-    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
-    pre_head_file = snap_dir / "pre-self-review-head.txt"
-    if not pre_head_file.is_file() or not pre_head_file.stat().st_size:
-        return []
-    pre_head = _read_text(pre_head_file).strip()
-    if not pre_head:
+    try:
+        pre_head = _validated_self_review_snapshot_head(implement_tmpdir)
+    except OSError:
         return []
     paths: list[str] = []
     seen: set[str] = set()
-    for path in _self_review_delta_paths(implement_tmpdir=implement_tmpdir, pre_head=pre_head):
+    for path in _self_review_delta_paths(
+        implement_tmpdir=implement_tmpdir, pre_head=pre_head
+    ):
         if path not in seen:
             seen.add(path)
             paths.append(path)
@@ -669,15 +874,18 @@ def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
 
 # --- pre-coder snapshot write ---
 
+
 def _write_pre_coder_snapshot(round_dir: Path) -> str:
     snap_dir = pre_coder_snapshot_dir(round_dir)
-    snap_dir.mkdir(parents=True, exist_ok=True)
+    larch_io.ensure_trusted_directory(snap_dir)
     _clear_stale_pre_coder_snapshot_artifacts(snap_dir)
     head = _git_head()
     pre_head = snap_dir / "pre-coder-head.txt"
     if head:
         _write_text(path=pre_head, text=head + "\n")
-        _snapshot_pre_coder_tracked_state(_round_dir=round_dir, pre_head=head, snap_dir=snap_dir)
+        _snapshot_pre_coder_tracked_state(
+            _round_dir=round_dir, pre_head=head, snap_dir=snap_dir
+        )
         pre_head.chmod(0o444)
         _harden_pre_coder_snapshot_perms(snap_dir)
     else:
@@ -707,4 +915,6 @@ def _structural_loc(*, pre_head_file: Path, post_head_file: Path) -> int:
         if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
             total += int(parts[0]) + int(parts[1])
     return total
+
+
 # pyright: reportPrivateUsage=false, reportUnusedFunction=false, reportUnusedCallResult=false

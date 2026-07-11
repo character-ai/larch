@@ -275,6 +275,8 @@ def test_record_proceed_partial_is_durable_after_all_side_effects(
     record = scope_disposition.record_disposition(
         tmpdir=tmp_path,
         disposition="proceed-partial",
+        repo_root=tmp_path,
+        coverage=coverage,
         repo="owner/repo",
         tracking_issue_number="12",
         run_id="run-xyz",
@@ -332,6 +334,8 @@ def test_record_proceed_partial_failure_leaves_no_disposition(
         _ = scope_disposition.record_disposition(
             tmpdir=tmp_path,
             disposition="proceed-partial",
+            repo_root=tmp_path,
+            coverage=coverage,
             repo="owner/repo",
             tracking_issue_number="12",
             run_id="run-xyz",
@@ -353,7 +357,10 @@ def test_validate_detects_stale_fingerprint(tmp_path: Path) -> None:
         runner=FakeRunner(diff_paths=[]),
     )
     _ = scope_disposition.record_disposition(
-        tmpdir=tmp_path, disposition="bail-rescope", coverage=coverage
+        tmpdir=tmp_path,
+        disposition="bail-rescope",
+        repo_root=tmp_path,
+        coverage=coverage,
     )
 
     result = scope_disposition.validate_disposition_for_ship(
@@ -388,7 +395,8 @@ def test_validate_rejects_stale_partial_record_when_coverage_becomes_complete(
     assert result.required is True
     assert result.reason == "scope-disposition-stale"
     assert scope_disposition.disposition_path(tmp_path).exists()
-    assert scope_disposition.disposition_link_kind(tmp_path) == "part-of"
+    with pytest.raises(ShipError):
+        _ = scope_disposition.disposition_link_kind(tmp_path, repo_root=tmp_path)
 
 
 def _coverage_fixture(
@@ -610,7 +618,7 @@ def test_validate_gate_relevant_coverage_recompute_failure_fails_closed(
     assert result.reason.startswith("coverage-recompute-failed")
 
 
-def test_validate_non_gate_recompute_failure_keeps_nonrequired_coverage_advisory(
+def test_validate_non_gate_recompute_failure_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -633,6 +641,39 @@ def test_validate_non_gate_recompute_failure_keeps_nonrequired_coverage_advisory
         runner=FakeRunner(diff_paths=[]),
     )
 
-    assert result.ok is True
+    assert result.ok is False
     assert result.required is False
-    assert result.reason.startswith("coverage-recompute-failed-advisory")
+    assert result.reason.startswith("coverage-recompute-failed")
+
+
+def test_load_coverage_rejects_partial_and_symlinked_sets(tmp_path: Path) -> None:
+    _ = (tmp_path / scope_disposition.COVERAGE_JSON).write_text(
+        "{}\n", encoding="utf-8"
+    )
+    with pytest.raises(ShipError, match="partial"):
+        _ = scope_disposition.load_coverage(tmp_path)
+
+    (tmp_path / scope_disposition.COVERAGE_JSON).unlink()
+    outside = tmp_path.parent / f"{tmp_path.name}-outside.json"
+    _ = outside.write_text("{}\n", encoding="utf-8")
+    (tmp_path / scope_disposition.COVERAGE_JSON).symlink_to(outside)
+    with pytest.raises(ShipError, match="unsafe"):
+        _ = scope_disposition.load_coverage(tmp_path)
+
+
+def test_load_coverage_rejects_companion_mismatch(tmp_path: Path) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py"]), encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+    _ = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=FakeRunner(diff_paths=[]),
+    )
+    _ = (tmp_path / scope_disposition.UNTOUCHED_PATHS).write_text(
+        "tampered\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ShipError, match="inventory mismatch"):
+        _ = scope_disposition.load_coverage(tmp_path)

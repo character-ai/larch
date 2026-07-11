@@ -14,6 +14,7 @@ import contextlib
 import os
 import re
 import shutil
+import stat
 import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
@@ -33,6 +34,214 @@ def assert_no_symlink_path_or_ancestors(path: Path) -> None:
         if current == current.parent:
             break
         current = current.parent
+
+
+def _absolute_lexical(path: Path) -> Path:
+    """Return an absolute path without resolving symlinks."""
+    return path if path.is_absolute() else Path.cwd() / path
+
+
+def _assert_contained(*, path: Path, root: Path) -> tuple[Path, Path]:
+    absolute_path = _absolute_lexical(path)
+    absolute_root = _absolute_lexical(root)
+    try:
+        absolute_path.relative_to(absolute_root)
+    except ValueError as exc:
+        raise OSError(f"artifact path escapes trusted root: {path}") from exc
+    return absolute_path, absolute_root
+
+
+def _assert_no_symlink_components(path: Path) -> None:
+    current = path
+    while True:
+        try:
+            mode = current.lstat().st_mode
+        except FileNotFoundError:
+            pass
+        else:
+            if stat.S_ISLNK(mode):
+                raise OSError(f"refusing symlinked path or ancestor: {current}")
+        if current == current.parent:
+            return
+        current = current.parent
+
+
+def validate_trusted_directory(
+    path: str | Path, *, root: str | Path | None = None
+) -> Path:
+    """Validate a real, non-symlinked artifact directory and its ancestors."""
+    directory = _absolute_lexical(Path(path))
+    if root is not None:
+        _assert_contained(path=directory, root=Path(root))
+    _assert_no_symlink_components(directory)
+    try:
+        mode = directory.lstat().st_mode
+    except FileNotFoundError as exc:
+        raise OSError(f"trusted artifact directory is missing: {directory}") from exc
+    if not stat.S_ISDIR(mode):
+        raise OSError(f"trusted artifact root is not a directory: {directory}")
+    return directory
+
+
+def ensure_trusted_directory(
+    path: str | Path, *, root: str | Path | None = None, mode: int = 0o700
+) -> Path:
+    """Create an artifact directory without accepting symlinked components."""
+    directory = _absolute_lexical(Path(path))
+    if root is not None:
+        _assert_contained(path=directory, root=Path(root))
+    _assert_no_symlink_components(directory.parent)
+    missing: list[Path] = []
+    current = directory
+    while not current.exists() and not current.is_symlink():
+        missing.append(current)
+        current = current.parent
+    validate_trusted_directory(current)
+    for candidate in reversed(missing):
+        candidate.mkdir(mode=mode)
+        validate_trusted_directory(
+            candidate, root=root if candidate == directory else None
+        )
+    return validate_trusted_directory(directory, root=root)
+
+
+def _open_trusted_regular(path: Path, *, root: Path) -> int:
+    absolute_path, absolute_root = _assert_contained(path=path, root=root)
+    validate_trusted_directory(absolute_root)
+    _assert_no_symlink_components(absolute_path)
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd = os.open(absolute_path, flags)
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise OSError(f"trusted artifact is not a regular file: {absolute_path}")
+        current = absolute_path.stat(follow_symlinks=False)
+        if (current.st_dev, current.st_ino) != (opened.st_dev, opened.st_ino):
+            raise OSError(f"trusted artifact changed while opening: {absolute_path}")
+        return fd
+    except Exception:
+        os.close(fd)
+        raise
+
+
+def read_trusted_text(
+    path: str | Path,
+    *,
+    root: str | Path,
+    errors: str = "strict",
+    reject_cr: bool = False,
+) -> str:
+    """Read a contained regular file through a validated no-follow descriptor."""
+    fd = _open_trusted_regular(Path(path), root=Path(root))
+    with os.fdopen(fd, "r", encoding="utf-8", errors=errors, newline="") as handle:
+        text = handle.read()
+    if reject_cr and "\r" in text:
+        raise ValueError(f"carriage return not allowed in {path}")
+    return text
+
+
+def trusted_file_present(path: str | Path, *, root: str | Path) -> bool:
+    """Return false only for a wholly absent path; reject every unsafe entry."""
+    absolute_path, absolute_root = _assert_contained(path=Path(path), root=Path(root))
+    validate_trusted_directory(absolute_root)
+    _assert_no_symlink_components(absolute_path.parent)
+    try:
+        mode = absolute_path.lstat().st_mode
+    except FileNotFoundError:
+        return False
+    if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+        raise OSError(f"trusted artifact is not a regular file: {absolute_path}")
+    return True
+
+
+def trusted_atomic_write(
+    path: str | Path,
+    text: str,
+    *,
+    root: str | Path,
+    mode: int = 0o600,
+    newline: str | None = None,
+) -> None:
+    """Publish a contained artifact via a descriptor-relative atomic replace."""
+    destination, absolute_root = _assert_contained(path=Path(path), root=Path(root))
+    root_stat = validate_trusted_directory(absolute_root).stat(follow_symlinks=False)
+    validate_trusted_directory(destination.parent, root=absolute_root)
+    relative_parent = destination.parent.relative_to(absolute_root)
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+    root_fd = os.open(absolute_root, directory_flags)
+    parent_fd = root_fd
+    try:
+        opened_root = os.fstat(root_fd)
+        current_root = absolute_root.stat(follow_symlinks=False)
+        if (
+            (opened_root.st_dev, opened_root.st_ino)
+            != (root_stat.st_dev, root_stat.st_ino)
+            or (current_root.st_dev, current_root.st_ino)
+            != (opened_root.st_dev, opened_root.st_ino)
+        ):
+            raise OSError(f"trusted artifact root changed while opening: {absolute_root}")
+        for component in relative_parent.parts:
+            next_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            if parent_fd != root_fd:
+                os.close(parent_fd)
+            parent_fd = next_fd
+        try:
+            existing = os.stat(destination.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            if not stat.S_ISREG(existing.st_mode):
+                raise OSError(f"trusted artifact is not a regular file: {destination}")
+        temp_name = f".{destination.name}.{os.getpid()}.{os.urandom(8).hex()}.tmp"
+        write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            write_flags |= os.O_NOFOLLOW
+        fd = os.open(temp_name, write_flags, mode, dir_fd=parent_fd)
+    except Exception:
+        if parent_fd != root_fd:
+            os.close(parent_fd)
+        os.close(root_fd)
+        raise
+    published = False
+    try:
+        opened = os.fstat(fd)
+        if not stat.S_ISREG(opened.st_mode):
+            raise OSError(f"trusted temporary artifact is not regular: {destination}")
+        os.fchmod(fd, mode)
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:
+            fd = -1
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        current_root = absolute_root.stat(follow_symlinks=False)
+        if (current_root.st_dev, current_root.st_ino) != (
+            opened_root.st_dev,
+            opened_root.st_ino,
+        ):
+            raise OSError(f"trusted artifact root changed before publication: {absolute_root}")
+        os.replace(temp_name, destination.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        published = True
+        final = os.stat(destination.name, dir_fd=parent_fd, follow_symlinks=False)
+        if not stat.S_ISREG(final.st_mode):
+            raise OSError(f"trusted artifact is not a regular file: {destination}")
+    finally:
+        if fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(fd)
+        if not published:
+            with contextlib.suppress(OSError):
+                os.unlink(temp_name, dir_fd=parent_fd)
+        if parent_fd != root_fd:
+            with contextlib.suppress(OSError):
+                os.close(parent_fd)
+        with contextlib.suppress(OSError):
+            os.close(root_fd)
 
 
 def _strip_cr(*, value: str, mode: str) -> str:
@@ -78,7 +287,9 @@ def parse_kv(
     if cr_strip not in _CR_MODES:
         msg = f"unsupported cr_strip mode: {cr_strip}"
         raise ValueError(msg)
-    pattern: re.Pattern[str] | None = re.compile(key_pattern) if isinstance(key_pattern, str) else key_pattern
+    pattern: re.Pattern[str] | None = (
+        re.compile(key_pattern) if isinstance(key_pattern, str) else key_pattern
+    )
     allow: set[str] | None = set(allowed_keys) if allowed_keys is not None else None
     out: dict[str, str] = {}
     for raw in _line_iter(text):
@@ -105,7 +316,8 @@ def parse_kv(
 
 
 def kv_value(
-    *, text: str,
+    *,
+    text: str,
     key: str,
     default: str = "",
     first_match: bool = True,
@@ -125,7 +337,13 @@ def kv_value(
     return found
 
 
-def read_text(path: str | Path, *, default: str | None = None, errors: str = "replace", reject_cr: bool = False) -> str:
+def read_text(
+    path: str | Path,
+    *,
+    default: str | None = None,
+    errors: str = "replace",
+    reject_cr: bool = False,
+) -> str:
     """Read UTF-8 text, optionally returning ``default`` when absent.
 
     ``errors`` is intentionally a read-layer option. ``parse_kv`` receives a
@@ -142,7 +360,8 @@ def read_text(path: str | Path, *, default: str | None = None, errors: str = "re
 
 
 def read_kv(
-    *, path: str | Path,
+    *,
+    path: str | Path,
     key: str,
     default: str = "",
     first_match: bool = True,
@@ -238,7 +457,9 @@ def _temp_path(*, path: Path, temp_name: str | Path | None, suffix: str) -> Path
     return path.with_name(str(temp))
 
 
-def _open_exclusive_text(temp_path: Path, *, nofollow: bool, mode: int | None, newline: str | None):
+def _open_exclusive_text(
+    temp_path: Path, *, nofollow: bool, mode: int | None, newline: str | None
+):
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if nofollow and hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -292,7 +513,9 @@ def atomic_write(  # lint-keyword-only: ok shared write helper supports legacy p
     fixed_temp = temp_name is not None or prefix is None
     try:
         if prefix is not None and temp_name is None:
-            fd, tmp_name = tempfile.mkstemp(prefix=prefix, suffix=suffix, dir=str(dest.parent), text=True)
+            fd, tmp_name = tempfile.mkstemp(
+                prefix=prefix, suffix=suffix, dir=str(dest.parent), text=True
+            )
             tmp_path = Path(tmp_name)
             if nofollow and tmp_path.is_symlink():
                 raise OSError(f"refusing symlink temp: {tmp_path}")
@@ -308,7 +531,9 @@ def atomic_write(  # lint-keyword-only: ok shared write helper supports legacy p
                     raise OSError(f"refusing symlink temp: {tmp_path}")
                 with contextlib.suppress(FileNotFoundError):
                     tmp_path.unlink()
-                with _open_exclusive_text(tmp_path, nofollow=nofollow, mode=mode, newline=newline) as handle:
+                with _open_exclusive_text(
+                    tmp_path, nofollow=nofollow, mode=mode, newline=newline
+                ) as handle:
                     handle.write(text)
             else:
                 if nofollow and tmp_path.is_symlink():
@@ -355,7 +580,8 @@ def append_text(*, path: str | Path, text: str, create_parent: bool = True) -> N
 
 
 def write_kvs(
-    *, path: str | Path,
+    *,
+    path: str | Path,
     values: KvRows,
     sort_keys: bool = False,
     atomic: bool = True,

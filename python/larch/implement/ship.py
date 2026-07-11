@@ -54,12 +54,14 @@ from typing import cast
 from larch.core import architectural_guidelines
 from larch.implement import ci_monitor
 from larch.implement import main_health
+from larch.implement import scope_disposition
 from larch.core import config
 from larch.issue import file_oos
 from larch.state import finalize
 from larch.git import gh
 from larch.git import git
 from larch.core import logging_util
+from larch.report import progress_file
 from larch.git import merge
 from larch.git import pr
 from larch.git import pr_body
@@ -433,7 +435,19 @@ def _compose_pr_body_for_pr_create(
         else None,
         architectural_invariants_note=architectural_invariants_note,
         architectural_guidelines_note=architectural_guidelines_note,
+        implement_tmpdir=Path(pr_context.tmpdir) if pr_context.tmpdir else None,
+        repo_root=_persisted_repo_root_for_pr(pr_context),
     )
+
+
+def _persisted_repo_root_for_pr(pr_context: RunContext) -> Path:
+    if pr_context.tmpdir:
+        persisted = progress_file.resolve_persisted_repo_root(tmpdir=pr_context.tmpdir)
+        if persisted is not None:
+            return persisted
+        if scope_disposition.load_coverage(Path(pr_context.tmpdir)) is not None:
+            raise ShipError("persisted repository root is required for PR coverage validation")
+    return Path.cwd().resolve()
 
 
 def _invariants_gate_before_pr(

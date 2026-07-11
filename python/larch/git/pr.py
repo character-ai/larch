@@ -22,6 +22,7 @@ from larch.core.run_context import RunContext
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch import io as larch_io
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,18 @@ def _issue_number(issue: str) -> int:
     return int(issue)
 
 
+def _repo_root_for_context(*, ctx: RunContext, cwd: str | None) -> Path:
+    if ctx.tmpdir:
+        root_file = Path(ctx.tmpdir) / "repo-root.txt"
+        try:
+            root = Path(larch_io.read_trusted_text(root_file, root=ctx.tmpdir).strip())
+        except (OSError, ValueError):
+            root = Path()
+        if root.is_dir():
+            return root.resolve()
+    return Path(cwd or ".").resolve()
+
+
 def _repo_root_from_cwd(cwd: str | None) -> Path:
     return Path(cwd or ".").resolve()
 
@@ -63,7 +76,7 @@ def _require_scope_disposition(
 ) -> None:
     scope_disposition.require_pr_mutation_scope_disposition(
         tmpdir=Path(ctx.tmpdir) if ctx.tmpdir else None,
-        repo_root=_repo_root_from_cwd(cwd),
+        repo_root=_repo_root_for_context(ctx=ctx, cwd=cwd),
         manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
         runner=runner,
     )
@@ -99,7 +112,8 @@ def ensure_pr(
             body=body,
             issue_number=issue_num,
             partial=scope_disposition.disposition_link_kind(
-                Path(ctx.tmpdir) if ctx.tmpdir else None
+                Path(ctx.tmpdir) if ctx.tmpdir else None,
+                repo_root=_repo_root_for_context(ctx=ctx, cwd=cwd),
             )
             == "part-of",
         )
@@ -125,7 +139,8 @@ def ensure_pr(
         body=body,
         issue_number=issue_num,
         partial=scope_disposition.disposition_link_kind(
-            Path(ctx.tmpdir) if ctx.tmpdir else None
+            Path(ctx.tmpdir) if ctx.tmpdir else None,
+            repo_root=_repo_root_for_context(ctx=ctx, cwd=cwd),
         )
         == "part-of",
     )

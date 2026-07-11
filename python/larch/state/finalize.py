@@ -690,6 +690,12 @@ def teardown(
     cwd: str | None = None,
 ) -> FinalizeResult:
     """Terminal cleanup; preserves artifacts on stalled runs."""
+    tmpdir = Path(ctx.tmpdir)
+    persisted_repo_root = progress_file.resolve_persisted_repo_root(tmpdir=tmpdir)
+    if persisted_repo_root is None:
+        if scope_disposition.load_coverage(tmpdir) is not None:
+            raise ShipError("persisted repository root is required for teardown coverage validation")
+        persisted_repo_root = Path(cwd).resolve() if cwd else Path.cwd()
     rename_branch = "C"
     rename_status = "skipped"
     if ctx.stall_tracking:
@@ -698,12 +704,14 @@ def teardown(
     elif (
         not ctx.done_rename_applied
         and (ctx.pr_number is not None or ctx.design_only_done)
-        and scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) != "part-of"
+        and scope_disposition.disposition_link_kind(
+            tmpdir if ctx.tmpdir else None,
+            repo_root=persisted_repo_root,
+        ) != "part-of"
     ):
         rename_branch = "B"
         rename_status = _rename_issue(runner=runner, ctx=ctx, state="done", cwd=cwd)
 
-    tmpdir = Path(ctx.tmpdir)
     sentinel_detail = ""
     try:
         _ = (tmpdir / ".run-cleaned-up").write_text("", encoding="utf-8")
@@ -718,9 +726,8 @@ def teardown(
     teardown_run_id = run_logs.effective_run_id(ctx)
     if teardown_run_id:
         _ = _teardown_log_flush(runner=runner, ctx=ctx, cwd=cwd)
-        repo_root = progress_file.resolve_persisted_repo_root(tmpdir=ctx.tmpdir) or (Path(cwd).resolve() if cwd else Path.cwd())
-        if not bgjob_registry.has_live_entry(repo_root=repo_root, run_id=teardown_run_id):
-            _ = progress_file.deactivate_run(repo_root, teardown_run_id)
+        if not bgjob_registry.has_live_entry(repo_root=persisted_repo_root, run_id=teardown_run_id):
+            _ = progress_file.deactivate_run(persisted_repo_root, teardown_run_id)
     issue_url = ""
     issue_number = ctx.issue_number or ctx.issue
     if issue_number and not ctx.repo_unavailable:

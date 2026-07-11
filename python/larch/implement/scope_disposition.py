@@ -144,12 +144,17 @@ def _artifact_present(path: Path) -> bool:
     return path.exists() or path.is_symlink()
 
 
+def _trusted_input_root(path: Path) -> Path:
+    """Return the narrow deterministic root that owns a workflow input."""
+    return path.parent
+
+
 def _load_manifest_todos_raw(manifest_path: Path) -> list[object]:
     """Read, parse, and validate manifest; return raw todos_left list."""
-    if not manifest_path.is_file():
-        raise ShipError(f"resolved manifest is not a regular file: {manifest_path}")
     try:
-        raw_text = manifest_path.read_text(encoding="utf-8", errors="replace")
+        raw_text = larch_io.read_trusted_text(
+            manifest_path, root=_trusted_input_root(manifest_path), errors="replace"
+        )
     except OSError as exc:
         raise ShipError(f"resolved manifest unreadable: {manifest_path}") from exc
     try:
@@ -242,9 +247,7 @@ def _read_manifest_todos(manifest_path: Path | None) -> tuple[tuple[str, ...], i
         lines.append(line)
         budget -= len(line) + 1
     if len(blocking_items) > len(lines):
-        lines.append(
-            f"… {len(blocking_items) - len(lines)} more todo item(s) omitted"
-        )
+        lines.append(f"… {len(blocking_items) - len(lines)} more todo item(s) omitted")
     return tuple(lines), len(blocking_items)
 
 
@@ -256,10 +259,14 @@ def _baseline_sha(*, tmpdir: Path, repo_root: Path, runner: Runner) -> str:
     _ = repo_root
     _ = runner
     baseline_file = tmpdir / "step2-baseline.txt"
-    if baseline_file.is_file() and not baseline_file.is_symlink():
-        raw = baseline_file.read_text(encoding="utf-8", errors="replace").strip()
-        if raw:
-            return raw
+    try:
+        raw = larch_io.read_trusted_text(
+            baseline_file, root=tmpdir, errors="replace"
+        ).strip()
+    except OSError as exc:
+        raise ShipError("step2 baseline missing or unreadable") from exc
+    if raw:
+        return raw
     raise ShipError("step2 baseline missing or unreadable")
 
 
@@ -308,7 +315,9 @@ def _firm_plan_paths(plan_file: Path) -> tuple[str, ...]:
     from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok scope extraction lives in issue-wire; function-level import avoids gh/body-edit cycle.
 
     try:
-        plan_text = plan_file.read_text(encoding="utf-8", errors="replace")
+        plan_text = larch_io.read_trusted_text(
+            plan_file, root=_trusted_input_root(plan_file), errors="replace"
+        )
     except OSError as exc:
         raise ShipError(f"plan file unreadable: {plan_file}: {exc}") from exc
     return tuple(
@@ -395,15 +404,22 @@ def compute_coverage(
 
 
 def write_coverage(coverage: PlanCoverage, *, tmpdir: Path) -> None:
+    _ = larch_io.validate_trusted_directory(tmpdir)
     untouched_file = Path(coverage.untouched_file)
     todos_file = Path(coverage.todos_file)
-    larch_io.atomic_write(
-        untouched_file, "".join(f"{path}\n" for path in coverage.untouched_paths)
+    larch_io.trusted_atomic_write(
+        untouched_file,
+        "".join(f"{path}\n" for path in coverage.untouched_paths),
+        root=tmpdir,
     )
-    larch_io.atomic_write(
-        todos_file, "".join(f"- {line}\n" for line in coverage.todos_left)
+    larch_io.trusted_atomic_write(
+        todos_file,
+        "".join(f"- {line}\n" for line in coverage.todos_left),
+        root=tmpdir,
     )
-    larch_io.atomic_write(coverage_path(tmpdir), _json_text(asdict(coverage)))
+    larch_io.trusted_atomic_write(
+        coverage_path(tmpdir), _json_text(asdict(coverage)), root=tmpdir
+    )
     rows: list[tuple[str, object]] = [
         ("PLAN_COVERAGE_TOTAL", coverage.total),
         ("PLAN_COVERAGE_TOUCHED", coverage.touched),
@@ -421,7 +437,10 @@ def write_coverage(coverage: PlanCoverage, *, tmpdir: Path) -> None:
         ),
         ("PLAN_FIDELITY_FORCED", str(coverage.plan_fidelity_forced).lower()),
     ]
-    larch_io.atomic_write(coverage_env_path(tmpdir), larch_io.format_kvs(rows))
+    # The env file is the completion artifact and is published only after its companions.
+    larch_io.trusted_atomic_write(
+        coverage_env_path(tmpdir), larch_io.format_kvs(rows), root=tmpdir
+    )
 
 
 def compute_and_write_coverage(
@@ -443,74 +462,120 @@ def compute_and_write_coverage(
     return coverage
 
 
+def _coverage_from_mapping(data: Mapping[str, object], *, tmpdir: Path) -> PlanCoverage:
+    expected_coverage = coverage_path(tmpdir)
+    expected_untouched = tmpdir / UNTOUCHED_PATHS
+    expected_todos = tmpdir / TODOS_LEFT
+    coverage = PlanCoverage(
+        total=_as_int(data.get("total")),
+        touched=_as_int(data.get("touched")),
+        untouched=_as_int(data.get("untouched")),
+        untouched_percent=_as_int(data.get("untouched_percent")),
+        band=cast("CoverageBand", str(data.get("band") or "")),
+        plan_paths=tuple(str(item) for item in cast("Sequence[object]", data.get("plan_paths") or ())),
+        touched_paths=tuple(str(item) for item in cast("Sequence[object]", data.get("touched_paths") or ())),
+        untouched_paths=tuple(str(item) for item in cast("Sequence[object]", data.get("untouched_paths") or ())),
+        todos_left_count=_as_int(data.get("todos_left_count")),
+        todos_left=tuple(str(item) for item in cast("Sequence[object]", data.get("todos_left") or ())),
+        fingerprint=str(data.get("fingerprint") or ""),
+        disposition_required=_as_bool(data.get("disposition_required")),
+        plan_fidelity_forced=_as_bool(data.get("plan_fidelity_forced")),
+        coverage_file=str(data.get("coverage_file") or ""),
+        untouched_file=str(data.get("untouched_file") or ""),
+        todos_file=str(data.get("todos_file") or ""),
+    )
+    if coverage.band not in {"advisory", "middle", "high"}:
+        raise ShipError("coverage artifact has an invalid band")
+    if Path(coverage.coverage_file) != expected_coverage or Path(coverage.untouched_file) != expected_untouched or Path(coverage.todos_file) != expected_todos:
+        raise ShipError("coverage artifact contains mismatched companion paths")
+    expected_untouched_paths = tuple(path for path in coverage.plan_paths if path not in set(coverage.touched_paths))
+    expected_percent = int((coverage.untouched * 100) / coverage.total) if coverage.total else 0
+    inconsistencies = [
+        coverage.total != len(coverage.plan_paths),
+        coverage.untouched_paths != expected_untouched_paths,
+        coverage.untouched != len(expected_untouched_paths),
+        coverage.touched != coverage.total - coverage.untouched,
+        coverage.untouched_percent != expected_percent,
+        coverage.band != _coverage_band(total=coverage.total, untouched=coverage.untouched),
+        coverage.todos_left_count < len(coverage.todos_left),
+        coverage.fingerprint != _fingerprint(plan_paths=coverage.plan_paths, touched_paths=coverage.touched_paths, todos_left=coverage.todos_left),
+        coverage.disposition_required != (coverage.band == "high" or coverage.todos_left_count > 0),
+        coverage.plan_fidelity_forced != (coverage.band in {"middle", "high"}),
+    ]
+    if any(inconsistencies):
+        raise ShipError("coverage artifact is internally inconsistent")
+    return coverage
+
+
 def load_coverage(tmpdir: Path) -> PlanCoverage | None:
-    path = coverage_path(tmpdir)
-    if not path.is_file() or path.is_symlink():
+    paths = (coverage_path(tmpdir), coverage_env_path(tmpdir), tmpdir / UNTOUCHED_PATHS, tmpdir / TODOS_LEFT)
+    lexical_present = tuple(path.exists() or path.is_symlink() for path in paths)
+    if not any(lexical_present):
         return None
     try:
-        parsed: object = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(parsed, dict):
-        return None
-    data = cast("Mapping[str, object]", parsed)
+        present = tuple(larch_io.trusted_file_present(path, root=tmpdir) for path in paths)
+    except OSError as exc:
+        raise ShipError(f"unsafe coverage artifact: {_safe_line(exc)}") from exc
+    if not all(present):
+        raise ShipError("coverage artifact set is partial")
     try:
-        return PlanCoverage(
-            total=_as_int(data.get("total")),
-            touched=_as_int(data.get("touched")),
-            untouched=_as_int(data.get("untouched")),
-            untouched_percent=_as_int(data.get("untouched_percent")),
-            band=cast("CoverageBand", str(data.get("band") or "advisory")),
-            plan_paths=tuple(
-                str(item)
-                for item in cast("Sequence[object]", data.get("plan_paths") or ())
-            ),
-            touched_paths=tuple(
-                str(item)
-                for item in cast("Sequence[object]", data.get("touched_paths") or ())
-            ),
-            untouched_paths=tuple(
-                str(item)
-                for item in cast("Sequence[object]", data.get("untouched_paths") or ())
-            ),
-            todos_left_count=_as_int(data.get("todos_left_count")),
-            todos_left=tuple(
-                str(item)
-                for item in cast("Sequence[object]", data.get("todos_left") or ())
-            ),
-            fingerprint=str(data.get("fingerprint") or ""),
-            disposition_required=_as_bool(data.get("disposition_required")),
-            plan_fidelity_forced=_as_bool(data.get("plan_fidelity_forced")),
-            coverage_file=str(data.get("coverage_file") or path),
-            untouched_file=str(data.get("untouched_file") or tmpdir / UNTOUCHED_PATHS),
-            todos_file=str(data.get("todos_file") or tmpdir / TODOS_LEFT),
-        )
-    except (TypeError, ValueError):
+        parsed: object = json.loads(larch_io.read_trusted_text(paths[0], root=tmpdir, errors="replace"))
+        if not isinstance(parsed, dict):
+            raise ShipError("coverage artifact schema-invalid")
+        coverage = _coverage_from_mapping(cast("Mapping[str, object]", parsed), tmpdir=tmpdir)
+        untouched_text = larch_io.read_trusted_text(paths[2], root=tmpdir, errors="replace")
+        todos_text = larch_io.read_trusted_text(paths[3], root=tmpdir, errors="replace")
+        env = larch_io.parse_kv(larch_io.read_trusted_text(paths[1], root=tmpdir, errors="replace"))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        raise ShipError(f"coverage artifact unreadable or malformed: {_safe_line(exc)}") from exc
+    if untouched_text != "".join(f"{path}\n" for path in coverage.untouched_paths):
+        raise ShipError("coverage untouched inventory mismatch")
+    if todos_text != "".join(f"- {line}\n" for line in coverage.todos_left):
+        raise ShipError("coverage todo inventory mismatch")
+    expected_env = {
+        "PLAN_COVERAGE_TOTAL": str(coverage.total), "PLAN_COVERAGE_TOUCHED": str(coverage.touched),
+        "PLAN_COVERAGE_UNTOUCHED": str(coverage.untouched), "PLAN_COVERAGE_UNTOUCHED_PERCENT": str(coverage.untouched_percent),
+        "PLAN_COVERAGE_BAND": coverage.band, "PLAN_COVERAGE_FILE": coverage.coverage_file,
+        "PLAN_COVERAGE_UNTOUCHED_FILE": coverage.untouched_file, "TODOS_LEFT_COUNT": str(coverage.todos_left_count),
+        "TODOS_LEFT_FILE": coverage.todos_file, "PLAN_COVERAGE_FINGERPRINT": coverage.fingerprint,
+        "PLAN_COVERAGE_DISPOSITION_REQUIRED": str(coverage.disposition_required).lower(), "PLAN_FIDELITY_FORCED": str(coverage.plan_fidelity_forced).lower(),
+    }
+    if any(env.get(key) != value for key, value in expected_env.items()):
+        raise ShipError("coverage env companion mismatch")
+    return coverage
+
+
+def load_live_coverage(*, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None, runner: Runner = proc) -> PlanCoverage | None:
+    persisted = load_coverage(tmpdir)
+    if persisted is None:
         return None
+    live = compute_coverage(tmpdir=tmpdir, repo_root=repo_root, manifest_path=resolve_implement_manifest(tmpdir, manifest_path), runner=runner)
+    if persisted != live:
+        raise ShipError("coverage artifact does not match live repository inputs")
+    return persisted
 
 
-def load_disposition(tmpdir: Path) -> DispositionRecord | None:
+def load_disposition(tmpdir: Path, *, coverage: PlanCoverage | None = None) -> DispositionRecord | None:
     path = disposition_path(tmpdir)
-    if not path.is_file() or path.is_symlink():
+    if not path.exists() and not path.is_symlink():
         return None
     try:
-        parsed: object = json.loads(path.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, json.JSONDecodeError):
-        return None
+        if not larch_io.trusted_file_present(path, root=tmpdir):
+            return None
+        parsed: object = json.loads(larch_io.read_trusted_text(path, root=tmpdir, errors="replace"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ShipError(f"scope disposition unreadable or unsafe: {_safe_line(exc)}") from exc
     if not isinstance(parsed, dict):
-        return None
+        raise ShipError("scope disposition schema-invalid")
     data = cast("Mapping[str, object]", parsed)
     disposition = str(data.get("disposition") or "")
     if disposition not in {"proceed-partial", "bail-rescope"}:
-        return None
-    return DispositionRecord(
-        disposition=cast("Disposition", disposition),
-        fingerprint=str(data.get("fingerprint") or ""),
-        followup_issue_number=str(data.get("followup_issue_number") or ""),
-        followup_issue_url=str(data.get("followup_issue_url") or ""),
-        coverage_file=str(data.get("coverage_file") or ""),
-    )
-
+        raise ShipError("scope disposition has invalid disposition")
+    record = DispositionRecord(disposition=cast("Disposition", disposition), fingerprint=str(data.get("fingerprint") or ""),
+        followup_issue_number=str(data.get("followup_issue_number") or ""), followup_issue_url=str(data.get("followup_issue_url") or ""), coverage_file=str(data.get("coverage_file") or ""))
+    if coverage is not None and (record.fingerprint != coverage.fingerprint or record.coverage_file != coverage.coverage_file):
+        raise ShipError("scope disposition does not match trusted coverage")
+    return record
 
 def render_deferred_inventory(
     coverage: PlanCoverage, disposition: DispositionRecord | None = None
@@ -542,10 +607,7 @@ def render_deferred_inventory(
 def resolve_implement_manifest(
     tmpdir: Path, manifest_path: Path | None = None
 ) -> Path | None:
-    if (
-        manifest_path is not None
-        and _artifact_present(manifest_path)
-    ):
+    if manifest_path is not None and _artifact_present(manifest_path):
         return manifest_path
     for candidate in (
         tmpdir / "manifest.json",
@@ -595,20 +657,33 @@ def require_pr_mutation_scope_disposition(
     )
 
 
-def disposition_link_kind(tmpdir: Path | None = None) -> str:
+def disposition_link_kind(
+    tmpdir: Path | None = None, *, repo_root: Path | None = None
+) -> str:
     raw_tmpdir = _optional_tmpdir(tmpdir)
-    record = load_disposition(raw_tmpdir) if raw_tmpdir is not None else None
+    if raw_tmpdir is None or (not raw_tmpdir.exists() and not raw_tmpdir.is_symlink()):
+        return "closes"
+    if repo_root is None:
+        raise ShipError("repository root is required to load scope disposition")
+    coverage = load_live_coverage(tmpdir=raw_tmpdir, repo_root=repo_root)
+    record = load_disposition(raw_tmpdir, coverage=coverage)
     return "part-of" if record and record.disposition == "proceed-partial" else "closes"
 
 
-def disposition_deferred_inventory(tmpdir: Path | None = None) -> str:
+def disposition_deferred_inventory(
+    tmpdir: Path | None = None, *, repo_root: Path | None = None
+) -> str:
     raw_tmpdir = _optional_tmpdir(tmpdir)
-    if raw_tmpdir is None:
+    if raw_tmpdir is None or (not raw_tmpdir.exists() and not raw_tmpdir.is_symlink()):
         return ""
-    coverage = load_coverage(raw_tmpdir)
+    if repo_root is None:
+        raise ShipError("repository root is required to load deferred inventory")
+    coverage = load_live_coverage(tmpdir=raw_tmpdir, repo_root=repo_root)
     if coverage is None:
         return ""
-    return render_deferred_inventory(coverage, load_disposition(raw_tmpdir))
+    return render_deferred_inventory(
+        coverage, load_disposition(raw_tmpdir, coverage=coverage)
+    )
 
 
 def _optional_tmpdir(tmpdir: Path | None) -> Path | None:
@@ -783,14 +858,22 @@ def record_disposition(  # noqa: PLR0913
     *,
     tmpdir: Path,
     disposition: Disposition,
+    repo_root: Path,
     repo: str = "",
     tracking_issue_number: str = "",
     run_id: str = "",
     coverage: PlanCoverage | None = None,
+    manifest_path: Path | None = None,
+    runner: Runner = proc,
 ) -> DispositionRecord:
-    active_coverage = coverage or load_coverage(tmpdir)
-    if active_coverage is None:
-        raise ShipError("scope disposition requires a readable coverage artifact")
+    if coverage is not None:
+        active_coverage = coverage
+    else:
+        active_coverage = load_live_coverage(
+            tmpdir=tmpdir, repo_root=repo_root, manifest_path=manifest_path, runner=runner
+        )
+        if active_coverage is None:
+            raise ShipError("scope disposition requires a readable coverage artifact")
     followup = FollowupIssue(number="", url="")
     if disposition == "proceed-partial":
         if not repo or not tracking_issue_number.isdigit():
@@ -820,77 +903,34 @@ def record_disposition(  # noqa: PLR0913
     _write_scope_run_log(
         tmpdir=tmpdir, run_id=run_id, record=record, coverage=active_coverage
     )
-    larch_io.atomic_write(disposition_path(tmpdir), _json_text(asdict(record)))
+    larch_io.trusted_atomic_write(disposition_path(tmpdir), _json_text(asdict(record)), root=tmpdir)
     return record
 
 
-def validate_disposition_for_ship(  # noqa: PLR0911
-    *,
-    tmpdir: Path,
-    repo_root: Path,
-    manifest_path: Path | None = None,
-    runner: Runner = proc,
+def validate_disposition_for_ship(
+    *, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None, runner: Runner = proc
 ) -> ValidationResult:
-    persisted_coverage = load_coverage(tmpdir)
     effective_manifest = resolve_implement_manifest(tmpdir, manifest_path)
-    gate_relevant = is_pr_mutation_gate_relevant(
-        tmpdir=tmpdir, manifest_path=effective_manifest
-    )
+    gate_relevant = is_pr_mutation_gate_relevant(tmpdir=tmpdir, manifest_path=effective_manifest)
     try:
-        coverage = compute_and_write_coverage(
-            tmpdir=tmpdir,
-            repo_root=repo_root,
-            manifest_path=effective_manifest,
-            runner=runner,
-        )
+        coverage = load_live_coverage(tmpdir=tmpdir, repo_root=repo_root, manifest_path=effective_manifest, runner=runner)
+        if coverage is None:
+            coverage = compute_and_write_coverage(tmpdir=tmpdir, repo_root=repo_root, manifest_path=effective_manifest, runner=runner)
     except ShipError as exc:
-        if (
-            gate_relevant
-            or persisted_coverage is None
-            or persisted_coverage.disposition_required
-        ):
-            return ValidationResult(
-                ok=False,
-                required=True,
-                reason=f"coverage-recompute-failed: {_safe_line(exc)}",
-                coverage=persisted_coverage,
-            )
-        return ValidationResult(
-            ok=True,
-            required=False,
-            reason=f"coverage-recompute-failed-advisory: {_safe_line(exc)}",
-            coverage=persisted_coverage,
-        )
-    record = load_disposition(tmpdir)
-    if record is not None and record.fingerprint != coverage.fingerprint:
-        return ValidationResult(
-            ok=False,
-            required=True,
-            reason="scope-disposition-stale",
-            coverage=coverage,
-            disposition=record,
-        )
+        reason = "scope-disposition-stale" if "does not match live repository inputs" in str(exc) and _artifact_present(disposition_path(tmpdir)) else f"coverage-recompute-failed: {_safe_line(exc)}"
+        return ValidationResult(ok=False, required=gate_relevant or reason == "scope-disposition-stale", reason=reason)
+    try:
+        record = load_disposition(tmpdir, coverage=coverage)
+    except ShipError as exc:
+        reason = "scope-disposition-stale" if "does not match trusted coverage" in str(exc) else f"scope-disposition-invalid: {_safe_line(exc)}"
+        return ValidationResult(ok=False, required=True, reason=reason, coverage=coverage)
     if not coverage.disposition_required:
         return ValidationResult(ok=True, required=False, coverage=coverage)
     if record is None:
-        return ValidationResult(
-            ok=False,
-            required=True,
-            reason="scope-disposition-missing",
-            coverage=coverage,
-        )
+        return ValidationResult(ok=False, required=True, reason="scope-disposition-missing", coverage=coverage)
     if record.disposition == "bail-rescope":
-        return ValidationResult(
-            ok=False,
-            required=True,
-            reason="scope-disposition-bail-rescope",
-            coverage=coverage,
-            disposition=record,
-        )
-    return ValidationResult(
-        ok=True, required=True, coverage=coverage, disposition=record
-    )
-
+        return ValidationResult(ok=False, required=True, reason="scope-disposition-bail-rescope", coverage=coverage, disposition=record)
+    return ValidationResult(ok=True, required=True, coverage=coverage, disposition=record)
 
 def require_valid_disposition_for_ship(
     *,
@@ -999,6 +1039,8 @@ def scope_disposition_main(argv: list[str] | None = None) -> int:
             record = record_disposition(
                 tmpdir=tmpdir,
                 disposition=cast("Disposition", args.disposition),
+                repo_root=repo_root,
+                manifest_path=manifest,
                 repo=args.repo,
                 tracking_issue_number=args.tracking_issue,
                 run_id=args.run_id,
@@ -1014,7 +1056,9 @@ def scope_disposition_main(argv: list[str] | None = None) -> int:
                 )
             return config.EXIT_OK
         if args.action == "render-deferred-inventory":
-            _ = sys.stdout.write(disposition_deferred_inventory(tmpdir))
+            _ = sys.stdout.write(
+                disposition_deferred_inventory(tmpdir, repo_root=repo_root)
+            )
             return config.EXIT_OK
         result = (
             invalidate_stale_disposition(

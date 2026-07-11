@@ -6985,6 +6985,16 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
             raise OSError("synthetic plan read failure")
         return real_read_text(self, encoding=encoding, errors=errors)
 
+    # Plan coverage now reads through the trusted I/O primitive, so the failure
+    # must surface there in addition to the legacy Path.read_text guard.
+    import larch.io as larch_io  # noqa: PLC0415  # local import avoids module-level cycle in test wiring.
+    real_read_trusted_text = larch_io.read_trusted_text
+
+    def fake_read_trusted_text(path, *, root, **kwargs):  # type: ignore[no-untyped-def]
+        if Path(path) == plan_path:
+            raise OSError("synthetic plan read failure")
+        return real_read_trusted_text(path, root=root, **kwargs)
+
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
@@ -6992,6 +7002,7 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(Path, "read_text", fake_read_text)
+    monkeypatch.setattr(larch_io, "read_trusted_text", fake_read_trusted_text)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(plan_path),
