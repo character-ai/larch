@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    import pytest
 
 from larch.lint import lint_prefix_case_variant as lpcv
 
@@ -221,10 +223,12 @@ def test_unreadable_residual_bash_exits_2(
     bash_path = tmp_path / "scripts" / "a.sh"
     original_read_text = Path.read_text
 
-    def fail_for_bash(path: Path, *args: object, **kwargs: object) -> str:
+    def fail_for_bash(
+        path: Path, encoding: str | None = None, errors: str | None = None
+    ) -> str:
         if path == bash_path:
             raise OSError("permission denied")
-        return original_read_text(path, *args, **kwargs)
+        return original_read_text(path, encoding=encoding, errors=errors)
 
     monkeypatch.setattr(Path, "read_text", fail_for_bash)
 
