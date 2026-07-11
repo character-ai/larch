@@ -1,0 +1,9 @@
+# attributed_ballot_sha256=fc5e5ef534798e9cbba96d452e56d3883db4a96bcfbd269ca8d7e2f5c6887617
+# neutral_ballot_sha256=9d237385e0fbc193c481826eac9809a544d3bce7439879e512cdc864cd0d5a42
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_2	Codex-Innovation	- **Reviewer(s)**: Codex-Innovation
+FINDING_3	Cursor-dyn-Markdown Parser Correctness, Codex-dyn-Markdown Parser Correctness	- **Reviewer(s)**: Cursor-dyn-Markdown Parser Correctness, Codex-dyn-Markdown Parser Correctness
+FINDING_4	Cursor-dyn-Markdown Parser Correctness, Codex-dyn-Markdown Parser Correctness	- **Reviewer(s)**: Cursor-dyn-Markdown Parser Correctness, Codex-dyn-Markdown Parser Correctness
+FINDING_5	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+OOS_1	Cursor-dyn-Markdown Parser Correctness	- **Reviewer**: Cursor-dyn-Markdown Parser Correctness
