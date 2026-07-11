@@ -1,0 +1,87 @@
+## Approach
+
+- Keep `load_live_coverage` strict. Do not refresh, bypass, or weaken its fingerprint validation.
+- Add fail-soft handling only at the two post-merge presentation callers.
+- In `teardown()`, evaluate `disposition_link_kind(...)` only when the done-rename preconditions apply. Catch `ShipError`, emit a breadcrumb with the failure detail, and use `"closes"` as the fallback.
+- In `_plan_coverage_summary_line`, catch `ShipError` from `load_live_coverage(...)` and return `""`. This omits the coverage summary without blocking the final report.
+- Preserve errors from other report validation steps. In particular, do not hide a missing persisted repository root or an invalid disposition artifact after coverage loads successfully.
+- Leave `disposition_deferred_inventory` and all pre-merge coverage gates unchanged.
+
+## Files to modify/create
+
+### UPDATED: python/larch/state/finalize.py
+
+- Refactor the done-rename branch so the coverage-based link kind is resolved inside a narrow `try/except ShipError`.
+- Default the link kind to `"closes"` when coverage validation fails.
+- Emit a concise breadcrumb that states teardown could not validate the coverage disposition and is using the fallback.
+- Continue the `[DONE]` rename, sentinel creation, run-log flush, run deactivation, and remaining cleanup after the fallback.
+- Preserve `"part-of"` behavior when coverage validation succeeds and returns that link kind.
+- Preserve the existing stall-tracking branch and done-rename eligibility checks.
+
+### UPDATED: python/larch/report/final_report.py
+
+- Wrap only the `load_live_coverage(...)` call in `_plan_coverage_summary_line`.
+- Return `""` when that call raises `ShipError`.
+- Keep the normal coverage and disposition rendering unchanged when live validation succeeds.
+- Keep existing fail-closed behavior for missing repository-root evidence, partial artifacts, and disposition validation outside this stale-live-coverage fallback.
+
+### UPDATED: python/tests/state/test_finalize.py
+
+- Add a regression test where `disposition_link_kind(...)` raises the coverage mismatch `ShipError`.
+- Assert that teardown uses the `"closes"` fallback and invokes the done rename.
+- Assert that teardown reaches its later cleanup path and returns a successful result instead of propagating the exception.
+- Capture the breadcrumb writer or diagnostic stream and assert that the fallback is visible.
+- Add or retain coverage showing that a successful `"part-of"` result still skips the done rename.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+- Add a focused test where persisted repository-root lookup succeeds but `load_live_coverage(...)` raises the coverage mismatch `ShipError`.
+- Assert that `_plan_coverage_summary_line(...)` returns `""`.
+- Add an integration-level report assertion, if the focused helper test does not already exercise the writer path, that `write_final_report(...)` succeeds and writes `summary-final.md` without a plan-coverage line.
+- Keep existing successful coverage rendering expectations unchanged.
+
+## Edge cases
+
+- No coverage artifact remains a normal empty coverage summary.
+- Valid `"proceed-partial"` disposition still produces `"part-of"` and skips the done rename.
+- A stale artifact during teardown defaults to `"closes"` so the terminal rename is not lost.
+- A stale artifact during final-report rendering removes only the optional coverage line.
+- Stall teardown continues to use the stalled rename path without consulting coverage.
+- Runs with `done_rename_applied` continue to skip disposition lookup.
+- Catch only `ShipError`. Unexpected programming errors must still surface.
+
+## Failure modes
+
+- Catching too broadly could hide malformed state or coding defects. Use the named `ShipError` exception and narrow the guarded expressions.
+- Moving disposition lookup outside its current predicates could validate coverage for runs that do not need a rename. Keep the lookup behind the existing eligibility checks.
+- Returning an empty report line for errors outside `load_live_coverage(...)` could weaken trusted-artifact validation. Limit the report fallback to that call.
+- Omitting the breadcrumb would make degraded teardown hard to audit. Verify the warning in the regression test.
+
+## Testing strategy
+
+- Run the focused state tests:
+  - `python3 -m pytest python/tests/state/test_finalize.py`
+- Run the focused report tests:
+  - `python3 -m pytest python/tests/report/test_final_report.py`
+- Run lint and type checks for the four changed Python files through the repository’s changed-file lint workflow.
+- Confirm the regression scenario yields all terminal postconditions:
+  - `summary-final.md` exists.
+  - The final report writer returns success.
+  - The done rename is attempted.
+  - Teardown completes.
+- Confirm normal matching coverage still renders its summary and preserves `"part-of"` behavior.
+
+## Scope controls
+
+- Do not change `python/larch/implement/scope_disposition.py`.
+- Do not add `skip_live_check` or another validation-bypass parameter.
+- Do not recompute or rewrite coverage artifacts after ci-fix commits.
+- Do not change PR-body or other pre-merge callers.
+- Do not change report grammar or persisted artifact schemas.
+
+confidence: high
+difficulty: MODERATE
+diff_added: 65
+diff_deleted: 10
+mechanical_churn: false
+diff_lines: 75

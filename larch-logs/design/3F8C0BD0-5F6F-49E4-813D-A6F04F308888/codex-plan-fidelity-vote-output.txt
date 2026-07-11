@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=excellent UNCERTAIN=false -- The plan explicitly requires missing persisted coverage to raise rather than select "closes".
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=excellent UNCERTAIN=false -- The plan's final-report path intentionally omits only the optional coverage summary on the exact mismatch; persisted disposition validation is not required for that presentation fallback.

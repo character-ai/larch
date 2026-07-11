@@ -1,0 +1,1 @@
+Guard both post-merge coverage consumers. Teardown will fall back to a `"closes"` link and continue cleanup. Final-report rendering will omit the stale coverage line and still write `summary-final.md`.
