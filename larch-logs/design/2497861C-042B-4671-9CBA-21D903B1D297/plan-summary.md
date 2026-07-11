@@ -1,0 +1,1 @@
+Add difficulty-aware Cursor model selection for `/implement` Step 2. MODERATE uses `grok-4.5`; other tiers retain `composer-2.5`. Preserve model overrides, Codex fallback, sidecar attribution, and all non-Step-2 Cursor defaults.
