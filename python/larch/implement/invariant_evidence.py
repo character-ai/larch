@@ -35,7 +35,7 @@ def _regular_under(path: Path, root: Path, *, limit: int) -> Path:
         raise EvidenceError("evidence input is not a regular file")
     resolved = path.resolve(strict=True)
     try:
-        resolved.relative_to(root)
+        _ = resolved.relative_to(root)
     except ValueError as exc:
         raise EvidenceError("evidence input escapes implement tmpdir") from exc
     if resolved.stat().st_size > limit:
@@ -58,17 +58,17 @@ def _strict_kvs(path: Path) -> dict[str, str]:
 
 def _args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="cli.py ci materialize-invariant-evidence")
-    parser.add_argument("--implement-tmpdir", required=True)
-    parser.add_argument("--route-handoff", required=True)
-    parser.add_argument("--durable-note", default="")
-    parser.add_argument("--durable-note-meta", default="")
-    parser.add_argument("--mode", required=True)
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--starting-head", required=True)
-    parser.add_argument("--input-fingerprint", required=True)
-    parser.add_argument("--tier", required=True)
-    parser.add_argument("--attempt", required=True)
-    parser.add_argument("--step", required=True)
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    _ = parser.add_argument("--route-handoff", required=True)
+    _ = parser.add_argument("--durable-note", default="")
+    _ = parser.add_argument("--durable-note-meta", default="")
+    _ = parser.add_argument("--mode", required=True)
+    _ = parser.add_argument("--run-id", required=True)
+    _ = parser.add_argument("--starting-head", required=True)
+    _ = parser.add_argument("--input-fingerprint", required=True)
+    _ = parser.add_argument("--tier", required=True)
+    _ = parser.add_argument("--attempt", required=True)
+    _ = parser.add_argument("--step", required=True)
     return parser.parse_args(argv)
 
 

@@ -7,9 +7,9 @@ from larch.implement import invariant_evidence
 
 def _args(tmp_path: Path, head: str = "a" * 40) -> list[str]:
     handoff = tmp_path / ".ship-route-exit-handoff.env"
-    handoff.write_text("DETAIL=invariant failure\n", encoding="utf-8")
-    (tmp_path / "architectural-invariant-note.md").write_text("I-Test-1 was violated.\n", encoding="utf-8")
-    (tmp_path / "architectural-invariant-note.meta.env").write_text(f"HEAD_SHA={head}\n", encoding="utf-8")
+    _ = handoff.write_text("DETAIL=invariant failure\n", encoding="utf-8")
+    _ = (tmp_path / "architectural-invariant-note.md").write_text("I-Test-1 was violated.\n", encoding="utf-8")
+    _ = (tmp_path / "architectural-invariant-note.meta.env").write_text(f"HEAD_SHA={head}\n", encoding="utf-8")
     return [
         "--implement-tmpdir", str(tmp_path), "--route-handoff", str(handoff),
         "--mode", "invariant-primary", "--run-id", "run-1", "--starting-head", head,
