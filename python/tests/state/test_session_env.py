@@ -2036,7 +2036,12 @@ def test_check_live_mutation_auth_test_deny_blocks_session_auth(tmp_path: Path, 
     sessions_root.mkdir(parents=True)
     ctx = sessions_root / "session-env.sh"
     ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
-    authorized, reason = session_env.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    authorized, reason = session_env.check_live_mutation_auth(
+        context_file=ctx,
+        operator_mode=False,
+        run_id="run-1",
+        trusted_root=sessions_root,
+    )
     assert not authorized
     assert reason == "test-denied"
 
@@ -2062,7 +2067,12 @@ def test_check_live_mutation_auth_session_valid(tmp_path: Path, monkeypatch: pyt
     sessions_root.mkdir(parents=True)
     ctx = sessions_root / "session-env.sh"
     ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
-    authorized, reason = session_env.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    authorized, reason = session_env.check_live_mutation_auth(
+        context_file=ctx,
+        operator_mode=False,
+        run_id="run-1",
+        trusted_root=sessions_root,
+    )
     assert authorized
     assert reason == config.LIVE_MUTATION_SESSION_MODE
 

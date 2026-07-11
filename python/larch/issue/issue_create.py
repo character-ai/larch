@@ -532,6 +532,24 @@ def create_one_main(argv: list[str]) -> int:
         return redaction_rc
     title = redacted_title or ""
     dry_run = bool(parsed.get("dry_run"))
+    body_content, body_rc = _create_one_body_content(parsed)
+    if body_rc:
+        return body_rc
+    title_prefix = str(parsed.get("title_prefix") or "")
+    if not title_prefix and _is_oos_issue_body(body_content):
+        title_prefix = "[OOS]"
+    final_title = _normalize_title_prefix(title=title, title_prefix=title_prefix)
+    if dry_run:
+        labels_obj = parsed.get("labels")
+        labels = labels_obj if isinstance(labels_obj, list) else []
+        emit_kv(key="DRY_RUN", value="true")
+        emit_kv(key="DRY_RUN_TITLE", value=final_title)
+        emit_kv(key="ISSUE_TITLE", value=final_title)
+        if labels:
+            emit_kv(key="DRY_RUN_LABELS", value=",".join(str(label) for label in labels))
+        if body_content:
+            emit_kv(key="DRY_RUN_BODY_PREVIEW", value=re.sub(r" +", " ", body_content[:300].replace("\n", " ")))
+        return 0
     context_file_str = str(parsed.get("context_file") or "")
     operator_invoked = bool(parsed.get("operator_invoked"))
     if not dry_run:
@@ -553,22 +571,6 @@ def create_one_main(argv: list[str]) -> int:
     labels_obj = parsed.get("labels")
     labels = labels_obj if isinstance(labels_obj, list) else []
     valid_labels = _valid_labels(repo, [str(label) for label in labels], dry_run=dry_run)
-    body_content, body_rc = _create_one_body_content(parsed)
-    if body_rc:
-        return body_rc
-    title_prefix = str(parsed.get("title_prefix") or "")
-    if not title_prefix and _is_oos_issue_body(body_content):
-        title_prefix = "[OOS]"
-    final_title = _normalize_title_prefix(title=title, title_prefix=title_prefix)
-    if dry_run:
-        emit_kv(key="DRY_RUN", value="true")
-        emit_kv(key="DRY_RUN_TITLE", value=final_title)
-        emit_kv(key="ISSUE_TITLE", value=final_title)
-        if valid_labels:
-            emit_kv(key="DRY_RUN_LABELS", value=",".join(valid_labels))
-        if body_content:
-            emit_kv(key="DRY_RUN_BODY_PREVIEW", value=re.sub(r" +", " ", body_content[:300].replace("\n", " ")))
-        return 0
     with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as body_tmp:
         body_tmp.write(body_content)
         body_tmp_path = body_tmp.name

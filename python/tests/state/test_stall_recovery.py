@@ -2405,7 +2405,7 @@ def test_dedup_tier_a_report_normalizes_helper_output(
     _ = helper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     issue_url = "https://github.com/owner/repo/issues/6192"
     ctx = tmp_path / "session-env.sh"
-    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\n", encoding="utf-8")
+    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
 
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -2483,7 +2483,7 @@ def test_dedup_tier_a_report_uses_prefixed_compose_slices(
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
     ctx = tmp_path / "session-env.sh"
-    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\n", encoding="utf-8")
+    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
     monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "")

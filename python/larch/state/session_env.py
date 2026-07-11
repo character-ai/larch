@@ -337,6 +337,7 @@ def check_live_mutation_auth(
     context_file: Path | None,
     operator_mode: bool,
     run_id: str = "",
+    trusted_root: Path | None = None,
 ) -> tuple[bool, str]:
     """Check authorization for live GitHub issue mutation.
 
@@ -356,7 +357,7 @@ def check_live_mutation_auth(
         ctx = Path(context_file)
         if not ctx.exists() or not ctx.is_file() or ctx.is_symlink():
             return False, config.LIVE_MUTATION_REFUSAL_REASON
-        if not is_allowed_session_tmpdir(ctx.parent):
+        if trusted_root is None or ctx.parent.resolve() != trusted_root.resolve():
             return False, config.LIVE_MUTATION_REFUSAL_REASON
         auth_value = ""
         ctx_run_id = ""
@@ -364,6 +365,8 @@ def check_live_mutation_auth(
             line = raw.strip()
             if not line or "=" not in line:
                 continue
+            if line.startswith("export "):
+                line = line[len("export "):].lstrip()
             k, _, v = line.partition("=")
             k = k.strip()
             v = v.strip().strip("'\"")
@@ -373,11 +376,31 @@ def check_live_mutation_auth(
                 ctx_run_id = v
         if auth_value != "true":
             return False, config.LIVE_MUTATION_REFUSAL_REASON
-        if run_id and ctx_run_id and run_id != ctx_run_id:
+        if not ctx_run_id or not _SAFE_RUN_ID_RE.fullmatch(ctx_run_id):
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        if run_id != ctx_run_id:
             return False, config.LIVE_MUTATION_REFUSAL_REASON
         return True, config.LIVE_MUTATION_SESSION_MODE
     except OSError:
         return False, config.LIVE_MUTATION_REFUSAL_REASON
+
+
+def check_live_mutation_auth_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="session check-live-mutation-auth", add_help=False)
+    parser.add_argument("--context-file", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--trusted-root", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+    authorized, _reason = check_live_mutation_auth(
+        context_file=Path(args.context_file),
+        operator_mode=False,
+        run_id=args.run_id,
+        trusted_root=Path(args.trusted_root),
+    )
+    return 0 if authorized else config.EXIT_MUTATION_REFUSED
 
 
 def _resolved(path: Path) -> Path:

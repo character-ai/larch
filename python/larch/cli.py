@@ -615,6 +615,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("session", "read-key"): ("larch.state.session_env", "read_key_main"),
     ("session", "read-keys"): ("larch.state.session_env", "read_keys_main"),
     ("session", "write-design-env"): ("larch.state.session_env", "write_design_env_main"),
+    ("session", "check-live-mutation-auth"): ("larch.state.session_env", "check_live_mutation_auth_main"),
     ("session", "validate-design-tmpdir"): ("larch.state.session_env", "validate_design_tmpdir_main"),
     ("session", "write-implement-env"): ("larch.state.session_env", "write_implement_env_main"),
     ("session", "clear-implement-pointer"): ("larch.state.session_env", "clear_implement_pointer_main"),
