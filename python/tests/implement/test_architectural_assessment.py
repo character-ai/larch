@@ -99,6 +99,45 @@ def test_parse_results_rejects_extra_prose_and_unknown_identifier() -> None:
         _ = assessment._parse_results(json.dumps(payload), [evidence])  # pyright: ignore[reportPrivateUsage]
 
 
+def test_parse_results_independently_preserves_valid_rows() -> None:
+    invariant = _evidence(config.ASSESSMENT_KIND_INVARIANTS)
+    guideline = _evidence()
+    payload = {
+        "schema_version": "1",
+        "results": [
+            {
+                "kind": "invariants", "state": "clean", "assessment": "Clean.", "identifiers": [],
+                "head_sha": invariant.head_sha, "base_ref": invariant.base_ref,
+                "diff_fingerprint": invariant.diff_fingerprint, "knowledge_sha256": invariant.knowledge_sha256,
+            },
+            {
+                "kind": "guidelines", "state": "deviation", "assessment": "Missing identity.", "identifiers": [],
+                "head_sha": guideline.head_sha, "base_ref": guideline.base_ref,
+                "diff_fingerprint": "wrong", "knowledge_sha256": guideline.knowledge_sha256,
+            },
+        ],
+    }
+    parsed, invalid, detail = assessment._parse_results_independently(json.dumps(payload), [invariant, guideline])  # pyright: ignore[reportPrivateUsage]
+    assert [result.kind for result in parsed] == ["invariants"]
+    assert invalid == {"guidelines"}
+    assert "identity mismatch" in detail
+
+
+def test_main_usage_and_success_stdout_contract(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    assert assessment.main([]) == config.EXIT_USAGE
+    assert capsys.readouterr().out.splitlines() == [
+        "ARCHITECTURAL_ASSESSMENT_STATUS=usage-error",
+        "ARCHITECTURAL_ASSESSMENT_DETAIL=at least one --kind is required",
+    ]
+
+    monkeypatch.setattr(assessment, "run", lambda **_kwargs: ("guidelines:clean",))
+    assert assessment.main(["--kind", "guidelines", "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK
+    assert capsys.readouterr().out.splitlines() == [
+        "ARCHITECTURAL_ASSESSMENT_STATUS=ok",
+        "ARCHITECTURAL_ASSESSMENT_RESULTS=guidelines:clean",
+    ]
+
+
 def test_launcher_uses_exact_read_only_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 

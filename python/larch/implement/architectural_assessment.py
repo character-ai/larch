@@ -80,6 +80,14 @@ class AssessmentResult:
     knowledge_sha256: str
 
 
+class _HeadDrift(RuntimeError):
+    """Signal that an assessment must be rematerialized for a new HEAD."""
+
+
+class _DeviationLogPending(OSError):
+    """Signal that a durable deviation awaits its retryable warning-log append."""
+
+
 class Launcher(Protocol):
     """Injectable assessment launcher."""
 
@@ -175,7 +183,7 @@ def _validate_recorded_identity(*, head_sha: str, base_ref: str) -> None:
 def _recorded_diff(*, repo_root: Path, head_sha: str, base_ref: str) -> str:
     _validate_recorded_identity(head_sha=head_sha, base_ref=base_ref)
     remote, ref = base_ref.split("/", 1)
-    return architectural_guidelines._materialize_implementation_diff_for_head(  # pyright: ignore[reportPrivateUsage]
+    return architectural_guidelines._materialize_implementation_diff_for_head(  # noqa: SLF001 - frozen snapshot validator needs the exact historical diff helper  # pyright: ignore[reportPrivateUsage]  # exact historical diff helper is intentionally private
         repo_root, head_sha=head_sha, base_remote=remote, base_ref=ref
     )
 
@@ -308,10 +316,19 @@ def _already_handled(kind: str, *, repo_root: Path, implement_tmpdir: Path, head
         return False
     if metadata.get("NOTE_STATE") == config.NOTE_STATE_UNAVAILABLE:
         return _unavailable_receipt_valid(kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
+    if kind == config.ASSESSMENT_KIND_GUIDELINES and metadata.get("ASSESSMENT_KIND") == "deviation":
+        note_path = architectural_guidelines.durable_note_path(implement_tmpdir)
+        try:
+            append_status = architectural_guidelines.append_deviation_note(
+                implement_tmpdir, _read_regular(note_path, root=implement_tmpdir)
+            )
+        except (OSError, UnicodeDecodeError, ValueError):
+            return False
+        return append_status in {"ok", "duplicate"}
     return True
 
 
-def _materialize_current(kind: str, *, repo_root: Path, implement_tmpdir: Path, head_sha: str) -> MaterializedEvidence:
+def _materialize_current(kind: str, *, repo_root: Path, implement_tmpdir: Path, head_sha: str) -> MaterializedEvidence | None:
     if kind == config.ASSESSMENT_KIND_INVARIANTS:
         result = architectural_guidelines.prepare_invariant_compose_assessment(
             implement_tmpdir=implement_tmpdir, repo_root=repo_root, expected_head_sha=head_sha, forked_target=False
@@ -320,6 +337,8 @@ def _materialize_current(kind: str, *, repo_root: Path, implement_tmpdir: Path, 
         result = architectural_guidelines.prepare_compose_assessment(
             implement_tmpdir=implement_tmpdir, repo_root=repo_root, expected_head_sha=head_sha, forked_target=False
         )
+    if result.status == "current":
+        return None
     if result.status != "assessment-required":
         raise ValueError(result.warning or f"{kind} materialization was not produced")
     return validate_materialization(kind=kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
@@ -372,7 +391,43 @@ def _launch_prompt(evidences: Sequence[MaterializedEvidence], copied: dict[str, 
     return _AGENT_PROMPT.read_text(encoding="utf-8") + "\n\nREQUESTS_JSON=" + json.dumps(requests, separators=(",", ":"))
 
 
-def _parse_results(  # noqa: C901, PLR0912 - strict schema validation checks each independent boundary
+def _parse_result_row(  # noqa: C901 - strict schema validation checks each independent boundary
+    item: object, by_kind: dict[str, MaterializedEvidence], seen: set[str]
+) -> AssessmentResult:
+    if not isinstance(item, dict):
+        raise TypeError("assessment result must be an object")
+    row: dict[str, object] = cast("dict[str, object]", item)
+    allowed_fields: set[str] = {"kind", "state", "assessment", "identifiers", "head_sha", "base_ref", "diff_fingerprint", "knowledge_sha256"}
+    if set(row) != allowed_fields:
+        raise ValueError("assessment result fields are invalid")
+    kind: str = str(row["kind"])
+    if kind in seen or kind not in by_kind:
+        raise ValueError("assessment result kind is duplicate or unexpected")
+    evidence = by_kind[kind]
+    state: str = str(row["state"])
+    allowed_states = {"clean", "violation"} if kind == config.ASSESSMENT_KIND_INVARIANTS else {"clean", "deviation"}
+    if state not in allowed_states:
+        raise ValueError("assessment result state is invalid")
+    assessment: str = str(row["assessment"])
+    if not assessment.strip() or len(assessment) > _MAX_ASSESSMENT_CHARS:
+        raise ValueError("assessment text is empty or oversized")
+    raw_identifiers: object = row["identifiers"]
+    if not isinstance(raw_identifiers, list):
+        raise TypeError("assessment identifiers must be an array")
+    identifier_items: list[object] = cast("list[object]", raw_identifiers)
+    if any(not isinstance(identifier, str) for identifier in identifier_items):
+        raise ValueError("assessment identifiers are invalid")
+    identifiers: tuple[str, ...] = tuple(cast("list[str]", identifier_items))
+    if not set(identifiers).issubset(evidence.identifiers):
+        raise ValueError("assessment cites an unknown architectural identifier")
+    for key, expected in (("head_sha", evidence.head_sha), ("base_ref", evidence.base_ref), ("diff_fingerprint", evidence.diff_fingerprint), ("knowledge_sha256", evidence.knowledge_sha256)):
+        if str(row[key]) != expected:
+            raise ValueError(f"assessment identity mismatch: {key}")
+    seen.add(kind)
+    return AssessmentResult(kind, state, assessment, identifiers, evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
+
+
+def _parse_results(
     raw: str, evidences: Sequence[MaterializedEvidence]
 ) -> tuple[AssessmentResult, ...]:
     try:
@@ -389,43 +444,41 @@ def _parse_results(  # noqa: C901, PLR0912 - strict schema validation checks eac
         raise TypeError("assessment results must be an array")
     row_items: list[object] = cast("list[object]", rows)
     by_kind: dict[str, MaterializedEvidence] = {evidence.kind: evidence for evidence in evidences}
-    parsed: list[AssessmentResult] = []
     seen: set[str] = set()
-    allowed_fields: set[str] = {"kind", "state", "assessment", "identifiers", "head_sha", "base_ref", "diff_fingerprint", "knowledge_sha256"}
-    for item in row_items:
-        if not isinstance(item, dict):
-            raise TypeError("assessment result must be an object")
-        row: dict[str, object] = cast("dict[str, object]", item)
-        if set(row) != allowed_fields:
-            raise ValueError("assessment result fields are invalid")
-        kind: str = str(row["kind"])
-        if kind in seen or kind not in by_kind:
-            raise ValueError("assessment result kind is duplicate or unexpected")
-        seen.add(kind)
-        evidence = by_kind[kind]
-        state: str = str(row["state"])
-        allowed_states = {"clean", "violation"} if kind == config.ASSESSMENT_KIND_INVARIANTS else {"clean", "deviation"}
-        if state not in allowed_states:
-            raise ValueError("assessment result state is invalid")
-        assessment: str = str(row["assessment"])
-        if not assessment.strip() or len(assessment) > _MAX_ASSESSMENT_CHARS:
-            raise ValueError("assessment text is empty or oversized")
-        raw_identifiers: object = row["identifiers"]
-        if not isinstance(raw_identifiers, list):
-            raise TypeError("assessment identifiers must be an array")
-        identifier_items: list[object] = cast("list[object]", raw_identifiers)
-        if any(not isinstance(identifier, str) for identifier in identifier_items):
-            raise ValueError("assessment identifiers are invalid")
-        identifiers: tuple[str, ...] = tuple(cast("list[str]", identifier_items))
-        if not set(identifiers).issubset(evidence.identifiers):
-            raise ValueError("assessment cites an unknown architectural identifier")
-        for key, expected in (("head_sha", evidence.head_sha), ("base_ref", evidence.base_ref), ("diff_fingerprint", evidence.diff_fingerprint), ("knowledge_sha256", evidence.knowledge_sha256)):
-            if str(row[key]) != expected:
-                raise ValueError(f"assessment identity mismatch: {key}")
-        parsed.append(AssessmentResult(kind, state, assessment, identifiers, evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256))
+    parsed: list[AssessmentResult] = [_parse_result_row(item, by_kind, seen) for item in row_items]
     if seen != set(by_kind):
         raise ValueError("assessment result omitted a requested kind")
     return tuple(sorted(parsed, key=lambda result: _KIND_ORDER.index(result.kind)))
+
+
+def _parse_results_independently(raw: str, evidences: Sequence[MaterializedEvidence]) -> tuple[tuple[AssessmentResult, ...], set[str], str]:
+    """Return valid result rows while isolating malformed or omitted kinds."""
+    try:
+        decoded: object = json.loads(raw)
+        if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "results"} or str(decoded.get("schema_version")) != "1":
+            raise ValueError("assessment output envelope is invalid")
+        rows = decoded.get("results")
+        if not isinstance(rows, list):
+            raise TypeError("assessment results must be an array")
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        return (), {evidence.kind for evidence in evidences}, str(exc)
+    by_kind = {evidence.kind: evidence for evidence in evidences}
+    seen: set[str] = set()
+    parsed: list[AssessmentResult] = []
+    invalid: set[str] = set()
+    detail = "assessment result omitted a requested kind"
+    for item in rows:
+        kind = str(item.get("kind") or "") if isinstance(item, dict) else ""
+        try:
+            parsed.append(_parse_result_row(item, by_kind, seen))
+        except (TypeError, ValueError) as exc:
+            detail = str(exc)
+            if kind in by_kind:
+                invalid.add(kind)
+            else:
+                invalid.update(set(by_kind) - seen)
+    invalid.update(set(by_kind) - {result.kind for result in parsed})
+    return tuple(sorted(parsed, key=lambda result: _KIND_ORDER.index(result.kind))), invalid, detail
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
@@ -462,7 +515,7 @@ def _write_outcome(kind: str, *, implement_tmpdir: Path, result: AssessmentResul
 def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpdir: Path) -> None:
     current_head: str = _git_read(repo_root, ["rev-parse", "HEAD"])
     if current_head != result.head_sha:
-        raise ValueError("HEAD changed after architectural assessment launch")
+        raise _HeadDrift("HEAD changed after architectural assessment launch")
     if result.kind == config.ASSESSMENT_KIND_INVARIANTS:
         architectural_guidelines.write_invariant_compose_assessment(
             implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, repo_root=repo_root
@@ -471,8 +524,6 @@ def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpd
         architectural_guidelines.write_compose_assessment(
             implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, repo_root=repo_root
         )
-        if result.state == "deviation" and architectural_guidelines.append_deviation_note(implement_tmpdir, result.assessment) not in {"ok", "duplicate"}:
-            raise OSError("guideline deviation log append failed")
     _write_outcome(result.kind, implement_tmpdir=implement_tmpdir, result=result)
     metadata = (
         architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir)
@@ -481,9 +532,17 @@ def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpd
     )
     if not _outcome_valid(result.kind, implement_tmpdir, metadata):
         raise OSError("architectural outcome postcondition failed")
+    if (
+        result.kind == config.ASSESSMENT_KIND_GUIDELINES
+        and result.state == "deviation"
+        and architectural_guidelines.append_deviation_note(implement_tmpdir, result.assessment) not in {"ok", "duplicate"}
+    ):
+        raise _DeviationLogPending("guideline deviation log append failed")
 
 
-def _persist_clean(evidence: MaterializedEvidence, *, implement_tmpdir: Path) -> None:
+def _persist_clean(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path) -> None:
+    if _git_read(repo_root, ["rev-parse", "HEAD"]) != evidence.head_sha:
+        raise _HeadDrift("HEAD changed before deterministic-clean persistence")
     invariant: bool = evidence.kind == config.ASSESSMENT_KIND_INVARIANTS
     architectural_guidelines.write_deterministic_clean_note(
         implement_tmpdir=implement_tmpdir,
@@ -495,6 +554,27 @@ def _persist_clean(evidence: MaterializedEvidence, *, implement_tmpdir: Path) ->
     clean_text: str = architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE if invariant else architectural_guidelines.CLEAN_PRESENTATION_NOTE
     result = AssessmentResult(evidence.kind, "clean", clean_text, (), evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
     _write_outcome(evidence.kind, implement_tmpdir=implement_tmpdir, result=result, note_state=config.NOTE_STATE_DETERMINISTIC_CLEAN)
+
+
+def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Path, head_sha: str) -> str:
+    """Repair a missing outcome sidecar without replacing a current durable note."""
+    if _git_read(repo_root, ["rev-parse", "HEAD"]) != head_sha:
+        raise _HeadDrift("HEAD changed before current-outcome repair")
+    metadata = architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_metadata(implement_tmpdir)
+    note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_path(implement_tmpdir)
+    state = metadata.get("ASSESSMENT_KIND", "")
+    allowed = {"clean", "violation"} if kind == config.ASSESSMENT_KIND_INVARIANTS else {"clean", "deviation"}
+    if state not in allowed:
+        raise ValueError(f"current {kind} note has no repairable assessment kind")
+    if not _outcome_valid(kind, implement_tmpdir, metadata):
+        result = AssessmentResult(kind, state, _read_regular(note_path, root=implement_tmpdir), (), head_sha, metadata["BASE_REF"], "", "")
+        _write_outcome(kind, implement_tmpdir=implement_tmpdir, result=result)
+        if not _outcome_valid(kind, implement_tmpdir, metadata):
+            raise OSError("architectural outcome repair postcondition failed")
+    if kind == config.ASSESSMENT_KIND_GUIDELINES and state == "deviation":
+        append_status = architectural_guidelines.append_deviation_note(implement_tmpdir, _read_regular(note_path, root=implement_tmpdir))
+        return "handled" if append_status in {"ok", "duplicate"} else "log-pending"
+    return "handled"
 
 
 def _safe_detail(text: str, implement_tmpdir: Path) -> str:
@@ -546,7 +626,7 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, implement_
     )
 
 
-def _unavailable_receipt_valid(kind: str, *, repo_root: Path, implement_tmpdir: Path) -> bool:
+def _unavailable_receipt_valid(kind: str, *, repo_root: Path, implement_tmpdir: Path) -> bool:  # noqa: PLR0911 - receipt validation rejects each malformed boundary
     try:
         evidence = validate_materialization(kind=kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
         receipt = _load_json(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=kind), root=implement_tmpdir)
@@ -574,26 +654,47 @@ def _unavailable_receipt_valid(kind: str, *, repo_root: Path, implement_tmpdir: 
         return False
 
 
-def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launcher: Launcher | None = None) -> tuple[str, ...]:
+def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launcher: Launcher | None = None) -> tuple[str, ...]:  # noqa: C901, PLR0912, PLR0915 - coordinator isolates each assessment lifecycle boundary
     """Run requested assessments and return ordered per-kind statuses."""
     normalized: tuple[str, ...] = normalize_kinds(kinds)
     root: Path = repo_root.resolve(strict=True)
     tmpdir: Path = implement_tmpdir.resolve(strict=True)
     if root.is_symlink() or tmpdir.is_symlink() or not root.is_dir() or not tmpdir.is_dir():
         raise ValueError("repo root and implement tmpdir must be non-symlink directories")
-    head_sha: str = _git_read(root, ["rev-parse", "HEAD"])
     statuses: dict[str, str] = {}
     pending: list[MaterializedEvidence] = []
-    for kind in normalized:
-        if _already_handled(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha):
-            statuses[kind] = "handled"
+    for _attempt in range(3):
+        head_sha: str = _git_read(root, ["rev-parse", "HEAD"])
+        pending = []
+        drifted = False
+        for kind in normalized:
+            if kind in statuses:
+                continue
+            if _already_handled(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha):
+                statuses[kind] = "handled"
+                continue
+            evidence = _materialize_current(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha)
+            if evidence is None:
+                try:
+                    statuses[kind] = _repair_current_outcome(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha)
+                except _HeadDrift:
+                    drifted = True
+                    break
+                continue
+            if deterministic_out_of_scope(evidence.diff_text):
+                try:
+                    _persist_clean(evidence, repo_root=root, implement_tmpdir=tmpdir)
+                except _HeadDrift:
+                    drifted = True
+                    break
+                statuses[kind] = "deterministic-clean"
+            else:
+                pending.append(evidence)
+        if drifted:
             continue
-        evidence = _materialize_current(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha)
-        if deterministic_out_of_scope(evidence.diff_text):
-            _persist_clean(evidence, implement_tmpdir=tmpdir)
-            statuses[kind] = "deterministic-clean"
-        else:
-            pending.append(evidence)
+        break
+    else:
+        raise ValueError("HEAD changed repeatedly during architectural assessment setup")
     if pending:
         evidence_dir, copied = _copy_evidence(pending, implement_tmpdir=tmpdir)
         prompt: str = _launch_prompt(pending, copied)
@@ -608,15 +709,27 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             if launch_result.returncode != 0:
                 raise ValueError(launch_result.stderr or f"launcher exited {launch_result.returncode}")
             _write_text_atomic(result_path, launch_result.stdout)
-            results = _parse_results(_read_regular(result_path, root=tmpdir), pending)
+            results, invalid_kinds, invalid_detail = _parse_results_independently(_read_regular(result_path, root=tmpdir), pending)
             for result in results:
                 try:
                     _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
+                except _HeadDrift:
+                    raise
+                except _DeviationLogPending:
+                    statuses[result.kind] = "log-pending"
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     _persist_unavailable(next(evidence for evidence in pending if evidence.kind == result.kind), implement_tmpdir=tmpdir, detail=str(exc))
                     statuses[result.kind] = "unavailable"
                 else:
                     statuses[result.kind] = result.state
+            for evidence in pending:
+                if evidence.kind in statuses:
+                    continue
+                detail = invalid_detail if evidence.kind in invalid_kinds else "assessment result omitted a requested kind"
+                _persist_unavailable(evidence, implement_tmpdir=tmpdir, detail=detail)
+                statuses[evidence.kind] = "unavailable"
+        except _HeadDrift:
+            return run(kinds=normalized, repo_root=root, implement_tmpdir=tmpdir, launcher=launcher)
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             for evidence in pending:
                 if evidence.kind in statuses:
