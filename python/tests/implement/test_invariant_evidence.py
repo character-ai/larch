@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+
+if TYPE_CHECKING:
+    import pytest
 
 from larch.core import config
 from larch.implement import invariant_evidence
@@ -38,11 +43,11 @@ def test_rejects_stale_durable_note(tmp_path: Path) -> None:
     assert not (tmp_path / "architectural-invariants.md").exists()
 
 
-def test_bounds_complete_rendered_evidence_body(tmp_path: Path, monkeypatch) -> None:
+def test_bounds_complete_rendered_evidence_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(config, "CI_FIXER_INVARIANT_EVIDENCE_MAX_BYTES", 700)
     argv = _args(tmp_path)
-    (tmp_path / "architectural-invariant-note.md").write_text("note " * 100, encoding="utf-8")
-    (tmp_path / ".ship-route-exit-handoff.env").write_text("DETAIL=route " + "x" * 500 + "\n", encoding="utf-8")
+    _ = (tmp_path / "architectural-invariant-note.md").write_text("note " * 100, encoding="utf-8")
+    _ = (tmp_path / ".ship-route-exit-handoff.env").write_text("DETAIL=route " + "x" * 500 + "\n", encoding="utf-8")
 
     assert invariant_evidence.main(argv) == 0
     output = tmp_path / "architectural-invariants.md"
@@ -51,7 +56,7 @@ def test_bounds_complete_rendered_evidence_body(tmp_path: Path, monkeypatch) -> 
 
 def test_rejects_duplicate_metadata_without_partial_artifacts(tmp_path: Path) -> None:
     argv = _args(tmp_path)
-    (tmp_path / "architectural-invariant-note.meta.env").write_text(
+    _ = (tmp_path / "architectural-invariant-note.meta.env").write_text(
         "HEAD_SHA=" + "a" * 40 + "\nHEAD_SHA=" + "a" * 40 + "\n",
         encoding="utf-8",
     )
@@ -64,7 +69,7 @@ def test_rejects_duplicate_metadata_without_partial_artifacts(tmp_path: Path) ->
 def test_rejects_symlinked_route_handoff_without_partial_artifacts(tmp_path: Path) -> None:
     argv = _args(tmp_path)
     outside = tmp_path.parent / "outside-handoff.env"
-    outside.write_text("DETAIL=bad\n", encoding="utf-8")
+    _ = outside.write_text("DETAIL=bad\n", encoding="utf-8")
     handoff = tmp_path / ".ship-route-exit-handoff.env"
     handoff.unlink()
     handoff.symlink_to(outside)
@@ -77,7 +82,7 @@ def test_rejects_symlinked_route_handoff_without_partial_artifacts(tmp_path: Pat
 def test_ignores_symlinked_legacy_identity_sidecar_temp(tmp_path: Path) -> None:
     argv = _args(tmp_path)
     outside = tmp_path.parent / "outside-identity.env"
-    outside.write_text("unchanged\n", encoding="utf-8")
+    _ = outside.write_text("unchanged\n", encoding="utf-8")
     temp = tmp_path / ".architectural-invariants.md.identity.env.tmp"
     temp.symlink_to(outside)
 
