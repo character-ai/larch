@@ -1,0 +1,80 @@
+## Summary
+
+When an inline ci-fix commit is made during a `/implement --merge` run (adding files not in the original dispatcher commit), `final-report write` and `implement-finalize teardown` both fail with `ShipError: coverage artifact does not match live repository inputs`. The persisted coverage artifact records which files were changed by the dispatcher commit. The ci-fix commit adds new files (e.g., pylint repairs), so `load_live_coverage` computes a different live fingerprint and raises. Because this exception is unhandled in `teardown()`, the `[DONE]` tracking-issue rename is skipped, `summary-final.md` is never written, and the final report is missing from the orchestrator's terminal output.
+
+## Original report
+
+During a `/implement --merge` run for issue #6873, the Cursor implementer committed the implementation. CI then failed on pylint violations in the new lint files. The orchestrator applied inline fixes (5 files edited) and committed them as a ci-fix commit. After the PR was merged, `step-16-17` produced no stdout, `step-18.sh --phase finalize` exited 1, and no `summary-final.md` was written. The traceback pointed to `scope_disposition.disposition_link_kind` → `load_live_coverage` → `ShipError("coverage artifact does not match live repository inputs")`.
+
+## Reproduction scenario
+
+1. Run `/implement --merge` on an issue where the implementer (Cursor or Codex) produces a commit that triggers CI failures.
+2. The orchestrator makes an inline ci-fix commit that changes additional files beyond what the dispatcher committed.
+3. PR merges successfully.
+4. `step-16-17` runs: `final-report write` calls `finalize.teardown()`, which calls `disposition_link_kind()`, which calls `load_live_coverage()`.
+5. `load_live_coverage` computes `live` coverage from the current HEAD (which now includes the ci-fix commit's files) and finds `live != persisted`.
+6. `ShipError` propagates out of `teardown()` uncaught — teardown fails, `summary-final.md` is never written, `EMIT_BODY=false`, no final report appears.
+
+## Expected behavior
+
+The teardown completes. The `[DONE]` rename fires. `summary-final.md` is written and the final report appears in the orchestrator's terminal output.
+
+## Observed behavior
+
+Teardown fails with `ShipError: coverage artifact does not match live repository inputs`. `summary-final.md` is absent. Step 18 returns `EMIT_BODY=false WFR_RC=1`. The tracking issue remains `[IMPLEMENTING]` until renamed manually.
+
+## Root cause analysis
+
+`load_live_coverage` in `scope_disposition.py` (lines 574–581) is a correctness guard: it ensures the persisted coverage artifact still matches the live repository before trusting it for disposition decisions. This is correct for pre-ship use. However, at teardown time (post-merge), the live HEAD has changed (ci-fix commit added new files) and the check no longer applies meaningfully. The `disposition_link_kind` call that triggers this guard is inside `teardown()` to decide between "closes" and "part-of" link kinds for the tracking-issue done-rename comment — a presentational decision that should not be blocked by a stale coverage artifact when the PR has already merged.
+
+The underlying issue is that `teardown()` does not catch `ShipError` from the `disposition_link_kind` call (lines 704–714 of `finalize.py`). A stale coverage artifact at teardown time causes the whole teardown to abort.
+
+## Evidence
+
+- `scope_disposition.py` line 579: `if persisted != live: raise ShipError("coverage artifact does not match live repository inputs")`.
+- `finalize.py` lines 704–714: `elif ... and scope_disposition.disposition_link_kind(...) != "part-of":` — no try/except around this call.
+- Traceback from failing run: `finalize.py:707 → scope_disposition.py:580 → ShipError`.
+- The ci-fix commit changed 5 files (pylint repairs in `python/larch/lint/` and `python/tests/lint/`) not present in the dispatcher's commit; these appear in the live `git diff --name-only` but not in the persisted coverage artifact.
+
+## Affected files
+
+- `python/larch/state/finalize.py` — `teardown()` does not catch `ShipError` from `disposition_link_kind`.
+- `python/larch/implement/scope_disposition.py` — `load_live_coverage` raises on mismatch even post-merge.
+
+## Suggested fix(es)
+
+Wrap the `disposition_link_kind` call in `teardown()` in a `try/except ShipError` block. On `ShipError`, fall back to a default link kind (e.g., `"closes"`) and emit a breadcrumb warning. This ensures teardown completes even when the coverage artifact is stale post-merge.
+
+Alternatively, `load_live_coverage` could accept a `skip_live_check: bool` flag that `disposition_link_kind` passes as `True` after merge (detectable via `ctx.pr_closed`).
+
+## Open questions
+
+- Should `final-report write` (called from `step-16-17`) also guard against this? The `step-16-17` wrapper ran before the teardown; if it fails for the same reason, fixing teardown alone may not recover the report.
+- Is there a safe way to recompute and update the coverage artifact after a ci-fix commit, so the check passes?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fix `teardown()` so it completes even when the coverage artifact is stale after a ci-fix commit.
+- Fix `_plan_coverage_summary_line` so `final-report write` completes even when live coverage diverged.
+
+### Non-goals
+- Recomputing or refreshing the coverage artifact post-merge.
+- Changing the `load_live_coverage` signature or adding a `skip_live_check` flag.
+- Fixing any other callers of `load_live_coverage` (`pr_body.py`, pre-merge paths).
+
+### Approach sketch
+- In `finalize.py` `teardown()`: wrap the `disposition_link_kind(...)` call in `try/except ShipError`, fall back to `"closes"` and emit a breadcrumb warning.
+- In `final_report.py` `_plan_coverage_summary_line`: wrap the `load_live_coverage(...)` call in `try/except ShipError`, return `""` (omit the coverage line from the report).
+- Add targeted unit tests in `test_finalize.py` and `test_final_report.py` for both fallback paths.
+
+### Surfaces in scope
+- `python/larch/state/finalize.py`
+- `python/larch/report/final_report.py`
+- `python/tests/state/test_finalize.py`
+- `python/tests/report/test_final_report.py`
+
+### Open questions
+- None.
