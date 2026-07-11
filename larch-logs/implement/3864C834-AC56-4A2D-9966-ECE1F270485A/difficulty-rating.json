@@ -1,0 +1,22 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "MODERATE",
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "gpt-5.6-sol",
+  "rater_tool": "codex",
+  "rationale": "Changes a machine-sensitive skill prompt contract and its normative reference, with structural harness coverage across the Step 5b.5 to Step 5c boundary.",
+  "round_cap": 2,
+  "schema_version": 1
+}
