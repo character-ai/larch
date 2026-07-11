@@ -1,0 +1,21 @@
+# [FEATURE] Guideline: fail-closed gates land with or after their producers
+
+## Summary
+
+Three of the six bugs in the 2026-07-10/11 spike share one pattern: a fail-closed gate or ship-blocking contract landed before the producer or author guidance that satisfies it.
+
+- #6880: #6852 (v52.5.26) added a ship-time requirement for a persisted `REPO_ROOT` whenever a coverage artifact exists. No /implement writer persisted the key, so standard runs stalled at PR compose (fixed by PR #6887).
+- #6882: the Step 8 assessment outcome routing (#6834, #6835) made an exact-string clean-note contract ship-blocking. The authoring reference never warned that any addition flips the outcome to violation (fixed by PR #6885).
+- #6875: the disposition fingerprint (#6526) froze the Step 2 baseline, which the ship driver's own flush commits and routine rebases invalidate (fixed by PR #6879).
+
+## Proposal
+
+Adopt one guideline entry in `ARCHITECTURAL_GUIDELINES.md` (id per maintainer convention, for example `G-Gate-1`):
+
+- A fail-closed gate ships in the same change or release as the producer that satisfies it, or later. Never earlier.
+- A new ship-blocking contract updates its author guidance in the same change.
+- Before a gate reads persisted run state, verify every live writer path persists that state, and add a regression test that runs producer and gate together.
+
+## Relationship to open work
+
+Appears complementary to the learn-from-bugs adoptions #6873 and #6892; their listed parts target lints, invariants, and Markdown/commit guidelines rather than gate/producer sequencing. If maintainers prefer, this can fold into one of those as an extra part.

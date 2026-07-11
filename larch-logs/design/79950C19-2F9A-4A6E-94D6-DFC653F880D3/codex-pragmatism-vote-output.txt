@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan explicitly scopes this change to a guideline only, with no gate or producer implementation path introduced that requires a regression test.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- A new n/a or never deviation would fail the existing lint, but the plan does not require either wording and the proposed substantive deviation preserves the sole-file scope.
