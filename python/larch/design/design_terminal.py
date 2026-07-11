@@ -555,7 +555,7 @@ def _reconcile_post_recovery_comment(*, design_tmpdir: Path, report_issue: str, 
     source_env = design_tmpdir / "source-env.sh"
     ctx = source_env if source_env.is_file() else None
     run_id = _read_env_value(path=source_env, key="LARCH_RUN_ID", default="")
-    authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=ctx, operator_mode=False, run_id=run_id, trusted_root=design_tmpdir)
+    authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=ctx, operator_mode=False, run_id=run_id)
     if not authorized:
         return False, "reconcile-unauthorized"
     plugin_root = Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
@@ -888,12 +888,10 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                                     str(body_file),
                                     "--title",
                                     title or "/design terminal failure",
-                "--publication-tier",
-                "tier-a",
-                "--mutation-context",
-                str(_ctx),
-                "--run-id",
-                _read_env_value(path=_ctx, key="LARCH_RUN_ID", default=""),
+                                    "--publication-tier",
+                                    "tier-a",
+                                    "--mutation-context",
+                                    str(_ctx or source_env),
                                 ],
                                 stdout=stdout_handle,
                                 stderr=stderr_handle,
@@ -925,7 +923,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         source_env = design_tmpdir / "source-env.sh"
         _ctx = source_env if source_env.is_file() else None
         _run_id = _read_env_value(path=source_env, key="LARCH_RUN_ID", default="")
-        _authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=_ctx, operator_mode=False, run_id=_run_id, trusted_root=design_tmpdir)
+        _authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=_ctx, operator_mode=False, run_id=_run_id)
         if not _authorized:
             append_fallback(f"{config.LIVE_MUTATION_REFUSAL_REASON}:reporter-unauthorized")
             return

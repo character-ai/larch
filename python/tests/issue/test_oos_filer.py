@@ -1,6 +1,6 @@
 """Tests for oos_filer.py."""
 
-# pyright: reportUnusedCallResult=false, reportPrivateUsage=false
+# pyright: reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false
 
 from __future__ import annotations
 
