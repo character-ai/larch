@@ -31,7 +31,6 @@ from larch.implement.dispatch_helpers import (
     _read_session_key_default,
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
-    _resolve_repo_root,  # noqa: F401 - re-exported for test monkeypatching  # pylint: disable=unused-import  # re-exported for test monkeypatching
     _run,
     _run_cli_forward,
     _tmpdir_from_env,
@@ -39,6 +38,7 @@ from larch.implement.dispatch_helpers import (
     _write_text_atomic,
     GIT_BIN,
 )
+from larch.implement.dispatch_helpers import _resolve_repo_root as _resolve_repo_root  # noqa: PLC0414 - re-exported for test monkeypatching
 from larch.implement.dispatch_leg import (
     _CHECKS_DEADLINE_MS,
     _COMMIT_ROUTE_DEADLINE_MS,
