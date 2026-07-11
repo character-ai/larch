@@ -16,19 +16,19 @@ not_contains() {
 
 bash -n "$WRAPPER"
 contains "$WRAPPER" 'python/cli.py" bgjob start'
-contains "$WRAPPER" 'python/cli.py" bgjob wait'
+not_contains "$WRAPPER" 'bgjob wait'
 contains "$WRAPPER" 'ci fixer-lane'
 contains "$WRAPPER" '--merge-result-env "$MERGE_ENV"'
 contains "$WRAPPER" '--bgjob-result-env "$MERGE_ENV"'
 not_contains "$WRAPPER" 'distilled-failure.md'
 not_contains "$WRAPPER" 'gh run'
-not_contains "$REPO_ROOT/skills/implement/SKILL.md" 'step-8-ci-fixer.sh'
+contains "$REPO_ROOT/skills/implement/SKILL.md" 'step-8-ci-fixer.sh'
 not_contains "$REPO_ROOT/skills/implement/scripts/step-8-ship.sh" 'step-8-ci-fixer.sh'
 not_contains "$REPO_ROOT/python/larch/implement/ship.py" 'step-8-ci-fixer.sh'
 
 mkdir -p "$TMP/impl" "$TMP/plugin/python"
 set +e
-OUT=$(IMPLEMENT_TMPDIR="$TMP/impl" CLAUDE_PLUGIN_ROOT="$TMP/plugin" bash "$WRAPPER" 2>&1)
+OUT=$(IMPLEMENT_TMPDIR="$TMP/impl" CLAUDE_PLUGIN_ROOT="$TMP/plugin" bash "$WRAPPER" --start 2>&1)
 RC=$?
 set -e
 [ "$RC" -eq 0 ]

@@ -682,7 +682,7 @@ def test_fixer_lane_rejects_error_logs_as_raw_evidence(tmp_path: Path, monkeypat
     handoff = impl / "ci-fixer"
     handoff.mkdir(parents=True)
     identity = ci.ci_fixer_lane.LaneIdentity(
-        repo_root=tmp_path, implement_tmpdir=impl, handoff_dir=handoff, repo="o/r", pr=None,
+        mode="ci", repo_root=tmp_path, implement_tmpdir=impl, handoff_dir=handoff, repo="o/r", pr=None,
         run_id="42", tier="codex", attempt=1, starting_head="a" * 40,
         input_fingerprint="b" * 64, step="step", result_env=impl / "bgjob" / "step.merge.env",
         invariant_evidence=None,
@@ -705,7 +705,7 @@ def test_fixer_lane_rolls_back_rounds_when_result_persistence_fails(
     handoff = impl / "ci-fixer"
     handoff.mkdir(parents=True)
     identity = ci.ci_fixer_lane.LaneIdentity(
-        repo_root=tmp_path, implement_tmpdir=impl, handoff_dir=handoff, repo="o/r", pr=None,
+        mode="ci", repo_root=tmp_path, implement_tmpdir=impl, handoff_dir=handoff, repo="o/r", pr=None,
         run_id="42", tier="codex", attempt=1, starting_head="a" * 40,
         input_fingerprint="b" * 64, step="step", result_env=impl / "bgjob" / "step.merge.env",
         invariant_evidence=None,

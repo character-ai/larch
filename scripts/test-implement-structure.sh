@@ -704,61 +704,35 @@ if ci_fix_ref.is_file():
     ci_fix_text = ci_fix_ref.read_text()
     for needle in [
         '# Ship PR autonomous CI-fix',
-        'Python driver non-zero routing',
-        'first-fixer-non-health',
-        'ship-pr-internal-lint-fix',
-        'ci-local-unfixable:*',
-        'exact `local-unfixable`',
+        '**Consumer**:',
+        '**Contract**:',
+        '**When to load**:',
+        'architectural-invariants-violation',
+        'step-8-ci-fixer.sh',
+        '--start',
+        '--finalize --step "$STEP"',
+        'bgjob wait --step "$STEP" --max-wait-s 270',
+        'BGJOB_STATUS=WAIT',
+        'retry-next-tool',
         'ci-fix-exhausted',
-        '.ship-route-exit-handoff.env',
-        'larch_io.read_kvs',
-        'ledger_ready=true',
-        'stall-recovery record-escalation',
-        'If `FAILED_RUN_ID` is empty',
-        'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr checks',
-        'route to `operator-bail` or post-driver `stall`',
-        'skip sentinel writes, `ci distill-log`, Agent dispatch, `gh run-logs`, autonomous repair, commit, push, and ship re-entry',
+        'CI_FAILURE_SCOPE',
+        'LARCH_RUN_ID',
         'LARCH_CI_FIXER=0',
-        'main-agent-ci-fix-$FAILED_RUN_ID.attempted',
         'main-agent-ci-fix.count',
-        'ci distill-log',
-        'fixer-spawned.sentinel',
-        'fixer-bail.md',
-        'fixer-status.env',
-        'fixer-rounds.tsv',
-        'fallback-attempts.count',
-        '20 rounds',
-        'attempts 1-10 may run',
-        'Do not Read `distilled-failure.md`',
-        'do not run `gh run-logs`',
-        'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch',
-        'python/cli.py checks run-relevant --site step8-main-agent-fix',
-        'Fix CI failure (main-agent)',
-        'enumerate every failing job/check revealed',
-        'git add -- <paths>',
-        'run-log refresh',
-        'BAIL_CLASS=in_progress',
-        'BAIL_CLASS=ci-fixer-health-bail',
-        'BAIL_CLASS=github-log-failure',
-        'BAIL_CLASS=write-failure',
+        'attempts 1 through 30',
         'Do not rerun architectural-guidelines Phase A',
         're-invoke `step-8-ship.sh`',
     ]:
         require_text(ci_fix_text, needle, 'ship-pr-ci-fix.md CI-fix body')
-    require_any_text(
-        ci_fix_text,
-        ['NEXT_ACTION=assessments', 'NEXT_ACTION=guidelines-assessment'],
-        'ship-pr-ci-fix.md compose reassessment route',
-    )
-    for section in [
-        '## Kill switch: `LARCH_CI_FIXER=0`',
-        '## Default fixer path',
-        '## Fixer spawn and inputs',
-        '## Success handoff',
-        '## Bail handoff and post-bail fallback',
+    for retired in [
+        'fixer-spawned.sentinel',
+        'fallback-attempts.count',
+        '20 rounds',
+        'attempts 1-10 may run',
+        'BAIL_CLASS=github-log-failure',
     ]:
-        require_text(ci_fix_text, section, f'ship-pr-ci-fix.md section {section}')
-    require_near('skills/implement/references/ship-pr-ci-fix.md', 'FAILED_RUN_ID', 'pr checks', 'ship-pr-ci-fix empty failed run id fallback', 600)
+        if retired in ci_fix_text:
+            checks.append(f'ship-pr-ci-fix.md retains retired {retired!r}')
 else:
     checks.append('missing skills/implement/references/ship-pr-ci-fix.md')
 write_final_ref = Path('skills/implement/scripts/write-final-report.md')

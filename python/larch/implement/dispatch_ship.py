@@ -354,6 +354,10 @@ def _write_ship_route_handoff(
         value = _ship_route_safe_line(payload.get(source_key, ""))
         if value:
             lines.append(f"{out_key}={value}")
+    if action == "ci-fix":
+        reason = _ship_route_safe_line(payload.get("needs_user_reason", ""))
+        scope = "main" if reason == config.NEEDS_USER_MAIN_CI_FAIL else "pr"
+        lines.append(f"CI_FAILURE_SCOPE={scope}")
     detail_raw = payload.get("detail", "")
     detail = detail_raw if isinstance(detail_raw, str) else str(detail_raw or "")
     if detail:
