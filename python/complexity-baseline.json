@@ -6423,7 +6423,7 @@
     "file": "larch/state/finalize.py",
     "code": "C901",
     "qualified_symbol": "teardown",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/state/finalize.py",
