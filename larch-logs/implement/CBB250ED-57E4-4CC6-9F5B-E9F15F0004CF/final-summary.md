@@ -69,21 +69,21 @@ codex/apply                        │                                 ███
 Exec Issues (0):
 Warnings (1):
   1. Step 7a.1 — 9 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/review/round_runner.py, python/larch/review/coder_runner.py, python/l...
-    Plan-implementation gap: 9 listed files unchanged, suggesting potential incomplete work or over-conservative planning. Verify if changes were intentionally skipped.
+    Material: plan-listed files unchanged indicates incomplete implementation; design-to-code gap may miss required functionality or leave plan commitments unfulfilled.
 
 ## /implement run CBB250ED-57E4-4CC6-9F5B-E9F15F0004CF: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:58:16
-- **Cost**: 💰 TOTAL ~$28.17: Claude $3.64, Codex-5.6 $16.19, Codex-mini $0.09, Cursor $5.80 (Composer $0.00, Grok $0.00, Auto $5.80), Claude (subprocess) $2.45  |  Tokens: 41209k
+- **Cost**: 💰 TOTAL ~$28.65: Claude $4.10, Codex-5.6 $16.19, Codex-mini $0.09, Cursor $5.80 (Composer $0.00, Grok $0.00, Auto $5.80), Claude (subprocess) $2.47  |  Tokens: 42031k
 - **Issue**: #6852: https://github.com/character-ai/larch/issues/6852
 - **Plan review**: N/A
-- **Plan coverage**: 13/19 firm headings; band: middle; disposition: none; todos_left: 0
+- **Plan coverage**: 15/19 firm headings; band: middle; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 23/24 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6864
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/CBB250ED-57E4-4CC6-9F5B-E9F15F0004CF/`
