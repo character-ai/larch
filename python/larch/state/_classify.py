@@ -365,6 +365,7 @@ def _classify_generic_from_terminal_state(*, args: argparse.Namespace, tmpdir: P
         for _progress_key in (
             "LATEST_PHASE", "PUBLISH_RC_SOURCE", "PLAN_WRITE_OK", "PUBLISH_OK",
             "RENAMED", "LOG_PUBLISH_ATTEMPTED", "LOG_PUBLISH_COMPLETED",
+            "PR_URL", "RECOVERY_BRANCH",
         ):
             _progress_value = found.get(_progress_key, "")
             if _progress_value:

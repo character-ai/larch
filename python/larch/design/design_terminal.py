@@ -494,24 +494,47 @@ def _salvage_success_proven(design_tmpdir: Path) -> bool:
     published. Missing, stale, or unproven state returns False so the prior
     report stays open for operator review instead of being mis-closed.
     """
-    result_env = design_tmpdir / config.DESIGN_PUBLISH_RESULT_FILE
-    if not result_env.is_file() or result_env.is_symlink():
-        return False
+    return _validated_salvage_publish_result(
+        design_tmpdir=design_tmpdir,
+        path=design_tmpdir / config.DESIGN_PUBLISH_RESULT_FILE,
+    ) is not None
+
+
+def _validated_publish_state(*, design_tmpdir: Path, path: Path) -> dict[str, str] | None:
+    if path.is_symlink() or not path.is_file():
+        return None
     try:
-        text = result_env.read_text(encoding="utf-8", errors="replace")
+        text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return False
+        return None
     values: dict[str, str] = {}
     for raw_line in text.splitlines():
-        if "=" not in raw_line:
+        if not raw_line or raw_line.startswith("#"):
             continue
+        if "=" not in raw_line:
+            return None
         key, _, value = raw_line.partition("=")
-        values[key.strip()] = value.strip()
-    return (
+        if key in values:
+            return None
+        values[key] = value
+    return values
+
+
+def _validated_salvage_publish_result(*, design_tmpdir: Path, path: Path) -> dict[str, str] | None:
+    values = _validated_publish_state(design_tmpdir=design_tmpdir, path=path)
+    if values is None:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", values.get("PUBLISH_ATTEMPT_ID", "")):
+        return None
+    if values.get("PUBLISH_RC_SOURCE") not in {"returned", "exception"}:
+        return None
+    if not (
         values.get("PLAN_WRITE_OK") == "true"
         and values.get("RENAMED") == "true"
         and values.get("LOG_PUBLISH_COMPLETED") == "true"
-    )
+    ):
+        return None
+    return values
 
 
 def _reconcile_post_recovery_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:
@@ -589,7 +612,7 @@ def _reconcile_failed_publish_tail_report(
     if not terminal_sentinel.is_file():
         return False
     reconcile_sentinel = design_tmpdir / "design-failure-reconcile-report.env"
-    if reconcile_sentinel.exists():
+    if _read_env_value(path=reconcile_sentinel, key="STATUS", default="") == "reconciled":
         return False
     if _read_env_value(path=terminal_sentinel, key="STALL_RECOVERY_REPORT_STATUS", default="") != "filed":
         return False
@@ -597,17 +620,11 @@ def _reconcile_failed_publish_tail_report(
     if not (report_issue and report_issue.isdigit()):
         return False
     terminal_state = design_tmpdir / "design-failure-terminal-state.env"
-    prior_was_publish_tail = False
-    if terminal_state.is_file() and not terminal_state.is_symlink():
-        try:
-            ts_text = terminal_state.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            ts_text = ""
-        prior_was_publish_tail = (
-            "TRIGGER=publish-tail-failed" in ts_text
-            or "FAILURE_OUTCOME=failed-publish-tail" in ts_text
-        )
-    if not prior_was_publish_tail:
+    terminal_values = _validated_publish_state(design_tmpdir=design_tmpdir, path=terminal_state)
+    if terminal_values is None or (
+        terminal_values.get("TRIGGER") != "publish-tail-failed"
+        and terminal_values.get("FAILURE_OUTCOME") != "failed-publish-tail"
+    ):
         return False
     if not _salvage_success_proven(design_tmpdir):
         return False

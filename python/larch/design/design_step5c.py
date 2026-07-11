@@ -339,7 +339,9 @@ def _step5c_write_status(
     plan_write_ok: str,
     publish_ok: str,
     cleanup_eligible: bool,
+    result_env: dict[str, str] | None = None,
 ) -> None:
+    result_env = result_env or {}
     rows: list[tuple[str, str]] = [
         ("PLAN_WRITE_OK", plan_write_ok),
         ("PUBLISH_OK", publish_ok),
@@ -349,11 +351,23 @@ def _step5c_write_status(
         ("PUBLISH_STDOUT_FALLBACK", "true" if publish_stdout_fallback else "false"),
         ("CLEANUP_ELIGIBLE", "true" if cleanup_eligible else "false"),
     ]
+    rows.extend(
+        (key, result_env.get(key, ""))
+        for key in (
+            "PUBLISH_ATTEMPT_ID", "PUBLISH_RC_SOURCE", "LATEST_PHASE",
+            "LOG_PUBLISH_ATTEMPTED", "LOG_PUBLISH_COMPLETED", "RENAMED",
+            "PR_URL", "RECOVERY_BRANCH",
+        )
+    )
+    status_path = design_tmpdir / ".design-step5c-status.env"
     design_write_merge_env(
-        path=design_tmpdir / ".design-step5c-status.env",
+        path=status_path,
         design_tmpdir=design_tmpdir,
         rows=rows,
     )
+    verified = load_bash_quoted_env(path=status_path, allow_keys=(key for key, _ in rows))
+    if not verified or any(verified.get(key, "") != value for key, value in rows):
+        raise OSError("step 5c status write verification failed")
 
 
 def _step5c_invalidate_publish_result(*, design_tmpdir: Path) -> None:
@@ -369,15 +383,13 @@ def _step5c_invalidate_publish_result(*, design_tmpdir: Path) -> None:
 def _step5c_copy_bounded_tail(*, source: Path, destination: Path) -> str:
     if source.is_symlink() or not source.is_file():
         return ""
-    data = source.read_bytes()[-config.DESIGN_PUBLISH_TAIL_BYTE_CAP :]
-    larch_io.atomic_write(
-        path=destination,
-        text=data.decode("utf-8", errors="replace"),
-        create_parent=False,
-        nofollow=True,
-        mode=0o600,
-    )
-    return destination.read_text(encoding="utf-8", errors="replace")
+    try:
+        data = source.read_bytes()[-config.DESIGN_PUBLISH_TAIL_BYTE_CAP :]
+        text = data.decode("utf-8", errors="replace")
+        larch_io.atomic_write(path=destination, text=text, create_parent=False, nofollow=True, mode=0o600)
+        return destination.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def _step5c_render_publish_failure_detail(
@@ -716,18 +728,26 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 )
                 if rre_rc != 0:
                     result_env = {}
-                result_env["PUBLISH_RC_SOURCE"] = (
-                    config.DESIGN_PUBLISH_RC_SOURCE_EXCEPTION if "Traceback" in stderr_tail else config.DESIGN_PUBLISH_RC_SOURCE_RETURNED
-                )
-                _step5c_render_publish_failure_detail(
-                    design_tmpdir=design_tmpdir, publish_rc=publish_rc,
-                    rc_source=result_env["PUBLISH_RC_SOURCE"], result_env=result_env,
-                    stdout_tail=stdout_tail, stderr_tail=stderr_tail,
-                )
+                if result_env.get("PUBLISH_RC_SOURCE") not in {
+                    config.DESIGN_PUBLISH_RC_SOURCE_RETURNED,
+                    config.DESIGN_PUBLISH_RC_SOURCE_EXCEPTION,
+                }:
+                    result_env["PUBLISH_RC_SOURCE"] = (
+                        config.DESIGN_PUBLISH_RC_SOURCE_EXCEPTION if "Traceback" in stderr_tail else config.DESIGN_PUBLISH_RC_SOURCE_RETURNED
+                    )
+                try:
+                    _step5c_render_publish_failure_detail(
+                        design_tmpdir=design_tmpdir, publish_rc=publish_rc,
+                        rc_source=result_env["PUBLISH_RC_SOURCE"], result_env=result_env,
+                        stdout_tail=stdout_tail, stderr_tail=stderr_tail,
+                    )
+                except OSError as exc:
+                    _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design publish tail", tool="tail persistence", exit_code=1, category="Warnings", output_file=publish_stderr_file)
+                    _core_diagnostic(f"**⚠ Step 5c: publish-tail diagnostic persistence failed: {exc}**")
                 _step5c_write_status(
                     design_tmpdir=design_tmpdir, ctx=ctx, publish_rc=publish_rc, publish_stdout_fallback=False,
                     plan_write_ok=result_env.get("PLAN_WRITE_OK", ""), publish_ok=result_env.get("PUBLISH_OK", ""),
-                    cleanup_eligible=False,
+                    cleanup_eligible=False, result_env=result_env,
                 )
                 _step5c_stage_failed_publish_tail(
                     design_tmpdir=design_tmpdir, plugin_root=plugin_root, publish_rc=publish_rc, result_env=result_env

@@ -161,6 +161,10 @@ def build_sensitive_corpus_from_evidence(
         tmpdir / "design-log-publish.failure.log",
         tmpdir / "design-plan-write.failure.log",
         tmpdir / "design-publish-tail.failure.log",
+        tmpdir / "design-publish-tail.stdout.log",
+        tmpdir / "design-publish-tail.stderr.log",
+        tmpdir / "design-publish-rename.stderr.log",
+        tmpdir / "design-publish-log.stderr.log",
     ]
     detail_log = read_kv(path=class_file, key="FAILURE_DETAIL_LOG", default="")
     if detail_log:
