@@ -1406,6 +1406,181 @@ def test_classify_rejects_outside_failure_detail_log(tmp_path: Path, capsys: pyt
         Path(outside).unlink(missing_ok=True)
 
 
+@pytest.mark.parametrize("merge_result", ["merged", "admin_merged", "already_merged"])
+def test_classify_expected_postmerge_flush_is_non_resumable(
+    merge_result: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_state(
+        tmp_path,
+        "postmerge-flush",
+        "postmerge",
+        extra=f"MERGE_RESULT={merge_result}\nNOTE={config.REFRESH_SKIP_PRETERMINAL_OUTCOME}",
+    )
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=operator-action" in out
+    assert "RESUME_HINT=none" in out
+    assert "step8-shippr" not in out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected" in out
+    classification = (tmp_path / "stall-recovery-classification.env").read_text(encoding="utf-8")
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected" in classification
+
+
+@pytest.mark.parametrize(
+    "failure_marker",
+    [
+        "redaction-failed",
+        "post-merge-refresh-failed",
+        "manifest-recovery-failed",
+        "commit-failed",
+    ],
+)
+def test_classify_expected_postmerge_flush_does_not_hide_failures(
+    failure_marker: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_state(
+        tmp_path,
+        "postmerge-flush",
+        "postmerge",
+        extra=(
+            "MERGE_RESULT=merged\n"
+            f"NOTE={config.REFRESH_SKIP_PRETERMINAL_OUTCOME} {failure_marker}"
+        ),
+    )
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected" not in out
+    assert "FAILURE_CLASS=operator-action" not in out
+
+
+@pytest.mark.parametrize(
+    "failure_marker",
+    [
+        "redaction-failed",
+        "post-merge-refresh-failed",
+        "manifest-recovery-failed",
+        "commit-failed",
+    ],
+)
+def test_classify_postmerge_flush_failure_detail_log_is_non_resumable(
+    failure_marker: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_state(tmp_path, "postmerge-flush", "postmerge", extra="MERGE_RESULT=merged")
+    detail_log = tmp_path / "failure.log"
+    _ = detail_log.write_text(
+        f"{config.REFRESH_SKIP_PRETERMINAL_OUTCOME}\n{failure_marker}\n",
+        encoding="utf-8",
+    )
+
+    assert stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(detail_log),
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "RESUME_HINT=none" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-failure" in out
+
+
+def test_classify_postmerge_flush_mixed_evidence_failure_is_non_resumable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_state(
+        tmp_path,
+        "postmerge-flush",
+        "postmerge",
+        extra=f"MERGE_RESULT=merged\nNOTE={config.REFRESH_SKIP_PRETERMINAL_OUTCOME}",
+    )
+    detail_log = tmp_path / "failure.log"
+    _ = detail_log.write_text("commit-failed\n", encoding="utf-8")
+
+    assert stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(detail_log),
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "RESUME_HINT=none" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-failure" in out
+
+
+@pytest.mark.parametrize(
+    ("step", "phase", "merge_result", "stall_tracking"),
+    [
+        ("postmerge-flush", "postmerge", "", "true"),
+        ("other-step", "postmerge", "merged", "true"),
+        ("postmerge-flush", "postmerge", "merged", "false"),
+    ],
+)
+def test_classify_expected_postmerge_flush_requires_exact_state(
+    step: str,
+    phase: str,
+    merge_result: str,
+    stall_tracking: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        f"PHASE={phase}\nSTALL_TRACKING={stall_tracking}\nSTALL_STEP={step}\n"
+        f"MERGE_RESULT={merge_result}\nNOTE={config.REFRESH_SKIP_PRETERMINAL_OUTCOME}\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected" not in out
+
+
+def test_classify_expected_postmerge_flush_not_promoted_to_same_cause_repeat(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_state(
+        tmp_path,
+        "postmerge-flush",
+        "postmerge",
+        extra=f"MERGE_RESULT=admin_merged\nNOTE={config.REFRESH_SKIP_PRETERMINAL_OUTCOME}",
+    )
+    attempts = tmp_path / "attempts.env"
+    assert stall_recovery.init_attempts_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--attempts-file", str(attempts),
+    ]) == 0
+    assert stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--attempts-file", str(attempts),
+    ]) == 0
+    first = capsys.readouterr().out
+    assert stall_recovery.record_attempt_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--attempts-file", str(attempts),
+        "--class", _stdout_kv(first, "FAILURE_CLASS"),
+        "--signature", _stdout_kv(first, "FAILURE_SIGNATURE"),
+        "--resume-hint", _stdout_kv(first, "RESUME_HINT"),
+        "--outcome", "failed",
+    ]) == 0
+
+    assert stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--attempts-file", str(attempts),
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=operator-action" in out
+    assert "RESUME_HINT=none" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected" in out
+    assert "same-cause-repeat" not in out
+
+
 def test_classify_same_cause_repeat_after_record_attempt(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write_state(tmp_path, "8", "ci-initial", extra="NOTE=network timeout")
     attempts = tmp_path / "attempts.env"
