@@ -35,8 +35,6 @@ FALLBACK_PROVENANCE = "scope-fallback-provenance.json"
 _MAX_TODO_ITEMS = 20
 _MAX_TODO_CHARS = 4000
 _MAX_UNTOUCHED_INVENTORY = 80
-_MAX_FALLBACK_PROVENANCE_PATHS = 500
-_MAX_FALLBACK_DIGEST_CHARS = 128
 _SHIP_PR_STATE = "ship-pr-state.sh"
 _SESSION_ENV = "session-env.sh"
 _FULL_SUITE_TOKENS: Final[frozenset[str]] = frozenset({"suite", "suites"})
@@ -123,9 +121,9 @@ class FollowupIssue:
 
 
 @dataclass(frozen=True)
-class PathStateSignature:
-    present: bool
-    digest: str
+class FallbackProvenance:
+    session_id: str
+    anchor_head: str
 
 
 @dataclass(frozen=True)
@@ -317,17 +315,28 @@ def _selected_coverage_remote(tmpdir: Path) -> str:
 def _validate_remote_symbolic_ref(value: str, *, remote: str) -> str | None:
     """Return a safe ``<remote>/<branch>`` ref, or None when unusable in Git argv."""
     text = value.strip()
-    if not text or text.startswith("-") or any(ch.isspace() for ch in text):
-        return None
-    if "\0" in text or ".." in text:
-        return None
     prefix = f"{remote}/"
     if not text.startswith(prefix):
         return None
     branch = text[len(prefix) :]
-    if not branch or branch.startswith("-") or branch.endswith("/"):
+    if not _is_safe_refname(branch):
         return None
     return text
+
+
+def _is_safe_refname(refname: str) -> bool:
+    """Accept a conservative subset of Git refnames without revision syntax."""
+    if not refname or refname.startswith("-") or refname.endswith("/"):
+        return False
+    if ".." in refname:
+        return False
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/+\-]*", refname):
+        return False
+    return all(
+        component and not component.startswith(".") and not component.endswith(".")
+        and not component.endswith(".lock")
+        for component in refname.split("/")
+    )
 
 
 def _resolve_selected_remote_head(
@@ -407,47 +416,11 @@ def resolve_baseline(
     )
 
 
-def _path_state_signature(repo_root: Path, rel: str) -> PathStateSignature:
-    target = repo_root / rel
-    try:
-        if target.is_symlink():
-            link = str(target.readlink())
-            digest = hashlib.sha256(link.encode("utf-8", errors="replace")).hexdigest()
-            return PathStateSignature(present=True, digest=digest)
-        if target.is_file():
-            digest = hashlib.sha256(target.read_bytes()).hexdigest()
-            return PathStateSignature(present=True, digest=digest)
-    except OSError:
-        return PathStateSignature(present=False, digest="")
-    return PathStateSignature(present=False, digest="")
-
-
 def _fallback_provenance_path(tmpdir: Path) -> Path:
     return tmpdir / FALLBACK_PROVENANCE
 
 
-def _parse_provenance_entry(
-    key: object, value: object
-) -> tuple[str, PathStateSignature] | None:
-    if not isinstance(key, str) or not key or "\0" in key or key.startswith("/"):
-        return None
-    if ".." in Path(key).parts:
-        return None
-    if not isinstance(value, dict):
-        return None
-    entry = cast("Mapping[str, object]", value)
-    present_raw = entry.get("present")
-    digest_raw = entry.get("digest")
-    if not isinstance(present_raw, bool) or not isinstance(digest_raw, str):
-        return None
-    if len(digest_raw) > _MAX_FALLBACK_DIGEST_CHARS or any(
-        ch.isspace() for ch in digest_raw
-    ):
-        return None
-    return key, PathStateSignature(present=present_raw, digest=digest_raw)
-
-
-def _read_raw_provenance_paths(tmpdir: Path) -> Mapping[str, object] | None:
+def _read_fallback_provenance(tmpdir: Path) -> FallbackProvenance | None:
     path = _fallback_provenance_path(tmpdir)
     if not _artifact_present(path):
         return None
@@ -456,42 +429,33 @@ def _read_raw_provenance_paths(tmpdir: Path) -> Mapping[str, object] | None:
         parsed: object = json.loads(raw_text)
     except (OSError, json.JSONDecodeError, UnicodeError):
         return None
+    return _parse_fallback_provenance(parsed)
+
+
+def _parse_fallback_provenance(parsed: object) -> FallbackProvenance | None:
     if not isinstance(parsed, dict):
         return None
     data = cast("Mapping[str, object]", parsed)
-    if str(data.get("schema_version") or "") != "1":
+    session_id = data.get("session_id")
+    anchor_head = data.get("anchor_head")
+    if (
+        str(data.get("schema_version") or "") != "2"
+        or not isinstance(session_id, str)
+        or not isinstance(anchor_head, str)
+        or not session_id
+        or not re.fullmatch(r"[0-9a-f]{40,64}", anchor_head)
+    ):
         return None
-    raw_paths = data.get("paths")
-    if not isinstance(raw_paths, dict):
-        return None
-    return cast("Mapping[str, object]", raw_paths)
-
-
-def _load_fallback_provenance(tmpdir: Path) -> dict[str, PathStateSignature]:
-    raw_paths = _read_raw_provenance_paths(tmpdir)
-    if raw_paths is None:
-        return {}
-    out: dict[str, PathStateSignature] = {}
-    for key, value in raw_paths.items():
-        parsed_entry = _parse_provenance_entry(key, value)
-        if parsed_entry is None:
-            return {}
-        path_key, signature = parsed_entry
-        out[path_key] = signature
-        if len(out) > _MAX_FALLBACK_PROVENANCE_PATHS:
-            return {}
-    return out
+    return FallbackProvenance(session_id=session_id, anchor_head=anchor_head)
 
 
 def _write_fallback_provenance(
-    tmpdir: Path, entries: Mapping[str, PathStateSignature]
+    tmpdir: Path, provenance: FallbackProvenance
 ) -> None:
     payload = {
-        "schema_version": "1",
-        "paths": {
-            path: {"present": sig.present, "digest": sig.digest}
-            for path, sig in sorted(entries.items())
-        },
+        "schema_version": "2",
+        "session_id": provenance.session_id,
+        "anchor_head": provenance.anchor_head,
     }
     larch_io.trusted_atomic_write(
         _fallback_provenance_path(tmpdir),
@@ -507,7 +471,7 @@ def _frozen_fallback_touched_paths(
     runner: Runner,
     plan_paths: frozenset[str],
 ) -> tuple[str, ...]:
-    """Attribute coverage from porcelain + verified fallback provenance only."""
+    """Attribute coverage from current porcelain and this run's commits only."""
     status = _git(
         runner,
         ["status", "--porcelain=v1", "-z", "--untracked-files=all"],
@@ -518,19 +482,42 @@ def _frozen_fallback_touched_paths(
     porcelain = _porcelain_paths_z(status.stdout)
     porcelain_plan = {path for path in porcelain if path in plan_paths}
 
-    retained: dict[str, PathStateSignature] = {}
-    for path, recorded in _load_fallback_provenance(tmpdir).items():
-        if path not in plan_paths:
-            continue
-        if _path_state_signature(repo_root, path) == recorded:
-            retained[path] = recorded
+    session_id = _fallback_session_id(tmpdir)
+    head = _git(runner, ["rev-parse", "HEAD"], cwd=repo_root)
+    if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40,64}", head.stdout.strip()):
+        return tuple(sorted(porcelain_plan))
+    current_head = head.stdout.strip()
+    provenance = _read_fallback_provenance(tmpdir)
+    committed_plan: set[str] = set()
+    if provenance is not None and provenance.session_id == session_id:
+        diff = _git(
+            runner,
+            ["diff", "--name-only", f"{provenance.anchor_head}..{current_head}"],
+            cwd=repo_root,
+        )
+        if diff.returncode == 0:
+            committed_plan.update(
+                path for path in diff.stdout.splitlines() if path in plan_paths
+            )
+    if session_id:
+        _write_fallback_provenance(
+            tmpdir,
+            FallbackProvenance(
+                session_id=session_id,
+                anchor_head=(provenance.anchor_head if provenance and provenance.session_id == session_id else current_head),
+            ),
+        )
+    return tuple(sorted(porcelain_plan | committed_plan))
 
-    for path in sorted(porcelain_plan):
-        if path not in retained:
-            retained[path] = _path_state_signature(repo_root, path)
 
-    _write_fallback_provenance(tmpdir, retained)
-    return tuple(sorted(retained))
+def _fallback_session_id(tmpdir: Path) -> str:
+    try:
+        session_id = larch_io.read_trusted_text(
+            tmpdir / "session-id", root=tmpdir, errors="replace"
+        ).strip()
+    except OSError:
+        return ""
+    return session_id if session_id and "\0" not in session_id else ""
 
 
 def _live_touched_paths(

@@ -25,6 +25,7 @@ class FakeRunner:
         diff_paths: Sequence[str] = (),
         status_z: str = "",
         merge_base: str = "LIVEBASE",
+        head: str = "a" * 40,
         remote_heads: Mapping[str, str] | None = None,
         fail_symbolic_refs: frozenset[str] | None = None,
         fail_merge_base: bool = False,
@@ -33,6 +34,7 @@ class FakeRunner:
         self.diff_paths = tuple(diff_paths)
         self.status_z = status_z
         self.merge_base = merge_base
+        self.head = head
         self.remote_heads = dict(remote_heads or {})
         self.fail_symbolic_refs = fail_symbolic_refs or frozenset()
         self.fail_merge_base = fail_merge_base
@@ -83,7 +85,7 @@ class FakeRunner:
                 return CommandResult(args, 1, "", "no merge-base", 0.0)
             return CommandResult(args, 0, f"{self.merge_base}\n", "", 0.0)
         if args[:3] == ("git", "rev-parse", "HEAD"):
-            return CommandResult(args, 0, "HEADSHA\n", "", 0.0)
+            return CommandResult(args, 0, f"{self.head}\n", "", 0.0)
         return CommandResult(args, 1, "", "unexpected", 0.0)
 
 
@@ -441,7 +443,17 @@ def test_normal_run_ignores_unrelated_upstream_head(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "remote_head",
-    ["", "upstream/main", "-origin/main", "origin/", "origin", "other/main"],
+    [
+        "",
+        "upstream/main",
+        "-origin/main",
+        "origin/",
+        "origin",
+        "other/main",
+        "origin/main^",
+        "origin/main:path",
+        "origin/main@{1}",
+    ],
 )
 def test_malformed_symbolic_ref_uses_frozen_fallback(
     tmp_path: Path, remote_head: str, capsys: pytest.CaptureFixture[str]
@@ -594,6 +606,7 @@ def test_frozen_fallback_post_commit_provenance_retained(
     plan_file = tmp_path / "plan.txt"
     _ = plan_file.write_text(_plan(["src/a.py", "src/b.py"]), encoding="utf-8")
     _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     src = tmp_path / "src"
     src.mkdir()
     _ = (src / "a.py").write_text("implemented\n", encoding="utf-8")
@@ -612,6 +625,8 @@ def test_frozen_fallback_post_commit_provenance_retained(
 
     # Simulate dispatcher commit: clean porcelain, content unchanged.
     runner.status_z = ""
+    runner.head = "b" * 40
+    runner.diff_paths = ("src/a.py",)
 
     def fake_run_cli(argv: Sequence[str]) -> CommandResult:
         return CommandResult(tuple(argv), 0, "OK=true\n", "", 0.0)
@@ -629,6 +644,29 @@ def test_frozen_fallback_post_commit_provenance_retained(
     )
     assert live.touched_paths == ("src/a.py",)
     assert live.fingerprint == coverage.fingerprint
+
+
+def test_frozen_fallback_ignores_preexisting_provenance(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-2\n", encoding="utf-8")
+    _ = (tmp_path / scope_disposition.FALLBACK_PROVENANCE).write_text(
+        '{"schema_version":"2","session_id":"run-1","anchor_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n',
+        encoding="utf-8",
+    )
+    src = tmp_path / "src"
+    src.mkdir()
+    _ = (src / "a.py").write_text("pre-existing\n", encoding="utf-8")
+
+    touched = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        runner=FakeRunner(
+            status_z="", fail_symbolic_refs=frozenset({"origin"})
+        ),
+        plan_paths=["src/a.py"],
+    )
+
+    assert touched == ()
 
 
 def test_frozen_fallback_stale_provenance_pruned_after_revert(
