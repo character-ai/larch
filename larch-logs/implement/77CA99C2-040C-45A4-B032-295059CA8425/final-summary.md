@@ -62,21 +62,29 @@ codex/apply              │                           ████████�
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (4):
+Warnings (5):
   1. Step 7a.1 — 4 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: scripts/test-implement-fence-shape.sh, skills/implement/scripts/test-architectural...
-    Plan-listed paths unmodified may indicate incomplete implementation if plan required changes to those files.
+    Material: plan-listed files unmodified suggests incomplete implementation; operators should verify whether plan paths were stale or implementation is incomplete.
   2. Step 7.r-post-rebase — phantom untracked files: 5 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7.r-post-rebase.z locally)
-    Same 5 files appear across all checkpoints; likely benign build artifacts or temporary files, not blocker material.
+    Low materiality: likely benign rebase artifacts; operators should inspect locally to confirm files are not unintended changes or leftovers.
   3. Step 7a.r-post-rebase — phantom untracked files: 5 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7a.r-post-rebase.z locally)
-    Same 5 files appear across all checkpoints; likely benign build artifacts or temporary files, not blocker material.
-  4. Step 8-pre-ship — phantom untracked files: 5 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-8-pre-ship.z locally)
-    Same 5 files appear across all checkpoints; likely benign build artifacts or temporary files, not blocker material.
+    Low materiality: likely benign rebase artifacts; operators should inspect locally to confirm files are not unintended changes or leftovers.
+  4. Step 8-pre-ship — phantom untracked files: 5 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-8-pre-ship.z locally) ×2
+    Low-medium materiality: persistent phantom files across steps merit local inspection to rule out unintended artifacts or missed inclusions.
+
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
 ## /implement run 77CA99C2-040C-45A4-B032-295059CA8425: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:49:09
-- **Cost**: 💰 TOTAL ~$21.52: Claude $3.31, Codex-5.6 $12.60, Codex-mini $0.07, Cursor $4.41 (Composer $0.00, Grok $0.00, Auto $4.41), Claude (subprocess) $1.13  |  Tokens: 30441k
+- **Cost**: 💰 TOTAL ~$25.10: Claude $6.87, Codex-5.6 $12.60, Codex-mini $0.07, Cursor $4.41 (Composer $0.00, Grok $0.00, Auto $4.41), Claude (subprocess) $1.15  |  Tokens: 35682k
 - **Issue**: #6821: https://github.com/character-ai/larch/issues/6821
 - **Plan review**: N/A
 - **Plan coverage**: 15/17 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -86,7 +94,7 @@ Warnings (4):
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 4
+- **Warnings**: 5
 - **Run logs**: `larch-logs/implement/77CA99C2-040C-45A4-B032-295059CA8425/`
 - **Main agent model**: glm-5.2
 - **Effort**: max
