@@ -62,19 +62,21 @@ codex/apply              │                           ████████�
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (3):
+Warnings (4):
   1. Step 7a.1 — 4 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: scripts/test-implement-fence-shape.sh, skills/implement/scripts/test-architectural...
-    Potentially material—plan-listed paths unmodified suggests implementation may be incomplete or plan stale relative to actual changes.
+    Plan-listed paths unmodified may indicate incomplete implementation if plan required changes to those files.
   2. Step 7.r-post-rebase — phantom untracked files: 5 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7.r-post-rebase.z locally)
-    Low materiality unless these are unexpected artifacts—phantom files are common in rebase scenarios and typically harmless.
+    Same 5 files appear across all checkpoints; likely benign build artifacts or temporary files, not blocker material.
   3. Step 7a.r-post-rebase — phantom untracked files: 5 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-7a.r-post-rebase.z locally)
-    Low materiality unless these are unexpected artifacts—phantom files are common in rebase scenarios and typically harmless.
+    Same 5 files appear across all checkpoints; likely benign build artifacts or temporary files, not blocker material.
+  4. Step 8-pre-ship — phantom untracked files: 5 file(s) appeared since session baseline (inspect <TMPDIR>/phantom-paths-8-pre-ship.z locally)
+    Same 5 files appear across all checkpoints; likely benign build artifacts or temporary files, not blocker material.
 
 ## /implement run 77CA99C2-040C-45A4-B032-295059CA8425: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:49:09
-- **Cost**: 💰 TOTAL ~$21.18: Claude $2.99, Codex-5.6 $12.60, Codex-mini $0.07, Cursor $4.41 (Composer $0.00, Grok $0.00, Auto $4.41), Claude (subprocess) $1.11  |  Tokens: 29842k
+- **Cost**: 💰 TOTAL ~$21.52: Claude $3.31, Codex-5.6 $12.60, Codex-mini $0.07, Cursor $4.41 (Composer $0.00, Grok $0.00, Auto $4.41), Claude (subprocess) $1.13  |  Tokens: 30441k
 - **Issue**: #6821: https://github.com/character-ai/larch/issues/6821
 - **Plan review**: N/A
 - **Plan coverage**: 15/17 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -84,7 +86,7 @@ Warnings (3):
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 3
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/77CA99C2-040C-45A4-B032-295059CA8425/`
 - **Main agent model**: glm-5.2
 - **Effort**: max
