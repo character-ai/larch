@@ -81,6 +81,31 @@ def _pre_pr_resume_plan(*, branch_name: str = "feat", repo: str = "") -> ship_re
     )
 
 
+def test_persisted_repo_root_for_pr_resolves_persisted_root(tmp_path: Path) -> None:
+    # Regression for issue #6880: when the implement session persists REPO_ROOT,
+    # PR composition must resolve the consumer root from persisted state instead
+    # of stalling. resolve_persisted_repo_root short-circuits before coverage is
+    # consulted, so a persisted root avoids the coverage-validation raise.
+    repo_root = tmp_path / "consumer-repo"
+    repo_root.mkdir()
+    (tmp_path / "session-env.sh").write_text(f"REPO_ROOT={repo_root}\n", encoding="utf-8")
+    ctx = _ctx(tmp_path)
+    assert ship._persisted_repo_root_for_pr(ctx) == repo_root.resolve()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_persisted_repo_root_for_pr_raises_when_coverage_without_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The post-Step-6 normal path always has a coverage artifact. When coverage
+    # is present but no REPO_ROOT was persisted, the ship driver must fail closed
+    # rather than fall back to ambient cwd (G-Root-1).
+    monkeypatch.setattr(ship.scope_disposition, "load_coverage", lambda *_, **__: object())
+    ctx = _ctx(tmp_path)
+    with pytest.raises(ShipError, match="persisted repository root is required for PR coverage validation"):
+        ship._persisted_repo_root_for_pr(ctx)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_destall_pre_pr_reentry_clears_terminal_overlay(tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(

@@ -359,6 +359,10 @@ def _write_base_session_env(st: BootstrapState) -> None:
         str(st.session_env()),
         "--repo",
         st.repo,
+        "--repo-root",
+        os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
+        or os.environ.get("REPO_ROOT", "").strip()
+        or str(Path.cwd()),
         "--repo-unavailable",
         st.repo_unavailable or "false",
         "--codex-present",
