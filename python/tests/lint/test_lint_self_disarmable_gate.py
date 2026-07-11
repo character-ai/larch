@@ -204,6 +204,66 @@ def test_or_metadata_early_return_with_hard_trigger_is_flagged(tmp_path: Path) -
     assert len(findings) == 1
 
 
+def test_nested_metadata_early_return_with_prior_hard_trigger_is_flagged(tmp_path: Path) -> None:
+    design = _design_tree(
+        tmp_path,
+        plan_quality=(
+            "from larch.design._plan_quality_commands import OptionalMetadata\n"
+            "def assess(meta: OptionalMetadata, size_diff_raw: bool, enabled: bool) -> bool:\n"
+            "    hard_trigger = size_diff_raw\n"
+            "    if enabled:\n"
+            "        if meta.mechanical_churn == 'true':\n"
+            "            return False\n"
+            "    return hard_trigger\n"
+        ),
+    )
+    findings = lint.scan_file(
+        design / "plan_quality.py",
+        larch_dir=tmp_path / "python" / "larch",
+        meta_fields=frozenset({"diff_added", "mechanical_churn"}),
+    )
+    assert len(findings) == 1
+
+
+def test_inline_plan_size_or_metadata_return_is_flagged(tmp_path: Path) -> None:
+    design = _design_tree(
+        tmp_path,
+        plan_quality=(
+            "from larch.design._plan_quality_commands import OptionalMetadata\n"
+            "def assess(meta: OptionalMetadata, diff_lines: int) -> bool:\n"
+            "    if meta.mechanical_churn == 'true' or diff_lines > 100:\n"
+            "        return False\n"
+            "    return True\n"
+        ),
+    )
+    findings = lint.scan_file(
+        design / "plan_quality.py",
+        larch_dir=tmp_path / "python" / "larch",
+        meta_fields=frozenset({"diff_added", "mechanical_churn"}),
+    )
+    assert len(findings) == 1
+
+
+def test_later_hard_trigger_does_not_flag_prior_metadata_return(tmp_path: Path) -> None:
+    design = _design_tree(
+        tmp_path,
+        plan_quality=(
+            "from larch.design._plan_quality_commands import OptionalMetadata\n"
+            "def assess(meta: OptionalMetadata) -> bool:\n"
+            "    if meta.mechanical_churn == 'true':\n"
+            "        return False\n"
+            "    hard_trigger = True\n"
+            "    return hard_trigger\n"
+        ),
+    )
+    findings = lint.scan_file(
+        design / "plan_quality.py",
+        larch_dir=tmp_path / "python" / "larch",
+        meta_fields=frozenset({"diff_added", "mechanical_churn"}),
+    )
+    assert findings == []
+
+
 def test_current_plan_quality_size_trigger_compliant() -> None:
     root = Path(__file__).resolve().parents[3]
     assert lint.main(["--root", str(root)]) == 0

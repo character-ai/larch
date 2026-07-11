@@ -277,6 +277,32 @@ def _looks_like_hard_trigger_name(name: str) -> bool:
     )
 
 
+def _contains_inline_hard_trigger(node: ast.AST) -> bool:
+    """Return whether an expression performs a plan-size hard-gate calculation."""
+    for child in ast.walk(node):
+        if isinstance(child, ast.Name) and _looks_like_hard_trigger_name(child.id):
+            return True
+        if isinstance(child, ast.Attribute) and _looks_like_hard_trigger_name(child.attr):
+            return True
+        if isinstance(child, ast.Compare):
+            names = [name.id for name in ast.walk(child) if isinstance(name, ast.Name)]
+            if any(token in name.lower() for name in names for token in ("diff", "line", "size", "plan")):
+                return True
+    return False
+
+
+def _statement_returns(stmt: ast.stmt) -> bool:
+    if isinstance(stmt, ast.Return):
+        return True
+    if isinstance(stmt, ast.If):
+        return bool(stmt.orelse) and _body_returns(stmt.body) and _body_returns(stmt.orelse)
+    return False
+
+
+def _body_returns(body: list[ast.stmt]) -> bool:
+    return any(_statement_returns(stmt) for stmt in body)
+
+
 def _scan_function(
     node: ast.FunctionDef | ast.AsyncFunctionDef,
     *,
@@ -286,21 +312,12 @@ def _scan_function(
     findings: list[Finding],
 ) -> None:
     symbol = node.name
-    # Track names bound to hard-trigger computations in this function.
+    # Track hard triggers in source order; later assignments cannot justify an
+    # earlier metadata-controlled return.
     hard_names: set[str] = set()
     for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
         if _looks_like_hard_trigger_name(argument.arg):
             hard_names.add(argument.arg)
-    for stmt in node.body:
-        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
-            name = stmt.targets[0].id
-            if _looks_like_hard_trigger_name(name):
-                hard_names.add(name)
-            # OR-combine of meta into trigger is compliant; record the name as hard.
-            if isinstance(stmt.value, ast.BoolOp) and isinstance(stmt.value.op, ast.Or):
-                if _contains_meta_field(stmt.value, meta_fields=meta_fields):
-                    hard_names.add(name)
-
     for stmt in node.body:
         _scan_statement(
             stmt,
@@ -311,6 +328,10 @@ def _scan_function(
             comments_by_line=comments_by_line,
             findings=findings,
         )
+        if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
+            name = stmt.targets[0].id
+            if _looks_like_hard_trigger_name(name) or _contains_inline_hard_trigger(stmt.value):
+                hard_names.add(name)
 
 
 def _emit(
@@ -377,7 +398,8 @@ def _scan_statement(
                 in {"soft", "softened", "presentation", "advisory"}
                 for body_stmt in stmt.body
             )
-            if not presentation_only and (body_clears_hard or (body_returns and hard_names)):
+            hard_context = bool(hard_names) or _contains_inline_hard_trigger(stmt.test)
+            if not presentation_only and (body_clears_hard or (body_returns and hard_context)):
                 lineno = getattr(stmt, "lineno", 0)
                 _emit(
                     findings=findings,

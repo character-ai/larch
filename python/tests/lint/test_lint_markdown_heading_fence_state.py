@@ -161,6 +161,98 @@ def test_search_over_split_lines_detected(tmp_path: Path) -> None:
     assert [f.pattern_name for f in lint.scan_file(path, python_dir=python_dir)] == ["HEADING_RE"]
 
 
+def test_enumerated_split_lines_require_fence_guard(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "import re\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "def parse(text: str) -> None:\n"
+        "    for index, line in enumerate(text.splitlines()):\n"
+        "        if HEADING_RE.match(line):\n"
+        "            pass\n",
+        encoding="utf-8",
+    )
+    assert [finding.pattern_name for finding in lint.scan_file(path, python_dir=python_dir)] == [
+        "HEADING_RE"
+    ]
+
+
+def test_fence_guard_must_reference_active_loop_value(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "import re\n"
+        "from larch.issue.issue_create import _balanced_fence_line_indices\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "def parse(text: str) -> None:\n"
+        "    lines = text.splitlines()\n"
+        "    fenced = _balanced_fence_line_indices(lines)\n"
+        "    for index, line in enumerate(lines):\n"
+        "        if 0 not in fenced and HEADING_RE.match(line):\n"
+        "            pass\n",
+        encoding="utf-8",
+    )
+    assert [finding.pattern_name for finding in lint.scan_file(path, python_dir=python_dir)] == [
+        "HEADING_RE"
+    ]
+
+
+def test_boolean_fence_guard_and_subscript_line_are_compliant(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "import re\n"
+        "from larch.issue.issue_create import _balanced_fence_line_indices\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "def parse(text: str) -> None:\n"
+        "    lines = text.splitlines()\n"
+        "    fenced = _balanced_fence_line_indices(lines)\n"
+        "    for index in range(len(lines)):\n"
+        "        in_fence = index in fenced\n"
+        "        if not in_fence and HEADING_RE.match(lines[index]):\n"
+        "            pass\n",
+        encoding="utf-8",
+    )
+    assert lint.scan_file(path, python_dir=python_dir) == []
+
+
+def test_function_local_fence_helper_import_is_compliant(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "import re\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "def parse(text: str) -> None:\n"
+        "    from larch.issue.issue_create import _balanced_fence_line_indices\n"
+        "    lines = text.splitlines()\n"
+        "    fenced = _balanced_fence_line_indices(lines)\n"
+        "    for index, line in enumerate(lines):\n"
+        "        if index not in fenced and HEADING_RE.match(line):\n"
+        "            pass\n",
+        encoding="utf-8",
+    )
+    assert lint.scan_file(path, python_dir=python_dir) == []
+
+
+def test_unreadable_source_raises_scan_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text("import re\n", encoding="utf-8")
+
+    def fail_read(*_args: object, **_kwargs: object) -> str:
+        raise OSError("denied")
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+    with pytest.raises(lint.ScanError, match="cannot read source"):
+        _ = lint.scan_file(path, python_dir=python_dir)
+
+
 def test_scope_excludes_tests_and_vendor(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     for relpath in [

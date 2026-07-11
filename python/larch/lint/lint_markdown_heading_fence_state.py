@@ -41,6 +41,7 @@ HEADING_PATTERN_RE = re.compile(
     r"(?:\^|\\A)\s*#{1,6}[ \t]"
 )
 FENCE_HELPER_NAME_RE = re.compile(r"fence", re.IGNORECASE)
+KNOWN_FENCE_HELPERS = frozenset({"_balanced_fence_line_indices"})
 
 
 class Record(TypedDict):
@@ -165,21 +166,32 @@ def _name_of(node: ast.AST) -> str | None:
     return node.id if isinstance(node, ast.Name) else None
 
 
+def _verified_fence_helper(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Return whether a local helper visibly constructs fence-line indices."""
+    if node.name not in KNOWN_FENCE_HELPERS and FENCE_HELPER_NAME_RE.search(node.name) is None:
+        return False
+    has_set = any(
+        isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Name)
+        and child.func.id in {"set", "range"}
+        for child in ast.walk(node)
+    )
+    return any(isinstance(child, ast.Return) for child in ast.walk(node)) and (
+        node.name in KNOWN_FENCE_HELPERS or has_set
+    )
+
+
 def _collect_fence_helpers(tree: ast.AST) -> set[str]:
     helpers: set[str] = set()
     for node in tree.body if isinstance(tree, ast.Module) else []:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            if FENCE_HELPER_NAME_RE.search(node.name):
+            if _verified_fence_helper(node):
                 helpers.add(node.name)
         elif isinstance(node, (ast.ImportFrom,)):
             for alias in node.names:
                 name = alias.asname or alias.name
-                if FENCE_HELPER_NAME_RE.search(alias.name) or FENCE_HELPER_NAME_RE.search(name):
+                if alias.name in KNOWN_FENCE_HELPERS:
                     helpers.add(name)
-        elif isinstance(node, ast.Assign):
-            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
-                if FENCE_HELPER_NAME_RE.search(node.targets[0].id):
-                    helpers.add(node.targets[0].id)
     return helpers
 
 
@@ -189,6 +201,7 @@ class _ScopeState:
     split_vars: set[str]
     fence_sets: set[str]
     fence_helpers: set[str]
+    fence_guard_names: set[str]
     findings: list[Finding]
     occurrence: int
     symbol: str
@@ -213,7 +226,7 @@ def _record_heading_regex(state: _ScopeState, *, name: str, lineno: int) -> None
     state.heading_regexes[name] = lineno
 
 
-def _track_assignment(state: _ScopeState, node: ast.Assign) -> None:
+def _track_assignment(state: _ScopeState, node: ast.Assign, *, loop_targets: set[str]) -> None:
     if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
         return
     name = node.targets[0].id
@@ -232,6 +245,14 @@ def _track_assignment(state: _ScopeState, node: ast.Assign) -> None:
         callee = _name_of(func) if not isinstance(func, ast.Attribute) else None
         if callee in state.fence_helpers:
             state.fence_sets.add(name)
+            return
+    if loop_targets and _uses_fence_guard(
+        node.value,
+        fence_sets=state.fence_sets,
+        fence_helpers=state.fence_helpers,
+        line_names=loop_targets,
+    ):
+        state.fence_guard_names.add(name)
 
 
 def _is_fence_source(node: ast.AST, *, fence_sets: set[str], fence_helpers: set[str]) -> bool:
@@ -249,7 +270,7 @@ def _uses_fence_guard(
     *,
     fence_sets: set[str],
     fence_helpers: set[str],
-    line_name: str | None,
+    line_names: set[str],
 ) -> bool:
     """Return True when ``test`` checks a line/index against a fence source."""
     if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
@@ -257,14 +278,18 @@ def _uses_fence_guard(
             test.operand,
             fence_sets=fence_sets,
             fence_helpers=fence_helpers,
-            line_name=line_name,
+            line_names=line_names,
         )
     if isinstance(test, ast.Compare):
         left = test.left
         for operator, comparator in zip(test.ops, test.comparators, strict=True):
-            if isinstance(operator, (ast.In, ast.NotIn)) and (
-                _is_fence_source(left, fence_sets=fence_sets, fence_helpers=fence_helpers)
-                or _is_fence_source(comparator, fence_sets=fence_sets, fence_helpers=fence_helpers)
+            if (
+                isinstance(operator, (ast.In, ast.NotIn))
+                and (_name_of(left) in line_names or _name_of(comparator) in line_names)
+                and (
+                    _is_fence_source(left, fence_sets=fence_sets, fence_helpers=fence_helpers)
+                    or _is_fence_source(comparator, fence_sets=fence_sets, fence_helpers=fence_helpers)
+                )
             ):
                 return True
             left = comparator
@@ -274,30 +299,66 @@ def _uses_fence_guard(
                 value,
                 fence_sets=fence_sets,
                 fence_helpers=fence_helpers,
-                line_name=line_name,
+                line_names=line_names,
             )
             for value in test.values
         )
     return False
 
 
-def _skips_fenced_lines(test: ast.AST, *, fence_sets: set[str], fence_helpers: set[str]) -> bool:
+def _skips_fenced_lines(
+    test: ast.AST, *, fence_sets: set[str], fence_helpers: set[str], line_names: set[str]
+) -> bool:
     """Return True for a positive fence-membership test used to skip a loop turn."""
     if not isinstance(test, ast.Compare):
         return False
+    left = test.left
     for operator, comparator in zip(test.ops, test.comparators, strict=True):
-        if isinstance(operator, ast.In) and _is_fence_source(
-            comparator, fence_sets=fence_sets, fence_helpers=fence_helpers
+        if (
+            isinstance(operator, ast.In)
+            and _name_of(left) in line_names
+            and _is_fence_source(comparator, fence_sets=fence_sets, fence_helpers=fence_helpers)
         ):
             return True
+        left = comparator
+    return False
+
+
+def _uses_fence_guard_name(test: ast.AST, *, guard_names: set[str]) -> bool:
+    if isinstance(test, ast.Name):
+        return test.id in guard_names
+    if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
+        return _uses_fence_guard_name(test.operand, guard_names=guard_names)
+    if isinstance(test, ast.BoolOp):
+        return any(_uses_fence_guard_name(value, guard_names=guard_names) for value in test.values)
     return False
 
 
 def _match_target_is_split_line(arg: ast.AST, *, split_vars: set[str], loop_targets: set[str]) -> bool:
     name = _name_of(arg)
-    if name is None:
-        return False
-    return name in loop_targets or name in split_vars
+    if name is not None:
+        return name in loop_targets or name in split_vars
+    return (
+        isinstance(arg, ast.Subscript)
+        and isinstance(arg.value, ast.Name)
+        and arg.value.id in split_vars
+        and isinstance(arg.slice, ast.Name)
+        and arg.slice.id in loop_targets
+    )
+
+
+def _iterates_split_lines(node: ast.AST, *, split_vars: set[str]) -> bool:
+    if _is_splitlines_call(node):
+        return True
+    if isinstance(node, ast.Name):
+        return node.id in split_vars
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "enumerate"
+        and bool(node.args)
+        and _iterates_split_lines(node.args[0], split_vars=split_vars)
+    )
 
 
 def _walk_statements(
@@ -313,8 +374,9 @@ def _walk_statements(
             child = _ScopeState(
                 heading_regexes=dict(state.heading_regexes),
                 split_vars=set(state.split_vars),
-                fence_sets=set(state.fence_sets),
-                fence_helpers=state.fence_helpers,
+            fence_sets=set(),
+            fence_helpers=set(state.fence_helpers),
+                fence_guard_names=set(state.fence_guard_names),
                 findings=state.findings,
                 occurrence=0,
                 symbol=_qualified((*state.symbol.split("."), statement.name))
@@ -340,8 +402,9 @@ def _walk_statements(
             child = _ScopeState(
                 heading_regexes=dict(state.heading_regexes),
                 split_vars=set(state.split_vars),
-                fence_sets=set(state.fence_sets),
-                fence_helpers=state.fence_helpers,
+                fence_sets=set(),
+                fence_helpers=set(state.fence_helpers),
+                fence_guard_names=set(state.fence_guard_names),
                 findings=state.findings,
                 occurrence=0,
                 symbol=f"{state.symbol}.{statement.name}"
@@ -358,11 +421,15 @@ def _walk_statements(
             )
             continue
         if isinstance(statement, ast.Assign):
-            _track_assignment(state, statement)
+            _track_assignment(state, statement, loop_targets=loop_targets)
+        if isinstance(statement, ast.ImportFrom):
+            for alias in statement.names:
+                if alias.name in KNOWN_FENCE_HELPERS:
+                    state.fence_helpers.add(alias.asname or alias.name)
         if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
             if statement.value is not None:
                 fake = ast.Assign(targets=[statement.target], value=statement.value)
-                _track_assignment(state, fake)
+                _track_assignment(state, fake, loop_targets=loop_targets)
         if isinstance(statement, ast.For):
             new_targets = set(loop_targets)
             if isinstance(statement.target, ast.Name):
@@ -371,16 +438,16 @@ def _walk_statements(
                 for elt in statement.target.elts:
                     if isinstance(elt, ast.Name):
                         new_targets.add(elt.id)
-            iter_is_split = False
-            if (isinstance(statement.iter, ast.Name) and statement.iter.id in state.split_vars) or _is_splitlines_call(statement.iter):
-                iter_is_split = True
+            iter_is_split = _iterates_split_lines(statement.iter, split_vars=state.split_vars)
             child_targets = new_targets if iter_is_split else loop_targets
+            previous_guard_names = set(state.fence_guard_names)
             _walk_statements(
                 statement.body,
                 state=state,
                 loop_targets=child_targets,
                 fence_guard_active=fence_guard_active,
             )
+            state.fence_guard_names = previous_guard_names
             _walk_statements(
                 statement.orelse,
                 state=state,
@@ -393,7 +460,10 @@ def _walk_statements(
                 statement.test,
                 fence_sets=state.fence_sets,
                 fence_helpers=state.fence_helpers,
-                line_name=None,
+                line_names=loop_targets,
+            )
+            guard = guard or _uses_fence_guard_name(
+                statement.test, guard_names=state.fence_guard_names
             )
             # ``if not in_fence and ...`` keeps the body guarded.
             _walk_statements(
@@ -419,6 +489,7 @@ def _walk_statements(
                 statement.test,
                 fence_sets=state.fence_sets,
                 fence_helpers=state.fence_helpers,
+                line_names=loop_targets,
             ) and any(isinstance(item, (ast.Break, ast.Continue)) for item in statement.body):
                 active_guard = True
             continue
@@ -513,6 +584,7 @@ def scan_file(path: Path, *, python_dir: Path) -> list[Finding]:
         split_vars=set(),
         fence_sets=set(),
         fence_helpers=fence_helpers,
+        fence_guard_names=set(),
         findings=[],
         occurrence=0,
         symbol=MODULE_SYMBOL,
@@ -522,10 +594,10 @@ def scan_file(path: Path, *, python_dir: Path) -> list[Finding]:
     # First pass: module-level heading regex declarations.
     for node in tree.body:
         if isinstance(node, ast.Assign):
-            _track_assignment(state, node)
+            _track_assignment(state, node, loop_targets=set())
         elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name) and node.value is not None:
             fake = ast.Assign(targets=[node.target], value=node.value)
-            _track_assignment(state, fake)
+            _track_assignment(state, fake, loop_targets=set())
     _walk_statements(tree.body, state=state, loop_targets=set(), fence_guard_active=False)
     # Drop empty-suppression pseudo-findings that used occurrence 0; re-emit as tool failures.
     real: list[Finding] = []
