@@ -467,7 +467,7 @@ def _parse_results_independently(raw: str, evidences: Sequence[MaterializedEvide
     parsed: list[AssessmentResult] = []
     invalid: set[str] = set()
     detail = "assessment result omitted a requested kind"
-    for item in rows:
+    for item in rows:  # type: ignore[reportUnknownVariableType]  # reason: item is object from json.loads
         kind = str(item.get("kind") or "") if isinstance(item, dict) else ""  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: item is object from json.loads
         try:
             parsed.append(_parse_result_row(item, by_kind, seen))  # type: ignore[reportUnknownArgumentType]  # reason: item is object from json.loads
