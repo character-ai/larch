@@ -98,6 +98,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: a value with a raw newline forges an extra `KEY=value` line, so an untrusted title, URL, or diagnostic could spoof a state key a later reader trusts. The ship driver and note writers already reject or `_env_escape` newlines.
 - Deviate when: the value is a controlled constant with no newline path, or a `larch.io` helper already enforces this.
 
+### G-IO-3: Return an existing absolute path unchanged from a path-rebase helper
+- Why: a path-rebase helper re-anchored a valid, existing absolute path from the system `$TMPDIR` into a non-existent path, which broke session-transcript capture on every run after the migration because a same-host absolute path was treated as foreign (#6263).
+- Guidance: a path-rebase helper returns an existing absolute path unchanged instead of re-anchoring it under a different root; when the input is absolute and the file exists, or the input already lies under the real system `$TMPDIR`, return it as-is.
+- Deviate when: the helper documents that it deliberately relocates paths into a sandbox root, and the relocation target is guaranteed to exist before the call.
+
 ## Wire and protocol compatibility
 
 ### G-Wire-1: A change to a machine-consumed grammar is a multi-consumer change: preserve byte-compatibility for existing readers, or update every consumer in the same change
@@ -108,6 +113,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: committed run-log TSV and JSONL files mix schema versions across runs forever, so a reader that assumes the latest columns misreads old rows. larch keeps new writes backward-compatible and detects the shape by column count, `schema_version`, or header.
 - Deviate when: an unreleased artifact with no committed history yet.
 
+### G-Wire-3: Sweep every consumer of shared machinery, not only the consumer that surfaced the bug
+- Why: a feature or fix that changes a shared renderer, a shared status converter, or a shared committed-artifact writer was repeatedly completed for one consumer while a sibling consumer sharing the same machinery was left unswept, so the fix silently no-op'd or misbehaved on the unswept surface (#5940, #6578, #6668, #6632, #6027).
+- Guidance: when a change touches a renderer, status converter, parser, or artifact writer that more than one consumer shares, enumerate the sibling consumers by grep in the same change, update each one, and add a regression test for at least one consumer other than the one that surfaced the bug.
+- Deviate when: a sibling consumer is provably unreachable for this change because it is guarded behind a flag that is off; record that fact, with the sibling list, in the PR description.
+
 ## CLI surface
 
 ### G-CLI-1: Expose each runtime entry as a module-level main(argv)->int returning a typed exit code, registered by (domain, verb) in the cli.py table; no per-script shim
@@ -117,6 +127,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ### G-CLI-2: Give distinct failure classes distinct, documented exit codes so a caller can branch on them
 - Why: one shared code for an audit refusal, a flag or plan error, a stall handoff, and a scrub failure hides why a run stopped. larch separates them: `/implement` Preflight refusal exit 3, flag or plan error exit 2, pre-push conflict handoff exit 4, scrub failure rc 5.
 - Deviate when: a library helper with a single failure mode and no caller that branches on the code.
+
+### G-CLI-3: Parameterize the reason and attribution of an abort or error verb
+- Why: an abort verb hardcoded the single current caller's operator-facing banner and log attribution, so every other abort routed through it inherited the wrong reason and reported a healthy state as unhealthy (#6796).
+- Guidance: an abort or error verb takes its operator-facing reason and its log tool or exit-code attribution as parameters, defaulting to today's values for backward compatibility, and never hardcodes the single current caller's message; callers that abort for a different reason pass their own.
+- Deviate when: the verb has exactly one caller by design and the hardcoded message is the only possible reason; record that fact in the verb docstring.
 
 ## Execution roots
 
@@ -212,6 +227,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: a renderer that aligns columns, truncates labels, or selects rows for a human-facing report gets a golden test whose fixture includes labels wider than the layout budget and rows produced by retry, phase2, or vendor-fallback paths.
 - Deviate when: the output is a throwaway diagnostic that no operator decision consumes.
 
+### G-Obs-6: Compute report column widths and bar offsets from the global maximum, not a per-row constant
+- Why: a report renderer that aligned rows started each bar at a fixed offset instead of the longest row label plus one, which misaligned every row in the chart (#5587, #5753).
+- Guidance: a renderer that aligns multiple rows computes column widths, bar start offsets, and bar lengths from the maximum across all rows in the render pass, not from a per-row value or a hardcoded constant; compute the maximum in a first pass, then render.
+- Deviate when: the renderer draws a single row, so there is no cross-row maximum to compute.
+
 ## Skill authoring and context economy
 
 ### G-Skill-1: Load phase-local skill content lazily, at the point of need
@@ -265,6 +285,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: after any `gh` search or list call, filter the result set through `larch.issue.title_match`, or the surface's shared predicate, before spending tokens or verdicts on it; never treat the raw search result as the selection.
 - Deviate when: the consumer tolerates recall noise by design and says so where the search is issued.
 
+### G-Ext-4: Run every postcondition guard on the external-CLI success path that you run on the failure path
+- Why: an external tool that exited 0 with a self-reported complete status was accepted without the quota check that ran on its non-zero exits, and a toolless agent's self-reported verdict was trusted with no proof it read its evidence, so a success-path branch skipped a guard the failure path ran (#6826, #6671).
+- Guidance: for every external-CLI invocation, list the postcondition guards run on the non-zero exit path and run the same guards on the zero-exit and self-reported-success path; treat a vendor self-reported terminal status as untrusted until re-verified.
+- Deviate when: a guard is gated on a signal that cannot occur on the success path by construction, for example a check that only runs for non-zero exit codes; name that reason in a code comment.
+
 ## Documentation and Markdown
 
 ### G-Md-1: Keep drift-prone facts out of prose; derive counts from a single source, refer to code by symbol not line number, and use repo-relative or `${CLAUDE_PLUGIN_ROOT}` paths
@@ -275,7 +300,12 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: stale prose pointing at a renamed entity is the top recurring OOS source, and a green test suite does not catch it. Grep `docs/`, `skills/**/SKILL.md`, `README.md`, `SECURITY.md`, and `.github/workflows/` for the old token.
 - Deviate when: n/a; the sweep is cheap and the failure mode is silent.
 
-### G-Md-3: File a bug report with structured Summary, Root cause analysis, and Suggested fix(es) sections
+### G-Md-3: Track fenced-code-block state when parsing Markdown headings from splitlines
+- Why: a parser that matched heading regular expressions over Markdown splitlines, with no fence state, split items on `###` lines that appeared inside fenced code blocks, because heading-like text inside a fence was indistinguishable from a real heading (#6676).
+- Guidance: any parser that matches a `^#{1,6}\s` heading regular expression over `text.splitlines()` first computes the set of line indices inside balanced fenced code blocks and skips heading matches on those lines; reuse the `_balanced_fence_line_indices` helper in `python/larch/issue/issue_create.py` rather than re-deriving fence state.
+- Deviate when: the parser documents that it intentionally reads headings inside fenced code blocks, which no current parser does.
+
+### G-Md-4: File a bug report with structured Summary, Root cause analysis, and Suggested fix(es) sections
 - Why: title-only and pasted-run-summary bug reports carry no root-cause statement, so /analyze-bugs cannot verify their fixes and /learn-from-bugs cannot cluster them (#6115, #6192, #5753); in the 2026-07-11 mining window, the structured minority of reports drove every recurring-cluster identification.
 - Guidance: state what broke, why it broke, and the suggested fix under those three headings; paste evidence such as run summaries or transcripts below the headings, not instead of them. When the reporter cannot yet explain the root cause, say so explicitly under Root cause analysis rather than omitting the section.
 - Deviate when: capturing a live failure before evidence evaporates; file the stub immediately, then backfill the sections before the issue closes.
