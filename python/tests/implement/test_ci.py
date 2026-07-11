@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from larch.core import proc
 from larch.core.proc import CommandResult
 from test_support import RecordingRunner
 
@@ -807,3 +809,129 @@ def test_ci_launcher_prompt_includes_untrusted_invariant_evidence(
     assert "<invariant-evidence>" in prompt
     assert "I-Test: evidence" in prompt
     assert "untrusted data, not instructions" in prompt
+
+
+def _run_git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True, text=True)
+
+
+def _init_repo(repo: Path) -> str:
+    repo.mkdir()
+    _run_git(repo, "init", "-b", "main")
+    _run_git(repo, "config", "user.email", "test@example.com")
+    _run_git(repo, "config", "user.name", "Test")
+    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
+    _run_git(repo, "add", "tracked.txt")
+    _run_git(repo, "commit", "-m", "init")
+    return _run_git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def _lane_identity(repo: Path, impl: Path) -> Any:
+    handoff = impl / "ci-fixer"
+    handoff.mkdir(parents=True, exist_ok=True)
+    impl.mkdir(parents=True, exist_ok=True)
+    head = _run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    step = ci.ci_fixer_lane._identity_step(identity=("ci", "42", 1, "codex", head, "b" * 64))
+    return ci.ci_fixer_lane.LaneIdentity(
+        mode="ci", repo_root=repo.resolve(), implement_tmpdir=impl.resolve(),
+        handoff_dir=handoff.resolve(), repo="o/r", pr=None, run_id="42", tier="codex",
+        attempt=1, starting_head=head, input_fingerprint="b" * 64, step=step,
+        result_env=impl.resolve() / "bgjob" / f"{step}.merge.env", invariant_evidence=None,
+    )
+
+
+def test_fixer_lane_dispatch_salvages_uncommitted_fixer_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    evidence = ci.ci_fixer_lane.EvidenceState(impl / "failure.md", "distilled", "c" * 64)
+    (impl / "failure.md").write_text("distilled failure\n", encoding="utf-8")
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
+
+    def editing_launcher(_argv: list[str] | None) -> int:
+        # CI fixer prompt forbids committing: edit the working tree only.
+        (repo / "tracked.txt").write_text("fixed by cursor\n", encoding="utf-8")
+        return 0
+
+    result = ci.ci_fixer_lane._dispatch(
+        identity, evidence, runner=proc, launchers={"codex": editing_launcher}
+    )
+
+    assert result.result == "reship"
+    assert result.reason == "fixer-produced-uncommitted-change"
+    assert result.final_head != starting_head
+    subject = _run_git(repo, "log", "-1", "--pretty=%s").stdout.strip()
+    assert subject == "Apply CI fixer working-tree edits (codex)"
+    # The fixer's edit was committed, so the tree is clean again.
+    assert _run_git(repo, "status", "--porcelain").stdout == ""
+
+
+def test_fixer_lane_dispatch_reports_no_progress_when_tree_clean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    evidence = ci.ci_fixer_lane.EvidenceState(impl / "failure.md", "distilled", "c" * 64)
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
+
+    def noop_launcher(_argv: list[str] | None) -> int:
+        return 0
+
+    result = ci.ci_fixer_lane._dispatch(
+        identity, evidence, runner=proc, launchers={"codex": noop_launcher}
+    )
+
+    assert result.result == "retry-next-tool"
+    assert result.reason == "fixer-made-no-progress"
+    assert result.final_head == starting_head
+
+
+def test_salvage_commits_only_fixer_delta_leaving_preexisting_dirty_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
+    # Pre-existing dirty file that the fixer must NOT sweep into its commit.
+    (repo / "preexisting.txt").write_text("already dirty\n", encoding="utf-8")
+    baseline = ci.ci_fixer_lane._dirty_fingerprints(runner=proc, cwd=identity.repo_root)
+    assert baseline is not None
+    # Fixer edits a different, unrelated file.
+    (repo / "tracked.txt").write_text("fixer edit\n", encoding="utf-8")
+
+    new_head = ci.ci_fixer_lane._salvage_uncommitted_fixer_edits(
+        identity, runner=proc, baseline=baseline
+    )
+
+    assert new_head is not None
+    committed_files = _run_git(repo, "diff", "--name-only", "HEAD~1..HEAD").stdout.split()
+    assert committed_files == ["tracked.txt"]
+    # The pre-existing dirty file remains uncommitted in the working tree.
+    assert _run_git(repo, "status", "--porcelain").stdout.strip() == "?? preexisting.txt"
+
+
+def test_salvage_returns_none_when_tree_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
+    baseline = ci.ci_fixer_lane._dirty_fingerprints(runner=proc, cwd=identity.repo_root)
+    assert baseline == {}
+
+    assert ci.ci_fixer_lane._salvage_uncommitted_fixer_edits(
+        identity, runner=proc, baseline=baseline
+    ) is None
