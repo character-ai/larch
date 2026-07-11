@@ -2218,8 +2218,8 @@ def test_collect_review_fix_stage_paths_skips_head_only_mav_round(tmp_path, monk
     (snap / "pre-coder-head.txt").write_text("head\n", encoding="utf-8")
     monkeypatch.setattr(snapshot, "_capture_round_tracked_paths", lambda: ["unrelated.py"])
     monkeypatch.setattr(snapshot, "_capture_round_untracked_paths", list)
-    paths = coder_runner._collect_review_fix_stage_paths(impl)
-    assert not paths
+    with pytest.raises(OSError, match="partial"):
+        _ = coder_runner._collect_review_fix_stage_paths(impl)
 
 
 @pytest.mark.commit_fixes
@@ -2232,6 +2232,7 @@ def test_collect_review_fix_stage_paths_uses_post_coder_head(tmp_path, monkeypat
     (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
     (snap / "pre-coder-tracked-paths.txt").write_text("", encoding="utf-8")
     (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    (snap / "pre-coder-path-diffs").mkdir()
     (round_dir / "post-coder-head.txt").write_text("post\n", encoding="utf-8")
     seen_bases: list[str] = []
 
@@ -2268,7 +2269,27 @@ def test_collect_round_stage_paths_with_empty_baseline_returns_empty(tmp_path, m
     monkeypatch.setattr(snapshot, "_capture_round_tracked_paths", lambda: ["stale.py"])
     monkeypatch.setattr(snapshot, "_capture_round_untracked_paths", lambda: ["stale-untracked.py"])
 
-    assert not snapshot._collect_round_stage_paths(round_dir)
+    with pytest.raises(OSError, match="partial"):
+        _ = snapshot._collect_round_stage_paths(round_dir)
+
+
+@pytest.mark.commit_fixes
+def test_revalidate_pre_coder_snapshot_round_trips_validated_snapshot(tmp_path):
+    round_dir = _tmp_impl(tmp_path) / "round-1"
+    round_dir.mkdir()
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text("abc123\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    validated = snapshot._validate_pre_coder_snapshot(round_dir)
+    # Regression (#6864): revalidate re-reads validated.root directly instead of
+    # re-deriving the snapshot dir from root.parent (which is never the round_dir
+    # pre_coder_snapshot_dir maps from), so a freshly validated snapshot must
+    # round-trip without raising "changed after validation".
+    snapshot.revalidate_pre_coder_snapshot(validated)
+    (snap / "pre-coder-head.txt").write_text("tampered\n", encoding="utf-8")
+    with pytest.raises(OSError, match="changed after validation"):
+        snapshot.revalidate_pre_coder_snapshot(validated)
 
 
 @pytest.mark.commit_fixes
@@ -2280,6 +2301,10 @@ def test_collect_round_stage_paths_since_committed_requires_post_coder_head(tmp_
     (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
     (snap / "pre-coder-tracked-paths.txt").write_text("fixed.py\n", encoding="utf-8")
     (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    diffs = snap / "pre-coder-path-diffs"
+    diffs.mkdir()
+    (diffs / "fixed.py.patch").write_text("", encoding="utf-8")
+    (diffs / "fixed.py.cached.patch").write_text("", encoding="utf-8")
     (round_dir / "post-coder-head.txt").write_text("", encoding="utf-8")
     delta_calls: list[str] = []
 
@@ -2305,6 +2330,11 @@ def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(
     (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
     (snap / "pre-coder-tracked-paths.txt").write_text("unrelated.py\nfixed.py\n", encoding="utf-8")
     (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    diffs = snap / "pre-coder-path-diffs"
+    diffs.mkdir()
+    for name in ("unrelated.py", "fixed.py"):
+        (diffs / f"{name}.patch").write_text("", encoding="utf-8")
+        (diffs / f"{name}.cached.patch").write_text("", encoding="utf-8")
     (round_dir / "post-coder-head.txt").write_text("post\n", encoding="utf-8")
 
     def fake_git_output(args):
@@ -2357,7 +2387,7 @@ def test_stage_and_commit_round_passes_repo_root_as_cwd(tmp_path, monkeypatch):
     round_dir.mkdir()
     repo_root = str(tmp_path / "repo")
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", repo_root)
-    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda _rd: ["python/a.py"])  # type: ignore[arg-type]
+    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda _rd, **_kwargs: ["python/a.py"])  # type: ignore[arg-type]
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "abc123")
     monkeypatch.setattr(coder_runner, "_step5_repo_root", lambda: repo_root)
     captured_cwds: list[object] = []
@@ -3429,7 +3459,7 @@ def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
         tool_log.write_text("codex noop\n", encoding="utf-8")
         return True
 
-    def fail_commit(*, round_num: int, round_dir: Path) -> review_and_fix.RoundCommitResult:
+    def fail_commit(*, round_num: int, round_dir: Path, snapshot: object = None) -> review_and_fix.RoundCommitResult:
         review_and_fix._run(["git", "add", "tracked.txt"])
         return review_and_fix.RoundCommitResult()
 
@@ -3467,7 +3497,7 @@ def test_apply_findings_with_coder_stale_index_lock_status_skips_cleanup(
         tool_log.write_text("cursor\n", encoding="utf-8")
         return True
 
-    def stale_commit(*, round_num: int, round_dir: Path) -> review_and_fix.RoundCommitResult:
+    def stale_commit(*, round_num: int, round_dir: Path, snapshot: object = None) -> review_and_fix.RoundCommitResult:
         return review_and_fix.RoundCommitResult(failure_reason="stale-index-lock")
 
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", cursor)
@@ -3603,6 +3633,7 @@ def test_apply_findings_with_coder_legacy_head_only_not_upgraded_to_full(
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", lambda *_a, **_k: False)
     monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda *_a, **_k: False)
@@ -3627,6 +3658,7 @@ def test_apply_findings_with_coder_head_only_no_edit_preserves_preexisting_untra
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", lambda *_a, **_k: False)
     monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda *_a, **_k: False)
@@ -3700,6 +3732,7 @@ def test_apply_findings_with_coder_head_only_successful_noedit_falls_through_wit
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         tool_log.write_text("noop\n", encoding="utf-8")
@@ -3758,7 +3791,7 @@ def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mi
     _patch_coder_basics(monkeypatch)
     (repo / "tracked.txt").write_text("user edit\n", encoding="utf-8")
     round_dir = tmp_path / "impl" / "round-1"
-    review_and_fix._write_pre_coder_snapshot(round_dir)
+    snapshot._write_pre_coder_snapshot(round_dir)
     assert snapshot._snapshot_mode(round_dir) == "full"
     cursor_calls: list[bool] = []
     original_matches = snapshot._path_matches_pre_coder_snapshot
@@ -3829,7 +3862,7 @@ def test_apply_findings_with_coder_stale_snapshot_entry_finalizes_before_failed(
     monkeypatch.chdir(repo)
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
-    review_and_fix._write_pre_coder_snapshot(round_dir)
+    snapshot._write_pre_coder_snapshot(round_dir)
     (repo / "tracked.txt").write_text("committed advance\n", encoding="utf-8")
     review_and_fix._run(["git", "add", "tracked.txt"])
     review_and_fix._run(["git", "commit", "--quiet", "-m", "advance head"])
@@ -3858,6 +3891,7 @@ def test_apply_findings_with_coder_head_untracked_preserves_staged_carryover(
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "carry.txt").write_text("coder overwrite\n", encoding="utf-8")
@@ -3886,6 +3920,7 @@ def test_apply_findings_with_coder_head_untracked_failed_cleans_new_untracked(
     snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
     snap.mkdir(parents=True)
     (snap / "pre-coder-head.txt").write_text(review_and_fix._git_head() + "\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
 
     def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
         (repo / "new-untracked.txt").write_text("coder\n", encoding="utf-8")

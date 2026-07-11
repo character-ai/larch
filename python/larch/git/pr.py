@@ -114,6 +114,7 @@ def ensure_pr(
             partial=scope_disposition.disposition_link_kind(
                 Path(ctx.tmpdir) if ctx.tmpdir else None,
                 repo_root=_repo_root_for_context(ctx=ctx, cwd=cwd),
+                manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
             )
             == "part-of",
         )
@@ -141,6 +142,7 @@ def ensure_pr(
         partial=scope_disposition.disposition_link_kind(
             Path(ctx.tmpdir) if ctx.tmpdir else None,
             repo_root=_repo_root_for_context(ctx=ctx, cwd=cwd),
+            manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
         )
         == "part-of",
     )

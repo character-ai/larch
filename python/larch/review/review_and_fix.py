@@ -74,7 +74,7 @@ from larch.review.snapshot import (
     _collect_self_review_stage_paths,
     _structural_loc,
     _write_post_coder_head,
-    _write_pre_coder_snapshot,
+    _prepare_or_validate_pre_coder_snapshot,
     _write_pre_self_review_snapshot,
     pre_coder_snapshot_dir,
 )
@@ -83,6 +83,7 @@ from larch.review.coder_runner import (
     RoundCommitResult,
     _codex_available,
     _collect_review_fix_stage_paths,
+    _coder_env,
     _compose_coder_prompt,
     _cursor_available,
     _post_dispatch_submodule_revert,
@@ -928,7 +929,14 @@ def step5(argv: list[str] | None = None) -> int:
             args.round_num = str(_positive_int(value=args.round_num, label="--round-num"))
             round_dir = implement_tmpdir / f"round-{args.round_num}"
             round_dir.mkdir(parents=True, exist_ok=True)
-            _write_pre_coder_snapshot(round_dir)
+            try:
+                _ = _prepare_or_validate_pre_coder_snapshot(round_dir)
+            except OSError:
+                coder = CoderResult(2, "none", "failed")
+                _write_env(path=round_dir / "coder.env", values=_coder_env(coder))
+                _emit_kv(key="REVIEW_AND_FIX_STATUS", value="mav-apply-done")
+                _emit_kv(key="CODER_STATUS", value=coder.status)
+                return 0
             coder = apply_findings_with_coder(input_file=Path(args.findings_file), round_dir=round_dir, result_file=round_dir / "coder.env", round_num=int(args.round_num))
             if coder.rc == 0 and coder.status == "applied":
                 head = _git_head()

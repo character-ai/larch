@@ -587,7 +587,7 @@ def load_disposition(tmpdir: Path, *, coverage: PlanCoverage | None = None) -> D
         return None
     try:
         if not larch_io.trusted_file_present(path, root=tmpdir):
-            return None
+            raise ShipError("scope disposition is not a trusted regular file")
         parsed: object = json.loads(larch_io.read_trusted_text(path, root=tmpdir, errors="replace"))
     except (OSError, json.JSONDecodeError) as exc:
         raise ShipError(f"scope disposition unreadable or unsafe: {_safe_line(exc)}") from exc
@@ -633,7 +633,9 @@ def render_deferred_inventory(
 def resolve_implement_manifest(
     tmpdir: Path, manifest_path: Path | None = None
 ) -> Path | None:
-    if manifest_path is not None and _artifact_present(manifest_path):
+    if manifest_path is not None:
+        if not _artifact_present(manifest_path):
+            raise ShipError("declared implement manifest is missing")
         return manifest_path
     for candidate in (
         tmpdir / "manifest.json",
@@ -660,6 +662,32 @@ def is_pr_mutation_gate_relevant(
     )
 
 
+@dataclass(frozen=True)
+class ValidatedImplementContext:
+    tmpdir: Path
+    manifest_path: Path | None
+
+
+def _validated_implement_context(
+    tmpdir: Path | None, *, manifest_path: Path | None = None
+) -> ValidatedImplementContext | None:
+    env_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    declared = tmpdir is not None or bool(env_tmpdir) or manifest_path is not None
+    if not declared:
+        return None
+    effective_tmpdir = tmpdir if tmpdir is not None else (Path(env_tmpdir) if env_tmpdir else None)
+    if effective_tmpdir is None:
+        raise ShipError("declared implement context requires a trusted tmpdir")
+    try:
+        trusted_tmpdir = larch_io.validate_trusted_directory(effective_tmpdir)
+    except OSError as exc:
+        raise ShipError(f"declared implement tmpdir is invalid: {_safe_line(exc)}") from exc
+    return ValidatedImplementContext(
+        tmpdir=trusted_tmpdir,
+        manifest_path=resolve_implement_manifest(trusted_tmpdir, manifest_path),
+    )
+
+
 def require_pr_mutation_scope_disposition(
     *,
     tmpdir: Path | None,
@@ -667,56 +695,66 @@ def require_pr_mutation_scope_disposition(
     manifest_path: Path | None = None,
     runner: Runner = proc,
 ) -> None:
-    effective_tmpdir = _optional_tmpdir(tmpdir)
-    if effective_tmpdir is None or not effective_tmpdir.is_dir():
-        return
-    effective_manifest = resolve_implement_manifest(effective_tmpdir, manifest_path)
-    if not is_pr_mutation_gate_relevant(
-        tmpdir=effective_tmpdir, manifest_path=effective_manifest
+    context = _validated_implement_context(tmpdir, manifest_path=manifest_path)
+    if context is None or not is_pr_mutation_gate_relevant(
+        tmpdir=context.tmpdir, manifest_path=context.manifest_path
     ):
         return
     require_valid_disposition_for_ship(
-        tmpdir=effective_tmpdir,
+        tmpdir=context.tmpdir,
         repo_root=repo_root,
-        manifest_path=effective_manifest,
+        manifest_path=context.manifest_path,
         runner=runner,
     )
 
 
 def disposition_link_kind(
-    tmpdir: Path | None = None, *, repo_root: Path | None = None
+    tmpdir: Path | None = None,
+    *,
+    repo_root: Path | None = None,
+    manifest_path: Path | None = None,
 ) -> str:
-    raw_tmpdir = _optional_tmpdir(tmpdir)
-    if raw_tmpdir is None or (not raw_tmpdir.exists() and not raw_tmpdir.is_symlink()):
+    context = _validated_implement_context(tmpdir, manifest_path=manifest_path)
+    if context is None:
         return "closes"
     if repo_root is None:
         raise ShipError("repository root is required to load scope disposition")
-    coverage = load_live_coverage(tmpdir=raw_tmpdir, repo_root=repo_root)
-    record = load_disposition(raw_tmpdir, coverage=coverage)
+    coverage = load_live_coverage(
+        tmpdir=context.tmpdir,
+        repo_root=repo_root,
+        manifest_path=context.manifest_path,
+    )
+    if coverage is None and _artifact_present(disposition_path(context.tmpdir)):
+        _ = load_disposition(context.tmpdir, coverage=None)
+        raise ShipError("scope disposition exists without trusted coverage")
+    record = load_disposition(context.tmpdir, coverage=coverage)
     return "part-of" if record and record.disposition == "proceed-partial" else "closes"
 
 
 def disposition_deferred_inventory(
-    tmpdir: Path | None = None, *, repo_root: Path | None = None
+    tmpdir: Path | None = None,
+    *,
+    repo_root: Path | None = None,
+    manifest_path: Path | None = None,
 ) -> str:
-    raw_tmpdir = _optional_tmpdir(tmpdir)
-    if raw_tmpdir is None or (not raw_tmpdir.exists() and not raw_tmpdir.is_symlink()):
+    context = _validated_implement_context(tmpdir, manifest_path=manifest_path)
+    if context is None:
         return ""
     if repo_root is None:
         raise ShipError("repository root is required to load deferred inventory")
-    coverage = load_live_coverage(tmpdir=raw_tmpdir, repo_root=repo_root)
+    coverage = load_live_coverage(
+        tmpdir=context.tmpdir,
+        repo_root=repo_root,
+        manifest_path=context.manifest_path,
+    )
     if coverage is None:
+        if _artifact_present(disposition_path(context.tmpdir)):
+            _ = load_disposition(context.tmpdir, coverage=None)
+            raise ShipError("scope disposition exists without trusted coverage")
         return ""
     return render_deferred_inventory(
-        coverage, load_disposition(raw_tmpdir, coverage=coverage)
+        coverage, load_disposition(context.tmpdir, coverage=coverage)
     )
-
-
-def _optional_tmpdir(tmpdir: Path | None) -> Path | None:
-    if tmpdir is not None:
-        return tmpdir
-    raw = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
-    return Path(raw) if raw else None
 
 
 def _parse_cli_kv(text: str) -> dict[str, str]:

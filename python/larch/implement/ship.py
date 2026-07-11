@@ -437,6 +437,7 @@ def _compose_pr_body_for_pr_create(
         architectural_guidelines_note=architectural_guidelines_note,
         implement_tmpdir=Path(pr_context.tmpdir) if pr_context.tmpdir else None,
         repo_root=_persisted_repo_root_for_pr(pr_context),
+        manifest_path=Path(pr_context.manifest_path) if pr_context.manifest_path else None,
     )
 
 

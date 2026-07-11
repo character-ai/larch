@@ -707,6 +707,7 @@ def teardown(
         and scope_disposition.disposition_link_kind(
             tmpdir if ctx.tmpdir else None,
             repo_root=persisted_repo_root,
+            manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
         ) != "part-of"
     ):
         rename_branch = "B"
