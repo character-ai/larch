@@ -1288,7 +1288,7 @@ def test_teardown_stale_live_coverage_invalid_persisted_disposition_raises(
         finalize.scope_disposition,
         "load_disposition",
         lambda _tmpdir, *, coverage=None: (
-            _ := coverage,
+            _ := coverage,  # type: ignore[reportUnknownVariableType]
             (_ for _ in ()).throw(ShipError("invalid persisted disposition")),
         )[1],
     )

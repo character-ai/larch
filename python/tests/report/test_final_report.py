@@ -1083,11 +1083,11 @@ def test_plan_coverage_summary_recovers_post_merge_stale_live_mismatch(
         raise ShipError("coverage artifact does not match live repository inputs")
 
     monkeypatch.setattr(scope_disposition, "load_live_coverage", boom)
-    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: object())
+    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: object())  # type: ignore[reportUnknownArgumentType]
     monkeypatch.setattr(
         scope_disposition,
         "load_disposition",
-        lambda _tmpdir, *, coverage=None: None,  # noqa: ARG005
+        lambda _tmpdir, *, coverage=None: None,  # type: ignore[reportUnknownArgumentType]  # noqa: ARG005
     )
 
     assert final_report._plan_coverage_summary_line(tmp_path) == ""
@@ -1144,7 +1144,7 @@ def test_plan_coverage_summary_post_merge_stale_mismatch_requires_persisted_cove
         raise ShipError("coverage artifact does not match live repository inputs")
 
     monkeypatch.setattr(scope_disposition, "load_live_coverage", stale)
-    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: None)
+    monkeypatch.setattr(scope_disposition, "load_coverage", lambda _tmpdir: None)  # type: ignore[reportUnknownArgumentType]
 
     with pytest.raises(ShipError, match="coverage artifact does not match live repository inputs"):
         _ = final_report._plan_coverage_summary_line(tmp_path)
@@ -1167,7 +1167,7 @@ def test_plan_coverage_summary_stale_mismatch_propagates_invalid_persisted_cover
     monkeypatch.setattr(
         scope_disposition,
         "load_coverage",
-        lambda _tmpdir: (_ for _ in ()).throw(ShipError("coverage artifact unreadable or malformed")),
+        lambda _tmpdir: (_ for _ in ()).throw(ShipError("coverage artifact unreadable or malformed")),  # type: ignore[reportUnknownArgumentType]
     )
 
     with pytest.raises(ShipError, match="unreadable or malformed"):
