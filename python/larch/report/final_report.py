@@ -525,14 +525,18 @@ def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
 
 
 
-def _plan_coverage_summary_line(implement_tmpdir: Path) -> str:
+def _plan_coverage_summary_line(
+    implement_tmpdir: Path, *, manifest_path: Path | None = None
+) -> str:
     repo_root = progress_file.resolve_persisted_repo_root(tmpdir=implement_tmpdir)
     if repo_root is None:
         if scope_disposition.load_coverage(implement_tmpdir) is None:
             return ""
         raise ShipError("persisted repository root is required for coverage validation")
     coverage = scope_disposition.load_live_coverage(
-        tmpdir=implement_tmpdir, repo_root=repo_root
+        tmpdir=implement_tmpdir,
+        repo_root=repo_root,
+        manifest_path=manifest_path,
     )
     if coverage is None:
         return ""
@@ -829,7 +833,9 @@ def write_final_report(
         pr_number=pr_number,
         pr_url=pr_url,
         plan_review_line=derived["plan_review_line"],
-        plan_coverage_line=_plan_coverage_summary_line(implement_tmpdir),
+        plan_coverage_line=_plan_coverage_summary_line(
+            implement_tmpdir, manifest_path=run_dir / "manifest.json"
+        ),
         difficulty_line=_difficulty_summary_line(run_dir),
         dynamic_archetypes_line=_dynamic_archetypes_line(implement_tmpdir),
         code_review_line=derived["code_review_line"],

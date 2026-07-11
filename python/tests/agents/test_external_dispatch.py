@@ -27,9 +27,18 @@ from larch.design import plan_scout
 from larch.git import rebase
 from larch.review import review_aggregate
 from larch.review import review_and_fix
-from larch.review import coder_runner
+from larch.review import coder_runner, snapshot
 from larch.review import review_pipeline
 from larch.core import config
+
+
+def _fake_validated_snapshot(target: Path, prepare: Any) -> snapshot.ValidatedPreCoderSnapshot:
+    prepare(target)
+    return snapshot.ValidatedPreCoderSnapshot(
+        mode="full",
+        root=review_and_fix.pre_coder_snapshot_dir(target),
+        pre_head="HEAD",
+    )
 
 
 def _tool_order_probe(monkeypatch: pytest.MonkeyPatch, module: Any, expected_role: str, order: tuple[str, ...]) -> list[str]:
@@ -188,8 +197,11 @@ def test_review_fix_coder_uses_review_fix_role(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub_findings)
     monkeypatch.setattr(coder_runner, "_submodule_paths", lambda: ())
     monkeypatch.setattr(coder_runner, "_compose_coder_prompt", lambda **_kwargs: "prompt")
-    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", fake_ensure)
-    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "full")
+    monkeypatch.setattr(
+        coder_runner,
+        "_prepare_or_validate_pre_coder_snapshot",
+        lambda target: _fake_validated_snapshot(target, fake_ensure),
+    )
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "HEAD")
     monkeypatch.setattr(coder_runner, "_run_coder_codex", fake_coder("codex"))
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", fake_coder("cursor"))
@@ -233,8 +245,11 @@ def test_review_fix_coder_prompt_size_telemetry_allows_claude_first(
     monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub_findings)
     monkeypatch.setattr(coder_runner, "_submodule_paths", lambda: ())
     monkeypatch.setattr(coder_runner, "_compose_coder_prompt", lambda **_kwargs: "prompt")
-    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", fake_ensure)
-    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "full")
+    monkeypatch.setattr(
+        coder_runner,
+        "_prepare_or_validate_pre_coder_snapshot",
+        lambda target: _fake_validated_snapshot(target, fake_ensure),
+    )
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "HEAD")
     monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda **_kwargs: False)
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", lambda **_kwargs: False)
@@ -278,8 +293,11 @@ def test_review_fix_coder_attempts_claude_before_main_agent(tmp_path: Path, monk
     monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub_findings)
     monkeypatch.setattr(coder_runner, "_submodule_paths", lambda: ())
     monkeypatch.setattr(coder_runner, "_compose_coder_prompt", lambda **_kwargs: "prompt")
-    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", fake_ensure)
-    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "full")
+    monkeypatch.setattr(
+        coder_runner,
+        "_prepare_or_validate_pre_coder_snapshot",
+        lambda target: _fake_validated_snapshot(target, fake_ensure),
+    )
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "HEAD")
     monkeypatch.setattr(coder_runner, "_run_coder_codex", fake_coder("codex"))
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", fake_coder("cursor"))

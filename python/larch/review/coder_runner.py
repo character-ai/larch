@@ -37,10 +37,9 @@ from larch.review.snapshot import (
     _cleanup_failed_coder_attempt,
     _collect_round_stage_paths,
     _collect_self_review_stage_paths,
-    _ensure_pre_coder_snapshot,
     _finalize_failed_cleanup,
+    _prepare_or_validate_pre_coder_snapshot,
     _round_has_full_pre_coder_snapshot,
-    _snapshot_mode,
     _write_attempt_pre_tracked_paths,
     pre_coder_snapshot_dir,
 )
@@ -450,10 +449,9 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
             else:
                 os.environ[key] = value
     tool_log = round_dir / "coder-output.log"
-    _ensure_pre_coder_snapshot(round_dir)
-    mode = _snapshot_mode(round_dir)
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    pre_head = _read_text(snap_dir / "pre-coder-head.txt").strip()
+    snapshot = _prepare_or_validate_pre_coder_snapshot(round_dir)
+    mode = snapshot.mode
+    pre_head = snapshot.pre_head
     current_head = _git_head()
     if pre_head and current_head and current_head != pre_head:
         _append_text(

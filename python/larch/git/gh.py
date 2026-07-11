@@ -111,6 +111,7 @@ class _ScopeDispositionModule(Protocol):
         *,
         tmpdir: Path | None,
         repo_root: Path,
+        manifest_path: Path | None = None,
         runner: Runner,
     ) -> None: ...
 

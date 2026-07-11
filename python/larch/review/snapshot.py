@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import os
 import zlib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -134,26 +135,87 @@ def _capture_round_untracked_paths() -> list[str]:
     return paths
 
 
-def _snapshot_mode(round_dir: Path) -> Literal["full", "head_untracked", "missing"]:
+@dataclass(frozen=True)
+class ValidatedPreCoderSnapshot:
+    mode: Literal["missing", "head_untracked", "full"]
+    root: Path
+    pre_head: str = ""
+    tracked_paths: tuple[str, ...] = ()
+    untracked_paths: tuple[str, ...] = ()
+    artifact_identity: tuple[tuple[str, int, int], ...] = ()
+
+
+def _snapshot_inventory(path: Path) -> tuple[str, ...]:
+    lines = tuple(_read_text(path).splitlines())
+    if any(not line or "\x00" in line or line.startswith("/") or ".." in Path(line).parts for line in lines):
+        raise OSError(f"invalid snapshot inventory entry: {path}")
+    if len(lines) != len(set(lines)):
+        raise OSError(f"duplicate snapshot inventory entry: {path}")
+    return lines
+
+
+def _snapshot_artifact_identity(root: Path) -> tuple[tuple[str, int, int], ...]:
+    identity: list[tuple[str, int, int]] = []
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise OSError(f"unsafe snapshot artifact: {path}")
+        if path.is_file():
+            stat = path.stat()
+            identity.append((str(path.relative_to(root)), stat.st_size, stat.st_mtime_ns))
+    return tuple(identity)
+
+
+def _validate_pre_coder_snapshot(round_dir: Path) -> ValidatedPreCoderSnapshot:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     if not snap_dir.exists() and not snap_dir.is_symlink():
-        return "missing"
+        return ValidatedPreCoderSnapshot(mode="missing", root=snap_dir)
     _validate_snapshot_root(snap_dir)
-    tracked = larch_io.trusted_file_present(
-        snap_dir / "pre-coder-tracked-paths.txt", root=snap_dir
+    head_path = snap_dir / "pre-coder-head.txt"
+    tracked_path = snap_dir / "pre-coder-tracked-paths.txt"
+    untracked_path = snap_dir / "pre-coder-untracked-paths.txt"
+    head_present = larch_io.trusted_file_present(head_path, root=snap_dir)
+    tracked_present = larch_io.trusted_file_present(tracked_path, root=snap_dir)
+    untracked_present = larch_io.trusted_file_present(untracked_path, root=snap_dir)
+    if not head_present or not untracked_present:
+        raise OSError("pre-coder snapshot artifact set is partial")
+    pre_head = _read_text(head_path).strip()
+    if not pre_head or "\n" in pre_head or "\r" in pre_head:
+        raise OSError("pre-coder snapshot HEAD is invalid")
+    untracked = _snapshot_inventory(untracked_path)
+    if not tracked_present:
+        mode: Literal["head_untracked", "full"] = "head_untracked"
+        if (snap_dir / "pre-coder-path-diffs").exists() or (snap_dir / "pre-coder-path-diffs").is_symlink():
+            raise OSError("head-untracked snapshot has unexpected tracked patches")
+        tracked: tuple[str, ...] = ()
+    else:
+        mode = "full"
+        tracked = _snapshot_inventory(tracked_path)
+        safe_names = tuple(_safe_patch_name(path) for path in tracked)
+        if len(safe_names) != len(set(safe_names)):
+            raise OSError("tracked snapshot paths collide after patch-name encoding")
+        diffs_dir = snap_dir / "pre-coder-path-diffs"
+        expected = {f"{safe}.patch" for safe in safe_names} | {f"{safe}.cached.patch" for safe in safe_names}
+        actual: set[str] = set()
+        if diffs_dir.exists() or diffs_dir.is_symlink():
+            larch_io.validate_trusted_directory(diffs_dir, root=snap_dir)
+            for artifact in diffs_dir.iterdir():
+                if not larch_io.trusted_file_present(artifact, root=diffs_dir):
+                    raise OSError(f"unsafe snapshot patch artifact: {artifact}")
+                actual.add(artifact.name)
+        if actual != expected:
+            raise OSError("pre-coder snapshot patch set is incomplete or unexpected")
+    return ValidatedPreCoderSnapshot(
+        mode=mode,
+        root=snap_dir,
+        pre_head=pre_head,
+        tracked_paths=tracked,
+        untracked_paths=untracked,
+        artifact_identity=_snapshot_artifact_identity(snap_dir),
     )
-    head = larch_io.trusted_file_present(snap_dir / "pre-coder-head.txt", root=snap_dir)
-    untracked = larch_io.trusted_file_present(
-        snap_dir / "pre-coder-untracked-paths.txt", root=snap_dir
-    )
-    # Lightweight presence classification: callers gracefully degrade to [] for
-    # legacy/partial snapshots, and deep artifact validation happens at the
-    # trusted read/write boundary (read_trusted_text/trusted_file_present).
-    if tracked and head and untracked:
-        return "full"
-    if head and not tracked:
-        return "head_untracked"
-    return "missing"
+
+
+def _snapshot_mode(round_dir: Path) -> Literal["full", "head_untracked", "missing"]:
+    return _validate_pre_coder_snapshot(round_dir).mode
 
 
 def _read_pre_coder_untracked_baseline(snap_dir: Path) -> set[str]:
@@ -678,10 +740,7 @@ def _validated_pre_coder_snapshot_head(round_dir: Path) -> str:
 
 
 def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    return (snap_dir / "pre-coder-tracked-paths.txt").is_file() and (
-        snap_dir / "pre-coder-untracked-paths.txt"
-    ).is_file()
+    return _validate_pre_coder_snapshot(round_dir).mode == "full"
 
 
 def _collect_round_stage_paths(
@@ -876,27 +935,36 @@ def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
 
 
 def _write_pre_coder_snapshot(round_dir: Path) -> str:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
+    existing = _validate_pre_coder_snapshot(round_dir)
+    if existing.mode != "missing":
+        raise OSError("pre-coder snapshot already exists")
+    snap_dir = existing.root
     larch_io.ensure_trusted_directory(snap_dir)
-    _clear_stale_pre_coder_snapshot_artifacts(snap_dir)
     head = _git_head()
+    if not head:
+        raise OSError("cannot create pre-coder snapshot without HEAD")
     pre_head = snap_dir / "pre-coder-head.txt"
-    if head:
-        _write_text(path=pre_head, text=head + "\n")
-        _snapshot_pre_coder_tracked_state(
-            _round_dir=round_dir, pre_head=head, snap_dir=snap_dir
-        )
-        pre_head.chmod(0o444)
-        _harden_pre_coder_snapshot_perms(snap_dir)
-    else:
-        with contextlib.suppress(FileNotFoundError):
-            pre_head.unlink()
+    _write_text(path=pre_head, text=head + "\n")
+    _snapshot_pre_coder_tracked_state(
+        _round_dir=round_dir, pre_head=head, snap_dir=snap_dir
+    )
+    pre_head.chmod(0o444)
+    _harden_pre_coder_snapshot_perms(snap_dir)
     return head
 
 
-def _ensure_pre_coder_snapshot(round_dir: Path) -> None:
-    if _snapshot_mode(round_dir) == "missing":
+def _prepare_or_validate_pre_coder_snapshot(
+    round_dir: Path,
+) -> ValidatedPreCoderSnapshot:
+    snapshot = _validate_pre_coder_snapshot(round_dir)
+    if snapshot.mode == "missing":
         _write_pre_coder_snapshot(round_dir)
+        snapshot = _validate_pre_coder_snapshot(round_dir)
+    return snapshot
+
+
+def _ensure_pre_coder_snapshot(round_dir: Path) -> None:
+    _ = _prepare_or_validate_pre_coder_snapshot(round_dir)
 
 
 def _structural_loc(*, pre_head_file: Path, post_head_file: Path) -> int:

@@ -59,7 +59,10 @@ from larch.review.batch_report import (
     write_rejected_findings_aggregate,
 )
 from larch.review.coder_runner import CoderResult, apply_findings_with_coder
-from larch.review.snapshot import _write_post_coder_head, _write_pre_coder_snapshot
+from larch.review.snapshot import (
+    _prepare_or_validate_pre_coder_snapshot,
+    _write_post_coder_head,
+)
 from larch.review.review_types import ReviewCoreStatus, parse_findings
 
 ReviewCoreImpl = Callable[[list[str]], int]
@@ -1017,7 +1020,6 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     if accepted_count > 0 and accepted_file.is_file() and accepted_file.stat().st_size:
         _filter_in_scope(accepted_file=accepted_file, output=in_scope)
         if _count_findings(in_scope) > 0:
-            _write_pre_coder_snapshot(round_dir)
             coder = apply_findings_with_coder(input_file=in_scope, round_dir=round_dir, result_file=round_dir / "coder.env", round_num=round_num)
             if coder.status == "applied" and coder.log_file:
                 skipped_finding_count, classifier_failed = _process_skipped_findings(

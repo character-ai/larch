@@ -14,7 +14,7 @@ from pathlib import Path
 from larch.core import config
 from larch.core import proc
 import pytest
-from larch.review import coder_runner
+from larch.review import coder_runner, snapshot
 from larch.review import review_pipeline
 from larch.review import review_core_body
 from larch.rendering import rendering
@@ -4737,8 +4737,13 @@ def test_apply_findings_with_coder_logs_panel_prompt_size(tmp_path: Path, monkey
     round_dir = tmp_path / "round-5"
     result_file = round_dir / "coder.env"
     monkeypatch.setattr(coder_runner, "_submodule_paths", list)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", lambda _round_dir: None)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "none")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(
+        coder_runner,
+        "_prepare_or_validate_pre_coder_snapshot",
+        lambda target: snapshot.ValidatedPreCoderSnapshot(
+            mode="head_untracked", root=snapshot.pre_coder_snapshot_dir(target), pre_head=""
+        ),
+    )  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "")  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(coder_runner, "_record_main_agent_required_vendor_task", lambda _round_dir: round_dir / "main.log")  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(coder_runner.external_defaults, "tool_order", lambda _role: [])

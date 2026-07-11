@@ -2218,8 +2218,8 @@ def test_collect_review_fix_stage_paths_skips_head_only_mav_round(tmp_path, monk
     (snap / "pre-coder-head.txt").write_text("head\n", encoding="utf-8")
     monkeypatch.setattr(snapshot, "_capture_round_tracked_paths", lambda: ["unrelated.py"])
     monkeypatch.setattr(snapshot, "_capture_round_untracked_paths", list)
-    paths = coder_runner._collect_review_fix_stage_paths(impl)
-    assert not paths
+    with pytest.raises(OSError, match="partial"):
+        _ = coder_runner._collect_review_fix_stage_paths(impl)
 
 
 @pytest.mark.commit_fixes
@@ -2232,6 +2232,7 @@ def test_collect_review_fix_stage_paths_uses_post_coder_head(tmp_path, monkeypat
     (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
     (snap / "pre-coder-tracked-paths.txt").write_text("", encoding="utf-8")
     (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    (snap / "pre-coder-path-diffs").mkdir()
     (round_dir / "post-coder-head.txt").write_text("post\n", encoding="utf-8")
     seen_bases: list[str] = []
 
@@ -2268,7 +2269,8 @@ def test_collect_round_stage_paths_with_empty_baseline_returns_empty(tmp_path, m
     monkeypatch.setattr(snapshot, "_capture_round_tracked_paths", lambda: ["stale.py"])
     monkeypatch.setattr(snapshot, "_capture_round_untracked_paths", lambda: ["stale-untracked.py"])
 
-    assert not snapshot._collect_round_stage_paths(round_dir)
+    with pytest.raises(OSError, match="partial"):
+        _ = snapshot._collect_round_stage_paths(round_dir)
 
 
 @pytest.mark.commit_fixes
@@ -2280,6 +2282,10 @@ def test_collect_round_stage_paths_since_committed_requires_post_coder_head(tmp_
     (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
     (snap / "pre-coder-tracked-paths.txt").write_text("fixed.py\n", encoding="utf-8")
     (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    diffs = snap / "pre-coder-path-diffs"
+    diffs.mkdir()
+    (diffs / "fixed.py.patch").write_text("", encoding="utf-8")
+    (diffs / "fixed.py.cached.patch").write_text("", encoding="utf-8")
     (round_dir / "post-coder-head.txt").write_text("", encoding="utf-8")
     delta_calls: list[str] = []
 
@@ -2305,6 +2311,11 @@ def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(
     (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
     (snap / "pre-coder-tracked-paths.txt").write_text("unrelated.py\nfixed.py\n", encoding="utf-8")
     (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    diffs = snap / "pre-coder-path-diffs"
+    diffs.mkdir()
+    for name in ("unrelated.py", "fixed.py"):
+        (diffs / f"{name}.patch").write_text("", encoding="utf-8")
+        (diffs / f"{name}.cached.patch").write_text("", encoding="utf-8")
     (round_dir / "post-coder-head.txt").write_text("post\n", encoding="utf-8")
 
     def fake_git_output(args):

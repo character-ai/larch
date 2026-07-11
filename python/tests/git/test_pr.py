@@ -38,7 +38,7 @@ _HEAD_FEAT = CommandResult(
 
 
 def _ctx(**kwargs: object) -> RunContext:
-    base = make_run_context(issue="9")
+    base = make_run_context(issue="9", tmpdir="", manifest_path="")
     return base.with_(**kwargs)
 
 
