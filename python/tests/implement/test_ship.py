@@ -2377,6 +2377,40 @@ def test_non_forked_main_resume_refuses(
     assert result.needs_user_reason == "checkout-mismatch"
 
 
+def test_postmerge_resume_on_main_routes_to_merged_not_checkout_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Regression for issue #6930: after a merge, the auto-checkout moves the local
+    # tree onto `main` and deletes the feature branch. `_resume_plan` must then route
+    # to post-merge finalization from durable merge signals (PHASE=postmerge,
+    # PR_CLOSED=true, MERGE_RESULT=admin_merged) instead of returning
+    # `blocked-checkout-mismatch` (the operator-bail). The failure class is
+    # transient-infra, so the local-signal path must not consult gh.
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=postmerge\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        "PR_CLOSED=true\nMERGE_RESULT=admin_merged\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "main")
+    monkeypatch.setattr(
+        ship_resume.gh,
+        "pr_view",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("gh must not be consulted for a locally-merged resume")),
+    )
+
+    resume = ship_resume._resume_plan(  # pyright: ignore[reportPrivateUsage]
+        ctx=_ctx(tmp_path, repo="o/r", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert resume.start == "merged"
+    assert resume.pr_number == 7
+    assert resume.merge_result == config.MERGE_RESULT_ADMIN_MERGED
+
+
 def test_closed_unmerged_pr_routes_through_fresh_checks(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
