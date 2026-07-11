@@ -45,7 +45,7 @@ contains "$SKILL" 'Only a Bash-tool timeout while this adapter invocation remain
 contains "$SKILL" 'Capture `ASSESSMENT_REQUESTED_KINDS` from the normalization fence stdout.' 'normalization stdout binding'
 contains "$SKILL" 'adapter `ASSESSMENT_REQUESTED_KINDS` equal to that captured canonical binding' 'terminal kind binding'
 contains "$SKILL" 'complete `ASSESSMENT_RESULTS` coverage for exactly those requested kinds' 'terminal result coverage'
-contains "$SKILL" 'Any non-timeout adapter error, nonzero `BGJOB_RC`, malformed or missing KV, stale or mismatched identity, kind mismatch, incomplete result coverage, failed fingerprint validation, or status other than `complete` routes to existing Step 8 `tool-failure` handling.' 'terminal failure routing'
+contains "$SKILL" 'Any non-timeout adapter error, nonzero `BGJOB_RC`, malformed or missing KV, stale or mismatched identity, kind mismatch, incomplete result coverage, failed fingerprint validation, or status other than `complete` or a validated terminal `re-author-required` envelope routes to existing Step 8 `tool-failure` handling.' 'terminal failure routing'
 contains "$SKILL" 'After all requested results persist and validate, return to the Step 8 ship launcher above exactly once. Do not relaunch once per kind.' 'single ship relaunch'
 not_contains "$SKILL" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-invariants-present.md` completely. Author' 'no invariant prompt authorship'
 not_contains "$SKILL" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely. Invariant assessment' 'no guideline prompt authorship'
@@ -87,7 +87,7 @@ printf 'legacy drop\n' > "$TMPDIR/architectural-guideline-drop-notice.txt"
 (
   cd "$ROOT"
   IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
-    "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" architectural-guideline-assessment-draft.md >/dev/null
+    "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" architectural-guideline-assessment-draft.md clean >/dev/null
 )
 
 test -f "$TMPDIR/architectural-guideline-note.md"
@@ -95,6 +95,19 @@ test -f "$TMPDIR/architectural-guideline-note.meta.env"
 test ! -e "$TMPDIR/architectural-guideline-staged-assessment.md"
 test ! -e "$TMPDIR/architectural-guideline-drop-notice.txt"
 cmp "$ASSESSMENT" "$TMPDIR/architectural-guideline-note.md"
+grep -Fxq "ASSESSMENT_KIND=clean" "$TMPDIR/architectural-guideline-note.meta.env"
+
+MISSING_OUTCOME_TMP="$TMPDIR/missing-outcome"
+mkdir -p "$MISSING_OUTCOME_TMP"
+cp "$TMPDIR/architectural-guideline-materialize.env" "$MISSING_OUTCOME_TMP/architectural-guideline-materialize.env"
+printf 'Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n' > "$MISSING_OUTCOME_TMP/draft.md"
+set +e
+IMPLEMENT_TMPDIR="$MISSING_OUTCOME_TMP" CLAUDE_PLUGIN_ROOT="$ROOT" \
+  "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" draft.md >/dev/null
+missing_outcome_rc=$?
+set -e
+test "$missing_outcome_rc" -eq 7
+test ! -e "$MISSING_OUTCOME_TMP/architectural-guideline-note.md"
 
 INVARIANT_ASSESSMENT="$TMPDIR/architectural-invariant-assessment-draft.md"
 printf 'Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.\n' > "$INVARIANT_ASSESSMENT"
@@ -113,7 +126,7 @@ printf 'legacy drop\n' > "$TMPDIR/architectural-invariant-drop-notice.txt"
 (
   cd "$ROOT"
   IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
-    "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" architectural-invariant-assessment-draft.md >/dev/null
+    "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" architectural-invariant-assessment-draft.md clean >/dev/null
 )
 
 test -f "$TMPDIR/architectural-invariant-note.md"

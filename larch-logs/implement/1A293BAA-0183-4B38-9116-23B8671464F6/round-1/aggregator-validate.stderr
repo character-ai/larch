@@ -1,0 +1,5 @@
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_4 not traceable to scoped input (first 80 chars: 'Require durable metadata `ASSESSMENT_KIND=violation` plus sidecar/identity valid')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_9 not traceable to scoped input (first 80 chars: 'Add harness cases for emit-reauthor, BGJOB_RC=0, and no attempt-2 retry.')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_13 not traceable to scoped input (first 80 chars: 'Add planned coordinator regression tests in a follow-up.')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_14 not traceable to scoped input (first 80 chars: 'Add needs_assessment routing tests per plan acceptance list.')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_15 not traceable to scoped input (first 80 chars: 'Accept as documented tradeoff or extend validation if policy changes.')

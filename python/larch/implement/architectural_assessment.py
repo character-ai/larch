@@ -30,6 +30,11 @@ _IDENTIFIER_RE: Final = re.compile(r"^#{1,6}\s+((?:I|G)-[A-Za-z0-9-]+-\d+):", re
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _BASE_REF_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+_REAUTHOR_REASONS: Final[frozenset[str]] = frozenset({
+    config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME,
+    config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH,
+    config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
+})
 
 
 @dataclass(frozen=True)
@@ -86,6 +91,16 @@ class _HeadDrift(RuntimeError):
 
 class _DeviationLogPending(OSError):
     """Signal that a durable deviation awaits its retryable warning-log append."""
+
+
+class _ReauthorRequired(ValueError):
+    """The assessment must be revised before durable persistence."""
+
+
+def _reauthor_status(reason: str) -> str:
+    """Encode a bounded reassessment reason in a coordinator result."""
+    bounded_reason = reason if reason in _REAUTHOR_REASONS else config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA
+    return f"{config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}:{bounded_reason}"
 
 
 class Launcher(Protocol):
@@ -304,6 +319,23 @@ def _outcome_valid(kind: str, implement_tmpdir: Path, metadata: dict[str, str]) 
     return str(record.get("base_ref") or "") == metadata.get("BASE_REF", "") and str(record.get("head_sha") or "") == (metadata.get("ASSESSED_HEAD_SHA", "") or metadata.get("HEAD_SHA", ""))
 
 
+def _authored_note_valid(kind: str, *, implement_tmpdir: Path, outcome: str) -> bool:
+    note_path = (
+        architectural_guidelines.invariant_durable_note_path(implement_tmpdir)
+        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        else architectural_guidelines.durable_note_path(implement_tmpdir)
+    )
+    try:
+        note = _read_regular(note_path, root=implement_tmpdir)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
+    return architectural_guidelines.authored_outcome_valid(
+        note=note,
+        outcome=outcome,
+        invariant=kind == config.ASSESSMENT_KIND_INVARIANTS,
+    )
+
+
 def _already_handled(kind: str, *, repo_root: Path, implement_tmpdir: Path, head_sha: str) -> bool:
     metadata = (
         architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir)
@@ -311,6 +343,16 @@ def _already_handled(kind: str, *, repo_root: Path, implement_tmpdir: Path, head
         else architectural_guidelines.durable_note_metadata(implement_tmpdir)
     )
     base_ref: str = metadata.get("BASE_REF", "")
+    note_state: str = metadata.get("NOTE_STATE", config.NOTE_STATE_AUTHORED)
+    allowed: frozenset[str] = (
+        config.INVARIANT_ASSESSMENT_OUTCOMES
+        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        else config.GUIDELINE_ASSESSMENT_OUTCOMES
+    )
+    if note_state == config.NOTE_STATE_AUTHORED:
+        outcome = metadata.get("ASSESSMENT_KIND", "")
+        if outcome not in allowed or not _authored_note_valid(kind, implement_tmpdir=implement_tmpdir, outcome=outcome):
+            return False
     consumer = architectural_guidelines.invariant_note_consumable if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.note_consumable
     if not (base_ref and consumer(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root) and _outcome_valid(kind, implement_tmpdir, metadata)):
         return False
@@ -517,13 +559,19 @@ def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpd
     if current_head != result.head_sha:
         raise _HeadDrift("HEAD changed after architectural assessment launch")
     if result.kind == config.ASSESSMENT_KIND_INVARIANTS:
-        architectural_guidelines.write_invariant_compose_assessment(
-            implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, repo_root=repo_root
-        )
+        try:
+            architectural_guidelines.write_invariant_compose_assessment(
+                implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, outcome=result.state, repo_root=repo_root
+            )
+        except architectural_guidelines.AssessmentReauthorRequired as exc:
+            raise _ReauthorRequired(str(exc)) from exc
     else:
-        architectural_guidelines.write_compose_assessment(
-            implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, repo_root=repo_root
-        )
+        try:
+            architectural_guidelines.write_compose_assessment(
+                implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, outcome=result.state, repo_root=repo_root
+            )
+        except architectural_guidelines.AssessmentReauthorRequired as exc:
+            raise _ReauthorRequired(str(exc)) from exc
     _write_outcome(result.kind, implement_tmpdir=implement_tmpdir, result=result)
     metadata = (
         architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir)
@@ -531,7 +579,7 @@ def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpd
         else architectural_guidelines.durable_note_metadata(implement_tmpdir)
     )
     if not _outcome_valid(result.kind, implement_tmpdir, metadata):
-        raise OSError("architectural outcome postcondition failed")
+        raise _ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA)
     if (
         result.kind == config.ASSESSMENT_KIND_GUIDELINES
         and result.state == "deviation"
@@ -565,9 +613,19 @@ def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Pat
     state = metadata.get("ASSESSMENT_KIND", "")
     allowed = {"clean", "violation"} if kind == config.ASSESSMENT_KIND_INVARIANTS else {"clean", "deviation"}
     if state not in allowed:
-        raise ValueError(f"current {kind} note has no repairable assessment kind")
+        return config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+    try:
+        note = _read_regular(note_path, root=implement_tmpdir)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+    if not architectural_guidelines.authored_outcome_valid(
+        note=note,
+        outcome=state,
+        invariant=kind == config.ASSESSMENT_KIND_INVARIANTS,
+    ):
+        return config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
     if not _outcome_valid(kind, implement_tmpdir, metadata):
-        result = AssessmentResult(kind, state, _read_regular(note_path, root=implement_tmpdir), (), head_sha, metadata["BASE_REF"], "", "")
+        result = AssessmentResult(kind, state, note, (), head_sha, metadata["BASE_REF"], "", "")
         _write_outcome(kind, implement_tmpdir=implement_tmpdir, result=result)
         if not _outcome_valid(kind, implement_tmpdir, metadata):
             raise OSError("architectural outcome repair postcondition failed")
@@ -582,9 +640,9 @@ def _safe_detail(text: str, implement_tmpdir: Path) -> str:
     return logging_util.sanitize_diagnostic_line(redacted)[:500]
 
 
-def _persist_unavailable(evidence: MaterializedEvidence, *, implement_tmpdir: Path, detail: str) -> None:
+def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path, detail: str) -> None:
     invariant: bool = evidence.kind == config.ASSESSMENT_KIND_INVARIANTS
-    if invariant and _preserved_invariant_violation(evidence, implement_tmpdir=implement_tmpdir):
+    if invariant and _preserved_invariant_violation(evidence, repo_root=repo_root, implement_tmpdir=implement_tmpdir):
         return
     architectural_guidelines.write_unavailable_note(
         implement_tmpdir=implement_tmpdir, head_sha=evidence.head_sha, base_ref=evidence.base_ref, invariant=invariant
@@ -607,7 +665,7 @@ def _persist_unavailable(evidence: MaterializedEvidence, *, implement_tmpdir: Pa
     _write_json_atomic(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=evidence.kind), receipt)
 
 
-def _preserved_invariant_violation(evidence: MaterializedEvidence, *, implement_tmpdir: Path) -> bool:
+def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path) -> bool:  # noqa: PLR0911 - preserved-violation gate rejects each non-matching boundary
     if evidence.kind != config.ASSESSMENT_KIND_INVARIANTS:
         return False
     path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir)
@@ -616,6 +674,22 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, implement_
     except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
         return False
     if architectural_guidelines.validate_invariant_ship_outcome_record(data) is not None or not isinstance(data, dict):
+        return False
+    metadata = architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir)
+    if metadata.get("ASSESSMENT_KIND") != config.ASSESSMENT_OUTCOME_VIOLATION:
+        return False
+    if not architectural_guidelines.invariant_note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=evidence.head_sha,
+        base_ref=evidence.base_ref,
+        repo_root=repo_root,
+    ) or not _outcome_valid(config.ASSESSMENT_KIND_INVARIANTS, implement_tmpdir, metadata):
+        return False
+    if not _authored_note_valid(
+        config.ASSESSMENT_KIND_INVARIANTS,
+        implement_tmpdir=implement_tmpdir,
+        outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
+    ):
         return False
     return (  # type: ignore[reportUnknownVariableType]  # reason: data is dict from _load_json
         data.get("outcome") == "violation"  # type: ignore[reportUnknownMemberType]  # reason: data is dict from _load_json
@@ -715,16 +789,31 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
                     _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
                 except _DeviationLogPending:
                     statuses[result.kind] = "log-pending"
+                except _ReauthorRequired as exc:
+                    invariant: bool = result.kind == config.ASSESSMENT_KIND_INVARIANTS
+                    invalidator = (
+                        architectural_guidelines.invalidate_invariant_implement_note
+                        if invariant
+                        else architectural_guidelines.invalidate_implement_note
+                    )
+                    invalidator(tmpdir)
+                    statuses[result.kind] = _reauthor_status(str(exc))
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                    _persist_unavailable(next(evidence for evidence in pending if evidence.kind == result.kind), implement_tmpdir=tmpdir, detail=str(exc))
+                    _persist_unavailable(next(evidence for evidence in pending if evidence.kind == result.kind), repo_root=root, implement_tmpdir=tmpdir, detail=str(exc))
                     statuses[result.kind] = "unavailable"
                 else:
                     statuses[result.kind] = result.state
             for evidence in pending:
                 if evidence.kind in statuses:
                     continue
-                detail = invalid_detail if evidence.kind in invalid_kinds else "assessment result omitted a requested kind"
-                _persist_unavailable(evidence, implement_tmpdir=tmpdir, detail=detail)
+                detail: str = invalid_detail if evidence.kind in invalid_kinds else "assessment result omitted a requested kind"
+                outcome_invalid: bool = evidence.kind in invalid_kinds and (
+                    "state is invalid" in detail or "result fields are invalid" in detail
+                )
+                if outcome_invalid:
+                    statuses[evidence.kind] = _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
+                    continue
+                _persist_unavailable(evidence, repo_root=root, implement_tmpdir=tmpdir, detail=detail)
                 statuses[evidence.kind] = "unavailable"
         except _HeadDrift:
             return run(kinds=normalized, repo_root=root, implement_tmpdir=tmpdir, launcher=launcher)
@@ -732,7 +821,7 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             for evidence in pending:
                 if evidence.kind in statuses:
                     continue
-                _persist_unavailable(evidence, implement_tmpdir=tmpdir, detail=str(exc))
+                _persist_unavailable(evidence, repo_root=root, implement_tmpdir=tmpdir, detail=str(exc))
                 statuses[evidence.kind] = "unavailable"
     return tuple(f"{kind}:{statuses[kind]}" for kind in normalized)
 
@@ -760,6 +849,12 @@ def main(argv: list[str] | None = None) -> int:
         print("ARCHITECTURAL_ASSESSMENT_STATUS=failed")
         print(f"ARCHITECTURAL_ASSESSMENT_DETAIL={_safe_detail(str(exc), Path(args.implement_tmpdir))}")
         return config.EXIT_INTERNAL_ERROR
-    print("ARCHITECTURAL_ASSESSMENT_STATUS=ok")
+    reauthor_required: bool = any(
+        item.split(":", 2)[1] == config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED for item in statuses
+    )
+    print(
+        f"ARCHITECTURAL_ASSESSMENT_STATUS="
+        f"{config.ASSESSMENT_STATUS_REAUTHOR_REQUIRED if reauthor_required else 'ok'}"
+    )
     print(f"ARCHITECTURAL_ASSESSMENT_RESULTS={','.join(statuses)}")
     return config.EXIT_OK

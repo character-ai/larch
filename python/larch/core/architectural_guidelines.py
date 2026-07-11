@@ -689,7 +689,7 @@ def _read_env(path: Path) -> dict[str, str]:
         return {}
     try:
         raw_text = path.read_text(encoding="utf-8", errors="replace")
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
         return {}
     values: dict[str, str] = {}
     for line in raw_text.splitlines():
@@ -832,9 +832,11 @@ def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer
     assessed_head_sha: str,
     diff_fingerprint_value: str,
     base_ref: str,
+    outcome: str,
     diff_text: str = "",
 ) -> None:
     """Persist orchestrator-authored Phase A assessment artifacts."""
+    validated_outcome: str = _validate_authored_outcome(note=assessment_text, outcome=outcome, invariant=False)
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     _write_text_atomic(path=staged_assessment_path(implement_tmpdir), text=assessment_text)
     _write_text_atomic(path=_diff_path(implement_tmpdir), text=diff_text)
@@ -846,6 +848,7 @@ def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer
             f"DIFF_FINGERPRINT={_env_escape(diff_fingerprint_value)}",
             f"BASE_REF={_env_escape(base_ref)}",
             f"DIFF_SNAPSHOT={_env_escape(str(_diff_path(implement_tmpdir)))}",
+            f"ASSESSMENT_KIND={_env_escape(validated_outcome)}",
             f"WRITTEN_AT={written_at}",
             "",
         ]
@@ -859,9 +862,11 @@ def write_invariant_staged_assessment(  # noqa: PLR0913 - mirrors guideline arti
     assessed_head_sha: str,
     diff_fingerprint_value: str,
     base_ref: str,
+    outcome: str,
     diff_text: str = "",
 ) -> None:
     """Persist orchestrator-authored invariant assessment artifacts."""
+    validated_outcome: str = _validate_authored_outcome(note=assessment_text, outcome=outcome, invariant=True)
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     _write_text_atomic(path=invariant_staged_assessment_path(implement_tmpdir), text=assessment_text)
     _write_text_atomic(path=_invariant_diff_path(implement_tmpdir), text=diff_text)
@@ -874,7 +879,7 @@ def write_invariant_staged_assessment(  # noqa: PLR0913 - mirrors guideline arti
             f"BASE_REF={_env_escape(base_ref)}",
             f"DIFF_SNAPSHOT={_env_escape(str(_invariant_diff_path(implement_tmpdir)))}",
             "INVARIANTS_STATUS=present",
-            f"ASSESSMENT_KIND={_env_escape(_invariant_assessment_kind(assessment_text))}",
+            f"ASSESSMENT_KIND={_env_escape(validated_outcome)}",
             f"WRITTEN_AT={written_at}",
             "",
         ]
@@ -1013,19 +1018,6 @@ def write_unavailable_note(
     invariant: bool = False,
 ) -> None:
     """Persist a non-violating note when assessment input is unavailable."""
-    if invariant:
-        existing_metadata = invariant_durable_note_metadata(implement_tmpdir)
-        existing_note_path = invariant_durable_note_path(implement_tmpdir)
-        if (
-            existing_metadata.get("NOTE_STATE", config.NOTE_STATE_AUTHORED) == config.NOTE_STATE_AUTHORED
-            and _regular_file(existing_note_path)
-        ):
-            try:
-                existing_note = _read_regular_text_no_follow(existing_note_path)
-            except (OSError, UnicodeDecodeError):
-                existing_note = ""
-            if _invariant_assessment_kind(existing_note) == "violation":
-                return
     metadata = {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE, "ASSESSMENT_KIND": ""}
     writer = write_invariant_implement_note if invariant else write_implement_note
     writer(
@@ -1145,9 +1137,10 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
             assessed_head_sha=head_sha,
             diff_fingerprint_value=fingerprint,
             base_ref=resolved_base,
+            outcome=metadata.get("ASSESSMENT_KIND", ""),
             diff_text=diff_text,
         )
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
         return False
     return True
 
@@ -1171,6 +1164,7 @@ def _pin_note_from_live_diff(
             assessed_head_sha=head_sha,
             diff_fingerprint_value=fingerprint,
             base_ref=resolved_base,
+            outcome=_read_env(sidecar).get("ASSESSMENT_KIND", ""),
             diff_text=diff_text,
         )
         refreshed_metadata = _read_env(sidecar)
@@ -1184,7 +1178,7 @@ def _pin_note_from_live_diff(
                 base_ref=resolved_base,
             )
             pinned = True
-    except (OSError, UnicodeDecodeError):
+    except (OSError, UnicodeDecodeError, AssessmentReauthorRequired):
         pinned = False
     return pinned
 
@@ -1719,17 +1713,62 @@ def _write_compose_materialization_metadata(
     )
 
 
-def _invariant_assessment_kind(note: str) -> str:
-    # Tolerant classification (issue #6882): a clean note may carry rationale beyond
-    # the exact presentation line, so a note whose first line is the clean note is
-    # clean even when later prose references an I-* entry. A note is a violation only
-    # when it names a specific I-* invariant without leading with the clean line.
+class AssessmentReauthorRequired(ValueError):
+    """The authored assessment must be revised before it can be persisted."""
+
+
+def classify_assessment_prose(
+    note: str,
+    *,
+    clean_lead: str,
+    identifier_pattern: re.Pattern[str],
+    non_clean_outcome: str,
+) -> str:
+    """Classify prose for a one-way explicit-clean consistency check."""
     if not note.strip():
         return ""
-    first_line = note.split("\n", 1)[0].strip()
-    if first_line == CLEAN_INVARIANT_PRESENTATION_NOTE:
-        return "clean"
-    return "violation" if NOTE_INVARIANT_ID_RE.search(note) else "clean"
+    first_line: str = note.split("\n", 1)[0].strip()
+    if first_line == clean_lead:
+        return config.ASSESSMENT_OUTCOME_CLEAN
+    return non_clean_outcome if identifier_pattern.search(note) else config.ASSESSMENT_OUTCOME_CLEAN
+
+
+def _validate_authored_outcome(*, note: str, outcome: str, invariant: bool) -> str:
+    allowed: frozenset[str] = (
+        config.INVARIANT_ASSESSMENT_OUTCOMES if invariant else config.GUIDELINE_ASSESSMENT_OUTCOMES
+    )
+    if outcome not in allowed:
+        raise AssessmentReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
+    classified: str = classify_assessment_prose(
+        note,
+        clean_lead=CLEAN_INVARIANT_PRESENTATION_NOTE if invariant else CLEAN_PRESENTATION_NOTE,
+        identifier_pattern=NOTE_INVARIANT_ID_RE if invariant else NOTE_GUIDELINE_ID_RE,
+        non_clean_outcome=(
+            config.ASSESSMENT_OUTCOME_VIOLATION if invariant else config.ASSESSMENT_OUTCOME_DEVIATION
+        ),
+    )
+    if outcome == config.ASSESSMENT_OUTCOME_CLEAN and classified != config.ASSESSMENT_OUTCOME_CLEAN:
+        raise AssessmentReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)
+    return outcome
+
+
+def authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool:
+    """Return whether authored outcome metadata is consistent with its note."""
+    try:
+        _validate_authored_outcome(note=note, outcome=outcome, invariant=invariant)
+    except AssessmentReauthorRequired:
+        return False
+    return True
+
+
+def _invariant_assessment_kind(note: str) -> str:  # type: ignore[reportUnusedFunction]  # reason: tested compatibility alias, routing uses persisted metadata
+    """Compatibility alias for tests; routing must use persisted metadata."""
+    return classify_assessment_prose(
+        note,
+        clean_lead=CLEAN_INVARIANT_PRESENTATION_NOTE,
+        identifier_pattern=NOTE_INVARIANT_ID_RE,
+        non_clean_outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
+    )
 
 
 def _write_invariant_compose_materialization_metadata(
@@ -2022,12 +2061,14 @@ def write_compose_assessment(
     *,
     implement_tmpdir: Path,
     assessment_text: str,
+    outcome: str,
     repo_root: str | Path | None = None,
 ) -> None:
     """Write a prompt-authored compose-time assessment as the durable note."""
     normalized = _normalize_assessment_text(assessment_text)
     if not normalized.strip():
         raise ValueError("assessment-file: content must not be empty")
+    validated_outcome: str = _validate_authored_outcome(note=normalized, outcome=outcome, invariant=False)
     metadata = _read_env(implement_tmpdir / MATERIALIZE_ENV)
     materialized_head = metadata.get("HEAD_SHA", "")
     if not materialized_head:
@@ -2038,6 +2079,8 @@ def write_compose_assessment(
         raise ValueError("HEAD changed after compose materialization; rerun Step 8")
     if metadata.get("STATUS") != "present":
         raise ValueError("compose materialization metadata is not present")
+    metadata = dict(metadata)
+    metadata["ASSESSMENT_KIND"] = validated_outcome
     write_implement_note(
         implement_tmpdir=implement_tmpdir,
         note_text=normalized,
@@ -2051,12 +2094,14 @@ def write_invariant_compose_assessment(
     *,
     implement_tmpdir: Path,
     assessment_text: str,
+    outcome: str,
     repo_root: str | Path | None = None,
 ) -> None:
     """Write a prompt-authored invariant compose-time assessment as the durable note."""
     normalized = _normalize_assessment_text(assessment_text)
     if not normalized.strip():
         raise ValueError("assessment-file: content must not be empty")
+    validated_outcome: str = _validate_authored_outcome(note=normalized, outcome=outcome, invariant=True)
     metadata = _read_env(implement_tmpdir / INVARIANT_MATERIALIZE_ENV)
     materialized_head = metadata.get("HEAD_SHA", "")
     if not materialized_head:
@@ -2068,7 +2113,7 @@ def write_invariant_compose_assessment(
     if metadata.get("STATUS") != "present":
         raise ValueError("compose materialization metadata is not present")
     metadata = dict(metadata)
-    metadata["ASSESSMENT_KIND"] = metadata.get("ASSESSMENT_KIND") or _invariant_assessment_kind(normalized)
+    metadata["ASSESSMENT_KIND"] = validated_outcome
     write_invariant_implement_note(
         implement_tmpdir=implement_tmpdir,
         note_text=normalized,
@@ -2875,6 +2920,7 @@ def invariants_prepare_compose_main(argv: list[str]) -> int:
 
 def write_compose_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines write-compose-assessment")
+    parser.add_argument("--outcome", default="")
     parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     parser.add_argument("--repo-root")
     source = parser.add_mutually_exclusive_group(required=True)
@@ -2893,8 +2939,13 @@ def write_compose_assessment_main(argv: list[str]) -> int:
         write_compose_assessment(
             implement_tmpdir=Path(args.implement_tmpdir),
             assessment_text=assessment_text,
+            outcome=args.outcome,
             repo_root=args.repo_root,
         )
+    except AssessmentReauthorRequired as exc:
+        print(f"ARCHITECTURAL_GUIDELINES_WRITE_STATUS={config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}")
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
+        return config.EXIT_REAUTHOR_REQUIRED
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=failed")
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
@@ -2905,6 +2956,7 @@ def write_compose_assessment_main(argv: list[str]) -> int:
 
 def invariants_write_compose_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-invariants write-compose-assessment")
+    parser.add_argument("--outcome", default="")
     parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     parser.add_argument("--repo-root")
     source = parser.add_mutually_exclusive_group(required=True)
@@ -2923,8 +2975,13 @@ def invariants_write_compose_assessment_main(argv: list[str]) -> int:
         write_invariant_compose_assessment(
             implement_tmpdir=Path(args.implement_tmpdir),
             assessment_text=assessment_text,
+            outcome=args.outcome,
             repo_root=args.repo_root,
         )
+    except AssessmentReauthorRequired as exc:
+        print(f"ARCHITECTURAL_INVARIANTS_WRITE_STATUS={config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}")
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={str(exc).replace(chr(10), ' ')}")
+        return config.EXIT_REAUTHOR_REQUIRED
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=failed")
         print(f"ARCHITECTURAL_INVARIANTS_WARNING={str(exc).replace(chr(10), ' ')}")
@@ -2935,6 +2992,7 @@ def invariants_write_compose_assessment_main(argv: list[str]) -> int:
 
 def write_staged_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines write-staged-assessment")
+    parser.add_argument("--outcome", default="")
     parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--assessment-file")
@@ -2967,20 +3025,27 @@ def write_staged_assessment_main(argv: list[str]) -> int:
             return 1
     fingerprint = args.diff_fingerprint or diff_fingerprint(diff_text)
     head_sha = args.assessed_head_sha or _current_head()
-    write_staged_assessment(
-        implement_tmpdir=Path(args.implement_tmpdir),
-        assessment_text=assessment_text,
-        assessed_head_sha=head_sha,
-        diff_fingerprint_value=fingerprint,
-        base_ref=args.base_ref,
-        diff_text=diff_text,
-    )
+    try:
+        write_staged_assessment(
+            implement_tmpdir=Path(args.implement_tmpdir),
+            assessment_text=assessment_text,
+            assessed_head_sha=head_sha,
+            diff_fingerprint_value=fingerprint,
+            base_ref=args.base_ref,
+            outcome=args.outcome,
+            diff_text=diff_text,
+        )
+    except AssessmentReauthorRequired as exc:
+        print(f"ARCHITECTURAL_GUIDELINES_WRITE_STATUS={config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}")
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
+        return config.EXIT_REAUTHOR_REQUIRED
     print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=ok")
     return 0
 
 
 def invariants_write_staged_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-invariants write-staged-assessment")
+    parser.add_argument("--outcome", default="")
     parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--assessment-file")
@@ -3013,14 +3078,20 @@ def invariants_write_staged_assessment_main(argv: list[str]) -> int:
             return 1
     fingerprint = args.diff_fingerprint or diff_fingerprint(diff_text)
     head_sha = args.assessed_head_sha or _current_head()
-    write_invariant_staged_assessment(
-        implement_tmpdir=Path(args.implement_tmpdir),
-        assessment_text=assessment_text,
-        assessed_head_sha=head_sha,
-        diff_fingerprint_value=fingerprint,
-        base_ref=args.base_ref,
-        diff_text=diff_text,
-    )
+    try:
+        write_invariant_staged_assessment(
+            implement_tmpdir=Path(args.implement_tmpdir),
+            assessment_text=assessment_text,
+            assessed_head_sha=head_sha,
+            diff_fingerprint_value=fingerprint,
+            base_ref=args.base_ref,
+            outcome=args.outcome,
+            diff_text=diff_text,
+        )
+    except AssessmentReauthorRequired as exc:
+        print(f"ARCHITECTURAL_INVARIANTS_WRITE_STATUS={config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}")
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={str(exc).replace(chr(10), ' ')}")
+        return config.EXIT_REAUTHOR_REQUIRED
     print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=ok")
     return 0
 

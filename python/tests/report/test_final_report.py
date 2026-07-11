@@ -750,6 +750,7 @@ def test_architectural_guidelines_section_consumable_redacted(
     token = "sk-" + "A" * 24
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text=f"note {token}\n",
         assessed_head_sha="old",
@@ -775,6 +776,7 @@ def test_architectural_guidelines_section_head_mismatch_skips_durable_note(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="note\n",
         assessed_head_sha="old",
@@ -799,6 +801,7 @@ def test_architectural_guidelines_section_head_mismatch_ignores_drop_marker(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="durable note\n",
         assessed_head_sha="old",
@@ -856,6 +859,7 @@ def test_architectural_guidelines_section_ignores_fingerprint_staleness(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="note\n",
         assessed_head_sha="old",
@@ -884,6 +888,7 @@ def test_architectural_guidelines_section_happy_path_wins_over_drop_marker(
 ) -> None:
     diff_text = "implementation diff"
     final_report.architectural_guidelines.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmp_path,
         assessment_text="fresh note\n",
         assessed_head_sha="old",

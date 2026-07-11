@@ -78,3 +78,5 @@ Terminal runs must leave explicit `steps_ran` values through `python/cli.py fina
 Invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py execution-issues flush` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`). Refresh the tracking metadata projection after execution-issues changes when a tracking issue exists. If `ISSUE_NUMBER` is empty or `0`, skip the refresh helper entirely; do not call GitHub for issue `#0`.
 
 Pre-PR Step 2 main-health repair is documented in `step2-main-health-fix.md`, not this post-driver matrix. A recorded repair marker may allow merging over the same red main failure; new or different default-branch failures route through `main-ci-fail`.
+
+| Step 8 assessment | `ASSESSMENT_STATUS=re-author-required`, `BGJOB_RC=0` | `NEXT_ACTION=assessments`; preserve results; no retry or ship relaunch |

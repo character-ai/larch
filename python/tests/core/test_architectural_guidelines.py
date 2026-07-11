@@ -780,6 +780,7 @@ def test_parse_guideline_entries_mixes_marked_and_unmarked_entries_in_order() ->
 def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -794,6 +795,7 @@ def test_pin_note_from_staged_rejects_fingerprint_mismatch(tmp_path: Path) -> No
 def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -810,6 +812,7 @@ def test_staged_assessment_present_requires_regular_present_artifacts(tmp_path: 
     assert not ag.staged_assessment_present(tmpdir)
 
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -919,6 +922,7 @@ def test_dropped_notice_round_trips_and_clears_on_invalidation(tmp_path: Path) -
     assert ag.read_dropped_note_notice(tmpdir) == "dropped"
 
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -947,6 +951,7 @@ def test_dropped_notice_cleared_by_successful_pin(tmp_path: Path) -> None:
     assert ag.persist_dropped_note_notice(tmpdir, notice_text="old marker\n")
     diff_text = "implementation diff"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="fresh note\n",
         assessed_head_sha="old",
@@ -1003,6 +1008,7 @@ def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> N
     ag.clear_dropped_note_notice(tmpdir)
     ag.invalidate_implement_note(tmpdir)
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1019,6 +1025,7 @@ def test_maybe_persist_dropped_notice_returns_false_on_persist_failure(
 ) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1043,6 +1050,7 @@ def test_staged_fingerprint_valid_uses_live_diff_when_repo_available(
     staged_diff = "stale staged diff"
     live_diff = "current live diff"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1066,6 +1074,7 @@ def test_refresh_staged_assessment_for_current_head_updates_staged_metadata(
     tmpdir = tmp_path / "implement"
     live_diff = "current live diff"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1101,6 +1110,7 @@ def test_refresh_staged_assessment_for_current_head_recovers_when_diff_changes(
     staged_diff = "stale staged diff"
     live_diff = "current live diff"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1137,6 +1147,7 @@ def test_pin_note_from_staged_for_current_head_refreshes_from_live_diff(
     live_diff = "current live diff"
     live_fingerprint = ag.diff_fingerprint(live_diff)
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1173,6 +1184,7 @@ def test_pin_note_from_staged_for_current_head_empty_fingerprint_fails_after_liv
     staged_diff = "stale staged diff"
     live_diff = "current live diff"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1201,6 +1213,7 @@ def test_pin_note_from_live_diff_refreshes_staged_and_durable_metadata(tmp_path:
     live_diff = "current live diff"
     live_fingerprint = ag.diff_fingerprint(live_diff)
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1233,6 +1246,7 @@ def test_pin_note_from_live_diff_returns_false_on_durable_write_failure(
     live_diff = "current live diff"
     live_fingerprint = ag.diff_fingerprint(live_diff)
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1253,6 +1267,31 @@ def test_pin_note_from_live_diff_returns_false_on_durable_write_failure(
         live_diff=(live_diff, live_fingerprint),
     )
     assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
+
+
+def test_pin_note_from_live_diff_returns_false_for_invalid_staged_outcome(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        outcome="clean",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("stale staged diff"),
+        base_ref="origin/main",
+        diff_text="stale staged diff",
+    )
+    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8").replace("ASSESSMENT_KIND=clean", "ASSESSMENT_KIND="),
+        encoding="utf-8",
+    )
+
+    assert not ag._pin_note_from_live_diff(
+        implement_tmpdir=tmpdir,
+        head_sha="head-b",
+        resolved_base="origin/main",
+        live_diff=("current live diff", ag.diff_fingerprint("current live diff")),
+    )
 
 
 def test_materialize_live_diff_returns_none_on_os_error(
@@ -1280,12 +1319,48 @@ def test_refresh_staged_assessment_for_current_head_returns_false_when_missing_a
     )
 
 
+@pytest.mark.parametrize("outcome", ["", "unknown"])
+def test_refresh_staged_assessment_for_current_head_returns_false_for_invalid_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    outcome: str,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_staged_assessment(
+        outcome="clean",
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("staged diff"),
+        base_ref="origin/main",
+        diff_text="staged diff",
+    )
+    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
+    sidecar.write_text(
+        sidecar.read_text(encoding="utf-8").replace("ASSESSMENT_KIND=clean", f"ASSESSMENT_KIND={outcome}"),
+        encoding="utf-8",
+    )
+    def materialize_live_diff(*, repo_root: Path, resolved_base: str) -> tuple[str, str]:
+        del repo_root, resolved_base
+        return "live diff", ag.diff_fingerprint("live diff")
+
+    monkeypatch.setattr(ag, "_materialize_live_diff", materialize_live_diff)
+
+    assert not ag.refresh_staged_assessment_for_current_head(
+        tmpdir,
+        head_sha="head-b",
+        base_ref="origin/main",
+        repo_root=_repo(tmp_path / "git"),
+    )
+
+
 def test_refresh_staged_assessment_for_current_head_returns_false_when_live_diff_unavailable(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1310,6 +1385,7 @@ def test_refresh_staged_assessment_for_current_head_returns_false_when_live_diff
 def test_refresh_staged_assessment_for_current_head_returns_false_without_resolved_base(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1332,6 +1408,7 @@ def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
 ) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1475,7 +1552,7 @@ def test_write_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
 
     assert ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha).status == "assessment-required"
-    ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo)
+    ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo, outcome="clean")
 
     assert (tmpdir / ag.DURABLE_NOTE).read_text(encoding="utf-8") == "Compose assessment\n"
     assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha)
@@ -1504,7 +1581,7 @@ def test_write_compose_assessment_rejects_head_drift(tmp_path: Path) -> None:
     _git(repo, "commit", "-m", "drift")
 
     with pytest.raises(ValueError, match="HEAD changed after compose materialization"):
-        ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo)
+        ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo, outcome="clean")
 
 
 def test_prepare_absent_emits_status_without_diff(
@@ -1612,6 +1689,7 @@ def test_prepare_invalidates_stale_artifacts_before_reading(
     repo = _repo(tmp_path)
     tmpdir = tmp_path / "implement"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text="note\n",
         assessed_head_sha="head-a",
@@ -1836,6 +1914,7 @@ def test_staged_pin_consumable_and_invalidate(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     body = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text=body,
         assessed_head_sha="head-a",
@@ -1859,6 +1938,7 @@ def test_pr_prep_log_only_head_advance_keeps_body_bytes(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     body = "Deviation warning body\n"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text=body,
         assessed_head_sha="N",
@@ -1886,6 +1966,7 @@ def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     body = "Deviation warning body\n"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text=body,
         assessed_head_sha=assessed_head,
@@ -2050,6 +2131,7 @@ def test_log_only_head_advance_keeps_durable_note_consumable_without_repin(
     tmpdir = tmp_path / "implement"
     body = "Deviation warning body\n"
     ag.write_staged_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text=body,
         assessed_head_sha=assessed_head,
@@ -2114,6 +2196,7 @@ def test_invariant_compose_assessment_persists_durable_note(tmp_path: Path) -> N
     assert (tmpdir / ag.INVARIANT_MATERIALIZE_ENV).is_file()
 
     ag.write_invariant_compose_assessment(
+        outcome="clean",
         implement_tmpdir=tmpdir,
         assessment_text=ag.CLEAN_INVARIANT_PRESENTATION_NOTE,
         repo_root=repo,
@@ -2237,7 +2320,7 @@ def test_unavailable_note_is_not_stale_at_its_pinned_head(tmp_path: Path) -> Non
     assert not ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=tmp_path)
 
 
-def test_unavailable_invariant_refresh_preserves_authored_violation(tmp_path: Path) -> None:
+def test_unavailable_invariant_refresh_replaces_authored_violation(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_invariant_implement_note(
         implement_tmpdir=tmpdir,
@@ -2248,6 +2331,7 @@ def test_unavailable_invariant_refresh_preserves_authored_violation(tmp_path: Pa
             "AUTHORED_DIFF_FINGERPRINT": "author-fingerprint",
             "COVERED_DIFF_FINGERPRINT": "covered-fingerprint",
             "DIFF_FINGERPRINT": "covered-fingerprint",
+            "ASSESSMENT_KIND": "violation",
         },
         base_ref="origin/main",
     )
@@ -2259,8 +2343,8 @@ def test_unavailable_invariant_refresh_preserves_authored_violation(tmp_path: Pa
         invariant=True,
     )
 
-    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "I-Test-1: violated\n"
-    assert ag.invariant_durable_note_metadata(tmpdir)["NOTE_STATE"] == ag.config.NOTE_STATE_AUTHORED
+    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "Architectural assessment unavailable."
+    assert ag.invariant_durable_note_metadata(tmpdir)["NOTE_STATE"] == ag.config.NOTE_STATE_UNAVAILABLE
 
 
 @pytest.mark.parametrize(
@@ -2699,3 +2783,45 @@ def test_consumption_rejects_symlinked_snapshot(tmp_path: Path) -> None:
     snapshot_path.unlink()
     snapshot_path.symlink_to(target)
     assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
+
+
+def test_explicit_outcome_allows_identifier_free_violation_and_rejects_clean_mismatch(tmp_path: Path) -> None:
+    violation_dir = tmp_path / "violation"
+    ag.write_invariant_staged_assessment(
+        implement_tmpdir=violation_dir,
+        assessment_text="The changed recovery path can mutate a closed PR.\n",
+        assessed_head_sha="head",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        outcome="violation",
+        diff_text="diff",
+    )
+    assert ag._read_env(violation_dir / ag.INVARIANT_STAGED_ASSESSMENT_ENV)["ASSESSMENT_KIND"] == "violation"
+
+    mismatch_dir = tmp_path / "mismatch"
+    with pytest.raises(ag.AssessmentReauthorRequired, match=ag.config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH):
+        ag.write_staged_assessment(
+            implement_tmpdir=mismatch_dir,
+            assessment_text="G-Py-4: the path swallows an error.\n",
+            assessed_head_sha="head",
+            diff_fingerprint_value=ag.diff_fingerprint("diff"),
+            base_ref="origin/main",
+            outcome="clean",
+            diff_text="diff",
+        )
+    assert not (mismatch_dir / ag.STAGED_ASSESSMENT).exists()
+    assert not (mismatch_dir / ag.STAGED_ASSESSMENT_ENV).exists()
+
+
+def test_explicit_clean_accepts_canonical_lead_with_identifier_rationale(tmp_path: Path) -> None:
+    note = ag.CLEAN_PRESENTATION_NOTE + "\nThis implementation follows G-Py-4."
+    ag.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text=note,
+        assessed_head_sha="head",
+        diff_fingerprint_value=ag.diff_fingerprint("diff"),
+        base_ref="origin/main",
+        outcome="clean",
+        diff_text="diff",
+    )
+    assert ag._read_env(tmp_path / ag.STAGED_ASSESSMENT_ENV)["ASSESSMENT_KIND"] == "clean"

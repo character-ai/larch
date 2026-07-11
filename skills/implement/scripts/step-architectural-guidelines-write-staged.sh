@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 ASSESSMENT_ARG="${1:?assessment file path required}"
+OUTCOME="${2:-}"
 if [[ "$ASSESSMENT_ARG" == /* ]]; then
   if [[ "$ASSESSMENT_ARG" == "$IMPLEMENT_TMPDIR"/* ]]; then
     ASSESSMENT_FILE="$ASSESSMENT_ARG"
@@ -49,6 +50,7 @@ fi
 exec python3 "$PLUGIN_ROOT/python/cli.py" architectural-guidelines write-staged-assessment \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --assessment-file "$ASSESSMENT_FILE" \
+  --outcome "$OUTCOME" \
   --assessed-head-sha "$(git rev-parse HEAD)" \
   --diff-fingerprint "${DIFF_FINGERPRINT:-}" \
   --base-ref "${BASE_REF:-}" \
