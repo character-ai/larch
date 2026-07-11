@@ -171,7 +171,7 @@ def test_trusted_text_rejects_symlink_and_partial_escape(tmp_path: Path) -> None
     root = tmp_path / "artifacts"
     root.mkdir()
     outside = tmp_path / "outside.txt"
-    outside.write_text("secret", encoding="utf-8")
+    _ = outside.write_text("secret", encoding="utf-8")
     link = root / "payload.txt"
     link.symlink_to(outside)
 

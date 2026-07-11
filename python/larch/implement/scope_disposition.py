@@ -404,7 +404,7 @@ def compute_coverage(
 
 
 def write_coverage(coverage: PlanCoverage, *, tmpdir: Path) -> None:
-    larch_io.validate_trusted_directory(tmpdir)
+    _ = larch_io.validate_trusted_directory(tmpdir)
     untouched_file = Path(coverage.untouched_file)
     todos_file = Path(coverage.todos_file)
     larch_io.trusted_atomic_write(
