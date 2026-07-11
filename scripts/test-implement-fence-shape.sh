@@ -34,7 +34,7 @@ CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
 LAUNCHER_PREFIX = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 EXPECTED_OLD = 2
-EXPECTED_NEW = 28
+EXPECTED_NEW = 29
 
 def old_logical_commands(body):
     commands = []
@@ -236,7 +236,7 @@ try:
     assessments_start = skill_text.index('- **`assessments`**, **`invariants-assessment`**, or **`guidelines-assessment`**:')
     reship_start = skill_text.index('- **`reship`**:', assessments_start)
     assessments_slice = skill_text[assessments_start:reship_start]
-    normalization = assessments_slice.index('normalize the current `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env` immediately before the adapter fence')
+    normalization = assessments_slice.index('python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"')
     adapter = assessments_slice.index('skills/implement/scripts/step-8-assessment.sh')
     validation = assessments_slice.index('After a normal return, require adapter exit success')
     relaunch = assessments_slice.index('return to the Step 8 ship launcher above exactly once')
@@ -244,6 +244,8 @@ try:
         errors.append('assessment branch must normalize, invoke one adapter, validate, then allow one Step 8 ship relaunch')
     if assessments_slice.count('skills/implement/scripts/step-8-assessment.sh') != 1:
         errors.append('assessment branch must contain exactly one step-8-assessment.sh launcher')
+    if assessments_slice.count('python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"') != 1:
+        errors.append('assessment branch must contain exactly one normalize-assessment-handoff launcher')
     if 'python/cli.py bgjob wait --step implement-step8-assessment' in assessments_slice:
         errors.append('assessment branch must not expose a prompt-side assessment wait fence')
     for forbidden in ('step-architectural-invariants-write-compose.sh', 'step-architectural-guidelines-write-compose.sh', 'architectural-invariant-assessment-draft.md', 'architectural-guideline-assessment-draft.md'):

@@ -613,6 +613,22 @@ def test_ship_normalize_assessment_handoff_rejects_noncanonical_kinds(tmp_path: 
     assert handoff.read_text(encoding="utf-8") == original
 
 
+def test_ship_normalize_assessment_handoff_ignores_legacy_symlinked_temp_path(
+    tmp_path: Path,
+) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text("NEXT_ACTION=assessments\nDETAIL=guidelines\n", encoding="utf-8")
+    redirected = tmp / "redirected.txt"
+    redirected.write_text("unchanged\n", encoding="utf-8")
+    (tmp / ".ship-route-exit-handoff.env.tmp").symlink_to(redirected)
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert redirected.read_text(encoding="utf-8") == "unchanged\n"
+    assert handoff.read_text(encoding="utf-8") == "NEXT_ACTION=assessments\nDETAIL=guidelines\n"
+
+
 def test_ship_route_exit_reships_no_checks_when_phase14_flag_pending(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

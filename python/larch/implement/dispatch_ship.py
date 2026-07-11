@@ -19,6 +19,7 @@ from typing import cast
 from larch.issue import execution_issues
 from larch.issue import file_oos
 from larch.issue import oos_filer
+from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
 from larch.core.run_context import RunContext
@@ -889,7 +890,14 @@ def _normalize_assessment_handoff(*, implement_tmpdir: Path) -> tuple[str, tuple
         if not line.startswith(("NEXT_ACTION=", "DETAIL=", "DETAIL_FILE="))
     ]
     rewritten.extend(("NEXT_ACTION=assessments", f"DETAIL={canonical}"))
-    _write_text_atomic(path=handoff, text="\n".join(rewritten) + "\n")
+    try:
+        larch_io.trusted_atomic_write(
+            handoff,
+            "\n".join(rewritten) + "\n",
+            root=implement_tmpdir,
+        )
+    except OSError as exc:
+        raise ValueError(f"cannot safely rewrite assessment handoff: {exc}") from exc
     return canonical, kinds
 
 
