@@ -29,6 +29,7 @@ Launcher = Callable[[list[str] | None], int]
 
 @dataclass(frozen=True)
 class LaneIdentity:
+    mode: str
     repo_root: Path
     implement_tmpdir: Path
     handoff_dir: Path
@@ -113,9 +114,10 @@ def _repo_toplevel(runner: Runner, *, cwd: Path) -> Path:
     return Path(raw).resolve(strict=True)
 
 
-def _identity_step(*, run_id: str, attempt: int, tier: str, starting_head: str, fingerprint: str) -> str:
-    material = f"{run_id}\0{attempt}\0{tier}\0{starting_head}\0{fingerprint}".encode()
+def _identity_step(*, identity: tuple[str, str, int, str, str, str]) -> str:
+    material = "\0".join(str(value) for value in identity).encode()
     suffix = hashlib.sha256(material).hexdigest()[:16]
+    _mode, _run_id, attempt, tier, _head, _fingerprint = identity
     return f"implement-step8-ci-fixer-{attempt}-{tier}-{suffix}"
 
 
@@ -140,6 +142,7 @@ def _validate_result_env(path: Path, *, tmpdir: Path, step: str) -> Path:
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="cli.py ci fixer-lane")
+    _ =parser.add_argument("--mode", choices=("ci", "invariant-primary"), default="ci")
     _ =parser.add_argument("--repo-root", required=True)
     _ =parser.add_argument("--implement-tmpdir", required=True)
     _ =parser.add_argument("--handoff-dir", required=True)
@@ -168,8 +171,10 @@ def _positive_int(raw: str, *, label: str) -> int:
 def _validated_run_identity(args: argparse.Namespace) -> tuple[int | None, str]:
     pr = _positive_int(args.pr, label="pr") if args.pr else None
     run_id = args.run_id
-    if run_id and not run_id.isdigit():
+    if args.mode == "ci" and run_id and not run_id.isdigit():
         raise LaneClosedError("run id must be numeric")
+    if args.mode == "invariant-primary" and not re.fullmatch(r"[A-Za-z0-9._-]+", run_id):
+        raise LaneClosedError("invariant run id is malformed")
     if not run_id:
         if pr is None:
             raise LaneClosedError("a run id or PR is required")
@@ -187,10 +192,17 @@ def _validated_invariant(args: argparse.Namespace, *, tmpdir: Path) -> Path | No
     metadata = invariant.with_suffix(invariant.suffix + ".identity.env")
     metadata_path = _regular_under(str(metadata), root=tmpdir, label="invariant identity")
     rows = larch_io.parse_kv(metadata_path.read_text(encoding="utf-8", errors="strict"), first_wins=True)
-    if rows.get("STARTING_HEAD") != args.starting_head:
-        raise LaneClosedError("invariant evidence starting HEAD mismatch")
-    if rows.get("INPUT_FINGERPRINT") != args.input_fingerprint:
-        raise LaneClosedError("invariant evidence input fingerprint mismatch")
+    expected = {
+        "MODE": args.mode, "RUN_ID": args.run_id, "STARTING_HEAD": args.starting_head,
+        "INPUT_FINGERPRINT": args.input_fingerprint, "TIER": args.tier,
+        "ATTEMPT": args.attempt,
+    }
+    expected["STEP"] = _identity_step(identity=(
+        args.mode, args.run_id, int(args.attempt), args.tier,
+        args.starting_head, args.input_fingerprint,
+    ))
+    if rows != expected:
+        raise LaneClosedError("invariant evidence identity mismatch")
     return invariant
 
 
@@ -217,14 +229,13 @@ def _validated_identity(args: argparse.Namespace, *, runner: Runner) -> LaneIden
     if not re.fullmatch(r"[^/\s]+/[^/\s]+", args.repo):
         raise LaneClosedError("repo must be owner/name")
     pr, run_id = _validated_run_identity(args)
-    step = _identity_step(
-        run_id=run_id, attempt=attempt, tier=args.tier,
-        starting_head=args.starting_head, fingerprint=args.input_fingerprint,
-    )
+    step = _identity_step(identity=(
+        args.mode, run_id, attempt, args.tier, args.starting_head, args.input_fingerprint,
+    ))
     result_env = _validate_result_env(Path(args.bgjob_result_env), tmpdir=tmpdir, step=step)
     invariant = _validated_invariant(args, tmpdir=tmpdir)
     return LaneIdentity(
-        repo_root=repo_root, implement_tmpdir=tmpdir, handoff_dir=handoff,
+        mode=args.mode, repo_root=repo_root, implement_tmpdir=tmpdir, handoff_dir=handoff,
         repo=args.repo, pr=pr, run_id=run_id, tier=args.tier, attempt=attempt,
         starting_head=args.starting_head, input_fingerprint=args.input_fingerprint,
         step=step, result_env=result_env, invariant_evidence=invariant,
@@ -232,7 +243,7 @@ def _validated_identity(args: argparse.Namespace, *, runner: Runner) -> LaneIden
 
 
 def _resolve_run_id(identity: LaneIdentity, *, runner: Runner) -> LaneIdentity:
-    if identity.run_id:
+    if identity.run_id or identity.mode == "invariant-primary":
         return identity
     if identity.pr is None:
         raise LaneClosedError("missing stable run identity")
@@ -241,20 +252,17 @@ def _resolve_run_id(identity: LaneIdentity, *, runner: Runner) -> LaneIdentity:
     )
     if not run_id:
         raise LaneClosedError("unable to resolve one failed run")
-    step = _identity_step(
-        run_id=run_id,
-        attempt=identity.attempt,
-        tier=identity.tier,
-        starting_head=identity.starting_head,
-        fingerprint=identity.input_fingerprint,
-    )
+    step = _identity_step(identity=(
+        identity.mode, run_id, identity.attempt, identity.tier,
+        identity.starting_head, identity.input_fingerprint,
+    ))
     result_env = _validate_result_env(
         identity.implement_tmpdir / "bgjob" / f"{step}.merge.env",
         tmpdir=identity.implement_tmpdir,
         step=step,
     )
     return LaneIdentity(
-        repo_root=identity.repo_root,
+        mode=identity.mode, repo_root=identity.repo_root,
         implement_tmpdir=identity.implement_tmpdir,
         handoff_dir=identity.handoff_dir,
         repo=identity.repo,
@@ -279,7 +287,22 @@ def _safe_evidence_text(text: str) -> str:
     return encoded.decode("utf-8", errors="replace")
 
 
-def _collect_evidence(identity: LaneIdentity, *, runner: Runner) -> EvidenceState:
+def _collect_invariant_evidence(identity: LaneIdentity) -> EvidenceState:
+    if identity.invariant_evidence is None:
+        raise LaneClosedError("invariant-primary mode requires canonical evidence")
+    current = identity.invariant_evidence.read_bytes()
+    if not current or len(current) > config.CI_FIXER_INVARIANT_EVIDENCE_MAX_BYTES:
+        raise LaneClosedError("invariant evidence is empty or oversized")
+    return EvidenceState(
+        path=identity.invariant_evidence,
+        kind="invariant",
+        digest=hashlib.sha256(current).hexdigest(),
+    )
+
+
+def _collect_evidence(identity: LaneIdentity, *, runner: Runner) -> EvidenceState:  # noqa: C901 - existing bounded retry and fallback flow
+    if identity.mode == "invariant-primary":
+        return _collect_invariant_evidence(identity)
     digest_path = identity.handoff_dir / config.CI_FIXER_DISTILLED_FAILURE_FILE
     if digest_path.is_symlink():
         raise LaneClosedError("distilled failure path is a symlink")
@@ -380,7 +403,7 @@ def _read_rounds(path: Path, *, identity: LaneIdentity) -> tuple[tuple[str, ...]
         if len(parts) != _ROUNDS_COLUMNS or not parts[0].isdigit() or parts[1] not in _TIERS:
             raise LaneClosedError("rounds file is malformed")
         attempt = int(parts[0], 10)
-        if attempt in attempts or parts[2] != identity.run_id or parts[3] != identity.starting_head or parts[4] != identity.input_fingerprint:
+        if attempt in attempts or parts[2] != identity.run_id:
             raise LaneClosedError("rounds file contains duplicate or foreign identity")
         attempts.add(attempt)
         rows.append(parts)
@@ -390,6 +413,7 @@ def _read_rounds(path: Path, *, identity: LaneIdentity) -> tuple[tuple[str, ...]
 def _render_payload(identity: LaneIdentity, result: LaneResult, *, evidence: EvidenceState) -> str:
     values = {
         "STEP": identity.step,
+        "MODE": identity.mode,
         "RESULT": result.result,
         "REASON": result.reason,
         "RUN_ID": identity.run_id,

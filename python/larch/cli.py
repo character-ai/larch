@@ -66,6 +66,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("checks", "contains-pins"): ("larch.implement.checks", "check_contains_pins_main"),
     ("ci", "distill-log"): ("larch.implement.ci", "distill_log_main"),
     ("ci", "fixer-lane"): ("larch.implement.ci", "fixer_lane_main"),
+    ("ci", "materialize-invariant-evidence"): ("larch.implement.invariant_evidence", "main"),
     ("bootstrap", "invoke"): ("larch.state.bootstrap", "invoke_main"),
     ("bootstrap", "parse-routing"): ("larch.state.bootstrap", "parse_routing_main"),
     ("bootstrap", "resolve-non-interactive"): ("larch.state.bootstrap", "resolve_non_interactive_main"),

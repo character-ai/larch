@@ -937,6 +937,31 @@ def test_ship_route_exit_marks_pre_fix_rebase_required_for_autonomous_actions(tm
     assert (tmp / ".ship-pre-fix-rebase-ok").exists() is not expected
 
 
+@pytest.mark.parametrize(
+    ("reason", "payload", "expected_scope"),
+    [
+        ("first-fixer-non-health", {"failed_run_id": "42"}, "pr"),
+        ("main-ci-fail", {"failed_run_id": "42"}, "main"),
+    ],
+)
+def test_ship_route_exit_ci_fix_writes_scope_aware_identity(
+    tmp_path: Path,
+    reason: str,
+    payload: dict[str, object],
+    expected_scope: str,
+) -> None:
+    tmp = _session(tmp_path)
+    dispatch_ship._write_ship_route_handoff(
+        implement_tmpdir=tmp,
+        payload={"outcome": "NEEDS_USER_INPUT", "needs_user_reason": reason, **payload},
+        action="ci-fix",
+    )
+
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert f"CI_FAILURE_SCOPE={expected_scope}\n" in env
+    assert "FAILED_RUN_ID=42\n" in env
+
+
 @pytest.mark.parametrize(("forked", "base_remote"), [("false", "origin"), ("true", "upstream")])
 def test_ship_pre_fix_rebase_ok_uses_fork_aware_remote_and_pushes(
     tmp_path: Path,
@@ -7840,7 +7865,7 @@ def test_resolve_implement_rater_model_routing_matrix(
     ) == expected_model
 
 
-def test_dormant_ci_fixer_wrapper_has_bgjob_contract_and_is_not_wired() -> None:
+def test_active_ci_fixer_wrapper_has_bgjob_start_contract_and_skill_wiring() -> None:
     root: Path = Path(__file__).resolve().parents[3]
     wrapper = root / "skills/implement/scripts/step-8-ci-fixer.sh"
     harness = root / "skills/implement/scripts/test-step-8-ci-fixer.sh"
@@ -7848,15 +7873,12 @@ def test_dormant_ci_fixer_wrapper_has_bgjob_contract_and_is_not_wired() -> None:
     source = wrapper.read_text(encoding="utf-8")
     assert "ci fixer-lane" in source
     assert "bgjob start" in source
-    assert "bgjob wait" in source
+    assert "bgjob wait" not in source
     assert "--merge-result-env" in source
     assert "--bgjob-result-env" in source
     assert "distilled-failure.md" not in source
     assert "gh " not in source
     assert harness.is_file()
-    for path in (
-        root / "skills/implement/SKILL.md",
-        root / "skills/implement/scripts/step-8-ship.sh",
-        root / "python/larch/implement/ship.py",
-    ):
+    assert "step-8-ci-fixer.sh" in (root / "skills/implement/SKILL.md").read_text(encoding="utf-8")
+    for path in (root / "skills/implement/scripts/step-8-ship.sh", root / "python/larch/implement/ship.py"):
         assert "step-8-ci-fixer.sh" not in path.read_text(encoding="utf-8")
