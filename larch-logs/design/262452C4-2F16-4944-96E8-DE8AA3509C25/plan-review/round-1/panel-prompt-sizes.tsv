@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	18868	4717	13549	3388	5319	1330		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	18853	4714	13534	3384	5319	1330		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	18866	4717	13547	3387	5319	1330		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15087	3772	13261	3316	1826	457		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15063	3766	13237	3310	1826	457		0	0
+design Step 3	phase1	1	dyn-codex-plan-prompt-contract-auditor	plan-review	codex	dyn-codex-plan-prompt-contract-auditor.txt	15446	3862	13112	3278	2334	584		0	0
+design Step 3	phase1	1	dyn-cursor-plan-prompt-contract-auditor	plan-review	cursor	dyn-cursor-plan-prompt-contract-auditor.txt	19227	4807	13400	3350	5827	1457		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15085	3772	13259	3315	1826	457		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	18844	4711	13525	3382	5319	1330		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15072	3768	13246	3312	1826	457		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	16578	4145	4582	1146	11996	2999	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	11131	2783	9112	2278	2019	505		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	11131	2783	9112	2278	2019	505		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	11131	2783	9112	2278	2019	505		0	0

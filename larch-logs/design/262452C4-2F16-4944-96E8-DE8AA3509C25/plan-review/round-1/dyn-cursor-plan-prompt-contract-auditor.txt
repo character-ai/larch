@@ -1,0 +1,35 @@
+Reviewing the plan against the design skill, finalize-step5 reference, and structure tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	skills/design/references/finalize-step5.md:72-78	Optional Step 5b.5 pre-check lacks artifact immutability contract	An orchestrator pre-check that invokes design-step3b-sanitize.sh or promotes the candidate writes .completed/step-5b.5 and/or moves architecture-diagram.candidate.md; Step 5c then short-circuits or drops the diagram because _sanitize_diagram_candidate returns early when the sentinel exists (python/larch/design/design_publish.py:228-229) or treats a missing candidate as skip (python/larch/design/design_publish.py:236-241)	In finalize-step5.md Step 5b.5 and skills/design/SKILL.md Step 5b.5: allow only a read-only optional python/cli.py mermaid sanitize probe; forbid design-step3b-sanitize.sh; forbid writing .completed/step-5b.5 architecture-diagram.md architecture-diagram.skipped or moving/deleting the candidate before Step 5c; forbid chat **⚠ 5b.5:** sanitizer warnings from pre-check
+1	in_scope	minor	completeness	scripts/test-design-structure.sh:553-610	Structural harness omits pins for pre-check artifact and script forbids	Plan adds anti-narrative and silent-pre-check assertions but not regression guards for sentinel immutability or legacy-script prohibition; a later prompt edit can reintroduce design-step3b-sanitize.sh pre-check and break Step 5c authority without failing make test-design-structure	Add contains/not_contains pins in test-design-structure.sh for no design-step3b-sanitize.sh on the Step 5b.5 orchestrator path and for prose forbidding pre-Step-5c writes to .completed/step-5b.5 architecture-diagram.md and architecture-diagram.skipped
+
+### 1. [correctness] Optional pre-check must not mutate Step 5c-owned artifacts (`skills/design/references/finalize-step5.md:72-78`, `python/larch/design/design_publish.py:228-241`)
+
+The plan correctly allows a silent optional sanitizer pre-check and states Step 5c stays authoritative, but it does not pin the runtime boundary that makes that true.
+
+Today, `_sanitize_diagram_candidate` returns immediately when `.completed/step-5b.5` already exists:
+
+```228:229:python/larch/design/design_publish.py
+    sentinel = design_tmpdir / ".completed" / "step-5b.5"
+    if sentinel.is_file():
+        return True
+```
+
+The legacy `design-step3b-sanitize.sh` wrapper still writes that sentinel, promotes `architecture-diagram.candidate.md` to `architecture-diagram.md`, emits chat `**⚠ 5b.5:` warnings, and is documented as legacy-only with Step 5c owning normal execution (`skills/design/scripts/design-step3b-sanitize.md:5-21`). An agent following the issue’s “verify before Step 5c” pattern via that script or an equivalent promote-on-success pre-check would skip authoritative Step 5c sanitization, or lose the candidate and trigger a skip path.
+
+**Suggested revision:** In the proposed `finalize-step5.md` Step 5b.5 section and `skills/design/SKILL.md` Step 5b.5 prose, add an explicit immutability contract: optional pre-check may only read/validate the candidate in place (e.g. `python/cli.py mermaid sanitize --input …` with stdout parsed silently); it must not invoke `design-step3b-sanitize.sh`; it must not write `.completed/step-5b.5`, `architecture-diagram.md`, or `architecture-diagram.skipped`; it must not move or delete `architecture-diagram.candidate.md`; it must not print validity recaps or `**⚠ 5b.5:` sanitizer warnings. Revise the candidate silently or proceed to Step 5c.
+
+### 2. [completeness] Harness should pin the pre-check immutability contract (`scripts/test-design-structure.sh:553-610`)
+
+The plan’s testing strategy covers anti-narrative rules, silent pre-check allowance, and harness-vs-Claude distinction, but not the sentinel/script forbids above. Without structural pins, the highest-risk regression (reusing `design-step3b-sanitize.sh` or writing `.completed/step-5b.5` early) would not fail `make test-design-structure`.
+
+**Suggested revision:** Extend the planned `scripts/test-design-structure.sh` assertions with `not_contains` for `design-step3b-sanitize.sh` in Step 5b.5 orchestrator guidance and `contains` for explicit forbid text on pre-Step-5c writes to `.completed/step-5b.5`, `architecture-diagram.md`, and `architecture-diagram.skipped`.
+
+---
+
+**Contract areas that look sound as proposed**
+
+- Shared file-authoring anti-narrative rule in `skills/design/SKILL.md` Verbosity Control, with required `🔶`/`⏩` breadcrumbs, `**⚠` warnings, and structured outputs preserved per plan edge cases.
+- Harness-rendered `Write(…)`, `Wrote N lines`, and `Ran N shell commands` treated as out of scope; plan explicitly distinguishes suppressible Claude prose from uncontrollable harness output.
+- Step 5c remains the authoritative sanitize/promote/skip owner (`skills/design/references/finalize-step5.md:78`, existing harness at `scripts/test-design-structure.sh:555`); no Bash/Python/sanitizer behavior changes proposed.
+- Step 5b.5 `DIAGRAM_REQUIRED=true` → direct candidate authoring without composition/validation narration aligns with the issue’s target lines.
