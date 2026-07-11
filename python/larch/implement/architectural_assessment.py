@@ -665,7 +665,7 @@ def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, imp
     _write_json_atomic(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=evidence.kind), receipt)
 
 
-def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path) -> bool:
+def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path) -> bool:  # noqa: PLR0911 - preserved-violation gate rejects each non-matching boundary
     if evidence.kind != config.ASSESSMENT_KIND_INVARIANTS:
         return False
     path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir)
@@ -789,7 +789,7 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
                     _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
                 except _DeviationLogPending:
                     statuses[result.kind] = "log-pending"
-                except _ReauthorRequired:
+                except _ReauthorRequired as exc:
                     invariant: bool = result.kind == config.ASSESSMENT_KIND_INVARIANTS
                     invalidator = (
                         architectural_guidelines.invalidate_invariant_implement_note

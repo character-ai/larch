@@ -142,8 +142,8 @@ def test_main_preserves_bounded_reauthor_reason(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(
         assessment,
         "run",
-        lambda **_kwargs: ("guidelines:re-author-required:clean-outcome-prose-mismatch",),
-    )  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+        lambda **_kwargs: ("guidelines:re-author-required:clean-outcome-prose-mismatch",),  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    )
 
     assert assessment.main(["--kind", "guidelines", "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK
     assert capsys.readouterr().out.splitlines() == [
