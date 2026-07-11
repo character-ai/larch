@@ -84,6 +84,30 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
     assert "--auto-mode" in write_env
 
 
+def test_write_base_session_env_passes_repo_root(tmp_path, monkeypatch) -> None:
+    """Regression for #6880: bootstrap persists REPO_ROOT so ship does not stall at PR compose."""
+    calls: list[tuple[str, ...]] = []
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    monkeypatch.setattr(bootstrap, "_consumer_repo_root", lambda: "/consumer/repo")
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="infra"),
+        implement_tmpdir=str(tmp_path),
+        repo="owner/repo",
+        repo_unavailable="false",
+        session_id="sid",
+    )
+    bootstrap._write_base_session_env(st)  # pyright: ignore[reportPrivateUsage]
+    write_env = next(call for call in calls if call[:2] == ("session", "write-env") and "--plugin-root-only" not in call)
+    assert "--repo-root" in write_env
+    assert write_env[write_env.index("--repo-root") + 1] == "/consumer/repo"
+
+
 def test_write_claude_source_snapshot_does_not_inject_larch_session_id(tmp_path, monkeypatch) -> None:
     calls: list[tuple[tuple[str, ...], object]] = []
 

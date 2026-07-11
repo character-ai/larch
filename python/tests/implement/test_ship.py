@@ -7830,3 +7830,25 @@ def test_guideline_outcome_validator_rejects_deterministic_clean_paired_with_dev
         "assessment_kind": "deviation",
     })
     assert error is not None
+
+
+def test_persisted_repo_root_for_pr_returns_persisted_root_when_coverage_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Regression for #6880: PR compose must not stall when a coverage artifact exists and REPO_ROOT is persisted."""
+    repo_root = tmp_path / "consumer"
+    repo_root.mkdir()
+    (tmp_path / "session-env.sh").write_text(f"REPO_ROOT={repo_root}\n", encoding="utf-8")
+    monkeypatch.setattr(ship.scope_disposition, "load_coverage", lambda _tmpdir: object())
+    ctx = _ctx(tmp_path)
+    assert ship._persisted_repo_root_for_pr(ctx) == repo_root.resolve()  # pyright: ignore[reportPrivateUsage]
+
+
+def test_persisted_repo_root_for_pr_still_stalls_without_persisted_root_when_coverage_exists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The G-Root-1 guard stays intact: coverage present but no persisted root still raises."""
+    monkeypatch.setattr(ship.scope_disposition, "load_coverage", lambda _tmpdir: object())
+    ctx = _ctx(tmp_path)
+    with pytest.raises(ShipError, match="persisted repository root is required"):
+        ship._persisted_repo_root_for_pr(ctx)  # pyright: ignore[reportPrivateUsage]

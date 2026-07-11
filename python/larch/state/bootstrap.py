@@ -344,6 +344,21 @@ class BootstrapState:
         return ""
 
 
+def _consumer_repo_root() -> str:
+    """Resolve the consumer repository root to persist as REPO_ROOT (never the plugin root)."""
+    git = shutil.which("git")
+    if git is not None:
+        result = _run([git, "rev-parse", "--show-toplevel"])
+        if result.returncode == 0:
+            top = result.stdout.strip()
+            if top:
+                return top
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
+    if project_dir and Path(project_dir).is_absolute() and Path(project_dir).is_dir():
+        return project_dir
+    return ""
+
+
 def _write_base_session_env(st: BootstrapState) -> None:
     prior_claude_source = st.read_session(key="LARCH_CLAUDE_SOURCE_FILE")
     prior_auto_mode = st.read_session(key="LARCH_AUTO_MODE")
@@ -386,6 +401,9 @@ def _write_base_session_env(st: BootstrapState) -> None:
         args.extend(["--dynamic-archetypes", prior_dynamic_archetypes])
     if _valid_run_id(st.run_id):
         args.extend(["--run-id", st.run_id])
+    repo_root = _consumer_repo_root()
+    if repo_root:
+        args.extend(["--repo-root", repo_root])
     result = _cli(*args)
     if result.returncode != 0:
         st.emit_step_failed("write-session-env")

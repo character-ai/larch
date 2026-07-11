@@ -44,6 +44,7 @@ TMP_ROOT = Path(TMP_FALLBACK)
 
 WRITE_ENV_KEYS = frozenset({
     "REPO",
+    "REPO_ROOT",
     "REPO_UNAVAILABLE",
     "FORKED_TARGET",
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
@@ -634,6 +635,7 @@ def write_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-env", add_help=False)
     parser.add_argument("--output")
     parser.add_argument("--repo", default="")
+    parser.add_argument("--repo-root", default="")
     parser.add_argument("--repo-unavailable")
     parser.add_argument("--codex-present", default="")
     parser.add_argument("--cursor-present", default="")
@@ -715,6 +717,10 @@ def write_env_main(argv: list[str]) -> int:
             data["LARCH_RUN_ID"] = args.run_id
         if plugin_root:
             data["LARCH_CLAUDE_PLUGIN_ROOT"] = plugin_root
+        repo_root = args.repo_root.strip() or os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+        if repo_root:
+            _validate_repo_root_value(value=repo_root, flag="--repo-root")
+            data["REPO_ROOT"] = repo_root
         _validate_writer_keys(data=data, allowed=WRITE_ENV_KEYS)
         _validate_no_newlines(data)
         if output == "/dev/null":

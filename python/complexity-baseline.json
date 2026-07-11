@@ -6501,7 +6501,7 @@
     "file": "larch/state/session_env.py",
     "code": "C901",
     "qualified_symbol": "write_env_main",
-    "metric": 31
+    "metric": 32
   },
   {
     "file": "larch/state/session_env.py",
@@ -6573,7 +6573,7 @@
     "file": "larch/state/session_env.py",
     "code": "PLR0912",
     "qualified_symbol": "write_env_main",
-    "metric": 30
+    "metric": 31
   },
   {
     "file": "larch/state/session_env.py",
@@ -6597,7 +6597,7 @@
     "file": "larch/state/session_env.py",
     "code": "PLR0915",
     "qualified_symbol": "write_env_main",
-    "metric": 86
+    "metric": 91
   },
   {
     "file": "larch/state/stall_recovery.py",
