@@ -6423,7 +6423,7 @@ def test_load_or_prepare_guidelines_note_drops_on_redaction_failure(
 def test_guideline_ship_outcome_sidecar_pinned_and_clean(tmp_path: Path) -> None:
     pinned = ship_guidelines.write_guideline_ship_outcome(
         implement_tmpdir=str(tmp_path),
-        result=ship.GuidelinesGateResult(note="Deviation note", guidelines_status="present"),
+        result=ship.GuidelinesGateResult(note="- G-Py-1: deviates by adding shell composition", guidelines_status="present"),
         head_sha="abc123",
         base_ref="origin/main",
     )
@@ -7279,7 +7279,7 @@ def test_open_pr_resume_clears_stale_guideline_outcome_sidecar_before_gate(
     def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
         order.append("gate")
         assert not stale.exists()
-        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+        return ship.GuidelinesGateResult(note="- G-Py-1: deviation warning", guidelines_status="present")
 
     def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
         order.append("flush")
@@ -7385,7 +7385,7 @@ def test_open_pr_resume_no_logs_commit_keeps_guideline_outcome_sidecar_and_skips
 
     def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
         order.append("gate")
-        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+        return ship.GuidelinesGateResult(note="- G-Py-1: deviation warning", guidelines_status="present")
 
     def fake_compose(**_kwargs: object) -> str:
         order.append("compose")
