@@ -1,0 +1,23 @@
+# [BUG] scope-disposition residuals: origin/main hardcode, churn-as-coverage
+
+## Summary
+
+Two residuals of the #6875 fix (PR #6879, commit c734fe6d7) in `python/larch/implement/scope_disposition.py`.
+
+## Residual 1: hardcoded origin/main
+
+`_merge_base_baseline` runs `git merge-base origin/main HEAD`. In a client repo whose default branch is not `main` (forked-OSS flows support this; compare `FORKED_TARGET`), the command fails and `_baseline_sha` silently falls back to the frozen `step2-baseline.txt`. After a post-Step-2 rebase in such a repo, `diff baseline..HEAD` again spans upstream evolution, the exact drift #6875 fixed for main-based repos. Plan-path narrowing contains fingerprint drift from non-plan paths, but upstream churn on plan paths still drifts the fingerprint.
+
+## Residual 2: upstream churn counts as coverage
+
+`compute_coverage` counts a plan path as touched when it appears in `diff baseline..HEAD`, with no check that this run produced the change. On the stale-baseline fallback path, upstream churn touching a plan path can mark a plan item covered that the run never implemented, so `disposition_required` can pass on work nobody did. Exposure is limited to the fallback path while the merge-base refresh works.
+
+## Suggested fix (coder decides)
+
+- Resolve the base ref from persisted run state or the remote HEAD (`git symbolic-ref refs/remotes/origin/HEAD`, or a persisted base-branch key) instead of hardcoding `origin/main`. Fall back to the frozen baseline only when no remote base resolves, and say so loudly.
+- Consider restricting touched-path attribution to commits this run authored, so upstream churn never counts as coverage.
+
+## Evidence
+
+- `_merge_base_baseline` and `_baseline_sha` at commit c734fe6d7.
+- `compute_coverage` plan-path intersection at the same commit.
