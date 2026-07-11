@@ -7856,7 +7856,11 @@ def test_resolve_implement_rater_model_uses_moderate_cursor_default(
         ("codex", difficulty.MODERATE, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE]),
         ("codex", difficulty.HARD, config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.HARD]),
         ("codex", "", config.CODEX_DEFAULT_MODEL),
-        ("cursor", difficulty.MODERATE, config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE]),
+        ("cursor", difficulty.TRIVIAL, config.CURSOR_DEFAULT_MODEL),
+        ("cursor", difficulty.MODERATE, "grok-4.5"),
+        ("cursor", difficulty.HARD, config.CURSOR_DEFAULT_MODEL),
+        ("cursor", "", config.CURSOR_DEFAULT_MODEL),
+        ("cursor", "UNKNOWN", config.CURSOR_DEFAULT_MODEL),
     ],
 )
 def test_resolve_implement_rater_model_routing_matrix(
@@ -7874,6 +7878,65 @@ def test_resolve_implement_rater_model_routing_matrix(
         session_env=tmp / "session-env.sh",
         difficulty_tier=difficulty_tier,
     ) == expected_model
+
+
+@pytest.mark.parametrize("difficulty_tier", [difficulty.TRIVIAL, difficulty.MODERATE, difficulty.HARD])
+@pytest.mark.parametrize(
+    ("env_key", "env_value"),
+    [
+        (config.ENV_LARCH_CURSOR_MODEL, "cursor-env-override"),
+        (config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-override"),
+    ],
+)
+def test_resolve_implement_rater_model_cursor_overrides_beat_tier_default(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    difficulty_tier: str,
+    env_key: str,
+    env_value: str,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+    monkeypatch.setenv(env_key, env_value)
+
+    assert dispatch_step2._resolve_implement_rater_model(
+        tool="cursor",
+        session_env=tmp / "session-env.sh",
+        difficulty_tier=difficulty_tier,
+    ) == env_value
+
+
+@pytest.mark.parametrize("difficulty_tier", [difficulty.TRIVIAL, difficulty.MODERATE, difficulty.HARD])
+def test_resolve_implement_rater_model_cursor_larch_env_wins_over_plugin(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    difficulty_tier: str,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+    monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-wins")
+    monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-loses")
+
+    assert dispatch_step2._resolve_implement_rater_model(
+        tool="cursor",
+        session_env=tmp / "session-env.sh",
+        difficulty_tier=difficulty_tier,
+    ) == "cursor-env-wins"
+
+
+def test_resolve_implement_rater_model_moderate_codex_fallback_stays_sol(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+
+    assert dispatch_step2._resolve_implement_rater_model(
+        tool="codex",
+        session_env=tmp / "session-env.sh",
+        difficulty_tier=difficulty.MODERATE,
+    ) == "gpt-5.6-sol"
+    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE] == "gpt-5.6-sol"
 
 
 def test_active_ci_fixer_wrapper_has_bgjob_start_contract_and_skill_wiring() -> None:

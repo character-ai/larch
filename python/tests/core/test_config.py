@@ -114,3 +114,20 @@ def test_implement_step4_and_post_dispatch_literals() -> None:
 def test_exit_stall_removed_bail_kept() -> None:
     assert not hasattr(config, "EXIT_STALL")
     assert config.EXIT_BAIL == 4
+
+
+def test_cursor_implement_model_by_difficulty() -> None:
+    assert config.CURSOR_DEFAULT_MODEL == "composer-2.5"
+    assert set(config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY) == set(config.DIFFICULTY_TIERS)
+    assert (
+        config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_TRIVIAL]
+        == config.CURSOR_DEFAULT_MODEL
+    )
+    assert (
+        config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD]
+        == config.CURSOR_DEFAULT_MODEL
+    )
+    assert (
+        config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE]
+        == "grok-4.5"
+    )
