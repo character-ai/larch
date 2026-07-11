@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The plan explicitly requires `RESUME_HINT=none` and a regression asserting that exact result; this repeats a rejected ledger concern without new evidence.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

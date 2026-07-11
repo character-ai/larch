@@ -1,0 +1,97 @@
+## Approach
+
+Apply a layered fix at the ship driver and stall classifier.
+
+1. In `run_postmerge_phase`, distinguish the expected `preterminal-outcome` skip from a real post-merge flush failure.
+2. When the PR has a terminal merge result and the skip reason is `config.REFRESH_SKIP_PRETERMINAL_OUTCOME`, keep the warning breadcrumb and finish with `Outcome.OK`.
+3. Preserve the existing stalled path for other skip reasons, including `commit-failed`.
+4. In `classify()`, short-circuit a recorded post-merge stall after a terminal merge to `operator-action` / `none` / `postmerge-flush-expected`.
+5. Keep `_ship_refresh_preterminal_stall()` unchanged so the pre-push guideline-refresh path still requests `step8-shippr`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/ship_pr.py
+
+- Gate benign skip handling on both:
+  - `state_ctx.merge_result` is in the canonical terminal merge-result set.
+  - `skip.reason == config.REFRESH_SKIP_PRETERMINAL_OUTCOME`.
+- Preserve `_breadcrumb(step="warning", detail=...)` for the skipped cleanup.
+- Do not write `Outcome.STALLED`, `STALL_TRACKING=true`, or `STALL_STEP=postmerge-flush` for this expected case.
+- Continue through the healthy completion path so ship state reaches `PHASE=done`, the returned `ShipResult` is `Outcome.OK`, and merge metadata remains intact.
+- Leave unexpected skip reasons on the current stalled path. This keeps real post-merge flush failures visible.
+
+### UPDATED: python/larch/state/_classify.py
+
+- Add a phase-aware defense before `_classify_text()` consumes textual evidence.
+- When `phase == "postmerge"` and merged state contains a terminal `MERGE_RESULT`, classify the stall as:
+  - `FAILURE_CLASS=operator-action`
+  - `RESUME_HINT=none`
+  - `MATCHED_CLASSIFIER_PATTERN=postmerge-flush-expected`
+- Use the canonical terminal merge-result authority rather than duplicating literals.
+- Ensure `_resume_hint_for()` treats `operator-action` as non-resumable. This prevents an unknown or future post-merge step from falling back to `step8-shippr`.
+- Keep the guard narrow. A post-merge phase without confirmed merge evidence must still use normal classification.
+- Do not change `_ship_refresh_preterminal_stall()` or its pre-push precedence.
+
+### UPDATED: python/larch/state/_tokens.py
+
+- Add `postmerge-flush-expected` to the matched-classifier-pattern allowlist.
+- Keep the new classifier result visible in stdout and the classification file instead of reducing it to `redacted`.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+- Add a regression test for a closed PR with a terminal merge result such as `admin_merged` and a post-merge flush skip reason of `preterminal-outcome`.
+- Assert the warning breadcrumb remains operator-visible.
+- Assert `run_postmerge_phase()` returns `Outcome.OK` with the PR and merge metadata.
+- Assert ship state reaches `PHASE=done` without active stall metadata.
+- Assert finalize state remains successful rather than being rewritten as `postmerge-flush` stalled.
+- Preserve or strengthen the existing `commit-failed` test to prove unexpected flush skips still produce the stalled shape.
+
+### UPDATED: python/tests/state/test_stall_recovery.py
+
+- Add a classifier regression fixture with:
+  - `PHASE=postmerge`
+  - active stall tracking
+  - `STALL_STEP=postmerge-flush`
+  - `MERGE_RESULT=admin_merged`
+  - evidence containing `REASON=preterminal-outcome`
+- Assert classification is `operator-action` / `none` / `postmerge-flush-expected`, never `transient-infra` / `step8-shippr`.
+- Cover each accepted terminal merge result if practical through parametrization.
+- Add a negative case for post-merge state without a terminal merge result so textual classification is not suppressed.
+- Retain the existing pre-push tests that require `transient-infra` / `step8-shippr` for `pr-create-guideline-outcome-refresh`.
+
+## Edge cases
+
+- A successful merge with `commit-failed` or another unexpected flush reason must remain stalled.
+- A `postmerge` label alone is insufficient. The merged state must contain a terminal merge result.
+- `already_merged` must receive the same protection as `merged` and `admin_merged`.
+- A pre-push `preterminal-outcome` remains recoverable through `step8-shippr`.
+- Stale textual evidence containing `preterminal-outcome` cannot override durable post-merge success state.
+
+## Failure modes
+
+- An overly broad ship-driver condition could hide a real run-log flush failure. Match the intentional skip reason exactly.
+- An overly broad classifier guard could suppress recovery before merge completion. Require both `phase == "postmerge"` and a terminal merge result.
+- Omitting the pattern allowlist update would emit `MATCHED_CLASSIFIER_PATTERN=redacted`, weakening diagnostics and regression assertions.
+- Leaving `operator-action` to generic resume-hint inference could reintroduce reship routing for an unrecognized stall step.
+
+## Testing strategy
+
+Run only the changed Python test files:
+
+- `python3 -m pytest python/tests/implement/test_ship.py`
+- `python3 -m pytest python/tests/state/test_stall_recovery.py`
+
+Then run changed-file lint and type checks through the repository’s documented Python lint target or its changed-file equivalent.
+
+Verify these acceptance outcomes:
+
+- Confirmed merge plus intentional post-merge skip returns `Outcome.OK`.
+- Outcome normalization reports `IMPLEMENT_NORMALIZED_OUTCOME=merged`.
+- No post-merge reship hint is emitted.
+- No stalled state remains to trigger terminal failure reporting.
+- Unexpected post-merge flush failures still stall.
+- Pre-push guideline-refresh recovery remains unchanged.
+
+difficulty: HARD
+mechanical_churn: false
+diff_lines: 120

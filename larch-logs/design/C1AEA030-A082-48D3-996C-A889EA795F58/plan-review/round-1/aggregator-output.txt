@@ -1,0 +1,85 @@
+### FINDING_1: Post-merge classifier guard is too broad
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Codex-dyn-Postmerge Route Auditor
+- **Severity**: major
+- **Concern**: The proposed classifier guard can classify any post-merge stall with a terminal merge result as expected, including unexpected `commit-failed`, `redaction-failed`, or other real post-merge flush failures. It must also be constrained to the intended stall step and applied only in the correct short-circuit context.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `step == "postmerge-flush"` (after abandoned-bgjob resolution) to the guard, and extend `test_stall_recovery.py` with a negative fixture: `PHASE=postmerge`, terminal `MERGE_RESULT`, `STALL_STEP=branch-invalid` must not emit `postmerge-flush-expected`.
+  - From Codex-Innovation: Require evidence of the exact expected `preterminal-outcome` skip, or persist an explicit expected-skip marker and require it in the classifier guard. Keep `commit-failed` and other unexpected post-merge flush failures on normal classification.
+  - From Cursor-Pragmatic: Narrow the guard to `STALL_STEP=postmerge-flush` (and optionally require `preterminal-outcome` in evidence, or an allowlisted benign skip reason echoed in stall detail) so real post-merge refresh/redaction failures still classify through normal `_classify_text()` / stalled handling
+  - From Codex-Pragmatic: Require the expected postmerge-flush step and preterminal-outcome reason before short-circuiting; let other post-merge failures use normal classification
+  - From Cursor-Requirements: Narrow the short-circuit to the same intentional skip the ship layer exempts: also require skip.reason, stall detail, or evidence to show REFRESH_SKIP_PRETERMINAL_OUTCOME, and exclude unexpected reasons such as commit-failed.
+  - From Cursor-dyn-Postmerge Route Auditor: Either extend flush_logs_post to return REFRESH_SKIP_PRETERMINAL_OUTCOME when post-merge tmpdir finalization hits the same NEVER-16 preterminal policy, or narrow the ship change to classifier-only and drop the Outcome.OK acceptance for a skip reason the post-merge path does not produce.
+
+### FINDING_2: Post-merge guard ordering and applicability are underspecified
+- **Reviewer(s)**: Codex-Arch, Cursor-dyn-Postmerge Route Auditor
+- **Severity**: major
+- **Concern**: The post-merge protection can lose to existing abandoned-bgjob or no-stall short-circuit paths, or can be applied when no stall exists. The guard must be ordered and gated so confirmed post-merge terminal merges take the intended route without misclassifying no-stall calls.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Evaluate the confirmed post-merge terminal-merge guard before `_classify_short_circuit()`, or explicitly override every short-circuit result when that guard matches.
+  - From Cursor-dyn-Postmerge Route Auditor: Insert the postmerge+terminal-merge guard only when short_circuit is None and any_stall is true, as short_circuit or postmerge_guard or _classify_text(...). State this explicitly in the _classify.py plan step.
+
+### FINDING_3: Ship-layer benign-skip handling does not match the live post-merge flush path
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Postmerge Route Auditor
+- **Severity**: major
+- **Concern**: `finalize_postmerge_logs()` delegates to `flush_logs_post()`, whose real skip reasons differ from `REFRESH_SKIP_PRETERMINAL_OUTCOME`. The planned ship-layer branch may therefore be unreachable, leaving terminal merged runs as stalled and preventing the intended `Outcome.OK` / `merged` result.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `finalize_postmerge_logs()` delegates to `flush_logs_post()`, which returns `recovery-failed`, `redaction-failed`, or `post-merge-refresh-failed`, not `preterminal-outcome`. Production stalls likely keep `STALL_STEP=postmerge-flush` with another reason while classifier evidence still contains stale `preterminal-outcome` text from pre-push refresh. The ship change alone would not clear stall metadata on the common path; only the classifier fix stops the reship. Keep the classifier short-circuit as the primary fix. In `ship_pr.py`, either document that the OK path is for the mocked/preterminal contract only, or add an explicit plan step if post-merge flush should surface `REFRESH_SKIP_PRETERMINAL_OUTCOME` before ship-layer OK handling can run in production.
+  - From Cursor-Innovation: Gate benign handling on state_ctx.merge_result in config.POST_MERGE_MERGE_RESULTS together with the actual flush_logs_post skip reasons or on any skip.skipped after a terminal merge per NEVER 16. Add a regression test that mocks a real flush_logs_post reason such as REFRESH_SKIP_RECOVERY_FAILED not preterminal-outcome.
+  - From Cursor-Pragmatic: Gate the healthy completion path on the skip reasons `flush_logs_post` actually returns after a terminal merge (mirror `git/merge.py` `_post_flush`: warn-and-continue for non-fatal skips; keep stalled only for `redaction-failed` and `manifest-recovery-failed), or document and implement a post-merge path that can emit `preterminal-outcome` before adding that gate
+  - From Cursor-Requirements: Either wire post-merge flush to propagate preterminal-outcome when appropriate, or state explicitly that the classifier evidence gate is the production fix and keep the ship change defensive; add an integration test through flush_logs_post if ship-layer behavior is required.
+  - From Cursor-dyn-Postmerge Route Auditor: Either extend flush_logs_post to return REFRESH_SKIP_PRETERMINAL_OUTCOME when post-merge tmpdir finalization hits the same NEVER-16 preterminal policy, or narrow the ship change to classifier-only and drop the Outcome.OK acceptance for a skip reason the post-merge path does not produce.
+
+### FINDING_4: `operator-action` can still produce a resumption hint
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Postmerge Route Auditor
+- **Severity**: major
+- **Concern**: `classify()` recomputes the resume hint through `_resume_hint_for()`. Because `postmerge-flush` sanitizes to `unknown` and `operator-action` is not currently in the non-resumable set, the result can still be `RESUME_HINT=step8-shippr`, recreating the spurious reship.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `classify()` discards the hint from the classification tuple and always recomputes via `_resume_hint_for()` (line 284). `operator-action` is not in the early non-resumable class set (line 99). Without the planned `_resume_hint_for()` change, even a short-circuit returning `operator-action` can still yield `RESUME_HINT=step8-shippr` when `step` sanitizes to `unknown` and `phase` is `postmerge`. [ALREADY_ADDRESSED] Plan already requires adding `operator-action` to the non-resumable branch in `_resume_hint_for()`; keep that step explicit in `_classify.py` and assert `RESUME_HINT=none` in the new classifier regression test.
+  - From Cursor-Innovation: Add operator-action to the klass set that returns none before the phase fallback at line 119. Assert RESUME_HINT none in the new classifier regression test.
+  - From Cursor-Pragmatic: Add `operator-action` (and optionally `environment`) to the early non-resumable set in `_resume_hint_for()`, returning `none`; keep this even if classify short-circuits, because short-circuit tuples discard their embedded hint and always recompute via `_resume_hint_for()`
+  - From Cursor-Requirements: Add an early return none when klass is operator-action, and cover STALL_STEP=postmerge-flush in the planned classifier regression test.
+  - From Cursor-dyn-Postmerge Route Auditor: Add operator-action to the early non-resumable return at _resume_hint_for (line 99) as the plan states; add a regression assertion that RESUME_HINT=none when FAILURE_CLASS=operator-action and PHASE=postmerge.
+
+### FINDING_5: Same-cause attempt handling can overwrite the protected classification
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: major
+- **Concern**: A repeated classification can convert the intended `operator-action` result into `same-cause-repeat`, re-entering terminal failure reporting and potentially filing the spurious bug.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Preserve operator-action across repeated classification. Exclude it from same-cause-repeat conversion or apply the confirmed-merge postmerge classification after attempt deduplication. Add the repeated-classification case to the planned regression test.
+
+### FINDING_6: Terminal merge authority should use the public configuration constant
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Postmerge Route Auditor
+- **Severity**: minor
+- **Concern**: The plan references the private `_normalize._TERMINAL_MERGE_RESULTS` even though `config.POST_MERGE_MERGE_RESULTS` is the existing public authority used by related code. Reaching into the private duplicate risks drift.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Import config.POST_MERGE_MERGE_RESULTS in _classify.py and ship_pr.py rather than _normalize._TERMINAL_MERGE_RESULTS. [OUT_OF_SCOPE] python/larch/state/_tokens.py:265-273 — Adding postmerge-flush to _safe_step would stop unknown sanitization and is an alternative to operator-action early-return; not required if both planned classifier changes land. [OUT_OF_SCOPE] python/larch/state/_normalize.py:30 — Consolidating _TERMINAL_MERGE_RESULTS with config.POST_MERGE_MERGE_RESULTS is DRY cleanup outside this bug fix. [OUT_OF_SCOPE] skills/implement/references/stall-recovery.md:63-64 — Auto-mapping FAILURE_CLASS operator-action to root-cause verdict operator-action would reduce reliance on Step 18a LLM judgment; current plan depends on ship driver avoiding stall state instead.
+  - From Cursor-Requirements: Import config.POST_MERGE_MERGE_RESULTS in ship_pr.py and _classify.py instead of duplicating literals or reaching into _normalize.py.
+  - From Cursor-dyn-Postmerge Route Auditor: Import and use config.POST_MERGE_MERGE_RESULTS in both new guards instead of re-exporting or duplicating _TERMINAL_MERGE_RESULTS.
+
+### FINDING_7: Regression test uses a pre-flush reason unavailable to post-merge flush
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: The planned post-merge regression test mocks `commit-failed`, which belongs to the pre-terminal flush path and would not verify the actual skip reasons produced by `flush_logs_post()`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Mock a flush_logs_post reason such as REFRESH_SKIP_RECOVERY_FAILED or redaction-failed for the stalled-path test. Add a sibling test with that same reason plus terminal merge asserting Outcome.OK after the ship fix.
+
+### OOS_1: [OUT_OF_SCOPE] Safe-step allowlist alternative
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: An alternative change to the safe-step token allowlist was explicitly marked out of scope.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: [OUT_OF_SCOPE] python/larch/state/_tokens.py:265-273 — Adding postmerge-flush to _safe_step would stop unknown sanitization and is an alternative to operator-action early-return; not required if both planned classifier changes land.
+
+### OOS_2: [OUT_OF_SCOPE] Terminal merge constant consolidation
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: Consolidating duplicate terminal-merge constants was explicitly marked as DRY cleanup outside this bug fix.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: [OUT_OF_SCOPE] python/larch/state/_normalize.py:30 — Consolidating _TERMINAL_MERGE_RESULTS with config.POST_MERGE_MERGE_RESULTS is DRY cleanup outside this bug fix.
+
+### OOS_3: [OUT_OF_SCOPE] Automatic operator-action verdict mapping
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: Automatically mapping the classifier failure class to the root-cause verdict was explicitly marked out of scope.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: [OUT_OF_SCOPE] skills/implement/references/stall-recovery.md:63-64 — Auto-mapping FAILURE_CLASS operator-action to root-cause verdict operator-action would reduce reliance on Step 18a LLM judgment; current plan depends on ship driver avoiding stall state instead.

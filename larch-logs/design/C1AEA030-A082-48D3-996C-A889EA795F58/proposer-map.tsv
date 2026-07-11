@@ -1,0 +1,5 @@
+# attributed_ballot_sha256=1064ee031d8ecd2733eae73b20d778eb070cf6e4aa88b8676ea36b15ff96d0ba
+# neutral_ballot_sha256=85b5175072f38302ce06d09176804b7617d73c36fafe70ec5c0b0b950f6a0f61
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+FINDING_2	Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements
