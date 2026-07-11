@@ -1,0 +1,181 @@
+## Approach
+
+1. Persist publish progress after each irreversible phase:
+   - Initialize the result env for the current attempt before publish work starts.
+   - Rewrite it after the plan write, tracking-issue rename, and log-publish attempt.
+   - Record `PLAN_WRITE_OK`, `RENAMED`, `LOG_PUBLISH_ATTEMPTED`, `LOG_PUBLISH_COMPLETED`, `PUBLISH_OK`, and known issue, branch, and PR fields.
+   - Ensure every returned rc-5 path leaves current state. Let result-env write failures surface instead of silently retaining an earlier attempt.
+
+2. Distinguish rc-5 sources:
+   - Emit `PUBLISH_RC_SOURCE=returned` when `publish_core` returns rc 5.
+   - Emit `PUBLISH_RC_SOURCE=exception` before printing a mapped exception traceback.
+   - Preserve the first traceback line and bounded stdout and stderr tails under `DESIGN_TMPDIR`.
+
+3. Build one bounded failure-detail artifact:
+   - Include the exit code, rc source, latest publish phase, progress flags, first traceback line, and stderr tail.
+   - Keep separate bounded stdout and stderr tail files for committed run-log diagnosis.
+   - Reject unsafe paths and line-oriented env values.
+   - Keep all public output behind existing sensitive-corpus and redaction checks.
+
+4. Stage accurate terminal state:
+   - Read the current allowlisted result env even for terminal rc values.
+   - Copy validated progress and identity fields into terminal state.
+   - Write `.design-step5c-status.env` through the existing guarded writer and verify the non-empty status contract.
+   - Preserve the rc-4 assessment refusal and retry behavior unchanged.
+
+5. Classify publish-tail failures from structured state:
+   - Add a specific publish rc-5 and `publish-tail-failed` classifier pattern.
+   - Use `recoverable` with resume hint `design-rename-log-flush` when `PLAN_WRITE_OK=true`.
+   - Keep failures before plan write terminal unless another existing classifier applies.
+   - Thread tracking issue, recovery branch, PR, progress, and rc-source fields into the classification and report.
+
+6. Reconcile a later salvage in the same run:
+   - Use the approved terminal reporting pass in `design_terminal.py` as the reconciliation hook.
+   - Before the existing terminal-sentinel skip, detect a prior `failed-publish-tail` report from the same `DESIGN_TMPDIR`.
+   - Require current, validated evidence that the plan wrote, the issue reached `[DESIGNED]`, and log publish completed.
+   - If the sentinel records a newly filed report issue, post a bounded marker-keyed recovery comment, close it, and re-read its state.
+   - Record reconciliation success in a durable sentinel so re-entry is idempotent.
+   - Do not close an unrelated issue found through dedup. Record a recovery comment only when the existing report contract identifies it safely.
+   - On reconciliation failure, keep the design outcome successful, append an execution issue, and leave the report open for operator review.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Define the publish-tail byte cap and new wire literals once.
+- Define stable result keys, progress values, and the salvage comment marker where shared constants improve writer and reader parity.
+
+### UPDATED: python/larch/design/design_publish.py
+
+- Initialize a fresh result env for every publish attempt so a previous rc-4 refusal cannot survive as current rc-5 state.
+- Persist checkpoints immediately after the plan write and rename.
+- Persist log-publish attempted and completed state around `_run_log_publish_after_capture`.
+- Preserve issue, recovery branch, PR, diagram, and summary fields at each checkpoint.
+- Rewrite state before every returned rc 5.
+- Stop swallowing `_write_result_env` `OSError` failures. Propagate them to Step 5c diagnostics.
+- Keep publish operations, retry limits, and the rc-4 assessment gates unchanged.
+
+### UPDATED: python/larch/design/design_step5c.py
+
+- Extend `STEP5C_PUBLISH_RESULT_ALLOW_KEYS` with rc source, progress, and identity keys.
+- Mark returned and exception-mapped rc values without placing arbitrary exception text in a `KEY=value` file.
+- Copy byte-bounded stdout and stderr tails into safe regular files under `DESIGN_TMPDIR` before deleting system-temp captures.
+- Extract a bounded first traceback line from captured stderr.
+- Render `design-publish-tail.failure.log` from current structured state and the stderr tail.
+- Read the current result env on terminal rc paths and pass validated progress into terminal-state staging.
+- Include the new fields in `.design-step5c-status.env`.
+- Verify status persistence so a zero-byte status artifact becomes a visible failure.
+- Retain temp-file cleanup on all paths.
+
+### UPDATED: python/larch/design/design_terminal.py
+
+- Extend terminal staging arguments and state rows with validated publish progress, rc source, issue, branch, and PR fields.
+- Reconcile a prior filed `failed-publish-tail` report when a later approved outcome proves rename and log-publish completion.
+- Make reconciliation marker-keyed and idempotent.
+- Verify the GitHub issue is closed after mutation.
+- Append bounded execution-issue evidence when comment, close, or verification fails.
+- Preserve normal terminal-report dedup and escalation-success behavior.
+
+### UPDATED: python/larch/state/_validate.py
+
+- Add the new terminal-state keys to the allowed schema.
+- Validate booleans and enum-like progress values explicitly.
+- Validate issue and PR numbers as bounded integers, branch names as safe tokens, and PR URLs against the expected GitHub issue or pull-request URL shape.
+- Continue rejecting duplicate, multiline, symlinked, or out-of-tmpdir state.
+
+### UPDATED: python/larch/state/_tokens.py
+
+- Add `recoverable` to safe failure classes.
+- Add any new publish-tail outcome, site, trigger, and resume-hint tokens required by terminal validation and rendering.
+- Keep existing unknown values fail-closed.
+
+### UPDATED: python/larch/state/_classify.py
+
+- Add a structured classifier for Step 5c `publish-tail-failed` rc 5.
+- Return `recoverable`, `design-rename-log-flush`, and a named publish-tail classifier pattern when `PLAN_WRITE_OK=true`.
+- Preserve `unrecoverable` handling when no trustworthy plan-write evidence exists.
+- Copy validated publish progress and known issue, branch, and PR values into the classification artifact for report rendering.
+
+### UPDATED: python/larch/state/_report.py
+
+- Render the resume hint and publish progress in terminal report metadata.
+- Prefer validated design classification fields for tracking issue, branch, and PR before falling back to implement-oriented state files.
+- Keep the validated bounded failure-detail section.
+- Add `recoverable` to safe class and report-routing tables without changing retry automation.
+
+### UPDATED: python/larch/state/_corpus.py
+
+- Include the persisted publish stdout and stderr tail artifacts in the sensitive corpus.
+- Allow only the new fixed progress, class, and resume tokens.
+- Keep the public report fail-closed if redaction cannot prove sensitive values are absent.
+
+### UPDATED: python/tests/design/test_design_publish.py
+
+- Cover fresh result-env initialization over a stale rc-4 artifact.
+- Cover each rc-5 return site and assert the latest checkpoint survives.
+- Cover plan-written, rename-attempted, and log-publish checkpoints.
+- Assert result-env write failures raise or map to visible diagnostics instead of being ignored.
+- Confirm rc-4 refusal and persist-and-retry tests remain unchanged.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+- Simulate returned rc 5 and exception-mapped rc 5.
+- Assert bounded tails persist under `DESIGN_TMPDIR`, temp captures are removed, and the failure detail includes rc source and traceback context.
+- Test truncation, invalid UTF-8 replacement, empty streams, and oversized output.
+- Assert terminal and Step 5c status artifacts contain current progress and are non-empty.
+- Cover recoverable terminal reporting with known issue, branch, PR, and resume hint.
+- Cover successful salvage reconciliation, repeated invocation, dedup-report handling, incomplete recovery, and GitHub close or verification failure.
+
+### UPDATED: python/tests/state/test_stall_recovery.py
+
+- Add terminal-state validation cases for every new key and unsafe value shape.
+- Test the named rc-5 classifier pattern with and without `PLAN_WRITE_OK=true`.
+- Assert `recoverable` and `design-rename-log-flush` render safely.
+- Assert reports use design issue, branch, and PR fields and include the bounded failure detail.
+- Confirm malformed or stale progress cannot upgrade an unrecoverable failure.
+
+### UPDATED: SECURITY.md
+
+- Document that captured publish stdout and stderr tails are bounded local diagnostics.
+- State that public reports and committed run logs scrub those diagnostics before egress and fail closed on scrub failure.
+- Note that raw traceback content is never written into line-oriented trusted state.
+
+## Edge cases
+
+- A new attempt fails before creating its first checkpoint. The fresh initial state must still replace any stale refusal env.
+- The plan writes, but the process raises before rename. Classification is recoverable with both remaining phases in the hint.
+- Rename succeeds but emits incomplete stdout. Record only validated rename evidence.
+- Log publish creates a recovery branch or PR and then returns nonzero. Preserve those identifiers with `PUBLISH_OK=false`.
+- Result-env persistence itself fails. Keep the captured exception diagnostic and do not trust the old env.
+- Captured output contains secrets, control characters, invalid UTF-8, or tmpdir paths. Bound local files and require redaction before egress.
+- A later approved pass sees a terminal report but lacks all recovery markers. Leave the report open.
+- The terminal report was a dedup comment on a pre-existing issue. Do not close that issue as if this run created it.
+- Reconciliation runs twice. The durable reconciliation sentinel prevents duplicate comments and closes.
+- GitHub reports a successful close but the follow-up read shows the issue open. Record the mismatch and retain retryable local evidence.
+
+## Failure modes
+
+- If tail persistence fails, append a bounded execution issue and retain the generic terminal detail rather than suppressing the original publish failure.
+- If terminal-state validation rejects a new field, fall back to the existing safe report path and expose the validation failure.
+- If sensitive-corpus population or redaction fails, do not file, amend, close, or publish diagnostic text.
+- If salvage reconciliation cannot resolve the report issue number or repository, keep the report open and record the reason.
+- Do not convert reporting failures into `/implement` retries or alter design publish retry caps.
+
+## Testing strategy
+
+- Run focused unit tests:
+  - `python3 -m pytest python/tests/design/test_design_publish.py`
+  - `python3 -m pytest python/tests/design/test_design_lifecycle.py`
+  - `python3 -m pytest python/tests/state/test_stall_recovery.py`
+- Run lint and type checks only for changed Python files using the commands documented in `docs/linting.md`.
+- Run the security and result-env tests with hostile multiline values, symlinks, stale envs, and secret-shaped tails.
+- Verify existing rc-4 assessment-gate tests still prove the refusal, assessment persistence, and retry path.
+- Verify the successful publish path produces the same user-visible plan, labels, diagrams, rename, and run-log behavior apart from additive diagnostic keys.
+- Verify the salvage test performs at most one marker-keyed comment and one close, then confirms the remote issue state.
+
+confidence: high
+difficulty: HARD
+diff_added: 720
+diff_deleted: 90
+mechanical_churn: false
+diff_lines: 810
