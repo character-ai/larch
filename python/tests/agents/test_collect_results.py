@@ -461,7 +461,7 @@ def test_cmd_json_outer_launcher_uses_last_mode_flag(monkeypatch: pytest.MonkeyP
     output = tmp_path / "cursor-review.txt"
     cmd = ["cursor", "agent", "--mode", "ask", "--mode", "plan", "--workspace", str(tmp_path), "go"]
     assert not collect_results._cmd_json_requires_outer_launcher(orig_output=str(output), tool="cursor", cmd=cmd)  # type: ignore[reportPrivateUsage]
-    codex_cmd = ["codex", "exec", "--sandbox", "read-only", "--sandbox", "full-auto", "-C", str(tmp_path), "--add-dir", str(tmp_path), "--output-last-message", str(tmp_path / "out.txt"), "go"]
+    codex_cmd = ["codex", "exec", "--sandbox", "read-only", "--sandbox", "workspace-write", "-C", str(tmp_path), "--add-dir", str(tmp_path), "--output-last-message", str(tmp_path / "out.txt"), "go"]
     assert not collect_results._cmd_json_requires_outer_launcher(orig_output=str(output), tool="codex", cmd=codex_cmd)  # type: ignore[reportPrivateUsage]
     assert collect_results._cmd_json_requires_outer_launcher(orig_output=str(output), tool="cursor", cmd=["cursor", "agent", "--mode", "ask", "--workspace", str(tmp_path), "go"])  # type: ignore[reportPrivateUsage]
 
