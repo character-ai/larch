@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from larch.lint import lint_prefix_case_variant as lpcv
 
 
@@ -156,6 +158,17 @@ def test_missing_residual_path_exits_2(tmp_path: Path) -> None:
     assert lpcv.main(["--root", str(tmp_path)]) == 2
 
 
+def test_malformed_residual_manifest_exits_2(tmp_path: Path) -> None:
+    _write_fixture(
+        tmp_path,
+        markdown={"skills/a.md": "[BUG]\n"},
+        bash={},
+        residual_paths=["scripts/not-bash.txt"],
+    )
+
+    assert lpcv.main(["--root", str(tmp_path)]) == 2
+
+
 def test_symlinked_markdown_exits_2(tmp_path: Path) -> None:
     skills = tmp_path / "skills"
     skills.mkdir()
@@ -163,6 +176,18 @@ def test_symlinked_markdown_exits_2(tmp_path: Path) -> None:
     _ = real.write_text("`[Bug]`\n", encoding="utf-8")
     link = skills / "linked.md"
     link.symlink_to(real)
+    _write_fixture(tmp_path, markdown={}, bash={}, residual_paths=[])
+
+    assert lpcv.main(["--root", str(tmp_path)]) == 2
+
+
+def test_duplicate_resolved_markdown_symlink_exits_2(tmp_path: Path) -> None:
+    regular = tmp_path / "skills" / "regular.md"
+    regular.parent.mkdir()
+    _ = regular.write_text("[BUG]\n", encoding="utf-8")
+    link = tmp_path / ".claude" / "skills" / "linked.md"
+    link.parent.mkdir(parents=True)
+    link.symlink_to(regular)
     _write_fixture(tmp_path, markdown={}, bash={}, residual_paths=[])
 
     assert lpcv.main(["--root", str(tmp_path)]) == 2
@@ -181,6 +206,27 @@ def test_symlinked_residual_bash_exits_2(tmp_path: Path) -> None:
         bash={},
         residual_paths=["scripts/linked.sh"],
     )
+
+    assert lpcv.main(["--root", str(tmp_path)]) == 2
+
+
+def test_unreadable_residual_bash_exits_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_fixture(
+        tmp_path,
+        markdown={"skills/a.md": "[BUG]\n"},
+        bash={"scripts/a.sh": "true\n"},
+    )
+    bash_path = tmp_path / "scripts" / "a.sh"
+    original_read_text = Path.read_text
+
+    def fail_for_bash(path: Path, *args: object, **kwargs: object) -> str:
+        if path == bash_path:
+            raise OSError("permission denied")
+        return original_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_for_bash)
 
     assert lpcv.main(["--root", str(tmp_path)]) == 2
 

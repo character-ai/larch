@@ -59,11 +59,11 @@ def iter_markdown_files(root: Path) -> list[Path]:
         if base.is_symlink() or not base.is_dir():
             raise LintError(f"markdown root is not a regular directory: {rel_root}")
         for path in sorted(base.rglob("*.md")):
+            if path.is_symlink() or not path.is_file():
+                raise LintError(f"markdown scan target is not a regular file: {_rel(path=path, root=root)}")
             resolved: Path = path.resolve()
             if resolved in seen:
                 continue
-            if path.is_symlink() or not path.is_file():
-                raise LintError(f"markdown scan target is not a regular file: {_rel(path=path, root=root)}")
             seen.add(resolved)
             files.append(path)
     return sorted(files, key=lambda path: _rel(path=path, root=root))
