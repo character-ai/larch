@@ -497,3 +497,78 @@ def test_absent_baseline_bootstrap_succeeds(tmp_path: Path) -> None:
     assert lmfb.main(["--root", str(tmp_path), "--write", "--initial-reason", "bootstrap"]) == 0
     rows = json.loads((tmp_path / "python" / lmfb.BASELINE_FILENAME).read_text(encoding="utf-8"))
     assert rows == [_record(reason="bootstrap")]
+
+
+def test_write_migrates_renamed_test_symbol(tmp_path: Path) -> None:
+    """An external implementer renaming a test must not strand its baseline row.
+
+    The stale row (old symbol) is paired with the new live finding by the
+    identity that survives a rename, and its reason is carried over so the
+    regen succeeds without ``--initial-reason``.
+    """
+    _write_project(
+        tmp_path,
+        files=_base_files(
+            """
+            from larch import facade
+
+            def test_patch_renamed(monkeypatch):
+                monkeypatch.setattr(facade, "target", lambda: None)
+            """
+        ),
+        baseline=[_record(qualified_symbol="test_patch", reason="grandfathered rename")],
+    )
+
+    assert lmfb.main(["--root", str(tmp_path), "--write"]) == 0
+    rows = json.loads((tmp_path / "python" / lmfb.BASELINE_FILENAME).read_text(encoding="utf-8"))
+    assert rows == [_record(qualified_symbol="test_patch_renamed", reason="grandfathered rename")]
+
+
+def test_check_mode_hints_at_rename_migration(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_project(
+        tmp_path,
+        files=_base_files(
+            """
+            from larch import facade
+
+            def test_patch_renamed(monkeypatch):
+                monkeypatch.setattr(facade, "target", lambda: None)
+            """
+        ),
+        baseline=[_record(qualified_symbol="test_patch", reason="grandfathered rename")],
+    )
+
+    assert lmfb.main(["--root", str(tmp_path)]) == 1
+    err = capsys.readouterr().err
+    assert "likely rename of baselined symbol 'test_patch' to 'test_patch_renamed'" in err
+    assert "lint monkeypatch-facade-binding --write" in err
+
+
+def test_write_rename_ambiguous_requires_reason(tmp_path: Path) -> None:
+    """Two same-fingerprint renames cannot be paired unambiguously.
+
+    With two stale rows and two new findings sharing one fingerprint, neither
+    carries over; the regen still demands an explicit reason.
+    """
+    _write_project(
+        tmp_path,
+        files=_base_files(
+            """
+            from larch import facade
+
+            def test_a2(monkeypatch):
+                monkeypatch.setattr(facade, "target", lambda: None)
+
+            def test_b2(monkeypatch):
+                monkeypatch.setattr(facade, "target", lambda: None)
+            """
+        ),
+        baseline=[
+            _record(qualified_symbol="test_a", reason="first rename"),
+            _record(qualified_symbol="test_b", reason="second rename"),
+        ],
+    )
+
+    assert lmfb.main(["--root", str(tmp_path), "--write"]) == 2

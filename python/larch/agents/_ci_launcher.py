@@ -205,6 +205,7 @@ def _ci_prompt(*, tool: str, args: argparse.Namespace) -> str:
     else:
         role_guidance = (
             "Reproduce the failing check locally when a command is available in the failure log. Prefer the narrowest relevant test or lint command before broader checks. Look for common larch failure patterns: stale sidecars, missing run-log artifacts, retry-classification drift, dirty-tree guards, and shell/Python parity regressions.\n"
+            "When a lint failure is a baseline ratchet (for example monkeypatch-facade-binding failing because a test was renamed), repair it by regenerating the committed baseline with `python3 python/cli.py lint <lint-name> --write`; this preserves existing per-row reasons and migrates test-symbol renames, so prefer it over hand-editing the JSON. Only edit source when the lint genuinely flags a new violation.\n"
         )
     return (
         f"You are using {tool} to {role_line}.\n"
