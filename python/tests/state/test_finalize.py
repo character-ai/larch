@@ -1120,7 +1120,7 @@ def _stub_teardown_side_effects(
     crumbs: list[str] = []
 
     class _Writer:
-        def emit(self, message: str, *, quiet: bool = True) -> None:
+        def emit(self, message: str, *, quiet: bool = True) -> None:  # noqa: ARG002
             crumbs.append(message)
 
     (tmp_path / "session-env.sh").write_text(
@@ -1215,7 +1215,7 @@ def test_teardown_stale_live_coverage_skips_done_rename_for_proceed_partial(
 
     assert result.outcome.name == "OK"
     assert result.rename_branch == "C"
-    assert rename_calls == []
+    assert not rename_calls
     assert any("validated persisted disposition" in c for c in crumbs)
 
 
@@ -1244,7 +1244,7 @@ def test_teardown_stale_live_coverage_missing_persisted_coverage_raises(
             cwd=str(tmp_path),
         )
 
-    assert rename_calls == []
+    assert not rename_calls
 
 
 def test_teardown_stale_live_coverage_before_post_merge_raises(
@@ -1270,7 +1270,7 @@ def test_teardown_stale_live_coverage_before_post_merge_raises(
             cwd=str(tmp_path),
         )
 
-    assert rename_calls == []
+    assert not rename_calls
 
 
 def test_teardown_stale_live_coverage_invalid_persisted_disposition_raises(
@@ -1306,7 +1306,7 @@ def test_teardown_stale_live_coverage_invalid_persisted_disposition_raises(
             cwd=str(tmp_path),
         )
 
-    assert rename_calls == []
+    assert not rename_calls
 
 
 def test_teardown_non_mismatch_disposition_ship_error_propagates(
@@ -1332,7 +1332,7 @@ def test_teardown_non_mismatch_disposition_ship_error_propagates(
             cwd=str(tmp_path),
         )
 
-    assert rename_calls == []
+    assert not rename_calls
 
 
 def test_teardown_successful_part_of_skips_done_rename(
@@ -1360,4 +1360,4 @@ def test_teardown_successful_part_of_skips_done_rename(
 
     assert result.outcome.name == "OK"
     assert result.rename_branch == "C"
-    assert rename_calls == []
+    assert not rename_calls
