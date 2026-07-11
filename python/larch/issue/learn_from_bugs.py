@@ -59,7 +59,8 @@ _BOUNDARY_PATTERNS: Final = (
     re.compile(r"^##\s+Approach\s*$", re.IGNORECASE | re.MULTILINE),
     re.compile(r"^###\s+(?:NEW|UPDATED|REWRITTEN|MAY_UPDATE):", re.IGNORECASE | re.MULTILINE),
 )
-_HEADING_RE: Final = re.compile(r"^#{2,3}\s+(.+?)\s*$", re.MULTILINE)
+_HEADING_RE: Final = re.compile(r"^#{2,4}\s+(.+?)\s*$")
+_FENCE_MARKER_RE: Final = re.compile(r"^(`{3,}|~{3,})(.*)$")
 _DONE_PREFIX_RE: Final = re.compile(r"^\[DONE\]\s*")
 
 
@@ -249,14 +250,74 @@ def diagnostic_prefix(body: str) -> str:
     return body[: min(cuts)] if cuts else body
 
 
+def _lines_with_starts(text: str) -> list[tuple[int, str]]:
+    """Return ``(absolute_start, line_without_newline)`` pairs matching ``splitlines``."""
+    result: list[tuple[int, str]] = []
+    start = 0
+    length = len(text)
+    while start < length:
+        nl = text.find("\n", start)
+        if nl < 0:
+            result.append((start, text[start:]))
+            break
+        line = text[start:nl].removesuffix("\r")
+        result.append((start, line))
+        start = nl + 1
+    return result
+
+
+def _fenced_line_indices(lines: list[str]) -> set[int]:
+    """Return indices of lines inside fenced code (exclusive of fence markers).
+
+    An unclosed fence counts as fenced through the end of ``lines``. A closer
+    must use the opener's marker character, be at least as long, and carry no
+    info-string suffix.
+    """
+    fenced: set[int] = set()
+    open_at: int | None = None
+    open_char = ""
+    open_len = 0
+    for index, line in enumerate(lines):
+        match = _FENCE_MARKER_RE.match(line.strip())
+        if open_at is None:
+            if match is None:
+                continue
+            marker = match.group(1)
+            open_at = index
+            open_char = marker[0]
+            open_len = len(marker)
+            continue
+        if match is None:
+            continue
+        marker = match.group(1)
+        suffix = match.group(2)
+        if marker[0] == open_char and len(marker) >= open_len and suffix.strip() == "":
+            fenced.update(range(open_at + 1, index))
+            open_at = None
+    if open_at is not None:
+        fenced.update(range(open_at + 1, len(lines)))
+    return fenced
+
+
 def _split_sections(prefix: str) -> dict[str, str]:
-    heads = list(_HEADING_RE.finditer(prefix))
+    """Split a diagnostic prefix into heading-named sections, ignoring fenced headings."""
+    positioned = _lines_with_starts(prefix)
+    lines = [line for _, line in positioned]
+    fenced = _fenced_line_indices(lines)
+    # (normalized_name, match_start, content_start)
+    heads: list[tuple[str, int, int]] = []
+    for index, (line_start, line) in enumerate(positioned):
+        if index in fenced:
+            continue
+        match = _HEADING_RE.match(line)
+        if match is None:
+            continue
+        name = match.group(1).replace("`", "").strip().lower()
+        heads.append((name, line_start, line_start + match.end()))
     out: dict[str, str] = {}
-    for index, head in enumerate(heads):
-        name = head.group(1).replace("`", "").strip().lower()
-        start = head.end()
-        end = heads[index + 1].start() if index + 1 < len(heads) else len(prefix)
-        out[name] = prefix[start:end].strip()
+    for index, (name, _match_start, content_start) in enumerate(heads):
+        end = heads[index + 1][1] if index + 1 < len(heads) else len(prefix)
+        out[name] = prefix[content_start:end].strip()
     return out
 
 
