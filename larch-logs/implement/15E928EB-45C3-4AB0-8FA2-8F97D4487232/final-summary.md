@@ -40,11 +40,19 @@ codex/apply                     │                                     ██�
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+
 ## /implement run 15E928EB-45C3-4AB0-8FA2-8F97D4487232: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:17:54
-- **Cost**: 💰 TOTAL ~$8.64: Claude $1.04, Codex-5.6 $1.17, Codex-mini $0.69, Cursor $5.49 (Composer $0.00, Grok $2.20, Auto $3.29), Claude (subprocess) $0.25  |  Tokens: 18267k
+- **Cost**: 💰 TOTAL ~$10.86: Claude $3.26, Codex-5.6 $1.17, Codex-mini $0.69, Cursor $5.49 (Composer $0.00, Grok $2.20, Auto $3.29), Claude (subprocess) $0.25  |  Tokens: 21443k
 - **Issue**: #6855: https://github.com/character-ai/larch/issues/6855
 - **Plan review**: N/A
 - **Plan coverage**: 8/8 firm headings; band: advisory; disposition: none; todos_left: 0
