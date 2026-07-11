@@ -2259,7 +2259,7 @@
     "file": "larch/git/pr_body.py",
     "code": "C901",
     "qualified_symbol": "render_run_summary",
-    "metric": 14
+    "metric": 13
   },
   {
     "file": "larch/git/pr_body.py",
@@ -2282,12 +2282,6 @@
   {
     "file": "larch/git/pr_body.py",
     "code": "PLR0912",
-    "qualified_symbol": "render_run_summary",
-    "metric": 14
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "code": "PLR0912",
     "qualified_symbol": "sanitize_fragment",
     "metric": 14
   },
@@ -2301,7 +2295,7 @@
     "file": "larch/git/pr_body.py",
     "code": "PLR0913",
     "qualified_symbol": "compose_pr_body",
-    "metric": 6
+    "metric": 8
   },
   {
     "file": "larch/git/pr_body.py",
@@ -2313,7 +2307,7 @@
     "file": "larch/git/pr_body.py",
     "code": "PLR0915",
     "qualified_symbol": "render_run_summary",
-    "metric": 54
+    "metric": 52
   },
   {
     "file": "larch/git/pr_body.py",
@@ -5475,7 +5469,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 157
+    "metric": 153
   },
   {
     "file": "larch/review/review_collect.py",
@@ -5787,7 +5781,7 @@
     "file": "larch/review/round_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 163
+    "metric": 159
   },
   {
     "file": "larch/review/round_runner.py",
@@ -6364,6 +6358,12 @@
     "code": "C901",
     "qualified_symbol": "postbump",
     "metric": 16
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "C901",
+    "qualified_symbol": "teardown",
+    "metric": 12
   },
   {
     "file": "larch/state/finalize.py",

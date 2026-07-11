@@ -38,6 +38,7 @@ from larch.review.snapshot import (
     _collect_round_stage_paths,
     _collect_self_review_stage_paths,
     _ensure_pre_coder_snapshot,
+    _finalize_failed_cleanup,
     _round_has_full_pre_coder_snapshot,
     _snapshot_mode,
     _write_attempt_pre_tracked_paths,
@@ -455,6 +456,12 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         _append_text(
             path=round_dir / "coder-cleanup.log",
             text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n"
+        )
+        _finalize_failed_cleanup(
+            round_dir,
+            pre_head=pre_head,
+            mode=mode,
+            reason="stale pre-coder snapshot",
         )
         result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
         _write_env(path=result_file, values=_coder_env(result))

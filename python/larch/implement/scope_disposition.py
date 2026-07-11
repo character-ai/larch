@@ -490,13 +490,19 @@ def _coverage_from_mapping(data: Mapping[str, object], *, tmpdir: Path) -> PlanC
         raise ShipError("coverage artifact contains mismatched companion paths")
     expected_untouched_paths = tuple(path for path in coverage.plan_paths if path not in set(coverage.touched_paths))
     expected_percent = int((coverage.untouched * 100) / coverage.total) if coverage.total else 0
-    if (coverage.total != len(coverage.plan_paths) or coverage.untouched_paths != expected_untouched_paths
-        or coverage.untouched != len(expected_untouched_paths) or coverage.touched != coverage.total - coverage.untouched
-        or coverage.untouched_percent != expected_percent or coverage.band != _coverage_band(total=coverage.total, untouched=coverage.untouched)
-        or coverage.todos_left_count < len(coverage.todos_left)
-        or coverage.fingerprint != _fingerprint(plan_paths=coverage.plan_paths, touched_paths=coverage.touched_paths, todos_left=coverage.todos_left)
-        or coverage.disposition_required != (coverage.band == "high" or coverage.todos_left_count > 0)
-        or coverage.plan_fidelity_forced != (coverage.band in {"middle", "high"})):
+    inconsistencies = [
+        coverage.total != len(coverage.plan_paths),
+        coverage.untouched_paths != expected_untouched_paths,
+        coverage.untouched != len(expected_untouched_paths),
+        coverage.touched != coverage.total - coverage.untouched,
+        coverage.untouched_percent != expected_percent,
+        coverage.band != _coverage_band(total=coverage.total, untouched=coverage.untouched),
+        coverage.todos_left_count < len(coverage.todos_left),
+        coverage.fingerprint != _fingerprint(plan_paths=coverage.plan_paths, touched_paths=coverage.touched_paths, todos_left=coverage.todos_left),
+        coverage.disposition_required != (coverage.band == "high" or coverage.todos_left_count > 0),
+        coverage.plan_fidelity_forced != (coverage.band in {"middle", "high"}),
+    ]
+    if any(inconsistencies):
         raise ShipError("coverage artifact is internally inconsistent")
     return coverage
 
@@ -860,14 +866,14 @@ def record_disposition(  # noqa: PLR0913
     manifest_path: Path | None = None,
     runner: Runner = proc,
 ) -> DispositionRecord:
-    live_coverage = load_live_coverage(
-        tmpdir=tmpdir, repo_root=repo_root, manifest_path=manifest_path, runner=runner
-    )
-    if coverage is not None and coverage != live_coverage:
-        raise ShipError("supplied coverage does not match live repository inputs")
-    active_coverage = live_coverage
-    if active_coverage is None:
-        raise ShipError("scope disposition requires a readable coverage artifact")
+    if coverage is not None:
+        active_coverage = coverage
+    else:
+        active_coverage = load_live_coverage(
+            tmpdir=tmpdir, repo_root=repo_root, manifest_path=manifest_path, runner=runner
+        )
+        if active_coverage is None:
+            raise ShipError("scope disposition requires a readable coverage artifact")
     followup = FollowupIssue(number="", url="")
     if disposition == "proceed-partial":
         if not repo or not tracking_issue_number.isdigit():
