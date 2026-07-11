@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	16760	4190	13554	3389	3206	802		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	13487	3372	13257	3315	230	58		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	13511	3378	13281	3321	230	58		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	16775	4194	13569	3393	3206	802		0	0
+design Step 3	phase1	1	dyn-codex-plan-bug-prefix-compatibility	plan-review	codex	dyn-codex-plan-bug-prefix-compatibility.txt	13819	3455	13132	3283	687	172		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	16773	4194	13567	3392	3206	802		0	0
+design Step 3	phase1	1	dyn-cursor-plan-bug-prefix-compatibility	plan-review	cursor	dyn-cursor-plan-bug-prefix-compatibility.txt	17083	4271	13420	3355	3663	916		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	16751	4188	13545	3387	3206	802		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	13496	3374	13266	3317	230	58		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	13509	3378	13279	3320	230	58		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	8890	2223	4459	1115	4431	1108	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	10912	2728	9131	2283	1781	446		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	10912	2728	9131	2283	1781	446		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	10912	2728	9131	2283	1781	446		0	0
