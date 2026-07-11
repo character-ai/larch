@@ -1,5 +1,5 @@
 """Tests for Python /design lifecycle helpers."""
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
 
@@ -3669,6 +3669,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
     _src_env = tmp_path / "source-env.sh"
     _src_env.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(design_terminal._session_env_dt, "check_live_mutation_auth", lambda **_kw: (True, "session"))  # pyright: ignore[reportPrivateUsage]
 
     def fake_run(
         args: Sequence[str],
