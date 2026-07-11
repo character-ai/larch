@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	24724	6181	13559	3390	11165	2792		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	24715	6179	13550	3388	11165	2792		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18788	4697	13271	3318	5517	1380		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	18779	4695	13262	3316	5517	1380		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	24739	6185	13574	3394	11165	2792		0	0
+design Step 3	phase1	1	dyn-codex-plan-postmerge-route-auditor	plan-review	codex	dyn-codex-plan-postmerge-route-auditor.txt	19254	4814	13137	3285	6117	1530		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	24737	6185	13572	3393	11165	2792		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	18801	4701	13284	3321	5517	1380		0	0
+design Step 3	phase1	1	dyn-cursor-plan-postmerge-route-auditor	plan-review	cursor	dyn-cursor-plan-postmerge-route-auditor.txt	25190	6298	13425	3357	11765	2942		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	18803	4701	13286	3322	5517	1380		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	33939	8485	4607	1152	29332	7333	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	16494	4124	9137	2285	7357	1840		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	16494	4124	9137	2285	7357	1840		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	16494	4124	9137	2285	7357	1840		0	0

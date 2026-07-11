@@ -1,0 +1,87 @@
+# [BUG] stall classifier over-matches preterminal-outcome in postmerge phase, causing spurious reship and terminal report after successful merge
+
+## Summary
+
+When `/implement` runs with `--merge` and the PR merges successfully, the post-merge log flush
+calls `flush_logs_pre`, which returns `REASON=preterminal-outcome` because the run-log dir has a
+pre-terminal outcome block. The stall classifier sees the string `"preterminal-outcome"` in the
+evidence text and fires `_ship_refresh_preterminal_stall()`, classifying the stall as
+`FAILURE_CLASS=transient-infra` / `RESUME_HINT=step8-shippr`. This causes a spurious reship that
+fails with `NEEDS_USER_INPUT/checkout-mismatch` (the working tree is on `main` after merge), which
+then enters terminal failure reporting and files a spurious `[Bug]` issue.
+
+## Original report
+
+stall classifier assigns transient-infra to postmerge-flush when merge succeeded, causing spurious terminal report and reship attempt
+
+## Reproduction scenario
+
+1. Run `/implement --merge <issue>` on any issue with a well-formed plan.
+2. Let the PR merge via admin merge (`merge_result=admin_merged`).
+3. Observe: `STALL_STEP=postmerge-flush`, `PHASE=postmerge`, stall-recovery runs.
+4. `classify` returns `FAILURE_CLASS=transient-infra RESUME_HINT=step8-shippr MATCHED_CLASSIFIER_PATTERN=transient-output`.
+5. Reship attempt fires; ship driver returns `checkout-mismatch` because working tree is on `main`.
+6. Terminal failure reporting triggers; spurious `[Bug]` issue is filed.
+
+## Expected behavior
+
+A `PHASE=postmerge` stall where the handoff JSON shows `merge_result` in
+`{merged, admin_merged, already_merged}` is expected behavior under NEVER #16 (all post-merge
+commits are blocked by policy). The classifier should route to `operator-action` (or
+`unrecoverable`) rather than `transient-infra / step8-shippr`.
+
+## Observed behavior
+
+`_ship_refresh_preterminal_stall()` in `python/larch/state/_classify.py` fires on the string
+`config.REFRESH_SKIP_PRETERMINAL_OUTCOME` (`"preterminal-outcome"`) found in the evidence text.
+This string appears because `flush_logs_pre` emits
+`REFRESH_COMMITTED=false REASON=preterminal-outcome` during the post-merge phase, which lands in
+the state-file evidence the classifier reads. The function returns `True`, and `_classify_text()`
+returns `transient-infra / step8-shippr / transient-output`.
+
+## Root cause analysis
+
+`_ship_refresh_preterminal_stall()` was designed to catch pre-push
+`step=pr-create-guideline-outcome-refresh` stalls (a specific step name and the
+`"preterminal-outcome"` reason string appearing there). It does not guard against the
+`PHASE=postmerge` case, where `"preterminal-outcome"` in the evidence is normal intentional output
+from the post-merge flush calling `_preterminal_outcome_refresh_skip()`. The over-match is
+because:
+- `config.REFRESH_SKIP_PRETERMINAL_OUTCOME` (`"preterminal-outcome"`) appears verbatim in both
+  pre-push guideline-refresh stall output AND post-merge flush skip output.
+- `_classify_text()` receives the phase only indirectly via `_resume_hint_for(phase=phase)` after
+  classification; the phase is not used inside `_classify_text()` itself.
+- `classify()` does not short-circuit on `phase == "postmerge"` before calling `_classify_text()`,
+  even when `merge_result` in the handoff JSON confirms a successful merge.
+
+## Evidence
+
+- `python/larch/state/_classify.py:148`: `if config.REFRESH_SKIP_PRETERMINAL_OUTCOME in lower: return True` — matches evidence from post-merge flush.
+- `python/larch/state/_classify.py:181-182`: `_ship_refresh_preterminal_stall()` fires → `return "transient-infra", "step8-shippr", "transient-output"`.
+- `python/larch/report/run_log_flush.py:714-716`: post-merge flush emits `reason=config.REFRESH_SKIP_PRETERMINAL_OUTCOME` when `_preterminal_outcome_commit_blocked` fires on a terminal-outcome run-log dir.
+- `python/larch/state/_normalize.py:30`: `_TERMINAL_MERGE_RESULTS = frozenset({"merged", "admin_merged", "already_merged"})` — merge outcome is durable in state.
+- The stall-recovery `classify` call passed `--stall-step postmerge-flush --phase postmerge --exit-code 4`; the classifier did not inspect `phase` before calling `_classify_text()`.
+
+## Affected files
+
+- `python/larch/state/_classify.py` — `_ship_refresh_preterminal_stall()` and `classify()` need a postmerge-phase guard.
+- `python/tests/` — regression test needed: `PHASE=postmerge` + `merge_result=admin_merged` should classify as `operator-action`, not `transient-infra`.
+
+## Suggested fix(es)
+
+Add a short-circuit in `classify()` before calling `_classify_text()`: when
+`phase == "postmerge"` and the merged state shows `merge_result` in `_TERMINAL_MERGE_RESULTS`,
+return `operator-action / none / postmerge-flush-expected` immediately. This is safer than
+narrowing `_ship_refresh_preterminal_stall()`, which would leave the over-match exploitable via
+other paths. The `_normalize.py` `_TERMINAL_MERGE_RESULTS` set is already the canonical authority.
+
+Alternatively, pass `phase` into `_classify_text()` and add `if phase == "postmerge": return
+"operator-action", "none", "postmerge-flush-expected"` at the top of that function.
+
+## Open questions
+
+- Should `operator-action` suppress all stall-recovery terminal reporting for `postmerge` stalls
+  after a confirmed merge, or just skip the reship? The run is functionally complete; only log
+  cleanup failed.
+- Does the same over-match occur on any other expected `"preterminal-outcome"` emission site
+  besides post-merge flush?
