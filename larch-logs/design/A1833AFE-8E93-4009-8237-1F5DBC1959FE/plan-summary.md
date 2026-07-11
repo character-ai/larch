@@ -1,0 +1,1 @@
+Adopt six verbatim guidelines and one invariant. Add three AST-based lint ratchets with focused tests, CLI and Makefile registration, pre-commit wiring, catalog docs, and conditional shrinking baselines.
