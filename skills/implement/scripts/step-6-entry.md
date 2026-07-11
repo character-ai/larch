@@ -1,6 +1,6 @@
 # step-6-entry.sh
 
-Step 6 review boundary bgjob launcher. The foreground wrapper rehydrates telemetry keys, truncates the Step 6 merge-result env, and starts `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry` as a bgjob.
+Step 6 review boundary bgjob launcher. The foreground wrapper resolves persisted `REPO_ROOT`, computes a checks-input identity, applies identity-aware live and completed rejoin for `implement-step6-checks`, seeds the merge-result env with that identity, and starts `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry` as a bgjob.
 
 ## Caller
 
@@ -9,7 +9,13 @@ Step 6 review boundary bgjob launcher. The foreground wrapper rehydrates telemet
 ## Arguments
 
 - `--forked-target true|false`: forwarded to the folded Step 6 checks/commit/`7.r` composite. Defaults to `false`.
-- `--force-checks true|false`: repair re-entry only. Bypasses review-change detection and always runs the Step 6 checks/commit/`7.r` composite. Defaults to `false`.
+- `--force-checks true|false`: repair re-entry only. Bypasses review-change detection and always runs the Step 6 checks/commit/`7.r` composite. Defaults to `false`. Force mode bypasses the Step 6 change gate only; it does not permit stale-result reuse and still requires identity-valid rejoin.
+
+## Identity contract
+
+Independent of `run-step-checks.sh --site step6`. Production Step 6 live and completed rejoin paths use the shared classifier (`python3 python/cli.py implement checks-result-identity`) with terminal actions `continue`, `stall`, `checks-failed`, and `skip-to-7a`. Identity-valid `NEXT_ACTION=skip-to-7a` rejoins and preserves existing routing.
+
+Child mode receives the validated persisted `REPO_ROOT` and immutable launch identity, executes against that root, revalidates identity before checks and before terminal publication, and converts either mismatch into a non-reusable `NEXT_ACTION=identity-integrity-failed` envelope.
 
 ## KV grammar
 
@@ -36,6 +42,12 @@ Valid routing records are newline-delimited and line-anchored:
 
 - `NEXT_ACTION=skip-to-7a|continue|checks-failed|stall`
 - `CHECKPOINT_NEXT=continue|load-routing`, only with `NEXT_ACTION=continue`
+
+Verified identity fields are appended to the merge-result env after child-side revalidation:
+
+- `CHECKS_INPUT_HEAD_SHA`
+- `CHECKS_INPUT_TREE_FP`
+- `CHECKS_INPUT_FP_SCHEMA`
 
 ## Invariants
 

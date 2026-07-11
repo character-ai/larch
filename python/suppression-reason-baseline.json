@@ -2200,7 +2200,7 @@
   {
     "file": "larch/implement/dispatch_commit_route.py",
     "suppression_kind": "pyright-report",
-    "text": "pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false",
+    "text": "pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false, reportUnusedImport=false",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },

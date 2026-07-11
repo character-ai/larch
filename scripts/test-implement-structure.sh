@@ -194,10 +194,21 @@ for name in wrappers:
 require('skills/implement/scripts/step-5-review.sh', 'bgjob start', 'step-5-review starts bgjob')
 require('skills/implement/scripts/step-5-review.sh', 'review-and-fix step5', 'step-5-review child calls review-and-fix step5')
 require('skills/implement/scripts/run-step-checks.sh', 'step_checks_live_registry_exists', 'run-step-checks live registry helper present')
-require('skills/implement/scripts/run-step-checks.sh', 'step_checks_result_env_state', 'run-step-checks canonical result env helper present')
+require('skills/implement/scripts/run-step-checks.sh', 'checks-result-identity', 'run-step-checks shared identity classifier integration')
+require('skills/implement/scripts/run-step-checks.sh', 'CHECKS_INPUT_HEAD_SHA', 'run-step-checks identity-bearing merge envelope seeding')
+require('skills/implement/scripts/run-step-checks.sh', 'validate_child_identity', 'run-step-checks child-side identity revalidation')
+require('skills/implement/scripts/run-step-checks.sh', '--repo-root', 'run-step-checks validated-root propagation')
 require('skills/implement/scripts/run-step-checks.sh', 'RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"', 'run-step-checks canonical result env pin')
 require('skills/implement/scripts/run-step-checks.sh', 'rm -f "$RESULT_ENV"', 'run-step-checks clears stale canonical result env before fresh start')
 require('skills/implement/scripts/run-step-checks.sh', 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0', 'run-step-checks rejoin wait pin')
+require('skills/implement/scripts/step-6-entry.sh', 'checks-result-identity', 'step-6-entry shared identity classifier integration')
+require('skills/implement/scripts/step-6-entry.sh', 'CHECKS_INPUT_HEAD_SHA', 'step-6-entry identity-bearing merge envelope seeding')
+require('skills/implement/scripts/step-6-entry.sh', 'validate_child_identity', 'step-6-entry child-side identity revalidation')
+require('skills/implement/scripts/step-6-entry.sh', 'skip-to-7a', 'step-6-entry preserves skip-to-7a terminal action')
+require('python/larch/implement/dispatch_commit_route.py', '--repo-root', 'commit-route forwards --repo-root to checks run-relevant')
+require('python/larch/implement/dispatch_commit_route.py', '_session_validated_repo_root', 'commit-route validates persisted REPO_ROOT')
+require('python/larch/implement/checks_result_identity.py', 'CHECKS_TERMINAL_ACTIONS', 'checks identity helper uses shared terminal-action set')
+
 for needle, label in [
     ('--merge-result-env "$MERGE_RESULT_ENV"', 'step-5-review passes merge result env to bgjob'),
         ('step5_live_registry_exists', 'step-5-review checks live registry before fresh start'),

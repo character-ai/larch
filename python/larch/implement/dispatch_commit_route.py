@@ -1,4 +1,4 @@
-# pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false
+# pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false, reportUnusedImport=false
 """Checks relay, commit-route core, steps 4-6 composites, step 5 review/resume."""
 
 from __future__ import annotations
@@ -31,7 +31,6 @@ from larch.implement.dispatch_helpers import (
     _read_session_key_default,
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
-    _resolve_repo_root,
     _run,
     _run_cli_forward,
     _tmpdir_from_env,
@@ -39,6 +38,7 @@ from larch.implement.dispatch_helpers import (
     _write_text_atomic,
     GIT_BIN,
 )
+from larch.implement.dispatch_helpers import _resolve_repo_root as _resolve_repo_root  # noqa: PLC0414 - re-exported for test monkeypatching  # pylint: disable=useless-import-alias  # re-exported for test monkeypatching
 from larch.implement.dispatch_leg import (
     _CHECKS_DEADLINE_MS,
     _COMMIT_ROUTE_DEADLINE_MS,
@@ -178,16 +178,48 @@ def _checks_pass(captured: dict[str, str]) -> bool:
     return captured.get("RELEVANT_CHECKS_OK") == "true" or captured.get("RELEVANT_CHECKS_SKIPPED") == "true"
 
 
+def _session_validated_repo_root(implement_tmpdir: Path) -> Path:
+    """Resolve persisted session REPO_ROOT; fail closed when absent or invalid."""
+    from larch.implement.checks_result_identity import (  # noqa: PLC0415 - deferred import, only the session repo-root resolution path needs checks_result_identity
+        ChecksIdentityError,
+        resolve_session_repo_root,
+    )
+
+    try:
+        return resolve_session_repo_root(implement_tmpdir)
+    except ChecksIdentityError as exc:
+        raise ShipError(f"checks-commit-route: {exc}") from exc
+
+
 def _run_relevant_checks_for_site(
     *,
     implement_tmpdir: Path,
     checks_site: str,
     deadline_ms: int,
+    repo_root: Path | None = None,
 ) -> tuple[dict[str, str], bool]:
+    root = repo_root if repo_root is not None else _session_validated_repo_root(implement_tmpdir)
+    env = {
+        **os.environ,
+        "IMPLEMENT_TMPDIR": str(implement_tmpdir),
+        "CLAUDE_PROJECT_DIR": str(root),
+        "REPO_ROOT": str(root),
+    }
     result = _run_leg_with_timeout(
-        argv=["checks", "run-relevant", "--site", checks_site, "--tmpdir", str(implement_tmpdir)],
+        argv=[
+            "checks",
+            "run-relevant",
+            "--site",
+            checks_site,
+            "--tmpdir",
+            str(implement_tmpdir),
+            "--repo-root",
+            str(root),
+        ],
         deadline_ms=deadline_ms,
         label=f"{checks.checks_run_relevant_main.__name__}:{checks_site}",
+        cwd=root,
+        env=env,
     )
     if isinstance(result, subprocess.TimeoutExpired):
         return {
@@ -894,10 +926,16 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C90
 def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,PLR0912,RUF100
     args: argparse.Namespace, implement_tmpdir: Path
 ) -> int:
+    try:
+        repo_root = _session_validated_repo_root(implement_tmpdir)
+    except ShipError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     captured, timed_out = _run_relevant_checks_for_site(
         implement_tmpdir=implement_tmpdir,
         checks_site=args.checks_site,
         deadline_ms=args.checks_deadline_ms,
+        repo_root=repo_root,
     )
     _relay_checks_stdout(captured)
     if timed_out or not _checks_pass(captured):
@@ -906,10 +944,6 @@ def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,PLR0912,RUF100
     if args.emit_step7_breadcrumb:
         print("> **🔶 /implement 7: commit (review)**")
     if args.commit_site == "step4":
-        repo_root = _resolve_repo_root()
-        if repo_root is None:
-            print("checks-commit-route: git rev-parse --show-toplevel failed", file=sys.stderr)
-            return 2
         recompute_rc = _run_step4_recovery_recompute(implement_tmpdir, repo_root=repo_root)
         if recompute_rc != 0:
             return recompute_rc
@@ -961,10 +995,16 @@ def checks_step5_resume_main(argv: list[str] | None = None) -> int:
 
 
 def _checks_step5_resume_main_impl(args: argparse.Namespace, implement_tmpdir: Path) -> int:
+    try:
+        repo_root = _session_validated_repo_root(implement_tmpdir)
+    except ShipError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     captured, timed_out = _run_relevant_checks_for_site(
         implement_tmpdir=implement_tmpdir,
         checks_site=args.checks_site,
         deadline_ms=args.checks_deadline_ms,
+        repo_root=repo_root,
     )
     _relay_checks_stdout(captured)
     if timed_out or not _checks_pass(captured):
@@ -1101,9 +1141,22 @@ def run_step_checks_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    command = ["checks", "run-relevant", "--site", args.site, "--tmpdir", str(implement_tmpdir)]
-    return _run_cli_forward(command)
-
+    try:
+        repo_root = _session_validated_repo_root(implement_tmpdir)
+    except ShipError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    command = [
+        "checks",
+        "run-relevant",
+        "--site",
+        args.site,
+        "--tmpdir",
+        str(implement_tmpdir),
+        "--repo-root",
+        str(repo_root),
+    ]
+    return _run_cli_forward(command, cwd=repo_root)
 
 def step8_python_guard_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-8-python-guard").parse_args(argv)
