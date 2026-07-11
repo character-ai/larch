@@ -211,6 +211,11 @@ def test_claude_rate_rows_include_cache_tiers_and_default_opus() -> None:
     assert rate_row("claude", model="unknown") == rate_row("claude", model="claude-opus-4-8")
 
 
+def test_cursor_auto_rate_falls_back_to_composer_default() -> None:
+    assert ("cursor", "auto") not in DEFAULT_RATE_TABLE_PER_M
+    assert rate_row("cursor", model="auto") == rate_row("cursor", model="composer-2.5")
+
+
 def test_glm_5_2_rate_row_exact_values_and_zero_cache_create() -> None:
     row = rate_row("claude", model=larch_config.CLAUDE_GLM_5_2_MODEL)
     assert row == {
