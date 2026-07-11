@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """Subprocess regressions for production step-6-entry.sh identity-aware rejoin."""
 
 from __future__ import annotations

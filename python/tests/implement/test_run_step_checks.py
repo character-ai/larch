@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """Subprocess regressions for run-step-checks.sh identity-aware rejoin."""
 
 from __future__ import annotations

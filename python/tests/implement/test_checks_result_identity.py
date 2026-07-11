@@ -1,3 +1,4 @@
+# pyright: reportUnusedCallResult=false
 """Unit tests for checks result-input identity (I-Stale-1)."""
 
 from __future__ import annotations

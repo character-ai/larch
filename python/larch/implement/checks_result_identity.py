@@ -261,6 +261,7 @@ def integrity_failure_rows(*, step: str, reason: str) -> list[tuple[str, str]]:
 
 def _git_bytes_binary(root: Path, args: list[str]) -> bytes:
     git_bin = shutil.which("git") or "git"
+    # lint-subprocess-via-runner: ok binary git diff/porcelain bytes must not be text-decoded by the Runner seam
     completed = subprocess.run(
         [git_bin, "-C", str(root), *args],
         cwd=str(root),
