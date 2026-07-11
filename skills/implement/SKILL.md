@@ -2,8 +2,12 @@
 # Referenced implement script files:
 # skills/implement/scripts/step-architectural-invariants-write-compose.md
 # skills/implement/scripts/step-architectural-guidelines-write-compose.md
+# skills/implement/scripts/step-8-assessment.sh
+# skills/implement/scripts/step-8-assessment.md
 # skills/implement/scripts/test-architectural-guidelines-step.sh
 # skills/implement/scripts/test-architectural-guidelines-step.md
+# skills/implement/scripts/test-step-8-assessment.md
+# skills/implement/scripts/test-step-8-assessment.sh
 name: implement
 description: "Use when implementing from a GitHub issue with a vetted in-body plan (run /design first). Materialize, implement, validate, review, PR, CI. See /research, /design, /im, /implement --merge."
 argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--run-id <ID>] [--force|-f] [--self-review] [--self-implement] [--difficulty <TRIVIAL|MODERATE|HARD>] <issue-N>"
