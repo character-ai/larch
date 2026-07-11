@@ -129,8 +129,8 @@ def test_multi_finding_output_is_deterministic(tmp_path: Path, capsys: object) -
     )
 
     assert lpcv.main(["--root", str(tmp_path)]) == 1
-    err = capsys.readouterr().err
-    lines = [line for line in err.splitlines() if "matched" in line]
+    err = capsys.readouterr().err  # type: ignore[reportAttributeAccessIssue, reportUnknownMemberType, reportUnknownVariableType]
+    lines = [line for line in err.splitlines() if "matched" in line]  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
     assert lines == [
         "skills/a.md: line 1 matched [bug]; use exact-case [BUG]",
         "skills/z.md: line 1 matched [Bug]; use exact-case [BUG]",
