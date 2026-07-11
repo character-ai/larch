@@ -1,0 +1,1 @@
+Harden the only shell GitHub mutation helper by requiring a caller-pinned trusted session root. Update all three helper invokers, repair two fail-closed `/design` authorization calls, and add negative containment tests. Preserve existing CLI, status, and call-chain trust contracts.
