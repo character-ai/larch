@@ -125,6 +125,46 @@ def test_nested_function_isolation(tmp_path: Path) -> None:
     assert findings[0].qualified_symbol == "outer.inner"
 
 
+def test_nested_functions_under_loop_are_scanned_once(tmp_path: Path) -> None:
+    larch_dir = tmp_path / "python" / "larch"
+    path = larch_dir / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "def outer(items) -> None:\n"
+        "    for item in items:\n"
+        "        def inner(flag: bool, value: int) -> int:\n"
+        "            if flag:\n"
+        "                return value\n"
+        "            if flag:\n"
+        "                return value\n"
+        "            return 0\n"
+        "        inner(True, 1)\n",
+        encoding="utf-8",
+    )
+    findings = lint.scan_file(path, larch_dir=larch_dir)
+    assert len(findings) == 1
+    assert findings[0].qualified_symbol == "outer.inner"
+
+
+def test_elif_preparation_and_unconditional_return_branches_detected(tmp_path: Path) -> None:
+    larch_dir = tmp_path / "python" / "larch"
+    path = larch_dir / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "def run(flag: bool, value: int) -> int:\n"
+        "    if flag:\n"
+        "        audit = value\n"
+        "        return value\n"
+        "    elif flag:\n"
+        "        return value\n"
+        "    return value\n"
+        "    if flag:\n"
+        "        return value\n",
+        encoding="utf-8",
+    )
+    assert len(lint.scan_file(path, larch_dir=larch_dir)) == 2
+
+
 def test_async_function_supported(tmp_path: Path) -> None:
     larch_dir = tmp_path / "python" / "larch"
     path = larch_dir / "mod.py"

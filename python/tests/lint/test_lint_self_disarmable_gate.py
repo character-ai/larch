@@ -166,6 +166,44 @@ def test_validation_not_in_is_not_flagged(tmp_path: Path) -> None:
     assert findings == []
 
 
+def test_metadata_only_early_return_without_hard_trigger_is_not_flagged(tmp_path: Path) -> None:
+    design = _design_tree(
+        tmp_path,
+        plan_quality=(
+            "from larch.design._plan_quality_commands import OptionalMetadata\n"
+            "def check(meta: OptionalMetadata) -> int:\n"
+            "    if meta.mechanical_churn == 'true':\n"
+            "        return 0\n"
+            "    return 1\n"
+        ),
+    )
+    findings = lint.scan_file(
+        design / "plan_quality.py",
+        larch_dir=tmp_path / "python" / "larch",
+        meta_fields=frozenset({"diff_added", "mechanical_churn"}),
+    )
+    assert findings == []
+
+
+def test_or_metadata_early_return_with_hard_trigger_is_flagged(tmp_path: Path) -> None:
+    design = _design_tree(
+        tmp_path,
+        plan_quality=(
+            "from larch.design._plan_quality_commands import OptionalMetadata\n"
+            "def assess(meta: OptionalMetadata, size_diff_raw: bool) -> bool:\n"
+            "    if meta.mechanical_churn == 'true' or size_diff_raw:\n"
+            "        return False\n"
+            "    return size_diff_raw\n"
+        ),
+    )
+    findings = lint.scan_file(
+        design / "plan_quality.py",
+        larch_dir=tmp_path / "python" / "larch",
+        meta_fields=frozenset({"diff_added", "mechanical_churn"}),
+    )
+    assert len(findings) == 1
+
+
 def test_current_plan_quality_size_trigger_compliant() -> None:
     root = Path(__file__).resolve().parents[3]
     assert lint.main(["--root", str(root)]) == 0
@@ -176,13 +214,34 @@ def test_suppression_requires_reason(tmp_path: Path) -> None:
         tmp_path,
         plan_quality=(
             "from larch.design._plan_quality_commands import OptionalMetadata\n"
-            "def assess(meta: OptionalMetadata) -> bool:\n"
+            "def assess(meta: OptionalMetadata, hard: bool) -> bool:\n"
+            "    size_diff_raw = hard\n"
             "    if meta.mechanical_churn == 'true':  # lint-self-disarmable-gate: ok\n"
             "        return False\n"
-            "    return True\n"
+            "    return size_diff_raw\n"
         ),
     )
     with pytest.raises(lint.ScanError, match="empty"):
+        _ = lint.scan_file(
+            design / "plan_quality.py",
+            larch_dir=tmp_path / "python" / "larch",
+            meta_fields=frozenset({"diff_added", "mechanical_churn"}),
+        )
+
+
+def test_suppression_reason_names_gate_owner(tmp_path: Path) -> None:
+    design = _design_tree(
+        tmp_path,
+        plan_quality=(
+            "from larch.design._plan_quality_commands import OptionalMetadata\n"
+            "def assess(meta: OptionalMetadata, hard: bool) -> bool:\n"
+            "    size_diff_raw = hard\n"
+            "    if meta.mechanical_churn == 'true':  # lint-self-disarmable-gate: ok intentional\n"
+            "        return False\n"
+            "    return size_diff_raw\n"
+        ),
+    )
+    with pytest.raises(lint.ScanError, match="gate owner"):
         _ = lint.scan_file(
             design / "plan_quality.py",
             larch_dir=tmp_path / "python" / "larch",

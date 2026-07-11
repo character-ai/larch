@@ -94,6 +94,46 @@ def test_fence_helper_gating_is_compliant(tmp_path: Path) -> None:
     assert lint.scan_file(path, python_dir=python_dir) == []
 
 
+def test_inline_fence_helper_and_continue_skip_are_compliant(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "import re\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "def fence_indices(lines: list[str]) -> set[int]:\n"
+        "    return set()\n"
+        "def parse(text: str) -> None:\n"
+        "    lines = text.splitlines()\n"
+        "    for index, line in enumerate(lines):\n"
+        "        if index in fence_indices(lines):\n"
+        "            continue\n"
+        "        if HEADING_RE.match(line):\n"
+        "            pass\n",
+        encoding="utf-8",
+    )
+    assert lint.scan_file(path, python_dir=python_dir) == []
+
+
+def test_unrelated_boolean_does_not_count_as_fence_guard(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    path = python_dir / "larch" / "mod.py"
+    path.parent.mkdir(parents=True)
+    _ = path.write_text(
+        "import re\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "def parse(text: str) -> None:\n"
+        "    for line in text.splitlines():\n"
+        "        in_fence = False\n"
+        "        if not in_fence and HEADING_RE.match(line):\n"
+        "            pass\n",
+        encoding="utf-8",
+    )
+    assert [finding.pattern_name for finding in lint.scan_file(path, python_dir=python_dir)] == [
+        "HEADING_RE"
+    ]
+
+
 def test_unrelated_regex_ignored(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     path = python_dir / "larch" / "mod.py"
@@ -229,3 +269,14 @@ def test_cli_write_and_check(tmp_path: Path) -> None:
         == 0
     )
     assert lint.main(["--root", str(tmp_path)]) == 0
+
+
+def test_baseline_stale_duplicate_and_shrink_fail_closed(tmp_path: Path) -> None:
+    _write_project(tmp_path, files={"larch/mod.py": VIOLATING}, baseline=[_record(), _record()])
+    assert lint.main(["--root", str(tmp_path)]) == 2
+
+    _write_project(tmp_path, files={"larch/mod.py": "def parse() -> None:\n    pass\n"}, baseline=[_record()])
+    assert lint.main(["--root", str(tmp_path)]) == 2
+
+    _write_project(tmp_path, files={"larch/mod.py": VIOLATING}, baseline=[])
+    assert lint.main(["--root", str(tmp_path)]) == 1

@@ -174,13 +174,12 @@ def _assignment_targets(node: ast.AST) -> set[str]:
 
 
 def _body_returns_value(body: list[ast.stmt]) -> str | None:
-    """Return normalized return value when body is a single return (optionally)."""
+    """Return the value from a terminal direct return after preparation statements."""
     for stmt in body:
         if isinstance(stmt, ast.Pass):
             continue
         if isinstance(stmt, ast.Return):
             return normalize_expr(stmt.value)
-        return None
     return None
 
 
@@ -253,7 +252,7 @@ def _scan_block(
     occurrence_counter: list[int],
 ) -> _PathState:
     current = state
-    for stmt in body:
+    for index, stmt in enumerate(body):
         if current.uncertain:
             # Still walk nested defs, but do not flag.
             if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -296,7 +295,17 @@ def _scan_block(
 
         if isinstance(stmt, ast.Return):
             # Unconditional return: remaining statements in this block are
-            # unreachable; callers handle fallthrough by not continuing.
+            # unreachable. Scan them for duplicate return branches before
+            # reporting that this path cannot fall through.
+            _scan_unreachable_tail(
+                body[index + 1 :],
+                returned=normalize_expr(stmt.value),
+                symbol=symbol,
+                normalized_file=normalized_file,
+                comments_by_line=comments_by_line,
+                findings=findings,
+                occurrence_counter=occurrence_counter,
+            )
             return current.clear()
 
         if isinstance(stmt, (ast.Raise, ast.Break, ast.Continue)):
@@ -346,22 +355,64 @@ def _scan_nested_defs(
     comments_by_line: Mapping[int, tuple[str, ...]],
     findings: list[Finding],
 ) -> None:
-    for child in ast.walk(node):
-        if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            # Skip the outer node when it is itself a function (handled elsewhere).
-            if child is node:
+    parent_prefix = tuple(symbol.split(".")) if symbol != MODULE_SYMBOL else ()
+
+    def visit(current: ast.AST) -> None:
+        for child in ast.iter_child_nodes(current):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                _scan_function(
+                    child,
+                    prefix=parent_prefix,
+                    normalized_file=normalized_file,
+                    comments_by_line=comments_by_line,
+                    findings=findings,
+                )
                 continue
-            # Only scan functions whose nearest scope parent walk is this node —
-            # approximate by scanning all nested; duplicate scans are ok if we
-            # use occurrence counters per function independently.
-            parent_prefix = tuple(symbol.split(".")) if symbol != MODULE_SYMBOL else ()
-            _scan_function(
-                child,
-                prefix=parent_prefix,
-                normalized_file=normalized_file,
-                comments_by_line=comments_by_line,
-                findings=findings,
-            )
+            visit(child)
+
+    visit(node)
+
+
+def _scan_unreachable_tail(
+    body: list[ast.stmt],
+    *,
+    returned: str,
+    symbol: str,
+    normalized_file: str,
+    comments_by_line: Mapping[int, tuple[str, ...]],
+    findings: list[Finding],
+    occurrence_counter: list[int],
+) -> None:
+    """Record unreachable conditional branches that repeat a terminal return."""
+    for stmt in body:
+        if isinstance(stmt, ast.If):
+            cursor = stmt
+            while True:
+                candidate = _body_returns_value(cursor.body)
+                if candidate == returned:
+                    lineno = getattr(cursor, "lineno", 0)
+                    reason = _suppression_reason(
+                        lineno if isinstance(lineno, int) else 0,
+                        comments_by_line=comments_by_line,
+                    )
+                    if reason == "":
+                        raise ScanError(
+                            f"{normalized_file}:{lineno}: empty {SUPPRESSION} suppression reason"
+                        )
+                    if reason is None:
+                        occurrence_counter[0] += 1
+                        findings.append(
+                            Finding(
+                                file=normalized_file,
+                                qualified_symbol=symbol,
+                                occurrence=occurrence_counter[0],
+                                lineno=lineno if isinstance(lineno, int) else 0,
+                                normalized_condition=normalize_expr(cursor.test),
+                            )
+                        )
+                if len(cursor.orelse) != 1 or not isinstance(cursor.orelse[0], ast.If):
+                    break
+                cursor = cursor.orelse[0]
 
 
 def _scan_if(

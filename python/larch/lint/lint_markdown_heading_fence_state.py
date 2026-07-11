@@ -8,7 +8,7 @@ consults the resulting fenced-line set. Mechanically backs G-Md-3 / #6676.
 
 Existing debt is grandfathered in ``python/markdown-heading-fence-state-baseline.json``.
 """
-# ruff: noqa: C901, PLR0912, SIM102, SIM103 - AST walker complexity is inherent to the scan
+# ruff: noqa: C901, PLR0912, SIM102 - AST walker complexity is inherent to the scan
 
 from __future__ import annotations
 
@@ -234,26 +234,62 @@ def _track_assignment(state: _ScopeState, node: ast.Assign) -> None:
             state.fence_sets.add(name)
 
 
-def _uses_fence_guard(test: ast.AST, *, fence_sets: set[str], line_name: str | None) -> bool:
-    """Return True when ``test`` checks that ``line_name``/index is outside a fence set."""
+def _is_fence_source(node: ast.AST, *, fence_sets: set[str], fence_helpers: set[str]) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in fence_sets
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in fence_helpers
+    )
+
+
+def _uses_fence_guard(
+    test: ast.AST,
+    *,
+    fence_sets: set[str],
+    fence_helpers: set[str],
+    line_name: str | None,
+) -> bool:
+    """Return True when ``test`` checks a line/index against a fence source."""
     if isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not):
-        return _uses_fence_guard(test.operand, fence_sets=fence_sets, line_name=line_name)
+        return _uses_fence_guard(
+            test.operand,
+            fence_sets=fence_sets,
+            fence_helpers=fence_helpers,
+            line_name=line_name,
+        )
     if isinstance(test, ast.Compare):
         left = test.left
-        for comparator in test.comparators:
-            names = {_name_of(left), _name_of(comparator)}
-            if names & fence_sets:
-                return True
-            if (
-                isinstance(left, ast.Name)
-                and left.id in fence_sets
-                and isinstance(comparator, ast.Name)
+        for operator, comparator in zip(test.ops, test.comparators, strict=True):
+            if isinstance(operator, (ast.In, ast.NotIn)) and (
+                _is_fence_source(left, fence_sets=fence_sets, fence_helpers=fence_helpers)
+                or _is_fence_source(comparator, fence_sets=fence_sets, fence_helpers=fence_helpers)
             ):
                 return True
+            left = comparator
     if isinstance(test, ast.BoolOp):
-        return any(_uses_fence_guard(value, fence_sets=fence_sets, line_name=line_name) for value in test.values)
-    if isinstance(test, ast.Name) and test.id in {"in_fence", "inside_fence", "fenced"}:
-        return True
+        return any(
+            _uses_fence_guard(
+                value,
+                fence_sets=fence_sets,
+                fence_helpers=fence_helpers,
+                line_name=line_name,
+            )
+            for value in test.values
+        )
+    return False
+
+
+def _skips_fenced_lines(test: ast.AST, *, fence_sets: set[str], fence_helpers: set[str]) -> bool:
+    """Return True for a positive fence-membership test used to skip a loop turn."""
+    if not isinstance(test, ast.Compare):
+        return False
+    for operator, comparator in zip(test.ops, test.comparators, strict=True):
+        if isinstance(operator, ast.In) and _is_fence_source(
+            comparator, fence_sets=fence_sets, fence_helpers=fence_helpers
+        ):
+            return True
     return False
 
 
@@ -271,6 +307,7 @@ def _walk_statements(
     loop_targets: set[str],
     fence_guard_active: bool,
 ) -> None:
+    active_guard = fence_guard_active
     for statement in body:
         if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef)):
             child = _ScopeState(
@@ -352,8 +389,11 @@ def _walk_statements(
             )
             continue
         if isinstance(statement, ast.If):
-            guard = fence_guard_active or _uses_fence_guard(
-                statement.test, fence_sets=state.fence_sets, line_name=None
+            guard = active_guard or _uses_fence_guard(
+                statement.test,
+                fence_sets=state.fence_sets,
+                fence_helpers=state.fence_helpers,
+                line_name=None,
             )
             # ``if not in_fence and ...`` keeps the body guarded.
             _walk_statements(
@@ -366,7 +406,7 @@ def _walk_statements(
                 statement.orelse,
                 state=state,
                 loop_targets=loop_targets,
-                fence_guard_active=fence_guard_active,
+                fence_guard_active=active_guard,
             )
             # Also scan the test expression for heading matches.
             _scan_expr(
@@ -375,12 +415,18 @@ def _walk_statements(
                 loop_targets=loop_targets,
                 fence_guard_active=guard,
             )
+            if loop_targets and _skips_fenced_lines(
+                statement.test,
+                fence_sets=state.fence_sets,
+                fence_helpers=state.fence_helpers,
+            ) and any(isinstance(item, (ast.Break, ast.Continue)) for item in statement.body):
+                active_guard = True
             continue
         _scan_stmt_exprs(
             statement,
             state=state,
             loop_targets=loop_targets,
-            fence_guard_active=fence_guard_active,
+            fence_guard_active=active_guard,
         )
 
 

@@ -27,6 +27,7 @@ TOOL_FAILURE_EXIT = 2
 SUPPRESSION = "lint-self-disarmable-gate"
 PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s+(\S.*)$")
 EMPTY_PRAGMA_RE = re.compile(rf"#\s*{re.escape(SUPPRESSION)}:\s*ok\s*$")
+OWNER_REASON_RE = re.compile(r"\b(?:gate\s+owner|owner)\s*[:=]\s*\S+", re.IGNORECASE)
 REQUIRED_META_FIELDS = frozenset({"diff_added", "mechanical_churn"})
 OPTIONAL_METADATA_NAME = "OptionalMetadata"
 DESIGN_REL = Path("larch") / "design"
@@ -254,7 +255,7 @@ def _is_suppression_condition(test: ast.AST, *, meta_fields: frozenset[str]) -> 
     if isinstance(test, ast.Compare):
         # ``meta.X == "true"`` / ``meta.X != "false"`` style suppressions.
         return any(isinstance(op, (ast.Eq, ast.NotEq)) for op in test.ops)
-    if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
+    if isinstance(test, ast.BoolOp) and isinstance(test.op, (ast.And, ast.Or)):
         return any(_is_suppression_condition(value, meta_fields=meta_fields) for value in test.values)
     return False
 
@@ -287,6 +288,9 @@ def _scan_function(
     symbol = node.name
     # Track names bound to hard-trigger computations in this function.
     hard_names: set[str] = set()
+    for argument in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs):
+        if _looks_like_hard_trigger_name(argument.arg):
+            hard_names.add(argument.arg)
     for stmt in node.body:
         if isinstance(stmt, ast.Assign) and len(stmt.targets) == 1 and isinstance(stmt.targets[0], ast.Name):
             name = stmt.targets[0].id
@@ -324,8 +328,10 @@ def _emit(
             raise ScanError(
                 f"{normalized_file}:{lineno}: empty {SUPPRESSION} suppression reason"
             )
-        # Require the reason to name a gate owner (any non-empty token already
-        # validated; prefer reasons that mention a gate/owner word).
+        if OWNER_REASON_RE.search(reason) is None:
+            raise ScanError(
+                f"{normalized_file}:{lineno}: {SUPPRESSION} suppression reason must name gate owner"
+            )
         return
     findings.append(
         Finding(
@@ -371,22 +377,19 @@ def _scan_statement(
                 in {"soft", "softened", "presentation", "advisory"}
                 for body_stmt in stmt.body
             )
-            if not presentation_only and (body_clears_hard or body_returns):
-                if not (
-                    isinstance(stmt.test, ast.BoolOp) and isinstance(stmt.test.op, ast.Or)
-                ):
-                    lineno = getattr(stmt, "lineno", 0)
-                    _emit(
-                        findings=findings,
-                        normalized_file=normalized_file,
-                        symbol=symbol,
-                        lineno=lineno if isinstance(lineno, int) else 0,
-                        message=(
-                            f"author-controlled metadata field {meta_field!r} "
-                            "disarms or short-circuits a hard gate"
-                        ),
-                        comments_by_line=comments_by_line,
-                    )
+            if not presentation_only and (body_clears_hard or (body_returns and hard_names)):
+                lineno = getattr(stmt, "lineno", 0)
+                _emit(
+                    findings=findings,
+                    normalized_file=normalized_file,
+                    symbol=symbol,
+                    lineno=lineno if isinstance(lineno, int) else 0,
+                    message=(
+                        f"author-controlled metadata field {meta_field!r} "
+                        "disarms or short-circuits a hard gate"
+                    ),
+                    comments_by_line=comments_by_line,
+                )
         for child in stmt.body + stmt.orelse:
             _scan_statement(
                 child,
