@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from collections.abc import Sequence
 
@@ -11,9 +12,17 @@ from larch.implement import scope_disposition
 
 
 class FakeRunner:
-    def __init__(self, *, diff_paths: Sequence[str], status_z: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        diff_paths: Sequence[str],
+        status_z: str = "",
+        merge_base: str = "",
+    ) -> None:
         self.diff_paths = tuple(diff_paths)
         self.status_z = status_z
+        self.merge_base = merge_base
+        self.calls: list[tuple[str, ...]] = []
 
     def run(
         self,
@@ -28,14 +37,17 @@ class FakeRunner:
     ) -> CommandResult:
         _ = timeout, cwd, env, check, stdout, stderr
         args = tuple(argv)
+        self.calls.append(args)
         if args[:3] == ("git", "diff", "--name-only"):
             return CommandResult(
                 args, 0, "".join(f"{path}\n" for path in self.diff_paths), "", 0.0
             )
         if args[:3] == ("git", "status", "--porcelain=v1"):
             return CommandResult(args, 0, self.status_z, "", 0.0)
-        if args[:3] == ("git", "merge-base", "HEAD"):
-            return CommandResult(args, 1, "", "no origin", 0.0)
+        if args[:2] == ("git", "merge-base"):
+            if self.merge_base:
+                return CommandResult(args, 0, f"{self.merge_base}\n", "", 0.0)
+            return CommandResult(args, 1, "", "no merge-base", 0.0)
         if args[:3] == ("git", "rev-parse", "HEAD"):
             return CommandResult(args, 0, "HEADSHA\n", "", 0.0)
         return CommandResult(args, 1, "", "unexpected", 0.0)
@@ -221,6 +233,65 @@ def test_compute_requires_step2_baseline(tmp_path: Path) -> None:
         )
 
 
+def test_compute_coverage_ignores_non_plan_and_run_log_paths(tmp_path: Path) -> None:
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(_plan(["src/a.py", "src/b.py"]), encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+    noisy = [
+        "src/a.py",
+        "src/b.py",
+        "larch-logs/run-9A845BA3/implement/scope-disposition.json",
+        "python/larch/implement/origin_main_evolution.py",
+        "docs/changelog-upstream.md",
+    ]
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=FakeRunner(diff_paths=noisy),
+    )
+
+    assert coverage.touched_paths == ("src/a.py", "src/b.py")
+    assert coverage.total == 2
+    assert coverage.untouched == 0
+    clean = scope_disposition.compute_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=FakeRunner(diff_paths=["src/a.py", "src/b.py"]),
+    )
+    assert clean.fingerprint == coverage.fingerprint
+
+
+def test_baseline_prefers_origin_main_merge_base(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    runner = FakeRunner(diff_paths=["src/a.py"], merge_base="FRESHMB")
+
+    _ = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path, repo_root=tmp_path, runner=runner
+    )
+
+    merge_base_calls = [call for call in runner.calls if call[:2] == ("git", "merge-base")]
+    assert merge_base_calls
+    assert merge_base_calls[0][2:] == ("origin/main", "HEAD")
+    diff_calls = [call for call in runner.calls if call[:3] == ("git", "diff", "--name-only")]
+    assert diff_calls
+    assert diff_calls[0][3] == "FRESHMB..HEAD"
+
+
+def test_baseline_falls_back_to_step2_without_origin_main(tmp_path: Path) -> None:
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    runner = FakeRunner(diff_paths=["src/a.py"])
+
+    _ = scope_disposition.touched_paths_since_baseline(
+        tmpdir=tmp_path, repo_root=tmp_path, runner=runner
+    )
+
+    diff_calls = [call for call in runner.calls if call[:3] == ("git", "diff", "--name-only")]
+    assert diff_calls
+    assert diff_calls[0][3] == "STEP2BASE..HEAD"
+
+
 def test_record_proceed_partial_is_durable_after_all_side_effects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -342,6 +413,49 @@ def test_record_proceed_partial_failure_leaves_no_disposition(
         )
 
     assert not scope_disposition.disposition_path(tmp_path).exists()
+
+
+def test_record_proceed_partial_dedups_followup_on_matching_fingerprint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    coverage = _coverage_fixture(tmp_path, required=True)
+    scope_disposition.write_coverage(coverage, tmpdir=tmp_path)
+    _ = (tmp_path / "scope-disposition.json").write_text(
+        json.dumps(
+            {
+                "disposition": "proceed-partial",
+                "fingerprint": coverage.fingerprint,
+                "followup_issue_number": "99",
+                "followup_issue_url": "https://example.test/issues/99",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_cli(argv: Sequence[str]) -> CommandResult:
+        args = tuple(argv)
+        calls.append(args)
+        return CommandResult(args, 0, "OK=true\n", "", 0.0)
+
+    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+
+    record = scope_disposition.record_disposition(
+        tmpdir=tmp_path,
+        disposition="proceed-partial",
+        repo_root=tmp_path,
+        coverage=coverage,
+        repo="owner/repo",
+        tracking_issue_number="12",
+        run_id="run-xyz",
+    )
+
+    assert record.followup_issue_number == "99"
+    assert record.followup_issue_url == "https://example.test/issues/99"
+    assert not any(call[:2] == ("issue", "create-one") for call in calls)
+    assert not any(call[:2] == ("tracking-issue", "append-comment") for call in calls)
+    assert not any(call[:2] == ("issue", "add-blocked-by") for call in calls)
 
 
 def test_validate_detects_stale_fingerprint(tmp_path: Path) -> None:

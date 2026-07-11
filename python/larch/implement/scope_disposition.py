@@ -255,9 +255,28 @@ def _git(runner: Runner, argv: Sequence[str], *, cwd: Path) -> CommandResult:
     return runner.run(["git", *argv], cwd=str(cwd))
 
 
+def _merge_base_baseline(*, repo_root: Path, runner: Runner) -> str:
+    """Return the live merge-base of origin/main and HEAD, or '' if unavailable.
+
+    The session-start baseline captured in ``step2-baseline.txt`` is frozen at
+    Step 2 and never refreshed when the feature branch is later rebased onto a
+    newer main. After such a rebase it no longer equals HEAD's merge-base with
+    the base branch, so ``diff baseline..HEAD`` would span origin/main's own
+    source evolution. Refreshing to the live merge-base restricts the diff to
+    the feature branch's own changes. The step2 file remains the fallback for
+    environments without an origin/main ref (no upstream remote, shallow clone,
+    test fixtures).
+    """
+    result = _git(runner, ["merge-base", "origin/main", "HEAD"], cwd=repo_root)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
 def _baseline_sha(*, tmpdir: Path, repo_root: Path, runner: Runner) -> str:
-    _ = repo_root
-    _ = runner
+    refreshed = _merge_base_baseline(repo_root=repo_root, runner=runner)
+    if refreshed:
+        return refreshed
     baseline_file = tmpdir / "step2-baseline.txt"
     try:
         raw = larch_io.read_trusted_text(
@@ -369,9 +388,16 @@ def compute_coverage(
 ) -> PlanCoverage:
     effective_plan = plan_file or tmpdir / "plan.txt"
     plan_paths = _firm_plan_paths(effective_plan)
-    touched = touched_paths_since_baseline(
+    raw_touched = touched_paths_since_baseline(
         tmpdir=tmpdir, repo_root=repo_root, runner=runner
     )
+    # Coverage and its fingerprint must stay stable across relaunches. The raw
+    # diff set spans origin/main's own evolution plus the ship driver's
+    # larch-logs flush commits, so it drifts on every relaunch and would
+    # invalidate a recorded disposition. Keep only plan paths: non-plan paths
+    # (run logs, upstream source churn) cannot affect plan coverage.
+    plan_set = frozenset(plan_paths)
+    touched = tuple(path for path in raw_touched if path in plan_set)
     touched_set = set(touched)
     untouched_paths = tuple(path for path in plan_paths if path not in touched_set)
     total = len(plan_paths)
@@ -854,6 +880,32 @@ def _write_scope_run_log(
     _ = _require_cli_success(result, label="run-log write scope-disposition")
 
 
+def _existing_matching_followup(
+    tmpdir: Path, fingerprint: str
+) -> FollowupIssue | None:
+    """Return a previously filed proceed-partial follow-up for this coverage.
+
+    Guards the scope-disposition loop: if ``record`` is invoked repeatedly for
+    the same plan coverage (identical fingerprint), reuse the follow-up issue
+    already filed instead of opening a new one. Returns None when no durable
+    proceed-partial disposition exists or its fingerprint differs.
+    """
+    try:
+        record = load_disposition(tmpdir)
+    except ShipError:
+        return None
+    if (
+        record is None
+        or record.disposition != "proceed-partial"
+        or record.fingerprint != fingerprint
+        or not record.followup_issue_number
+    ):
+        return None
+    return FollowupIssue(
+        number=record.followup_issue_number, url=record.followup_issue_url
+    )
+
+
 def record_disposition(  # noqa: PLR0913
     *,
     tmpdir: Path,
@@ -878,21 +930,25 @@ def record_disposition(  # noqa: PLR0913
     if disposition == "proceed-partial":
         if not repo or not tracking_issue_number.isdigit():
             raise ShipError("proceed-partial requires --repo and --tracking-issue")
-        followup = _create_followup_issue(
-            tmpdir=tmpdir,
-            repo=repo,
-            tracking_issue_number=tracking_issue_number,
-            coverage=active_coverage,
-        )
-        _append_cross_links(
-            tmpdir=tmpdir,
-            repo=repo,
-            tracking_issue_number=tracking_issue_number,
-            followup=followup,
-        )
-        _add_block_relation(
-            repo=repo, tracking_issue_number=tracking_issue_number, followup=followup
-        )
+        existing = _existing_matching_followup(tmpdir, active_coverage.fingerprint)
+        if existing is not None:
+            followup = existing
+        else:
+            followup = _create_followup_issue(
+                tmpdir=tmpdir,
+                repo=repo,
+                tracking_issue_number=tracking_issue_number,
+                coverage=active_coverage,
+            )
+            _append_cross_links(
+                tmpdir=tmpdir,
+                repo=repo,
+                tracking_issue_number=tracking_issue_number,
+                followup=followup,
+            )
+            _add_block_relation(
+                repo=repo, tracking_issue_number=tracking_issue_number, followup=followup
+            )
     record = DispositionRecord(
         disposition=disposition,
         fingerprint=active_coverage.fingerprint,
