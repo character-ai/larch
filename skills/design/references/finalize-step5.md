@@ -73,11 +73,13 @@ Do not call `/larch:issue`. Run `design-step5b-annotate.sh` in label-only mode. 
 
 ## Step 5b.5 diagram composition
 
-If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. Generate a Mermaid Architecture Diagram from the finalized approved plan, obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`, and write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print candidate or final diagram bodies to chat.
+If `DIAGRAM_REQUIRED=true`, generate Mermaid from the approved plan under `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`; quietly write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with the required heading and fence. Emit no Claude-authored composition, safe-content reading, content/write/validation, success, or transition narration, and no diagram body. Harness-rendered `Write(...)`, `Wrote N lines`, and command counts are outside this contract.
 
-On generation failure before a candidate is written, print `**⚠ 5b.5: arch diagram: generation failed, proceeding without diagram (<elapsed>)**`. Optional full capture may be written to `$DESIGN_TMPDIR/architecture-diagram-generation.failure.log` for local repair only. Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`; never append raw Mermaid, generator stdout/stderr, sanitizer stdout, or candidate bodies.
+On pre-write generation failure, print only `**⚠ 5b.5: arch diagram: generation failed, proceeding without diagram (<elapsed>)**`; an optional local failure capture is allowed. Log only a bounded generation warning through `design_diagram_log.write_bounded_diagram_failure_log`. Never log raw output or bodies. Step 5b.5 must not warn or log sanitizer rejection.
 
-Step 5b.5 diagram generation paths append bounded warnings only. Step 5c sanitizes the candidate before publish. It silently promotes accepted candidates to `architecture-diagram.md` and writes `.completed/step-5b.5`. On missing candidate or rejection, it deletes stale accepted/candidate files, writes `architecture-diagram.skipped`, appends a bounded warning for Step 5c warning replay, writes `.completed/step-5b.5`, and continues without emitting diagram bodies.
+Do not invoke `python3 python/cli.py mermaid sanitize`, `design-step3b-sanitize.sh`, or another sanitizer; promote/reject, move/delete the candidate; or write `.completed/step-5b.5`, `architecture-diagram.md`, or `architecture-diagram.skipped`. Continue with `> **Continue to Step 5c IMMEDIATELY.**` without a pre-check or free-form recap.
+
+Step 5c alone sanitizes the unchanged candidate, promotes or skips it, logs sanitizer rejection, and writes Step-5c-owned artifacts.
 
 ## Step 5c compose and publish
 
