@@ -1,0 +1,219 @@
+## Approach
+
+1. Remove Cursor `auto` producers from reviewer slots, dynamic rows, forced plan-fidelity dispatch, and both fixer launchers.
+2. Let Cursor rows resolve through the existing model chain. Preserve explicit per-slot `cursor_model` plumbing for callers that need a non-default override.
+3. Remove the auto rate, token flags, display fields, cost fields, and rendered breakdowns as one schema change.
+4. Treat legacy `model="auto"` token buckets as unknown Cursor models. Fold them into the Composer bucket and price them through `DEFAULT_VENDOR_MODEL["cursor"]`.
+5. Keep readers tolerant of stale `CURSOR_AUTO_COST` lines in committed artifacts by ignoring unknown keys. Do not rewrite run logs.
+6. Update every current Cursor auto prose occurrence. Regenerate the topology projection from its TSV source.
+7. Add focused routing and compatibility tests. Preserve the current Grok 4.5 constants, rate row, MODERATE coder routing, and token bucket.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Delete `CURSOR_AUTO_MODEL`.
+- Remove Cursor model overrides from `review.panel` and `design.plan_review_panel` slot construction.
+- Keep `CURSOR_DEFAULT_MODEL = "composer-2.5"`, `CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY`, and all generic `SlotDefault.cursor_model` plumbing.
+- Update reviewer and fixer `doc_fallback` text to describe Composer 2.5 default resolution.
+- Do not change voter roles or Grok 4.5 routing.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+- Remove explicit auto assignments from dynamic Cursor reviewer rows.
+- Record `resolved_model` through the same Cursor resolution helper used by ordinary rows, with Composer 2.5 as the default.
+- Remove auto assignments from any forced plan-fidelity Cursor row that remains reachable.
+- Preserve `"plan-fidelity-forced": "architecture"` tally behavior and all slot accounting.
+
+### UPDATED: python/larch/review/plan_review_panel.py
+
+- Stop assigning auto to dynamic plan-review Cursor rows.
+- Resolve their manifest model through the standard Cursor chain.
+- Let static rows without an explicit override record Composer 2.5 as their resolved model.
+- Preserve Codex difficulty routing and generic per-slot override support.
+
+### UPDATED: python/larch/agents/_ci_launcher.py
+
+- Delete the `args.role == "fix"` auto special case in `launch_cursor_ci_main`.
+- Honor `args.model` when present. Otherwise call `resolve_model_args("cursor", with_effort=True)` so CI-recovery Cursor launches default to Composer 2.5 and still respect supported environment overrides.
+- Keep conflict-resolution behavior and launcher error handling unchanged.
+
+### UPDATED: python/larch/review/coder_runner.py
+
+- Replace `_run_coder_cursor`’s hardcoded auto arguments with `resolve_model_args("cursor", with_effort=True)`.
+- Fail through the existing unavailable-tier path if model resolution fails.
+- Keep authentication, prompt wrapping, startup locking, and edit validation unchanged.
+
+### UPDATED: python/larch/report/report_tokens_models.py
+
+- Remove `RunRecord.cursor_auto_cost`.
+- Remove the auto input, cache-read, and output fields from `DisplayRates`.
+- Retain Composer and Grok lane fields and aggregate Cursor totals.
+
+### UPDATED: python/larch/report/report_tokens_cost.py
+
+- Delete the `("cursor", "auto")` rate row and auto display-rate environment overrides.
+- Remove the auto-specific branch from `cursor_argv_from_buckets`.
+- Fold legacy `model="auto"` and any other unrecognized Cursor models into the Composer token bucket. This routes them through the existing vendor-default fallback.
+- Remove `--cursor-auto-*-tokens`, their parsed counters, and auto cost computation.
+- Change detailed Cursor results from Composer/Grok/Auto to Composer/Grok.
+- Stop emitting, parsing, or requiring `CURSOR_AUTO_COST`.
+- Preserve the current surcharged Composer rates and the Grok 4.5 rate row byte-for-byte.
+- Keep aggregate-only legacy pricing behavior unchanged.
+
+### UPDATED: python/larch/report/report_tokens_render.py
+
+- Change Cursor lane completeness checks and summaries to use Composer and Grok only.
+- Remove the `Cursor Auto` vendor row, trend, rate line, and cached JSON field.
+- Preserve aggregate-only rendering when old records lack the current lane split.
+
+### UPDATED: python/larch/report/final_report.py
+
+- Stop reading and forwarding `CURSOR_AUTO_COST`.
+- Keep Composer and Grok cost fields optional when model-level token data is unavailable.
+- Continue ignoring stale, unknown keys from historical cost text.
+- Keep legacy `model="auto"` token-report buckets accepted through the revised cost bucketing path.
+
+### UPDATED: python/larch/git/pr_body.py
+
+- Remove auto token CLI arguments and `cursor_auto_cost` state.
+- Render the detailed Cursor segment as Composer and Grok only.
+- Fall back to the aggregate Cursor amount when either current component is unavailable.
+- Ignore stale `CURSOR_AUTO_COST` input rather than failing old run summaries.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Replace the Step 5 tier banner’s Cursor auto wording with Cursor Composer 2.5 wording.
+- Do not change Bash fences, launcher commands, tier counts, Codex models, or review-loop behavior.
+
+### UPDATED: skills/shared/topology.tsv
+
+- Replace the Cursor/auto topology label with the current Cursor/Composer 2.5 description.
+- Preserve row keys, authority paths, and panel counts.
+
+### REWRITTEN: docs/topology.md
+
+- Regenerate with `python3 python/cli.py generate topology-docs` after updating `skills/shared/topology.tsv`.
+- Verify the generated file contains no Cursor/auto label and no unrelated projection changes.
+
+### UPDATED: docs/review-agents.md
+
+- Replace per-slot auto and difficulty-matrix wording with Composer 2.5 default resolution.
+- Preserve panel shapes, Codex tier models, no-fallback behavior, voting rules, and round caps.
+
+### UPDATED: docs/external-reviewers.md
+
+- Update plan-review, code-review, review-fix, and related Cursor role descriptions to Composer 2.5.
+- Keep Grok 4.5 implementation routing and all non-Cursor role descriptions unchanged.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+- Update CI-recovery and any other fixer routing prose from Cursor auto to Composer 2.5.
+- Preserve the documented Codex and Claude fallback order.
+
+### UPDATED: python/tests/core/test_external_role_defaults.py
+
+- Assert reviewer Cursor slots have no forced model override.
+- Assert their effective default remains `CURSOR_DEFAULT_MODEL`.
+- Update role documentation expectations without changing voter or Grok assertions.
+
+### UPDATED: python/tests/agents/test_external_dispatch.py
+
+- Update static and dynamic reviewer manifest expectations to Composer 2.5.
+- Use a neutral sentinel model instead of `"auto"` in tests that specifically validate generic per-slot override plumbing.
+- Verify Cursor rows record `resolved_model="composer-2.5"` when no override is supplied.
+- Preserve forced plan-fidelity tally assertions.
+
+### UPDATED: python/tests/agents/test_collect_results.py
+
+- Replace `"auto"` cursor-model fixtures with a neutral explicit-model sentinel.
+- Continue proving that generic outer-launcher cursor model metadata is parsed and forwarded unchanged.
+
+### UPDATED: python/tests/review/test_plan_review_panel.py
+
+- Assert dynamic Cursor plan-review rows resolve to Composer 2.5 without an explicit override.
+- Keep coverage for Codex model roles, render failures, and slot manifests.
+
+### UPDATED: python/tests/agents/test_agents.py
+
+- Extend the existing Cursor CI launcher test to capture model resolution for `role="fix"`.
+- Assert the launcher requests the standard Cursor model arguments and launches with `--model composer-2.5`.
+- Retain explicit `--model` override coverage and conflict-role behavior.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+- Add focused `_run_coder_cursor` coverage for standard model resolution.
+- Assert the review-fix Cursor command uses Composer 2.5 by default and still follows the existing failure path when model resolution fails.
+
+### UPDATED: python/tests/report/test_report_tokens_cost.py
+
+- Replace the auto rate-row test with assertions that no `("cursor", "auto")` row exists and `rate_row("cursor", model="auto")` returns the Composer default row.
+- Update detailed token-cost tests to cover Composer and Grok only.
+- Add a legacy `BUCKETS_cursor_by_model["auto"]` case that is folded into Composer pricing without warnings.
+- Remove auto flags, environment-rate fields, KVs, and cost-record expectations.
+- Assert Composer surcharge values and Grok 4.5 rates remain unchanged.
+
+### UPDATED: python/tests/report/test_report_tokens_render.py
+
+- Update golden and focused output expectations to show only Composer and Grok Cursor lanes.
+- Remove auto trend, vendor row, rate text, and cache-field assertions.
+- Keep legacy aggregate-only and mixed-record fallback coverage.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+- Remove `cursor_auto_cost` expectations.
+- Assert detailed reports expose Composer and Grok costs only.
+- Add or retain coverage that old auto model buckets price as Composer while malformed model detail still falls back safely.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+- Update detailed Cursor summary fixtures and assertions to the two-lane Composer/Grok format.
+- Remove auto token-argument and cost-field expectations.
+- Preserve aggregate fallback and total-cost invariance tests.
+- Add a stale `CURSOR_AUTO_COST` input case if existing lenient parsing coverage does not already prove that unknown historical KVs are ignored.
+
+## Edge cases
+
+- An explicit `LARCH_CURSOR_MODEL` or plugin option must still override Composer 2.5 where standard model resolution applies.
+- A caller-provided per-slot `cursor_model` must still pass through unchanged. Tests should use a non-auto sentinel.
+- Historical token reports may contain `model="auto"`. Count those tokens in the Composer bucket and price them with the existing Composer row.
+- Historical cost text may contain `CURSOR_AUTO_COST`. Ignore the stale key without requiring a migration.
+- Aggregate-only Cursor records must continue rendering without a lane breakdown.
+- Mixed Composer and Grok reports must keep their separate costs and correct aggregate total.
+- Do not interpret unrelated terms such as auto-merge or auto-approve as Cursor model references.
+
+## Failure modes
+
+- Removing the constant before all producers are updated can cause import failures. Remove consumers and the constant in the same change.
+- Leaving one manifest producer unchanged can report `resolved_model` differently from the model actually launched.
+- Removing only the rate row while retaining auto token flags can silently misattribute detailed totals.
+- Requiring the new two-field schema from historical committed records can suppress aggregate reports. Keep old readers tolerant and use aggregate fallback.
+- Editing adjacent model tables can accidentally change Grok 4.5 rates or MODERATE coder routing. Add focused preservation assertions and inspect the final diff.
+- Hand-editing `docs/topology.md` can drift from its TSV source. Regenerate it through the canonical command.
+
+## Testing strategy
+
+1. Run focused Python tests for the changed runtime and report surfaces:
+   - `python3 -m pytest python/tests/core/test_external_role_defaults.py`
+   - `python3 -m pytest python/tests/agents/test_external_dispatch.py python/tests/agents/test_collect_results.py python/tests/agents/test_agents.py`
+   - `python3 -m pytest python/tests/review/test_plan_review_panel.py python/tests/review/test_review_and_fix.py`
+   - `python3 -m pytest python/tests/report/test_report_tokens_cost.py python/tests/report/test_report_tokens_render.py python/tests/report/test_final_report.py`
+   - `python3 -m pytest python/tests/git/test_pr_body.py`
+2. Regenerate topology docs, then run the topology generator and rule-path tests.
+3. Run linters only for changed files using the repository’s documented focused commands. Then run `make py-lint` and `make py-test` as the acceptance sweep.
+4. Run these repository-root acceptance checks:
+   - `rg -n "CURSOR_AUTO_MODEL"` returns no matches.
+   - `rg -n "CURSOR_AUTO_COST|cursor_auto_cost|cursor_auto_(input|cache_read|output)|cursor-auto-(input|cache-read|output)-tokens" docs/ skills/ scripts/ python/ agents/ README.md` returns no matches.
+   - `rg -in "cursor auto|cursor/auto|cursor-auto" docs/ skills/ scripts/ python/ agents/ README.md` returns no matches.
+   - `rg -in '"auto"' python/larch/` returns no Cursor model handling.
+5. Verify the retained Grok surfaces with focused assertions and a final diff inspection:
+   - `("cursor", "grok-4.5")` rate row is unchanged.
+   - `CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY` is unchanged.
+   - MODERATE coder routing remains Grok 4.5.
+   - Grok token flags and Composer surcharge values are unchanged.
+6. Confirm no committed run logs were modified and `retro_fix_cursor` was not run.
+
+difficulty: HARD
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 430

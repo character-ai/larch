@@ -1,0 +1,120 @@
+## Operator request (verbatim)
+
+> switch all uses of Cursor/auto in larch to Cursor/Composer 2.5.  There should be no more Cursor/auto mentioned anywhere, including pricing table, as we will no longer ever use it for any reason.  The switch effects exclusively Cursor/auto, with upcoming Cursor/Grok 4.5 staying uneffected.
+
+## Goal
+
+Remove the Cursor `auto` model from larch entirely. Every lane that launches Cursor with `--model auto` moves to `composer-2.5` (the existing `CURSOR_DEFAULT_MODEL`). The `("cursor", "auto")` pricing row, the auto display rates, the `CURSOR_AUTO_MODEL` constant, and all "Cursor auto" prose in docs, skills, and doc_fallback strings are deleted. The Grok 4.5 work in #6825 is untouched.
+
+## History and relationships
+
+- #6553 (closed) added one experimental Cursor/auto reviewer lane to compare auto vs Composer 2.5.
+- #6721 (closed 2026-07-09) then moved ALL Cursor reviewer lanes to auto and removed the #6553 lane. Its rationale: auto avoided the $0.25/M Teams Token Rate that pinned Composer 2.5 paid at the time.
+- This issue reverses #6721 and goes further: it also flips the two fixer lanes that hardcode auto, and deletes the auto pricing surface. Reason: per Cursor docs and staff confirmation (2026-07-10), first-party models (Composer 2.5, Grok 4.5) are now exempt from the Token Rate, so auto lost its pricing advantage; Composer 2.5 base rates beat auto on every component.
+- **Blocked by #6825** (Grok 4.5 coder switch): both issues edit the same regions of `python/larch/core/config.py` (cursor model constants, `ROLE_DEFAULTS`) and `python/larch/report/report_tokens_cost.py` (rate table, `display_rates()`). Land #6825 first, then rebase this work on it.
+
+## Pricing context (verified 2026-07-10)
+
+| $/1M tokens | Cursor auto (flat card) | Composer 2.5 pinned, base | Composer 2.5 + $0.25 Token Rate (if still applied) |
+|---|---|---|---|
+| Input (+ cache write) | $1.25 | $0.50 | $0.75 |
+| Cache read | $0.25 | $0.20 | $0.45 |
+| Output | $6.00 | $2.50 | $2.75 |
+
+At the observed Step 5 review-lane median volume (700k input / 6.68M cache read / 69k output per run, 1,027 logged runs), one review run costs about $2.96 on auto, $1.86 on exempt Composer 2.5 (37% cheaper), and $3.72 on surcharged Composer 2.5 (26% dearer). Current Cursor docs list Composer 2.5 as first-party and Token Rate exempt; the June 2026 usage export that measured the surcharge predates the July 1 Teams pool restructure. Verify with a fresh post-renewal usage export. The operator decision to standardize on Composer 2.5 stands regardless; record the export result but do not relitigate.
+
+## Current auto inventory (verified at v52.5.23 HEAD)
+
+Runtime lanes:
+
+1. `python/larch/core/config.py:287`: `CURSOR_AUTO_MODEL: Final = "auto"` (the constant).
+2. `config.py:394`: `review.panel` Cursor slots (correctness, edge-cases, testing) set `cursor_model=CURSOR_AUTO_MODEL`.
+3. `config.py:418`: `design.plan_review_panel` Cursor slots (arch, innovation, pragmatic, requirements) set `cursor_model=CURSOR_AUTO_MODEL`.
+4. `python/larch/review/review_dispatch_panel.py:398-399`: the forced plan-fidelity row sets `cursor_model` and `resolved_model` to auto. Dynamic Cursor code-review rows were also threaded to auto by #6721 (see `_synthesize_dynamic_slots`); audit that function for auto assignments.
+5. `python/larch/review/plan_review_panel.py:410-411`: dynamic plan-review Cursor rows set `cursor_model` and `resolved_model` to auto.
+6. `python/larch/agents/_ci_launcher.py:360`: the Cursor CI lane special-cases `args.role == "fix"` to `["--model", config.CURSOR_AUTO_MODEL]` (the `implement.ci_recovery_fixer` cursor tier).
+7. `python/larch/review/coder_runner.py:215`: `_run_coder_cursor` (review-and-fix fix coder, `review.fix_coder` cursor tier) hardcodes `["--model", config.CURSOR_AUTO_MODEL]`.
+
+Pricing and display:
+
+8. `python/larch/report/report_tokens_cost.py:70-75`: `("cursor", config.CURSOR_AUTO_MODEL)` rate row (flat card, no surcharge).
+9. `report_tokens_cost.py:184`: `display_rates()` builds a `cursor_auto` rate slot; `report_tokens_render.py:216` area renders cursor rate lines from `DisplayRates`.
+10. `report_tokens_cost.py:321`: a `model == config.CURSOR_AUTO_MODEL` special case in the cost path.
+
+Prose, docs, and generated projections:
+
+11. `config.py:365` (`implement.ci_recovery_fixer`) and `config.py:367` (`review.fix_coder`) doc_fallback strings say "Cursor auto".
+12. `review.panel` and `design.plan_review_panel` doc_fallback strings describe the tier matrix as "Cursor auto singles/pairs" and "per-slot auto".
+13. `skills/implement/SKILL.md:482`: the Step 5 banner prose mentions "Cursor auto" three times (TRIVIAL singles, MODERATE pairs, HARD pairs). Find every emitter of that banner literal (grep "Cursor auto" in `skills/`, `scripts/`, `python/`).
+14. `docs/review-agents.md:99, 101, 109`: "per-slot `auto`" and "Cursor `auto`" tier-matrix prose.
+15. `skills/shared/topology.tsv:18`: row text "Cursor + Codex + Cursor/auto plan-fidelity"; `docs/topology.md` is generated from this file.
+
+Tests pinning auto:
+
+16. `python/tests/agents/test_external_dispatch.py:456, 505`; `python/tests/core/test_external_role_defaults.py:55, 64`; `python/tests/report/test_report_tokens_cost.py:634` (asserts the auto rate row); `python/tests/review/test_plan_review_panel.py:1231`.
+
+Verified NOT affected: `python/larch/report/retro_fix_cursor.py` (prices composer-2.5 only, no auto reference), `python/larch/git/pr_body.py` (no auto reference), voter roles (already composer-2.5 per #6721 scope), and all Codex/Claude lanes.
+
+## Work items
+
+1. **Reviewer slots.** In `config.py`, remove `cursor_model=CURSOR_AUTO_MODEL` from the `review.panel` (:394) and `design.plan_review_panel` (:418) slot generators. Cursor reviewer slots then resolve through the standard chain: `LARCH_CURSOR_MODEL`, then `CLAUDE_PLUGIN_OPTION_CURSOR_MODEL`, then `CURSOR_DEFAULT_MODEL = "composer-2.5"`. Keep the generic per-slot `cursor_model` / `--cursor-model` plumbing from #6553 in place; this issue removes auto producers only.
+2. **Panel dispatch rows.** In `review_dispatch_panel.py`, drop the explicit auto assignments on the forced plan-fidelity row (:398-399) and any dynamic Cursor rows in `_synthesize_dynamic_slots`, so attribution and `resolved_model` derive composer-2.5 from the standard resolution. Keep the `"plan-fidelity-forced": "architecture"` tally mapping unchanged. Same change in `plan_review_panel.py` (:410-411) for dynamic plan-review rows.
+3. **CI-recovery fixer lane.** In `_ci_launcher.py:358-362`, delete the `args.role == "fix"` auto special case. Fix-role launches then use `args.model` when passed, else `resolve_model_args("cursor", with_effort=True)`.
+4. **Review-and-fix coder lane.** In `coder_runner.py:215`, replace the hardcoded auto model args with the same standard resolution used after work item 3.
+5. **Rate table.** In `report_tokens_cost.py`, delete the `("cursor", CURSOR_AUTO_MODEL)` row (:70-75). Legacy ledger rows with `model="auto"` then price through the existing `rate_row()` fallback to `DEFAULT_VENDOR_MODEL["cursor"] = "composer-2.5"` (:125-136). This is deterministic and leaves zero auto mentions. Accepted consequence: historical auto-lane cost estimates reprice at composer rates. Do NOT run `retro_fix_cursor` over committed run logs; committed cost text stays as written.
+6. **Display rates.** Remove the `cursor_auto` slot from `display_rates()` (:184), its fields from `DisplayRates` in `report_tokens_models.py`, the `model == CURSOR_AUTO_MODEL` special case (:321), and the rendered auto rate text in `report_tokens_render.py` (:216 area).
+7. **Constant.** Delete `CURSOR_AUTO_MODEL` from `config.py:287` once work items 1-6 remove all consumers.
+8. **doc_fallback strings.** Update `config.py:365` and `:367` ("Cursor auto" becomes "Cursor composer-2.5") and the tier-matrix prose in both panel doc_fallback strings (:394 area and :418 area) to name composer-2.5. Where the text says "per-slot auto", describe the default composer-2.5 resolution instead.
+9. **Docs and banner prose.** Update `skills/implement/SKILL.md:482`, every script or python emitter of the Step 5 banner literal, `docs/review-agents.md:99, 101, 109`, and `skills/shared/topology.tsv:18`; regenerate `docs/topology.md` (and any other `ROLE_DEFAULTS`-derived projection) after the tsv edit.
+10. **Tests.** Update the four pinned test sites (inventory item 16): reviewer slots assert composer-2.5 (or absence of an override), and replace the auto rate-row test with an assertion that no `("cursor", "auto")` row exists. Extend one test to cover the fixer lanes launching composer-2.5.
+11. **Final sweep.** Acceptance greps, run from repo root: `rg -n "CURSOR_AUTO_MODEL"` returns zero hits; `rg -in "cursor auto|cursor/auto|cursor-auto" docs/ skills/ scripts/ python/ agents/ README.md` returns zero hits; `rg -in '"auto"' python/larch/` returns no cursor-model hits (unrelated words such as auto-merge and auto-approve stay untouched).
+
+## Acceptance criteria
+
+- Every Cursor lane (static reviewers, dynamic reviewers, forced plan-fidelity, plan-review rows, review-and-fix coder, CI-recovery fixer) launches with `--model composer-2.5`, and panel manifests record `resolved_model=composer-2.5`.
+- No `("cursor", "auto")` rate row exists; `/report-tokens` prices legacy `model="auto"` ledger rows at the composer-2.5 row via the vendor-default fallback without warnings.
+- The final-sweep greps in work item 11 pass.
+- Grok 4.5 surfaces from #6825 (`("cursor", "grok-4.5")` rate row, `CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY`, MODERATE coder routing) are byte-identical before and after this change.
+- Voter roles keep composer-2.5 with no behavior change.
+- `make py-lint` and `make py-test` pass; lint only changed files locally per AGENTS.md.
+
+## Out of scope
+
+- #6825 (Grok 4.5 MODERATE coder switch and rate row): native blocker; land it first.
+- Re-verifying or changing the composer-2.5 Token Rate surcharge baked into the `("cursor", "composer-2.5")` row (0.75/0.45/2.75): track separately after a post-renewal usage export.
+- Retro-fixing committed run-log cost text.
+- Removing the generic per-slot `cursor_model` plumbing added by #6553: the machinery stays; only auto producers go.
+- Codex and Claude lane models.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Remove the Cursor `auto` model from larch entirely. Every Cursor lane launches `--model composer-2.5` and panel manifests record `resolved_model=composer-2.5`.
+- Delete the `("cursor", "auto")` rate row, the `CURSOR_AUTO_MODEL` constant, and all "Cursor auto" prose across code, docs, skills, and generated projections.
+- Excise the downstream `cursor_auto_cost` schema and render surface (PR body, final report, `/report-tokens`), per the full-removal decision.
+
+### Non-goals
+- Do not relitigate the composer-2.5 Token Rate surcharge values (0.75/0.45/2.75); keep them.
+- Do not run `retro_fix_cursor` over committed run logs; legacy cost text stays as written.
+- Do not remove the generic per-slot `cursor_model` plumbing from #6553; only auto producers go. Codex and Claude lanes are untouched.
+
+### Approach sketch
+- Producer removal first: drop `cursor_model=CURSOR_AUTO_MODEL` overrides so Cursor reviewer slots resolve through the standard chain (`LARCH_CURSOR_MODEL` -> `CLAUDE_PLUGIN_OPTION_CURSOR_MODEL` -> `CURSOR_DEFAULT_MODEL`).
+- Replace the two hardcoded fixer lanes (CI recovery, review-and-fix coder) with the standard `resolve_model_args("cursor", with_effort=True)` resolution.
+- Rate layer: delete the auto rate row, the `cursor_auto` DisplayRates rate fields, and the `model == CURSOR_AUTO_MODEL` cost special case. Legacy `model="auto"` ledger rows fall back to `DEFAULT_VENDOR_MODEL["cursor"] = "composer-2.5"`.
+- Full cost-record removal: drop `cursor_auto_cost` from the RunCost/RunRecord schemas, the "Cursor Auto" render row, and the PR-body "(Composer, Grok, Auto)" segment.
+- Delete `CURSOR_AUTO_MODEL`; update doc_fallback strings, the Step 5 banner prose, topology.tsv, regenerate topology.md, and the pinned tests.
+
+### Surfaces in scope
+- `python/larch/core/config.py`
+- `python/larch/review/{review_dispatch_panel,plan_review_panel,coder_runner}.py`
+- `python/larch/agents/_ci_launcher.py`
+- `python/larch/report/{report_tokens_cost,report_tokens_models,report_tokens_render,final_report}.py`
+- `python/larch/git/pr_body.py`
+- `skills/implement/SKILL.md`, `skills/shared/topology.tsv`, `docs/topology.md`, `docs/review-agents.md`
+- Tests: `test_external_role_defaults.py`, `test_external_dispatch.py`, `test_plan_review_panel.py`, `test_report_tokens_cost.py`, `test_report_tokens_render.py`, `test_final_report.py`, `test_pr_body.py`
+
+### Open questions
+- None.
