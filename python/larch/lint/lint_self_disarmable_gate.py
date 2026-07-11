@@ -20,7 +20,7 @@ import re
 import sys
 import tokenize
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 TOOL_FAILURE_EXIT = 2
@@ -257,12 +257,6 @@ def _is_suppression_condition(test: ast.AST, *, meta_fields: frozenset[str]) -> 
     if isinstance(test, ast.BoolOp) and isinstance(test.op, ast.And):
         return any(_is_suppression_condition(value, meta_fields=meta_fields) for value in test.values)
     return False
-
-
-@dataclass
-class _FunctionScan:
-    findings: list[Finding] = field(default_factory=list)
-    hard_trigger_names: set[str] = field(default_factory=set)
 
 
 def _looks_like_hard_trigger_name(name: str) -> bool:

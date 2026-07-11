@@ -168,7 +168,7 @@ def _assignment_targets(node: ast.AST) -> set[str]:
     if isinstance(node, ast.Assign):
         for target in node.targets:
             names.update(_names_referenced(target))
-    elif (isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name)) or (isinstance(node, ast.AugAssign) and isinstance(node.target, ast.Name)) or (isinstance(node, ast.NamedExpr) and isinstance(node.target, ast.Name)):
+    elif isinstance(node, (ast.AnnAssign, ast.AugAssign, ast.NamedExpr)) and isinstance(node.target, ast.Name):
         names.add(node.target.id)
     return names
 
@@ -309,10 +309,6 @@ def _scan_block(
 
         if isinstance(stmt, (ast.For, ast.While, ast.Try, ast.With, ast.AsyncWith, ast.AsyncFor)):
             # Uncertain control flow: discard facts, still scan nested functions.
-            for child in ast.walk(stmt):
-                if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) and child is not stmt:
-                    # Only direct nested defs inside; walk handles nesting.
-                    pass
             _scan_nested_defs(
                 stmt,
                 symbol=symbol,
@@ -383,7 +379,7 @@ def _scan_if(
     # Collect chain arms: (test_node|None for else, body).
     arms: list[tuple[ast.AST | None, list[ast.stmt], int]] = []
     cursor: ast.stmt = stmt
-    while isinstance(cursor, ast.If):
+    while True:
         lineno = getattr(cursor, "lineno", 0)
         arms.append((cursor.test, cursor.body, lineno if isinstance(lineno, int) else 0))
         if len(cursor.orelse) == 1 and isinstance(cursor.orelse[0], ast.If):
