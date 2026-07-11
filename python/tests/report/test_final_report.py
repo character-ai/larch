@@ -301,6 +301,106 @@ def test_final_report_token_fields_uses_manifest_main_model_and_claude_sub_by_mo
     assert fields["claude_sub_cost"] == "1.00"
 
 
+def test_final_report_token_fields_glm_main_uses_glm_rates(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"model_roster": {"main": "glm-5.2"}}),
+        encoding="utf-8",
+    )
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1_000_000, "output": 1_000_000, "total": 2_000_000}},
+            "BUCKETS_claude": {"input": 1_000_000, "output": 1_000_000},
+            "claude_sub": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude_sub": {"input": 1_000_000},
+        }),
+        encoding="utf-8",
+    )
+
+    fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+
+    # GLM: 1M*$1.40 + 1M*$4.40 = $5.80 (not Opus $5+$25=$30)
+    assert fields["claude_cost"] == "5.80"
+    # Shared TOTAL stays token-based: 5.80 + opus-sub 5.00 = 10.80
+    assert fields["total_cost"] == "10.80"
+    assert fields["claude_sub_cost"] == "5.00"
+
+
+def test_final_report_token_fields_glm_1m_alias_uses_glm_rates(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"model_roster": {"main": "glm-5.2[1m]"}}),
+        encoding="utf-8",
+    )
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude": {"input": 1_000_000},
+        }),
+        encoding="utf-8",
+    )
+
+    fields = final_report._final_report_token_fields(implement_tmpdir=tmp_path, run_id="run1")
+    assert fields["claude_cost"] == "1.40"
+
+
+def test_write_final_report_glm_plan_estimate_in_summary(tmp_path: Path) -> None:
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"model_roster": {"main": "glm-5.2"}, "larch_version": "1.0.0", "effort": "high"}),
+        encoding="utf-8",
+    )
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1_000_000, "output": 1_000_000, "total": 2_000_000}},
+            "BUCKETS_claude": {"input": 1_000_000, "output": 1_000_000},
+            "claude_sub": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude_sub": {"input": 1_000_000},
+            "codex": {"totals": {"input": 0, "total": 0}},
+            "cursor": {"totals": {"input": 0, "total": 0}},
+        }),
+        encoding="utf-8",
+    )
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    # Token $5.80 → estimated $5.80/15 ≈ $0.39; TOTAL = 10.80 - 5.80 + 0.386... = 5.386... → $5.39
+    assert "Claude/GLM-5.2 token $5.80 (estimated $0.39)" in summary
+    assert "Claude (subprocess) $5.00" in summary
+    assert "**Cost note**:" in summary
+    # Subprocess not divided: estimated total uses full $5.00 sub + $0.39 main
+    assert "TOTAL ~$5.39" in summary
+
+
+def test_write_final_report_non_glm_keeps_plain_claude_segment(tmp_path: Path) -> None:
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"model_roster": {"main": "claude-sonnet-4-6"}, "larch_version": "1.0.0"}),
+        encoding="utf-8",
+    )
+    (run_dir / "token-report.json").write_text(
+        json.dumps({
+            "claude": {"totals": {"input": 1_000_000, "total": 1_000_000}},
+            "BUCKETS_claude": {"input": 1_000_000},
+        }),
+        encoding="utf-8",
+    )
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "Claude $3.00" in summary
+    assert "Claude/GLM-5.2" not in summary
+    assert "**Cost note**:" not in summary
+
+
 def test_final_report_token_fields_cursor_lanes_require_valid_model_map(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
     run_dir.mkdir(parents=True)

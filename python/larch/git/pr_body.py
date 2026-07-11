@@ -575,6 +575,43 @@ def _plan_coverage_summary_lines(kwargs: Mapping[str, object]) -> list[str]:
     line = str(kwargs.get("plan_coverage_line") or "")
     return [f"- **Plan coverage**: {line}"] if line else []
 
+def _try_float_money(value: object) -> float | None:
+    try:
+        return float(cast("float | int | str", value))
+    except (TypeError, ValueError):
+        return None
+
+
+def _glm_main_lane_cost_parts(
+    *,
+    kwargs: Mapping[str, object],
+    total_cost: object,
+    total_tokens: int,
+) -> tuple[str, str] | None:
+    """Build GLM main-lane cost line + explanation, or None when not applicable."""
+    _version, main_model, _effort = _resolve_run_identity(kwargs)
+    if config.canonicalize_glm_main_model(main_model) != config.CLAUDE_GLM_5_2_MODEL:
+        return None
+    token_cost = _try_float_money(_money_value(kwargs.get("claude_cost", 0)))
+    headline_total = _try_float_money(_money_value(total_cost))
+    if token_cost is None or headline_total is None:
+        return None
+    estimated = round(token_cost / config.GLM_TOKEN_TO_PLAN_DIVISOR, 2)
+    adjusted_total = round(headline_total - token_cost + estimated, 2)
+    cost = (
+        f"💰 TOTAL ~{_fmt_money(adjusted_total)}: "
+        f"Claude/GLM-5.2 token {_fmt_money(token_cost)} (estimated {_fmt_money(estimated)}), "
+        f"{_codex_cost_segment(kwargs)}, {_cursor_cost_segment(kwargs)}, "
+        f"Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  "
+        f"Tokens: {int((total_tokens + 500) / 1000)}k"
+    )
+    note = (
+        "- **Cost note**: Token is API-equivalent GLM-5.2 pricing; "
+        f"estimated is plan cost (token ÷ {config.GLM_TOKEN_TO_PLAN_DIVISOR})."
+    )
+    return cost, note
+
+
 def render_run_summary(**kwargs: object) -> str:
     skill = str(kwargs.get("skill") or "implement")
     outcome = str(kwargs.get("outcome") or "unknown")
@@ -582,10 +619,23 @@ def render_run_summary(**kwargs: object) -> str:
     force = str(kwargs.get("force_requested") or "false") == "true"
     total_tokens = int(str(kwargs.get("total_tokens") or kwargs.get("claude_tokens") or 0) or 0)
     total_cost = kwargs.get("total_cost", "N/A")
+    cost_note: str | None = None
     if kwargs.get("cost_unavailable") or total_cost == "N/A":
         cost = "N/A"
     else:
-        cost = f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))}: Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, {_codex_cost_segment(kwargs)}, {_cursor_cost_segment(kwargs)}, Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  Tokens: {int((total_tokens + 500) / 1000)}k"
+        glm_parts = _glm_main_lane_cost_parts(
+            kwargs=kwargs, total_cost=total_cost, total_tokens=total_tokens,
+        )
+        if glm_parts is not None:
+            cost, cost_note = glm_parts
+        else:
+            cost = (
+                f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))}: "
+                f"Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, "
+                f"{_codex_cost_segment(kwargs)}, {_cursor_cost_segment(kwargs)}, "
+                f"Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  "
+                f"Tokens: {int((total_tokens + 500) / 1000)}k"
+            )
     issue_number = str(kwargs.get("issue_number") or "")
     issue_url = str(kwargs.get("issue_url") or "")
     issue = "N/A"
@@ -615,8 +665,10 @@ def render_run_summary(**kwargs: object) -> str:
     lines.extend([
         f"- **Duration**: {kwargs.get('duration') or 'N/A'}",
         f"- **Cost**: {cost}",
-        f"- **Issue**: {issue}",
     ])
+    if cost_note is not None:
+        lines.append(cost_note)
+    lines.append(f"- **Issue**: {issue}")
     if skill != "design" and pr != "N/A":
         lines.append(f"- **PR**: {pr}")
     if skill != "design" and str(kwargs.get("merge_downgraded") or "false") == "true":

@@ -200,9 +200,82 @@ def test_legacy_claude_cache_create_bucket_prices_as_cache_write_5m() -> None:
 
 def test_claude_rate_rows_include_cache_tiers_and_default_opus() -> None:
     required = {"input", "cache_read", "cache_create_5m", "cache_create_1h", "output"}
-    for model in ("claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-fable-5"):
+    for model in (
+        "claude-opus-4-8",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+        "claude-fable-5",
+        "glm-5.2",
+    ):
         assert required <= set(rate_row("claude", model=model))
     assert rate_row("claude", model="unknown") == rate_row("claude", model="claude-opus-4-8")
+
+
+def test_glm_5_2_rate_row_exact_values_and_zero_cache_create() -> None:
+    row = rate_row("claude", model=larch_config.CLAUDE_GLM_5_2_MODEL)
+    assert row == {
+        "input": 1.40,
+        "cache_read": 0.26,
+        "cache_create_5m": 0.00,
+        "cache_create_1h": 0.00,
+        "output": 4.40,
+    }
+    rates = display_rates(environ={}, claude_model=larch_config.CLAUDE_GLM_5_2_MODEL)
+    assert rates.claude_input == 1.40
+    assert rates.claude_cache_read == 0.26
+    assert rates.claude_cache_create_5m == 0.00
+    assert rates.claude_cache_create_1h == 0.00
+    assert rates.claude_output == 4.40
+
+
+def test_display_rates_glm_1m_alias_resolves_to_glm_row() -> None:
+    rates = display_rates(environ={}, claude_model=larch_config.CLAUDE_GLM_5_2_1M_MODEL)
+    assert rates.claude_input == 1.40
+    assert rates.claude_output == 4.40
+
+
+def test_glm_main_agent_bucket_prices_token_based_total() -> None:
+    # 1M input @ $1.40 + 1M output @ $4.40 = $5.80 token cost; TOTAL stays token-based.
+    parsed = _parsed_cost([
+        "--claude-model", "glm-5.2",
+        "--claude-input-tokens", "1000000",
+        "--claude-output-tokens", "1000000",
+        "--codex-input-tokens", "1000000",
+    ])
+    assert parsed["CLAUDE_COST"] == "5.80"
+    # Codex default input $5.00; total is token-based (not ÷15).
+    assert parsed["TOTAL_COST"] == "10.80"
+
+
+def test_glm_1m_alias_main_agent_prices_same_as_canonical() -> None:
+    parsed = _parsed_cost([
+        "--claude-model", "glm-5.2[1m]",
+        "--claude-input-tokens", "1000000",
+    ])
+    assert parsed["CLAUDE_COST"] == "1.40"
+
+
+def test_non_glm_1m_model_is_not_canonicalized_to_base_row() -> None:
+    # claude-sonnet-4-6[1m] is not a rate-table key; lookup falls back to Opus default.
+    # Must NOT strip [1m] and silently reprice as Sonnet.
+    sonnet = display_rates(environ={}, claude_model="claude-sonnet-4-6")
+    aliased = display_rates(environ={}, claude_model="claude-sonnet-4-6[1m]")
+    opus = display_rates(environ={}, claude_model="claude-opus-4-8")
+    assert aliased.claude_input == opus.claude_input
+    assert aliased.claude_input != sonnet.claude_input
+    assert rate_row("claude", model="claude-sonnet-4-6[1m]") == rate_row(
+        "claude", model="claude-opus-4-8",
+    )
+
+
+def test_claude_sub_glm_1m_recorded_model_skips_main_agent_canonicalize() -> None:
+    # Subprocess path uses rate_row() directly; glm-5.2[1m] is unknown there → Opus.
+    assert rate_row("claude", model="glm-5.2[1m]") == rate_row(
+        "claude", model="claude-opus-4-8",
+    )
+    # Main-agent display_rates DOES canonicalize the alias.
+    main = display_rates(environ={}, claude_model="glm-5.2[1m]")
+    assert main.claude_input == 1.40
 
 
 def test_display_rates_can_select_sonnet_main_lane() -> None:

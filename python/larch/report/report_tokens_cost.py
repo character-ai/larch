@@ -103,6 +103,14 @@ DEFAULT_RATE_TABLE_PER_M = {
         "cache_create_1h": 20.00,
         "output": 50.00,
     },
+    # Z.ai GLM-5.2 main-agent token rates (cache-create tiers are unused / zero).
+    ("claude", config.CLAUDE_GLM_5_2_MODEL): {
+        "input": 1.40,
+        "cache_read": 0.26,
+        "cache_create_5m": 0.00,
+        "cache_create_1h": 0.00,
+        "output": 4.40,
+    },
 }
 
 CODEX_CURSOR_BLENDED_FLEET_MIX = {
@@ -179,7 +187,10 @@ def env_rate(
 
 def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str | None = None) -> DisplayRates:
     env: Mapping[str, str] = os.environ if environ is None else environ
-    claude: Mapping[str, float] = rate_row("claude", model=claude_model)
+    # Canonicalize only the GLM main-agent [1m] alias before rate lookup.
+    # Do not strip [1m] for other models; subprocess paths use rate_row() directly.
+    lookup_model = config.canonicalize_glm_main_model(claude_model) if claude_model else claude_model
+    claude: Mapping[str, float] = rate_row("claude", model=lookup_model)
     codex: Mapping[str, float] = _default_row("codex")
     codex_mini: Mapping[str, float] = rate_row("codex", model=CODEX_MINI_MODEL)
     _surcharge = env_rate(names=config.ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M, default=CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M, environ=env)

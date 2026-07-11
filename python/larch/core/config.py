@@ -532,6 +532,10 @@ CLAUDE_SONNET_4_6_MODEL: Final = "claude-sonnet-4-6"
 CLAUDE_SONNET_4_6_1M_MODEL: Final = "claude-sonnet-4-6[1m]"
 CLAUDE_HAIKU_4_5_MODEL: Final = "claude-haiku-4-5"
 CLAUDE_FABLE_5_MODEL: Final = "claude-fable-5"
+CLAUDE_GLM_5_2_MODEL: Final = "glm-5.2"
+CLAUDE_GLM_5_2_1M_MODEL: Final = "glm-5.2[1m]"
+# Final-summary-only: divide GLM main-agent token cost by this to estimate plan cost.
+GLM_TOKEN_TO_PLAN_DIVISOR: Final = 15
 ANALYZE_BUGS_CACHE_DIR_NAME: Final = "analyze-bugs"
 ANALYZE_BUGS_DEFAULT_COUNT: Final = 200
 ANALYZE_BUGS_DEFAULT_DEEP_MAX: Final = 30
@@ -569,6 +573,16 @@ CLAUDE_SUB_DEFAULT_MODEL_BY_RAW: Final[dict[str, str]] = {
 
 def normalize_claude_ledger_model(model: str) -> str:
     return CLAUDE_SONNET_4_6_MODEL if model == CLAUDE_SONNET_4_6_1M_MODEL else model
+
+
+def canonicalize_glm_main_model(model: str) -> str:
+    """Map the GLM main-agent ``[1m]`` alias to canonical ``glm-5.2``.
+
+    Leaves every other model string unchanged, including non-GLM ``[1m]``
+    variants. Use only for main-agent rate lookup and final-summary GLM
+    identity detection — never for subprocess ``claude_sub`` pricing.
+    """
+    return CLAUDE_GLM_5_2_MODEL if model == CLAUDE_GLM_5_2_1M_MODEL else model
 
 
 def claude_sub_default_model(raw: str) -> str:
