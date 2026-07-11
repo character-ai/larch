@@ -27,6 +27,9 @@ _UNAVAILABLE_RECEIPT: Final = "architectural-assessment-unavailable-{kind}.json"
 _KIND_ORDER: Final = (config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES)
 _DIFF_HEADER_RE: Final = re.compile(r"^diff --git a/(\S+) b/(\S+)$")
 _IDENTIFIER_RE: Final = re.compile(r"^#{1,6}\s+((?:I|G)-[A-Za-z0-9-]+-\d+):", re.MULTILINE)
+_SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
+_COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
+_BASE_REF_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 
 
 @dataclass(frozen=True)
@@ -162,6 +165,21 @@ def _git_read(repo_root: Path, argv: Sequence[str]) -> str:
     return completed.stdout.strip()
 
 
+def _validate_recorded_identity(*, head_sha: str, base_ref: str) -> None:
+    if _COMMIT_RE.fullmatch(head_sha) is None:
+        raise ValueError("materialization HEAD_SHA is invalid")
+    if _BASE_REF_RE.fullmatch(base_ref) is None or base_ref.startswith("-") or "/" not in base_ref:
+        raise ValueError("materialization BASE_REF is invalid")
+
+
+def _recorded_diff(*, repo_root: Path, head_sha: str, base_ref: str) -> str:
+    _validate_recorded_identity(head_sha=head_sha, base_ref=base_ref)
+    remote, ref = base_ref.split("/", 1)
+    return architectural_guidelines._materialize_implementation_diff_for_head(  # pyright: ignore[reportPrivateUsage]
+        repo_root, head_sha=head_sha, base_remote=remote, base_ref=ref
+    )
+
+
 def _sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -190,10 +208,12 @@ def validate_materialization(*, kind: str, repo_root: Path, implement_tmpdir: Pa
     if any(not metadata.get(key, "") for key in required) or metadata["STATUS"] != "present" or metadata[status_key] != "present":
         raise ValueError(f"incomplete {kind} materialization metadata")
     head_sha: str = metadata["HEAD_SHA"]
-    resolved_head: str = _git_read(repo_root, ["rev-parse", "--verify", f"{head_sha}^{{commit}}"])
+    base_ref: str = metadata["BASE_REF"]
+    _validate_recorded_identity(head_sha=head_sha, base_ref=base_ref)
+    resolved_head: str = _git_read(repo_root, ["rev-parse", "--verify", f"{head_sha}^{{commit}}"]) 
     if resolved_head != head_sha:
         raise ValueError(f"{kind} covered HEAD is not canonical")
-    _ = _git_read(repo_root, ["rev-parse", "--verify", f"{metadata['BASE_REF']}^{{commit}}"])
+    _ = _git_read(repo_root, ["rev-parse", "--verify", f"{base_ref}^{{commit}}"])
     diff_path = Path(metadata["DIFF_SNAPSHOT"])
     if diff_path.resolve() != expected_diff_path.resolve():
         raise ValueError(f"{kind} diff snapshot path mismatch")
@@ -203,12 +223,14 @@ def validate_materialization(*, kind: str, repo_root: Path, implement_tmpdir: Pa
     diff_text: str = _read_regular(diff_path, root=implement_tmpdir)
     if architectural_guidelines.diff_fingerprint(diff_text) != metadata["DIFF_FINGERPRINT"]:
         raise ValueError(f"{kind} frozen diff fingerprint mismatch")
+    if _recorded_diff(repo_root=repo_root, head_sha=head_sha, base_ref=base_ref) != diff_text:
+        raise ValueError(f"{kind} frozen diff does not match covered snapshot")
     knowledge_text: str = _read_regular(knowledge_path, root=repo_root)
     identifiers: frozenset[str] = frozenset(_IDENTIFIER_RE.findall(knowledge_text))
     return MaterializedEvidence(
         kind=kind,
         head_sha=head_sha,
-        base_ref=metadata["BASE_REF"],
+        base_ref=base_ref,
         diff_path=diff_path,
         diff_text=diff_text,
         diff_fingerprint=metadata["DIFF_FINGERPRINT"],
@@ -241,7 +263,7 @@ def _diff_paths(diff_text: str) -> tuple[str, ...] | None:
 def deterministic_out_of_scope(diff_text: str) -> bool:
     """Return true only when every changed path is proven outside scope."""
     paths: tuple[str, ...] | None = _diff_paths(diff_text)
-    if paths is None:
+    if not paths:
         return False
     return all(
         (path.startswith("docs/") and path.endswith(".md")) or path.startswith("larch-logs/")
@@ -282,7 +304,11 @@ def _already_handled(kind: str, *, repo_root: Path, implement_tmpdir: Path, head
     )
     base_ref: str = metadata.get("BASE_REF", "")
     consumer = architectural_guidelines.invariant_note_consumable if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.note_consumable
-    return bool(base_ref and consumer(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root) and _outcome_valid(kind, implement_tmpdir, metadata))
+    if not (base_ref and consumer(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root) and _outcome_valid(kind, implement_tmpdir, metadata)):
+        return False
+    if metadata.get("NOTE_STATE") == config.NOTE_STATE_UNAVAILABLE:
+        return _unavailable_receipt_valid(kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
+    return True
 
 
 def _materialize_current(kind: str, *, repo_root: Path, implement_tmpdir: Path, head_sha: str) -> MaterializedEvidence:
@@ -314,6 +340,18 @@ def _copy_evidence(evidences: Sequence[MaterializedEvidence], *, implement_tmpdi
             raise OSError("knowledge evidence copy verification failed")
         copied[evidence.kind] = (diff_target, knowledge_target)
     return evidence_dir, copied
+
+
+def _validate_launch_evidence(*, evidence_dir: Path, copied: dict[str, tuple[Path, Path]]) -> None:
+    if not evidence_dir.is_dir() or evidence_dir.is_symlink() or not _under(evidence_dir, evidence_dir.parent):
+        raise OSError("unsafe evidence directory")
+    for diff_path, knowledge_path in copied.values():
+        for path in (diff_path, knowledge_path):
+            if not _under(path, evidence_dir) or not _regular_file(path):
+                raise OSError("unsafe launch evidence artifact")
+    contract = evidence_dir / "agent-contract.md"
+    if not _under(contract, evidence_dir) or not _regular_file(contract):
+        raise OSError("unsafe launch agent contract")
 
 
 def _launch_prompt(evidences: Sequence[MaterializedEvidence], copied: dict[str, tuple[Path, Path]]) -> str:
@@ -466,6 +504,8 @@ def _safe_detail(text: str, implement_tmpdir: Path) -> str:
 
 def _persist_unavailable(evidence: MaterializedEvidence, *, implement_tmpdir: Path, detail: str) -> None:
     invariant: bool = evidence.kind == config.ASSESSMENT_KIND_INVARIANTS
+    if invariant and _preserved_invariant_violation(evidence, implement_tmpdir=implement_tmpdir):
+        return
     architectural_guidelines.write_unavailable_note(
         implement_tmpdir=implement_tmpdir, head_sha=evidence.head_sha, base_ref=evidence.base_ref, invariant=invariant
     )
@@ -485,6 +525,53 @@ def _persist_unavailable(evidence: MaterializedEvidence, *, implement_tmpdir: Pa
         "detail": _safe_detail(detail, implement_tmpdir),
     }
     _write_json_atomic(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=evidence.kind), receipt)
+
+
+def _preserved_invariant_violation(evidence: MaterializedEvidence, *, implement_tmpdir: Path) -> bool:
+    if evidence.kind != config.ASSESSMENT_KIND_INVARIANTS:
+        return False
+    path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir)
+    try:
+        data = _load_json(path, root=implement_tmpdir)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return False
+    if architectural_guidelines.validate_invariant_ship_outcome_record(data) is not None or not isinstance(data, dict):
+        return False
+    return (
+        data.get("outcome") == "violation"
+        and data.get("assessment_kind") == "violation"
+        and data.get("head_sha") == evidence.head_sha
+        and data.get("base_ref") == evidence.base_ref
+        and _regular_file(architectural_guidelines.invariant_durable_note_path(implement_tmpdir))
+    )
+
+
+def _unavailable_receipt_valid(kind: str, *, repo_root: Path, implement_tmpdir: Path) -> bool:
+    try:
+        evidence = validate_materialization(kind=kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
+        receipt = _load_json(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=kind), root=implement_tmpdir)
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
+        return False
+    if not isinstance(receipt, dict):
+        return False
+    required = {"schema_version", "kind", "head_sha", "base_ref", "diff_fingerprint", "knowledge_sha256", "note_sha256", "outcome_sha256", "detail"}
+    if set(receipt) != required or receipt.get("schema_version") != "1" or receipt.get("kind") != kind:
+        return False
+    if any(not isinstance(receipt.get(key), str) for key in required):
+        return False
+    if any(receipt[key] != expected for key, expected in {
+        "head_sha": evidence.head_sha, "base_ref": evidence.base_ref,
+        "diff_fingerprint": evidence.diff_fingerprint, "knowledge_sha256": evidence.knowledge_sha256,
+    }.items()):
+        return False
+    if _SHA256_RE.fullmatch(cast("str", receipt["note_sha256"])) is None or _SHA256_RE.fullmatch(cast("str", receipt["outcome_sha256"])) is None:
+        return False
+    note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_path(implement_tmpdir)
+    outcome_path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.guideline_ship_outcome_path(implement_tmpdir)
+    try:
+        return receipt["note_sha256"] == _sha256(_read_regular(note_path, root=implement_tmpdir)) and receipt["outcome_sha256"] == _sha256(_read_regular(outcome_path, root=implement_tmpdir))
+    except (OSError, UnicodeDecodeError, ValueError):
+        return False
 
 
 def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launcher: Launcher | None = None) -> tuple[str, ...]:
@@ -514,7 +601,8 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             "claude", "--print", "--model", _MODEL,
             "--add-dir", str(evidence_dir), "--allowedTools", "Read", "--permission-mode", "plan",
         )
-        launch_result = (launcher or ClaudeLauncher()).launch(LaunchRequest(argv, root, prompt, evidence_dir))
+        _validate_launch_evidence(evidence_dir=evidence_dir, copied=copied)
+        launch_result = (launcher or ClaudeLauncher()).launch(LaunchRequest(argv, evidence_dir, prompt, evidence_dir))
         result_path = tmpdir / "architectural-assessment-result.json"
         try:
             if launch_result.returncode != 0:
@@ -522,10 +610,17 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             _write_text_atomic(result_path, launch_result.stdout)
             results = _parse_results(_read_regular(result_path, root=tmpdir), pending)
             for result in results:
-                _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
-                statuses[result.kind] = result.state
+                try:
+                    _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
+                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                    _persist_unavailable(next(evidence for evidence in pending if evidence.kind == result.kind), implement_tmpdir=tmpdir, detail=str(exc))
+                    statuses[result.kind] = "unavailable"
+                else:
+                    statuses[result.kind] = result.state
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             for evidence in pending:
+                if evidence.kind in statuses:
+                    continue
                 _persist_unavailable(evidence, implement_tmpdir=tmpdir, detail=str(exc))
                 statuses[evidence.kind] = "unavailable"
     return tuple(f"{kind}:{statuses[kind]}" for kind in normalized)
@@ -538,6 +633,12 @@ def main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--repo-root", default=os.environ.get(config.ENV_REPO, ""))
     _ = parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
+    try:
+        _ = normalize_kinds(args.kind)
+    except ValueError as exc:
+        print("ARCHITECTURAL_ASSESSMENT_STATUS=usage-error")
+        print(f"ARCHITECTURAL_ASSESSMENT_DETAIL={logging_util.sanitize_diagnostic_line(str(exc))}")
+        return config.EXIT_USAGE
     if not args.repo_root or not args.implement_tmpdir:
         print("ARCHITECTURAL_ASSESSMENT_STATUS=usage-error")
         print("ARCHITECTURAL_ASSESSMENT_DETAIL=repo root and implement tmpdir are required")
