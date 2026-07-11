@@ -1,0 +1,192 @@
+## Goal
+
+Prevent tests, fixtures, development probes, and reporter simulations from creating or mutating real GitHub issues without explicit live-run authorization.
+
+Cover both known filing choke points:
+
+- `python3 python/cli.py issue create-one`
+- `scripts/file-failure-report-cross-repo.sh`, including create, comment, and reconciliation mutations
+
+Keep dry-run and local report composition available without authorization.
+
+## Approach
+
+1. Define one authorization contract for GitHub issue mutations.
+   - Use config-owned wire literals and refusal statuses.
+   - Require explicit evidence from the invoking live driver. Do not infer authorization from the current directory, repository shape, run ID alone, or the presence of GitHub credentials.
+   - Support session-backed authorization for `/design` and `/implement`.
+   - Support an explicit operator-invoked context for `/issue` and the dev-only audit flow.
+   - Make refusal distinct from GitHub, redaction, validation, and network failures.
+
+2. Persist the live-run authorization key through the guarded session writers.
+   - Add the key to both `/implement` `session-env.sh` and `/design` `source-env.sh`.
+   - Preserve it on legitimate refresh and resume paths.
+   - Validate it as a strict boolean.
+   - Do not accept an arbitrary ambient value as sufficient evidence. Mutation callers must explicitly identify their context file or operator-invoked route.
+
+3. Gate `issue create-one` immediately before its first mutation-capable path.
+   - Parse the authorization input with the existing CLI arguments.
+   - Keep `--dry-run` usable without authorization.
+   - Refuse before repository lookup, label lookup, temporary body creation, or `gh issue create` when a non-dry-run call lacks valid authorization.
+   - Emit stable refusal KVs and a distinct non-zero exit code.
+   - Apply the same gate to the legacy `--json` fallback create path and orphan rollback close path because they share one authorized invocation.
+
+4. Gate the cross-repository stall-report helper before any GitHub operation.
+   - Require the live mutation context for create, duplicate-comment, dedup lookup, and reconciliation-related calls.
+   - Emit a designated refusal status and reason without calling `gh`.
+   - Keep `--dry-run` validation offline.
+   - Thread the context explicitly from `/design` and `/implement` reporter code rather than relying on inherited process state.
+
+5. Update every legitimate caller of the guarded boundaries.
+   - `/design` terminal and salvage reporting passes its guarded `source-env.sh`.
+   - `/implement` stall recovery passes its guarded `session-env.sh`.
+   - OOS and scope-disposition filing pass the active `/implement` context.
+   - `/issue` and the dev-only audit skill mark their direct, operator-requested filing calls explicitly.
+   - Inventory all repository call sites for both choke points. Do not leave a caller that silently degrades to an unauthorized create attempt.
+
+6. Make the Python test environment deny real issue mutations by default.
+   - Set the test-only denial control in the autouse isolation fixture.
+   - Ensure denial wins over inherited live-session state. This protects test runs launched from inside an active `/design` or `/implement`.
+   - Tests of successful filing must use injected runners, monkeypatches, or stubbed `gh` processes and opt into only the narrow simulated mutation under test.
+   - Add a subprocess regression so the protection does not depend only on an in-process monkeypatch.
+
+7. Document the outbound mutation boundary and refusal contract in the security policy and helper contract.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+Define the authorization key, explicit invocation literals, refusal status, refusal reason, and exit code once. Keep consumers from duplicating wire strings.
+
+### UPDATED: python/larch/state/session_env.py
+
+Add the strict live-mutation authorization key to the allowlists and generated values for `/design` and `/implement` session environments. Preserve valid prior state during refresh and reject malformed values.
+
+### UPDATED: python/larch/design/design_step0.py
+
+Thread live-driver authorization into the guarded `/design` environment writer during real Step 0 setup.
+
+### UPDATED: python/larch/state/bootstrap.py
+
+Thread live-driver authorization into the guarded `/implement` session environment writer during real bootstrap and resume setup.
+
+### UPDATED: python/larch/issue/issue_create.py
+
+Extend `create-one` argument parsing with the explicit authorization inputs. Add a shared fail-closed check before non-dry-run GitHub access. Emit the designated refusal KVs and ensure fallback create and rollback close cannot bypass the check.
+
+### UPDATED: scripts/file-failure-report-cross-repo.sh
+
+Require and validate the mutation context before any `gh` lookup or mutation. Add a stable refusal status. Preserve the current dry-run, dedup, validation, and fallback contracts after authorization succeeds.
+
+### UPDATED: scripts/file-failure-report-cross-repo.md
+
+Document the required live-run context, the operator route if applicable, dry-run behavior, and the refusal KVs.
+
+### UPDATED: python/larch/design/design_terminal.py
+
+Pass the `/design` context file into Tier A filing and salvage reconciliation. Convert authorization refusal into the existing local fallback report without retrying or attempting another public mutation.
+
+### UPDATED: python/larch/state/_report.py
+
+Pass the `/implement` context file into Tier A dedup and Tier B filing. Preserve refusal as a specific fallback reason rather than a generic helper failure.
+
+### UPDATED: python/larch/issue/oos_filer.py
+
+Pass the active `/implement` mutation context to `issue create-one` for accepted OOS filing. Treat refusal as a hard create failure with the existing audit record and cleanup behavior.
+
+### UPDATED: python/larch/implement/scope_disposition.py
+
+Pass the active `/implement` mutation context when creating a deferred-work follow-up issue. Surface refusal through the existing `ShipError` path.
+
+### UPDATED: skills/issue/SKILL.md
+
+Mark direct issue creation as an explicit operator-invoked mutation. Document the refusal output and keep dry-run calls authorization-free.
+
+### UPDATED: .claude/skills/audit-runs/SKILL.md
+
+Add the explicit operator-invoked authorization to its direct `issue create-one` command and document refusal handling.
+
+### UPDATED: python/conftest.py
+
+Install an autouse, default-deny test marker for real GitHub issue mutations. Scrub and restore related authorization variables so live parent sessions cannot authorize tests accidentally.
+
+### UPDATED: python/tests/core/test_config.py
+
+Pin the new config-owned wire literals and distinct refusal exit code.
+
+### UPDATED: python/tests/state/test_session_env.py
+
+Cover both session writers, strict boolean validation, refresh preservation, and omission from untrusted caller-env import paths.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+Cover authorized live reporter filing, unauthorized fixture refusal, fallback status propagation, and the regression where realistic terminal-failure fixture data must not invoke the cross-repository helper or `gh`.
+
+### UPDATED: python/tests/issue/test_issue_create.py
+
+Add focused tests proving:
+
+- non-dry-run `create-one` refuses without authorization;
+- refusal emits the designated KVs and distinct exit code;
+- no repository, label, create, lookup, or rollback `gh` command runs;
+- dry-run remains offline and allowed;
+- valid operator and session-backed contexts reach only injected `gh`;
+- malformed, missing, or unauthorized context files fail closed.
+
+Update existing success tests to opt into the narrow simulated mutation while keeping their runners stubbed.
+
+### UPDATED: python/tests/state/test_stall_recovery.py
+
+Cover authorized reporter paths, refusal propagation, and inherited live-session plus test-deny precedence for Tier A and Tier B filing.
+
+### UPDATED: scripts/test-file-failure-report-cross-repo.sh
+
+Add no-marker and invalid-marker cases that assert zero `gh` calls. Update successful create and duplicate-comment fixtures to pass explicit authorization. Pin dry-run as authorization-free.
+
+### UPDATED: SECURITY.md
+
+Document the live mutation authorization boundary, test default-deny behavior, refusal semantics, and the residual fact that this protects against accidental execution rather than a malicious process with repository and credential access.
+
+## Edge cases
+
+- A valid `LARCH_RUN_ID` without the authorization key must refuse.
+- An authorization key inherited through ambient environment without the explicit context argument must refuse.
+- A context file outside the expected session root, a symlink, a non-regular file, a malformed boolean, or a mismatched run identity must refuse.
+- Test denial must override a valid parent session context.
+- `--dry-run` must not require authorization and must make no `gh` calls.
+- Dedup matches must not post comments without authorization.
+- Create success followed by ID lookup failure may run rollback close only because the original invocation was already authorized.
+- Reporter refusal must produce a local fallback artifact and must not retry through another mutation route.
+- Resume and environment refresh must retain authorization only through the trusted writer path.
+- Operator-invoked authorization must be explicit at the direct skill command, not inferred from TTY state or credentials.
+
+## Failure modes
+
+- If a legitimate caller omits authorization, fail before GitHub access and emit the designated refusal fields.
+- If session evidence cannot be read or validated, treat it as unauthorized.
+- If a helper returns the refusal status, preserve that reason through reporter normalization and fallback output.
+- If the test isolation fixture is absent from a subprocess, the boundary-level authorization check must still refuse.
+- Do not convert refusal into a fail-open dedup result or a generic create retry.
+- Do not let fixture-authored state alone suppress the test default-deny guard.
+
+## Testing strategy
+
+Run only the focused changed-file tests and harnesses:
+
+- `python3 -m pytest python/tests/core/test_config.py`
+- `python3 -m pytest python/tests/state/test_session_env.py`
+- `python3 -m pytest python/tests/issue/test_issue_create.py`
+- `python3 -m pytest python/tests/design/test_design_lifecycle.py`
+- `python3 -m pytest python/tests/state/test_stall_recovery.py`
+- `bash scripts/test-file-failure-report-cross-repo.sh`
+
+Also run changed-file lint and type checks through the repository’s documented focused Python lint path. Verify the shell helper with the Bash 3.2 and shell lint targets applicable to that file.
+
+The key regression assertion is process-level: invoke each filing boundary without authorization while a real-looking repository and inherited live session are present, then prove the stub log contains no `gh` invocation.
+
+difficulty: HARD
+diff_added: 620
+diff_deleted: 80
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 700
