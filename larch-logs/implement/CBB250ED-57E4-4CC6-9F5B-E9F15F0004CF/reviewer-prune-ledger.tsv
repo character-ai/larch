@@ -1,0 +1,17 @@
+round	tool	slot	label	accepted_count	weighted_accepted_count	rejected_count	total_count
+1	cursor	correctness	cursor-specialist-correctness-output.txt	2	4	0	2
+1	codex	correctness	codex-specialist-correctness-output.txt	3	6	0	4
+1	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	6	8	0	7
+1	codex	edge-cases	codex-specialist-edge-cases-output.txt	3	6	0	3
+1	cursor	testing	cursor-specialist-testing-output.txt	6	6	0	6
+1	codex	testing	codex-specialist-testing-output.txt	2	2	0	2
+1	cursor	dyn-dyn-artifact-trust	dyn-dyn-artifact-trust-output.txt	6	9	0	6
+1	codex	dyn-dyn-artifact-trust-codex	dyn-dyn-artifact-trust-codex-output.txt	5	8	0	5
+2	cursor	correctness	cursor-specialist-correctness-output.txt	5	7	5	10
+2	codex	correctness	codex-specialist-correctness-output.txt	4	7	0	5
+2	cursor	edge-cases	cursor-specialist-edge-cases-output.txt	4	6	4	8
+2	codex	edge-cases	codex-specialist-edge-cases-output.txt	2	4	0	3
+2	cursor	testing	cursor-specialist-testing-output.txt	6	7	0	7
+2	codex	testing	codex-specialist-testing-output.txt	5	6	0	5
+2	cursor	dyn-dyn-artifact-trust	dyn-dyn-artifact-trust-output.txt	3	6	4	7
+2	codex	dyn-dyn-artifact-trust-codex	dyn-dyn-artifact-trust-codex-output.txt	0	0	0	0
