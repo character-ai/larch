@@ -504,6 +504,13 @@ def _validated_publish_state(*, design_tmpdir: Path, path: Path) -> dict[str, st
     if path.is_symlink() or not path.is_file():
         return None
     try:
+        resolved_root = design_tmpdir.resolve(strict=False)
+        resolved_path = path.resolve(strict=False)
+    except OSError:
+        return None
+    if resolved_path != resolved_root and resolved_root not in resolved_path.parents:
+        return None
+    try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
