@@ -1,0 +1,28 @@
+# [Bug] /implement terminal: Post-merge log flush failed after admin_merged because local checkout moved to main (transient-infra at unknown)
+
+<!-- larch-stall:signature=e81c2ff32f475338e10951a1386efc62b0d8ba68dba796d2f3cf0b11b97379d2 -->
+## Report metadata
+- **Report kind**: `terminal-failure`
+- **Failure class**: `transient-infra`
+- **Step**: `unknown`
+- **Bail reason**: `redacted`
+- **Run ID**: `07122764-E39A-4913-BCF7-189440D90807`
+- **Branch**: `unknown`
+- **PR URL**: `https://github.com/character-ai/larch/pull/6911`
+- **Resume hint**: `step8-shippr`
+
+## Root-cause finding
+
+verdict=larch-defect
+confidence=medium
+summary=Post-merge log flush failed after admin_merged because local checkout moved to main
+
+The ship driver admin-merged PR #6911 (branch sergey-zhupanov/implementing-feature-guideline-fail-clos-6900). After merge, the local git checkout moved to main. The post-merge refresh step expected the feature branch but found main, causing the flush to be skipped (detail: post-merge flush skipped: post-merge-refresh-failed from .step-8-ship-handoff.json). The stall recovery reship attempt also failed with checkout-mismatch (needs_user_reason=checkout-mismatch) for the same reason. The PR merged successfully and the implementation is complete. The larch defect is that the post-merge flush does not handle the case where the local checkout moved to main after admin merge.
+
+
+
+## Attempts
+
+| Attempt | Class | Resume hint | Outcome | UTC |
+|---|---|---|---|---|
+| none | n/a | n/a | n/a | n/a |
