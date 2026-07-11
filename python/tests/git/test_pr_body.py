@@ -664,6 +664,60 @@ def test_render_run_summary_glm_1m_alias_gets_plan_estimate() -> None:
     assert "**Cost note**:" in body
 
 
+def test_render_run_summary_non_glm_1m_cost_line_is_byte_stable() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-non-glm-1m",
+        total_cost="16.00",
+        claude_cost="15.00",
+        codex_cost="0.20",
+        cursor_cost="0.30",
+        claude_sub_cost="0.50",
+        total_tokens=1000,
+        cost_unavailable=False,
+        main_model="claude-opus-4-8[1m]",
+    )
+    cost_line = next(line for line in body.splitlines() if line.startswith("- **Cost**:"))
+    assert cost_line == (
+        "- **Cost**: 💰 TOTAL ~$16.00: Claude $15.00, Codex-5.6 $0.20, "
+        "Codex-mini $0.00, Cursor $0.30, Claude (subprocess) $0.50  |  Tokens: 1k"
+    )
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
+
+
+def test_render_run_summary_glm_zero_cost_keeps_plan_formatting() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-glm-zero",
+        total_cost="0.00",
+        claude_cost="0.00",
+        codex_cost="0.00",
+        cursor_cost="0.00",
+        claude_sub_cost="0.00",
+        total_tokens=0,
+        cost_unavailable=False,
+        main_model="glm-5.2",
+    )
+    assert "- **Cost**: 💰 TOTAL ~$0.00: Claude/GLM-5.2 token $0.00 (estimated $0.00)," in body
+    assert "- **Cost note**:" in body
+
+
+def test_render_run_summary_glm_cost_unavailable_omits_plan_formatting() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-glm-unavailable",
+        cost_unavailable=True,
+        main_model="glm-5.2",
+    )
+    assert "- **Cost**: N/A" in body
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
+
+
 def test_render_run_summary_splits_codex_by_model() -> None:
     body = pr_body.render_run_summary(
         skill="implement",
@@ -766,6 +820,30 @@ def test_render_run_summary_main_glm_from_manifest(tmp_path: Path, capsys: pytes
     assert "Claude (subprocess) $5.00" in body
     assert "**Cost note**:" in body
     assert "- **Main agent model**: glm-5.2[1m]" in body
+
+
+def test_render_run_summary_main_manifest_unknown_does_not_fallback_to_transcript(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"model_roster":{"main":"unknown"}}\n', encoding="utf-8")
+    monkeypatch.setattr(pr_body.tokens, "read_main_model", lambda: "glm-5.2")
+
+    rc = pr_body.render_run_summary_main([
+        "--skill", "implement", "--outcome", "completed", "--run-id", "r-unknown",
+        "--manifest-path", str(manifest),
+        "--claude-input-tokens", "1000000",
+        "--print-stdout",
+    ])
+
+    assert rc == 0
+    body = capsys.readouterr().out
+    assert "Claude $5.00" in body
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
+    assert "- **Main agent model**: unknown" in body
 
 
 def test_render_run_summary_main_main_model_override_wins_for_pricing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

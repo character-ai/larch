@@ -346,12 +346,12 @@ def test_final_report_token_fields_glm_1m_alias_uses_glm_rates(tmp_path: Path) -
     assert fields["claude_cost"] == "1.40"
 
 
-def test_write_final_report_glm_plan_estimate_in_summary(tmp_path: Path) -> None:
+def test_write_final_report_glm_1m_alias_plan_estimate_in_summary(tmp_path: Path) -> None:
     _write_minimal_state(tmp_path)
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
     run_dir.mkdir(parents=True)
     (run_dir / "manifest.json").write_text(
-        json.dumps({"model_roster": {"main": "glm-5.2"}, "larch_version": "1.0.0", "effort": "high"}),
+        json.dumps({"model_roster": {"main": "glm-5.2[1m]"}, "larch_version": "1.0.0", "effort": "high"}),
         encoding="utf-8",
     )
     (run_dir / "token-report.json").write_text(
@@ -371,6 +371,7 @@ def test_write_final_report_glm_plan_estimate_in_summary(tmp_path: Path) -> None
     summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
     # Token $5.80 → estimated $5.80/15 ≈ $0.39; TOTAL = 10.80 - 5.80 + 0.386... = 5.386... → $5.39
     assert "Claude/GLM-5.2 token $5.80 (estimated $0.39)" in summary
+    assert "- **Main agent model**: glm-5.2[1m]" in summary
     assert "Claude (subprocess) $5.00" in summary
     assert "**Cost note**:" in summary
     # Subprocess not divided: estimated total uses full $5.00 sub + $0.39 main

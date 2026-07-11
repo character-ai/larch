@@ -517,17 +517,20 @@ def _resolve_run_identity(kwargs: Mapping[str, object]) -> tuple[str, str, str]:
         return "" if text in ("", "unknown", "None") else text
 
     ident: dict[str, str] = {}
+    manifest_authoritative = False
     manifest_path = kwargs.get("manifest_path")
     if manifest_path:
-        ident = _identity_from_manifest(str(manifest_path))
+        manifest = Path(str(manifest_path))
+        manifest_authoritative = manifest.is_file()
+        ident = _identity_from_manifest(str(manifest))
     version = clean(kwargs.get("larch_version")) or clean(ident.get("larch_version")) or _plugin_version_local() or "unknown"
     model = clean(kwargs.get("main_model")) or clean(ident.get("main_model"))
-    if not model:
+    if not model and not manifest_authoritative:
         try:
             model = tokens.read_main_model()
         except Exception:
             model = ""
-        model = model or "unknown"
+    model = model or "unknown"
     effort = (
         clean(kwargs.get("effort"))
         or clean(ident.get("effort"))
