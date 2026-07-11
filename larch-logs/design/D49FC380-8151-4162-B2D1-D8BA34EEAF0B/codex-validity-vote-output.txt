@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- This is a real pre-existing publish-workflow defect, but changing rename success semantics is outside the scoped diagnostics and reporting fix.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The regression is conditional on an unnecessarily global propagation implementation; the plan can surface checkpoint write failures while preserving the established rc-3 fallback.

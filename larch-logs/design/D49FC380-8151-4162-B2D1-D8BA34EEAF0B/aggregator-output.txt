@@ -1,0 +1,34 @@
+### FINDING_1: Exit-5 publish failures bypass diagnostics
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: Step 5c routes publish rc 5 through the early-exit guard intended for configuration errors, so it skips copying stdout/stderr tails, reading `.design-publish-result.env`, rendering structured failure details, and writing enriched terminal status.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Restructure `step5c_core` so rc 5 follows a dedicated terminal-failure path: persist stdout/stderr tails under `DESIGN_TMPDIR`, read the current publish result env, render `design-publish-tail.failure.log` from structured state, write enriched `.design-step5c-status.env`, then call terminal staging. Keep rc 2 on the early-exit branch or give it an equivalent minimal path.
+
+### FINDING_2: Generic terminal classification ignores structured rc-5 progress
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: The generic `/design` terminal path invokes `_classify_generic_from_terminal_state`, which hardcodes `resume_hint = "none"` and relies on text fallback, leaving validated publish-tail rc-5 failures classified as unrecoverable with `MATCHED_CLASSIFIER_PATTERN=fallback`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `_classify_generic_from_terminal_state`, branch on validated terminal-state tokens for `TRIGGER=publish-tail-failed` and `EXIT_CODE=5` (plus copied publish-progress fields) to the new structured classifier before `_classify_text`. Emit `FAILURE_CLASS=recoverable`, the complete-post-plan resume hint, and the named publish-tail pattern only when validated checkpoint evidence supports it; otherwise keep the existing fallback path.
+
+### FINDING_3: Rename subprocess failures are not validated
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: major
+- **Concern**: The publish flow records rename progress without checking the tracking-issue rename subprocess result or requiring validated `RENAMED` evidence, allowing an unsuccessful rename to be treated as successful publication and bypassing terminal diagnostics and recoverability handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Check `rename.returncode` and validated rename evidence before continuing. Persist an explicit attempted/failed rename state, capture its stderr, and return rc 5 or otherwise surface the failure through the planned terminal reporting path.
+
+### FINDING_4: Failed initialization can reuse stale result state
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: major
+- **Concern**: If fresh publish initialization fails before replacing the existing result env, Step 5c may read stale `PLAN_WRITE_OK`, progress, branch, or PR values and incorrectly classify the new attempt as recoverable.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Have Step 5c invalidate the prior result env before invocation and fail without reading it if invalidation fails. Write each checkpoint atomically.
+
+### FINDING_5: Result-env write exceptions can break the rc-3 fallback contract
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: major
+- **Concern**: Making `_write_result_env` propagate `OSError` globally can convert an existing rc-3 final-write failure, after successful publish work, into terminal rc 5 and incorrectly report a successful design as failed instead of using Step 5c’s stdout fallback.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Preserve the rc-3 return contract for final result writes. Propagate checkpoint failures only where stale progress makes continuation unsafe, or catch write exceptions at final-write call sites and return 3.

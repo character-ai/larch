@@ -1,0 +1,72 @@
+Reviewing the plan against current code for tail capture, redaction, path containment, and trusted state boundaries.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	security	python/larch/state/_report.py:292-296	Plan embeds stderr tail in design-publish-tail.failure.log but Tier A filing redacts secrets only	Tier A compose_report appends the validated failure-detail file verbatim then calls _redact_text (secrets only). Publish stderr tails contain operator paths and traceback text. Those can reach a public upstream issue when _tier_a_eligible is true.	Scrub failure-detail content with redact tmpdir-paths then redact secrets before write or before Tier A body assembly, and fail closed to fallback-print on scrub failure. Alternatively keep raw tails only in sidecar files and limit the failure-detail log to structured fields plus a single sanitized first traceback line.
+1	in_scope	major	correctness	python/larch/state/_validate.py:113-121	New terminal-state PR URL and branch keys conflict with _reject_rawish_terminal_value	_validate.py adds PR URL, branch, and progress keys, but _validated_terminal_state_values rejects any terminal value containing github.com or /users/ before per-key validation. Staged terminal state with PR_URL=https://github.com/... fails validate_terminal_state and routes to invalid-terminal-state fallback.	Exempt the new URL and branch keys from the blanket _reject_rawish_terminal_value pass, or validate them only through dedicated validators in _terminal_state_value_valid.
+1	in_scope	major	correctness	python/larch/state/_classify.py:351-371	Structured recoverable classifier does not wire RESUME_HINT on the design generic path	_design classify uses profile=generic via _classify_generic_from_terminal_state, which hardcodes resume_hint=none and ignores the classifier hint tuple. Implement profile also drops _classify_text hint and derives hint from _resume_hint_for, which returns none for step publish. design-rename-log-flush never reaches reports.	Wire hint from the publish-tail rc-5 classifier (or _resume_hint_for when FAILURE_CLASS=recoverable and step=publish) into RESUME_HINT on both generic and implement classify paths; add tests asserting RESUME_HINT=design-rename-log-flush when PLAN_WRITE_OK=true.
+1	in_scope	minor	security	python/larch/design/design_step5c.py:675-679	Tail persistence must happen before temp capture deletion and reject symlink sources	Current Step 5c deletes larch-publish-stdout/stderr temp files in finally before any durable copy exists. Plan adds copy-under-DESIGN_TMPDIR but does not pin ordering against finally or source hardening. A missed ordering regresses the original data-loss bug; symlinked temp paths could bypass containment.	Copy bounded tails into fixed basenames under DESIGN_TMPDIR before unlinking temp captures, using O_NOFOLLOW or equivalent on read and atomic_write nofollow on write; reject non-regular sources.
+
+## Findings
+
+### 1. Security — Tier A egress for failure-detail stderr (major)
+
+The plan builds `design-publish-tail.failure.log` from captured stderr and uses it as `FAILURE_DETAIL_LOG` for terminal staging. On the design reporting path, eligible runs file Tier A issues whose body includes that file:
+
+```292:296:python/larch/state/_report.py
+    if detail_valid:
+        body.append("\n## Validated failure-detail log\n\n" + detail_content + "\n")
+    body.append(_append_file_section(label="Run-log pointer", path=tmpdir / "run-log-pointer.txt"))
+```
+
+Redaction before filing is secrets-only:
+
+```413:420:python/larch/state/_report.py
+def _redact_text(text: str) -> str | None:
+    ...
+    completed = subprocess.run([sys.executable, str(redactor), "redact", "secrets"], ...)
+```
+
+Approach item 3 says public output stays behind “existing sensitive-corpus and redaction checks,” but Tier A does not run tmpdir-paths scrub or sensitive-corpus rejection on the full body. Embedding stderr tails in the failure-detail log reintroduces operator path and traceback egress on the same path as the bug report.
+
+### 2. Correctness — Terminal-state URL keys vs rawish gate (major)
+
+The plan extends terminal state with issue, branch, and PR fields. Validation applies `_reject_rawish_terminal_value` to every key except `FAILURE_DETAIL_LOG`:
+
+```319:323:python/larch/state/_tokens.py
+def _reject_rawish_terminal_value(value: str) -> bool:
+    ...
+    return any(token in lower for token in ("http://", "https://", "github.com", "/users/", "/home/", " larch ", "```"))
+```
+
+Any staged `PR_URL=https://github.com/...` fails before the new per-key validators run, so extended progress state cannot validate and reporting falls back.
+
+### 3. Correctness — `design-rename-log-flush` hint never reaches classification (major)
+
+Design failure reporting classifies with `profile=generic`. That path hardcodes the resume hint:
+
+```351:371:python/larch/state/_classify.py
+    resume_hint = "none"
+    ...
+        "RESUME_HINT": resume_hint,
+```
+
+The implement profile discards the classifier hint tuple and uses `_resume_hint_for`, which returns `none` for generic step `publish` (lines 97–112). The plan’s recoverable / `design-rename-log-flush` classifier cannot affect filed reports without explicit hint wiring in both paths.
+
+### 4. Risk integration — Tail capture ordering and symlink rejection (minor)
+
+Temp captures are removed in `finally` today:
+
+```675:679:python/larch/design/design_step5c.py
+        finally:
+            with contextlib.suppress(FileNotFoundError):
+                publish_stdout_file.unlink()
+            with contextlib.suppress(FileNotFoundError):
+                publish_stderr_file.unlink()
+```
+
+The plan adds durable tail files but should pin copy-before-unlink and the same nofollow / non-symlink containment used by `design_write_merge_env` and `_detail_log.py`, or the original diagnostic loss returns.
+
+---
+
+**What the plan gets right:** Raw traceback stays out of trusted `KEY=value` state (`phase_driver_read_result_env` drops multiline values at `design_terminal.py:70-71`; plan forbids exception text in env files). Sensitive corpus already lists `design-publish-tail.failure.log` (`_corpus.py:160`). Failure-detail files are bounded and symlink-checked (`_detail_log.py:85-94`). Log flush uses tmpdir-paths + secrets scrub (`design_log_publish_flow.py:199-238`). The plan’s fresh result-env initialization, checkpoint writes, and fail-closed redaction failure modes address the original stale-env and silent-loss defects.
+
+**Out of scope (not listed):** Reusing the exact 5120-byte failed-agent stderr cap from `python/larch/agents/_failure_diag.py` instead of a new config constant is consistency only, not required for correctness.

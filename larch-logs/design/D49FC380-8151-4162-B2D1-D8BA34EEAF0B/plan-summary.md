@@ -1,0 +1,1 @@
+Fix Step 5c publish-failure observability across publish checkpoints, terminal classification, and reporting. Preserve bounded scrubbed diagnostics, classify completed plan writes as recoverable, and close the auto-filed issue only after the same run proves rename and log-publish recovery.
