@@ -54,6 +54,10 @@ _STATUS_VALUES = {"present", "absent", "invalid"}
 GUIDELINE_HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
 INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE)
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
+# Loose id matchers for assessment-note classification: any I-*/G-* entry referenced
+# anywhere in a note's prose, not just as a Markdown heading. See issue #6882.
+NOTE_INVARIANT_ID_RE = re.compile(r"I-[A-Za-z0-9-]+-\d+")
+NOTE_GUIDELINE_ID_RE = re.compile(r"G-[A-Za-z0-9-]+-\d+")
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
 _MECHANIZED_RE = re.compile(r"^\s*-\s*Mechanized:\s*(.+?)\s*$")
@@ -1716,11 +1720,16 @@ def _write_compose_materialization_metadata(
 
 
 def _invariant_assessment_kind(note: str) -> str:
+    # Tolerant classification (issue #6882): a clean note may carry rationale beyond
+    # the exact presentation line, so a note whose first line is the clean note is
+    # clean even when later prose references an I-* entry. A note is a violation only
+    # when it names a specific I-* invariant without leading with the clean line.
     if not note.strip():
         return ""
-    if note.rstrip("\n") == CLEAN_INVARIANT_PRESENTATION_NOTE:
+    first_line = note.split("\n", 1)[0].strip()
+    if first_line == CLEAN_INVARIANT_PRESENTATION_NOTE:
         return "clean"
-    return "violation"
+    return "violation" if NOTE_INVARIANT_ID_RE.search(note) else "clean"
 
 
 def _write_invariant_compose_materialization_metadata(

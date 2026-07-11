@@ -6423,7 +6423,7 @@ def test_load_or_prepare_guidelines_note_drops_on_redaction_failure(
 def test_guideline_ship_outcome_sidecar_pinned_and_clean(tmp_path: Path) -> None:
     pinned = ship_guidelines.write_guideline_ship_outcome(
         implement_tmpdir=str(tmp_path),
-        result=ship.GuidelinesGateResult(note="Deviation note", guidelines_status="present"),
+        result=ship.GuidelinesGateResult(note="- G-Py-1: deviates by adding shell composition", guidelines_status="present"),
         head_sha="abc123",
         base_ref="origin/main",
     )
@@ -7279,7 +7279,7 @@ def test_open_pr_resume_clears_stale_guideline_outcome_sidecar_before_gate(
     def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
         order.append("gate")
         assert not stale.exists()
-        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+        return ship.GuidelinesGateResult(note="- G-Py-1: deviation warning", guidelines_status="present")
 
     def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
         order.append("flush")
@@ -7385,7 +7385,7 @@ def test_open_pr_resume_no_logs_commit_keeps_guideline_outcome_sidecar_and_skips
 
     def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
         order.append("gate")
-        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+        return ship.GuidelinesGateResult(note="- G-Py-1: deviation warning", guidelines_status="present")
 
     def fake_compose(**_kwargs: object) -> str:
         order.append("compose")
@@ -7774,6 +7774,50 @@ def test_invariant_authored_violation_takes_precedence_over_unavailable() -> Non
     )
     assert unavailable.outcome == ship_guidelines.OUTCOME_DROPPED
     assert violation.outcome == ship_guidelines.OUTCOME_VIOLATION
+
+
+def test_invariant_assessment_kind_tolerates_verbose_clean_note() -> None:
+    # Issue #6882: a clean note may carry rationale beyond the exact line, even
+    # rationale that references an I-* entry, and must still classify as clean.
+    verbose_clean = (
+        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
+        + "\nThe adapter realizes I-Stale-1 by caching the fingerprint."
+    )
+    assert ship_guidelines._invariant_assessment_kind(verbose_clean) == "clean"
+    assert ship_guidelines._invariant_assessment_kind("I-Stale-1: violated") == "violation"
+    assert ship_guidelines._invariant_assessment_kind(
+        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
+    ) == "clean"
+
+
+def test_guideline_assessment_kind_tolerates_verbose_clean_note() -> None:
+    verbose_clean = (
+        ship.architectural_guidelines.CLEAN_PRESENTATION_NOTE
+        + "\nThis path respects G-Py-1 by avoiding shell composition."
+    )
+    assert ship_guidelines._assessment_kind(verbose_clean) == "clean"
+    assert ship_guidelines._assessment_kind("G-Py-1: deviates because of X") == "deviation"
+
+
+def test_invariant_ship_outcome_verbose_clean_note_is_clean_not_violation() -> None:
+    # Regression for the reported ship-blocking path (#6882): a verbose clean note
+    # must route to a clean outcome, not NEXT_ACTION=ci-fix with a violation reason.
+    verbose_clean = (
+        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
+        + "\nThe adapter realizes I-Stale-1 by caching the fingerprint."
+    )
+    outcome = ship_guidelines._classify_invariant_ship_outcome(
+        result=ship_guidelines.InvariantsGateResult(
+            note=verbose_clean,
+            invariants_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_AUTHORED,
+        ),
+        head_sha="abc",
+        base_ref="origin/main",
+    )
+    assert outcome.outcome == ship_guidelines.OUTCOME_CLEAN
+    assert outcome.reason == ship_guidelines.REASON_CLEAN_NOTE
+    assert outcome.assessment_kind == "clean"
 
 
 def test_guideline_outcome_validator_rejects_unavailable_with_clean_assessment_kind() -> None:
