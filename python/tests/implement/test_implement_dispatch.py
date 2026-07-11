@@ -338,6 +338,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "checks-commit-route")] == ("larch.implement.implement_dispatch", "checks_commit_route_main")
     assert _REGISTRY[("implement", "checks-step5-resume")] == ("larch.implement.implement_dispatch", "checks_step5_resume_main")
     assert _REGISTRY[("implement", "clone-tag")] == ("larch.implement.implement_dispatch", "clone_tag_main")
+    assert _REGISTRY[("ship", "normalize-assessment-handoff")] == ("larch.implement.implement_dispatch", "ship_normalize_assessment_handoff_main")
     assert _REGISTRY[("implement", "kill-active-leg")] == ("larch.implement.implement_dispatch", "kill_active_leg_main")
     assert _REGISTRY[("plan-review", "write-loop-identity")] == ("larch.core.process_identity", "write_loop_identity_main")
     assert _REGISTRY[("plan-review", "teardown-loop-identity")] == ("larch.core.process_identity", "teardown_loop_identity_main")
@@ -564,6 +565,168 @@ def test_ship_route_exit_routes_persisted_conflict_handoff(
     assert "NEXT_ACTION=conflict-fix\n" in env
 
 
+@pytest.mark.parametrize(
+    ("action", "expected"),
+    [
+        ("invariants-assessment", "invariants"),
+        ("guidelines-assessment", "guidelines"),
+    ],
+)
+def test_ship_normalize_assessment_handoff_normalizes_legacy_aliases(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    action: str,
+    expected: str,
+) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text(f"KEEP=value\nNEXT_ACTION={action}\nDETAIL=stale\n", encoding="utf-8")
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert capsys.readouterr().out == f"NEXT_ACTION=assessments\nASSESSMENT_REQUESTED_KINDS={expected}\n"
+    assert handoff.read_text(encoding="utf-8") == f"KEEP=value\nNEXT_ACTION=assessments\nDETAIL={expected}\n"
+
+
+def test_ship_normalize_assessment_handoff_canonicalizes_kind_order(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text("NEXT_ACTION=assessments\nDETAIL=guidelines,invariants\n", encoding="utf-8")
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert capsys.readouterr().out == "NEXT_ACTION=assessments\nASSESSMENT_REQUESTED_KINDS=invariants,guidelines\n"
+    assert handoff.read_text(encoding="utf-8") == "NEXT_ACTION=assessments\nDETAIL=invariants,guidelines\n"
+
+
+def test_ship_normalize_assessment_handoff_rejects_noncanonical_kinds(tmp_path: Path) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    original = "NEXT_ACTION=assessments\nDETAIL=guidelines, invariants\n"
+    _ = handoff.write_text(original, encoding="utf-8")
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 2
+
+    assert handoff.read_text(encoding="utf-8") == original
+
+
+def test_ship_normalize_assessment_handoff_ignores_legacy_symlinked_temp_path(
+    tmp_path: Path,
+) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text("NEXT_ACTION=assessments\nDETAIL=guidelines\n", encoding="utf-8")
+    redirected = tmp / "redirected.txt"
+    redirected.write_text("unchanged\n", encoding="utf-8")
+    (tmp / ".ship-route-exit-handoff.env.tmp").symlink_to(redirected)
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert redirected.read_text(encoding="utf-8") == "unchanged\n"
+    assert handoff.read_text(encoding="utf-8") == "NEXT_ACTION=assessments\nDETAIL=guidelines\n"
+
+
+def test_ship_normalize_assessment_handoff_reads_detail_from_detail_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    detail_file = tmp / "assessment-detail.txt"
+    _ = detail_file.write_text("guidelines,invariants", encoding="utf-8")
+    _ = handoff.write_text(
+        f"KEEP=value\nNEXT_ACTION=assessments\nDETAIL_FILE={detail_file}\n",
+        encoding="utf-8",
+    )
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert capsys.readouterr().out == "NEXT_ACTION=assessments\nASSESSMENT_REQUESTED_KINDS=invariants,guidelines\n"
+    assert handoff.read_text(encoding="utf-8") == "KEEP=value\nNEXT_ACTION=assessments\nDETAIL=invariants,guidelines\n"
+
+
+@pytest.mark.parametrize(
+    "handoff_body",
+    [
+        "NEXT_ACTION=assessments\nDETAIL=invariants\nDETAIL_FILE=detail.txt\n",
+        "NEXT_ACTION=assessments\n",
+        "NEXT_ACTION=ci-fix\nDETAIL=invariants\n",
+        "KEEP=a\nKEEP=b\nNEXT_ACTION=assessments\nDETAIL=invariants\n",
+        "NEXT_ACTION=assessments\nDETAIL=bogus\n",
+        "NEXT_ACTION=assessments\nDETAIL=invariants,invariants\n",
+    ],
+    ids=[
+        "detail-and-detail-file",
+        "missing-detail",
+        "unknown-next-action",
+        "duplicate-handoff-key",
+        "unknown-kind",
+        "duplicate-kind-token",
+    ],
+)
+def test_ship_normalize_assessment_handoff_rejects_invalid_handoff(
+    tmp_path: Path,
+    handoff_body: str,
+) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text(handoff_body, encoding="utf-8")
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 2
+
+    assert handoff.read_text(encoding="utf-8") == handoff_body
+
+
+def test_ship_normalize_assessment_handoff_rejects_detail_file_outside_tmpdir(
+    tmp_path: Path,
+) -> None:
+    tmp = _session(tmp_path)
+    outside = tmp_path / "outside-detail.txt"
+    _ = outside.write_text("invariants", encoding="utf-8")
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    original = f"NEXT_ACTION=assessments\nDETAIL_FILE={outside}\n"
+    _ = handoff.write_text(original, encoding="utf-8")
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 2
+
+    assert handoff.read_text(encoding="utf-8") == original
+
+
+def test_ship_normalize_assessment_handoff_missing_handoff_file(tmp_path: Path) -> None:
+    tmp = _session(tmp_path)
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 2
+
+    assert not (tmp / ".ship-route-exit-handoff.env").exists()
+
+
+def test_ship_normalize_assessment_handoff_requires_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", ""]) == 2
+
+
+def test_ship_normalize_assessment_handoff_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text("NEXT_ACTION=guidelines-assessment\n", encoding="utf-8")
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp))
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", ""]) == 0
+
+    assert capsys.readouterr().out == "NEXT_ACTION=assessments\nASSESSMENT_REQUESTED_KINDS=guidelines\n"
+    assert handoff.read_text(encoding="utf-8") == "NEXT_ACTION=assessments\nDETAIL=guidelines\n"
+
+
 def test_ship_route_exit_reships_no_checks_when_phase14_flag_pending(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -653,6 +816,37 @@ def test_ship_route_exit_preserves_combined_assessment_detail(
     assert out == "NEXT_ACTION=assessments\n"
     env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
     assert "DETAIL=invariants,guidelines\n" in env
+
+
+@pytest.mark.parametrize(
+    ("reason", "action"),
+    [
+        ("architectural-invariants-assessment", "invariants-assessment"),
+        ("architectural-guidelines-assessment", "guidelines-assessment"),
+    ],
+)
+def test_ship_route_exit_preserves_dormant_assessment_aliases_for_prompt_normalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reason: str,
+    action: str,
+) -> None:
+    tmp = _session(tmp_path)
+
+    exit_rc, out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        3,
+        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": reason},
+    )
+
+    assert exit_rc == 0
+    assert out == f"NEXT_ACTION={action}\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert f"NEXT_ACTION={action}\n" in env
+    assert f"NEEDS_USER_REASON={reason}\n" in env
 
 
 @pytest.mark.parametrize(

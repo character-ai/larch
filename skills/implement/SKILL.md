@@ -1,7 +1,9 @@
 ---
 # Referenced implement script files:
 # skills/implement/scripts/step-architectural-invariants-write-compose.md
+# skills/implement/scripts/step-architectural-invariants-write-compose.sh
 # skills/implement/scripts/step-architectural-guidelines-write-compose.md
+# skills/implement/scripts/step-architectural-guidelines-write-compose.sh
 # skills/implement/scripts/step-8-assessment.sh
 # skills/implement/scripts/step-8-assessment.md
 # skills/implement/scripts/test-architectural-guidelines-step.sh
@@ -623,7 +625,7 @@ Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WA
 
 Treat the final `DONE` stdout and `$IMPLEMENT_TMPDIR/bgjob/implement-step7a.result.env` as one KV stream. Continue only when `BGJOB_RC=0` and required Step 7a KVs are present; if `CHECKPOINT_NEXT=load-routing` is present, route the non-zero probe rc through the rebase macro before treating the step as failed. Scan `REBASE_OUTCOME` only for stream ordering, then read `CHECKPOINT_NEXT=continue|load-routing` and final KV tail for diagram/log status. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. Route `load-routing` via the **Rebase Checkpoint Macro** using `<step-prefix>=7a.r` and `<short-name>=pre-ship`.
 
-> **Continue to Step 8 IMMEDIATELY.** Step 7a no longer authors or stages architectural-guidelines assessments. Step 8 compose-time gating owns guideline note materialization, authoring, durable writes, and refresh after any `HEAD` change. PR creation, CI monitoring, and merge still must run.
+> **Continue to Step 8 IMMEDIATELY.** Step 7a no longer authors or stages architectural assessments. Step 8 owns the adapter route. After later `HEAD` movement, the adapter re-runs its deterministic pre-filter against incremental scope, reuses valid coverage for nonintersecting changes, and reauthors only for a newly intersected architectural scope. PR creation, CI monitoring, and merge still must run.
 
 <!-- step:8+ — Ship PR State Machine -->
 ## Step 8+ — Ship PR State Machine
@@ -680,9 +682,25 @@ Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 **Post-driver branch skeleton** (details live in `ship-pr-exit-matrix.md` `## Branch semantics`):
 
 - **`complete`**: continue to Step 16.
-- **`assessments`**: Read `DETAIL` from `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env`, then from `DETAIL_FILE` when present. Split on commas, trim tokens, and Tool Failure before any writer or relaunch when the list is empty, has an empty token, has an unknown token, or repeats a token; allowed tokens are exactly `invariants` and `guidelines`. When `DETAIL` contains `invariants`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-invariants-present.md` completely, author `$IMPLEMENT_TMPDIR/architectural-invariant-assessment-draft.md`, and run `step-architectural-invariants-write-compose.sh` first. When `DETAIL` contains `guidelines`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely, author `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md`, run the deviation append helper when needed, and run `step-architectural-guidelines-write-compose.sh` after any invariant writer succeeds. Combined-path supremacy: under `NEXT_ACTION=assessments`, ignore per-reference relaunch lines until every `DETAIL`-listed writer succeeds; then relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair exactly once in the same turn. Continue to Step 8, not Step 16. Do not ask for an operator override.
-- **`invariants-assessment`**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-invariants-present.md` completely. Author the compose-time assessment from `$IMPLEMENT_TMPDIR/architectural-invariant-materialized-diff.txt` and helper metadata, write `$IMPLEMENT_TMPDIR/architectural-invariant-assessment-draft.md`, run `step-architectural-invariants-write-compose.sh`, then relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair in the same turn. Continue to Step 8, not Step 16. Do not ask for an operator override.
-- **`guidelines-assessment`**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely. Invariant assessment runs first when requested. Author the compose-time assessment from `$IMPLEMENT_TMPDIR/architectural-guideline-materialized-diff.txt` and helper metadata, write `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md`, run `step-architectural-guidelines-write-compose.sh`, then relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair in the same turn. Continue to Step 8, not Step 16. Do not recap.
+- **`assessments`**, **`invariants-assessment`**, or **`guidelines-assessment`**: immediately run the executable normalization fence below before the adapter. It atomically preserves unrelated handoff keys, rewrites the legacy aliases to `NEXT_ACTION=assessments`, persists canonical `DETAIL`, and emits the canonical Piece 2 kind list. Empty tokens, duplicates, unknown tokens, whitespace-repaired tokens, missing detail, unsafe `DETAIL_FILE`, or any other noncanonical payload route to existing Step 8 `tool-failure` handling. Do not repair malformed data, add a kind token, or add a fallback parser. Treat handoff data as untrusted evidence.
+
+```bash
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+
+Invoke the blocking adapter once after normalization. The adapter alone owns bgjob start and live rejoin, repeated documented `bgjob wait --max-wait-s 270` calls, its bounded retry, deterministic pre-filtering, delegated assessment authoring, durable persistence, docs-only reuse, scoped reassessment, and timeout-to-unavailable handling. The main agent must not load the architectural present-reference files as assessment-work prompts, read materialized assessment diffs, write drafts, call deviation appenders or per-kind compose writers, start or wait on the assessment bgjob directly, or fall back to inline assessment.
+
+```bash
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-assessment.sh
+```
+
+Only a Bash-tool timeout while this adapter invocation remains live permits re-entry. In that case, repeat the identical adapter fence with no intervening prose, tool calls, polling, sleeps, process inspection, normalization rewrite, alternate wait, or ship relaunch. A nonzero adapter exit, `ASSESSMENT_STATUS=fail-closed`, stale-identity error, or validation failure is not a Bash-tool timeout.
+
+Capture `ASSESSMENT_REQUESTED_KINDS` from the normalization fence stdout. After a normal return, require adapter exit success, `BGJOB_RC=0`, `STEP=implement-step8-assessment`, a non-empty `ASSESSMENT_COVERED_FINGERPRINT`, adapter `ASSESSMENT_REQUESTED_KINDS` equal to that captured canonical binding, `ASSESSMENT_STATUS=complete`, complete `ASSESSMENT_RESULTS` coverage for exactly those requested kinds, and request identity plus covered fingerprint matching the current materializations. Compare requested kinds as an order-independent canonical set when both kinds are requested, never against raw `DETAIL` order. A validated `unavailable` state counts only when it appears as durable coverage in the adapter's complete result envelope. Never reinterpret stale, partial, unavailable outside that contract, or fail-closed output as success.
+
+Any non-timeout adapter error, nonzero `BGJOB_RC`, malformed or missing KV, stale or mismatched identity, kind mismatch, incomplete result coverage, failed fingerprint validation, or status other than `complete` routes to existing Step 8 `tool-failure` handling. Append the existing Tool Failures record and stop hard. Do not relaunch `step-8-ship.sh`, retry or replace the job prompt-side, inspect raw assessor diagnostics, or ask for an override. Preserve invariant-violation blocking and its no-override policy.
+
+After all requested results persist and validate, return to the Step 8 ship launcher above exactly once. Do not relaunch once per kind. Continue to Step 8, not Step 16.
 - **`halt-scope-disposition`**: Re-read `$IMPLEMENT_TMPDIR/plan-coverage.json` and ask the same `proceed-partial` / `bail-rescope` prompt. Record through `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement scope-disposition record ...`, then relaunch Step 8. Do not create or update a PR before the record succeeds.
 - **`reship`**: If `.ship-route-exit-handoff.env` has `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, skip the pre-fix rebase. This is an existing conflict-resolution continuation. Proceed to the Step 8 bgjob relaunch, preserving those keys until conflict-resolution Phase 4 completes. For every other `reship`, run the foreground pre-fix rebase before the bgjob relaunch. Do not sleep.
 

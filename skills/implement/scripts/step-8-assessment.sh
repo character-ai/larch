@@ -219,7 +219,6 @@ parse_requested_kinds() {
         rest=""
         ;;
     esac
-    # trim spaces
     token=$(printf '%s' "$token" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     [ -n "$token" ] || die "empty assessment kind token"
     case "$token" in

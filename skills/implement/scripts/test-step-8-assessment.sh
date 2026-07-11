@@ -457,6 +457,7 @@ set -e
 assert_rc "$FRESH_RC" 0 'fresh: exits 0'
 assert_contains 'BGJOB_STATUS=STARTED' "$FRESH_OUT" 'fresh: prints STARTED once'
 assert_contains 'ASSESSMENT_STATUS=complete' "$FRESH_OUT" 'fresh: terminal complete'
+assert_contains 'ASSESSMENT_REQUESTED_KINDS=invariants,guidelines' "$FRESH_OUT" 'fresh: reversed detail order accepts canonical adapter kinds'
 assert_contains 'ASSESSMENT_RESULTS=invariants:clean,guidelines:deterministic-clean' "$FRESH_OUT" 'fresh: multi-kind results'
 assert_contains 'implement-step8-assessment' "$(cat "$IMPL_TMP/bgjob-start-meta.txt")" 'fresh: step slug'
 assert_contains 'BUDGET=2100' "$(cat "$IMPL_TMP/bgjob-start-meta.txt")" 'fresh: budget 2100'
