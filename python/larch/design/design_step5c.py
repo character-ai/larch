@@ -110,6 +110,12 @@ def _step5b_mark_complete(design_tmpdir: Path) -> None:
 
 
 STEP5C_PUBLISH_RESULT_ALLOW_KEYS = (
+    "PUBLISH_ATTEMPT_ID",
+    "PUBLISH_RC_SOURCE",
+    "LATEST_PHASE",
+    "LOG_PUBLISH_ATTEMPTED",
+    "LOG_PUBLISH_COMPLETED",
+    "DESIGNED_ADMISSION_READY",
     "PLAN_WRITE_OK",
     "VALIDATE_STATUS",
     "VALIDATE_DEFECT_COUNT",
@@ -142,6 +148,7 @@ def _step5c_safe_publish_env(
     *, design_tmpdir: Path,
     publish_rc: int,
     publish_stdout_file: Path,
+    attempt_id: str = "",
 ) -> tuple[int, dict[str, str], bool]:
     primary = design_tmpdir / ".design-publish-result.env"
     stdout_fallback = False
@@ -164,7 +171,10 @@ def _step5c_safe_publish_env(
         rre_rc = read_result_env_main(argv)
         if rre_rc != 0:
             return int(rre_rc), {}, stdout_fallback
-        return 0, load_bash_quoted_env(path=safe_path, allow_keys=STEP5C_PUBLISH_RESULT_ALLOW_KEYS), stdout_fallback
+        values = load_bash_quoted_env(path=safe_path, allow_keys=STEP5C_PUBLISH_RESULT_ALLOW_KEYS)
+        if attempt_id and values.get("PUBLISH_ATTEMPT_ID") != attempt_id:
+            return 1, {}, stdout_fallback
+        return 0, values, stdout_fallback
     finally:
         if fd >= 0:
             os.close(fd)
@@ -204,12 +214,15 @@ def _step5c_render_final_summary(
     )
 
 
-def _step5c_stage_failed_publish_tail(*, design_tmpdir: Path, plugin_root: Path, publish_rc: int) -> None:
+def _step5c_stage_failed_publish_tail(
+    *, design_tmpdir: Path, plugin_root: Path, publish_rc: int, result_env: dict[str, str] | None = None
+) -> None:
     detail_log = design_tmpdir / "design-publish-tail.failure.log"
     if not detail_log.is_file():
         detail_log.write_text(f"design-publish.sh failed (exit {publish_rc})\n", encoding="utf-8")
     stdout_log = design_tmpdir / "design-stage-terminal-state.stdout.log"
     stderr_log = design_tmpdir / "design-stage-terminal-state.stderr.log"
+    result_env = result_env or {}
     stage_args = [
         "--design-tmpdir",
         str(design_tmpdir),
@@ -234,6 +247,21 @@ def _step5c_stage_failed_publish_tail(*, design_tmpdir: Path, plugin_root: Path,
         "--failure-detail-log",
         str(detail_log),
     ]
+    for flag, key in (
+        ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
+        ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
+        ("--latest-phase", "LATEST_PHASE"),
+        ("--plan-write-ok", "PLAN_WRITE_OK"),
+        ("--publish-ok", "PUBLISH_OK"),
+        ("--renamed", "RENAMED"),
+        ("--log-publish-attempted", "LOG_PUBLISH_ATTEMPTED"),
+        ("--log-publish-completed", "LOG_PUBLISH_COMPLETED"),
+        ("--designed-admission-ready", "DESIGNED_ADMISSION_READY"),
+        ("--pr-url", "PR_URL"),
+        ("--recovery-branch", "RECOVERY_BRANCH"),
+    ):
+        if result_env.get(key, ""):
+            stage_args.extend([flag, result_env[key]])
     stage_rc = _capture_contract_stream_to_paths(
         stage_terminal_state_core,
         stdout_log,
@@ -326,6 +354,60 @@ def _step5c_write_status(
         design_tmpdir=design_tmpdir,
         rows=rows,
     )
+
+
+def _step5c_invalidate_publish_result(*, design_tmpdir: Path) -> None:
+    result_env = design_tmpdir / config.DESIGN_PUBLISH_RESULT_FILE
+    if result_env.is_symlink() or (result_env.exists() and not result_env.is_file()):
+        raise OSError("prior publish result is unsafe")
+    if result_env.exists():
+        tombstone = design_tmpdir / f"{config.DESIGN_PUBLISH_RESULT_FILE}.invalid.{os.getpid()}"
+        result_env.replace(tombstone)
+        tombstone.unlink()
+
+
+def _step5c_copy_bounded_tail(*, source: Path, destination: Path) -> str:
+    if source.is_symlink() or not source.is_file():
+        return ""
+    data = source.read_bytes()[-config.DESIGN_PUBLISH_TAIL_BYTE_CAP :]
+    larch_io.atomic_write(
+        path=destination,
+        text=data.decode("utf-8", errors="replace"),
+        create_parent=False,
+        nofollow=True,
+        mode=0o600,
+    )
+    return destination.read_text(encoding="utf-8", errors="replace")
+
+
+def _step5c_render_publish_failure_detail(
+    *, design_tmpdir: Path, publish_rc: int, rc_source: str, result_env: dict[str, str], stdout_tail: str, stderr_tail: str
+) -> Path:
+    lines = [
+        f"exit_code={publish_rc}",
+        f"rc_source={rc_source}",
+        f"latest_phase={result_env.get('LATEST_PHASE', '')}",
+    ]
+    lines.extend(
+        f"{key.lower()}={result_env.get(key, '')}"
+        for key in ("PLAN_WRITE_OK", "PUBLISH_OK", "RENAMED", "LOG_PUBLISH_ATTEMPTED", "LOG_PUBLISH_COMPLETED")
+    )
+    traceback_line = next((line for line in stderr_tail.splitlines() if line.startswith("Traceback") or "Error:" in line), "")
+    if traceback_line:
+        lines.append(f"traceback={traceback_line[:512]}")
+    for label, text in (("step5c_stderr", stderr_tail), ("rename_stderr", _read_phase_tail(design_tmpdir, config.DESIGN_PUBLISH_RENAME_STDERR_FILE)), ("log_publish_stderr", _read_phase_tail(design_tmpdir, config.DESIGN_PUBLISH_LOG_STDERR_FILE)), ("step5c_stdout", stdout_tail)):
+        if text:
+            lines.extend((f"[{label}]", text[-config.DESIGN_PUBLISH_TAIL_BYTE_CAP :]))
+    detail = design_tmpdir / config.DESIGN_PUBLISH_FAILURE_DETAIL_FILE
+    larch_io.atomic_write(path=detail, text="\n".join(lines) + "\n", create_parent=False, nofollow=True, mode=0o600)
+    return detail
+
+
+def _read_phase_tail(design_tmpdir: Path, filename: str) -> str:
+    path = design_tmpdir / filename
+    if path.is_symlink() or not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")[-config.DESIGN_PUBLISH_TAIL_BYTE_CAP :]
 
 
 def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
@@ -564,6 +646,19 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         if parsed.skip_validate:
             publish_args.append("--skip-validate")
 
+        attempt_id = f"{os.getpid()}-{os.urandom(12).hex()}"
+        try:
+            _step5c_invalidate_publish_result(design_tmpdir=design_tmpdir)
+        except OSError as exc:
+            _core_diagnostic(f"**⚠ Step 5c: prior publish result invalidation failed: {exc}**")
+            _step5c_write_status(
+                design_tmpdir=design_tmpdir, ctx=ctx, publish_rc=5, publish_stdout_fallback=False,
+                plan_write_ok="", publish_ok="", cleanup_eligible=False,
+            )
+            _step5c_stage_failed_publish_tail(design_tmpdir=design_tmpdir, plugin_root=plugin_root, publish_rc=5)
+            return 1, []
+        os.environ[config.ENV_LARCH_DESIGN_PUBLISH_ATTEMPT_ID] = attempt_id
+
         publish_fd, publish_stdout_name = tempfile.mkstemp(prefix="larch-publish-stdout.", dir=os.environ.get("TMPDIR") or None)
         os.close(publish_fd)
         publish_stdout_file = Path(publish_stdout_name)
@@ -579,7 +674,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 publish_args,
             )
 
-            if publish_rc == 2 or publish_rc not in {0, 1, 3, 4}:
+            if publish_rc == 2 or publish_rc not in {0, 1, 3, 4, 5}:
                 _step5c_write_status(
                     design_tmpdir=design_tmpdir,
                     ctx=ctx,
@@ -603,6 +698,53 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     _core_diagnostic("**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**")
                 else:
                     _core_diagnostic(f"**⚠ Step 5c: design-publish.sh failed (exit {publish_rc}); aborting /design**")
+                return 1, []
+            if publish_rc == 5:
+                stdout_tail = _step5c_copy_bounded_tail(
+                    source=publish_stdout_file,
+                    destination=design_tmpdir / config.DESIGN_PUBLISH_STDOUT_TAIL_FILE,
+                )
+                stderr_tail = _step5c_copy_bounded_tail(
+                    source=publish_stderr_file,
+                    destination=design_tmpdir / config.DESIGN_PUBLISH_STDERR_TAIL_FILE,
+                )
+                rre_rc, result_env, _stdout_fallback = _step5c_safe_publish_env(
+                    design_tmpdir=design_tmpdir,
+                    publish_rc=publish_rc,
+                    publish_stdout_file=publish_stdout_file,
+                    attempt_id=attempt_id,
+                )
+                if rre_rc != 0:
+                    result_env = {}
+                result_env["PUBLISH_RC_SOURCE"] = (
+                    config.DESIGN_PUBLISH_RC_SOURCE_EXCEPTION if "Traceback" in stderr_tail else config.DESIGN_PUBLISH_RC_SOURCE_RETURNED
+                )
+                _step5c_render_publish_failure_detail(
+                    design_tmpdir=design_tmpdir, publish_rc=publish_rc,
+                    rc_source=result_env["PUBLISH_RC_SOURCE"], result_env=result_env,
+                    stdout_tail=stdout_tail, stderr_tail=stderr_tail,
+                )
+                _step5c_write_status(
+                    design_tmpdir=design_tmpdir, ctx=ctx, publish_rc=publish_rc, publish_stdout_fallback=False,
+                    plan_write_ok=result_env.get("PLAN_WRITE_OK", ""), publish_ok=result_env.get("PUBLISH_OK", ""),
+                    cleanup_eligible=False,
+                )
+                _step5c_stage_failed_publish_tail(
+                    design_tmpdir=design_tmpdir, plugin_root=plugin_root, publish_rc=publish_rc, result_env=result_env
+                )
+                central_publish_ok = _step5c_try_central_failed_publish_tail(
+                    design_tmpdir=design_tmpdir, ctx=ctx, publish_stdout_file=publish_stdout_file,
+                )
+                failed_tail_summary_path = str(design_tmpdir / "final-summary.md")
+                if central_publish_ok or _step5c_render_final_summary(
+                    design_tmpdir=design_tmpdir, ctx=ctx, outcome="failed-publish-tail",
+                    final_summary_path=failed_tail_summary_path,
+                ):
+                    _emit_final_summary_marked_from_disk(
+                        design_tmpdir=design_tmpdir, final_summary_path=failed_tail_summary_path
+                    )
+                _emit_report_gate_sidecars_from_disk(design_tmpdir)
+                _core_diagnostic("**⚠ Step 5c: design-publish.sh failed (exit 5); aborting /design**")
                 return 1, []
             if publish_rc == 3:
                 _core_diagnostic("**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**")

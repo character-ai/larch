@@ -632,6 +632,20 @@ ENV_CURSOR_PRESENT: Final = "CURSOR_PRESENT"
 ENV_SUMMARY_OUTCOME: Final = "SUMMARY_OUTCOME"
 ENV_FINAL_SUMMARY_PATH: Final = "FINAL_SUMMARY_PATH"
 ENV_LARCH_DESIGN_DRIFT_MULTIPLE: Final = "LARCH_DESIGN_DRIFT_MULTIPLE"
+ENV_LARCH_DESIGN_PUBLISH_ATTEMPT_ID: Final = "LARCH_DESIGN_PUBLISH_ATTEMPT_ID"
+
+# /design Step 5c publish-tail state contract.
+DESIGN_PUBLISH_RESULT_FILE: Final = ".design-publish-result.env"
+DESIGN_PUBLISH_FAILURE_DETAIL_FILE: Final = "design-publish-tail.failure.log"
+DESIGN_PUBLISH_STDOUT_TAIL_FILE: Final = "design-publish-tail.stdout.log"
+DESIGN_PUBLISH_STDERR_TAIL_FILE: Final = "design-publish-tail.stderr.log"
+DESIGN_PUBLISH_RENAME_STDERR_FILE: Final = "design-publish-rename.stderr.log"
+DESIGN_PUBLISH_LOG_STDERR_FILE: Final = "design-publish-log.stderr.log"
+DESIGN_PUBLISH_TAIL_BYTE_CAP: Final = 16384
+DESIGN_PUBLISH_RC_SOURCE_RETURNED: Final = "returned"
+DESIGN_PUBLISH_RC_SOURCE_EXCEPTION: Final = "exception"
+DESIGN_PUBLISH_RESUME_HINT: Final = "resume-post-plan-publish"
+DESIGN_PUBLISH_CLASSIFIER_PATTERN: Final = "design-publish-tail-current-attempt"
 
 # Plan-size guardrail thresholds (#6527). Calibrated from run 0BE6E8A0 /
 # #6514, where an 85-firm-heading plan with diff_lines: 4800 silently

@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from larch import io as larch_io
 from larch.report import design_diagram_log
 from larch.calibration import difficulty
-from larch.core import architectural_guidelines, proc
+from larch.core import architectural_guidelines, config, proc
 from larch.report import run_logs
 from larch.design import design_step0_env
 from larch.git.repo_roots import consumer_repo_root
@@ -56,10 +56,27 @@ def _emit_rows(rows: list[tuple[str, str]]) -> None:
 
 def _write_result_env(*, path: Path, rows: list[tuple[str, str]]) -> bool:
     try:
-        larch_io.write_kvs(path=path, values=rows, atomic=False, create_parent=False)
-    except OSError:
+        larch_io.write_kvs(path=path, values=rows, atomic=True, create_parent=False, mode=0o600)
+    except (OSError, ValueError):
         return False
     return True
+
+
+def _checkpoint_result_env(*, path: Path, rows: list[tuple[str, str]], phase: str) -> None:
+    _replace_kv(rows=rows, key="LATEST_PHASE", value=phase)
+    if not _write_result_env(path=path, rows=rows):
+        raise OSError(f"publish result checkpoint failed at {phase}")
+
+
+def _write_bounded_phase_stderr(*, design_tmpdir: Path, filename: str, text: str) -> None:
+    data = text.encode("utf-8", errors="replace")[-config.DESIGN_PUBLISH_TAIL_BYTE_CAP :]
+    larch_io.atomic_write(
+        path=design_tmpdir / filename,
+        text=data.decode("utf-8", errors="replace"),
+        create_parent=False,
+        nofollow=True,
+        mode=0o600,
+    )
 
 
 def _parse_kv(text: str) -> dict[str, str]:
@@ -422,8 +439,8 @@ def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env
             flush=True,
         )
         _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value=reason)
-    kvs[1] = ("VALIDATE_STATUS", "defects-found")
-    kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
+    _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="defects-found")
+    _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value="1")
     _emit_rows(kvs)
     _ = _write_result_env(path=result_env, rows=kvs)
 
@@ -807,6 +824,11 @@ def _run_log_publish_after_capture(
             *(["--repo", ctx.repo] if ctx.repo else []),
         ],
     )
+    _write_bounded_phase_stderr(
+        design_tmpdir=ctx.design_tmpdir,
+        filename=config.DESIGN_PUBLISH_LOG_STDERR_FILE,
+        text=publish.stderr or "",
+    )
     publish_kv = _parse_kv(publish.stdout)
     if "PUBLISH_OK" in publish_kv:
         kvs.append(("PUBLISH_OK", publish_kv["PUBLISH_OK"]))
@@ -819,7 +841,10 @@ def _run_log_publish_after_capture(
         _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
         if write_result_env_on_publish_failure:
             _emit_rows(kvs)
-            _ = _write_result_env(path=result_env, rows=kvs)
+            try:
+                _checkpoint_result_env(path=result_env, rows=kvs, phase="log-publish-failed")
+            except OSError as exc:
+                print(str(exc), file=sys.stderr)
         return 5
     scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
     if scrub_violations.isdigit() and int(scrub_violations) > 0:
@@ -878,10 +903,22 @@ def publish_core(argv: Sequence[str]) -> int:
 
     design_tmpdir = Path(parsed["--design-tmpdir"]).resolve()
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
-    result_env = design_tmpdir / ".design-publish-result.env"
+    result_env = design_tmpdir / config.DESIGN_PUBLISH_RESULT_FILE
     final_summary_path = design_tmpdir / "final-summary.md"
+    attempt_id = os.environ.get(config.ENV_LARCH_DESIGN_PUBLISH_ATTEMPT_ID, "")
+    if not attempt_id:
+        attempt_id = f"direct-{os.getpid()}-{os.urandom(8).hex()}"
+    if not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", attempt_id):
+        return 5
     kvs: list[tuple[str, str]] = [
+        ("PUBLISH_ATTEMPT_ID", attempt_id),
+        ("PUBLISH_RC_SOURCE", config.DESIGN_PUBLISH_RC_SOURCE_RETURNED),
+        ("LATEST_PHASE", "initialized"),
         ("PLAN_WRITE_OK", "false"),
+        ("PUBLISH_OK", "false"),
+        ("RENAMED", "false"),
+        ("LOG_PUBLISH_ATTEMPTED", "false"),
+        ("LOG_PUBLISH_COMPLETED", "false"),
         ("VALIDATE_STATUS", "not-run"),
         ("VALIDATE_DEFECT_COUNT", "0"),
         ("VALIDATE_SKIPPED_COUNT", "0"),
@@ -894,12 +931,17 @@ def publish_core(argv: Sequence[str]) -> int:
     ]
     if not (design_tmpdir / ".completed" / "step-5b").is_file():
         return 5
+    try:
+        _checkpoint_result_env(path=result_env, rows=kvs, phase="initialized")
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return 5
     _refresh_composed_plan_md(design_tmpdir=design_tmpdir)
     composed_plan = design_tmpdir / "composed-plan.md"
     if not composed_plan.is_file() or composed_plan.stat().st_size == 0:
-        kvs[1] = ("VALIDATE_STATUS", "defects-found")
-        kvs[2] = ("VALIDATE_DEFECT_COUNT", "1")
-        kvs[6] = ("VALIDATE_LOG_FILE", str(design_tmpdir / "validate-plan-commands.log"))
+        _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="defects-found")
+        _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value="1")
+        _replace_kv(rows=kvs, key="VALIDATE_LOG_FILE", value=str(design_tmpdir / "validate-plan-commands.log"))
         _emit_rows(kvs)
         _ = _write_result_env(path=result_env, rows=kvs)
         return 4
@@ -960,7 +1002,7 @@ def publish_core(argv: Sequence[str]) -> int:
     repo_root_arg = Path(consumer_repo_root() or plugin_root)
 
     if skip_validate:
-        kvs[1] = ("VALIDATE_STATUS", "skipped")
+        _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="skipped")
     else:
         validate_env: dict[str, str] = {
             **os.environ,
@@ -990,17 +1032,17 @@ def publish_core(argv: Sequence[str]) -> int:
             env=validate_env,
         )
         parsed_validate = _parse_kv((validate.stdout or "") + "\n" + (validate.stderr or ""))
-        kvs[1] = ("VALIDATE_STATUS", parsed_validate.get("VALIDATE_STATUS", "not-run"))
-        kvs[2] = ("VALIDATE_DEFECT_COUNT", parsed_validate.get("VALIDATE_DEFECT_COUNT", "0"))
-        kvs[3] = ("VALIDATE_SKIPPED_COUNT", parsed_validate.get("VALIDATE_SKIPPED_COUNT", "0"))
-        kvs[4] = ("VALIDATE_UNSAFE_TOKEN_COUNT", parsed_validate.get("VALIDATE_UNSAFE_TOKEN_COUNT", "0"))
-        kvs[6] = ("VALIDATE_LOG_FILE", parsed_validate.get("VALIDATE_LOG_FILE", ""))
-        kvs[5] = ("VALIDATE_MISSING_SCRIPT_COUNT", _count_missing_script_defects(kvs[6][1]))
-        if kvs[1][1] == "defects-found":
+        _replace_kv(rows=kvs, key="VALIDATE_STATUS", value=parsed_validate.get("VALIDATE_STATUS", "not-run"))
+        _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value=parsed_validate.get("VALIDATE_DEFECT_COUNT", "0"))
+        _replace_kv(rows=kvs, key="VALIDATE_SKIPPED_COUNT", value=parsed_validate.get("VALIDATE_SKIPPED_COUNT", "0"))
+        _replace_kv(rows=kvs, key="VALIDATE_UNSAFE_TOKEN_COUNT", value=parsed_validate.get("VALIDATE_UNSAFE_TOKEN_COUNT", "0"))
+        _replace_kv(rows=kvs, key="VALIDATE_LOG_FILE", value=parsed_validate.get("VALIDATE_LOG_FILE", ""))
+        _replace_kv(rows=kvs, key="VALIDATE_MISSING_SCRIPT_COUNT", value=_count_missing_script_defects(parsed_validate.get("VALIDATE_LOG_FILE", "")))
+        if dict(kvs).get("VALIDATE_STATUS") == "defects-found":
             _emit_rows(kvs)
             _ = _write_result_env(path=result_env, rows=kvs)
             return 4
-        if validate.returncode != 0 or kvs[1][1] != "ok":
+        if validate.returncode != 0 or dict(kvs).get("VALIDATE_STATUS") != "ok":
             return 5
 
     invariant_completeness = _check_invariant_assessment_completeness(
@@ -1079,7 +1121,8 @@ def publish_core(argv: Sequence[str]) -> int:
             )
         _emit_rows(kvs)
         return 1 if _write_result_env(path=result_env, rows=kvs) else 3
-    kvs[0] = ("PLAN_WRITE_OK", "true")
+    _replace_kv(rows=kvs, key="PLAN_WRITE_OK", value="true")
+    _checkpoint_result_env(path=result_env, rows=kvs, phase="plan-write")
     if design_rating is not None:
         design_tier = design_rating.adjusted_tier
         sync_args = [
@@ -1122,6 +1165,8 @@ def publish_core(argv: Sequence[str]) -> int:
                     stderr=subprocess.DEVNULL,
                     check=False,
                 )
+
+    _checkpoint_result_env(path=result_env, rows=kvs, phase="difficulty")
 
     # Upsert the architecture diagram into the shared larch:diagrams comment.
     # Step 5c consumes post-approval artifacts written by Step 5b.5. It clears
@@ -1195,6 +1240,8 @@ def publish_core(argv: Sequence[str]) -> int:
                 check=False,
             )
 
+    _checkpoint_result_env(path=result_env, rows=kvs, phase="diagram-upsert")
+
     rename: subprocess.CompletedProcess[str] = subprocess.run(
         [
             sys.executable,
@@ -1211,6 +1258,11 @@ def publish_core(argv: Sequence[str]) -> int:
         text=True,
         check=False,
     )
+    _write_bounded_phase_stderr(
+        design_tmpdir=design_tmpdir,
+        filename=config.DESIGN_PUBLISH_RENAME_STDERR_FILE,
+        text=rename.stderr or "",
+    )
     renamed = _parse_kv(rename.stdout)
     renamed_value = renamed.get("RENAMED", "")
     new_title = renamed.get("NEW_TITLE", "")
@@ -1219,9 +1271,12 @@ def publish_core(argv: Sequence[str]) -> int:
     if new_title:
         kvs.append(("NEW_TITLE", new_title))
     if renamed_value == "true" or new_title.startswith("[DESIGNED] "):
-        kvs[-1] = ("DESIGNED_ADMISSION_READY", "true")
+        _replace_kv(rows=kvs, key="DESIGNED_ADMISSION_READY", value="true")
+    _checkpoint_result_env(path=result_env, rows=kvs, phase="tracking-issue-rename")
 
     if parsed["--session-id"]:
+        _replace_kv(rows=kvs, key="LOG_PUBLISH_ATTEMPTED", value="true")
+        _checkpoint_result_env(path=result_env, rows=kvs, phase="log-publish")
         publish_rc = _run_log_publish_after_capture(
             ctx=_TranscriptCaptureContext(
                 design_tmpdir=design_tmpdir,
@@ -1238,8 +1293,10 @@ def publish_core(argv: Sequence[str]) -> int:
         )
         if publish_rc is not None:
             return publish_rc
+        _replace_kv(rows=kvs, key="LOG_PUBLISH_COMPLETED", value="true")
+    _checkpoint_result_env(path=result_env, rows=kvs, phase="complete")
     _emit_rows(kvs)
-    return 0 if _write_result_env(path=result_env, rows=kvs) else 3
+    return 0
 
 
 def publish_main(argv: Sequence[str]) -> int:

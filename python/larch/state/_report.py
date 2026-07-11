@@ -246,6 +246,30 @@ def _append_file_section(*, label: str, path: Path) -> str:
     return f"\n## {label}\n\n{path.read_text(encoding='utf-8', errors='replace')}\n"
 
 
+def _publish_progress_fields(*, class_file: Path) -> list[tuple[str, str]]:
+    """Validated publish-tail progress fields staged for report rendering.
+
+    The classifier threads these fixed current-attempt tokens into the
+    classification artifact only on the publish-tail branch, so an absent key
+    means the field does not apply and is omitted rather than rendered as
+    ``unknown``.
+    """
+    rows: list[tuple[str, str]] = []
+    for label, key in (
+        ("Latest phase", "LATEST_PHASE"),
+        ("RC source", "PUBLISH_RC_SOURCE"),
+        ("Plan written", "PLAN_WRITE_OK"),
+        ("Publish ok", "PUBLISH_OK"),
+        ("Renamed", "RENAMED"),
+        ("Log publish attempted", "LOG_PUBLISH_ATTEMPTED"),
+        ("Log publish completed", "LOG_PUBLISH_COMPLETED"),
+    ):
+        value = read_kv(path=class_file, key=key, default="")
+        if value:
+            rows.append((label, _safe_simple_token(value, fallback="redacted")))
+    return rows
+
+
 def _compose_tier_a_issue(  # noqa: PLR0913,RUF100
     *, kind: str,
     class_file: Path,
@@ -273,6 +297,8 @@ def _compose_tier_a_issue(  # noqa: PLR0913,RUF100
         f"- **Run ID**: `{_read_run_id(tmpdir=tmpdir, session_env_file=session_env_file)}`",
         f"- **Branch**: `{_safe_simple_token(read_kv(path=tmpdir / 'session-env.sh', key='BRANCH_NAME', default='') or read_kv(path=tmpdir / 'ship-pr-state.sh', key='BRANCH_NAME', default='') or read_kv(path=tmpdir / 'session-env.sh', key='BRANCH', default='') or read_kv(path=tmpdir / 'ship-pr-state.sh', key='BRANCH', default=''), fallback='unknown')}`",
         f"- **PR URL**: `{read_kv(path=tmpdir / 'ship-pr-state.sh', key='PR_URL', default='') or read_kv(path=tmpdir / 'finalize-state.sh', key='PR_URL', default='') or 'unknown'}`",
+        f"- **Resume hint**: `{_safe_simple_token(read_kv(path=class_file, key='RESUME_HINT', default=''), fallback='none')}`",
+        *(f"- **{label}**: `{value}`" for label, value in _publish_progress_fields(class_file=class_file)),
         _append_file_section(label="Root-cause finding", path=root_file),
         "\n## Attempts\n\n" + _attempts_table(attempts_file),
         _append_file_section(label="Escalation ledger", path=ledger),
@@ -328,6 +354,8 @@ def _compose_tier_b_projection(
         f"| Exit code | `{_safe_simple_token(read_kv(path=class_file, key='EXIT_CODE', default=''), fallback='unknown')}` |",
         f"| Dispatcher | `{_safe_simple_token(read_kv(path=class_file, key='DISPATCHER', default=''), fallback='unknown')}` |",
         f"| Matched classifier pattern | `{_safe_simple_token(read_kv(path=class_file, key='MATCHED_CLASSIFIER_PATTERN', default=''), fallback='redacted')}` |",
+        f"| Resume hint | `{_safe_simple_token(read_kv(path=class_file, key='RESUME_HINT', default=''), fallback='none')}` |",
+        *(f"| {label} | `{value}` |" for label, value in _publish_progress_fields(class_file=class_file)),
         f"| Larch version | `{_read_larch_version()}` |",
         f"| Run ID | `{_read_run_id(tmpdir=tmpdir, session_env_file=session_env_file)}` |",
         f"| Root-cause verdict | `{_parse_root_cause_file(path=root_file, key='verdict', default='')}` |",
@@ -466,7 +494,8 @@ def _emit_chat_print_filing_status(*, tmpdir: Path, out_file: Path, title: str, 
 def _retry_policy_lines() -> list[str]:
     classes = (
         "transient-infra", "test-failure", "lint-failure", "dispatch-failure", "protected-path",
-        "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "unrecoverable",
+        "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "recoverable",
+        "unrecoverable",
     )
     caps = {
         "transient-infra": (4, "sleep-seconds.sh 5"),
@@ -478,6 +507,7 @@ def _retry_policy_lines() -> list[str]:
         "submodule-restricted": (0, "none"),
         "same-cause-repeat": (2, "none"),
         "contract-failure": (0, "none"),
+        "recoverable": (0, "none"),
         "unrecoverable": (0, "none"),
     }
     return [f"{klass}\t{max_attempts}\t{delay}" for klass in classes for max_attempts, delay in [caps[klass]]]

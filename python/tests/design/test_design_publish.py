@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from larch.calibration import difficulty
+from larch.core import config
 from larch.design import design_publish
 from larch.design import design_step5c
 
@@ -2112,89 +2113,59 @@ def test_publish_refreshes_composed_plan_before_size_guard(tmp_path: Path, capsy
     assert "oversize_override: operator" in (design / "composed-plan.md").read_text(encoding="utf-8")
 
 
-def test_publish_result_env_write_failure_returns_3_with_stdout_rows(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    monkeypatch: pytest.MonkeyPatch,
+def test_publish_fresh_result_initialization_failure_returns_5_without_publish(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
-    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
-    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    (design / ".design-publish-result.env").mkdir()
-    old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
-    old_fail = os.environ.get("FAKE_CLI_NAMED_BLOCK_FAIL")
-    events: list[str] = []
-    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
-    os.environ["FAKE_CLI_NAMED_BLOCK_FAIL"] = "1"
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / config.DESIGN_PUBLISH_RESULT_FILE).mkdir()
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    publish_calls: list[list[str]] = []
+
     def fake_proc_run(cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         if len(cmd) >= 4 and cmd[2:4] == ["design", "log-publish"]:
-            assert not events
-            events.append("log_publish")
-            return subprocess.CompletedProcess(cmd, 0, stdout="PUBLISH_OK=true\n", stderr="")
+            publish_calls.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    def fake_write_result_env(**_kwargs: object) -> bool:
-        assert events == ["log_publish"]
-        events.append("write_result_env")
-        return False
-
     monkeypatch.setattr(design_publish.proc, "run", fake_proc_run)
-    monkeypatch.setattr(design_publish, "_write_result_env", fake_write_result_env)
-    try:
-        rc = design_publish.publish_core(
-            [
-                "--design-tmpdir",
-                str(design),
-                "--issue",
-                "9",
-                "--session-id",
-                "RUN1",
-                "--claude-pid",
-                "11",
-            ]
-        )
-    finally:
-        if old_root is None:
-            _ = os.environ.pop("CLAUDE_PLUGIN_ROOT", None)
-        else:
-            os.environ["CLAUDE_PLUGIN_ROOT"] = old_root
-        if old_fail is None:
-            _ = os.environ.pop("FAKE_CLI_NAMED_BLOCK_FAIL", None)
-        else:
-            os.environ["FAKE_CLI_NAMED_BLOCK_FAIL"] = old_fail
-    out = capsys.readouterr().out
-    assert rc == 3
-    assert "PLAN_WRITE_OK=false" in out
-    assert "VALIDATE_STATUS=ok" in out
-    assert events == ["log_publish", "write_result_env"]
+    rc = design_publish.publish_core([
+        "--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11",
+    ])
+
+    assert rc == 5
+    assert "publish result checkpoint failed at initialized" in capsys.readouterr().err
+    assert publish_calls == []
 
 
-def test_publish_validator_defects_keep_rc4_when_result_env_write_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_publish_checkpoint_failure_propagates_instead_of_using_stale_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
-    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
-    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    (design / ".design-publish-result.env").mkdir()
-    rc = design_publish.publish_core(
-        [
-            "--design-tmpdir",
-            str(design),
-            "--issue",
-            "9",
-            "--session-id",
-            "RUN1",
-            "--claude-pid",
-            "11",
-        ]
-    )
-    out = capsys.readouterr().out
-    assert rc == 4
-    assert "VALIDATE_STATUS=defects-found" in out
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    calls = 0
+    real_write = design_publish._write_result_env  # pyright: ignore[reportPrivateUsage]
 
+    def fail_second_checkpoint(**kwargs: object) -> bool:
+        nonlocal calls
+        calls += 1
+        return real_write(**kwargs) if calls == 1 else False  # type: ignore[arg-type]
+
+    monkeypatch.setattr(design_publish, "_write_result_env", fail_second_checkpoint)
+    with pytest.raises(OSError, match="plan-write"):
+        design_publish.publish_core([
+            "--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11",
+        ])
 
 def _run_publish_capture_case(tmp_path: Path, env_overrides: dict[str, str]) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     plugin_root = tmp_path / "plugin"

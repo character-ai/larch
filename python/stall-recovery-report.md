@@ -201,9 +201,10 @@ Lint parity covers Tier B only. The committed TSV, helper code, and this table m
 | ci-fix-exhausted | 0 | none |
 | same-cause-repeat | 2 | none |
 | contract-failure | 0 | none |
+| recoverable | 0 | none |
 | unrecoverable | 0 | none |
 
-For `same-cause-repeat`, the orchestrator uses the alternate strategy immediately. For `transient-infra`, the emitted retry delay means `sleep-seconds.sh 5` between attempts. `protected-path` means Codex hit a permanent protected-path sandbox policy; Main Claude resumes Step 2 inline; for `protected-path-edit-required-out-of-scope`, the operator warning names `.claude-plugin/plugin.json`. `submodule-restricted` means the external implementer hit a permanent submodule-edit restriction. It does not route to inline Step 2 recovery because Main Claude can also be blocked by the submodule-edit guard.
+For `same-cause-repeat`, the orchestrator uses the alternate strategy immediately. For `transient-infra`, the emitted retry delay means `sleep-seconds.sh 5` between attempts. `protected-path` means Codex hit a permanent protected-path sandbox policy; Main Claude resumes Step 2 inline; for `protected-path-edit-required-out-of-scope`, the operator warning names `.claude-plugin/plugin.json`. `submodule-restricted` means the external implementer hit a permanent submodule-edit restriction. It does not route to inline Step 2 recovery because Main Claude can also be blocked by the submodule-edit guard. `recoverable` means a `/design` Step 5c publish-tail failed after the plan was written; the run is salvageable by completing the remaining post-plan publish work, so it gets no automatic retry.
 
 ## Dry run
 

@@ -305,7 +305,7 @@ def _safe_matched_pattern_value(value: str) -> str:
         "recovery-out-of-scope", "test-output", "lint-output", "dispatch-output",
         "dispatch-bail-token", "transient-output", "ci-fix-exhausted-with-detail",
         "same-cause-repeat", "fallback", "bail-token", "lint-fix-bail-token",
-        "checks-leg-abandoned", "checks-child-sigterm",
+        "checks-leg-abandoned", "checks-child-sigterm", "design-publish-tail-current-attempt",
     }
     return value if value in allowed else "redacted"
 
@@ -376,8 +376,8 @@ def _render_safe_source_script_value(value: str, *, generic: bool) -> str:
 def _safe_class_value(value: str) -> str:
     allowed = {
         "transient-infra", "test-failure", "lint-failure", "dispatch-failure", "protected-path",
-        "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "unrecoverable",
-        "environment", "operator-action", "larch-defect", "",
+        "submodule-restricted", "ci-fix-exhausted", "same-cause-repeat", "contract-failure", "recoverable",
+        "unrecoverable", "environment", "operator-action", "larch-defect", "",
     }
     return value if value in allowed else "unrecoverable"
 
