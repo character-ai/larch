@@ -25,6 +25,7 @@ from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.git import git, gh, rebase
 from larch.implement import ship
+from larch.implement.architectural_assessment import normalize_kinds
 from larch.implement import scope_disposition
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
@@ -830,6 +831,83 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         return _ship_route_exit_fail(message=f"cannot write route-exit handoff: {exc}", handoff=handoff)
     _emit_kv(key="NEXT_ACTION", value=action)
+    return 0
+
+
+def _assessment_handoff_detail(*, handoff: Path, implement_tmpdir: Path, fields: Mapping[str, str]) -> str:
+    detail = fields.get("DETAIL", "")
+    detail_file = fields.get("DETAIL_FILE", "")
+    if detail and detail_file:
+        raise ValueError("DETAIL and DETAIL_FILE cannot both be set")
+    if detail:
+        return detail
+    if not detail_file:
+        raise ValueError("missing assessment detail")
+    path = Path(detail_file)
+    try:
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != implement_tmpdir.resolve():
+            raise ValueError("unsafe DETAIL_FILE")
+        return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ValueError(f"unsafe DETAIL_FILE: {exc}") from exc
+
+
+def _normalize_assessment_handoff(*, implement_tmpdir: Path) -> tuple[str, tuple[str, ...]]:
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    try:
+        if handoff.is_symlink() or not handoff.is_file():
+            raise ValueError("missing or unsafe .ship-route-exit-handoff.env")
+        lines = handoff.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ValueError(f"cannot read assessment handoff: {exc}") from exc
+    fields: dict[str, str] = {}
+    for line in lines:
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key in fields:
+            raise ValueError(f"duplicate handoff key: {key}")
+        fields[key] = value
+    action = fields.get("NEXT_ACTION", "")
+    if action == "invariants-assessment":
+        raw_kinds = "invariants"
+    elif action == "guidelines-assessment":
+        raw_kinds = "guidelines"
+    elif action == "assessments":
+        raw_kinds = _assessment_handoff_detail(handoff=handoff, implement_tmpdir=implement_tmpdir, fields=fields)
+    else:
+        raise ValueError("NEXT_ACTION is not an assessment handoff")
+    if not raw_kinds or raw_kinds.strip() != raw_kinds or any(char.isspace() for char in raw_kinds):
+        raise ValueError("assessment kinds must be nonempty canonical tokens")
+    requested = raw_kinds.split(",")
+    if any(not kind for kind in requested) or len(set(requested)) != len(requested):
+        raise ValueError("assessment kinds must not contain empty or duplicate tokens")
+    kinds = normalize_kinds(requested)
+    canonical = ",".join(kinds)
+    rewritten = [
+        line for line in lines
+        if not line.startswith(("NEXT_ACTION=", "DETAIL=", "DETAIL_FILE="))
+    ]
+    rewritten.extend(("NEXT_ACTION=assessments", f"DETAIL={canonical}"))
+    _write_text_atomic(path=handoff, text="\n".join(rewritten) + "\n")
+    return canonical, kinds
+
+
+def ship_normalize_assessment_handoff_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py ship normalize-assessment-handoff")
+    parser.add_argument("--implement-tmpdir", default="")
+    args = parser.parse_args(argv)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        print("ship normalize-assessment-handoff: --implement-tmpdir is required", file=sys.stderr)
+        return 2
+    try:
+        canonical, _ = _normalize_assessment_handoff(implement_tmpdir=Path(raw_tmpdir))
+    except ValueError as exc:
+        print(f"ship normalize-assessment-handoff: {exc}", file=sys.stderr)
+        return 2
+    _emit_kv(key="NEXT_ACTION", value="assessments")
+    _emit_kv(key="ASSESSMENT_REQUESTED_KINDS", value=canonical)
     return 0
 
 

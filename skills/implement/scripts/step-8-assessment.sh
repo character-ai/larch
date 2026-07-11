@@ -219,8 +219,7 @@ parse_requested_kinds() {
         rest=""
         ;;
     esac
-    # trim spaces
-    token=$(printf '%s' "$token" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    [ "$token" = "$(printf '%s' "$token" | tr -d '[:space:]')" ] || die "noncanonical assessment kind token"
     [ -n "$token" ] || die "empty assessment kind token"
     case "$token" in
       invariants|guidelines) ;;
