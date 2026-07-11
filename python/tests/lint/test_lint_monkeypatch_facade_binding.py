@@ -572,4 +572,3 @@ def test_write_rename_ambiguous_requires_reason(tmp_path: Path) -> None:
     )
 
     assert lmfb.main(["--root", str(tmp_path), "--write"]) == 2
-
