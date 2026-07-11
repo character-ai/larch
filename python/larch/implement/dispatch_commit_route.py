@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import config
+from larch import io as larch_io
 from larch.core import redact
 from larch.errors import ShipError
 from larch.implement import checks
@@ -30,7 +31,6 @@ from larch.implement.dispatch_helpers import (
     _read_session_key_default,
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
-    _resolve_repo_root,
     _run,
     _run_cli_forward,
     _tmpdir_from_env,
@@ -61,9 +61,16 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
     baseline_file = implement_tmpdir / "step2-baseline.txt"
     if not plan_file.is_file() or not baseline_file.is_file():
         return 0
-    repo_root = _resolve_repo_root()
-    if repo_root is None:
-        print("scope-disposition: git rev-parse --show-toplevel failed", file=sys.stderr)
+    repo_root_file = implement_tmpdir / "repo-root.txt"
+    try:
+        repo_root = Path(
+            larch_io.read_trusted_text(repo_root_file, root=implement_tmpdir).strip()
+        ).resolve()
+    except (OSError, ValueError):
+        print("scope-disposition: persisted repository root is unavailable", file=sys.stderr)
+        return 2
+    if not repo_root.is_dir():
+        print("scope-disposition: persisted repository root is not a directory", file=sys.stderr)
         return 2
     manifest_path = implement_tmpdir / "manifest.json"
     if not manifest_path.is_file():

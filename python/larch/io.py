@@ -165,7 +165,7 @@ def trusted_atomic_write(
 ) -> None:
     """Publish a contained artifact via a descriptor-relative atomic replace."""
     destination, absolute_root = _assert_contained(path=Path(path), root=Path(root))
-    validate_trusted_directory(absolute_root)
+    root_stat = validate_trusted_directory(absolute_root).stat(follow_symlinks=False)
     validate_trusted_directory(destination.parent, root=absolute_root)
     relative_parent = destination.parent.relative_to(absolute_root)
     directory_flags = os.O_RDONLY
@@ -176,6 +176,15 @@ def trusted_atomic_write(
     root_fd = os.open(absolute_root, directory_flags)
     parent_fd = root_fd
     try:
+        opened_root = os.fstat(root_fd)
+        current_root = absolute_root.stat(follow_symlinks=False)
+        if (
+            (opened_root.st_dev, opened_root.st_ino)
+            != (root_stat.st_dev, root_stat.st_ino)
+            or (current_root.st_dev, current_root.st_ino)
+            != (opened_root.st_dev, opened_root.st_ino)
+        ):
+            raise OSError(f"trusted artifact root changed while opening: {absolute_root}")
         for component in relative_parent.parts:
             next_fd = os.open(component, directory_flags, dir_fd=parent_fd)
             if parent_fd != root_fd:
@@ -209,6 +218,12 @@ def trusted_atomic_write(
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
+        current_root = absolute_root.stat(follow_symlinks=False)
+        if (current_root.st_dev, current_root.st_ino) != (
+            opened_root.st_dev,
+            opened_root.st_ino,
+        ):
+            raise OSError(f"trusted artifact root changed before publication: {absolute_root}")
         os.replace(temp_name, destination.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
         published = True
         final = os.stat(destination.name, dir_fd=parent_fd, follow_symlinks=False)

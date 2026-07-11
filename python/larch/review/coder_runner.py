@@ -457,12 +457,6 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
             path=round_dir / "coder-cleanup.log",
             text=f"stale pre-coder snapshot: pre_head={pre_head} current={current_head}\n"
         )
-        _finalize_failed_cleanup(
-            round_dir,
-            pre_head=pre_head,
-            mode=mode,
-            reason="stale pre-coder snapshot",
-        )
         result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
         _write_env(path=result_file, values=_coder_env(result))
         return result

@@ -689,10 +689,19 @@ def _round_diff_base(round_dir: Path, *, since_committed: bool) -> str:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     if since_committed:
         return _read_post_coder_head(round_dir)
-    pre_head_file = snap_dir / "pre-coder-head.txt"
-    if pre_head_file.is_file() and pre_head_file.stat().st_size:
-        return _read_text(pre_head_file).strip()
-    return ""
+    return _validated_pre_coder_snapshot_head(round_dir)
+
+
+def _validated_pre_coder_snapshot_head(round_dir: Path) -> str:
+    snap_dir = pre_coder_snapshot_dir(round_dir)
+    if _snapshot_mode(round_dir) == "missing":
+        return ""
+    head = larch_io.read_trusted_text(
+        snap_dir / "pre-coder-head.txt", root=snap_dir, errors="replace"
+    ).strip()
+    if not head:
+        raise OSError(f"invalid pre-coder snapshot head: {snap_dir}")
+    return head
 
 
 def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
@@ -713,13 +722,7 @@ def _collect_round_stage_paths(
         return []
     if mode == "full" and not _round_has_full_pre_coder_snapshot(round_dir):
         return []
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    pre_head_file = snap_dir / "pre-coder-head.txt"
-    snapshot_head = (
-        _read_text(pre_head_file).strip()
-        if pre_head_file.is_file() and pre_head_file.stat().st_size
-        else ""
-    )
+    snapshot_head = _validated_pre_coder_snapshot_head(round_dir)
     snapshot_kw: dict[str, str] = {}
     if snapshot_head and snapshot_head != diff_base:
         snapshot_kw["snapshot_head"] = snapshot_head
@@ -815,6 +818,42 @@ def _path_matches_pre_self_review_snapshot(
     return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
 
 
+def _validated_self_review_snapshot_head(implement_tmpdir: Path) -> str:
+    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
+    larch_io.validate_trusted_directory(snap_dir, root=implement_tmpdir)
+    head = larch_io.read_trusted_text(
+        snap_dir / "pre-self-review-head.txt", root=snap_dir, errors="replace"
+    ).strip()
+    tracked = larch_io.read_trusted_text(
+        snap_dir / "pre-self-review-tracked-paths.txt", root=snap_dir, errors="replace"
+    ).splitlines()
+    _ = larch_io.read_trusted_text(
+        snap_dir / "pre-self-review-untracked-paths.txt", root=snap_dir, errors="replace"
+    )
+    if not head or any(not path for path in tracked):
+        raise OSError(f"invalid self-review snapshot: {snap_dir}")
+    safe_names = [_safe_patch_name(path) for path in tracked]
+    if len(tracked) != len(set(tracked)) or len(safe_names) != len(set(safe_names)):
+        raise OSError(f"invalid self-review snapshot inventory: {snap_dir}")
+    diffs = larch_io.validate_trusted_directory(
+        snap_dir / "pre-self-review-path-diffs", root=snap_dir
+    )
+    expected = {
+        f"{_safe_patch_name(path)}{suffix}"
+        for path in tracked
+        for suffix in (".patch", ".cached.patch")
+    }
+    actual: set[str] = set()
+    for artifact in diffs.iterdir():
+        if not larch_io.trusted_file_present(artifact, root=diffs):
+            raise OSError(f"unsafe self-review patch artifact: {artifact}")
+        actual.add(artifact.name)
+        _ = larch_io.read_trusted_text(artifact, root=diffs, errors="strict")
+    if actual != expected:
+        raise OSError(f"incomplete self-review snapshot patches: {snap_dir}")
+    return head
+
+
 def _self_review_delta_paths(*, implement_tmpdir: Path, pre_head: str) -> list[str]:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     pre_tracked = snap_dir / "pre-self-review-tracked-paths.txt"
@@ -854,12 +893,9 @@ def _self_review_untracked_delta_paths(implement_tmpdir: Path) -> list[str]:
 def _collect_self_review_stage_paths(implement_tmpdir: Path) -> list[str]:
     if not (implement_tmpdir / "self-review-accepted.md").is_file():
         return []
-    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
-    pre_head_file = snap_dir / "pre-self-review-head.txt"
-    if not pre_head_file.is_file() or not pre_head_file.stat().st_size:
-        return []
-    pre_head = _read_text(pre_head_file).strip()
-    if not pre_head:
+    try:
+        pre_head = _validated_self_review_snapshot_head(implement_tmpdir)
+    except OSError:
         return []
     paths: list[str] = []
     seen: set[str] = set()
