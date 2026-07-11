@@ -1,4 +1,4 @@
-# pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false
+# pyright: reportUnusedFunction=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportPrivateUsage=false, reportUnusedImport=false
 """Checks relay, commit-route core, steps 4-6 composites, step 5 review/resume."""
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ from larch.implement.dispatch_helpers import (
     _read_session_key_default,
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
-    _resolve_repo_root,  # noqa: F401 - re-exported for test monkeypatching; pyright: ignore[reportUnusedImport]
+    _resolve_repo_root,  # noqa: F401 - re-exported for test monkeypatching
     _run,
     _run_cli_forward,
     _tmpdir_from_env,
