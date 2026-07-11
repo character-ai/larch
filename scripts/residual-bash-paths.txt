@@ -56,6 +56,7 @@ scripts/test-implement-step2-routing.sh
 scripts/test-implement-step8-exit3-first-fixer.sh
 scripts/test-implement-structure.sh
 scripts/test-implement-timing-rehydration.sh
+scripts/test-learn-from-bugs-structure.sh
 scripts/test-legacy-title-prefix-literals-scope.sh
 scripts/test-lint-awk-multibyte-regex.sh
 scripts/test-lint-bare-grep-probe.sh
