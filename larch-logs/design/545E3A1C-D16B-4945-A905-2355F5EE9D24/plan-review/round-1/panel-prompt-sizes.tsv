@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	19286	4822	13277	3320	6009	1503		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	23256	5814	13565	3392	9691	2423		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	23247	5812	13556	3389	9691	2423		0	0
+design Step 3	phase1	1	dyn-cursor-plan-markdown-parser-correctness	plan-review	cursor	dyn-cursor-plan-markdown-parser-correctness.txt	23578	5895	13431	3358	10147	2537		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	19299	4825	13290	3323	6009	1503		0	0
+design Step 3	phase1	1	dyn-codex-plan-markdown-parser-correctness	plan-review	codex	dyn-codex-plan-markdown-parser-correctness.txt	19608	4902	13143	3286	6465	1617		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	19277	4820	13268	3317	6009	1503		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	23271	5818	13580	3395	9691	2423		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	19301	4826	13292	3323	6009	1503		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	23269	5818	13578	3395	9691	2423		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	18374	4594	4616	1154	13758	3440	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	16128	4032	9146	2287	6982	1746		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	16128	4032	9146	2287	6982	1746		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	16128	4032	9146	2287	6982	1746		0	0

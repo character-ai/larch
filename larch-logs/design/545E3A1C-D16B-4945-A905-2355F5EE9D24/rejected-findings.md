@@ -1,0 +1,55 @@
+### [Plan Review] FINDING_1
+
+### FINDING_1: Pin the required fence-guard shape
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: The planned rewrite should explicitly preserve the G-Md-3 lint contract for fence-aware heading detection; otherwise a semantically reasonable implementation may fail the repository’s markdown-heading-fence-state lint.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Name the contract in the plan: local `*fence*` helper returns fenced interior `set[int]`; gate with `if index not in fenced and _HEADING_RE.match(line)` (or keep `finditer` filtering and skip per-line `.match` entirely)
+
+
+### [Plan Review] FINDING_2
+
+### FINDING_2: Make all boundary detection fence-aware
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: minor
+- **Concern**: Fence handling limited to `_split_sections` would leave `diagnostic_prefix` boundary matching vulnerable to heading-shaped lines inside fenced examples, potentially truncating the prefix before canonical sections are parsed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Make boundary detection ignore fenced lines too, or use one shared fence-aware line scan for both `_BOUNDARY_PATTERNS` and `_split_sections`; retain the existing boundary behavior for headings outside fences.
+
+
+### [Plan Review] FINDING_3
+
+### FINDING_3: Preserve source offsets and pin complete section contents
+- **Reviewer(s)**: Cursor-dyn-Markdown Parser Correctness, Codex-dyn-Markdown Parser Correctness
+- **Severity**: major
+- **Concern**: Rebuilding section boundaries from line lengths can shift absolute character offsets, especially for CRLF input, while weak tests may still pass despite truncating or altering summary, root-cause, or suggested-fix content.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Markdown Parser Correctness: Track offsets in the original prefix (splitlines(keepends=True), or map fenced line indices to char ranges) and assert slice bounds match today's finditer output; add a golden assert of full digest.sections for STRUCTURED_BODY
+  - From Cursor-dyn-Markdown Parser Correctness: In the pin test, assert full digest.sections (or serialized golden) for STRUCTURED_BODY equals pre-change output, not just key membership
+  - From Codex-dyn-Markdown Parser Correctness: Add a fixture with a multi-line fenced block followed by real canonical headings, and assert the exact complete section contents, including the first line after the fence and the final line before the next heading. Keep the existing h2/h3 byte-stability assertion.
+
+
+### [Plan Review] FINDING_4
+
+### FINDING_4: Cover unclosed and invalid fence-closing cases
+- **Reviewer(s)**: Cursor-dyn-Markdown Parser Correctness, Codex-dyn-Markdown Parser Correctness
+- **Severity**: minor
+- **Concern**: The planned tests do not fully pin fence state through EOF and all closing-marker rules. An implementation could resume heading recognition after an unclosed fence, accept mismatched or shorter markers, or incorrectly treat a closer with trailing text as valid, producing phantom section boundaries.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Markdown Parser Correctness: Add an explicit fixture: summary text, unclosed opening fence, then a ## Root cause line; assert structured mapping ignores the fenced line and does not split summary early
+  - From Cursor-dyn-Markdown Parser Correctness: Add a fixture with an opener info string and a closing line carrying a non-empty suffix; assert the interior heading-shaped line stays in summary and does not open root cause
+  - From Codex-dyn-Markdown Parser Correctness: Add focused parameterized cases for mismatched marker characters, closing markers with trailing info strings, unclosed fences, and each shorter-than-opener case. Assert that headings after an unclosed fence remain unrecognized.
+
+
+### [Plan Review] FINDING_5
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/larch/issue/learn_from_bugs.py:252-260
+- **Concern**: [SCOPE-REDUCTION] Rewrite `_split_sections` as a line scanner instead of filtering existing `finditer` matches. Scenario: The plan replaces the ~10-line `finditer` loop with a new scan-and-slice path, increasing offset and whitespace regression risk while `diff_lines: 80` already budgets a bounded change
+- **Proposed resolution**: Widen `_HEADING_RE` to `#{2,4}`, precompute fenced interior line indices once, keep `finditer(prefix)` and drop matches whose line index is fenced; preserve today's `start`/`end` slicing unchanged
+
+
