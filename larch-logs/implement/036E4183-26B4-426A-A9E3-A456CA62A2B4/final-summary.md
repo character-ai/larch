@@ -73,7 +73,7 @@ Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
 
 - **Outcome**: shipping
 - **Duration**: 00:41:26
-- **Cost**: 💰 TOTAL ~$27.52: Claude/GLM-5.2 token $4.82 (estimated $0.32), Codex-5.6 $15.66, Codex-mini $0.06, Cursor $10.87 (Composer $0.00, Grok $0.00, Auto $10.87), Claude (subprocess) $0.61  |  Tokens: 69753k
+- **Cost**: 💰 TOTAL ~$27.55: Claude/GLM-5.2 token $5.19 (estimated $0.35), Codex-5.6 $15.66, Codex-mini $0.06, Cursor $10.87 (Composer $0.00, Grok $0.00, Auto $10.87), Claude (subprocess) $0.61  |  Tokens: 71057k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #6830: https://github.com/character-ai/larch/issues/6830
 - **Plan review**: N/A
