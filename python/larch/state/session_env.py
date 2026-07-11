@@ -357,7 +357,9 @@ def check_live_mutation_auth(
         ctx = Path(context_file)
         if not ctx.exists() or not ctx.is_file() or ctx.is_symlink():
             return False, config.LIVE_MUTATION_REFUSAL_REASON
-        if trusted_root is None or ctx.parent.resolve() != trusted_root.resolve():
+        if trusted_root is None or not _is_canonical_mutation_session_root(trusted_root):
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        if ctx.parent.resolve() != trusted_root.resolve():
             return False, config.LIVE_MUTATION_REFUSAL_REASON
         auth_value = ""
         ctx_run_id = ""
@@ -383,6 +385,24 @@ def check_live_mutation_auth(
         return True, config.LIVE_MUTATION_SESSION_MODE
     except OSError:
         return False, config.LIVE_MUTATION_REFUSAL_REASON
+
+
+def _is_canonical_mutation_session_root(path: Path) -> bool:
+    """Return whether *path* is a larch-created design or implement session."""
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        return False
+    if not resolved.is_dir() or not re.fullmatch(r"claude-(?:design|implement)-[A-Za-z0-9._-]+", resolved.name):
+        return False
+    roots = (
+        cleanup_cache_sessions_root(),
+        TMP_ROOT,
+        Path("/private/tmp"),
+        Path("/var/folders"),
+        Path("/private/var/folders"),
+    )
+    return any(_strictly_under(path=resolved, root=root) for root in roots)
 
 
 def check_live_mutation_auth_main(argv: list[str]) -> int:

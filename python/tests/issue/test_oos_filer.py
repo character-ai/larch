@@ -128,6 +128,7 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: fake.blocker_probe_rc == 0)  # type: ignore[arg-type]
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
                               "--context-file", str(tmp_path / "session-env.sh")])
@@ -669,6 +670,7 @@ def test_checkpoint_failure_manifest_stamp_error_still_reports_checkpoint_failed
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
@@ -741,6 +743,7 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
     monkeypatch.setattr(oos_filer, "_run_cli", fake_run)
     monkeypatch.setattr(file_oos.subprocess, "run", fake_subprocess_run)
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
                               "--context-file", str(tmp_path / "session-env.sh")])
     assert rc == 0
@@ -766,6 +769,7 @@ def test_success_path_manifest_stamp_failure_returns_zero_with_stamped_false(
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
@@ -1112,6 +1116,7 @@ def test_priority_provision_failure_still_files_non_priority_survivor(
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
@@ -1187,6 +1192,7 @@ def test_priority_label_partial_failure_preserves_cosmetic_survivor(
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
@@ -1259,6 +1265,7 @@ def test_multipart_priority_label_failure_stops_later_parts(
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
@@ -1294,6 +1301,7 @@ def test_duplicate_high_risk_label_failure_still_persisted_for_retry(
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(oos_filer._session_env_oos, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
         rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",

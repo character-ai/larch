@@ -2033,14 +2033,15 @@ def test_check_live_mutation_auth_test_deny_blocks_session_auth(tmp_path: Path, 
     """Test-deny blocks session-backed auth but not operator-invoked."""
     monkeypatch.setenv(config.LIVE_MUTATION_TEST_DENY_KEY, "true")
     sessions_root = tmp_path / ".cache" / "larch" / "sessions"
-    sessions_root.mkdir(parents=True)
-    ctx = sessions_root / "session-env.sh"
+    session_dir = sessions_root / "claude-implement-test"
+    session_dir.mkdir(parents=True)
+    ctx = session_dir / "session-env.sh"
     ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     authorized, reason = session_env.check_live_mutation_auth(
         context_file=ctx,
         operator_mode=False,
         run_id="run-1",
-        trusted_root=sessions_root,
+        trusted_root=session_dir,
     )
     assert not authorized
     assert reason == "test-denied"
@@ -2064,14 +2065,15 @@ def test_check_live_mutation_auth_operator(monkeypatch: pytest.MonkeyPatch) -> N
 def test_check_live_mutation_auth_session_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     sessions_root = tmp_path / ".cache" / "larch" / "sessions"
-    sessions_root.mkdir(parents=True)
-    ctx = sessions_root / "session-env.sh"
+    session_dir = sessions_root / "claude-implement-test"
+    session_dir.mkdir(parents=True)
+    ctx = session_dir / "session-env.sh"
     ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     authorized, reason = session_env.check_live_mutation_auth(
         context_file=ctx,
         operator_mode=False,
         run_id="run-1",
-        trusted_root=sessions_root,
+        trusted_root=session_dir,
     )
     assert authorized
     assert reason == config.LIVE_MUTATION_SESSION_MODE

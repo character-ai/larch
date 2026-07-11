@@ -331,7 +331,7 @@ def _parse_create_args(argv: list[str]) -> tuple[dict[str, object], str | None]:
     index = 0
     while index < len(argv):
         arg = argv[index]
-        needs_value = {"--title", "--title-prefix", "--label", "--body", "--body-file", "--repo", "--context-file"}
+        needs_value = {"--title", "--title-prefix", "--label", "--body", "--body-file", "--repo", "--context-file", "--run-id", "--trusted-root"}
         if arg in needs_value:
             if index + 1 >= len(argv):
                 return args, f"{arg} requires a value"
@@ -350,6 +350,10 @@ def _parse_create_args(argv: list[str]) -> tuple[dict[str, object], str | None]:
                 args["repo"] = value
             elif arg == "--context-file":
                 args["context_file"] = value
+            elif arg == "--run-id":
+                args["run_id"] = value
+            elif arg == "--trusted-root":
+                args["trusted_root"] = value
             index += 2
         elif arg == "--dry-run":
             args["dry_run"] = True
@@ -532,12 +536,7 @@ def create_one_main(argv: list[str]) -> int:
         return redaction_rc
     title = redacted_title or ""
     dry_run = bool(parsed.get("dry_run"))
-    body_content, body_rc = _create_one_body_content(parsed)
-    if body_rc:
-        return body_rc
     title_prefix = str(parsed.get("title_prefix") or "")
-    if not title_prefix and _is_oos_issue_body(body_content):
-        title_prefix = "[OOS]"
     final_title = _normalize_title_prefix(title=title, title_prefix=title_prefix)
     if dry_run:
         labels_obj = parsed.get("labels")
@@ -547,9 +546,12 @@ def create_one_main(argv: list[str]) -> int:
         emit_kv(key="ISSUE_TITLE", value=final_title)
         if labels:
             emit_kv(key="DRY_RUN_LABELS", value=",".join(str(label) for label in labels))
-        if body_content:
-            emit_kv(key="DRY_RUN_BODY_PREVIEW", value=re.sub(r" +", " ", body_content[:300].replace("\n", " ")))
         return 0
+    body_content, body_rc = _create_one_body_content(parsed)
+    if body_rc:
+        return body_rc
+    if not title_prefix and _is_oos_issue_body(body_content):
+        final_title = _normalize_title_prefix(title=title, title_prefix="[OOS]")
     context_file_str = str(parsed.get("context_file") or "")
     operator_invoked = bool(parsed.get("operator_invoked"))
     if not dry_run:
@@ -557,6 +559,8 @@ def create_one_main(argv: list[str]) -> int:
         authorized, auth_reason = _session_env.check_live_mutation_auth(
             context_file=ctx,
             operator_mode=operator_invoked,
+            run_id=str(parsed.get("run_id") or ""),
+            trusted_root=Path(str(parsed["trusted_root"])) if parsed.get("trusted_root") else None,
         )
         if not authorized:
             emit_kv(key=config.LIVE_MUTATION_REFUSAL_STATUS, value="true")

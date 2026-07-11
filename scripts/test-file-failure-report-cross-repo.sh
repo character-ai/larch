@@ -135,6 +135,33 @@ assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "create: status fi
 assert_eq https://github.com/owner/repo/issues/42 "$(kv FILE_FAILURE_REPORT_URL "$dir/out")" "create: issue URL normalized"
 contains "$dir/gh.log" 'issue create -R owner/repo --title Report title --body-file' "create: uses gh issue create -R with title"
 
+for refusal_case in missing-context invalid-context ambient-only test-denied; do
+    dir=$(make_case "refusal-$refusal_case")
+    case "$refusal_case" in
+        missing-context)
+            run_script_dry "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
+            ;;
+        invalid-context)
+            printf 'LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=wrong\n' >"$dir/invalid-context.sh"
+            PATH="$dir/bin:$PATH" GH_STUB_CASE=create GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" "$SCRIPT" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --mutation-context "$dir/invalid-context.sh" --run-id run-1 >"$dir/out" 2>"$dir/out.err" || true
+            ;;
+        ambient-only)
+            LARCH_LIVE_MUTATION_OK=true run_script_dry "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
+            ;;
+        test-denied)
+            set +e
+            PATH="$dir/bin:$PATH" GH_STUB_CASE=create GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY=true "$SCRIPT" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --mutation-context "$LIVE_CONTEXT" --run-id run-1 >"$dir/out" 2>"$dir/out.err"
+            set -e
+            ;;
+    esac
+    assert_eq mutation-refused "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "refusal-$refusal_case: mutation refused"
+    if [ -f "$dir/gh.log" ]; then
+        not_contains "$dir/gh.log" '.*' "refusal-$refusal_case: skips gh"
+    else
+        pass "refusal-$refusal_case: skips gh"
+    fi
+done
+
 dir=$(make_case dedup)
 GH_STUB_CASE=dedup; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --attempts-file "$dir/attempts.md" --escalation-ledger-file "$dir/escalation.md" --root-cause-file "$dir/root.md"
 assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "dedup: status comment"
