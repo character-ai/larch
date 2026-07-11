@@ -698,7 +698,10 @@ def teardown(
     elif (
         not ctx.done_rename_applied
         and (ctx.pr_number is not None or ctx.design_only_done)
-        and scope_disposition.disposition_link_kind(Path(ctx.tmpdir) if ctx.tmpdir else None) != "part-of"
+        and scope_disposition.disposition_link_kind(
+            Path(ctx.tmpdir) if ctx.tmpdir else None,
+            repo_root=Path(cwd or ".").resolve(),
+        ) != "part-of"
     ):
         rename_branch = "B"
         rename_status = _rename_issue(runner=runner, ctx=ctx, state="done", cwd=cwd)

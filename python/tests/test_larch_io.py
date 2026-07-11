@@ -22,7 +22,9 @@ def test_parse_kv_empty_key_policy() -> None:
 
 def test_parse_kv_comments_and_strip_value() -> None:
     text = "# ignored\nA= value \n"
-    assert larch_io.parse_kv(text, skip_comments=True, strip_value=True) == {"A": "value"}
+    assert larch_io.parse_kv(text, skip_comments=True, strip_value=True) == {
+        "A": "value"
+    }
 
 
 def test_parse_kv_cr_strip_modes() -> None:
@@ -42,8 +44,16 @@ def test_kv_value_first_and_last() -> None:
 def test_read_kv_modes(tmp_path: Path) -> None:
     path = tmp_path / "env"
     _ = path.write_text("A=\nA=2\r\n", encoding="utf-8")
-    assert larch_io.read_kv(path=path, key="A", default="x", empty_value_means_default=True) == "x"
-    assert larch_io.read_kv(path=path, key="A", first_match=False, cr_strip="suffix") == "2"
+    assert (
+        larch_io.read_kv(
+            path=path, key="A", default="x", empty_value_means_default=True
+        )
+        == "x"
+    )
+    assert (
+        larch_io.read_kv(path=path, key="A", first_match=False, cr_strip="suffix")
+        == "2"
+    )
 
 
 def test_reject_symlink_on_read_kvs_and_read_kv(tmp_path: Path) -> None:
@@ -68,7 +78,12 @@ def test_missing_and_error_defaults(tmp_path: Path) -> None:
     assert larch_io.read_kv(path=missing, key="A", default="x") == "x"
     bad = tmp_path / "bad"
     _ = bad.write_bytes(b"\xff")
-    assert larch_io.read_kv(path=bad, key="A", default="x", errors="strict", on_error_default=True) == "x"
+    assert (
+        larch_io.read_kv(
+            path=bad, key="A", default="x", errors="strict", on_error_default=True
+        )
+        == "x"
+    )
     with pytest.raises(UnicodeDecodeError):
         _ = larch_io.read_kv(path=bad, key="A", errors="strict")
 
@@ -83,7 +98,12 @@ def test_write_kvs_and_non_atomic_error(tmp_path: Path) -> None:
     larch_io.write_kvs(path=path, values={"B": 2, "A": 1})
     assert path.read_text(encoding="utf-8") == "B=2\nA=1\n"
     with pytest.raises(FileNotFoundError):
-        larch_io.write_kvs(path=tmp_path / "missing" / "out.env", values={"A": 1}, atomic=False, create_parent=False)
+        larch_io.write_kvs(
+            path=tmp_path / "missing" / "out.env",
+            values={"A": 1},
+            atomic=False,
+            create_parent=False,
+        )
 
 
 def test_atomic_write_parent_and_mode(tmp_path: Path) -> None:
@@ -100,7 +120,9 @@ def test_atomic_write_exclusive_nofollow_rejects_symlink_temp(tmp_path: Path) ->
     _ = target.write_text("target", encoding="utf-8")
     temp.symlink_to(target)
     with pytest.raises(OSError, match="refusing symlink temp"):
-        larch_io.atomic_write(path=path, text="x", exclusive=True, nofollow=True, temp_name="out.tmp")
+        larch_io.atomic_write(
+            path=path, text="x", exclusive=True, nofollow=True, temp_name="out.tmp"
+        )
     assert temp.is_symlink()
     assert target.read_text(encoding="utf-8") == "target"
 
@@ -119,7 +141,9 @@ def test_atomic_write_exclusive_fixed_temp_unlinks_stale(tmp_path: Path) -> None
     path = tmp_path / "out"
     temp = tmp_path / "out.tmp"
     _ = temp.write_text("stale", encoding="utf-8")
-    larch_io.atomic_write(path=path, text="new", exclusive=True, nofollow=True, temp_name="out.tmp")
+    larch_io.atomic_write(
+        path=path, text="new", exclusive=True, nofollow=True, temp_name="out.tmp"
+    )
     assert path.read_text(encoding="utf-8") == "new"
     assert not temp.exists()
 
@@ -141,3 +165,29 @@ def test_text_helpers(tmp_path: Path) -> None:
     larch_io.write_text(path=path, text="a")
     larch_io.append_text(path=path, text="b")
     assert larch_io.read_text(path) == "ab"
+
+
+def test_trusted_text_rejects_symlink_and_partial_escape(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    link = root / "payload.txt"
+    link.symlink_to(outside)
+
+    with pytest.raises(OSError, match="symlinked"):
+        _ = larch_io.read_trusted_text(link, root=root)
+    with pytest.raises(OSError, match="escapes trusted root"):
+        larch_io.trusted_atomic_write(tmp_path / "escape.txt", "x", root=root)
+
+
+def test_trusted_atomic_write_publishes_regular_file(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    target = root / "payload.txt"
+
+    larch_io.trusted_atomic_write(target, "value\n", root=root, mode=0o400)
+
+    assert larch_io.read_trusted_text(target, root=root) == "value\n"
+    assert target.stat().st_mode & 0o777 == 0o400
+    assert not list(root.glob(".payload.txt.*.tmp"))

@@ -70,7 +70,6 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
         codex_manifest = implement_tmpdir / "codex-step2-out" / "manifest.json"
         if codex_manifest.is_file():
             manifest_path = codex_manifest
-    persisted_coverage = scope_disposition.load_coverage(implement_tmpdir)
     try:
         coverage = scope_disposition.compute_and_write_coverage(
             tmpdir=implement_tmpdir,
@@ -78,9 +77,6 @@ def _relay_scope_coverage(implement_tmpdir: Path) -> int:
             manifest_path=manifest_path,
         )
     except ShipError as exc:
-        if persisted_coverage is not None and not persisted_coverage.disposition_required:
-            scope_disposition._emit_coverage(persisted_coverage)  # noqa: SLF001
-            return 0
         print(f"scope-disposition: coverage recompute failed: {exc}", file=sys.stderr)
         return 4
     _emit_kv(key="PLAN_COVERAGE_TOTAL", value=str(coverage.total))

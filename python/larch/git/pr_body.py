@@ -401,6 +401,8 @@ def compose_pr_body(
     issue_number: int | None = None,
     architectural_invariants_note: str = "",
     architectural_guidelines_note: str = "",
+    implement_tmpdir: Path | None = None,
+    repo_root: Path | None = None,
 ) -> str:
     if mermaid.strip():
         mermaid_result = sanitize_fragment(mermaid)
@@ -414,7 +416,9 @@ def compose_pr_body(
         parts.extend(["## Architectural guidelines", "", architectural_guidelines_note.strip(), ""])
     if mermaid.strip():
         parts.extend(["## Code Flow Diagram", "", "```mermaid", mermaid.strip(), "```", ""])
-    inventory = scope_disposition.disposition_deferred_inventory()
+    inventory = scope_disposition.disposition_deferred_inventory(
+        implement_tmpdir, repo_root=repo_root
+    )
     if inventory.strip():
         parts.extend([inventory.rstrip(), ""])
     parts.extend(["## Test plan", "", test_plan.rstrip(), ""])
@@ -423,7 +427,9 @@ def compose_pr_body(
         body = tracking_issue.link_pr_for_disposition(
             body=body,
             issue_number=issue_number,
-            partial=scope_disposition.disposition_link_kind() == "part-of",
+            partial=scope_disposition.disposition_link_kind(
+                implement_tmpdir, repo_root=repo_root
+            ) == "part-of",
         )
     mermaid_body = sanitize_fragment(body, from_md=True)
     if mermaid_body.status != "ok":

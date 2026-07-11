@@ -433,6 +433,8 @@ def _compose_pr_body_for_pr_create(
         else None,
         architectural_invariants_note=architectural_invariants_note,
         architectural_guidelines_note=architectural_guidelines_note,
+        implement_tmpdir=Path(pr_context.tmpdir) if pr_context.tmpdir else None,
+        repo_root=Path.cwd().resolve(),
     )
 
 

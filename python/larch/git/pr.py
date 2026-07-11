@@ -99,7 +99,8 @@ def ensure_pr(
             body=body,
             issue_number=issue_num,
             partial=scope_disposition.disposition_link_kind(
-                Path(ctx.tmpdir) if ctx.tmpdir else None
+                Path(ctx.tmpdir) if ctx.tmpdir else None,
+                repo_root=_repo_root_from_cwd(cwd),
             )
             == "part-of",
         )
@@ -125,7 +126,8 @@ def ensure_pr(
         body=body,
         issue_number=issue_num,
         partial=scope_disposition.disposition_link_kind(
-            Path(ctx.tmpdir) if ctx.tmpdir else None
+            Path(ctx.tmpdir) if ctx.tmpdir else None,
+            repo_root=_repo_root_from_cwd(cwd),
         )
         == "part-of",
     )
