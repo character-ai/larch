@@ -173,6 +173,8 @@ Batch artifacts:
 
 Run the Skill in batch mode with **dedup enabled** (default) and capture **stdout** to a file (e.g. `$DESIGN_TMPDIR/decompose/issue-run.stdout`).
 
+**Session-backed authorization.** Decomposition partition filing is session-backed. When constructing nested `issue create-one` args, pass `--context-file "$DESIGN_TMPDIR/source-env.sh"`. The `source-env.sh` contains `LARCH_LIVE_MUTATION_OK=true` set by the real `/design` Step 0 driver. Preserve current idempotency, annotate, blocked-by, and partial-filing behavior unchanged.
+
 ### 7c `annotate`
 
 ```bash

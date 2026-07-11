@@ -205,7 +205,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     reviewer_kv = _parse_stdout_kv(reviewer_probe.stdout)
     if reviewer_probe.returncode != 0:
         reviewer_kv = {}
-    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
+    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--run-id", active_run_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root), "--live-mutation-ok", "true")
     for flag, value in (
         ("--codex-present", reviewer_kv.get("CODEX_PRESENT", kv.get("CODEX_PRESENT", [""]))[-1]),
         ("--cursor-present", reviewer_kv.get("CURSOR_PRESENT", kv.get("CURSOR_PRESENT", [""]))[-1]),

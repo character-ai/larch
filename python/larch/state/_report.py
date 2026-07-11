@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from larch.core import config
+from larch.state import session_env as _session_env_report
 from larch.state._tokens import (
     _DEFAULT_CLASSIFICATION_FILE,
     _DEFAULT_ATTEMPTS_FILE,
@@ -141,6 +142,12 @@ def _read_source_env_export(*, path: Path, key: str) -> str:
 
 
 def _read_run_id(*, tmpdir: Path, session_env_file: Path | None = None) -> str:
+    if session_env_file is not None:
+        value = read_kv(path=session_env_file, key="LARCH_RUN_ID", default="")
+        if not value:
+            value = _read_source_env_export(path=session_env_file, key="LARCH_RUN_ID")
+        if value:
+            return _safe_simple_token(value, fallback="unknown")
     value = read_kv(path=tmpdir / "parent-issue.md", key="RUN_ID", default="")
     if not value and (tmpdir / "session-id").is_file():
         value = (tmpdir / "session-id").read_text(encoding="utf-8", errors="replace").strip()
@@ -460,6 +467,18 @@ def _emit_chat_print_filing_status(*, tmpdir: Path, out_file: Path, title: str, 
         return
     resolver = _REPO_ROOT / "scripts" / "resolve-upstream-larch-repo.sh"
     helper = _REPO_ROOT / "scripts" / "file-failure-report-cross-repo.sh"
+    context_file = tmpdir / "session-env.sh"
+    run_id = _read_run_id(tmpdir=tmpdir, session_env_file=context_file)
+    authorized, _auth_reason = _session_env_report.check_live_mutation_auth(
+        context_file=context_file if context_file.is_file() else None,
+        operator_mode=False,
+        run_id=run_id,
+        trusted_root=tmpdir,
+    )
+    if not authorized:
+        emit(key="STALL_RECOVERY_REPORT_STATUS", value="fallback-print-required")
+        emit(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", value=f"{config.LIVE_MUTATION_REFUSAL_REASON}:reporter-unauthorized")
+        return
     repo_proc = subprocess.run([str(resolver)], capture_output=True, text=True, check=False) if resolver.is_file() else None
     upstream_repo = repo_proc.stdout.strip() if repo_proc and repo_proc.returncode == 0 else ""
     if not upstream_repo:
@@ -482,6 +501,8 @@ def _emit_chat_print_filing_status(*, tmpdir: Path, out_file: Path, title: str, 
             "--escalation-ledger-file", str(_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_TIER_B_ESCALATION_SLICE, prefix=prefix)),
             "--root-cause-file", str(_artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_TIER_B_ROOT_CAUSE_SLICE, prefix=prefix)),
             "--sensitive-corpus-file", str(sensitive_file),
+            "--mutation-context", str(context_file),
+            "--run-id", run_id,
         ],
         capture_output=True,
         text=True,
@@ -766,6 +787,19 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
                 print("stall-recovery: dedup slice path outside implement tmpdir", file=sys.stderr)
                 return 1
             slice_file.write_text("", encoding="utf-8")
+    context_file_str = getattr(args, "context_file", "") or ""
+    ctx = Path(context_file_str) if context_file_str else None
+    run_id = _read_run_id(tmpdir=tmpdir, session_env_file=ctx)
+    authorized, auth_reason = _session_env_report.check_live_mutation_auth(
+        context_file=ctx,
+        operator_mode=False,
+        run_id=run_id,
+        trusted_root=tmpdir,
+    )
+    if not authorized:
+        emit(key="STALL_RECOVERY_REPORT_STATUS", value=config.LIVE_MUTATION_REFUSAL_STATUS)
+        emit(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", value=f"{config.LIVE_MUTATION_REFUSAL_REASON}:{auth_reason}")
+        return 0
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     helper = plugin_root / "scripts" / "file-failure-report-cross-repo.sh"
     if not helper.is_file():
@@ -796,6 +830,10 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
                 str(escalation_file),
                 "--root-cause-file",
                 str(root_file),
+                "--mutation-context",
+                str(ctx),
+                "--run-id",
+                run_id,
             ],
             stdout=handle,
             check=False,

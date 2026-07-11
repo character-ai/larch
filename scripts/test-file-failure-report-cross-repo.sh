@@ -18,6 +18,9 @@ assert_eq() { local exp=$1 act=$2 label=$3; if [ "$exp" = "$act" ]; then pass "$
 kv() { awk -v k="$1" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$2"; }
 
 MARKER_HASH=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+LIVE_CONTEXT="$TMPROOT/claude-implement-test/session-env.sh"
+mkdir -p "$(dirname "$LIVE_CONTEXT")"
+printf 'LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=run-1\n' >"$LIVE_CONTEXT"
 
 make_case() {
     local name=$1 dir
@@ -111,7 +114,16 @@ STUB
 run_script() {
     local dir=$1 out=$2; shift 2
     set +e
-    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" "$SCRIPT" "$@" >"$out" 2>"$out.err"
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" --mutation-context "$LIVE_CONTEXT" --run-id run-1 >"$out" 2>"$out.err"
+    local rc=$?
+    set -e
+    return "$rc"
+}
+
+run_script_dry() {
+    local dir=$1 out=$2; shift 2
+    set +e
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" >"$out" 2>"$out.err"
     local rc=$?
     set -e
     return "$rc"
@@ -122,6 +134,33 @@ GH_STUB_CASE=create; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo ow
 assert_eq filed "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "create: status filed"
 assert_eq https://github.com/owner/repo/issues/42 "$(kv FILE_FAILURE_REPORT_URL "$dir/out")" "create: issue URL normalized"
 contains "$dir/gh.log" 'issue create -R owner/repo --title Report title --body-file' "create: uses gh issue create -R with title"
+
+for refusal_case in missing-context invalid-context ambient-only test-denied; do
+    dir=$(make_case "refusal-$refusal_case")
+    case "$refusal_case" in
+        missing-context)
+            run_script_dry "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
+            ;;
+        invalid-context)
+            printf 'LARCH_LIVE_MUTATION_OK=true\nLARCH_RUN_ID=wrong\n' >"$dir/invalid-context.sh"
+            PATH="$dir/bin:$PATH" GH_STUB_CASE=create GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" "$SCRIPT" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --mutation-context "$dir/invalid-context.sh" --run-id run-1 >"$dir/out" 2>"$dir/out.err" || true
+            ;;
+        ambient-only)
+            LARCH_LIVE_MUTATION_OK=true run_script_dry "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title'
+            ;;
+        test-denied)
+            set +e
+            PATH="$dir/bin:$PATH" GH_STUB_CASE=create GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY=true "$SCRIPT" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --mutation-context "$LIVE_CONTEXT" --run-id run-1 >"$dir/out" 2>"$dir/out.err"
+            set -e
+            ;;
+    esac
+    assert_eq mutation-refused "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "refusal-$refusal_case: mutation refused"
+    if [ -f "$dir/gh.log" ]; then
+        not_contains "$dir/gh.log" '.*' "refusal-$refusal_case: skips gh"
+    else
+        pass "refusal-$refusal_case: skips gh"
+    fi
+done
 
 dir=$(make_case dedup)
 GH_STUB_CASE=dedup; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --attempts-file "$dir/attempts.md" --escalation-ledger-file "$dir/escalation.md" --root-cause-file "$dir/root.md"
@@ -209,9 +248,13 @@ fake_root="$dir/fake-plugin"
 mkdir -p "$fake_root/scripts"
 cp "$SCRIPT" "$fake_root/scripts/file-failure-report-cross-repo.sh"
 chmod +x "$fake_root/scripts/file-failure-report-cross-repo.sh"
+mkdir -p "$fake_root/python"
+cp "$SCRIPT_DIR/../python/cli.py" "$fake_root/python/cli.py"
+cp -R "$SCRIPT_DIR/../python/larch" "$fake_root/python/"
+rm "$fake_root/python/larch/state/_report.py"
 GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE
 set +e
-PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" >"$dir/out-validator" 2>"$dir/out-validator.err"
+PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" --mutation-context "$LIVE_CONTEXT" --run-id run-1 >"$dir/out-validator" 2>"$dir/out-validator.err"
 rc=$?
 set -e
 assert_eq 0 "$rc" "tier-b: missing validator exits 0"

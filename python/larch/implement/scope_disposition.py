@@ -1198,20 +1198,23 @@ def _create_followup_issue(
         f"Parent tracking issue: #{tracking_issue_number}\n\n"
         + render_deferred_inventory(coverage),
     )
-    created = _run_cli(
-        [
-            "issue",
-            "create-one",
-            "--title",
-            "Complete deferred /implement plan work",
-            "--title-prefix",
-            "[FOLLOW-UP]",
-            "--body-file",
-            str(body),
-            "--repo",
-            repo,
-        ]
-    )
+    create_args = [
+        "issue",
+        "create-one",
+        "--title",
+        "Complete deferred /implement plan work",
+        "--title-prefix",
+        "[FOLLOW-UP]",
+        "--body-file",
+        str(body),
+        "--repo",
+        repo,
+    ]
+    session_env_path = tmpdir / "session-env.sh"
+    if session_env_path.is_file():
+        run_id = session_env_path.read_text(encoding="utf-8", errors="replace").split("LARCH_RUN_ID=", 1)[-1].splitlines()[0].strip()
+        create_args.extend(["--context-file", str(session_env_path), "--run-id", run_id, "--trusted-root", str(tmpdir)])
+    created = _run_cli(create_args)
     fields = _require_cli_success(created, label="issue create-one")
     number = fields.get("ISSUE_NUMBER", "")
     url = fields.get("ISSUE_URL", "")

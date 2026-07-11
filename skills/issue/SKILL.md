@@ -357,8 +357,14 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
     [--title-prefix "$TITLE_PREFIX"] \
     [--label L1] [--label L2] … \
     [--repo "$REPO"] \
-    [--dry-run]
+    [--dry-run] \
+    [--operator-invoked]  # for direct operator-requested commands
   ```
+
+  **Authorization**: non-dry-run `issue create-one` requires one of:
+  - `--operator-invoked` — for direct operator-requested commands (`/larch:issue` invocations). Pass this flag for all direct `/issue` calls from skill orchestrators.
+  - `--context-file PATH` — for session-backed `/design` or `/implement` filing; pass `$DESIGN_TMPDIR/source-env.sh` or `$IMPLEMENT_TMPDIR/session-env.sh`. The file must contain `LARCH_LIVE_MUTATION_OK=true`.
+  - `--dry-run` — always authorization-free; no `--operator-invoked` or `--context-file` needed.
 
   For **OOS batch mode items** (items carrying `ITEM_<i>_REVIEWER/PHASE/VOTE_TALLY`), the raw description file needs to be wrapped in the OOS template before it can be passed to `issue create-one`. Two files are involved: (1) the parser-produced raw body file at `$ITEM_<i>_BODY_FILE`, and (2) an assembled-template file at `$ISSUE_TMPDIR/oos-body-<i>.txt` that contains the wrapped body. Read the raw description via Bash (`cat "$ITEM_<i>_BODY_FILE"`), then compose the OOS body template byte-for-byte identical to the deleted create-oos-issues.sh:149-162 output:
   ```markdown

@@ -922,7 +922,7 @@ def test_close_priors_reports_transport_failure_before_json_parse(monkeypatch, c
         ("gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title"): cr(("gh",), stdout="not json", stderr="network down", rc=1),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
-    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r"]) == 1
+    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r","--operator-invoked"]) == 1
     out = capsys.readouterr().out
     assert "ISSUE_LIST_FAILED=true" in out
     assert "REASON=gh issue list failed" in out
@@ -933,7 +933,7 @@ def test_close_priors_reports_malformed_success_json(monkeypatch, capsys):
         ("gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title"): cr(("gh",), stdout="not json", rc=0),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
-    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r"]) == 1
+    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r","--operator-invoked"]) == 1
     assert "ISSUE_LIST_FAILED=true" in capsys.readouterr().out
 
 
@@ -945,7 +945,7 @@ def test_close_priors_body_file_failure_fallback(monkeypatch, capsys):
     def fail_named_temp(*_args, **_kwargs):
         raise OSError("no temp")
     monkeypatch.setattr(audit_runs.tempfile, "NamedTemporaryFile", fail_named_temp)
-    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r"]) == 1
+    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r","--operator-invoked"]) == 1
     out = capsys.readouterr().out
     assert "BODY_FILE_FAILED=true" in out
     assert "REASON=mktemp failed" in out
@@ -968,7 +968,7 @@ def test_close_priors_reports_partial_success(monkeypatch, capsys):
                 return cr(("gh",), stderr="boom", rc=1)
             raise AssertionError(f"unexpected argv: {argv}")
     monkeypatch.setattr(audit_runs.proc, "run", PartialCloseRunner().run)
-    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r"]) == 0
+    assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r","--operator-invoked"]) == 0
     out = capsys.readouterr().out.splitlines()
     assert "CLOSED_NUMBER=7" in out
     assert any(line.startswith("CLOSE_FAILED=8\tREASON=gh issue comment failed") for line in out)
@@ -1638,4 +1638,22 @@ def test_scan_cross_cutting_emits_self_deploying_gap_alias(tmp_path: Path, capsy
     row = next(r for r in rows if r["scan"] == "cross-cutting")
     assert row["manifest_pr_number_mismatch_with_audited_pr"] is True
     assert row["self_deploying_gap"] is True
+
+
+def test_close_priors_refuses_without_operator_invoked(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """close-priors must refuse when --operator-invoked is absent."""
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    rc = audit_runs.close_priors_main(["--skill", "implement", "--new-issue-number", "99"])
+    assert rc == config.EXIT_MUTATION_REFUSED
+    out = capsys.readouterr().out
+    assert "CLOSE_PRIORS_REFUSED=true" in out
+
+
+def test_close_priors_without_operator_invoked_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """close-priors without --operator-invoked is refused even with test-deny cleared."""
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    rc = audit_runs.close_priors_main(["--skill", "implement", "--new-issue-number", "99"])
+    assert rc == config.EXIT_MUTATION_REFUSED
+
+
 # pyright: reportOperatorIssue=false

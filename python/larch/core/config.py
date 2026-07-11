@@ -985,3 +985,12 @@ ADMIN_ELIGIBLE_MERGE_STATES: Final[frozenset[str]] = frozenset({
 
 INLINE_TRIAGE_MARKER: Final = "Inline-triage rule"
 OOS_FILED_URL_FIELD: Final = "**Filed URL**"
+
+# Scoped live-mutation authorization boundary (#6896)
+LIVE_MUTATION_AUTH_KEY: Final = "LARCH_LIVE_MUTATION_OK"
+LIVE_MUTATION_TEST_DENY_KEY: Final = "LARCH_ISSUE_MUTATION_DENY"
+LIVE_MUTATION_OPERATOR_MODE: Final = "operator"
+LIVE_MUTATION_SESSION_MODE: Final = "session"
+LIVE_MUTATION_REFUSAL_STATUS: Final = "mutation-refused"
+LIVE_MUTATION_REFUSAL_REASON: Final = "unauthorized-mutation"
+EXIT_MUTATION_REFUSED: Final = 5

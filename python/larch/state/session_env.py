@@ -58,6 +58,7 @@ WRITE_ENV_KEYS = frozenset({
     "LARCH_DYNAMIC_ARCHETYPES_MAX",
     "LARCH_RUN_ID",
     "LARCH_CLAUDE_PLUGIN_ROOT",
+    "LARCH_LIVE_MUTATION_OK",
 })
 WRITE_DESIGN_ENV_KEYS = frozenset({
     "DESIGN_TMPDIR",
@@ -72,6 +73,7 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "CLAUDE_PLUGIN_ROOT",
     "LARCH_CLAUDE_SOURCE_FILE",
     "LARCH_RUN_ID",
+    "LARCH_LIVE_MUTATION_OK",
 })
 RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED", "SELF_IMPLEMENT_REQUESTED", "DIFFICULTY_OVERRIDE"})
 # Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
@@ -328,6 +330,97 @@ def implement_session_roots(*, env: Mapping[str, str] | None = None) -> tuple[Pa
         TMP_ROOT,
         Path("/private/tmp"),
     )
+
+
+def check_live_mutation_auth(
+    *,
+    context_file: Path | None,
+    operator_mode: bool,
+    run_id: str = "",
+    trusted_root: Path | None = None,
+) -> tuple[bool, str]:
+    """Check authorization for live GitHub issue mutation.
+
+    Returns (authorized, reason). Test denial overrides session-inherited auth
+    but not explicit operator-invoked mode. Operator mode bypasses context-file
+    validation. Session-backed calls require a regular, non-symlink context file
+    under a trusted session root that contains LARCH_LIVE_MUTATION_OK=true with
+    a matching run identity.
+    """
+    if operator_mode:
+        return True, config.LIVE_MUTATION_OPERATOR_MODE
+    if os.environ.get(config.LIVE_MUTATION_TEST_DENY_KEY) == "true":
+        return False, "test-denied"
+    if context_file is None:
+        return False, config.LIVE_MUTATION_REFUSAL_REASON
+    try:
+        ctx = Path(context_file)
+        if not ctx.exists() or not ctx.is_file() or ctx.is_symlink():
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        if trusted_root is None or not _is_canonical_mutation_session_root(trusted_root):
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        if ctx.parent.resolve() != trusted_root.resolve():
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        auth_value = ""
+        ctx_run_id = ""
+        for raw in ctx.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.strip()
+            if not line or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].lstrip()
+            k, _, v = line.partition("=")
+            k = k.strip()
+            v = v.strip().strip("'\"")
+            if k == config.LIVE_MUTATION_AUTH_KEY:
+                auth_value = v
+            elif k == "LARCH_RUN_ID":
+                ctx_run_id = v
+        if auth_value != "true":
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        if not ctx_run_id or not _SAFE_RUN_ID_RE.fullmatch(ctx_run_id):
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        if run_id != ctx_run_id:
+            return False, config.LIVE_MUTATION_REFUSAL_REASON
+        return True, config.LIVE_MUTATION_SESSION_MODE
+    except OSError:
+        return False, config.LIVE_MUTATION_REFUSAL_REASON
+
+
+def _is_canonical_mutation_session_root(path: Path) -> bool:
+    """Return whether *path* is a larch-created design or implement session."""
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        return False
+    if not resolved.is_dir() or not re.fullmatch(r"claude-(?:design|implement)-[A-Za-z0-9._-]+", resolved.name):
+        return False
+    roots = (
+        cleanup_cache_sessions_root(),
+        TMP_ROOT,
+        Path("/private/tmp"),
+        Path("/var/folders"),
+        Path("/private/var/folders"),
+    )
+    return any(_strictly_under(path=resolved, root=root) for root in roots)
+
+
+def check_live_mutation_auth_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="session check-live-mutation-auth", add_help=False)
+    parser.add_argument("--context-file", required=True)
+    parser.add_argument("--run-id", required=True)
+    parser.add_argument("--trusted-root", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 1
+    authorized, _reason = check_live_mutation_auth(
+        context_file=Path(args.context_file),
+        operator_mode=False,
+        run_id=args.run_id,
+        trusted_root=Path(args.trusted_root),
+    )
+    return 0 if authorized else config.EXIT_MUTATION_REFUSED
 
 
 def _resolved(path: Path) -> Path:
@@ -661,6 +754,7 @@ def write_env_main(argv: list[str]) -> int:
     parser.add_argument("--prev-implement-tmpdir", default="")
     parser.add_argument("--dynamic-archetypes", default="")
     parser.add_argument("--run-id", default="")
+    parser.add_argument("--live-mutation-ok", default="")
     parser.add_argument("--plugin-root-only", action="store_true")
     parser.add_argument("--value", default="")
     try:
@@ -680,7 +774,7 @@ def write_env_main(argv: list[str]) -> int:
             return 0
         if args.repo_unavailable is None:
             raise ValueError("Missing required arguments: --output, --repo-unavailable")
-        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found", "auto_mode"):
+        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found", "auto_mode", "live_mutation_ok"):
             value = getattr(args, flag)
             if value:
                 _parse_bool_arg(value=value, flag=f"--{flag.replace('_', '-')}")
@@ -726,6 +820,8 @@ def write_env_main(argv: list[str]) -> int:
             data["LARCH_DYNAMIC_ARCHETYPES_MAX"] = args.dynamic_archetypes
         if args.run_id:
             data["LARCH_RUN_ID"] = args.run_id
+        if args.live_mutation_ok:
+            data["LARCH_LIVE_MUTATION_OK"] = args.live_mutation_ok
         if repo_root:
             data["REPO_ROOT"] = repo_root
         if plugin_root:
@@ -1019,7 +1115,7 @@ def resolve_trusted_design_session_env_source(*, path: Path, claude_pid: str) ->
 
 def write_design_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-design-env", add_help=False)
-    for flag in ("output", "design-tmpdir", "session-id", "run-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "repo-root", "issue-number", "claude-pid", "claude-source-file"):
+    for flag in ("output", "design-tmpdir", "session-id", "run-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "repo-root", "issue-number", "claude-pid", "claude-source-file", "live-mutation-ok"):
         parser.add_argument(f"--{flag}", default="")
     try:
         args = parser.parse_args(argv)
@@ -1029,7 +1125,7 @@ def write_design_env_main(argv: list[str]) -> int:
     try:
         if not args.output or not args.design_tmpdir or not args.session_id:
             raise ValueError("Missing required arguments: --output, --design-tmpdir, --session-id")
-        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found"):
+        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found", "live_mutation_ok"):
             value = getattr(args, flag)
             if value:
                 _parse_bool_arg(value=value, flag=f"--{flag.replace('_', '-')}")
@@ -1076,6 +1172,12 @@ def write_design_env_main(argv: list[str]) -> int:
         _add_optional_design_source_file(values=values, claude_source_file=args.claude_source_file)
         if plugin_root:
             values["CLAUDE_PLUGIN_ROOT"] = plugin_root
+        if args.live_mutation_ok:
+            values["LARCH_LIVE_MUTATION_OK"] = args.live_mutation_ok
+        elif out_path.is_file():
+            prior_auth = _recover_prior_design_value(key="LARCH_LIVE_MUTATION_OK", prior_file=out_path)
+            if prior_auth == "true":
+                values["LARCH_LIVE_MUTATION_OK"] = "true"
         _validate_writer_keys(data=values, allowed=WRITE_DESIGN_ENV_KEYS)
         _validate_no_newlines(values)
         lines = ["#!/usr/bin/env bash\n", "# /design session env — generated by session_env.py. Do not edit.\n"]

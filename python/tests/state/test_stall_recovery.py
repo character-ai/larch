@@ -2404,6 +2404,9 @@ def test_dedup_tier_a_report_normalizes_helper_output(
     helper = script_dir / "file-failure-report-cross-repo.sh"
     _ = helper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
     issue_url = "https://github.com/owner/repo/issues/6192"
+    ctx = tmp_path / "session-env.sh"
+    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
 
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         if cmd and cmd[0] == "gh":
@@ -2416,12 +2419,14 @@ def test_dedup_tier_a_report_normalizes_helper_output(
         )
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
+    monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", lambda **_kw: (True, "session"))  # pyright: ignore[reportPrivateUsage, reportUnknownLambdaType, reportUnknownArgumentType]
     monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
 
     rc = stall_recovery.dedup_tier_a_report_main([
         "--implement-tmpdir", str(tmp_path),
         "--body-file", str(body_file),
+        "--context-file", str(ctx),
     ])
 
     assert rc == 0
@@ -2478,6 +2483,10 @@ def test_dedup_tier_a_report_uses_prefixed_compose_slices(
         captured.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
+    ctx = tmp_path / "session-env.sh"
+    _ = ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", lambda **_kw: (True, "session"))  # pyright: ignore[reportPrivateUsage, reportUnknownLambdaType, reportUnknownArgumentType]
     monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
     monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "")
     rc = stall_recovery.dedup_tier_a_report_main([
@@ -2485,6 +2494,7 @@ def test_dedup_tier_a_report_uses_prefixed_compose_slices(
         "--profile", "generic",
         "--artifact-prefix", "design-failure",
         "--body-file", str(body_file),
+        "--context-file", str(ctx),
     ])
     assert rc == 0
     helper_calls = [cmd for cmd in captured if "file-failure-report-cross-repo.sh" in cmd[0]]
@@ -3037,3 +3047,29 @@ def test_classify_generic_publish_tail_without_plan_write_stays_unrecoverable(
     out = capsys.readouterr().out
     assert "FAILURE_CLASS=unrecoverable" in out
     assert "RESUME_HINT=none" in out
+
+
+def test_dedup_tier_a_report_refuses_without_context(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """dedup-tier-a-report must refuse when no valid context is provided."""
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    body = tmp_path / "issue-input.md"
+    _ = body.write_text("### [Bug] test\nbody text\n", encoding="utf-8")
+    rc = stall_recovery.dedup_tier_a_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--body-file", str(body),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert config.LIVE_MUTATION_REFUSAL_STATUS in out
+
+
+def test_dedup_tier_a_report_dry_run_always_authorized(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dry-run bypasses auth check entirely."""
+    monkeypatch.setenv("LARCH_STALL_RECOVERY_DRY_RUN", "1")
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    rc = stall_recovery.dedup_tier_a_report_main([
+        "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STALL_RECOVERY_REPORT_STATUS=dry-run" in out

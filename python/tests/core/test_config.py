@@ -49,6 +49,16 @@ def test_post_fix_empty_checks_grace_is_bounded() -> None:
     assert config.CI_WAIT_POST_FIX_EMPTY_CHECKS_GRACE_SEC < config.CI_WAIT_TIMEOUT_SEC
 
 
+def test_live_mutation_auth_literals() -> None:
+    assert config.LIVE_MUTATION_AUTH_KEY == "LARCH_LIVE_MUTATION_OK"
+    assert config.LIVE_MUTATION_TEST_DENY_KEY == "LARCH_ISSUE_MUTATION_DENY"
+    assert config.LIVE_MUTATION_OPERATOR_MODE == "operator"
+    assert config.LIVE_MUTATION_SESSION_MODE == "session"
+    assert config.LIVE_MUTATION_REFUSAL_STATUS == "mutation-refused"
+    assert config.LIVE_MUTATION_REFUSAL_REASON == "unauthorized-mutation"
+    assert config.EXIT_MUTATION_REFUSED == 5
+
+
 def test_initial_empty_checks_grace_is_ship_startup_deadline() -> None:
     assert config.CI_WAIT_INITIAL_EMPTY_CHECKS_GRACE_SEC == 300
     assert (
