@@ -218,7 +218,7 @@ def validate_materialization(*, kind: str, repo_root: Path, implement_tmpdir: Pa
     head_sha: str = metadata["HEAD_SHA"]
     base_ref: str = metadata["BASE_REF"]
     _validate_recorded_identity(head_sha=head_sha, base_ref=base_ref)
-    resolved_head: str = _git_read(repo_root, ["rev-parse", "--verify", f"{head_sha}^{{commit}}"]) 
+    resolved_head: str = _git_read(repo_root, ["rev-parse", "--verify", f"{head_sha}^{{commit}}"])
     if resolved_head != head_sha:
         raise ValueError(f"{kind} covered HEAD is not canonical")
     _ = _git_read(repo_root, ["rev-parse", "--verify", f"{base_ref}^{{commit}}"])
@@ -713,8 +713,6 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             for result in results:
                 try:
                     _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
-                except _HeadDrift:
-                    raise
                 except _DeviationLogPending:
                     statuses[result.kind] = "log-pending"
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
