@@ -188,6 +188,20 @@ def test_classify_symlink_and_legacy_missing_identity(tmp_path: Path) -> None:
     assert legacy.reason == "missing-identity"
 
 
+def test_classify_completed_rejects_directory_env(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    live = cri.compute_identity(repo_root=repo)
+    result = tmp_path / "result.env"
+    result.mkdir()
+    classified = cri.classify_completed_result(
+        result_env=result,
+        step="implement-step3-checks",
+        live=live,
+    )
+    assert classified.state == config.CHECKS_RESULT_STATE_UNSAFE
+    assert classified.reason == "non-regular-result-env"
+
+
 def test_validate_repo_root_rejects_symlink_and_non_repo(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     link = tmp_path / "link"

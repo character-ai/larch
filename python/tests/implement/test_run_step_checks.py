@@ -98,6 +98,44 @@ def _run_launcher(*, tmpdir: Path, plugin_root: Path, site: str = "step3", commi
     )
 
 
+def _write_live_registry_stub(plugin_root: Path) -> None:
+    package = plugin_root / "python" / "larch"
+    bgjob = package / "bgjob"
+    bgjob.mkdir(parents=True, exist_ok=True)
+    package.joinpath("__init__.py").write_text(
+        f"__path__ = [{str(package)!r}, {str(ROOT / 'python' / 'larch')!r}]\n",
+        encoding="utf-8",
+    )
+    bgjob.joinpath("__init__.py").write_text(
+        f"__path__ = [{str(bgjob)!r}, {str(ROOT / 'python' / 'larch' / 'bgjob')!r}]\n",
+        encoding="utf-8",
+    )
+    bgjob.joinpath("registry.py").write_text(
+        textwrap.dedent(
+            """\
+            class _Entry:
+                pass
+
+            class _Liveness:
+                live = True
+
+            def read_for(**_kwargs):
+                return None, _Entry()
+
+            def child_liveness(_entry):
+                return _Liveness()
+
+            def daemon_liveness(_entry):
+                return _Liveness()
+
+            def unlink_entry(_path):
+                raise AssertionError("live registry entry must not be removed")
+            """
+        ),
+        encoding="utf-8",
+    )
+
+
 def test_stale_failed_result_starts_fresh_after_tree_drift(tmp_path: Path) -> None:
     repo = _init_repo(tmp_path)
     tmpdir = tmp_path / "impl"
@@ -158,6 +196,62 @@ def test_matching_completed_rejoins_without_start(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr
     assert "BGJOB_STATUS=DONE" in proc.stdout
     assert "NEXT_ACTION=checks-failed" in proc.stdout
+    assert not start_marker.exists()
+
+
+def test_live_registry_rejoins_matching_seed_without_start(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tmpdir = tmp_path / "impl"
+    tmpdir.mkdir()
+    _session(tmpdir, repo)
+    live = cri.compute_identity(repo_root=repo)
+    step = "implement-step3-checks"
+    merge = tmpdir / "bgjob" / f"{step}.merge.env"
+    merge.write_text("".join(f"{key}={value}\n" for key, value in live.as_rows()), encoding="utf-8")
+    plugin = tmp_path / "plugin"
+    start_marker = tmp_path / "started"
+    _write_stub_cli(plugin, start_marker=start_marker)
+    _write_live_registry_stub(plugin)
+    proc = _run_launcher(tmpdir=tmpdir, plugin_root=plugin)
+    assert proc.returncode == 0, proc.stderr
+    assert "BGJOB_STATUS=DONE" in proc.stdout
+    assert not start_marker.exists()
+
+
+def test_live_registry_identity_mismatch_refuses_duplicate_start(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tmpdir = tmp_path / "impl"
+    tmpdir.mkdir()
+    _session(tmpdir, repo)
+    step = "implement-step3-checks"
+    merge = tmpdir / "bgjob" / f"{step}.merge.env"
+    merge.write_text(
+        "CHECKS_INPUT_HEAD_SHA=deadbeef\nCHECKS_INPUT_TREE_FP=deadbeef\nCHECKS_INPUT_FP_SCHEMA=v1\n",
+        encoding="utf-8",
+    )
+    plugin = tmp_path / "plugin"
+    start_marker = tmp_path / "started"
+    _write_stub_cli(plugin, start_marker=start_marker)
+    _write_live_registry_stub(plugin)
+    proc = _run_launcher(tmpdir=tmpdir, plugin_root=plugin)
+    assert proc.returncode == 2
+    assert "live checks job identity mismatch" in proc.stderr
+    assert not start_marker.exists()
+
+
+def test_directory_merge_env_refuses_start(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    tmpdir = tmp_path / "impl"
+    tmpdir.mkdir()
+    _session(tmpdir, repo)
+    step = "implement-step3-checks"
+    (tmpdir / "bgjob" / f"{step}.merge.env").mkdir()
+    plugin = tmp_path / "plugin"
+    start_marker = tmp_path / "started"
+    _write_stub_cli(plugin, start_marker=start_marker)
+    proc = _run_launcher(tmpdir=tmpdir, plugin_root=plugin)
+    assert proc.returncode == 2
+    assert "invalid merge-result-env" in proc.stderr
     assert not start_marker.exists()
 
 

@@ -139,14 +139,17 @@ validate_child_identity() {
         --expected-schema "$schema"
 }
 
-post_publish_identity_matches() {
+post_publish_identity() {
     local checks_out=$1
-    # A successful composite intentionally commits or rebases after its checks
-    # leg, so its launch identity is no longer the expected final identity.
-    if [ -n "$COMMIT_SITE" ] && printf '%s\n' "$checks_out" | grep -Fxq 'COMMIT_ROUTE_OUTCOME=continue'; then
-        return 0
+    if [ -n "$COMMIT_SITE" ] && printf '%s\n' "$checks_out" | grep -Eq '^NEXT_ACTION=(continue|stall|checks-failed|skip-to-7a)$'; then
+        compute_identity "$REPO_ROOT"
+        return
     fi
-    validate_child_identity "$REPO_ROOT" "$LAUNCH_HEAD" "$LAUNCH_FP" "$LAUNCH_SCHEMA" >/dev/null
+    validate_child_identity "$REPO_ROOT" "$LAUNCH_HEAD" "$LAUNCH_FP" "$LAUNCH_SCHEMA" >/dev/null || return
+    printf '%s\n' \
+        "CHECKS_INPUT_HEAD_SHA=${LAUNCH_HEAD}" \
+        "CHECKS_INPUT_TREE_FP=${LAUNCH_FP}" \
+        "CHECKS_INPUT_FP_SCHEMA=${LAUNCH_SCHEMA}"
 }
 
 write_integrity_failure() {
@@ -220,7 +223,7 @@ if [ "$BGJOB_CHILD" = "true" ]; then
     CHECKS_OUT="$("${CHILD_CMD[@]}")"
     rc=$?
     set -e
-    if ! post_publish_identity_matches "$CHECKS_OUT"; then
+    if ! POST_PUBLISH_IDENTITY=$(post_publish_identity "$CHECKS_OUT"); then
         write_integrity_failure "$MERGE_RESULT_ENV_TMP" "$STEP" "pre-publish-identity-mismatch"
         if [ -L "$MERGE_RESULT_ENV" ]; then
             exit 2
@@ -230,9 +233,7 @@ if [ "$BGJOB_CHILD" = "true" ]; then
     fi
     {
         printf '%s\n' "$CHECKS_OUT"
-        printf '%s\n' "CHECKS_INPUT_HEAD_SHA=${LAUNCH_HEAD}"
-        printf '%s\n' "CHECKS_INPUT_TREE_FP=${LAUNCH_FP}"
-        printf '%s\n' "CHECKS_INPUT_FP_SCHEMA=${LAUNCH_SCHEMA}"
+        printf '%s\n' "$POST_PUBLISH_IDENTITY"
     } >"$MERGE_RESULT_ENV_TMP"
     if [ -L "$MERGE_RESULT_ENV" ]; then
         exit 2
@@ -272,9 +273,9 @@ if [ -e "$RESULT_ENV" ] && [ ! -f "$RESULT_ENV" ]; then
 ' 'run-step-checks.sh: refusing non-regular bgjob result env' >&2
     exit 2
 fi
-if [ -L "$MERGE_RESULT_ENV" ]; then
+if [ -L "$MERGE_RESULT_ENV" ] || { [ -e "$MERGE_RESULT_ENV" ] && [ ! -f "$MERGE_RESULT_ENV" ]; }; then
     printf '%s
-' 'run-step-checks.sh: refusing symlinked merge-result-env' >&2
+' 'run-step-checks.sh: refusing invalid merge-result-env' >&2
     exit 2
 fi
 
@@ -380,8 +381,8 @@ MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
     printf '%s\n' "CHECKS_INPUT_TREE_FP=${LAUNCH_FP}"
     printf '%s\n' "CHECKS_INPUT_FP_SCHEMA=${LAUNCH_SCHEMA}"
 } >"$MERGE_RESULT_ENV_TMP"
-[ -L "$MERGE_RESULT_ENV" ] && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
-' 'run-step-checks.sh: refusing symlinked merge-result-env' >&2; exit 2; }
+[ -L "$MERGE_RESULT_ENV" ] || { [ -e "$MERGE_RESULT_ENV" ] && [ ! -f "$MERGE_RESULT_ENV" ]; } && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
+' 'run-step-checks.sh: refusing invalid merge-result-env' >&2; exit 2; }
 mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; exit 2; }
 
 CHILD_ARGS=(
