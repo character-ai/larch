@@ -1,0 +1,67 @@
+## Final Design Plan
+
+## Plan
+
+## Approach
+
+Update the two public docs to match the shipped difficulty-aware Step 2 routing and pricing. Keep the change docs-only. Do not edit Python, topology sources, or generated topology.
+
+## Files to modify/create
+
+### UPDATED: docs/external-reviewers.md
+
+- Revise the **Implementer (Step 2)** entry to describe the tier-specific waterfall:
+  - TRIVIAL: Codex first, then Cursor, then Claude.
+  - MODERATE: Cursor first with `grok-4.5`, then Codex, then Claude.
+  - HARD: Codex first, then Cursor, then Claude.
+- State that a MODERATE run falls back to Codex `gpt-5.6-sol` when Cursor is unavailable.
+- Clarify `--coder` behavior by choice:
+  - `--coder codex` and `--coder cursor` place the selected external tool first, retain the other external tool as the next fallback, and leave Claude last.
+  - `--coder claude` selects Claude directly rather than retaining the external tools as fallbacks.
+- Preserve the existing architectural-knowledge and Step 2 manifest details.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+- Expand the `--coder` section with the TRIVIAL, MODERATE, and HARD default tool orders.
+- Explain `--coder codex` and `--coder cursor` as external-tool overrides that retain the other external tool and Claude as fallbacks; document separately that `--coder claude` selects Claude directly.
+- Update `LARCH_CURSOR_MODEL` documentation to distinguish:
+  - the global Cursor default, `composer-2.5`;
+  - the Step 2 MODERATE default, `grok-4.5`;
+  - explicit environment or plugin configuration, which still overrides the role default.
+- Revise the stale default wording that conflates Step 2 with other Cursor roles: identify `composer-2.5` as the global fallback for roles without the difficulty-specific Step 2 map, including voter, fix/coder, and review-panel uses.
+- Add the Cursor `grok-4.5` pricing row under default rates:
+  - input: `$2.00` per million tokens;
+  - cache read: `$0.50` per million tokens;
+  - output: `$6.00` per million tokens.
+- State that pinned `grok-4.5` usage is exempt from the Cursor Token Rate surcharge.
+- Keep the pricing section concise. Do not add the historical run-volume comparison or internal token-bucket details.
+
+## Edge cases
+
+- Do not describe Cursor as the global default for all Step 2 tiers. It is first only for MODERATE.
+- Do not imply that `LARCH_CURSOR_MODEL` defaults globally to `grok-4.5`.
+- Distinguish first-choice routing from fallback model selection. MODERATE uses Codex `gpt-5.6-sol` after Cursor is unavailable.
+- Limit external-tool fallback wording to `--coder codex` and `--coder cursor`; `--coder claude` selects Claude directly.
+- Preserve the deprecated `--codex-available` compatibility note without presenting it as the preferred interface.
+- Do not update `skills/shared/topology.tsv` or `docs/topology.md`. Their projection has no Step 2 coder row.
+
+## Failure modes
+
+- Prose may incorrectly generalize the MODERATE routing to TRIVIAL or HARD.
+- The `--coder` description may incorrectly claim that `--coder claude` preserves external fallbacks.
+- The `LARCH_CURSOR_MODEL` section may conflate the MODERATE Step 2 default with the global fallback used by non-Step-2 roles.
+- Pricing prose may accidentally apply the surcharge exemption to all Cursor models.
+- The model configuration section may blur the global Cursor default with the difficulty-specific Step 2 default.
+
+## Testing strategy
+
+- Run markdownlint on `docs/external-reviewers.md` and `docs/configuration-and-permissions.md`.
+- Run `python/tests/core/test_external_role_defaults.py`, which checks documented external role identifiers.
+- Inspect the final diff for all seven binding acceptance points: tier routing, external `--coder` overrides, direct `--coder claude` selection, Cursor fallback, Grok rates, surcharge exemption, and the global-versus-Step-2 default distinction.
+- Confirm the diff contains only the two firm-heading Markdown files.
+
+difficulty: TRIVIAL
+diff_added: 28
+diff_deleted: 6
+mechanical_churn: false
+diff_lines: 34
