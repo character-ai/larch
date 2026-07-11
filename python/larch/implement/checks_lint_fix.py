@@ -48,6 +48,13 @@ from larch.implement.checks_run_relevant import (
     default_repo_root,
 )
 
+from larch.implement.self_edit_log import (
+    file_sha256,
+    normalize_path,
+    read_self_edits,
+    record_self_edits,
+)
+
 _SITE_LABELS: Final[dict[str, str]] = {
     "step3": "Step 3",
     "step5": "Step 5",
@@ -335,7 +342,7 @@ def _emit_repair_loop_heartbeat(*, stop: threading.Event, site: str) -> None:
         print(f"PROGRESS=lint-fix-running site={site} elapsed={elapsed}s", flush=True)
 
 
-def checks_repair_loop_main(argv: list[str] | None = None) -> int:
+def checks_repair_loop_main(argv: list[str] | None = None) -> int:  # noqa: PLR0915 - CLI entry: arg parse, validation, heartbeat, loop dispatch, self-edit record, and KV emission just exceed the statement cap
     parser = _RepairLoopArgumentParser(prog="cli.py checks repair-loop")
     _ = parser.add_argument("--tmpdir", required=True)
     _ = parser.add_argument("--site", required=True)
@@ -407,6 +414,12 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=_REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S)
+    _ = record_self_edits(
+        tmpdir=canonical_tmp,
+        source=f"lint-fix:{lint_site}",
+        paths=loop.delta_paths,
+        repo_root=repo_root,
+    )
     action = _repair_loop_action(
         loop=loop,
         lint_site=lint_site,
@@ -426,6 +439,47 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
     if action == "main-agent-edit":
         _print_loop_ledger(loop)
     return 0 if action in {"continue", "main-agent-edit"} else 1
+
+
+def checks_self_edit_log_main(argv: list[str] | None = None) -> int:
+    """Show self-edit attribution records (issue #6876).
+
+    The orchestrator consults this before concluding that a between-action
+    working-tree change came from a concurrent/external runner. With ``--path``,
+    ``SELF_EDIT_ATTRIBUTED`` reports whether one of this run's own spawned
+    subprocesses changed that path; adding ``--repo-root`` also reports
+    ``SELF_EDIT_CONTENT_MATCHES`` (the file's current content equals a recorded
+    post-edit hash).
+    """
+    parser = argparse.ArgumentParser(prog="cli.py checks self-edit-log")
+    _ = parser.add_argument("--tmpdir", required=True)
+    _ = parser.add_argument("--path", default="")
+    _ = parser.add_argument("--repo-root", default="")
+    args = parser.parse_args(argv)
+    canonical_tmp = validate_tmpdir(args.tmpdir)
+    if canonical_tmp is None:
+        print("SELF_EDIT_LOG_STATUS=tmpdir-validation")
+        return 2
+    records = read_self_edits(canonical_tmp)
+    if args.path:
+        query = normalize_path(args.path)
+        rows = [record for record in records if record.path == query]
+        print(f"SELF_EDIT_ATTRIBUTED={'true' if rows else 'false'}")
+        if args.repo_root and rows:
+            current = file_sha256(args.repo_root, query)
+            fresh = any(record.post_sha256 == current for record in rows)
+            print(f"SELF_EDIT_CONTENT_MATCHES={'true' if fresh else 'false'}")
+    else:
+        print(f"SELF_EDIT_COUNT={len(records)}")
+        rows = records
+    for record in rows:
+        print(
+            f"SELF_EDIT source={record.source} recorded_epoch_s={record.recorded_epoch_s} "
+            f"post_sha256={record.post_sha256} path={record.path}"
+        )
+    print("SELF_EDIT_LOG_STATUS=ok")
+    return 0
+
 
 def _site_label(site: str) -> str:
     label = _SITE_LABELS.get(site)
@@ -2187,5 +2241,11 @@ def run_checks_phase(  # noqa: PLR0913,RUF100
         max_iter=max_iter,
         initial_redacted_log=initial_redacted_log,
         allowed_tmpdir=str(canonical_tmp),
+    )
+    _ = record_self_edits(
+        tmpdir=canonical_tmp,
+        source=f"lint-fix:{lint_site}",
+        paths=loop.delta_paths,
+        repo_root=repo_root,
     )
     return escalate(loop.status, delta_paths=loop.delta_paths, loop=loop)

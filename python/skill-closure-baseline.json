@@ -38,11 +38,11 @@
     "skill_md_lines": 692
   },
   {
-    "closure_content_estimated_tokens": 44637,
-    "closure_estimated_tokens": 44755,
+    "closure_content_estimated_tokens": 44729,
+    "closure_estimated_tokens": 44847,
     "closure_lines": 1318,
-    "conditional_content_estimated_tokens": 25674,
-    "conditional_estimated_tokens": 25737,
+    "conditional_content_estimated_tokens": 26025,
+    "conditional_estimated_tokens": 26090,
     "conditional_files": [
       "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
@@ -58,7 +58,7 @@
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 777,
+    "conditional_lines": 793,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -71,8 +71,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 32340,
-    "skill_md_estimated_tokens": 32418,
+    "skill_md_content_estimated_tokens": 32432,
+    "skill_md_estimated_tokens": 32510,
     "skill_md_lines": 823
   },
   {
