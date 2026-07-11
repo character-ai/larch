@@ -384,7 +384,6 @@ def _final_report_token_fields(*, implement_tmpdir: Path, run_id: str) -> dict[s
         "cursor_cost": larch_io.kv_value(text=cost_kv, key="CURSOR_COST", default="N/A"),
         "cursor_composer_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_COMPOSER_COST", default="") or None),
         "cursor_grok_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_GROK_COST", default="") or None),
-        "cursor_auto_cost": (larch_io.kv_value(text=cost_kv, key="CURSOR_AUTO_COST", default="") or None),
         "claude_sub_cost": larch_io.kv_value(text=cost_kv, key="CLAUDE_SUB_COST", default="N/A"),
         "total_tokens": int(larch_io.kv_value(text=cost_kv, key="TOTAL_TOKENS", default="N/A") or 0),
     }

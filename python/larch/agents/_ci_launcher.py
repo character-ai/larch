@@ -365,9 +365,7 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     prompt = f" /max-mode on. Prompt: {_ci_prompt(tool='Cursor', args=args)}"
     _write(path=paths.prompt, text=prompt)
     try:
-        if args.role == "fix":
-            model_args = ["--model", config.CURSOR_AUTO_MODEL]
-        elif args.model:
+        if args.model:
             model_args = ["--model", args.model]
         else:
             model_args = list(resolve_model_args("cursor", with_effort=True).argv)

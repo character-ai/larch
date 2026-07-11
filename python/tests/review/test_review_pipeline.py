@@ -3173,8 +3173,8 @@ def test_dispatch_panel_trivial_dynamic_manifest_emits_cursor_only(tmp_path: Pat
 
     cursor_row = next(row for row in rows if row.get("slot") == "dyn-api-contract")
     assert cursor_row.get("tool") == "cursor"
-    assert cursor_row.get("cursor_model") == "auto"
-    assert cursor_row.get("resolved_model") == "auto"
+    assert "cursor_model" not in cursor_row
+    assert cursor_row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL
     assert not any(row.get("slot") == "dyn-api-contract-codex" for row in rows)
 
 
@@ -3217,8 +3217,8 @@ def test_dispatch_panel_dynamic_manifest_adds_review_codex_rows_for_upper_tiers(
     cursor_row = next(row for row in rows if row.get("slot") == "dyn-api-contract")
     codex_row = next(row for row in rows if row.get("slot") == "dyn-api-contract-codex")
     assert cursor_row.get("tool") == "cursor"
-    assert cursor_row.get("cursor_model") == "auto"
-    assert cursor_row.get("resolved_model") == "auto"
+    assert "cursor_model" not in cursor_row
+    assert cursor_row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL
     assert codex_row.get("tool") == "codex"
     assert codex_row.get("model_role") == "review"
     expected_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[tier]
@@ -4786,7 +4786,7 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
         ("edge-cases", "cursor"),
         ("testing", "cursor"),
     ]
-    assert all(row.get("cursor_model") == "auto" for row in rows)
+    assert all("cursor_model" not in row for row in rows)
     assert "PANEL_SHAPE=singles" in proc.stdout
     assert "PANEL_TIER=TRIVIAL" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
@@ -4829,15 +4829,15 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     }
     cursor_rows = [row for row in rows if row["tool"] == "cursor"]
     assert {row["slot"] for row in cursor_rows} == {"correctness", "edge-cases", "testing"}
-    assert all(row["cursor_model"] == "auto" for row in cursor_rows)
-    assert all(row["resolved_model"] == "auto" for row in cursor_rows)
+    assert all("cursor_model" not in row for row in cursor_rows)
+    assert all(row["resolved_model"] == config.CURSOR_DEFAULT_MODEL for row in cursor_rows)
     assert "PANEL_SHAPE=pairs" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
     assert "STATIC_SLOT_COUNT=6" in proc.stdout
     assert "SLOT_COUNT=6" in proc.stdout
 
 
-def test_dispatch_panel_codex_unavailable_emits_cursor_specialists_with_auto(tmp_path: Path) -> None:
+def test_dispatch_panel_codex_unavailable_emits_default_cursor_specialists(tmp_path: Path) -> None:
     plan = tmp_path / "plan.txt"
     plan.write_text("plan", encoding="utf-8")
     waterfall = tmp_path / "waterfall.sh"
@@ -4863,8 +4863,8 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert {row["tool"] for row in rows} == {"cursor"}
     assert {row["slot"] for row in rows} == {"correctness", "edge-cases", "testing"}
-    assert all(row["cursor_model"] == "auto" for row in rows)
-    assert all(row["resolved_model"] == "auto" for row in rows)
+    assert all("cursor_model" not in row for row in rows)
+    assert all(row["resolved_model"] == config.CURSOR_DEFAULT_MODEL for row in rows)
     assert "STATIC_SLOT_COUNT=3" in proc.stdout
 
 

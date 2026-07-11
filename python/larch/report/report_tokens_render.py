@@ -33,8 +33,8 @@ def _md_cell(value: object) -> str:
 
 
 
-def _cursor_lane_values(record: RunRecord) -> tuple[float, float, float] | None:
-    values = (record.cursor_composer_cost, record.cursor_grok_cost, record.cursor_auto_cost)
+def _cursor_lane_values(record: RunRecord) -> tuple[float, float] | None:
+    values = (record.cursor_composer_cost, record.cursor_grok_cost)
     if any(value is None for value in values):
         return None
     return values  # type: ignore[return-value]  # all members narrowed by the guard
@@ -44,7 +44,7 @@ def _cursor_cost_text(record: RunRecord) -> str:
     lanes = _cursor_lane_values(record)
     if lanes is None:
         return _money(record.cursor_cost)
-    return f"{_money(record.cursor_cost)} (Composer {_money(lanes[0])}, Grok {_money(lanes[1])}, Auto {_money(lanes[2])})"
+    return f"{_money(record.cursor_cost)} (Composer {_money(lanes[0])}, Grok {_money(lanes[1])})"
 
 def _summary(records: tuple[RunRecord, ...], *, actual_spend: float | None) -> str:
     total = sum(record.total_cost for record in records)
@@ -105,7 +105,6 @@ def _vendor_breakdown(records: tuple[RunRecord, ...]) -> str:
         lines[6:6] = [
             f"| Cursor Composer | {_money(sum(record.cursor_composer_cost or 0.0 for record in records))} | — |",
             f"| Cursor Grok | {_money(sum(record.cursor_grok_cost or 0.0 for record in records))} | — |",
-            f"| Cursor Auto | {_money(sum(record.cursor_auto_cost or 0.0 for record in records))} | — |",
         ]
     return "\n".join(lines)
 
@@ -205,7 +204,6 @@ def _trends(*, skill: Skill, records: tuple[RunRecord, ...]) -> str:
         ("Cursor cost", "cursor_cost"),
         ("Cursor Composer cost", "cursor_composer_cost"),
         ("Cursor Grok cost", "cursor_grok_cost"),
-        ("Cursor Auto cost", "cursor_auto_cost"),
         ("Claude (subprocess) cost", "claude_sub_cost"),
     )
     groups: dict[str, list[RunRecord]] = workflow_groups(_skill=skill, records=records)
@@ -242,7 +240,6 @@ def _rates_text(rates: DisplayRates) -> str:
         f"Codex: input {rates.codex_input}/M, cached input {rates.codex_cached_input}/M, output {rates.codex_output}/M.",
         f"Cursor Composer: input {rates.cursor_input}/M, cache read {rates.cursor_cache_read}/M, output {rates.cursor_output}/M.",
         f"Cursor Grok: input {rates.cursor_grok_input}/M, cache read {rates.cursor_grok_cache_read}/M, output {rates.cursor_grok_output}/M.",
-        f"Cursor Auto: input {rates.cursor_auto_input}/M, cache read {rates.cursor_auto_cache_read}/M, output {rates.cursor_auto_output}/M.",
     ])
 
 
@@ -271,7 +268,6 @@ def _write_cache(*, path: Path, _skill: Skill, records: tuple[RunRecord, ...]) -
                 "cursor_cost": record.cursor_cost,
                 "cursor_composer_cost": record.cursor_composer_cost,
                 "cursor_grok_cost": record.cursor_grok_cost,
-                "cursor_auto_cost": record.cursor_auto_cost,
                 "claude_sub_cost": record.claude_sub_cost,
                 "total_cost": record.total_cost,
                 "pricing_source": "python-pricing" if record.priced_by_token_cost else "python-blended-fallback",

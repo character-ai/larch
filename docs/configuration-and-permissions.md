@@ -183,7 +183,7 @@ Model configuration is also available via plugin `userConfig` — environment va
 
 ### `LARCH_CURSOR_MODEL`
 
-The model name to pass to Cursor's `--model` flag (for example, `composer-2.5` or `auto`).
+The model name to pass to Cursor's `--model` flag (for example, `composer-2.5`).
 
 **When set:**
 - Cursor invocations use this model unless a reviewer-panel manifest row pins a per-slot `cursor_model`
@@ -193,7 +193,7 @@ The model name to pass to Cursor's `--model` flag (for example, `composer-2.5` o
 - Defaults to `composer-2.5` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
 - Cursor review prompts are wrapped with `/max-mode on.` unconditionally by `_review_launch_cursor` regardless of diff classification or `--risk`. Codex review effort is not risk-gated; `--with-effort` is always passed to Codex review launchers regardless of diff classification.
 - To opt into earlier defaults (faster / lower reasoning budget), set `LARCH_CURSOR_MODEL=composer-2` or `LARCH_CURSOR_MODEL=composer-2-fast`
-- Reviewer-panel Cursor rows in `/design`, `/review`, and `/implement` Step 5 pin Cursor `auto` through per-slot `cursor_model` and `agent launch-review --cursor-model auto`, including retry replay. Voters and fix/coder roles still use the default or `LARCH_CURSOR_MODEL` value.
+- Reviewer-panel Cursor rows in `/design`, `/review`, and `/implement` Step 5 resolve to `composer-2.5` by default through the standard Cursor model chain. Callers may still supply an explicit per-slot `cursor_model` override, and retry replay preserves that override. Voters and fix/coder roles use the same default or `LARCH_CURSOR_MODEL` value.
 
 ### `LARCH_VOTER_MODEL`
 
@@ -413,11 +413,11 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 
 Each configured fixer lane has a shared 1800-second timeout, and the derived role budget reserves that full timeout for every configured tier. The committed lane-duration analysis reports a Claude lane p90 of 706 seconds and observed maxima of 1636 seconds for Claude and 1752 seconds for Codex, so 1800 seconds covers the observed upper-tail durations while matching the existing subprocess and CI wait budgets.
 
-Ship-pr CI fixing uses a one-tier bgjob waterfall: Codex fix-role `gpt-5.6-terra`, then Cursor `auto`, then Claude `claude-sonnet-4-6[1m]`. Step 8 starts a tier with a route-aware identity, owns the `bgjob wait`, and finalizes the matching launch, merge, status, and lineage records before routing the result. `CI_FAILURE_SCOPE=pr` selects `FAILED_RUN_ID`; `CI_FAILURE_SCOPE=main` selects `MAIN_FAILED_RUN_ID`; missing, malformed, or conflicting run IDs fail closed. Architectural-invariant recovery is invariant-primary: it validates identity-bound, file-backed evidence before launch and does not fetch CI logs. Set `LARCH_CI_FIXER=0` only for the documented inline 30-attempt exception. `ci-fix-exhausted` is an operator bail, not a stall-recovery auto-resume.
+Ship-pr CI fixing uses a one-tier bgjob waterfall: Codex fix-role `gpt-5.6-terra`, then Cursor `composer-2.5` by default, then Claude `claude-sonnet-4-6[1m]`. Step 8 starts a tier with a route-aware identity, owns the `bgjob wait`, and finalizes the matching launch, merge, status, and lineage records before routing the result. `CI_FAILURE_SCOPE=pr` selects `FAILED_RUN_ID`; `CI_FAILURE_SCOPE=main` selects `MAIN_FAILED_RUN_ID`; missing, malformed, or conflicting run IDs fail closed. Architectural-invariant recovery is invariant-primary: it validates identity-bound, file-backed evidence before launch and does not fetch CI logs. Set `LARCH_CI_FIXER=0` only for the documented inline 30-attempt exception. `ci-fix-exhausted` is an operator bail, not a stall-recovery auto-resume.
 
 Conflict resolution uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Conflict fixers edit files only. The Python driver stages resolved files and runs `git rebase --continue`.
 
-Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Each attempted tier gets an isolated artifact directory and a full 1800-second reservation. Capture, validation, and evidence-writing overhead does not consume the next tier reservation. Failed and no-op tiers advance; useful validated edits return to checks. Exhaustion stalls with `lint-fix-no-selectable-tier`, `lint-fix-budget-exhausted`, or `lint-fix-all-tiers-no-useful-delta`, plus a bounded redacted `LINT_FIX_TIER_LEDGER_PATH`. Structural failures remain fail-closed. This pre-ship contract does not change CI recovery or Step 8 ship-pr policy. CI recovery uses Codex fix-role `gpt-5.6-terra`, then Cursor `auto`, then Claude `claude-sonnet-4-6[1m]`. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.6-terra`.
+Pre-ship lint-fix uses Claude/Opus 4.8, then Codex default-role `gpt-5.6-sol`, then Cursor `composer-2.5`. Each attempted tier gets an isolated artifact directory and a full 1800-second reservation. Capture, validation, and evidence-writing overhead does not consume the next tier reservation. Failed and no-op tiers advance; useful validated edits return to checks. Exhaustion stalls with `lint-fix-no-selectable-tier`, `lint-fix-budget-exhausted`, or `lint-fix-all-tiers-no-useful-delta`, plus a bounded redacted `LINT_FIX_TIER_LEDGER_PATH`. Structural failures remain fail-closed. This pre-ship contract does not change CI recovery or Step 8 ship-pr policy. CI recovery uses Codex fix-role `gpt-5.6-terra`, then Cursor `composer-2.5` by default, then Claude `claude-sonnet-4-6[1m]`. Review-fix and plan-autofix Codex fixers use the fix role, default `gpt-5.6-terra`.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 

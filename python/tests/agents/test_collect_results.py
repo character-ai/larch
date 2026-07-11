@@ -263,20 +263,20 @@ def test_launch_outer_retry_threads_cursor_model(monkeypatch: pytest.MonkeyPatch
         outer_launcher="agent launch-review",
         outer_launcher_prompt_file=str(prompt),
         outer_launcher_workdir=str(tmp_path),
-        outer_launcher_cursor_model="auto",
+        outer_launcher_cursor_model="sentinel-cursor-model",
     )
 
     assert collect_results._launch_outer_retry(plan=plan, meta=meta, records=[]) is True  # type: ignore[reportPrivateUsage]
     argv = captured["argv"]
-    assert argv[argv.index("--cursor-model") + 1] == "auto"
+    assert argv[argv.index("--cursor-model") + 1] == "sentinel-cursor-model"
 
 
 def test_parse_meta_reads_outer_launcher_site(tmp_path: Path) -> None:
     # Both preflight-written and success-path metas carry OUTER_LAUNCHER_SITE through this parser.
     meta = tmp_path / "out.txt.meta"
-    _ = meta.write_text("TOOL=cursor\nOUTER_LAUNCHER=agent launch-review\nOUTER_LAUNCHER_SITE=design Step 3\nOUTER_LAUNCHER_CURSOR_MODEL=auto\n", encoding="utf-8")
+    _ = meta.write_text("TOOL=cursor\nOUTER_LAUNCHER=agent launch-review\nOUTER_LAUNCHER_SITE=design Step 3\nOUTER_LAUNCHER_CURSOR_MODEL=sentinel-cursor-model\n", encoding="utf-8")
     assert collect_results._parse_meta(meta).outer_launcher_site == "design Step 3"  # type: ignore[reportPrivateUsage]
-    assert collect_results._parse_meta(meta).outer_launcher_cursor_model == "auto"  # type: ignore[reportPrivateUsage]
+    assert collect_results._parse_meta(meta).outer_launcher_cursor_model == "sentinel-cursor-model"  # type: ignore[reportPrivateUsage]
     bare = tmp_path / "bare.meta"
     _ = bare.write_text("TOOL=cursor\n", encoding="utf-8")
     assert collect_results._parse_meta(bare).outer_launcher_site == ""  # type: ignore[reportPrivateUsage]

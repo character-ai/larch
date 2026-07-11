@@ -172,8 +172,8 @@ def _assert_design_pair_shape(rows: list[dict[str, object]], *, codex_role: str)
     assert len(codex_rows) == 4
     assert len(cursor_rows) == 4
     assert all(row.get("model_role") == codex_role for row in codex_rows)
-    assert all(row.get("cursor_model") == "auto" for row in cursor_rows)
-    assert all(row.get("resolved_model") == "auto" for row in cursor_rows)
+    assert all("cursor_model" not in row for row in cursor_rows)
+    assert all(row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL for row in cursor_rows)
     assert all(row.get("slot") != "codex-plan-generic" for row in rows)
 
 
@@ -355,8 +355,8 @@ def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -
         "requirements": expected_model,
     }
     cursor_rows = [row for row in rows if row.get("tool") == "cursor"]
-    assert all(row.get("cursor_model") == "auto" for row in cursor_rows)
-    assert all(row.get("resolved_model") == "auto" for row in cursor_rows)
+    assert all("cursor_model" not in row for row in cursor_rows)
+    assert all(row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL for row in cursor_rows)
     assert len({str(row["focus_area"]) for row in codex_rows}) == len(codex_rows)
     assert _argval(waterfall_args, "--model-role") == "default"
 
@@ -989,8 +989,8 @@ def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     assert "dyn-codex-plan-beta" in manifest_text
     rows = _manifest_rows(design / "plan-review-slots.ndjson")
     assert all(row.get("model_role") == "review" for row in rows if row.get("tool") == "codex")
-    assert all(row.get("cursor_model") == "auto" for row in rows if row.get("tool") == "cursor")
-    assert all(row.get("resolved_model") == "auto" for row in rows if row.get("tool") == "cursor")
+    assert all("cursor_model" not in row for row in rows if row.get("tool") == "cursor")
+    assert all(row.get("resolved_model") == config.CURSOR_DEFAULT_MODEL for row in rows if row.get("tool") == "cursor")
 
 
 def test_panel_dispatch_dynamic_rows_render_full_scaffold(tmp_path: Path) -> None:
@@ -1096,8 +1096,8 @@ def test_panel_dispatch_dynamic_render_failures_warn_and_keep_fallback_rows(
 
     assert failures == [("dyn-cursor-plan-alpha", "cursor", 9)]
     assert rows[0]["slot"] == "dyn-cursor-plan-alpha"
-    assert rows[0]["cursor_model"] == "auto"
-    assert rows[0]["resolved_model"] == "auto"
+    assert "cursor_model" not in rows[0]
+    assert rows[0]["resolved_model"] == config.CURSOR_DEFAULT_MODEL
     assert (round_dir / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8") == (
         "Review the design plan with a correctness lens."
     )
@@ -1190,8 +1190,8 @@ def test_dynamic_slot_rows_thread_payload_bytes_from_render(tmp_path: Path, monk
 
     assert not failures
     assert rows[0]["payload_bytes"] == 27
-    assert rows[0]["cursor_model"] == "auto"
-    assert rows[0]["resolved_model"] == "auto"
+    assert "cursor_model" not in rows[0]
+    assert rows[0]["resolved_model"] == config.CURSOR_DEFAULT_MODEL
     assert (round_dir / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8") == "rendered dynamic prompt\n"
 
 
@@ -1228,7 +1228,7 @@ def test_plan_review_rows_ignore_stale_payload_sidecars_on_fallback_prompt(
             output="cursor-plan-arch.txt",
             focus_area="architecture",
             archetype="arch",
-            cursor_model=config.CURSOR_AUTO_MODEL,
+            cursor_model="sentinel-cursor-model",
         ),
         config.SlotDefault(slot="codex-plan-generic", tool="codex", output="codex-plan-generic.txt", focus_area="", archetype="generic"),
     )
@@ -1273,8 +1273,8 @@ def test_plan_review_rows_ignore_stale_payload_sidecars_on_fallback_prompt(
     )
 
     assert rows[0]["prompt_file"] == str(design / "render-plan-cursor-arch.prompt")
-    assert rows[0]["cursor_model"] == "auto"
-    assert rows[0]["resolved_model"] == "auto"
+    assert rows[0]["cursor_model"] == "sentinel-cursor-model"
+    assert rows[0]["resolved_model"] == "sentinel-cursor-model"
     assert (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8") == "Review the design plan with a architecture lens."
     assert "payload_bytes" not in rows[0]
     assert generic is not None

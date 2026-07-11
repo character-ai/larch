@@ -69,12 +69,6 @@ DEFAULT_RATE_TABLE_PER_M = {
         "output": CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
     },
     ("cursor", "grok-4.5"): CURSOR_GROK_4_5_BASE,
-    # Auto mode: flat rate card, no Teams surcharge. Auto bundles input+cache-write.
-    ("cursor", config.CURSOR_AUTO_MODEL): {
-        "input": 1.25,
-        "cache_read": 0.25,
-        "output": 6.00,
-    },
     ("claude", config.CLAUDE_OPUS_4_8_MODEL): {
         "input": 5.00,
         "cache_read": 0.50,
@@ -194,7 +188,6 @@ def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str
     codex: Mapping[str, float] = _default_row("codex")
     codex_mini: Mapping[str, float] = rate_row("codex", model=CODEX_MINI_MODEL)
     _surcharge = env_rate(names=config.ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M, default=CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M, environ=env)
-    cursor_auto: Mapping[str, float] = rate_row("cursor", model=config.CURSOR_AUTO_MODEL)
     cursor_grok: Mapping[str, float] = rate_row("cursor", model="grok-4.5")
     return DisplayRates(
         claude_input=env_rate(names=("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), default=claude["input"], environ=env),
@@ -214,9 +207,6 @@ def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str
         claude_blended=env_rate(names=("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"), default=DEFAULT_CLAUDE_BLENDED_PER_M, environ=env),
         codex_blended=env_rate(names=("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), default=_blended_default("codex"), environ=env),
         cursor_blended=env_rate(names=("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), default=_blended_default("cursor"), environ=env),
-        cursor_auto_input=env_rate(names="LARCH_CURSOR_AUTO_INPUT_RATE_PER_M", default=cursor_auto["input"], environ=env),
-        cursor_auto_cache_read=env_rate(names="LARCH_CURSOR_AUTO_CACHE_READ_RATE_PER_M", default=cursor_auto["cache_read"], environ=env),
-        cursor_auto_output=env_rate(names="LARCH_CURSOR_AUTO_OUTPUT_RATE_PER_M", default=cursor_auto["output"], environ=env),
         cursor_grok_input=env_rate(names="LARCH_CURSOR_GROK_INPUT_RATE_PER_M", default=cursor_grok["input"], environ=env),
         cursor_grok_cache_read=env_rate(names="LARCH_CURSOR_GROK_CACHE_READ_RATE_PER_M", default=cursor_grok["cache_read"], environ=env),
         cursor_grok_output=env_rate(names="LARCH_CURSOR_GROK_OUTPUT_RATE_PER_M", default=cursor_grok["output"], environ=env),
@@ -349,12 +339,11 @@ def cursor_argv_from_buckets(*, by_model: object, bucket: Mapping[str, object]) 
     detailed = cast("Mapping[str, object]", by_model)
     composer = [0, 0, 0]
     grok = [0, 0, 0]
-    auto = [0, 0, 0]
     for model, raw_bucket in detailed.items():
         counts = _cursor_bucket_counts(raw_bucket)
         if counts is None:
             raise AssertionError("validated Cursor bucket became invalid")
-        target = auto if model == config.CURSOR_AUTO_MODEL else grok if model == "grok-4.5" else composer
+        target = grok if model == "grok-4.5" else composer
         for index, count in enumerate(counts):
             target[index] += count
     return [
@@ -364,9 +353,6 @@ def cursor_argv_from_buckets(*, by_model: object, bucket: Mapping[str, object]) 
         "--cursor-grok-input-tokens", str(grok[0]),
         "--cursor-grok-cache-read-tokens", str(grok[1]),
         "--cursor-grok-output-tokens", str(grok[2]),
-        "--cursor-auto-input-tokens", str(auto[0]),
-        "--cursor-auto-cache-read-tokens", str(auto[1]),
-        "--cursor-auto-output-tokens", str(auto[2]),
     ]
 
 
@@ -489,9 +475,6 @@ _FLAG_NAMES = {
     "--cursor-grok-input-tokens": "u_grok_in",
     "--cursor-grok-cache-read-tokens": "u_grok_cr",
     "--cursor-grok-output-tokens": "u_grok_out",
-    "--cursor-auto-input-tokens": "u_auto_in",
-    "--cursor-auto-cache-read-tokens": "u_auto_cr",
-    "--cursor-auto-output-tokens": "u_auto_out",
     "--claude-sub-input-tokens": "cs_in",
     "--claude-sub-cache-read-tokens": "cs_cr",
     "--claude-sub-cache-write-5m-tokens": "cs_cw5",
@@ -568,10 +551,9 @@ def _claude_sub_cost_for_counts(*, counts: dict[str, int], keys: tuple[str, str,
 
 
 
-def _cursor_detailed_costs(*, counts: dict[str, int], rates: DisplayRates) -> tuple[int, float, float, float, float]:
+def _cursor_detailed_costs(*, counts: dict[str, int], rates: DisplayRates) -> tuple[int, float, float, float]:
     tokens = sum(counts[key] for key in (
         "u_in", "u_cr", "u_out", "u_grok_in", "u_grok_cr", "u_grok_out",
-        "u_auto_in", "u_auto_cr", "u_auto_out",
     ))
     composer = round(
         _cost_bucket(tokens=counts["u_in"], rate=rates.cursor_input)
@@ -581,11 +563,7 @@ def _cursor_detailed_costs(*, counts: dict[str, int], rates: DisplayRates) -> tu
         _cost_bucket(tokens=counts["u_grok_in"], rate=rates.cursor_grok_input)
         + _cost_bucket(tokens=counts["u_grok_cr"], rate=rates.cursor_grok_cache_read)
         + _cost_bucket(tokens=counts["u_grok_out"], rate=rates.cursor_grok_output), 2)
-    auto = round(
-        _cost_bucket(tokens=counts["u_auto_in"], rate=rates.cursor_auto_input)
-        + _cost_bucket(tokens=counts["u_auto_cr"], rate=rates.cursor_auto_cache_read)
-        + _cost_bucket(tokens=counts["u_auto_out"], rate=rates.cursor_auto_output), 2)
-    return tokens, composer, grok, auto, round(composer + grok + auto, 2)
+    return tokens, composer, grok, round(composer + grok, 2)
 
 def _pricing_from_counts(
     counts: dict[str, int],
@@ -647,13 +625,13 @@ def _pricing_from_counts(
         codex_5_5 = codex
         codex_mini = 0.0
     if cursor_detail_present:
-        u_tokens, cursor_composer, cursor_grok, cursor_auto, cursor = _cursor_detailed_costs(
+        u_tokens, cursor_composer, cursor_grok, cursor = _cursor_detailed_costs(
             counts=counts, rates=rates)
     else:
         u_tokens = counts["cursor_t"]
         warn = warn or u_tokens > 0
         cursor = _cost_blend(tokens=u_tokens, rate=rates.cursor_blended)
-        cursor_composer = cursor_grok = cursor_auto = None
+        cursor_composer = cursor_grok = None
     if cs_bucket or cs_model_buckets:
         opus_sub_rates = _claude_sub_rates_for_model(config.CLAUDE_OPUS_4_8_MODEL)
         cs_tokens, claude_sub = _claude_sub_cost_for_counts(
@@ -682,7 +660,6 @@ def _pricing_from_counts(
         **({
             "CURSOR_COMPOSER_COST": _fmt_money(cursor_composer),
             "CURSOR_GROK_COST": _fmt_money(cast("float", cursor_grok)),
-            "CURSOR_AUTO_COST": _fmt_money(cast("float", cursor_auto)),
         } if cursor_composer is not None else {}),
         "CURSOR_COST": _fmt_money(cursor),
         "CLAUDE_SUB_COST": _fmt_money(claude_sub),
@@ -707,7 +684,7 @@ def token_cost_from_args(argv: list[str], *, env: Mapping[str, str] | None = Non
         )
     order = (
         "CLAUDE_COST", "CODEX_COST", "CODEX_GPT_5_5_COST", "CODEX_GPT_5_4_MINI_COST",
-        *(key for key in ("CURSOR_COMPOSER_COST", "CURSOR_GROK_COST", "CURSOR_AUTO_COST") if key in values),
+        *(key for key in ("CURSOR_COMPOSER_COST", "CURSOR_GROK_COST") if key in values),
         "CURSOR_COST", "CLAUDE_SUB_COST", "TOTAL_COST",
         "CLAUDE_TOKENS", "CODEX_TOKENS", "CURSOR_TOKENS", "CLAUDE_SUB_TOKENS", "TOTAL_TOKENS",
     )
@@ -722,7 +699,7 @@ def _read_cost_value(*, lines: str, key: str) -> str:
     return "0.00"
 
 
-def _emit_cost_line(*, total: str, claude: str, codex_5_5: str, codex_mini: str, cursor: str, total_tokens: str, claude_sub: str, cursor_components: tuple[str, str, str] | None = None) -> str:
+def _emit_cost_line(*, total: str, claude: str, codex_5_5: str, codex_mini: str, cursor: str, total_tokens: str, claude_sub: str, cursor_components: tuple[str, str] | None = None) -> str:
     def money(raw: str) -> str:
         try:
             return f"${float(raw):.2f}"
@@ -735,7 +712,7 @@ def _emit_cost_line(*, total: str, claude: str, codex_5_5: str, codex_mini: str,
     cursor_segment = f"Cursor {money(cursor)}"
     if cursor_components is not None:
         cursor_segment = (f"Cursor {money(cursor)} (Composer {money(cursor_components[0])}, "
-                          f"Grok {money(cursor_components[1])}, Auto {money(cursor_components[2])})")
+                          f"Grok {money(cursor_components[1])})")
     return (
         f"💰 Cost: TOTAL ~{money(total)}: Claude {money(claude)}, Codex-5.6 {money(codex_5_5)}, "
         f"Codex-mini {money(codex_mini)}, {cursor_segment}, Claude (subprocess) {money(claude_sub)}  |  Tokens: {tok_k}k\n"
@@ -767,7 +744,6 @@ def render_cost_line_from_args(argv: list[str], *, env: Mapping[str, str] | None
         cursor_components=(
             _read_cost_value(lines=cost_lines, key="CURSOR_COMPOSER_COST"),
             _read_cost_value(lines=cost_lines, key="CURSOR_GROK_COST"),
-            _read_cost_value(lines=cost_lines, key="CURSOR_AUTO_COST"),
         ) if "CURSOR_COMPOSER_COST=" in cost_lines else None,
     )
 
@@ -812,7 +788,7 @@ def price_run(runner: Runner, *, record: RunRecord, plugin_root: Path | None = N
         print(f"Warning: Python token pricing failed for issue #{record.number}; using blended fallback: {exc}", file=sys.stderr)
         return _fallback_cost(record)
     detailed_cursor = cursor_buckets_are_detailed(record.raw_report.get("BUCKETS_cursor_by_model"))
-    has_cursor_components = all(key in parsed for key in ("CURSOR_COMPOSER_COST", "CURSOR_GROK_COST", "CURSOR_AUTO_COST"))
+    has_cursor_components = all(key in parsed for key in ("CURSOR_COMPOSER_COST", "CURSOR_GROK_COST"))
     return replace(
         record,
         claude_cost=parsed["CLAUDE_COST"],
@@ -820,7 +796,6 @@ def price_run(runner: Runner, *, record: RunRecord, plugin_root: Path | None = N
         cursor_cost=parsed["CURSOR_COST"],
         cursor_composer_cost=parsed["CURSOR_COMPOSER_COST"] if detailed_cursor and has_cursor_components else None,
         cursor_grok_cost=parsed["CURSOR_GROK_COST"] if detailed_cursor and has_cursor_components else None,
-        cursor_auto_cost=parsed["CURSOR_AUTO_COST"] if detailed_cursor and has_cursor_components else None,
         claude_sub_cost=parsed.get("CLAUDE_SUB_COST", 0.0),
         total_cost=parsed["TOTAL_COST"],
         priced_by_token_cost=True,

@@ -2528,6 +2528,10 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     assert len(release_calls) == 1
     timing_calls = [call for call in run_calls if call[0][2:4] == ["timing", "record-vendor-task"]]
     assert len(timing_calls) == 1
+    cursor_calls = [call for call in run_calls if "run-external-agent" in call[0]]
+    assert len(cursor_calls) == 1
+    cursor_argv = cursor_calls[0][0]
+    assert cursor_argv[cursor_argv.index("--model") + 1] == "test"
     argv = timing_calls[0][0]
     assert argv[argv.index("--ledger") + 1] == str(tmp_path / "timing-ledger.tsv")
     assert argv[argv.index("--task-kind") + 1] == "cursor-review-fix"
