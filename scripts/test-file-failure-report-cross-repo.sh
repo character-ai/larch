@@ -27,7 +27,7 @@ make_case() {
     dir="$TMPROOT/$name"
     mkdir -p "$dir/bin"
     cat >"$dir/body.md" <<EOF2
-### [Bug] /implement terminal: fixture
+### [BUG] /implement terminal: fixture
 
 <!-- larch-stall:signature=$MARKER_HASH -->
 
@@ -228,9 +228,14 @@ GH_STUB_CASE=tier-b-accept; export GH_STUB_CASE; run_script "$dir" "$dir/out" --
 assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: bounded public slices accepted"
 
 dir=$(make_case tier-b-unsafe)
-printf '### [Bug] /implement terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
+printf '### [BUG] /implement terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
 GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: raw body comment rejected"
+
+dir=$(make_case tier-b-unsafe-legacy-bug)
+printf '### [Bug] /implement terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
+GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md"
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out")" "tier-b: legacy [Bug] raw heading rejected"
 
 dir=$(make_case tier-b-sensitive)
 printf 'client-secret-token\n' >"$dir/root.md"
@@ -271,10 +276,16 @@ assert_eq dedup-comment "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design")" "de
 contains "$dir/comment.json" '+1 occurrence' "design-prefix: comment includes occurrence line"
 
 dir=$(make_case design-prefix-raw-heading)
-printf '### [Bug] /design terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
+printf '### [BUG] /design terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
 printf 'design-only-secret\n' >"$dir/design-failure-sensitive-corpus.env"
 GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-raw" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --root-cause-file "$dir/root.md"
 assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-raw")" "design-prefix: raw /design heading rejected"
+
+dir=$(make_case design-prefix-raw-heading-legacy-bug)
+printf '### [Bug] /design terminal: raw\n\n<!-- larch-stall:signature=%s -->\n' "$MARKER_HASH" >"$dir/root.md"
+printf 'design-only-secret\n' >"$dir/design-failure-sensitive-corpus.env"
+GH_STUB_CASE=tier-b-unsafe; export GH_STUB_CASE; run_script "$dir" "$dir/out-design-raw-legacy" --repo owner/repo --body-file "$dir/body.md" --title 'Design report title' --publication-tier tier-b --sensitive-corpus-file "$dir/design-failure-sensitive-corpus.env" --root-cause-file "$dir/root.md"
+assert_eq fallback-print-required "$(kv FILE_FAILURE_REPORT_STATUS "$dir/out-design-raw-legacy")" "design-prefix: legacy [Bug] raw /design heading rejected"
 
 dir=$(make_case design-prefix-missing-corpus)
 missing_corpus="$dir/design-failure-sensitive-corpus.env"
