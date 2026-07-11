@@ -235,19 +235,32 @@ class _PostmergeFlushContext:
 
 def _expected_postmerge_flush(context: _PostmergeFlushContext) -> bool:
     lower = f"{context.bail}\n{context.evidence}".lower()
-    unexpected_markers = (
-        "redaction-failed",
-        "post-merge-refresh-failed",
-        "manifest-recovery-failed",
-        "commit-failed",
-    )
     return bool(
         context.any_stall
         and context.phase == "postmerge"
         and context.step == "postmerge-flush"
         and context.state.get("MERGE_RESULT", "").strip() in _TERMINAL_MERGE_RESULTS
         and config.REFRESH_SKIP_PRETERMINAL_OUTCOME in lower
-        and not any(marker in lower for marker in unexpected_markers)
+        and not _postmerge_flush_failure(context)
+    )
+
+
+def _postmerge_flush_failure(context: _PostmergeFlushContext) -> bool:
+    lower = f"{context.bail}\n{context.evidence}".lower()
+    return bool(
+        context.any_stall
+        and context.phase == "postmerge"
+        and context.step == "postmerge-flush"
+        and context.state.get("MERGE_RESULT", "").strip() in _TERMINAL_MERGE_RESULTS
+        and any(
+            marker in lower
+            for marker in (
+                "redaction-failed",
+                "post-merge-refresh-failed",
+                "manifest-recovery-failed",
+                "commit-failed",
+            )
+        )
     )
 
 
@@ -314,6 +327,9 @@ def classify(args: argparse.Namespace) -> int:
         evidence=evidence,
         bail=bail,
     )
+    if result is None and _postmerge_flush_failure(postmerge_context):
+        result = ("unrecoverable", "none", "postmerge-flush-failure")
+        final_hint = True
     if result is None and _expected_postmerge_flush(postmerge_context):
         result = ("operator-action", "none", "postmerge-flush-expected")
         final_hint = True

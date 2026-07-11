@@ -1460,6 +1460,59 @@ def test_classify_expected_postmerge_flush_does_not_hide_failures(
 
 
 @pytest.mark.parametrize(
+    "failure_marker",
+    [
+        "redaction-failed",
+        "post-merge-refresh-failed",
+        "manifest-recovery-failed",
+        "commit-failed",
+    ],
+)
+def test_classify_postmerge_flush_failure_detail_log_is_non_resumable(
+    failure_marker: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_state(tmp_path, "postmerge-flush", "postmerge", extra="MERGE_RESULT=merged")
+    detail_log = tmp_path / "failure.log"
+    _ = detail_log.write_text(
+        f"{config.REFRESH_SKIP_PRETERMINAL_OUTCOME}\n{failure_marker}\n",
+        encoding="utf-8",
+    )
+
+    assert stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(detail_log),
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "RESUME_HINT=none" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-failure" in out
+
+
+def test_classify_postmerge_flush_mixed_evidence_failure_is_non_resumable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_state(
+        tmp_path,
+        "postmerge-flush",
+        "postmerge",
+        extra=f"MERGE_RESULT=merged\nNOTE={config.REFRESH_SKIP_PRETERMINAL_OUTCOME}",
+    )
+    detail_log = tmp_path / "failure.log"
+    _ = detail_log.write_text("commit-failed\n", encoding="utf-8")
+
+    assert stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--failure-detail-log", str(detail_log),
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "RESUME_HINT=none" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=postmerge-flush-failure" in out
+
+
+@pytest.mark.parametrize(
     ("step", "phase", "merge_result", "stall_tracking"),
     [
         ("postmerge-flush", "postmerge", "", "true"),
