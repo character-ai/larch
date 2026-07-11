@@ -87,6 +87,38 @@ raise SystemExit(0)
 PY
 }
 
+safe_regular_path_under_tmpdir() {
+  python3 - "$1" "$IMPLEMENT_TMPDIR" <<'PY'
+from pathlib import Path
+import stat
+import sys
+
+path = Path(sys.argv[1])
+root = Path(sys.argv[2])
+try:
+    raw_root = root.absolute()
+    raw_path = path.absolute()
+    relative = raw_path.relative_to(raw_root)
+    if any(part == ".." for part in relative.parts):
+        raise ValueError
+    if stat.S_ISLNK(raw_root.lstat().st_mode) or not stat.S_ISDIR(raw_root.lstat().st_mode):
+        raise ValueError
+    current = raw_root
+    for part in relative.parts[:-1]:
+        current /= part
+        mode = current.lstat().st_mode
+        if stat.S_ISLNK(mode) or not stat.S_ISDIR(mode):
+            raise ValueError
+    mode = raw_path.lstat().st_mode
+    if stat.S_ISLNK(mode) or not stat.S_ISREG(mode):
+        raise ValueError
+    _ = raw_path.resolve().relative_to(raw_root.resolve())
+except (OSError, ValueError):
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+}
+
 safe_truncate() {
   local path=$1 parent tmp
   parent=${path%/*}
@@ -107,25 +139,25 @@ safe_truncate() {
 
 safe_unlink() {
   local path=$1
+  safe_regular_path_under_tmpdir "$path" || {
+    [ ! -e "$path" ] && [ ! -L "$path" ] || die "unsafe stale file $path"
+    return 0
+  }
   if [ -L "$path" ]; then
     die "refusing to unlink symlink $path"
   fi
   if [ -e "$path" ] && [ ! -f "$path" ]; then
     die "refusing to unlink non-regular $path"
   fi
-  rm -f "$path" 2>/dev/null || true
+  rm -f "$path" || die "failed removing stale file $path"
+  [ ! -e "$path" ] && [ ! -L "$path" ] || die "stale file remains after cleanup $path"
 }
 
 write_merge_kvs() {
   local path=$1
   shift
   local tmp key value
-  if [ -L "$path" ]; then
-    die "refusing symlinked merge-result-env"
-  fi
-  if [ -e "$path" ] && [ ! -f "$path" ]; then
-    die "refusing non-regular merge-result-env"
-  fi
+  safe_regular_path_under_tmpdir "$path" || die "unsafe merge-result-env"
   tmp=$(mktemp "${path}.tmp.XXXXXX") || exit 2
   {
     while [ $# -gt 0 ]; do
@@ -143,6 +175,7 @@ write_merge_kvs() {
     done
   } >"$tmp" || { rm -f "$tmp" 2>/dev/null || true; exit 2; }
   chmod 0600 "$tmp" 2>/dev/null || true
+  safe_regular_path_under_tmpdir "$path" || { rm -f "$tmp" 2>/dev/null || true; die "merge-result-env changed before replacement"; }
   mv -f "$tmp" "$path" || { rm -f "$tmp" 2>/dev/null || true; exit 2; }
 }
 
@@ -343,7 +376,12 @@ clear_stale_state() {
   result_env=$(result_env_path)
   merge_env=$(merge_env_path)
   safe_unlink "$result_env"
-  safe_truncate "$merge_env"
+  safe_unlink "$merge_env"
+  [ ! -e "$result_env" ] && [ ! -L "$result_env" ] || die "stale result env remains"
+  [ ! -e "$merge_env" ] && [ ! -L "$merge_env" ] || die "stale merge env remains"
+  : >"$merge_env" || die "failed creating fresh merge env"
+  chmod 0600 "$merge_env" 2>/dev/null || true
+  safe_regular_path_under_tmpdir "$merge_env" || die "unsafe fresh merge env"
   MERGE_RESULT_ENV=$merge_env
 }
 
@@ -475,6 +513,7 @@ terminal_is_success() {
   [ "${TERM_STEP:-}" = "$STEP" ] || return 1
   identity_matches "${TERM_KINDS:-}" "${TERM_FP:-}" || return 1
   [ "${TERM_STATUS:-}" = "complete" ] || return 1
+  case "${TERM_ATTEMPT:-}" in 1|2) ;; *) return 1 ;; esac
   [ "${TERM_BGJOB_RC:-}" = "0" ] || return 1
   validate_results_coverage "${TERM_RESULTS:-}" "$ASSESSMENT_REQUESTED_KINDS" || return 1
   return 0
@@ -485,6 +524,7 @@ terminal_is_fail_closed() {
   identity_matches "${TERM_KINDS:-}" "${TERM_FP:-}" || return 1
   [ "${TERM_STATUS:-}" = "fail-closed" ] || return 1
   [ "${TERM_ATTEMPT:-}" = "2" ] || return 1
+  [ -n "${TERM_BGJOB_RC:-}" ] && [ "${TERM_BGJOB_RC:-}" != "0" ] || return 1
   return 0
 }
 
@@ -508,7 +548,7 @@ handle_terminal_outcome() {
     HANDLE_ACTION=emit-fail-closed
     return 0
   fi
-  if ! identity_matches "${TERM_KINDS:-}" "${TERM_FP:-}"; then
+  if { [ -n "${TERM_KINDS:-}" ] || [ -n "${TERM_FP:-}" ]; } && ! identity_matches "${TERM_KINDS:-}" "${TERM_FP:-}"; then
     # Inputs drifted relative to the finished job; recompute and restart.
     HANDLE_ACTION=fresh-identity
     return 0
@@ -547,6 +587,8 @@ run_wait_validate_path() {
     out=$(wait_until_terminal)
   fi
   load_terminal_envelope "$out"
+  parse_requested_kinds
+  compute_launch_identity
   handle_terminal_outcome
 }
 
@@ -585,10 +627,9 @@ publish_fail_closed_terminal() {
 }
 
 run_child() {
-  local kinds_csv attempt fp out status results line key value
+  local kinds_csv attempt fp out status results line status_seen results_seen
   [ -n "$MERGE_RESULT_ENV" ] || die "--merge-result-env is required in child mode"
-  [ ! -L "$MERGE_RESULT_ENV" ] || die "refusing symlinked merge-result-env"
-  [ -f "$MERGE_RESULT_ENV" ] || die "missing merge-result-env"
+  safe_regular_path_under_tmpdir "$MERGE_RESULT_ENV" || die "unsafe merge-result-env"
   kinds_csv=$(read_env_key ASSESSMENT_REQUESTED_KINDS "$MERGE_RESULT_ENV")
   attempt=$(read_env_key ASSESSMENT_ATTEMPT "$MERGE_RESULT_ENV")
   fp=$(read_env_key ASSESSMENT_COVERED_FINGERPRINT "$MERGE_RESULT_ENV")
@@ -614,15 +655,26 @@ run_child() {
   set -e
   status=""
   results=""
+  status_seen=false
+  results_seen=false
   while IFS= read -r line || [ -n "$line" ]; do
     case "$line" in
-      ARCHITECTURAL_ASSESSMENT_STATUS=*) status=${line#ARCHITECTURAL_ASSESSMENT_STATUS=} ;;
-      ARCHITECTURAL_ASSESSMENT_RESULTS=*) results=${line#ARCHITECTURAL_ASSESSMENT_RESULTS=} ;;
+      ARCHITECTURAL_ASSESSMENT_STATUS=*)
+        [ "$status_seen" = false ] || die "duplicate child status"
+        status=${line#ARCHITECTURAL_ASSESSMENT_STATUS=}
+        status_seen=true
+        ;;
+      ARCHITECTURAL_ASSESSMENT_RESULTS=*)
+        [ "$results_seen" = false ] || die "duplicate child results"
+        results=${line#ARCHITECTURAL_ASSESSMENT_RESULTS=}
+        results_seen=true
+        ;;
+      *) die "malformed or unknown child stdout record" ;;
     esac
   done <<EOF
 $out
 EOF
-  if [ "$child_rc" -ne 0 ] || [ "$status" != "ok" ]; then
+  if [ "$child_rc" -ne 0 ] || [ "$status_seen" != true ] || [ "$results_seen" != true ] || [ "$status" != "ok" ]; then
     printf 'step-8-assessment.sh: child assessment failed status=%s rc=%s\n' "${status:-missing}" "$child_rc" >&2
     exit 1
   fi
@@ -675,6 +727,13 @@ REGISTRY_STATE=$(printf '%s\n' "$reg_out" | sed -n 's/^REGISTRY_STATE=//p' | tai
 
 if [ "$REGISTRY_STATE" = "live" ]; then
   read_identity_from_env "$MERGE_RESULT_ENV"
+  if [ -z "${ENV_KINDS:-}" ] || [ -z "${ENV_FP:-}" ]; then
+    read_identity_from_env "$RESULT_ENV"
+  fi
+  if [ -z "${ENV_KINDS:-}" ] || [ -z "${ENV_FP:-}" ]; then
+    printf 'ASSESSMENT_ERROR=missing-launch-identity\n'
+    exit 2
+  fi
   if identity_matches "${ENV_KINDS:-}" "${ENV_FP:-}"; then
     run_wait_validate_path true
     case "$HANDLE_ACTION" in
@@ -712,7 +771,8 @@ if [ "$REGISTRY_STATE" = "live" ]; then
 elif [ "$REGISTRY_STATE" = "dead" ]; then
   reg_path=$(printf '%s\n' "$reg_out" | sed -n 's/^REGISTRY_PATH=//p' | tail -n 1)
   if [ -n "$reg_path" ] && [ ! -L "$reg_path" ]; then
-    rm -f "$reg_path" 2>/dev/null || true
+    rm -f "$reg_path" || die "failed removing stale bgjob registry"
+    [ ! -e "$reg_path" ] && [ ! -L "$reg_path" ] || die "stale bgjob registry remains after cleanup"
   fi
 fi
 
@@ -721,30 +781,25 @@ if [ "${CURRENT_ATTEMPT:-}" = "" ]; then
   if [ -f "$RESULT_ENV" ] && [ ! -L "$RESULT_ENV" ]; then
     read_identity_from_env "$RESULT_ENV"
     if identity_matches "${ENV_KINDS:-}" "${ENV_FP:-}"; then
-      TERM_STEP=$(read_env_key STEP "$RESULT_ENV")
-      TERM_KINDS=$ENV_KINDS
-      TERM_FP=$ENV_FP
-      TERM_STATUS=$ENV_STATUS
-      TERM_ATTEMPT=$ENV_ATTEMPT
-      TERM_RESULTS=$ENV_RESULTS
-      TERM_BGJOB_RC=$(read_env_key BGJOB_RC "$RESULT_ENV")
-      TERM_BGJOB_STATUS=DONE
-      if terminal_is_success || terminal_is_fail_closed; then
-        set +e
-        WAIT_OUT=$(wait_probe_zero)
-        set -e
-        load_terminal_envelope "$WAIT_OUT"
-        emit_terminal_stdout
-        exit 0
-      fi
-      if [ "${ENV_ATTEMPT:-}" = "1" ] || [ -z "${ENV_ATTEMPT:-}" ]; then
-        # Invalid/incomplete attempt-1 completed envelope → retry once.
-        CURRENT_ATTEMPT=2
-        clear_stale_state
-      else
-        publish_fail_closed_terminal 2
-        exit 0
-      fi
+      run_wait_validate_path true
+      case "$HANDLE_ACTION" in
+        emit-success|emit-fail-closed)
+          emit_terminal_stdout
+          exit 0
+          ;;
+        retry)
+          CURRENT_ATTEMPT=2
+          clear_stale_state
+          ;;
+        fresh-identity)
+          CURRENT_ATTEMPT=1
+          clear_stale_state
+          ;;
+        *)
+          publish_fail_closed_terminal 2
+          exit 0
+          ;;
+      esac
     else
       # Stale completed envelope for different identity.
       clear_stale_state
