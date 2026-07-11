@@ -455,7 +455,7 @@ def _parse_results_independently(raw: str, evidences: Sequence[MaterializedEvide
     """Return valid result rows while isolating malformed or omitted kinds."""
     try:
         decoded: object = json.loads(raw)
-        if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "results"} or str(decoded.get("schema_version")) != "1":  # type: ignore[reportUnknownArgumentType, reportUnknownMemberType]  # reason: decoded is object from json.loads
+        if not isinstance(decoded, dict) or set(cast("dict[str, object]", decoded).keys()) != {"schema_version", "results"} or str(decoded.get("schema_version")) != "1":  # type: ignore[reportUnknownArgumentType, reportUnknownMemberType]  # reason: decoded is object from json.loads
             raise ValueError("assessment output envelope is invalid")
         rows = decoded.get("results")  # type: ignore[reportUnknownMemberType]  # reason: decoded is object from json.loads
         if not isinstance(rows, list):
@@ -617,11 +617,11 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, implement_
         return False
     if architectural_guidelines.validate_invariant_ship_outcome_record(data) is not None or not isinstance(data, dict):
         return False
-    return (
-        data.get("outcome") == "violation"  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]  # reason: data is dict from _load_json
-        and data.get("assessment_kind") == "violation"  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]  # reason: data is dict from _load_json
-        and data.get("head_sha") == evidence.head_sha  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]  # reason: data is dict from _load_json
-        and data.get("base_ref") == evidence.base_ref  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]  # reason: data is dict from _load_json
+    return (  # type: ignore[reportUnknownVariableType]  # reason: data is dict from _load_json
+        data.get("outcome") == "violation"  # type: ignore[reportUnknownMemberType]  # reason: data is dict from _load_json
+        and data.get("assessment_kind") == "violation"  # type: ignore[reportUnknownMemberType]  # reason: data is dict from _load_json
+        and data.get("head_sha") == evidence.head_sha  # type: ignore[reportUnknownMemberType]  # reason: data is dict from _load_json
+        and data.get("base_ref") == evidence.base_ref  # type: ignore[reportUnknownMemberType]  # reason: data is dict from _load_json
         and _regular_file(architectural_guidelines.invariant_durable_note_path(implement_tmpdir))
     )
 
