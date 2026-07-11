@@ -615,6 +615,31 @@ def _glm_main_lane_cost_parts(
     return cost, note
 
 
+def _cost_lines(
+    *,
+    kwargs: Mapping[str, object],
+    total_cost: object,
+    total_tokens: int,
+) -> list[str]:
+    """Render the ``- **Cost**:`` bullet and the optional GLM plan-estimate note."""
+    if kwargs.get("cost_unavailable") or total_cost == "N/A":
+        return ["- **Cost**: N/A"]
+    glm_parts = _glm_main_lane_cost_parts(
+        kwargs=kwargs, total_cost=total_cost, total_tokens=total_tokens,
+    )
+    if glm_parts is not None:
+        cost, note = glm_parts
+        return [f"- **Cost**: {cost}", note]
+    cost = (
+        f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))}: "
+        f"Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, "
+        f"{_codex_cost_segment(kwargs)}, {_cursor_cost_segment(kwargs)}, "
+        f"Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  "
+        f"Tokens: {int((total_tokens + 500) / 1000)}k"
+    )
+    return [f"- **Cost**: {cost}"]
+
+
 def render_run_summary(**kwargs: object) -> str:
     skill = str(kwargs.get("skill") or "implement")
     outcome = str(kwargs.get("outcome") or "unknown")
@@ -622,23 +647,6 @@ def render_run_summary(**kwargs: object) -> str:
     force = str(kwargs.get("force_requested") or "false") == "true"
     total_tokens = int(str(kwargs.get("total_tokens") or kwargs.get("claude_tokens") or 0) or 0)
     total_cost = kwargs.get("total_cost", "N/A")
-    cost_note: str | None = None
-    if kwargs.get("cost_unavailable") or total_cost == "N/A":
-        cost = "N/A"
-    else:
-        glm_parts = _glm_main_lane_cost_parts(
-            kwargs=kwargs, total_cost=total_cost, total_tokens=total_tokens,
-        )
-        if glm_parts is not None:
-            cost, cost_note = glm_parts
-        else:
-            cost = (
-                f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))}: "
-                f"Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, "
-                f"{_codex_cost_segment(kwargs)}, {_cursor_cost_segment(kwargs)}, "
-                f"Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  "
-                f"Tokens: {int((total_tokens + 500) / 1000)}k"
-            )
     issue_number = str(kwargs.get("issue_number") or "")
     issue_url = str(kwargs.get("issue_url") or "")
     issue = "N/A"
@@ -665,12 +673,8 @@ def render_run_summary(**kwargs: object) -> str:
         lines.append(f"- **Path**: {kwargs.get('workflow_path')}")
     if force:
         lines.append("- Force: true")
-    lines.extend([
-        f"- **Duration**: {kwargs.get('duration') or 'N/A'}",
-        f"- **Cost**: {cost}",
-    ])
-    if cost_note is not None:
-        lines.append(cost_note)
+    lines.append(f"- **Duration**: {kwargs.get('duration') or 'N/A'}")
+    lines.extend(_cost_lines(kwargs=kwargs, total_cost=total_cost, total_tokens=total_tokens))
     lines.append(f"- **Issue**: {issue}")
     if skill != "design" and pr != "N/A":
         lines.append(f"- **PR**: {pr}")
