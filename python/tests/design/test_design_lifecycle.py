@@ -3190,7 +3190,14 @@ def _write_prior_failed_publish_tail_report(
     state.write_text(f"TRIGGER={trigger}\n{outcome_line}\n", encoding="utf-8")
     result_env = design_tmpdir / config.DESIGN_PUBLISH_RESULT_FILE
     if success:
-        result_env.write_text("PLAN_WRITE_OK=true\nRENAMED=true\nLOG_PUBLISH_COMPLETED=true\n", encoding="utf-8")
+        result_env.write_text(
+            "PUBLISH_ATTEMPT_ID=12345678-current\n"
+            "PUBLISH_RC_SOURCE=returned\n"
+            "PLAN_WRITE_OK=true\n"
+            "RENAMED=true\n"
+            "LOG_PUBLISH_COMPLETED=true\n",
+            encoding="utf-8",
+        )
     else:
         result_env.write_text("PLAN_WRITE_OK=true\nRENAMED=false\nLOG_PUBLISH_COMPLETED=false\n", encoding="utf-8")
     return sentinel
