@@ -823,6 +823,12 @@ exclude = [
   # Referenced only from Makefile (test-bug-structure target) and the
   # sibling scripts/test-bug-structure.md. Same Makefile-only pattern.
   "scripts/test-bug-structure.sh",
+  # scripts/test-learn-from-bugs-structure.sh is the structural regression
+  # harness for skills/learn-from-bugs/SKILL.md --file/-s filing, regression
+  # tests, residual partition, and durable filing retry ordering. Referenced
+  # only from Makefile (test-learn-from-bugs-structure target). Same
+  # Makefile-only pattern as other test-*-structure.sh harnesses.
+  "scripts/test-learn-from-bugs-structure.sh",
   "scripts/test-design-structure.sh",
   # python/tests/design/test_design_lifecycle.py is a Makefile-only harness for
   # python/design_lifecycle.py (/design Step 0b lifecycle port);
