@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of neutral round-one finding; the plan already requires a canonical normalized request binding.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of neutral round-one finding; the plan already requires complete persisted coverage for every requested kind.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly rewrites the exit matrix to remove inline materialized-diff authorship and require one validated relaunch.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan specifies normalization preserving unrelated keys and focused tests for all three route shapes.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicate of prior-round OOS_1.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicate of prior-round OOS_3.
