@@ -34,11 +34,11 @@ from larch.core import config
 
 def _fake_validated_snapshot(target: Path, prepare: Any) -> snapshot.ValidatedPreCoderSnapshot:
     prepare(target)
-    return snapshot.ValidatedPreCoderSnapshot(
-        mode="full",
-        root=review_and_fix.pre_coder_snapshot_dir(target),
-        pre_head="HEAD",
-    )
+    snap = review_and_fix.pre_coder_snapshot_dir(target)
+    untracked = snap / "pre-coder-untracked-paths.txt"
+    if not untracked.exists():
+        untracked.write_text("", encoding="utf-8")
+    return snapshot._validate_pre_coder_snapshot(target)
 
 
 def _tool_order_probe(monkeypatch: pytest.MonkeyPatch, module: Any, expected_role: str, order: tuple[str, ...]) -> list[str]:
@@ -186,7 +186,7 @@ def test_review_fix_coder_uses_review_fix_role(tmp_path: Path, monkeypatch: pyte
     def fake_commit(*_args: object, **_kwargs: object) -> coder_runner.RoundCommitResult:
         return coder_runner.RoundCommitResult(sha="abc123")
 
-    def fake_cleanup(_round_dir: Path) -> bool:
+    def fake_cleanup(_round_dir: Path, **_kwargs: object) -> bool:
         return True
 
     def fake_scrub_findings(*, input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
@@ -304,7 +304,7 @@ def test_review_fix_coder_attempts_claude_before_main_agent(tmp_path: Path, monk
     monkeypatch.setattr(coder_runner, "_run_coder_claude", fake_coder("claude"))
     monkeypatch.setattr(coder_runner, "_post_dispatch_submodule_revert", lambda **_kwargs: 0)
     monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda *_args, **_kwargs: [])
-    monkeypatch.setattr(coder_runner, "_cleanup_failed_coder_attempt", lambda _round_dir: True)
+    monkeypatch.setattr(coder_runner, "_cleanup_failed_coder_attempt", lambda *_a, **_k: True)
     monkeypatch.setattr(coder_runner, "_record_main_agent_required_vendor_task", lambda _round_dir: tmp_path / "main-agent.log")
 
     result = review_and_fix.apply_findings_with_coder(input_file=accepted, round_dir=round_dir, result_file=result_file)

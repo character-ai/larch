@@ -4745,6 +4745,7 @@ def test_apply_findings_with_coder_logs_panel_prompt_size(tmp_path: Path, monkey
         ),
     )  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(coder_runner, "revalidate_pre_coder_snapshot", lambda *_a, **_k: None)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(coder_runner, "_record_main_agent_required_vendor_task", lambda _round_dir: round_dir / "main.log")  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(coder_runner.external_defaults, "tool_order", lambda _role: [])
     wrong_artifact_dir = tmp_path / "wrong-panel-dir"
