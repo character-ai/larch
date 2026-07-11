@@ -42,6 +42,70 @@ Do the thing.
 lots of plan bytes that must be dropped
 """
 
+STRUCTURED_H4_BODY = """#### Summary
+
+An h4-sectioned widget broke.
+
+#### Root cause
+
+The digester matched only h2/h3, so h4 bodies fell to freeform truncation.
+
+#### Suggested fix(es)
+
+Widen heading recognition to h2 through h4.
+
+<!-- larch:plan:start -->
+## Plan
+## Approach
+Do the thing.
+"""
+
+FENCED_HEADING_BACKTICK_BODY = """## Summary
+
+Real summary before a fenced phantom.
+
+```markdown
+## Root cause
+
+This fenced heading must not become a section.
+```
+
+Still summary after the fence.
+
+## Suggested fix(es)
+
+Ignore headings inside fences.
+
+<!-- larch:plan:start -->
+## Plan
+## Approach
+Do the thing.
+"""
+
+FENCED_HEADING_TILDE_BODY = """## Summary
+
+Real summary with a tilde fence.
+
+~~~~markdown
+## Root cause
+
+Longer tilde opener; a shorter closer must not end the fence.
+~~~
+Still inside the fence.
+~~~~
+
+Summary continues after the matched closer.
+
+## Suggested fix(es)
+
+Require closing length >= opener length.
+
+<!-- larch:plan:start -->
+## Plan
+## Approach
+Do the thing.
+"""
+
 FREEFORM_BODY = """**Summary.** Something went wrong in the flush path and nobody noticed.
 
 More detail about the failure that is not under a recognized heading.
@@ -78,7 +142,46 @@ def test_build_digest_structured_keeps_signal_sections() -> None:
     assert digest.number == 10
     assert digest.title == "[BUG] widget"  # [DONE] stripped
     assert set(digest.sections) == {"summary", "root cause analysis", "suggested fix(es)"}
+    assert digest.sections["summary"] == "A widget broke."
+    assert digest.sections["root cause analysis"] == (
+        "The reader parsed `https://` but the writer emits `OOS_FILE_MAP\\t`."
+    )
+    assert digest.sections["suggested fix(es)"] == "Match the writer prefix."
     assert "OOS_FILE_MAP" in digest.sections["root cause analysis"]
+    assert "_freeform" not in digest.sections
+
+
+def test_build_digest_h4_canonical_sections_are_structured() -> None:
+    digest = learn_from_bugs.build_digest(_issue(13, "[BUG] h4 body", STRUCTURED_H4_BODY))
+    assert digest.structured is True
+    assert set(digest.sections) == {"summary", "root cause", "suggested fix(es)"}
+    assert "freeform truncation" in digest.sections["root cause"]
+    assert "h2 through h4" in digest.sections["suggested fix(es)"]
+    assert "_freeform" not in digest.sections
+
+
+def test_build_digest_ignores_headings_inside_backtick_fence() -> None:
+    digest = learn_from_bugs.build_digest(
+        _issue(14, "[BUG] fenced backtick", FENCED_HEADING_BACKTICK_BODY)
+    )
+    assert digest.structured is True
+    assert "root cause" not in digest.sections
+    assert "root cause analysis" not in digest.sections
+    assert "Real summary before a fenced phantom." in digest.sections["summary"]
+    assert "Still summary after the fence." in digest.sections["summary"]
+    assert "## Root cause" in digest.sections["summary"]
+    assert digest.sections["suggested fix(es)"] == "Ignore headings inside fences."
+
+
+def test_build_digest_ignores_headings_inside_tilde_fence_with_short_closer() -> None:
+    digest = learn_from_bugs.build_digest(
+        _issue(15, "[BUG] fenced tilde", FENCED_HEADING_TILDE_BODY)
+    )
+    assert digest.structured is True
+    assert "root cause" not in digest.sections
+    assert "Still inside the fence." in digest.sections["summary"]
+    assert "Summary continues after the matched closer." in digest.sections["summary"]
+    assert digest.sections["suggested fix(es)"] == "Require closing length >= opener length."
 
 
 def test_build_digest_freeform_fallback() -> None:
