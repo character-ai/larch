@@ -34,7 +34,7 @@ CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
 LAUNCHER_PREFIX = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 EXPECTED_OLD = 2
-EXPECTED_NEW = 27
+EXPECTED_NEW = 28
 
 def old_logical_commands(body):
     commands = []
@@ -233,26 +233,24 @@ try:
 except ValueError as exc:
     errors.append(f'ci-fix branch must document ship pre-fix-rebase before ci-fix load: {exc}')
 try:
-    assessments_start = skill_text.index('- **`assessments`**:')
-    invariants_start = skill_text.index('- **`invariants-assessment`**:', assessments_start)
-    assessments_slice = skill_text[assessments_start:invariants_start]
-    invariant_write = assessments_slice.index('step-architectural-invariants-write-compose.sh')
-    guideline_write = assessments_slice.index('step-architectural-guidelines-write-compose.sh')
-    relaunch = assessments_slice.index('relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair exactly once')
-    if not (invariant_write < guideline_write < relaunch):
-        errors.append('assessments branch must run invariant compose write before guideline compose write before one bgjob step-8-ship.sh relaunch')
+    assessments_start = skill_text.index('- **`assessments`**, **`invariants-assessment`**, or **`guidelines-assessment`**:')
+    reship_start = skill_text.index('- **`reship`**:', assessments_start)
+    assessments_slice = skill_text[assessments_start:reship_start]
+    normalization = assessments_slice.index('normalize the current `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env` immediately before the adapter fence')
+    adapter = assessments_slice.index('skills/implement/scripts/step-8-assessment.sh')
+    validation = assessments_slice.index('After a normal return, require adapter exit success')
+    relaunch = assessments_slice.index('return to the Step 8 ship launcher above exactly once')
+    if not (normalization < adapter < validation < relaunch):
+        errors.append('assessment branch must normalize, invoke one adapter, validate, then allow one Step 8 ship relaunch')
+    if assessments_slice.count('skills/implement/scripts/step-8-assessment.sh') != 1:
+        errors.append('assessment branch must contain exactly one step-8-assessment.sh launcher')
+    if 'python/cli.py bgjob wait --step implement-step8-assessment' in assessments_slice:
+        errors.append('assessment branch must not expose a prompt-side assessment wait fence')
+    for forbidden in ('step-architectural-invariants-write-compose.sh', 'step-architectural-guidelines-write-compose.sh', 'architectural-invariant-assessment-draft.md', 'architectural-guideline-assessment-draft.md'):
+        if forbidden in assessments_slice:
+            errors.append(f'assessment branch must not retain legacy prompt-side work: {forbidden}')
 except ValueError as exc:
-    errors.append(f'assessments branch must document combined compose-write ordering: {exc}')
-try:
-    guidelines_start = skill_text.index('- **`guidelines-assessment`**:')
-    reship_start = skill_text.index('- **`reship`**:', guidelines_start)
-    guidelines_slice = skill_text[guidelines_start:reship_start]
-    write_compose = guidelines_slice.index('step-architectural-guidelines-write-compose.sh')
-    relaunch = guidelines_slice.index('relaunch `step-8-ship.sh` through the Step 8 bgjob start/wait pair')
-    if not (write_compose < relaunch):
-        errors.append('guidelines-assessment branch must run step-architectural-guidelines-write-compose.sh before bgjob step-8-ship.sh relaunch')
-except ValueError as exc:
-    errors.append(f'guidelines-assessment branch must document compose-write ordering: {exc}')
+    errors.append(f'assessment branch must document adapter-first ordering: {exc}')
 
 
 resume_text = Path('skills/implement/references/bootstrap-recovery.md').read_text()

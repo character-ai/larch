@@ -656,6 +656,37 @@ def test_ship_route_exit_preserves_combined_assessment_detail(
 
 
 @pytest.mark.parametrize(
+    ("reason", "action"),
+    [
+        ("architectural-invariants-assessment", "invariants-assessment"),
+        ("architectural-guidelines-assessment", "guidelines-assessment"),
+    ],
+)
+def test_ship_route_exit_preserves_dormant_assessment_aliases_for_prompt_normalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    reason: str,
+    action: str,
+) -> None:
+    tmp = _session(tmp_path)
+
+    exit_rc, out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        3,
+        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": reason},
+    )
+
+    assert exit_rc == 0
+    assert out == f"NEXT_ACTION={action}\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert f"NEXT_ACTION={action}\n" in env
+    assert f"NEEDS_USER_REASON={reason}\n" in env
+
+
+@pytest.mark.parametrize(
     ("bgjob_rc", "payload", "expected_action"),
     [
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"}, "oos-pipeline"),
