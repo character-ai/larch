@@ -1,0 +1,142 @@
+## Approach
+
+1. Define the two assessment vocabularies and a distinct re-author-required exit code in shared config.
+2. Move the tolerant note classifier into one helper in `python/larch/core/architectural_guidelines.py`. Preserve its current first-line clean-lead and identifier-search behavior.
+3. Require an explicit outcome on compose and staged assessment writers. Validate `clean|violation` for invariants and `clean|deviation` for guidelines.
+4. Before writing artifacts, run the one-way cross-check. Reject declared `clean` when the shared classifier finds an identifier without the clean lead. Do not reject explicit `violation` or `deviation`.
+5. Persist the supplied value as `ASSESSMENT_KIND` in the existing HEAD and diff-fingerprint-pinned metadata. Keep outcome sidecars at `schema_version == "1"`.
+6. Pass the validated outcome through the live Step 8 coordinator and shell wrappers in the same change.
+7. Remove prose inference from ship routing. Authored present notes without a valid persisted outcome must request re-authoring rather than route as clean. Deterministic-clean, unavailable, absent, invalid, and empty-invariant paths retain their existing system-derived behavior.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Add shared constants for invariant outcomes `clean|violation` and guideline outcomes `clean|deviation`.
+- Add a distinct exit code for an assessment that requires re-authoring after an explicit-outcome or consistency failure.
+- Define any new reason token or wire literal once here for callers that must branch on the failure.
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+- Add the shared tolerant-prose classifier used for both guideline and invariant notes. Parameterize the clean lead, identifier matcher, and non-clean vocabulary without collapsing `violation` into `deviation`.
+- Replace the existing invariant classifier copy and expose the helper for `ship_guidelines.py`.
+- Extend compose and staged writer functions with a required explicit outcome.
+- Validate the outcome against the correct vocabulary before any durable note, metadata, or staged artifact is written.
+- Apply the one-way fail-closed cross-check:
+  - Accept verbose clean notes whose first line is the canonical clean sentence, even if later rationale names identifiers.
+  - Reject `clean` notes that name a matching `I-*` or `G-*` identifier without that clean lead.
+  - Accept explicit `violation` and `deviation` regardless of clean-shaped prose.
+- Persist the explicit outcome in the existing `ASSESSMENT_KIND` metadata field alongside the current HEAD SHA and diff fingerprint.
+- Require `--outcome` on both guideline and invariant `write-compose-assessment` and `write-staged-assessment` CLI verbs.
+- Emit the existing status and warning grammar, but return the new distinct re-author exit code for missing, invalid, or mismatched outcomes.
+- Preserve deterministic-clean and unavailable writers as trusted system paths. Do not alter `/design` `persist-design-assessment`.
+
+### UPDATED: python/larch/implement/architectural_assessment.py
+
+- Pass each validated agent result `state` into the compose writer as the explicit outcome.
+- Treat a clean-claim prose mismatch as a re-author-required result rather than converting it into a consumable clean note.
+- Preserve the result identity checks and existing HEAD, diff fingerprint, and knowledge fingerprint validation.
+- Ensure unavailable handling does not leave a partially written authored note or outcome sidecar after the cross-check fails.
+
+### UPDATED: python/larch/implement/ship_guidelines.py
+
+- Delete the local guideline and invariant prose classifier copies and import the shared helper for independent consistency checks.
+- Stop filling a missing `assessment_kind` from note prose in authored present-note paths.
+- Route authored guideline outcomes only from persisted `clean|deviation` and invariant outcomes only from persisted `clean|violation`.
+- Fail closed with a re-author request when a present authored note lacks a valid explicit outcome.
+- Retain the independent one-way veto so declared `clean` cannot disarm the gate when the note is violation-shaped.
+- Keep existing routing for deterministic-clean, unavailable, absent, invalid, and invariant-empty states.
+- Keep `architectural-guideline-outcome.json` and `architectural-invariant-outcome.json` at schema version 1. Continue using the existing `assessment_kind` and `outcome` fields.
+
+### UPDATED: skills/implement/scripts/step-architectural-guidelines-write-compose.sh
+
+- Accept the guideline outcome from the authoring path and pass it as `--outcome`.
+- Preserve the current assessment-file containment and tmpdir behavior.
+- Propagate the distinct re-author exit code unchanged so the caller can branch.
+
+### UPDATED: skills/implement/scripts/step-architectural-invariants-write-compose.sh
+
+- Accept the invariant outcome from the authoring path and pass it as `--outcome`.
+- Preserve the current assessment-file containment and tmpdir behavior.
+- Propagate the distinct re-author exit code unchanged.
+
+### UPDATED: skills/implement/scripts/step-architectural-guidelines-write-staged.sh
+
+- Update the retained staged-writer wrapper to require and pass the explicit guideline outcome.
+- Preserve its materialization metadata and diff-fingerprint handling even though the live prompt no longer uses this staged path.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+- Update wrapper invocations to supply explicit outcomes.
+- Assert that compose metadata contains the author-supplied `ASSESSMENT_KIND` for both vocabularies.
+- Add wrapper-level checks for omitted outcome and clean-claim mismatch returning the distinct re-author exit code without producing a consumable durable note.
+- Retain stale staged-artifact cleanup assertions.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+- Update direct compose and staged writer calls to pass explicit outcomes.
+- Add table-driven coverage for both vocabularies and the shared classifier:
+  - canonical clean note;
+  - clean lead plus rationale that names an identifier;
+  - identifier-bearing violation or deviation note;
+  - identifier-free explicit violation or deviation;
+  - declared clean with identifier-bearing, non-clean-led prose;
+  - explicit non-clean outcome with clean-shaped prose;
+  - missing and cross-vocabulary outcomes.
+- Assert mismatch failure occurs before durable or staged artifacts become consumable.
+- Assert persisted metadata carries the explicit outcome with the existing HEAD and diff-fingerprint identity.
+- Test CLI parsing, status output, and the distinct re-author exit code.
+- Retain `/design` explicit-assessment behavior unchanged.
+
+### UPDATED: python/tests/implement/test_architectural_assessment.py
+
+- Verify the coordinator passes each result state to the matching compose writer.
+- Cover an identifier-free explicit violation or deviation persisting and routing as blocking.
+- Cover a clean-claim mismatch producing re-author behavior rather than clean or unavailable routing.
+- Verify combined invariant and guideline results preserve their separate vocabularies and identity pins.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+- Replace tests of private classifier copies with tests of the shared helper or public routing behavior.
+- Assert prose alone cannot turn a present authored note into a clean outcome when persisted outcome metadata is missing.
+- Add regression cases for clean-with-rationale, identifier-free violation or deviation, and declared-clean mismatch.
+- Assert explicit violation and deviation remain blocking even when their prose looks clean.
+- Assert outcome JSON stays schema version 1 and carries the author-supplied `assessment_kind`.
+- Retain validation coverage for deterministic-clean, unavailable, absent, invalid, and stale-note paths.
+
+## Edge cases
+
+- A canonical clean first line followed by rationale naming `I-*` or `G-*` remains clean.
+- An identifier-free note declared `violation` or `deviation` remains blocking.
+- A clean-shaped note declared `violation` or `deviation` remains blocking.
+- A note declared `clean` with a matching identifier and no canonical clean lead is rejected before persistence.
+- Guideline outcomes cannot use `violation`; invariant outcomes cannot use `deviation`.
+- Missing outcomes fail closed only on authored present-assessment paths. System-derived absent, invalid, unavailable, deterministic-clean, and invariant-empty paths remain valid.
+- HEAD drift or diff-fingerprint drift continues to invalidate the note and sidecar regardless of the explicit outcome.
+- Legacy authored metadata without `ASSESSMENT_KIND` cannot regain authority through prose inference.
+
+## Failure modes
+
+- If a producer is not updated atomically, the required flag can stall valid Step 8 runs. Update the coordinator and all retained wrappers with the CLI gate.
+- If routing retains any `assessment_kind or classify(note)` fallback, prose can still decide shipping. Remove these fallbacks and test missing metadata directly.
+- If the mismatch check runs after writing, a failed authoring attempt can leave a consumable clean artifact. Validate before all writes and assert artifact absence on failure.
+- If the shared helper merges vocabularies, guideline and invariant sidecars may accept invalid values. Keep separate constant sets and tests.
+- If mismatch errors collapse into the generic internal-error or unavailable path, callers cannot request re-authoring. Preserve the distinct exit and status through wrappers and coordinator handling.
+
+## Testing strategy
+
+- Run focused Python tests:
+  - `python3 -m pytest python/tests/core/test_architectural_guidelines.py`
+  - `python3 -m pytest python/tests/implement/test_architectural_assessment.py`
+  - `python3 -m pytest python/tests/implement/test_ship.py`
+- Run the wrapper integration harness:
+  - `make test-architectural-guidelines-step`
+- Run lint for changed Python and shell surfaces using the repository’s changed-file workflow.
+- Verify CLI help and focused invocations for all four write verbs require `--outcome` and return the documented re-author exit code on mismatch.
+- Confirm no remaining prose-routing copies or fallbacks with targeted searches for `_assessment_kind`, `_invariant_assessment_kind`, and `assessment_kind or`.
+
+difficulty: HARD
+diff_added: 300
+diff_deleted: 90
+mechanical_churn: false
+diff_lines: 390
