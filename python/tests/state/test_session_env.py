@@ -2027,3 +2027,107 @@ def test_write_design_env_preserves_prior_larch_run_id_on_refresh(
     ])
     content = out.read_text(encoding="utf-8")
     assert "LARCH_RUN_ID=initial-run-id" in content
+
+
+def test_check_live_mutation_auth_test_deny_blocks_session_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test-deny blocks session-backed auth but not operator-invoked."""
+    monkeypatch.setenv(config.LIVE_MUTATION_TEST_DENY_KEY, "true")
+    sessions_root = tmp_path / ".cache" / "larch" / "sessions"
+    sessions_root.mkdir(parents=True)
+    ctx = sessions_root / "session-env.sh"
+    ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    authorized, reason = session_env.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    assert not authorized
+    assert reason == "test-denied"
+
+
+def test_check_live_mutation_auth_operator_bypasses_test_deny(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Operator mode bypasses test-deny."""
+    monkeypatch.setenv(config.LIVE_MUTATION_TEST_DENY_KEY, "true")
+    authorized, reason = session_env.check_live_mutation_auth(context_file=None, operator_mode=True)
+    assert authorized
+    assert reason == config.LIVE_MUTATION_OPERATOR_MODE
+
+
+def test_check_live_mutation_auth_operator(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    authorized, reason = session_env.check_live_mutation_auth(context_file=None, operator_mode=True)
+    assert authorized
+    assert reason == config.LIVE_MUTATION_OPERATOR_MODE
+
+
+def test_check_live_mutation_auth_session_valid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    sessions_root = tmp_path / ".cache" / "larch" / "sessions"
+    sessions_root.mkdir(parents=True)
+    ctx = sessions_root / "session-env.sh"
+    ctx.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    authorized, reason = session_env.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    assert authorized
+    assert reason == config.LIVE_MUTATION_SESSION_MODE
+
+
+def test_check_live_mutation_auth_no_context(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    authorized, reason = session_env.check_live_mutation_auth(context_file=None, operator_mode=False)
+    assert not authorized
+    assert reason == config.LIVE_MUTATION_REFUSAL_REASON
+
+
+def test_check_live_mutation_auth_symlink_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    sessions_root = tmp_path / ".cache" / "larch" / "sessions"
+    sessions_root.mkdir(parents=True)
+    real_file = tmp_path / "real.sh"
+    real_file.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\n", encoding="utf-8")
+    symlink = sessions_root / "session-env.sh"
+    symlink.symlink_to(real_file)
+    authorized, _ = session_env.check_live_mutation_auth(context_file=symlink, operator_mode=False)
+    assert not authorized
+
+
+def test_check_live_mutation_auth_missing_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    sessions_root = tmp_path / ".cache" / "larch" / "sessions"
+    sessions_root.mkdir(parents=True)
+    ctx = sessions_root / "session-env.sh"
+    ctx.write_text("LARCH_RUN_ID=run-1\n", encoding="utf-8")
+    authorized, _ = session_env.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    assert not authorized
+
+
+def test_write_env_includes_live_mutation_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    sessions_root = tmp_path / "xdg" / "larch" / "sessions"
+    sessions_root.mkdir(parents=True)
+    out = sessions_root / "session-env.sh"
+    rc = session_env.write_env_main([
+        "--output", str(out),
+        "--repo", "owner/repo",
+        "--repo-unavailable", "false",
+        "--live-mutation-ok", "true",
+    ])
+    assert rc == 0
+    content = out.read_text(encoding="utf-8")
+    assert f"{config.LIVE_MUTATION_AUTH_KEY}=true" in content
+
+
+def test_write_design_env_includes_live_mutation_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/tmp/plugin")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    rc = session_env.write_design_env_main([
+        "--output", str(out),
+        "--design-tmpdir", str(design),
+        "--session-id", "sid-1",
+        "--live-mutation-ok", "true",
+        "--claude-pid", "12345",
+        "--repo-root", str(tmp_path),
+    ])
+    assert rc == 0
+    content = out.read_text(encoding="utf-8")
+    assert f"{config.LIVE_MUTATION_AUTH_KEY}=true" in content

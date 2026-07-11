@@ -5,8 +5,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
+if TYPE_CHECKING:
+    import pytest
+
+from larch.core import config as _issue_create_config
 from larch.issue import issue_create
 from larch.core import proc
 
@@ -531,7 +535,7 @@ def test_create_one_success_json(monkeypatch: Any, tmp_path: Path, capsys: Any) 
         return _result(argv, stdout="owner/repo\n")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    assert issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"]) == 0
+    assert issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"]) == 0
     out = capsys.readouterr().out
     assert "ISSUE_NUMBER=5" in out
     assert "ISSUE_ID=99" in out
@@ -552,7 +556,7 @@ def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path,
         return _result(argv, stdout="owner/repo\n")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    assert issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"]) == 0
+    assert issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"]) == 0
     out = capsys.readouterr().out
     assert "ISSUE_NUMBER=42" in out
     assert "ISSUE_ID=4242" in out
@@ -576,7 +580,7 @@ def test_create_one_resolves_rest_id_for_graphql_node_id(monkeypatch: Any, tmp_p
         return _result(argv, stdout="owner/repo\n")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
     out = capsys.readouterr().out
     assert rc == 0
     assert "ISSUE_ID=12345" in out
@@ -600,7 +604,7 @@ def test_create_one_graphql_node_id_lookup_failure_rolls_back(monkeypatch: Any, 
         return _result(argv, stdout="owner/repo\n")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
     captured = capsys.readouterr()
     assert rc == 2
     assert "ISSUE_FAILED=true" in captured.out
@@ -621,7 +625,7 @@ def test_create_one_id_lookup_failure_emits_rollback_failed(monkeypatch: Any, tm
         return _result(argv, stdout="owner/repo\n")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
     captured = capsys.readouterr()
     assert rc == 2
     assert "ISSUE_FAILED=true" in captured.out
@@ -902,7 +906,7 @@ def test_create_one_empty_json_fields_do_not_fallback(monkeypatch: Any, tmp_path
         return _result(argv, stdout="owner/repo\n")
 
     monkeypatch.setattr(issue_create.proc, "run", fake_run)
-    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo"])
+    rc = issue_create.create_one_main(["--title", "T", "--body-file", str(body), "--repo", "owner/repo", "--operator-invoked"])
     out = capsys.readouterr().out
     assert rc == 2
     assert "ISSUE_FAILED=true" in out
@@ -982,3 +986,40 @@ def test_write_sentinel_stderr_only(tmp_path: Path, capsys: Any) -> None:
     assert captured.out == ""
     assert captured.err == "WROTE=true\n"
     assert "ISSUES_CREATED=1" in target.read_text(encoding="utf-8")
+
+
+def test_create_one_refuses_without_authorization(capsys: Any) -> None:
+    """Non-dry-run create-one must refuse when no context-file or operator-invoked."""
+    rc = issue_create.create_one_main(["--title", "Test issue", "--repo", "owner/repo"])
+    captured = capsys.readouterr()
+    assert rc == _issue_create_config.EXIT_MUTATION_REFUSED
+    assert "ISSUE_FAILED=true" in captured.out
+    assert _issue_create_config.LIVE_MUTATION_REFUSAL_STATUS in captured.out
+
+
+def test_create_one_dry_run_no_auth_required(capsys: Any) -> None:
+    """Dry-run must return without requiring authorization."""
+    rc = issue_create.create_one_main(["--title", "Test", "--dry-run", "--repo", "owner/repo"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "DRY_RUN=true" in captured.out
+
+
+def test_create_one_refuses_with_test_deny_on_session_context(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test-deny blocks session-backed auth (but not operator-invoked)."""
+    sessions_root = tmp_path / ".cache" / "larch" / "sessions"
+    sessions_root.mkdir(parents=True)
+    ctx = sessions_root / "session-env.sh"
+    ctx.write_text(f"{_issue_create_config.LIVE_MUTATION_AUTH_KEY}=true\n", encoding="utf-8")
+    monkeypatch.setenv(_issue_create_config.LIVE_MUTATION_TEST_DENY_KEY, "true")
+    rc = issue_create.create_one_main(["--title", "T", "--repo", "o/r", "--context-file", str(ctx)])
+    assert rc == _issue_create_config.EXIT_MUTATION_REFUSED
+
+
+def test_create_one_operator_invoked_skips_gh_in_dry_run(capsys: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--operator-invoked with --dry-run returns before any gh call."""
+    monkeypatch.delenv("LARCH_ISSUE_MUTATION_DENY", raising=False)
+    rc = issue_create.create_one_main(["--title", "T", "--dry-run", "--repo", "o/r", "--operator-invoked"])
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "DRY_RUN=true" in captured.out

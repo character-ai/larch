@@ -18,6 +18,8 @@ assert_eq() { local exp=$1 act=$2 label=$3; if [ "$exp" = "$act" ]; then pass "$
 kv() { awk -v k="$1" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$2"; }
 
 MARKER_HASH=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+LIVE_CONTEXT="$TMPROOT/live-context.sh"
+printf 'LARCH_LIVE_MUTATION_OK=true\n' >"$LIVE_CONTEXT"
 
 make_case() {
     local name=$1 dir
@@ -111,7 +113,16 @@ STUB
 run_script() {
     local dir=$1 out=$2; shift 2
     set +e
-    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" "$SCRIPT" "$@" >"$out" 2>"$out.err"
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" --mutation-context "$LIVE_CONTEXT" >"$out" 2>"$out.err"
+    local rc=$?
+    set -e
+    return "$rc"
+}
+
+run_script_dry() {
+    local dir=$1 out=$2; shift 2
+    set +e
+    PATH="$dir/bin:$PATH" GH_STUB_CASE="${GH_STUB_CASE:-}" GH_STUB_LOG="$dir/gh.log" GH_COMMENT_CAPTURE="$dir/comment.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$SCRIPT" "$@" >"$out" 2>"$out.err"
     local rc=$?
     set -e
     return "$rc"
@@ -211,7 +222,7 @@ cp "$SCRIPT" "$fake_root/scripts/file-failure-report-cross-repo.sh"
 chmod +x "$fake_root/scripts/file-failure-report-cross-repo.sh"
 GH_STUB_CASE=tier-b-sensitive; export GH_STUB_CASE
 set +e
-PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" >"$dir/out-validator" 2>"$dir/out-validator.err"
+PATH="$dir/bin:$PATH" GH_STUB_CASE="$GH_STUB_CASE" GH_STUB_LOG="$dir/gh-validator.log" GH_COMMENT_CAPTURE="$dir/comment-validator.json" GH_MARKER_HASH="$MARKER_HASH" LARCH_ISSUE_MUTATION_DENY="" "$fake_root/scripts/file-failure-report-cross-repo.sh" --repo owner/repo --body-file "$dir/body.md" --title 'Report title' --publication-tier tier-b --root-cause-file "$dir/root.md" --mutation-context "$LIVE_CONTEXT" >"$dir/out-validator" 2>"$dir/out-validator.err"
 rc=$?
 set -e
 assert_eq 0 "$rc" "tier-b: missing validator exits 0"

@@ -390,6 +390,7 @@ def _write_base_session_env(st: BootstrapState) -> None:
         args.extend(["--dynamic-archetypes", prior_dynamic_archetypes])
     if _valid_run_id(st.run_id):
         args.extend(["--run-id", st.run_id])
+    args.extend(["--live-mutation-ok", "true"])
     result = _cli(*args)
     if result.returncode != 0:
         st.emit_step_failed("write-session-env")

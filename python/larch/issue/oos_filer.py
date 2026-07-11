@@ -24,6 +24,7 @@ from larch.core import config
 from larch.core import proc
 from larch.issue import file_oos
 from larch.issue import oos_priority
+from larch.state import session_env as _session_env_oos
 
 _CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
@@ -807,6 +808,7 @@ def _run_issue_batch(
     deps_path: Path | None = None,
     stable_ids_by_item: dict[int, tuple[str, ...]] | None = None,
     priority_by_item: dict[int, bool] | None = None,
+    context_file: Path | None = None,
 ) -> BatchResult:
     bodies_dir = tmpdir / "oos-issue-bodies"
     bodies_dir.mkdir(parents=True, exist_ok=True)
@@ -866,6 +868,8 @@ def _run_issue_batch(
                 args.extend(["--repo", repo])
             if item_priority:
                 args.extend(["--label", oos_priority.OOS_CORRECTNESS_LABEL])
+            if context_file is not None:
+                args.extend(["--context-file", str(context_file)])
             created = _run_cli(args)
             kv = _parse_kv(created.stdout)
             if created.returncode != 0 or kv.get("ISSUE_FAILED") == "true":
@@ -1103,6 +1107,11 @@ def _compute_stable_ids(
 
 def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     tmpdir = Path(args.implement_tmpdir)
+    _ctx_str = getattr(args, "context_file", "") or str(tmpdir / "session-env.sh")
+    _ctx = Path(_ctx_str) if _ctx_str else None
+    _authorized, _auth_reason = _session_env_oos.check_live_mutation_auth(context_file=_ctx, operator_mode=False)
+    if not _authorized:
+        return 1, {"status": "authorization-refused", "reason": _auth_reason, "accepted_count": 0, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
     state = _read_kv_file(path=tmpdir / "ship-pr-state.sh")
     state = state | {k: v for k, v in {"REPO": args.repo or "", "ISSUE_NUMBER": str(args.issue_number or "")}.items() if v}
     run_id = _run_id(tmpdir=tmpdir, state=state)
@@ -1202,6 +1211,7 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         deps_path=deps_path,
         stable_ids_by_item=stable_ids_by_item,
         priority_by_item=priority_by_item,
+        context_file=_ctx,
     )
     if batch.failures:
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue create-one", rc=1, output=f"ISSUES_FAILED={batch.failures}")
@@ -1244,6 +1254,7 @@ def cmd_file(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo", default="")
     parser.add_argument("--issue-number", default="")
     parser.add_argument("--codex-timeout", default="300")
+    parser.add_argument("--context-file", default="")
     try:
         args = parser.parse_args(argv)
         rc, payload = _file(args)

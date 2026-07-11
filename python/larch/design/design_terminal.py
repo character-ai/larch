@@ -24,6 +24,7 @@ from larch.core import config, logging_util, proc
 from larch.git import gh
 from larch.core.ctx import Ctx
 from larch.state import stall_recovery
+from larch.state import session_env as _session_env_dt
 
 from larch.design.design_core import (
     _CoreUsageError,
@@ -551,6 +552,11 @@ def _reconcile_post_recovery_comment(*, design_tmpdir: Path, report_issue: str, 
     without exercising ``gh``. The comment body uses only fixed safe tokens and
     is still run through the redaction filter before egress.
     """
+    source_env = design_tmpdir / "source-env.sh"
+    ctx = source_env if source_env.is_file() else None
+    authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    if not authorized:
+        return False, "reconcile-unauthorized"
     plugin_root = Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
     body = design_tmpdir / "design-failure-reconcile-comment.body.md"
     redacted = design_tmpdir / "design-failure-reconcile-comment.redacted.md"
@@ -911,11 +917,20 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                             fallback_reason = "tier-a-normalize-failed"
             return fallback_reason
 
+        source_env = design_tmpdir / "source-env.sh"
+        _ctx = source_env if source_env.is_file() else None
+        _authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=_ctx, operator_mode=False)
+        if not _authorized:
+            append_fallback(f"{config.LIVE_MUTATION_REFUSAL_REASON}:reporter-unauthorized")
+            return
+        dedup_argv = [*helper_common(), "--body-file", str(body_file)]
+        if _ctx is not None:
+            dedup_argv.extend(["--context-file", str(_ctx)])
         dedup_env = design_tmpdir / "design-failure-tier-a-dedup.env"
         fallback_reason = ""
         if _run_stall_main(
             callable_obj=stall_recovery.dedup_tier_a_report_main,
-            argv=[*helper_common(), "--body-file", str(body_file)],
+            argv=dedup_argv,
             stdout_path=dedup_env,
             stderr_path=design_tmpdir / "design-failure-tier-a-dedup.stderr.log",
         ) != 0:

@@ -259,6 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--attempts-file", default="")
         p.add_argument("--escalation-ledger-file", default="")
         p.add_argument("--root-cause-file", default="")
+        p.add_argument("--context-file", default="")
         p.add_argument("--artifact-prefix", default=_global_default(globals_dict=globals_dict, key="artifact_prefix", fallback=""))
         ns, _ = p.parse_known_args(sub_argv)
         return dedup_tier_a_report(ns)

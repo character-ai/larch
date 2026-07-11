@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from larch.core import config
+from larch.state import session_env as _session_env_report
 from larch.state._tokens import (
     _DEFAULT_CLASSIFICATION_FILE,
     _DEFAULT_ATTEMPTS_FILE,
@@ -766,6 +767,13 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
                 print("stall-recovery: dedup slice path outside implement tmpdir", file=sys.stderr)
                 return 1
             slice_file.write_text("", encoding="utf-8")
+    context_file_str = getattr(args, "context_file", "") or ""
+    ctx = Path(context_file_str) if context_file_str else None
+    authorized, auth_reason = _session_env_report.check_live_mutation_auth(context_file=ctx, operator_mode=False)
+    if not authorized:
+        emit(key="STALL_RECOVERY_REPORT_STATUS", value=config.LIVE_MUTATION_REFUSAL_STATUS)
+        emit(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", value=f"{config.LIVE_MUTATION_REFUSAL_REASON}:{auth_reason}")
+        return 0
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
     helper = plugin_root / "scripts" / "file-failure-report-cross-repo.sh"
     if not helper.is_file():

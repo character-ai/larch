@@ -111,6 +111,10 @@ def _setup(tmp_path: Path) -> None:
         "RUN_ID=run-1\nREPO=owner/repo\nFORKED_TARGET=false\nREPO_UNAVAILABLE=false\n",
         encoding="utf-8",
     )
+    (tmp_path / "session-env.sh").write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n",
+        encoding="utf-8",
+    )
     run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
     run_dir.mkdir(parents=True)
     (run_dir / "manifest.json").write_text('{"schema_version":2,"steps_ran":{}}\n', encoding="utf-8")
@@ -124,7 +128,9 @@ def _run(tmp_path: Path, fake: FakeCli, monkeypatch: pytest.MonkeyPatch) -> tupl
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: fake.blocker_probe_rc == 0)  # type: ignore[arg-type]
-    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                              "--context-file", str(tmp_path / "session-env.sh")])
     return rc, {}
 
 
@@ -662,9 +668,11 @@ def test_checkpoint_failure_manifest_stamp_error_still_reports_checkpoint_failed
     monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                                  "--context-file", str(tmp_path / "session-env.sh")])
     output = json.loads(buf.getvalue())
     assert rc != 0
     assert output["status"] == "disposition_checkpoint_failed"
@@ -732,7 +740,9 @@ def test_sentinel_recovery_materializes_strict_evidence_for_real_checkpoint(
     fake = FakeCli(tmp_path)
     monkeypatch.setattr(oos_filer, "_run_cli", fake_run)
     monkeypatch.setattr(file_oos.subprocess, "run", fake_subprocess_run)
-    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                              "--context-file", str(tmp_path / "session-env.sh")])
     assert rc == 0
     accepted = tmp_path / "oos-accepted-main-agent.md"
     assert accepted.is_file()
@@ -755,9 +765,11 @@ def test_success_path_manifest_stamp_failure_returns_zero_with_stamped_false(
     monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                                  "--context-file", str(tmp_path / "session-env.sh")])
     output = json.loads(buf.getvalue())
     # run-statistics must have been written (issued filed OK)
     assert (tmp_path / "larch-logs" / "implement" / "run-1" / "run-statistics.md").is_file()
@@ -1099,9 +1111,11 @@ def test_priority_provision_failure_still_files_non_priority_survivor(
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                                  "--context-file", str(tmp_path / "session-env.sh")])
     payload = json.loads(buf.getvalue())
 
     assert rc == 1
@@ -1172,9 +1186,11 @@ def test_priority_label_partial_failure_preserves_cosmetic_survivor(
     monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                                  "--context-file", str(tmp_path / "session-env.sh")])
     payload = json.loads(buf.getvalue())
 
     assert rc == 1
@@ -1242,9 +1258,11 @@ def test_multipart_priority_label_failure_stops_later_parts(
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                                  "--context-file", str(tmp_path / "session-env.sh")])
     payload = json.loads(buf.getvalue())
 
     assert rc == 1
@@ -1275,9 +1293,11 @@ def test_duplicate_high_risk_label_failure_still_persisted_for_retry(
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
     buf = io.StringIO()
     with contextlib.redirect_stdout(buf):
-        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1",
+                                  "--context-file", str(tmp_path / "session-env.sh")])
     payload = json.loads(buf.getvalue())
 
     assert rc == 1
@@ -1350,3 +1370,37 @@ def test_sentinel_only_rerun_backfills_high_risk_after_recovery_snapshot(
     assert (tmp_path / "oos-accepted-main-agent.md").is_file()
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
     assert any(call[:4] == ["gh", "issue", "edit", "77"] for call in gh_calls)
+
+
+def test_cmd_file_refuses_without_valid_session_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """cmd_file must refuse when session-env.sh is absent or has no LARCH_LIVE_MUTATION_OK."""
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    oos = tmp_path / "oos-accepted-review.md"
+    oos.write_text("### OOS_1: Example\n- **Description**: foo\n- **Reviewer**: Codex\n- **Vote tally**: YES=3\n", encoding="utf-8")
+    rc, payload = oos_filer._file(type("Ns", (), {  # type: ignore[attr-defined]
+        "implement_tmpdir": str(tmp_path),
+        "repo": "owner/repo",
+        "issue_number": "1",
+        "codex_timeout": "0",
+        "context_file": "",
+    })())  # type: ignore[call-arg]
+    assert rc == 1
+    assert payload.get("status") == "authorization-refused"
+
+
+def test_cmd_file_refuses_when_session_env_has_no_auth(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """cmd_file must refuse when session-env.sh exists but lacks LARCH_LIVE_MUTATION_OK=true."""
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
+    sessions = tmp_path / ".cache" / "larch" / "sessions"
+    sessions.mkdir(parents=True)
+    senv = sessions / "session-env.sh"
+    senv.write_text("LARCH_RUN_ID=run-1\n", encoding="utf-8")
+    rc, payload = oos_filer._file(type("Ns", (), {  # type: ignore[attr-defined]
+        "implement_tmpdir": str(tmp_path),
+        "repo": "owner/repo",
+        "issue_number": "1",
+        "codex_timeout": "0",
+        "context_file": str(senv),
+    })())  # type: ignore[call-arg]
+    assert rc == 1
+    assert payload.get("status") == "authorization-refused"

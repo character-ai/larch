@@ -3666,6 +3666,9 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
         "_tier_a_eligible",
         always_tier_a,
     )
+    _src_env = tmp_path / "source-env.sh"
+    _src_env.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\n", encoding="utf-8")
+    monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
 
     def fake_run(
         args: Sequence[str],

@@ -8,7 +8,32 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 STALL_RECOVERY_CLI=(python3 "$PLUGIN_ROOT/python/cli.py" stall-recovery)
 
 usage() {
-    echo "file-failure-report-cross-repo.sh: usage: $0 --repo OWNER/REPO --body-file PATH --title TITLE [--dedup-only] [--attempts-file PATH] [--escalation-ledger-file PATH] [--root-cause-file PATH] [--sensitive-corpus-file PATH] [--publication-tier tier-a|tier-b] [--dry-run]" >&2
+    echo "file-failure-report-cross-repo.sh: usage: $0 --repo OWNER/REPO --body-file PATH --title TITLE [--mutation-context PATH] [--dedup-only] [--attempts-file PATH] [--escalation-ledger-file PATH] [--root-cause-file PATH] [--sensitive-corpus-file PATH] [--publication-tier tier-a|tier-b] [--dry-run]" >&2
+}
+
+status_refused() { emit_kv FILE_FAILURE_REPORT_STATUS mutation-refused; emit_kv FILE_FAILURE_REPORT_FALLBACK_REASON "unauthorized-mutation:$1"; }
+
+check_mutation_auth() {
+    local context_file=$1
+    if [ "${LARCH_ISSUE_MUTATION_DENY:-}" = "true" ]; then
+        status_refused test-denied
+        return 1
+    fi
+    if [ -z "$context_file" ]; then
+        status_refused no-context-file
+        return 1
+    fi
+    if [ -L "$context_file" ] || [ ! -f "$context_file" ] || [ ! -r "$context_file" ]; then
+        status_refused invalid-context-file
+        return 1
+    fi
+    local auth_value
+    auth_value=$(LC_ALL=C grep -m1 '^LARCH_LIVE_MUTATION_OK=' "$context_file" 2>/dev/null | cut -d= -f2- | tr -d "'\"" || true)
+    if [ "$auth_value" != "true" ]; then
+        status_refused missing-auth-key
+        return 1
+    fi
+    return 0
 }
 
 emit_kv() { printf '%s=%s\n' "$1" "$2"; }
@@ -186,6 +211,7 @@ root_file=""
 sensitive_corpus_file=""
 publication_tier="tier-a"
 dry_run=false
+mutation_context=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -199,6 +225,7 @@ while [ $# -gt 0 ]; do
         --sensitive-corpus-file) [ $# -ge 2 ] || { usage; exit 2; }; sensitive_corpus_file=$2; shift 2 ;;
         --publication-tier) [ $# -ge 2 ] || { usage; exit 2; }; publication_tier=$2; shift 2 ;;
         --dry-run) dry_run=true; shift ;;
+        --mutation-context) [ $# -ge 2 ] || { usage; exit 2; }; mutation_context=$2; shift 2 ;;
         *) usage; exit 2 ;;
     esac
 done
@@ -227,6 +254,12 @@ fi
 if [ -n "$sensitive_corpus_file" ] && ! validate_read_file "$sensitive_corpus_file" "--sensitive-corpus-file"; then
     status_fallback invalid-sensitive-corpus-file
     exit 0
+fi
+
+if [ "$dry_run" != true ]; then
+    if ! check_mutation_auth "${mutation_context:-}"; then
+        exit 0
+    fi
 fi
 
 marker=$(extract_marker "$body_file" || true)

@@ -242,8 +242,11 @@ python3 "$PWD/python/cli.py" issue create-one \
   --title "<title>" \
   --body-file "$TMPDIR/audit-report-body.md" \
   --label "audit-report" \
-  --repo "<repo>"
+  --repo "<repo>" \
+  --operator-invoked
 ```
+
+The `--operator-invoked` flag is required for direct operator-invoked filing. Do not omit it.
 
 ### Counter Computation
 
@@ -328,8 +331,11 @@ After the new audit report is filed:
 
 ```bash
 python3 "$PWD/python/cli.py" audit-runs close-priors \
-  --skill "$SKILL" --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>"
+  --skill "$SKILL" --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>" \
+  --operator-invoked
 ```
+
+The `--operator-invoked` flag is required. Omitting it causes a refusal before any `gh` call.
 
 Stdout is KV-shaped. Successful closes emit `CLOSED_NUMBER=<N>` (one line per issue). Failures can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line. If `gh issue list` fails up front, the CLI prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. If temporary `--body-file` setup fails before the comment loop, the CLI prints `BODY_FILE_FAILED=true` plus `REASON=...` and exits non-zero. After any `python/cli.py audit-runs close-priors` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` / `BODY_FILE_FAILED=` even when the exit code is `0`. Do not treat “some `CLOSED_NUMBER=` lines” as unconditional full success.
 

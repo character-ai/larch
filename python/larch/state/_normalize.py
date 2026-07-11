@@ -374,10 +374,13 @@ def normalize_file_failure_report_env(args: argparse.Namespace) -> int:
     status = read_kv(path=env_file, key="FILE_FAILURE_REPORT_STATUS")
     url = read_kv(path=env_file, key="FILE_FAILURE_REPORT_URL")
     reason = read_kv(path=env_file, key="FILE_FAILURE_REPORT_FALLBACK_REASON")
-    allowed = {"filed", "dry-run", "dedup-comment", "no-match", "fallback-print-required", "lookup-failed-open"}
+    allowed = {"filed", "dry-run", "dedup-comment", "no-match", "fallback-print-required", "lookup-failed-open", "mutation-refused"}
     if status not in allowed:
         status = "fallback-print-required"
         reason = reason or "helper-status-missing"
+    elif status == "mutation-refused":
+        status = "fallback-print-required"
+        reason = reason or "unauthorized-mutation"
     emit(key="STALL_RECOVERY_REPORT_STATUS", value=status)
     if url:
         emit(key="STALL_RECOVERY_REPORT_URL", value=url)

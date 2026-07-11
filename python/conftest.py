@@ -65,6 +65,18 @@ def _session_routing_isolation() -> Iterator[None]:
 
 
 @pytest.fixture(autouse=True)
+def _deny_live_issue_mutations(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Block scoped live GitHub issue mutations in all tests by default.
+
+    Sets the test-deny control so ``check_live_mutation_auth`` refuses every
+    mutation attempt, and scrubs any ambient live-session authorization that
+    a parent /design or /implement process may have set.
+    """
+    monkeypatch.setenv(config.LIVE_MUTATION_TEST_DENY_KEY, "true")
+    monkeypatch.delenv(config.LIVE_MUTATION_AUTH_KEY, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _unique_finder_bonus_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     """Clear LARCH_UNIQUE_FINDER_BONUS so no-env tests stay hermetic."""
     monkeypatch.delenv("LARCH_UNIQUE_FINDER_BONUS", raising=False)

@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from larch.issue import oos_disposition
 from larch.core import config
+from larch.state import session_env as _session_env_audit
 from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record, validate_invariant_ship_outcome_record
 from larch.core import proc
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_SHIP_OUTCOME_SIDECAR
@@ -1264,8 +1265,12 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
 
 
 def close_priors_main(argv: list[str] | None = None) -> int:
-    p=argparse.ArgumentParser(prog="cli.py audit-runs close-priors"); p.add_argument("--skill",required=True); p.add_argument("--new-issue-number",required=True); p.add_argument("--repo",default="character-ai/larch"); args=p.parse_args(argv)
+    p=argparse.ArgumentParser(prog="cli.py audit-runs close-priors"); p.add_argument("--skill",required=True); p.add_argument("--new-issue-number",required=True); p.add_argument("--repo",default="character-ai/larch"); p.add_argument("--operator-invoked",action="store_true"); args=p.parse_args(argv)
     if not _validate_skill(skill=args.skill,prog="audit-close-priors.sh"): return 1
+    _authorized, _auth_reason = _session_env_audit.check_live_mutation_auth(context_file=None, operator_mode=bool(getattr(args, "operator_invoked", False)))
+    if not _authorized:
+        print(f"CLOSE_PRIORS_REFUSED=true\nREASON={config.LIVE_MUTATION_REFUSAL_REASON}:{_auth_reason}")
+        return config.EXIT_MUTATION_REFUSED
     res=proc.run(["gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo",args.repo,"--json","number,title"])
     if res.returncode != 0:
         print("ISSUE_LIST_FAILED=true\nREASON=gh issue list failed")

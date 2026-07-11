@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 
 import pytest
 
+from larch.core import config
 from larch.core.proc import CommandResult
 from larch.errors import ShipError
 from larch.implement import scope_disposition
@@ -1328,3 +1329,33 @@ def test_load_coverage_rejects_companion_mismatch(tmp_path: Path) -> None:
 
     with pytest.raises(ShipError, match="inventory mismatch"):
         _ = scope_disposition.load_coverage(tmp_path)
+
+
+def test_create_followup_issue_passes_context_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """_create_followup_issue must pass --context-file when session-env.sh exists."""
+    senv = tmp_path / "session-env.sh"
+    _ = senv.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+
+    captured_args: list[list[str]] = []
+
+    def fake_run_cli(argv: Sequence[str]) -> CommandResult:
+        captured_args.append(list(argv))
+        return CommandResult(tuple(argv), 0, "ISSUE_NUMBER=123\nISSUE_URL=https://github.com/o/r/issues/123\n", "", 0.0)
+
+    monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
+
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text("### UPDATED: src/a.py\ndiff_lines: 10\n", encoding="utf-8")
+    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path, repo_root=tmp_path, plan_file=plan_file, runner=FakeRunner(diff_paths=[]),
+    )
+
+    _ = scope_disposition._create_followup_issue(  # pyright: ignore[reportPrivateUsage]
+        tmpdir=tmp_path, repo="owner/repo", tracking_issue_number="42", coverage=coverage
+    )
+    assert captured_args, "no CLI call was made"
+    first_call = captured_args[0]
+    assert "--context-file" in first_call
+    ctx_idx = first_call.index("--context-file")
+    assert first_call[ctx_idx + 1] == str(senv)
