@@ -142,7 +142,7 @@ class ValidatedPreCoderSnapshot:
     pre_head: str = ""
     tracked_paths: tuple[str, ...] = ()
     untracked_paths: tuple[str, ...] = ()
-    artifact_identity: tuple[tuple[str, int, int], ...] = ()
+    artifact_identity: tuple[tuple[str, tuple[int, int]], ...] = ()
 
 
 def _snapshot_inventory(path: Path) -> tuple[str, ...]:
@@ -154,8 +154,8 @@ def _snapshot_inventory(path: Path) -> tuple[str, ...]:
     return lines
 
 
-def _snapshot_artifact_identity(root: Path) -> tuple[tuple[str, int, int], ...]:
-    identity: list[tuple[str, int, int]] = []
+def _snapshot_artifact_identity(root: Path) -> tuple[tuple[str, tuple[int, int]], ...]:
+    identity: list[tuple[str, tuple[int, int]]] = []
     for name in (
         "pre-coder-head.txt",
         "pre-coder-tracked-paths.txt",
@@ -165,14 +165,14 @@ def _snapshot_artifact_identity(root: Path) -> tuple[tuple[str, int, int], ...]:
         if path.is_symlink():
             raise OSError(f"unsafe snapshot artifact: {path}")
         if path.is_file():
-            identity.append((name, path.stat().st_size, zlib.crc32(path.read_bytes())))
+            identity.append((name, (path.stat().st_size, zlib.crc32(path.read_bytes()))))
     diffs_dir = root / "pre-coder-path-diffs"
     if diffs_dir.exists() or diffs_dir.is_symlink():
         larch_io.validate_trusted_directory(diffs_dir, root=root)
         for path in sorted(diffs_dir.iterdir()):
             if not larch_io.trusted_file_present(path, root=diffs_dir):
                 raise OSError(f"unsafe snapshot patch artifact: {path}")
-            identity.append((f"pre-coder-path-diffs/{path.name}", path.stat().st_size, zlib.crc32(path.read_bytes())))
+            identity.append((f"pre-coder-path-diffs/{path.name}", (path.stat().st_size, zlib.crc32(path.read_bytes()))))
     return tuple(identity)
 
 
