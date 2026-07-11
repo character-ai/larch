@@ -326,3 +326,10 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ### G-Enf-2: When a recurring defect graduates to a mechanical ratchet, grandfather existing violations in a reason-bearing baseline that only shrinks
 - Why: a ratchet stops new violations while the baseline documents and drains the old ones. Widening the baseline, or suppressing without a reason, silently re-admits the defect and defeats the ratchet.
 - Deviate when: n/a; a first-run baseline is expected, but every row and suppression carries a reason (G-Py-11).
+
+## Fail-closed gates
+
+### G-Gate-1: Land a fail-closed gate with or after every producer that satisfies it
+- Why: gates that land before their producers or author guidance stall valid runs or turn routine changes into failures (#6880, #6882, #6875).
+- Guidance: land a fail-closed gate in the same change or release as every producer that satisfies it, or later, never earlier. Update author guidance with every new ship-blocking contract. Before a gate reads persisted state, verify every live writer path persists it and test the producer and gate together.
+- Deviate when: a separate migration completes the producer and gate wire-up in the same release. A gate and its producer in one artifact are already atomic.
