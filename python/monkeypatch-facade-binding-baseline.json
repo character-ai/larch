@@ -4357,6 +4357,15 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_run_relevant_checks_binds_persisted_root_over_claude_project_dir",
+    "facade_module": "larch.implement.dispatch_commit_route",
+    "attribute": "_run_leg_with_timeout",
+    "defining_module": "larch.implement.dispatch_leg",
+    "occurrence": 1,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_run_step4_commit_leg_already_committed_by_main_agent_short_circuits_noop",
     "facade_module": "larch.implement.dispatch_commit_route",
     "attribute": "_run_leg_with_timeout",

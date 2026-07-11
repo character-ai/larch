@@ -31,7 +31,7 @@ from larch.implement.dispatch_helpers import (
     _read_session_key_default,
     _rehydrate_larch_triplet,
     _rehydrate_plugin_root,
-    _resolve_repo_root,  # pyright: ignore[reportUnusedImport]  # re-exported for test monkeypatching
+    _resolve_repo_root,  # noqa: F401  # pyright: ignore[reportUnusedImport]  # re-exported for test monkeypatching
     _run,
     _run_cli_forward,
     _tmpdir_from_env,
