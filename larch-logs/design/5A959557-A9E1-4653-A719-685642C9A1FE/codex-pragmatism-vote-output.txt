@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The residual same-user forgery concern is real, but independently proving live-session ownership requires the explicitly excluded call-chain/auth-model redesign rather than the scoped shell/Python parity fix.

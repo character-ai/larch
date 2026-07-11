@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=weak UNCERTAIN=false -- The canonical-root check can be forged by a direct local caller, but independently proving a live guarded session requires the excluded call-chain trust-model redesign rather than the scoped parity fix.
