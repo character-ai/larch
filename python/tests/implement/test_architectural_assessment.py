@@ -102,7 +102,7 @@ def test_parse_results_rejects_extra_prose_and_unknown_identifier() -> None:
 def test_parse_results_independently_preserves_valid_rows() -> None:
     invariant = _evidence(config.ASSESSMENT_KIND_INVARIANTS)
     guideline = _evidence()
-    payload = {
+    payload: dict[str, object] = {  # type: ignore[reportUnknownVariableType]
         "schema_version": "1",
         "results": [
             {
@@ -130,7 +130,7 @@ def test_main_usage_and_success_stdout_contract(monkeypatch: pytest.MonkeyPatch,
         "ARCHITECTURAL_ASSESSMENT_DETAIL=at least one --kind is required",
     ]
 
-    monkeypatch.setattr(assessment, "run", lambda **_kwargs: ("guidelines:clean",))
+    monkeypatch.setattr(assessment, "run", lambda **_kwargs: ("guidelines:clean",))  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     assert assessment.main(["--kind", "guidelines", "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK
     assert capsys.readouterr().out.splitlines() == [
         "ARCHITECTURAL_ASSESSMENT_STATUS=ok",

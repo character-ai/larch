@@ -427,7 +427,7 @@ def _parse_result_row(  # noqa: C901 - strict schema validation checks each inde
     return AssessmentResult(kind, state, assessment, identifiers, evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
 
 
-def _parse_results(
+def _parse_results(  # type: ignore[reportUnusedFunction]
     raw: str, evidences: Sequence[MaterializedEvidence]
 ) -> tuple[AssessmentResult, ...]:
     try:
@@ -455,9 +455,9 @@ def _parse_results_independently(raw: str, evidences: Sequence[MaterializedEvide
     """Return valid result rows while isolating malformed or omitted kinds."""
     try:
         decoded: object = json.loads(raw)
-        if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "results"} or str(decoded.get("schema_version")) != "1":
+        if not isinstance(decoded, dict) or set(decoded) != {"schema_version", "results"} or str(decoded.get("schema_version")) != "1":  # type: ignore[reportUnknownArgumentType, reportUnknownMemberType]
             raise ValueError("assessment output envelope is invalid")
-        rows = decoded.get("results")
+        rows = decoded.get("results")  # type: ignore[reportUnknownMemberType]
         if not isinstance(rows, list):
             raise TypeError("assessment results must be an array")
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -468,9 +468,9 @@ def _parse_results_independently(raw: str, evidences: Sequence[MaterializedEvide
     invalid: set[str] = set()
     detail = "assessment result omitted a requested kind"
     for item in rows:
-        kind = str(item.get("kind") or "") if isinstance(item, dict) else ""
+        kind = str(item.get("kind") or "") if isinstance(item, dict) else ""  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         try:
-            parsed.append(_parse_result_row(item, by_kind, seen))
+            parsed.append(_parse_result_row(item, by_kind, seen))  # type: ignore[reportUnknownArgumentType]
         except (TypeError, ValueError) as exc:
             detail = str(exc)
             if kind in by_kind:
@@ -618,10 +618,10 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, implement_
     if architectural_guidelines.validate_invariant_ship_outcome_record(data) is not None or not isinstance(data, dict):
         return False
     return (
-        data.get("outcome") == "violation"
-        and data.get("assessment_kind") == "violation"
-        and data.get("head_sha") == evidence.head_sha
-        and data.get("base_ref") == evidence.base_ref
+        data.get("outcome") == "violation"  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        and data.get("assessment_kind") == "violation"  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        and data.get("head_sha") == evidence.head_sha  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
+        and data.get("base_ref") == evidence.base_ref  # type: ignore[reportUnknownVariableType, reportUnknownMemberType]
         and _regular_file(architectural_guidelines.invariant_durable_note_path(implement_tmpdir))
     )
 
@@ -635,11 +635,11 @@ def _unavailable_receipt_valid(kind: str, *, repo_root: Path, implement_tmpdir: 
     if not isinstance(receipt, dict):
         return False
     required = {"schema_version", "kind", "head_sha", "base_ref", "diff_fingerprint", "knowledge_sha256", "note_sha256", "outcome_sha256", "detail"}
-    if set(receipt) != required or receipt.get("schema_version") != "1" or receipt.get("kind") != kind:
+    if set(receipt) != required or receipt.get("schema_version") != "1" or receipt.get("kind") != kind:  # type: ignore[reportUnknownArgumentType, reportUnknownMemberType, reportUnknownVariableType]
         return False
-    if any(not isinstance(receipt.get(key), str) for key in required):
+    if any(not isinstance(receipt.get(key), str) for key in required):  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]
         return False
-    if any(receipt[key] != expected for key, expected in {
+    if any(receipt[key] != expected for key, expected in {  # type: ignore[reportUnknownVariableType, reportUnknownArgumentType]
         "head_sha": evidence.head_sha, "base_ref": evidence.base_ref,
         "diff_fingerprint": evidence.diff_fingerprint, "knowledge_sha256": evidence.knowledge_sha256,
     }.items()):
@@ -649,7 +649,7 @@ def _unavailable_receipt_valid(kind: str, *, repo_root: Path, implement_tmpdir: 
     note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_path(implement_tmpdir)
     outcome_path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.guideline_ship_outcome_path(implement_tmpdir)
     try:
-        return receipt["note_sha256"] == _sha256(_read_regular(note_path, root=implement_tmpdir)) and receipt["outcome_sha256"] == _sha256(_read_regular(outcome_path, root=implement_tmpdir))
+        return receipt["note_sha256"] == _sha256(_read_regular(note_path, root=implement_tmpdir)) and receipt["outcome_sha256"] == _sha256(_read_regular(outcome_path, root=implement_tmpdir))  # type: ignore[reportUnknownVariableType, reportUnknownArgumentType]
     except (OSError, UnicodeDecodeError, ValueError):
         return False
 
