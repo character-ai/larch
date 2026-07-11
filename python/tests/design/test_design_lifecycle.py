@@ -3203,6 +3203,39 @@ def _write_prior_failed_publish_tail_report(
     return sentinel
 
 
+def test_reconcile_post_recovery_comment_pins_design_tmpdir_for_authorization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    _ = source_env.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n",
+        encoding="utf-8",
+    )
+    auth_calls: list[dict[str, object]] = []
+
+    def refuse_mutation(**kwargs: object) -> tuple[bool, str]:
+        auth_calls.append(kwargs)
+        return False, "refused"
+
+    monkeypatch.setattr(design_terminal._session_env_dt, "check_live_mutation_auth", refuse_mutation)  # pyright: ignore[reportPrivateUsage]
+
+    ok, detail = design_terminal._reconcile_post_recovery_comment(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path,
+        report_issue="42",
+        repo="owner/repo",
+    )
+
+    assert ok is False
+    assert detail == "reconcile-unauthorized"
+    assert auth_calls == [{
+        "context_file": source_env,
+        "operator_mode": False,
+        "run_id": "run-1",
+        "trusted_root": tmp_path,
+    }]
+
+
 def test_failure_report_reconciles_failed_publish_tail_after_salvage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_prior_failed_publish_tail_report(tmp_path, success=True)
     calls: list[dict[str, str]] = []
@@ -3669,7 +3702,14 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
     _src_env = tmp_path / "source-env.sh"
     _src_env.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
     monkeypatch.delenv(config.LIVE_MUTATION_TEST_DENY_KEY, raising=False)
-    monkeypatch.setattr(design_terminal._session_env_dt, "check_live_mutation_auth", lambda **_kw: (True, "session"))  # pyright: ignore[reportPrivateUsage]
+    auth_calls: list[dict[str, object]] = []
+    helper_calls: list[list[str]] = []
+
+    def allow_mutation(**kwargs: object) -> tuple[bool, str]:
+        auth_calls.append(kwargs)
+        return True, "session"
+
+    monkeypatch.setattr(design_terminal._session_env_dt, "check_live_mutation_auth", allow_mutation)  # pyright: ignore[reportPrivateUsage]
 
     def fake_run(
         args: Sequence[str],
@@ -3677,6 +3717,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
         stdout: TextIO | None = None,
         **_kwargs: object,
     ) -> subprocess.CompletedProcess[Sequence[str]]:
+        helper_calls.append(list(args))
         if stdout is not None:
             stdout.write(
                 "FILE_FAILURE_REPORT_STATUS=filed\n"
@@ -3752,6 +3793,17 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
         tmp_path / "design-failure-chat-print.md"
     ).read_text(encoding="utf-8")
     assert "compose-status-missing" not in stdout_text
+    assert auth_calls == [{
+        "context_file": _src_env,
+        "operator_mode": False,
+        "run_id": "run-1",
+        "trusted_root": tmp_path,
+    }]
+    if helper_calls:
+        helper_argv = helper_calls[-1]
+        assert helper_argv[helper_argv.index("--mutation-context") + 1] == str(_src_env)
+        assert helper_argv[helper_argv.index("--run-id") + 1] == "run-1"
+        assert helper_argv[helper_argv.index("--trusted-root") + 1] == str(tmp_path)
 
 
 def test_failure_report_failed_judge_panel_terminal_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

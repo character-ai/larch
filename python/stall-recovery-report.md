@@ -151,6 +151,7 @@ Tier A places the marker immediately after the `###` title line so `/larch:issue
 ## Filing and status normalization
 
 `scripts/file-failure-report-cross-repo.sh` fetches all open issues with bodies, ignores pull requests, exact-matches the public marker, and comments `+1 occurrence` on duplicates. Tier B uses the same helper for create and comment paths. Tier A uses it only through `dedup-tier-a-report`; after `no-match` or `lookup-failed-open`, callers continue to `/larch:issue --input-file ... --no-dedup`.
+Tier A and Tier B helper callers pass the authoritative session tmpdir with `--trusted-root`, the matching live run ID, and the mutation context file. The helper delegates canonical-root containment and run-identity validation to `session check-live-mutation-auth`.
 
 Helper output maps to canonical status:
 

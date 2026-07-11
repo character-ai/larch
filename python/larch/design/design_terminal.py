@@ -556,7 +556,7 @@ def _reconcile_post_recovery_comment(*, design_tmpdir: Path, report_issue: str, 
     source_env = design_tmpdir / "source-env.sh"
     ctx = source_env if source_env.is_file() else None
     run_id = _read_env_value(path=source_env, key="LARCH_RUN_ID", default="")
-    authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=ctx, operator_mode=False, run_id=run_id)
+    authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=ctx, operator_mode=False, run_id=run_id, trusted_root=design_tmpdir)
     if not authorized:
         return False, "reconcile-unauthorized"
     plugin_root = Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
@@ -896,6 +896,10 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                                     "tier-a",
                                     "--mutation-context",
                                     str(_ctx or source_env),
+                                    "--run-id",
+                                    str(_run_id),
+                                    "--trusted-root",
+                                    str(design_tmpdir),
                                 ],
                                 stdout=stdout_handle,
                                 stderr=stderr_handle,
@@ -927,7 +931,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         source_env = design_tmpdir / "source-env.sh"
         _ctx = source_env if source_env.is_file() else None
         _run_id = _read_env_value(path=source_env, key="LARCH_RUN_ID", default="")
-        _authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=_ctx, operator_mode=False, run_id=_run_id)
+        _authorized, _ = _session_env_dt.check_live_mutation_auth(context_file=_ctx, operator_mode=False, run_id=_run_id, trusted_root=design_tmpdir)
         if not _authorized:
             append_fallback(f"{config.LIVE_MUTATION_REFUSAL_REASON}:reporter-unauthorized")
             return
