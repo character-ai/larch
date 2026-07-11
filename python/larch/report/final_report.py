@@ -525,6 +525,14 @@ def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
 
 
 
+_STALE_LIVE_COVERAGE_MISMATCH = "coverage artifact does not match live repository inputs"
+
+
+def _is_stale_live_coverage_mismatch(exc: BaseException) -> bool:
+    """True only for the canonical post-merge live-fingerprint ShipError."""
+    return isinstance(exc, ShipError) and str(exc) == _STALE_LIVE_COVERAGE_MISMATCH
+
+
 def _plan_coverage_summary_line(
     implement_tmpdir: Path, *, manifest_path: Path | None = None
 ) -> str:
@@ -536,11 +544,16 @@ def _plan_coverage_summary_line(
                 raise ShipError("scope disposition exists without trusted coverage")
             return ""
         raise ShipError("persisted repository root is required for coverage validation")
-    coverage = scope_disposition.load_live_coverage(
-        tmpdir=implement_tmpdir,
-        repo_root=repo_root,
-        manifest_path=manifest_path,
-    )
+    try:
+        coverage = scope_disposition.load_live_coverage(
+            tmpdir=implement_tmpdir,
+            repo_root=repo_root,
+            manifest_path=manifest_path,
+        )
+    except ShipError as exc:
+        if _is_stale_live_coverage_mismatch(exc):
+            return ""
+        raise
     if coverage is None:
         if scope_disposition.disposition_path(implement_tmpdir).exists() or scope_disposition.disposition_path(implement_tmpdir).is_symlink():
             _ = scope_disposition.load_disposition(implement_tmpdir)

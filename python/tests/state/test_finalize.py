@@ -1109,3 +1109,190 @@ def test_teardown_uses_persisted_repo_root_outside_clone(
     _ = finalize.teardown(runner=RecordingRunner(), ctx=ctx, cwd=str(outside))
 
     assert deactivate_calls == [(repo.resolve(), "run-abc")]
+
+
+_STALE_LIVE = "coverage artifact does not match live repository inputs"
+
+
+def _stub_teardown_side_effects(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> list[str]:
+    crumbs: list[str] = []
+
+    class _Writer:
+        def emit(self, message: str, *, quiet: bool = True) -> None:  # noqa: ARG002
+            crumbs.append(message)
+
+    (tmp_path / "session-env.sh").write_text(
+        f"REPO_ROOT={tmp_path}\nLARCH_RUN_ID=run-abc\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(finalize.logging_util, "BreadcrumbWriter", lambda: _Writer())
+    monkeypatch.setattr(finalize, "_teardown_log_flush", lambda **_kwargs: True)
+    monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kwargs: True)
+    monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kwargs: False)
+    monkeypatch.setattr(finalize.bgjob_registry, "has_live_entry", lambda **_kwargs: False)
+    monkeypatch.setattr(finalize.issue_query, "issue_info", lambda *_a, **_k: "")
+    monkeypatch.setattr(progress_file, "deactivate_run", lambda *_a, **_k: True)
+    return crumbs
+
+
+def test_teardown_stale_live_coverage_renames_done_when_not_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    crumbs = _stub_teardown_side_effects(monkeypatch, tmp_path)
+    rename_calls: list[str] = []
+
+    def boom(*_a: object, **_k: object) -> str:
+        raise ShipError(_STALE_LIVE)
+
+    monkeypatch.setattr(finalize.scope_disposition, "disposition_link_kind", boom)
+    monkeypatch.setattr(
+        finalize.scope_disposition,
+        "load_coverage",
+        lambda _tmpdir: object(),
+    )
+    monkeypatch.setattr(
+        finalize.scope_disposition,
+        "load_disposition",
+        lambda _tmpdir, *, coverage=None: None,  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        finalize,
+        "_rename_issue",
+        lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
+    )
+
+    result = finalize.teardown(
+        runner=RecordingRunner(),
+        ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome.name == "OK"
+    assert result.rename_branch == "B"
+    assert rename_calls == ["done"]
+    assert any("live coverage no longer matches" in c for c in crumbs)
+    assert any("validated persisted disposition" in c for c in crumbs)
+
+
+def test_teardown_stale_live_coverage_skips_done_rename_for_proceed_partial(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    crumbs = _stub_teardown_side_effects(monkeypatch, tmp_path)
+    rename_calls: list[str] = []
+
+    def boom(*_a: object, **_k: object) -> str:
+        raise ShipError(_STALE_LIVE)
+
+    class _Partial:
+        disposition = "proceed-partial"
+
+    monkeypatch.setattr(finalize.scope_disposition, "disposition_link_kind", boom)
+    monkeypatch.setattr(
+        finalize.scope_disposition,
+        "load_coverage",
+        lambda _tmpdir: object(),
+    )
+    monkeypatch.setattr(
+        finalize.scope_disposition,
+        "load_disposition",
+        lambda _tmpdir, *, coverage=None: _Partial(),  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        finalize,
+        "_rename_issue",
+        lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
+    )
+
+    result = finalize.teardown(
+        runner=RecordingRunner(),
+        ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome.name == "OK"
+    assert result.rename_branch == "C"
+    assert rename_calls == []
+    assert any("validated persisted disposition" in c for c in crumbs)
+
+
+def test_teardown_stale_live_coverage_missing_persisted_coverage_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _stub_teardown_side_effects(monkeypatch, tmp_path)
+    rename_calls: list[str] = []
+
+    def boom(*_a: object, **_k: object) -> str:
+        raise ShipError(_STALE_LIVE)
+
+    monkeypatch.setattr(finalize.scope_disposition, "disposition_link_kind", boom)
+    monkeypatch.setattr(finalize.scope_disposition, "load_coverage", lambda _tmpdir: None)
+    monkeypatch.setattr(
+        finalize,
+        "_rename_issue",
+        lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
+    )
+
+    with pytest.raises(ShipError, match=_STALE_LIVE):
+        _ = finalize.teardown(
+            runner=RecordingRunner(),
+            ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),
+            cwd=str(tmp_path),
+        )
+
+    assert rename_calls == []
+
+
+def test_teardown_non_mismatch_disposition_ship_error_propagates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _stub_teardown_side_effects(monkeypatch, tmp_path)
+    rename_calls: list[str] = []
+
+    def boom(*_a: object, **_k: object) -> str:
+        raise ShipError("scope disposition has invalid disposition")
+
+    monkeypatch.setattr(finalize.scope_disposition, "disposition_link_kind", boom)
+    monkeypatch.setattr(
+        finalize,
+        "_rename_issue",
+        lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
+    )
+
+    with pytest.raises(ShipError, match="invalid disposition"):
+        _ = finalize.teardown(
+            runner=RecordingRunner(),
+            ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),
+            cwd=str(tmp_path),
+        )
+
+    assert rename_calls == []
+
+
+def test_teardown_successful_part_of_skips_done_rename(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _ = _stub_teardown_side_effects(monkeypatch, tmp_path)
+    rename_calls: list[str] = []
+
+    monkeypatch.setattr(
+        finalize.scope_disposition,
+        "disposition_link_kind",
+        lambda *_a, **_k: "part-of",
+    )
+    monkeypatch.setattr(
+        finalize,
+        "_rename_issue",
+        lambda **kwargs: rename_calls.append(str(kwargs["state"])) or "ok",
+    )
+
+    result = finalize.teardown(
+        runner=RecordingRunner(),
+        ctx=_ctx(tmp_path, pr_number=3, done_rename_applied=False, no_logs_commit=True),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome.name == "OK"
+    assert result.rename_branch == "C"
+    assert rename_calls == []

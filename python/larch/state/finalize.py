@@ -683,6 +683,44 @@ def _teardown_log_flush(*, runner: Runner, ctx: RunContext, cwd: str | None) -> 
     return recovery.recovery_ok
 
 
+_STALE_LIVE_COVERAGE_MISMATCH = "coverage artifact does not match live repository inputs"
+
+
+def _is_stale_live_coverage_mismatch(exc: BaseException) -> bool:
+    """True only for the canonical post-merge live-fingerprint ShipError."""
+    return isinstance(exc, ShipError) and str(exc) == _STALE_LIVE_COVERAGE_MISMATCH
+
+
+def _teardown_disposition_link_kind(
+    *,
+    tmpdir: Path | None,
+    repo_root: Path,
+    manifest_path: Path | None,
+) -> str:
+    """Resolve closes/part-of for done-rename; recover from exact stale-live mismatch."""
+    try:
+        return scope_disposition.disposition_link_kind(
+            tmpdir,
+            repo_root=repo_root,
+            manifest_path=manifest_path,
+        )
+    except ShipError as exc:
+        if not _is_stale_live_coverage_mismatch(exc):
+            raise
+        if tmpdir is None:
+            raise ShipError(_STALE_LIVE_COVERAGE_MISMATCH) from exc
+        logging_util.BreadcrumbWriter().emit(
+            "teardown: live coverage no longer matches repository inputs; "
+            "using validated persisted disposition",
+            quiet=False,
+        )
+        coverage = scope_disposition.load_coverage(tmpdir)
+        if coverage is None:
+            raise ShipError(_STALE_LIVE_COVERAGE_MISMATCH) from exc
+        record = scope_disposition.load_disposition(tmpdir, coverage=coverage)
+        return "part-of" if record and record.disposition == "proceed-partial" else "closes"
+
+
 def teardown(
     *,
     runner: Runner,
@@ -701,17 +739,15 @@ def teardown(
     if ctx.stall_tracking:
         rename_branch = "A"
         rename_status = _rename_issue(runner=runner, ctx=ctx, state="stalled", cwd=cwd)
-    elif (
-        not ctx.done_rename_applied
-        and (ctx.pr_number is not None or ctx.design_only_done)
-        and scope_disposition.disposition_link_kind(
-            tmpdir if ctx.tmpdir else None,
+    elif not ctx.done_rename_applied and (ctx.pr_number is not None or ctx.design_only_done):
+        link_kind = _teardown_disposition_link_kind(
+            tmpdir=tmpdir if ctx.tmpdir else None,
             repo_root=persisted_repo_root,
             manifest_path=Path(ctx.manifest_path) if ctx.manifest_path else None,
-        ) != "part-of"
-    ):
-        rename_branch = "B"
-        rename_status = _rename_issue(runner=runner, ctx=ctx, state="done", cwd=cwd)
+        )
+        if link_kind != "part-of":
+            rename_branch = "B"
+            rename_status = _rename_issue(runner=runner, ctx=ctx, state="done", cwd=cwd)
 
     sentinel_detail = ""
     try:
