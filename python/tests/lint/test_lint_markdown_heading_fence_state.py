@@ -91,7 +91,7 @@ def test_fence_helper_gating_is_compliant(tmp_path: Path) -> None:
     path.parent.mkdir(parents=True)
     _ = path.write_text(COMPLIANT, encoding="utf-8")
 
-    assert lint.scan_file(path, python_dir=python_dir) == []
+    assert not lint.scan_file(path, python_dir=python_dir)
 
 
 def test_inline_fence_helper_and_continue_skip_are_compliant(tmp_path: Path) -> None:
@@ -112,7 +112,7 @@ def test_inline_fence_helper_and_continue_skip_are_compliant(tmp_path: Path) -> 
         "            pass\n",
         encoding="utf-8",
     )
-    assert lint.scan_file(path, python_dir=python_dir) == []
+    assert not lint.scan_file(path, python_dir=python_dir)
 
 
 def test_unrelated_boolean_does_not_count_as_fence_guard(tmp_path: Path) -> None:
@@ -140,7 +140,7 @@ def test_unrelated_regex_ignored(tmp_path: Path) -> None:
     path.parent.mkdir(parents=True)
     _ = path.write_text(UNRELATED, encoding="utf-8")
 
-    assert lint.scan_file(path, python_dir=python_dir) == []
+    assert not lint.scan_file(path, python_dir=python_dir)
 
 
 def test_search_over_split_lines_detected(tmp_path: Path) -> None:
@@ -217,7 +217,7 @@ def test_boolean_fence_guard_and_subscript_line_are_compliant(tmp_path: Path) ->
         "            pass\n",
         encoding="utf-8",
     )
-    assert lint.scan_file(path, python_dir=python_dir) == []
+    assert not lint.scan_file(path, python_dir=python_dir)
 
 
 def test_function_local_fence_helper_import_is_compliant(tmp_path: Path) -> None:
@@ -236,7 +236,7 @@ def test_function_local_fence_helper_import_is_compliant(tmp_path: Path) -> None
         "            pass\n",
         encoding="utf-8",
     )
-    assert lint.scan_file(path, python_dir=python_dir) == []
+    assert not lint.scan_file(path, python_dir=python_dir)
 
 
 def test_unreadable_source_raises_scan_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -298,7 +298,7 @@ def test_valid_suppression_on_regex_declaration(tmp_path: Path) -> None:
         "            pass\n",
         encoding="utf-8",
     )
-    assert lint.scan_file(path, python_dir=python_dir) == []
+    assert not lint.scan_file(path, python_dir=python_dir)
 
 
 def test_empty_suppression_reason_fails(tmp_path: Path) -> None:
@@ -343,7 +343,7 @@ def test_issue_create_passes_with_fence_helper() -> None:
         for f in lint.scan_file(path, python_dir=python_dir)
         if "issue_create" in f.file
     ]
-    assert findings == []
+    assert not findings
 
 
 def test_cli_write_and_check(tmp_path: Path) -> None:

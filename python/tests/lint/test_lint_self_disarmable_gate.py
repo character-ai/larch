@@ -105,7 +105,7 @@ def test_or_combine_and_presentation_softening_compliant(tmp_path: Path) -> None
         larch_dir=larch_dir,
         meta_fields=frozenset({"diff_added", "mechanical_churn"}),
     )
-    assert findings == []
+    assert not findings
 
 
 def test_ternary_replacement_flagged(tmp_path: Path) -> None:
@@ -163,7 +163,7 @@ def test_validation_not_in_is_not_flagged(tmp_path: Path) -> None:
         larch_dir=larch_dir,
         meta_fields=frozenset({"diff_added", "mechanical_churn"}),
     )
-    assert findings == []
+    assert not findings
 
 
 def test_metadata_only_early_return_without_hard_trigger_is_not_flagged(tmp_path: Path) -> None:
@@ -182,7 +182,7 @@ def test_metadata_only_early_return_without_hard_trigger_is_not_flagged(tmp_path
         larch_dir=tmp_path / "python" / "larch",
         meta_fields=frozenset({"diff_added", "mechanical_churn"}),
     )
-    assert findings == []
+    assert not findings
 
 
 def test_or_metadata_early_return_with_hard_trigger_is_flagged(tmp_path: Path) -> None:
@@ -261,7 +261,7 @@ def test_later_hard_trigger_does_not_flag_prior_metadata_return(tmp_path: Path) 
         larch_dir=tmp_path / "python" / "larch",
         meta_fields=frozenset({"diff_added", "mechanical_churn"}),
     )
-    assert findings == []
+    assert not findings
 
 
 def test_current_plan_quality_size_trigger_compliant() -> None:

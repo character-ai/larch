@@ -601,15 +601,8 @@ def _validate_normalized_file(value: object, *, source: Path, index: int) -> str
         raise BaselineError(f"{source}: record {index} has invalid file")
     normalized = normalize_file_path(value)
     parts = normalized.split("/")
-    if (
-        normalized != value
-        or normalized.startswith("/")
-        or not normalized.startswith("larch/")
-        or not normalized.endswith(".py")
-        or "" in parts
-        or "." in parts
-        or ".." in parts
-    ):
+    bad_parts = "" in parts or "." in parts or ".." in parts
+    if normalized != value or normalized.startswith("/") or not normalized.startswith("larch/") or not normalized.endswith(".py") or bad_parts:
         raise BaselineError(f"{source}: record {index} has invalid file")
     return normalized
 

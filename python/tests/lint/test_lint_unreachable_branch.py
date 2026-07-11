@@ -65,7 +65,7 @@ def test_different_return_values_not_flagged(tmp_path: Path) -> None:
         "    return 0\n",
         encoding="utf-8",
     )
-    assert lint.scan_file(path, larch_dir=larch_dir) == []
+    assert not lint.scan_file(path, larch_dir=larch_dir)
 
 
 def test_intervening_assignment_clears_facts(tmp_path: Path) -> None:
@@ -82,7 +82,7 @@ def test_intervening_assignment_clears_facts(tmp_path: Path) -> None:
         "    return 0\n",
         encoding="utf-8",
     )
-    assert lint.scan_file(path, larch_dir=larch_dir) == []
+    assert not lint.scan_file(path, larch_dir=larch_dir)
 
 
 def test_final_verdict_shape_regression(tmp_path: Path) -> None:
@@ -194,7 +194,7 @@ def test_suppression_on_condition_line(tmp_path: Path) -> None:
         "    return 0\n",
         encoding="utf-8",
     )
-    assert lint.scan_file(path, larch_dir=larch_dir) == []
+    assert not lint.scan_file(path, larch_dir=larch_dir)
 
 
 def test_malformed_source_exits_2(tmp_path: Path) -> None:
