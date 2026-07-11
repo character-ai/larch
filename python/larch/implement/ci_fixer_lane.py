@@ -15,6 +15,7 @@ from larch import io as larch_io
 from larch.agents import agents
 from larch.core import config, proc, redact
 from larch.core.proc import Runner
+from larch.git import git
 from larch.implement import ci_monitor
 
 _RESULT_TOKENS = frozenset({"reship", "retry-next-tool", "operator-bail"})
@@ -361,6 +362,97 @@ def _launcher_for(tier: str, launchers: Mapping[str, Launcher]) -> Launcher:
         raise LaneClosedError("selected launcher is unavailable") from exc
 
 
+def _diff_raw_by_path(runner: Runner, *, cwd: Path, cached: bool) -> dict[str, str] | None:
+    argv = ["git", "diff", "--cached", "--raw", "--no-ext-diff", "--"] if cached else \
+        ["git", "diff", "--raw", "--no-ext-diff", "--"]
+    result = runner.run(argv, cwd=str(cwd))
+    if result.returncode != 0:
+        return None
+    lines: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        _meta, separator, path = line.partition("\t")
+        if separator and path:
+            lines[path] = line
+    return lines
+
+
+def _file_digest(path: Path) -> str:
+    try:
+        if not path.is_file() or path.is_symlink():
+            return "missing"
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return "unreadable"
+
+
+def _dirty_fingerprints(runner: Runner, *, cwd: Path) -> dict[str, str] | None:
+    """Map every dirty repo-relative path to a content fingerprint.
+
+    Combines staged and unstaged ``git diff --raw`` lines with the digests of
+    untracked files so content changes (including on already-dirty files) and
+    newly added files are all detected. Returns None when git reports a failure
+    so callers can fall back to the legacy no-progress path.
+    """
+    staged = _diff_raw_by_path(runner, cwd=cwd, cached=True)
+    unstaged = _diff_raw_by_path(runner, cwd=cwd, cached=False)
+    if staged is None or unstaged is None:
+        return None
+    untracked: dict[str, str] = {}
+    status = git.status_porcelain(runner, untracked_files="all", cwd=str(cwd))
+    for line in status.stdout.splitlines():
+        if line.startswith("?? "):
+            path = line[3:].strip()
+            if path:
+                untracked[path] = "untracked:" + _file_digest(cwd / path)
+    fingerprints: dict[str, str] = {}
+    for path in set(staged) | set(unstaged) | set(untracked):
+        material = "\0".join((staged.get(path, ""), unstaged.get(path, ""), untracked.get(path, "")))
+        fingerprints[path] = hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return fingerprints
+
+
+def _salvage_uncommitted_fixer_edits(
+    identity: LaneIdentity, *, runner: Runner, baseline: dict[str, str] | None
+) -> str | None:
+    """Commit a fixer's uncommitted working-tree edit and return the new HEAD.
+
+    The CI fixer prompt forbids committing, so a tier that produced a correct
+    edit would otherwise be misclassified as no-progress when HEAD did not
+    advance. When the dirty-tree set changed relative to ``baseline`` (and the
+    launcher exited cleanly), stage exactly the delta paths and commit them so
+    the lane can reship. Returns None when there is nothing to salvage. Raises
+    ``LaneClosedError`` if staging or committing fails so the run surfaces
+    loudly instead of silently abandoning the edit.
+    """
+    if baseline is None:
+        return None
+    current = _dirty_fingerprints(runner, cwd=identity.repo_root)
+    if current is None:
+        return None
+    delta = tuple(
+        sorted(
+            path
+            for path in (set(baseline) | set(current))
+            if baseline.get(path) != current.get(path)
+        )
+    )
+    if not delta:
+        return None
+    add_result = runner.run(["git", "add", "--", *delta], cwd=str(identity.repo_root))
+    if add_result.returncode != 0:
+        raise LaneClosedError("failed to stage CI fixer working-tree edits")
+    commit_result = git.commit_with_trailer(
+        runner,
+        f"Apply CI fixer working-tree edits ({identity.tier})",
+        no_trailer=True,
+        cwd=str(identity.repo_root),
+    )
+    if commit_result.returncode != 0:
+        _ = runner.run(["git", "reset", "--quiet", "--", *delta], cwd=str(identity.repo_root))
+        raise LaneClosedError("failed to commit CI fixer working-tree edits")
+    return _current_head(runner, cwd=identity.repo_root)
+
+
 def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner, launchers: Mapping[str, Launcher]) -> LaneResult:
     if _current_head(runner, cwd=identity.repo_root) != identity.starting_head:
         raise LaneClosedError("HEAD drifted before fixer launch")
@@ -376,6 +468,10 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
     if identity.invariant_evidence is not None:
         argv.extend(["--invariant-evidence", str(identity.invariant_evidence)])
     launcher = _launcher_for(identity.tier, launchers)
+    # The CI fixer prompt forbids committing ("Do not commit. Make focused
+    # working-tree edits only."), so capture the dirty-tree baseline before
+    # launch to attribute any post-launch working-tree edit to the fixer.
+    baseline = _dirty_fingerprints(runner, cwd=identity.repo_root)
     with _launcher_cwd(identity.repo_root):
         process_rc = launcher(argv)
     final_head = _current_head(runner, cwd=identity.repo_root)
@@ -386,7 +482,12 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
         return LaneResult("reship", "fixer-produced-change", final_head)
     if launcher_exit != 0 and final_head != identity.starting_head:
         return LaneResult("operator-bail", "failed-launcher-modified-head", final_head)
-    if launcher_exit == 0:
+    if launcher_exit == 0 and final_head == identity.starting_head:
+        committed_head = _salvage_uncommitted_fixer_edits(
+            identity, runner=runner, baseline=baseline
+        )
+        if committed_head is not None:
+            return LaneResult("reship", "fixer-produced-uncommitted-change", committed_head)
         return LaneResult("retry-next-tool", "fixer-made-no-progress", final_head)
     return LaneResult("retry-next-tool", f"launcher-exit-{launcher_exit}", final_head)
 
