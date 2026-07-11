@@ -1,0 +1,55 @@
+# [FEATURE] Prefix-literal lints: composition positions and prompt/script case variants
+
+## Summary
+
+Two mechanical ratchets close the residual gaps behind the bug-title convention drift cluster (#6935, #6604, #6618) from the 2026-07-11 `/learn-from-bugs -n 10` run. Work item 1 extends `lint_lifecycle_prefix_literal` to composition positions in production Python. Work item 2 adds a new lint that flags case-variant lifecycle and bug tokens on prompt and script surfaces. Both follow the class-lint pattern that #6672 established for heading-grammar drift.
+
+## Original request
+
+Operator request, verbatim: `--no-dedup I1, and /issue --no-dedup L1 + L2`. L1 and L2 are the two proposed mechanical lint rules from the `/learn-from-bugs` report of 2026-07-11 (search `[BUG] in:title`, state closed, limit 10). This issue combines them because they share one backing cluster and one token model.
+
+## Context and motivation
+
+The `[BUG]` title convention has many writers and many selectors. Three of the seven mined bugs trace to it: selectors matched prefix-only and case-sensitively (#6604) or trusted raw GitHub search (#6618), and writers emitted `[Bug]` case variants (#6935). The fixes landed the shared predicate `bug_title_match` and the shared constant `BUG_PREFIX` (`python/larch/issue/title_match.py:9`), and PR #6945 moved the failure-report writers (`python/larch/design/design_terminal.py:745`, `python/larch/state/_report.py:675`) onto that constant.
+
+Two enforcement gaps remain, verified by direct reads on 2026-07-11 (larch 52.5.33):
+
+1. `lint_lifecycle_prefix_literal` checks only comparison and match positions. `CONTEXT_KINDS` (`python/larch/lint/lint_lifecycle_prefix_literal.py:32-44`) covers the `startswith` family (`PREFIX_METHODS`, line 45), comparisons and membership (`_comparison_contexts`, line 291), and `re` calls (`_call_contexts`, line 252). A new writer `title = f"[BUG] {x}"` is a composition position and passes unflagged. The fixed writers stay compliant only by convention.
+2. No lint sees non-Python writer surfaces. Both existing lints scan only `python/larch/**/*.py` production modules (`iter_source_files`, `lint_lifecycle_prefix_literal.py:144`). Skill prompts and residual Bash cannot import `BUG_PREFIX`, and they are where model-facing filing instructions live. A grep of `skills/**/*.md`, `.claude/skills/**/*.md`, and `agents/**/*.md` on 2026-07-11 found zero case-variant tokens, so the class is currently clean and a hard ban is cheap now.
+
+## Work items
+
+### 1. Extend `lint_lifecycle_prefix_literal` to composition positions (L1)
+
+- Add three context kinds to `CONTEXT_KINDS` in `python/larch/lint/lint_lifecycle_prefix_literal.py`: `fstring_compose`, `concat_compose`, `format_compose`.
+- Detection, using the existing casefolded token map from `build_token_map` (line 168; tokens come from `config.TRACKING_ISSUE_PREFIX_BY_STATE` plus `title_match.BUG_PREFIX`):
+  - `fstring_compose`: a string `ast.Constant` part of an `ast.JoinedStr` whose space-rstripped casefolded value equals a token, or starts with a token followed by a space or a colon.
+  - `concat_compose`: the same value test applied to string `ast.Constant` operands of `ast.BinOp` with `ast.Add`.
+  - `format_compose`: the same value test applied to the receiver literal of a `.format(...)` attribute call.
+- Keep the existing scope (production `python/larch` only, tests excluded), the existing per-line pragma `# lint-lifecycle-prefix: ok <reason>`, and the existing reason-bearing baseline `python/lifecycle-prefix-literal-baseline.json`. Migrate the baseline with the documented `--write` flow and per-row reasons; the baseline only shrinks (G-Enf-2).
+- Extend `python/tests/lint/test_lint_lifecycle_prefix_literal.py`: a fixture with `f"[BUG] x"` is flagged as `fstring_compose`; a fixture composing from `title_match.BUG_PREFIX` is not flagged; concat and `.format` fixtures for both polarities; a baselined composition row warns instead of failing.
+
+### 2. New lint: case-variant lifecycle and bug tokens on prompt and script surfaces (L2)
+
+- New module `python/larch/lint/lint_prefix_case_variant.py`, registered in the `cli.py` lint table as `lint prefix-case-variant`, following the `lint_shared_convention_regex` module shape.
+- Scan surfaces: `skills/**/*.md`, `.claude/skills/**/*.md`, `agents/**/*.md`, and the residual Bash set from `python3 python/cli.py residual-bash paths`.
+- Flag: any bracketed token whose casefolded form matches a canonical token from the same token map as work item 1 but whose bytes differ (for example `[Bug]`, `[bug]`, `[Done]`, `[Stalled]`). Exact-case tokens stay allowed; prompts legitimately state the convention.
+- Suppression: trailing `<!-- lint-prefix-case-variant: ok <reason> -->` in Markdown; trailing `# lint-prefix-case-variant: ok <reason>` in Bash. A non-empty reason is required, per G-Py-11.
+- Baseline: none. The 2026-07-11 scan found zero live violations, so the lint lands as a hard ban with no grandfathered rows.
+- Tests: new `python/tests/lint/test_lint_prefix_case_variant.py` with fixtures for a flagged `[Bug]` in Markdown, a flagged `[bug]` in residual Bash, an allowed exact-case `[BUG]`, and a suppressed fixture with a reason.
+- Wire both lints into the standard lint sweep per `docs/linting.md` conventions in the same change.
+
+## Acceptance
+
+1. `python3 python/cli.py lint lifecycle-prefix-literal` passes repo-wide after the baseline migration, and a temporary `f"[BUG] x"` fixture in a scratch module is flagged before removal.
+2. `python3 python/cli.py lint prefix-case-variant` passes repo-wide with zero findings and an empty baseline.
+3. Both test files pass under the repo's Python test target.
+4. `make lint` includes both checks.
+
+## Backing issues
+
+#6935 (writer drift, `[Bug]` titles), #6604 (case-sensitive selector blind spot), #6618 (selector context), #6672 (precedent: single-source a convention and lint the class), PR #6945 (current writers moved onto `BUG_PREFIX`).
+
+## Open questions
+
+None. Names, context kinds, surfaces, suppression grammar, and baseline policy are decided above.
