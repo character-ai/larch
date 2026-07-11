@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	14531	3633	13266	3317	1265	317		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	24791	6198	13554	3389	11237	2810		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	24782	6196	13545	3387	11237	2810		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	14522	3631	13257	3315	1265	317		0	0
+design Step 3	phase1	1	dyn-codex-plan-auto-filing-contract-auditor	plan-review	codex	dyn-codex-plan-auto-filing-contract-auditor.txt	14939	3735	13132	3283	1807	452		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	14546	3637	13281	3321	1265	317		0	0
+design Step 3	phase1	1	dyn-cursor-plan-auto-filing-contract-auditor	plan-review	cursor	dyn-cursor-plan-auto-filing-contract-auditor.txt	25199	6300	13420	3355	11779	2945		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	24804	6201	13567	3392	11237	2810		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	14544	3636	13279	3320	1265	317		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	24806	6202	13569	3393	11237	2810		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	32413	8104	4460	1115	27953	6989	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	10609	2653	9132	2283	1477	370		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	10609	2653	9132	2283	1477	370		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	10609	2653	9132	2283	1477	370		0	0

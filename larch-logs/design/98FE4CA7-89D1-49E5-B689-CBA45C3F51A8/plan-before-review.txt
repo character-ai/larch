@@ -1,0 +1,116 @@
+## Approach
+
+Extend the existing inline `/learn-from-bugs` workflow without changing its Python verbs or coverage-index model.
+
+1. Parse `--file` and `-f` in Step 1. Reject `-s` and unknown flags through the existing argument-validation style.
+2. During Step 3, inspect relevant target-repository tests for each root-cause cluster. Propose a regression test only when coverage is absent and the test would have caught the faulty behavior. Keep tests outside `CoverageIndex`.
+3. Add a report section for concrete regression-test proposals. Each proposal must name the behavior, symbol or surface, target test file, setup, action, and assertions.
+4. Branch after the report and durable state-marker commit:
+   - Default mode keeps the current approval-gated Step 5 actions.
+   - `--file` mode skips all apply actions. It converts every residual proposal category into detailed issue bodies, groups related work into coherent and independently implementable issues, and invokes `/issue` once in batch mode.
+5. Before filing, require every issue to be decision-complete. If any ambiguity remains, ask one consolidated operator question, incorporate every answer, then file without a separate approval prompt.
+6. Keep issue bodies self-contained for weaker implementers. Include root-cause evidence and citations, exact affected surfaces, acceptance criteria, and verification commands. Include the complete proposed text for every new or changed guideline and invariant. Do not defer research or decisions to `/design`.
+
+## Files to modify/create
+
+### UPDATED: skills/learn-from-bugs/SKILL.md
+
+- Add `--file` and `-f` to frontmatter, the contract, and Step 1 parsing.
+- State that `--file` is a filing mode, not an apply mode. It must not append guidelines, create invariants, update hooks, scaffold lints, or change still-broken code.
+- Update the introductory mutation rule so filing under `--file` is the explicit exception to per-action approval.
+- Expand Step 3 to inspect relevant test files in the target repository for each cluster. Use targeted reads and greps around the implicated symbols and behaviors.
+- Define missing regression coverage narrowly:
+  - Propose a test only if no existing test covers the root-cause behavior.
+  - Require that the proposed test would have failed before the fix or exposed the faulty behavior.
+  - Do not treat tests as enforcement coverage or add them to `CoverageIndex`.
+- Add a report section for proposed regression tests before concrete still-broken-code items. Require each entry to identify the target test file, behavior or symbol, fixture/setup, action, assertions, and backing bug issues.
+- Ensure all residual categories can feed filing: lint rules, invariants, guidelines, regression tests, and still-broken-code fixes.
+- Add a `--file` branch after the durable marker succeeds:
+  - Gather all residual proposals.
+  - Group proposals by shared root cause, implementation surface, and dependency while avoiding oversized catch-all issues or needless one-item issues.
+  - Preserve independently implementable work as separate issues when combining it would blur ownership, acceptance criteria, or verification.
+  - Write a batch input file under `RUN_DIR` using `/issue`'s supported generic batch format.
+  - Make each issue body fully self-contained. Include a summary, root-cause analysis, backing issue citations, exact scope, implementation instructions, acceptance criteria, and tests or commands.
+  - For guideline proposals, include the complete append-ready imperative, Why, and Deviate-when text.
+  - For invariant proposals, include the complete normative statement and complete invariants-file entry.
+  - For lint proposals, specify scan scope, exact detection rule, false-positive handling, suppression syntax, baseline policy, integration points, and regression cases.
+  - For regression-test proposals, specify the exact target file or best justified new test file, exercised symbol or behavior, setup, action, and assertions.
+  - For still-broken code, identify the concrete affected symbols and the required class-wide fix.
+  - Ban placeholders, unresolved alternatives, research tasks, and decisions deferred to `/design`.
+- Add one pre-filing completeness pass. If any ambiguity remains, issue one consolidated `AskUserQuestion` covering all unresolved decisions, update the bodies, and repeat the completeness check before filing.
+- Invoke `/issue` once with the batch file. Do not ask for approval in `--file` mode. Continue after the child skill returns and surface its created, deduplicated, and failed counts.
+- Keep default Step 5 behavior approval-gated. Add regression-test proposals to the default follow-up choices if the operator wants to apply or hand them to `/design`.
+- Preserve the durable marker ordering and fail closed before either default follow-ups or automatic filing when marker creation or commit fails.
+
+### UPDATED: README.md
+
+- Add `[--file|-f]` to the `/learn-from-bugs` argument summary.
+- Add regression-test proposals to the listed output categories.
+- Explain that default mode remains report-only and approval-gated.
+- Explain that `--file` groups all residual proposal categories and files detailed batch issues through `/issue` without a separate approval prompt.
+
+### UPDATED: docs/skills.md
+
+- Update the canonical `/learn-from-bugs` argument list with `--file|-f`.
+- Document prompt-level detection of missing regression tests and clarify that tests are not added to the enforcement coverage index.
+- Document the `--file` branch, its all-category scope, grouping behavior, single consolidated ambiguity question, decision-complete issue bodies, and use of `/issue`.
+- State that `--file` replaces the apply gates for that run rather than applying proposals directly.
+
+### NEW: scripts/test-learn-from-bugs-structure.sh
+
+- Add a focused structural harness for the prompt contract.
+- Assert that frontmatter and contract prose expose `--file` and `-f`, but not `-s`.
+- Assert that the report includes regression-test proposals and requires target file, behavior or symbol, setup, and assertions.
+- Assert that tests remain outside `CoverageIndex`.
+- Assert that `--file` covers every proposal category and skips the default apply gates.
+- Assert that filing uses `/issue` batch mode rather than direct `gh issue create`.
+- Assert that one consolidated ambiguity prompt precedes filing and that filed issues forbid open questions or deferred `/design` decisions.
+- Assert that full guideline and invariant text is required in filed issue bodies.
+- Assert that the durable marker failure paths still stop before filing.
+- Use fixed-string checks for load-bearing prompt anchors so accidental contract deletion fails CI.
+
+### UPDATED: scripts/residual-bash-paths.txt
+
+- Add `scripts/test-learn-from-bugs-structure.sh` to the permitted Bash harness inventory.
+
+### UPDATED: Makefile
+
+- Register `test-learn-from-bugs-structure` as a phony timing-wrapped harness target.
+- Add it to exactly one `test-harnesses-N` shard.
+- Keep the shard coverage invariant satisfied. Rebalancing is unnecessary unless measured timing shows a material imbalance.
+
+## Edge cases
+
+- No residual proposals remain after dedup. In `--file` mode, report that there is nothing to file and do not invoke `/issue`.
+- Existing tests cover the exact faulty behavior. Do not propose a duplicate regression test.
+- Tests cover nearby code but not the root-cause path. Propose a focused test and explain the uncovered distinction.
+- One proposal spans several enforcement categories for the same root cause. Group it when one implementation issue can define clear scope and acceptance criteria.
+- Several proposals share a theme but require unrelated files or verification. Keep them separate.
+- A proposed test file does not exist. Name the best target path and justify creating it from the repository's test layout.
+- The operator must resolve several ambiguities. Ask one consolidated question, then regenerate the affected issue bodies before filing.
+- `/issue` deduplicates some or all batch entries. Treat deduplication as a valid child outcome and report the returned counters.
+- `/issue` partially fails. Surface failures accurately and do not claim every proposal was filed.
+- The durable state marker cannot be written or committed. Stop before automatic filing, matching the current fail-closed ordering.
+
+## Failure modes
+
+- Loose wording may let the skill propose tests without checking existing coverage. Pin the targeted read/grep and would-have-caught-the-bug requirements.
+- Automatic filing may accidentally run the existing apply actions. Make the branches mutually exclusive and cover that separation in the structural harness.
+- Batch issues may contain shorthand copied from the report. Require a filing-specific expansion and completeness pass.
+- Grouping may create one oversized issue or too many tiny issues. Prioritize coherent implementation scope, independent verification, and clear ownership over a fixed issue count.
+- A child `/issue` result may halt the parent skill early. Preserve the anti-halt rule and require final counter reporting.
+- Public documentation may continue to claim every GitHub mutation needs approval. Update both public catalogs in the same change.
+
+## Testing strategy
+
+- Run `bash scripts/test-learn-from-bugs-structure.sh`.
+- Run `make test-learn-from-bugs-structure`.
+- Run `make test-harness-shards-coverage`.
+- Run `python3 python/cli.py lint skill-md-flag-signature`.
+- Run the relevant Markdown and skill prompt linters for `README.md`, `docs/skills.md`, and `skills/learn-from-bugs/SKILL.md`.
+- Review the skill manually against two dry scenarios:
+  - Default mode proposes a missing regression test but stops at approval-gated follow-ups.
+  - `--file` mode produces decision-complete batch issues for mixed proposal categories, asks only when genuine ambiguity remains, and skips all apply actions.
+
+difficulty: MODERATE
+diff_lines: 190
