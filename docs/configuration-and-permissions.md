@@ -387,8 +387,11 @@ Default model basis:
 - **Codex review role**: `gpt-5.6-luna`, with `input=1.00`, `cached input=0.10`, and `output=6.00` per million tokens. **Codex vote/fix roles**: `gpt-5.6-terra`, with `input=2.50`, `cached input=0.25`, and `output=15.00` per million tokens.
 - **Cursor**: `composer-2.5`, with `input=0.50`, `cache read=0.20`, and `output=2.50` per million tokens.
 - **Claude**: Opus 4.8, with `input=5.00`, `cache read=0.50`, `cache write 5m=6.25`, `cache write 1h=10.00`, and `output=25.00` per million tokens.
+- **Claude GLM-5.2** (Z.ai main-agent lane): `input=1.40`, `cache read=0.26`, `cache write 5m=0.00`, `cache write 1h=0.00`, and `output=4.40` per million tokens. The recorded alias `glm-5.2[1m]` maps to this row for **main-agent** rate lookup and final-summary identity only. Other `[1m]` model names are not stripped or remapped. Subprocess (`claude_sub`) pricing continues to use the recorded model string without this alias mapping.
 
 Codex and Cursor blended defaults derive from the documented fleet mix of 7% input, 92% cache read, and 1% output. Claude's blended fallback remains the existing aggregate fallback.
+
+Shared pricing outputs (`CLAUDE_COST`, `TOTAL_COST`, `/report-tokens`) stay API-equivalent **token** estimates. When the resolved main-agent model is GLM-5.2 (including `glm-5.2[1m]`), the final-summary cost line additionally shows `Claude/GLM-5.2 token $T (estimated $E)` with `E = T / 15`, substitutes `E` for the main Claude component in the displayed `TOTAL`, and adds a short cost-note bullet. Codex, Cursor, and `Claude (subprocess)` lanes are unchanged and are never divided by 15.
 
 These estimates are not invoices. Subscription plans can make marginal cost lower than API-equivalent rates. Fable 5 main-agent Claude traffic is not priced separately until per-record model pricing exists.
 

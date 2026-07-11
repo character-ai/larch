@@ -603,12 +603,119 @@ def test_render_run_summary_includes_cost_line() -> None:
         claude_sub_cost="0.15",
         total_tokens=1000,
         cost_unavailable=False,
+        main_model="claude-opus-4-8",
     )
     assert "💰 TOTAL" in body
     assert "**Cost**:" in body
     # Legacy callers passing only codex_cost still render the split (5.5 slot + $0.00 mini).
     assert "Codex-5.6 $0.25" in body
     assert "Codex-mini $0.00" in body
+    assert "Claude $0.50" in body
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
+
+
+def test_render_run_summary_glm_main_lane_plan_estimate() -> None:
+    # Token Claude $15.00 → estimated $1.00; TOTAL replaces Claude with estimate:
+    # 38.23 - 15.00 + 1.00 = 24.23
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-glm",
+        total_cost="38.23",
+        claude_cost="15.00",
+        codex_gpt_5_5_cost="11.24",
+        codex_gpt_5_4_mini_cost="0.07",
+        cursor_cost="8.09",
+        claude_sub_cost="0.80",
+        total_tokens=74240000,
+        cost_unavailable=False,
+        main_model="glm-5.2",
+    )
+    assert "Claude/GLM-5.2 token $15.00 (estimated $1.00)" in body
+    assert "TOTAL ~$24.23" in body
+    assert "Claude (subprocess) $0.80" in body
+    assert "Codex-5.6 $11.24" in body
+    cost_idx = body.index("- **Cost**:")
+    note_idx = body.index("- **Cost note**:")
+    issue_idx = body.index("- **Issue**:")
+    assert cost_idx < note_idx < issue_idx
+    assert "Token is API-equivalent GLM-5.2 pricing" in body
+    assert "estimated is plan cost (token ÷ 15)" in body
+
+
+def test_render_run_summary_glm_1m_alias_gets_plan_estimate() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-glm-1m",
+        total_cost="16.00",
+        claude_cost="15.00",
+        codex_cost="0.20",
+        cursor_cost="0.30",
+        claude_sub_cost="0.50",
+        total_tokens=1000,
+        cost_unavailable=False,
+        main_model="glm-5.2[1m]",
+    )
+    assert "Claude/GLM-5.2 token $15.00 (estimated $1.00)" in body
+    assert "TOTAL ~$2.00" in body  # 16 - 15 + 1
+    assert "Claude (subprocess) $0.50" in body
+    assert "**Cost note**:" in body
+
+
+def test_render_run_summary_non_glm_1m_cost_line_is_byte_stable() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-non-glm-1m",
+        total_cost="16.00",
+        claude_cost="15.00",
+        codex_cost="0.20",
+        cursor_cost="0.30",
+        claude_sub_cost="0.50",
+        total_tokens=1000,
+        cost_unavailable=False,
+        main_model="claude-opus-4-8[1m]",
+    )
+    cost_line = next(line for line in body.splitlines() if line.startswith("- **Cost**:"))
+    assert cost_line == (
+        "- **Cost**: 💰 TOTAL ~$16.00: Claude $15.00, Codex-5.6 $0.20, "
+        "Codex-mini $0.00, Cursor $0.30, Claude (subprocess) $0.50  |  Tokens: 1k"
+    )
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
+
+
+def test_render_run_summary_glm_zero_cost_keeps_plan_formatting() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-glm-zero",
+        total_cost="0.00",
+        claude_cost="0.00",
+        codex_cost="0.00",
+        cursor_cost="0.00",
+        claude_sub_cost="0.00",
+        total_tokens=0,
+        cost_unavailable=False,
+        main_model="glm-5.2",
+    )
+    assert "- **Cost**: 💰 TOTAL ~$0.00: Claude/GLM-5.2 token $0.00 (estimated $0.00)," in body
+    assert "- **Cost note**:" in body
+
+
+def test_render_run_summary_glm_cost_unavailable_omits_plan_formatting() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="completed",
+        run_id="run-glm-unavailable",
+        cost_unavailable=True,
+        main_model="glm-5.2",
+    )
+    assert "- **Cost**: N/A" in body
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
 
 
 def test_render_run_summary_splits_codex_by_model() -> None:
@@ -625,6 +732,7 @@ def test_render_run_summary_splits_codex_by_model() -> None:
         claude_sub_cost="0.00",
         total_tokens=1000,
         cost_unavailable=False,
+        main_model="claude-opus-4-8",
     )
     assert "Codex-5.6 $0.10" in body
     assert "Codex-mini $0.30" in body
@@ -689,6 +797,53 @@ def test_render_run_summary_main_prices_claude_from_manifest(tmp_path: Path, cap
     body = capsys.readouterr().out
     assert "Claude $3.00" in body
     assert "- **Main agent model**: claude-sonnet-4-6" in body
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
+
+
+def test_render_run_summary_main_glm_from_manifest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"model_roster":{"main":"glm-5.2[1m]"}}\n', encoding="utf-8")
+    rc = pr_body.render_run_summary_main([
+        "--skill", "implement", "--outcome", "completed", "--run-id", "r-glm",
+        "--manifest-path", str(manifest),
+        "--claude-input-tokens", "1000000",
+        "--claude-output-tokens", "1000000",
+        "--claude-sub-input-tokens", "1000000",
+        "--print-stdout",
+    ])
+    assert rc == 0
+    body = capsys.readouterr().out
+    # Token 5.80 → estimated 0.39; TOTAL = (5.80+5.00) - 5.80 + 0.39 = 5.39
+    assert "Claude/GLM-5.2 token $5.80 (estimated $0.39)" in body
+    assert "TOTAL ~$5.39" in body
+    assert "Claude (subprocess) $5.00" in body
+    assert "**Cost note**:" in body
+    assert "- **Main agent model**: glm-5.2[1m]" in body
+
+
+def test_render_run_summary_main_manifest_unknown_does_not_fallback_to_transcript(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "manifest.json"
+    _ = manifest.write_text('{"model_roster":{"main":"unknown"}}\n', encoding="utf-8")
+    monkeypatch.setattr(pr_body.tokens, "read_main_model", lambda: "glm-5.2")
+
+    rc = pr_body.render_run_summary_main([
+        "--skill", "implement", "--outcome", "completed", "--run-id", "r-unknown",
+        "--manifest-path", str(manifest),
+        "--claude-input-tokens", "1000000",
+        "--print-stdout",
+    ])
+
+    assert rc == 0
+    body = capsys.readouterr().out
+    assert "Claude $5.00" in body
+    assert "Claude/GLM-5.2" not in body
+    assert "**Cost note**:" not in body
+    assert "- **Main agent model**: unknown" in body
 
 
 def test_render_run_summary_main_main_model_override_wins_for_pricing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1667,6 +1822,7 @@ def test_render_run_summary_cursor_lane_split_when_components_present() -> None:
         claude_sub_cost="0.25",
         total_tokens=5000,
         cost_unavailable=False,
+        main_model="claude-opus-4-8",
     )
     assert "Cursor $2.00 (Composer $1.20, Grok $0.60, Auto $0.20)" in body
     assert "Cursor $2.00" in body
@@ -1684,6 +1840,7 @@ def test_render_run_summary_cursor_aggregate_when_no_components() -> None:
         claude_sub_cost="0.15",
         total_tokens=1000,
         cost_unavailable=False,
+        main_model="claude-opus-4-8",
     )
     assert "Cursor $0.10" in body
     # Ensure no lane breakdown appears
@@ -1705,6 +1862,7 @@ def test_render_run_summary_cursor_lane_with_zero_valued_component() -> None:
         claude_sub_cost="0.20",
         total_tokens=2000,
         cost_unavailable=False,
+        main_model="claude-opus-4-8",
     )
     assert "Grok $0.00" in body
     assert "Auto $0.00" in body
@@ -1722,6 +1880,7 @@ def test_render_run_summary_total_unchanged_by_cursor_split() -> None:
         claude_sub_cost="0.50",
         total_tokens=10000,
         cost_unavailable=False,
+        main_model="claude-opus-4-8",
     )
     body_split = pr_body.render_run_summary(
         skill="implement",
@@ -1737,6 +1896,7 @@ def test_render_run_summary_total_unchanged_by_cursor_split() -> None:
         claude_sub_cost="0.50",
         total_tokens=10000,
         cost_unavailable=False,
+        main_model="claude-opus-4-8",
     )
     assert "TOTAL ~$5.00" in body_aggregate
     assert "TOTAL ~$5.00" in body_split
