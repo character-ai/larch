@@ -21,7 +21,7 @@ from larch.outcomes import Outcome
 from larch.report import run_logs
 from larch.state import finalize
 from larch.state import stall_recovery
-from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state, _breadcrumb
+from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state
 from larch.implement.ship_result import ShipResult, _write_terminal_finalize_if_terminal
 
 
@@ -329,13 +329,8 @@ def run_postmerge_phase(
     if post.outcome is Outcome.OK:
         _write_terminal_finalize_if_terminal(ctx=state_ctx, result=Outcome.OK, step="")
     if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
-        skip: run_logs.RefreshSkip = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
-        if skip.skipped:
-            _breadcrumb(step="warning", detail=f"post-merge flush skipped: {skip.reason}")
-            stall_ctx = state_ctx.with_(stall_tracking=True, stall_step="postmerge-flush")
-            _write_terminal_finalize_if_terminal(ctx=stall_ctx, result=Outcome.STALLED, step="postmerge-flush")
-            _write_ship_state(stall_ctx, phase="postmerge", terminal_outcome=Outcome.STALLED)
-            return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
+        # Best-effort: ignore RefreshSkip so a flush miss cannot stall a successful post-merge.
+        _ = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
     if post.outcome is not Outcome.OK:
         _write_terminal_finalize_if_terminal(ctx=state_ctx, result=post.outcome, step=post.status)
         _write_ship_state(state_ctx, phase="postmerge", terminal_outcome=post.outcome)

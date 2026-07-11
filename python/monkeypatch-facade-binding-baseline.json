@@ -6967,7 +6967,7 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_postmerge_flush_skip_writes_stall_shape",
+    "qualified_symbol": "test_postmerge_flush_skip_still_completes_ok",
     "facade_module": "larch.report.run_logs",
     "attribute": "finalize_postmerge_logs",
     "defining_module": "larch.report.run_log_flush",
