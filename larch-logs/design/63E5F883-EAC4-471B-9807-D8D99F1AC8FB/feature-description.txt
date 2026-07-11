@@ -1,0 +1,20 @@
+# [OOS] [OUT_OF_SCOPE] Trusted-artifact contract remains incomplete and can bypass ship-time validation
+
+## Out-of-Scope Observation
+
+**Surfaced by**: dyn-dyn-artifact-trust, dyn-dyn-artifact-trust-codex
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+The trusted-artifact contract is incomplete across validation, production consumers, and regression coverage. `require_pr_mutation_scope_disposition` returns early when `effective_tmpdir` is missing or not a directory, potentially bypassing ship-time disposition validation even when gate-relevant artifacts exist elsewhere; several planned consumer and test modules also remain unmigrated.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - Fail closed when the tmpdir is missing or invalid, or require an explicit `repo_root` with validated artifact paths.
+  - Complete the planned production consumer migrations and add the missing regression tests before merge.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

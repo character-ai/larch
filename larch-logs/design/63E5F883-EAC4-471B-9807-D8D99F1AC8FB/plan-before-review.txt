@@ -1,0 +1,164 @@
+## Approach
+
+Complete the existing trusted-artifact contract without changing artifact locations or I/O primitives.
+
+For PR mutations, distinguish an absent implement context from a declared but invalid context. Preserve the no-op path when no explicit tmpdir, `IMPLEMENT_TMPDIR`, or manifest context exists. Raise `ShipError` before mutation when a context declares a missing, non-directory, symlinked, or otherwise invalid tmpdir. Do not add flags or configuration.
+
+For coder snapshots, replace the direct `_snapshot_mode(round_dir)` decision in `coder_runner.py` with one complete validator entry point from `snapshot.py`. The validator must authenticate the snapshot root, required inventories, HEAD, and mode-specific artifact set before returning data used for stale-HEAD, attempt capture, cleanup, or staging decisions. Remove the heuristic import from `coder_runner.py`.
+
+Finish the consumer-boundary regression coverage promised by #6852. Reuse existing fixtures and trusted artifact writers where possible.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/scope_disposition.py
+
+Refine `require_pr_mutation_scope_disposition` context detection.
+
+- Treat a non-`None` `tmpdir`, a non-empty `IMPLEMENT_TMPDIR`, or an explicit `manifest_path` as a declared implement context.
+- Keep the current no-op behavior only when no context signal exists.
+- Raise `ShipError` when a declared tmpdir is missing, is not a directory, or fails trusted-directory validation.
+- Do not search ambient directories for artifacts.
+- After validating the tmpdir, retain the existing gate-relevance and disposition-validation flow.
+- Keep standalone PR operations without implement state working.
+
+### UPDATED: python/larch/review/snapshot.py
+
+Provide a single complete pre-coder snapshot validator for production consumers.
+
+- Validate the deterministic snapshot root through the existing trusted-directory primitive.
+- Classify wholly absent snapshots separately from valid `head_untracked` and `full` snapshots.
+- Reject partial or unsafe present snapshots instead of deriving a mode from file presence alone.
+- Validate the required HEAD and inventory files, duplicate or malformed inventory entries, safe patch-name uniqueness, and the required patch pair for each tracked path in a full snapshot.
+- Return the validated mode and HEAD together so callers do not reopen or reclassify the snapshot.
+- Keep snapshot paths, formats, and trusted I/O helpers unchanged.
+- Preserve legacy `head_untracked` behavior only for its complete supported artifact shape.
+
+### UPDATED: python/larch/review/coder_runner.py
+
+Route coder startup through the complete snapshot validator.
+
+- Remove the `_snapshot_mode` import and call.
+- After `_ensure_pre_coder_snapshot`, obtain the validated mode and pre-coder HEAD from the complete validator.
+- Use those validated values for stale-HEAD handling, attempt snapshots, cleanup, and subsequent coder dispatch.
+- On invalid or incomplete snapshot state, stop before invoking Cursor, Codex, cleanup mutations, or staging.
+- Emit the existing failed coder result envelope and a bounded cleanup diagnostic. Do not introduce a new status grammar.
+
+### UPDATED: python/larch/git/gh.py
+
+Align `_ScopeDispositionModule.require_pr_mutation_scope_disposition` with the production signature.
+
+- Add the optional `manifest_path` parameter to the protocol.
+- Preserve current call behavior where no explicit manifest is available.
+- Keep PR mutation ordering unchanged so the gate runs before `gh pr` mutation.
+
+### UPDATED: python/tests/git/test_pr.py
+
+Complete the PR consumer tests from #6852 and cover context-gated failure.
+
+- Verify a declared missing tmpdir refuses before push, PR creation, or PR editing.
+- Verify a declared regular-file tmpdir refuses before mutation.
+- Verify no implement context preserves standalone PR creation and update behavior.
+- Verify manifest-only and valid gate-relevant contexts still route through disposition validation.
+- Cover partial, unsafe, stale, malformed, and fingerprint-mismatched coverage or disposition artifacts.
+- Confirm invalid artifacts cannot select `part-of`, default to `closes`, or bypass the mutation gate.
+- Preserve valid `proceed-partial` and closing-link behavior.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+Complete deferred-inventory and issue-link consumer coverage.
+
+- Distinguish wholly absent legacy coverage from invalid present coverage or disposition.
+- Verify partial, symlinked, stale, malformed, and fingerprint-mismatched artifacts fail instead of rendering an empty inventory or closing link.
+- Verify live-valid coverage without a disposition retains supported output.
+- Preserve valid deferred inventory and `part-of` rendering.
+- Verify body updates still work without an implement context.
+
+### UPDATED: python/tests/state/test_finalize.py
+
+Complete finalize consumer coverage.
+
+- Verify finalize resolves and uses the persisted repository root for live disposition validation.
+- Reject unsafe, stale, partial, malformed, and coverage-mismatched disposition artifacts before selecting teardown or issue-retitle behavior.
+- Verify invalid artifacts cannot suppress the normal `[DESIGNED]` completion transition.
+- Preserve valid `proceed-partial` behavior and its existing lifecycle result.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+Complete final-report consumer coverage.
+
+- Preserve an empty coverage summary only when the full coverage set is absent.
+- Preserve valid live-matching coverage with no disposition where that state is supported.
+- Preserve existing summary text for valid coverage and disposition.
+- Verify partial, symlinked, stale, malformed, fingerprint-mismatched, and internally inconsistent artifacts fail through the defined report path.
+- Confirm invalid artifacts never render as empty coverage or `disposition: none`.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+Complete snapshot consumer coverage and test coder validator routing.
+
+- Verify `coder_runner` calls the complete validator and does not call `_snapshot_mode`.
+- Verify a partial full snapshot, invalid HEAD, unsafe root, malformed inventory, missing patch pair, or patch-name collision stops before coder launch.
+- Assert failed validation leaves tracked, staged, and untracked repository state unchanged.
+- Cover complete valid `full` and `head_untracked` snapshots.
+- Preserve cleanup of failed coder attempts and preservation of pre-existing dirty state.
+- Add focused coverage for trusted snapshot-root reuse, unsafe roots and ancestors, non-regular artifacts, stale HEAD data, and direct consumer rejection.
+- Replace assertions that treat `_snapshot_mode` presence classification as sufficient with assertions against the complete validator contract.
+
+### UPDATED: SECURITY.md
+
+Document the completed enforcement boundary.
+
+- State that a declared implement context with an invalid tmpdir blocks PR mutation.
+- State that coder decisions require complete trusted snapshot validation.
+- Keep the existing trusted-artifact and no-symlink guidance intact.
+
+## Edge cases
+
+- `tmpdir=None` with no `IMPLEMENT_TMPDIR` and no explicit manifest remains a standalone no-op.
+- An empty `IMPLEMENT_TMPDIR` does not declare a context.
+- An explicit tmpdir argument declares context even when the environment is unset.
+- A dangling symlink or regular file at the declared tmpdir path is invalid context.
+- An explicit manifest cannot make an invalid declared tmpdir safe.
+- A snapshot directory that exists with only some required files is invalid, not missing.
+- A tracked-path inventory with zero entries may be valid, but required inventory files must still exist.
+- Duplicate tracked paths or different paths that map to the same patch filename are invalid.
+- Validation failures must occur before external coder launch or repository cleanup.
+
+## Failure modes
+
+- Over-broad context detection could break legitimate standalone ship operations. Tests must cover both no-context and declared-context paths.
+- Permissive snapshot classification could continue trusting partial artifacts. The validator must reject any incomplete present set.
+- Validating mode and reading HEAD separately could reintroduce inconsistent decisions. Return both from one validated operation.
+- Consumer tests may accidentally use raw fixture writes that no longer form trusted artifact sets. Build fixtures through existing trusted writers where practical.
+- A protocol-only signature mismatch may evade runtime tests. Include type and lint checks for `gh.py`.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/tests/git/test_pr.py -q`
+- `python3 -m pytest python/tests/git/test_pr_body.py -q`
+- `python3 -m pytest python/tests/state/test_finalize.py -q`
+- `python3 -m pytest python/tests/report/test_final_report.py -q`
+- `python3 -m pytest python/tests/review/test_review_and_fix.py -q`
+
+Run the direct contract and adjacent Git mutation suites to catch integration regressions:
+
+- `python3 -m pytest python/tests/implement/test_scope_disposition.py -q`
+- `python3 -m pytest python/tests/git/test_gh.py -q`
+
+Run lint and type checks only for changed Python files, following `docs/linting.md`. Run the repository security/documentation lint applicable to `SECURITY.md`.
+
+Verify these end-to-end properties:
+
+1. Standalone PR mutation without implement context still reaches the runner.
+2. A declared invalid tmpdir fails before any Git or GitHub mutation.
+3. Invalid snapshot state fails before any coder process or cleanup mutation.
+4. Valid full and `head_untracked` snapshots keep existing coder and cleanup behavior.
+5. All five previously omitted consumer test modules exercise invalid-present and valid artifact states.
+
+difficulty: HARD
+diff_added: 570
+diff_deleted: 35
+mechanical_churn: false
+diff_lines: 605
