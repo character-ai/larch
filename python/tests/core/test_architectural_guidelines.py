@@ -2320,7 +2320,7 @@ def test_unavailable_note_is_not_stale_at_its_pinned_head(tmp_path: Path) -> Non
     assert not ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=tmp_path)
 
 
-def test_unavailable_invariant_refresh_preserves_authored_violation(tmp_path: Path) -> None:
+def test_unavailable_invariant_refresh_replaces_authored_violation(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     ag.write_invariant_implement_note(
         implement_tmpdir=tmpdir,
@@ -2343,8 +2343,8 @@ def test_unavailable_invariant_refresh_preserves_authored_violation(tmp_path: Pa
         invariant=True,
     )
 
-    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "I-Test-1: violated\n"
-    assert ag.invariant_durable_note_metadata(tmpdir)["NOTE_STATE"] == ag.config.NOTE_STATE_AUTHORED
+    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "Architectural assessment unavailable."
+    assert ag.invariant_durable_note_metadata(tmpdir)["NOTE_STATE"] == ag.config.NOTE_STATE_UNAVAILABLE
 
 
 @pytest.mark.parametrize(

@@ -30,6 +30,11 @@ _IDENTIFIER_RE: Final = re.compile(r"^#{1,6}\s+((?:I|G)-[A-Za-z0-9-]+-\d+):", re
 _SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _BASE_REF_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+_REAUTHOR_REASONS: Final[frozenset[str]] = frozenset({
+    config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME,
+    config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH,
+    config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
+})
 
 
 @dataclass(frozen=True)
@@ -90,6 +95,12 @@ class _DeviationLogPending(OSError):
 
 class _ReauthorRequired(ValueError):
     """The assessment must be revised before durable persistence."""
+
+
+def _reauthor_status(reason: str) -> str:
+    """Encode a bounded reassessment reason in a coordinator result."""
+    bounded_reason = reason if reason in _REAUTHOR_REASONS else config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA
+    return f"{config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}:{bounded_reason}"
 
 
 class Launcher(Protocol):
@@ -568,7 +579,7 @@ def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpd
         else architectural_guidelines.durable_note_metadata(implement_tmpdir)
     )
     if not _outcome_valid(result.kind, implement_tmpdir, metadata):
-        raise OSError("architectural outcome postcondition failed")
+        raise _ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA)
     if (
         result.kind == config.ASSESSMENT_KIND_GUIDELINES
         and result.state == "deviation"
@@ -673,6 +684,12 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root:
         base_ref=evidence.base_ref,
         repo_root=repo_root,
     ) or not _outcome_valid(config.ASSESSMENT_KIND_INVARIANTS, implement_tmpdir, metadata):
+        return False
+    if not _authored_note_valid(
+        config.ASSESSMENT_KIND_INVARIANTS,
+        implement_tmpdir=implement_tmpdir,
+        outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
+    ):
         return False
     return (  # type: ignore[reportUnknownVariableType]  # reason: data is dict from _load_json
         data.get("outcome") == "violation"  # type: ignore[reportUnknownMemberType]  # reason: data is dict from _load_json
@@ -780,7 +797,7 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
                         else architectural_guidelines.invalidate_implement_note
                     )
                     invalidator(tmpdir)
-                    statuses[result.kind] = config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+                    statuses[result.kind] = _reauthor_status(str(exc))
                 except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
                     _persist_unavailable(next(evidence for evidence in pending if evidence.kind == result.kind), repo_root=root, implement_tmpdir=tmpdir, detail=str(exc))
                     statuses[result.kind] = "unavailable"
@@ -794,7 +811,7 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
                     "state is invalid" in detail or "result fields are invalid" in detail
                 )
                 if outcome_invalid:
-                    statuses[evidence.kind] = config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+                    statuses[evidence.kind] = _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
                     continue
                 _persist_unavailable(evidence, repo_root=root, implement_tmpdir=tmpdir, detail=detail)
                 statuses[evidence.kind] = "unavailable"
@@ -833,7 +850,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ARCHITECTURAL_ASSESSMENT_DETAIL={_safe_detail(str(exc), Path(args.implement_tmpdir))}")
         return config.EXIT_INTERNAL_ERROR
     reauthor_required: bool = any(
-        item.endswith(f":{config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED}") for item in statuses
+        item.split(":", 2)[1] == config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED for item in statuses
     )
     print(
         f"ARCHITECTURAL_ASSESSMENT_STATUS="

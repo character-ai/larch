@@ -339,10 +339,18 @@ if not results:
     raise SystemExit(1)
 tokens = results.split(",")
 seen = []
+reauthor_reasons = {
+    "invalid-explicit-outcome",
+    "clean-outcome-prose-mismatch",
+    "missing-or-invalid-outcome-metadata",
+}
 for token in tokens:
     if ":" not in token:
         raise SystemExit(1)
-    kind, state = token.split(":", 1)
+    parts = token.split(":")
+    if len(parts) not in {2, 3}:
+        raise SystemExit(1)
+    kind, state = parts[:2]
     if kind in seen:
         raise SystemExit(1)
     seen.append(kind)
@@ -356,6 +364,11 @@ for token in tokens:
         "unavailable",
         "re-author-required",
     }:
+        raise SystemExit(1)
+    if state == "re-author-required":
+        if len(parts) != 3 or parts[2] not in reauthor_reasons:
+            raise SystemExit(1)
+    elif len(parts) != 2:
         raise SystemExit(1)
 if seen != kinds:
     raise SystemExit(1)
@@ -528,7 +541,7 @@ terminal_is_reauthor_required() {
   case "${TERM_ATTEMPT:-}" in 1|2) ;; *) return 1 ;; esac
   [ "${TERM_BGJOB_RC:-}" = "0" ] || return 1
   validate_results_coverage "${TERM_RESULTS:-}" "$ASSESSMENT_REQUESTED_KINDS" || return 1
-  case ",${TERM_RESULTS:-}," in *:re-author-required,*) return 0 ;; *) return 1 ;; esac
+  case ",${TERM_RESULTS:-}," in *:re-author-required:*) return 0 ;; *) return 1 ;; esac
 }
 
 terminal_is_fail_closed() {
@@ -873,6 +886,10 @@ while :; do
   run_wait_validate_path false
   case "$HANDLE_ACTION" in
     emit-success)
+      emit_terminal_stdout
+      exit 0
+      ;;
+    emit-reauthor)
       emit_terminal_stdout
       exit 0
       ;;

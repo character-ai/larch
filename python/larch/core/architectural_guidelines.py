@@ -1018,15 +1018,6 @@ def write_unavailable_note(
     invariant: bool = False,
 ) -> None:
     """Persist a non-violating note when assessment input is unavailable."""
-    if invariant:
-        existing_metadata = invariant_durable_note_metadata(implement_tmpdir)
-        existing_note_path = invariant_durable_note_path(implement_tmpdir)
-        if (
-            existing_metadata.get("NOTE_STATE", config.NOTE_STATE_AUTHORED) == config.NOTE_STATE_AUTHORED
-            and _regular_file(existing_note_path)
-            and existing_metadata.get("ASSESSMENT_KIND") == config.ASSESSMENT_OUTCOME_VIOLATION
-        ):
-            return
     metadata = {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE, "ASSESSMENT_KIND": ""}
     writer = write_invariant_implement_note if invariant else write_implement_note
     writer(

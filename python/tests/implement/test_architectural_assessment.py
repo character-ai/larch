@@ -138,6 +138,20 @@ def test_main_usage_and_success_stdout_contract(monkeypatch: pytest.MonkeyPatch,
     ]
 
 
+def test_main_preserves_bounded_reauthor_reason(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        assessment,
+        "run",
+        lambda **_kwargs: ("guidelines:re-author-required:clean-outcome-prose-mismatch",),
+    )  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+
+    assert assessment.main(["--kind", "guidelines", "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK
+    assert capsys.readouterr().out.splitlines() == [
+        "ARCHITECTURAL_ASSESSMENT_STATUS=re-author-required",
+        "ARCHITECTURAL_ASSESSMENT_RESULTS=guidelines:re-author-required:clean-outcome-prose-mismatch",
+    ]
+
+
 def test_launcher_uses_exact_read_only_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, object] = {}
 

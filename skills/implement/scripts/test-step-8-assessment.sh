@@ -473,6 +473,26 @@ if [ -f "$IMPL_TMP/assessment-run-called.txt" ]; then
 else
   fail 'fresh: assessment run not invoked from child'
 fi
+
+# --- fresh re-author terminal ---
+setup_impl fresh-reauthor
+printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
+printf 'ARCHITECTURAL_ASSESSMENT_STATUS=re-author-required\nARCHITECTURAL_ASSESSMENT_RESULTS=invariants:re-author-required:clean-outcome-prose-mismatch,guidelines:clean\n' \
+  >"$IMPL_TMP/.test-assessment-stdout"
+printf '1:DONE:0\n' >"$IMPL_TMP/.test-wait-script"
+set +e
+REAUTHOR_OUT=$(run_helper 2>"$TMP_ROOT/fresh-reauthor.err")
+REAUTHOR_RC=$?
+set -e
+assert_rc "$REAUTHOR_RC" 0 'fresh-reauthor: exits 0'
+assert_contains 'ASSESSMENT_STATUS=re-author-required' "$REAUTHOR_OUT" 'fresh-reauthor: terminal status'
+assert_contains 'ASSESSMENT_RESULTS=invariants:re-author-required:clean-outcome-prose-mismatch,guidelines:clean' "$REAUTHOR_OUT" 'fresh-reauthor: preserves reason'
+START_COUNT=$(cat "$IMPL_TMP/.test-start-count" 2>/dev/null || echo 0)
+if [ "$START_COUNT" = "0" ]; then
+  pass 'fresh-reauthor: no retry or ship handoff'
+else
+  fail "fresh-reauthor: expected no retry start got $START_COUNT"
+fi
 FP_GOT=$(printf '%s\n' "$FRESH_OUT" | sed -n 's/^ASSESSMENT_COVERED_FINGERPRINT=//p' | tail -n 1)
 if [ "$FP_GOT" = "$FP_EXPECTED" ]; then
   pass 'fresh: covered fingerprint persisted'
