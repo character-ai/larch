@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of rejected prior-round finding; inline guard support is not necessary to deliver the specified helper-based lint.
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of the neutral prior-round trusted-override concern with no materially new evidence.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of rejected baseline-identity finding; this implementation detail is not required by the scoped feature.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly scopes I-Commit-1 to invariant text and excludes implementing its mechanical backing.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected prior-round finding about _renumber_oos_headings fence gating.

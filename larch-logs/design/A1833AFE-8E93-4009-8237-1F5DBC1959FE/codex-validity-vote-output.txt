@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected prior-round fence-compliance finding with no materially new evidence.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of neutral prior-round trusted-override carve-out finding with no materially new evidence.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of rejected prior-round baseline-identity finding with no materially new evidence.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The scope explicitly limits this work item to appending the invariant text and excludes implementing its described backing.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The cited regex does not match the lint's specified generic Markdown-heading pattern and the observation duplicates a rejected prior-round item.
