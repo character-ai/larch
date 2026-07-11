@@ -37,7 +37,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-lifecycle-prefix-literal lint-prefix-case-variant lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -55,7 +55,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir markdown-heading-fence-state self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal shared-convention-regex renderer-golden-tests suppression-reason guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir markdown-heading-fence-state self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \
@@ -212,11 +212,19 @@ regen-markdown-heading-fence-state-baseline:
 skill-closure-size:
 	$(PYTHON) python/cli.py skill-closure report
 
+.PHONY: lint-lifecycle-prefix-literal lint-prefix-case-variant
+
 lint-skill-closure-growth:
 	$(PYTHON) python/cli.py lint skill-closure-growth
 
 lint-guideline-no-exception:
 	$(PYTHON) python/cli.py lint guideline-no-exception
+
+lint-lifecycle-prefix-literal:
+	$(PYTHON) python/cli.py lint lifecycle-prefix-literal
+
+lint-prefix-case-variant:
+	$(PYTHON) python/cli.py lint prefix-case-variant
 
 test-lint-guideline-no-exception:
 	$(PYTHON) python/cli.py timing harness-mark --label $@ -- $(PYTHON) -m pytest python/tests/lint/test_lint_guideline_no_exception.py -q

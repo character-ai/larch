@@ -1,9 +1,10 @@
 """Ratchet lifecycle and bug title-prefix literals toward shared constants.
 
 Scans production modules under python/larch/**/*.py for lifecycle or bug title
-prefix string literals in comparison or match positions. Existing deliberate
-uses are grandfathered in python/lifecycle-prefix-literal-baseline.json with a
-required reason per row.
+prefix string literals in comparison, match, and composition positions.
+Composition covers f-string Constant parts, ``+`` concatenation operands, and
+``.format(...)`` receivers. Existing deliberate uses are grandfathered in
+python/lifecycle-prefix-literal-baseline.json with a required reason per row.
 """
 
 from __future__ import annotations
@@ -40,6 +41,9 @@ CONTEXT_KINDS = frozenset(
         "membership_in",
         "membership_not_in",
         "regex_pattern",
+        "fstring_compose",
+        "concat_compose",
+        "format_compose",
     }
 )
 PREFIX_METHODS = frozenset({"startswith", "endswith", "removeprefix", "lstrip"})
@@ -239,6 +243,21 @@ def _literal_matches(value: str, *, token_infos: Mapping[str, TokenInfo]) -> lis
     return [LiteralMatch(token=token, constant=info.constant)]
 
 
+def _composition_literal_matches(
+    value: str, *, token_infos: Mapping[str, TokenInfo]
+) -> list[LiteralMatch]:
+    """Match composition literals by equality or space/colon token boundaries."""
+    normalized: str = _normalized_token(value)
+    matches: list[LiteralMatch] = []
+    for token_key, info in sorted(token_infos.items()):
+        if (
+            normalized == token_key
+            or normalized.startswith((f"{token_key} ", f"{token_key}:"))
+        ):
+            matches.append(LiteralMatch(token=info.token, constant=info.constant))
+    return matches
+
+
 def _regex_literal_matches(value: str, *, token_infos: Mapping[str, TokenInfo]) -> list[LiteralMatch]:
     raw: str = value.casefold()
     surface: str = _regex_surface(value).casefold()
@@ -306,6 +325,53 @@ def _comparison_contexts(
     return matches
 
 
+def _fstring_compose_contexts(
+    node: ast.JoinedStr, *, token_infos: Mapping[str, TokenInfo]
+) -> list[tuple[str, LiteralMatch]]:
+    matches: list[tuple[str, LiteralMatch]] = []
+    for part in node.values:
+        text: str | None = _literal_text(part)
+        if text is None:
+            continue
+        matches.extend(
+            ("fstring_compose", match)
+            for match in _composition_literal_matches(text, token_infos=token_infos)
+        )
+    return matches
+
+
+def _concat_compose_contexts(
+    node: ast.BinOp, *, token_infos: Mapping[str, TokenInfo]
+) -> list[tuple[str, LiteralMatch]]:
+    if not isinstance(node.op, ast.Add):
+        return []
+    matches: list[tuple[str, LiteralMatch]] = []
+    for operand in (node.left, node.right):
+        text: str | None = _literal_text(operand)
+        if text is None:
+            continue
+        matches.extend(
+            ("concat_compose", match)
+            for match in _composition_literal_matches(text, token_infos=token_infos)
+        )
+    return matches
+
+
+def _format_compose_contexts(
+    node: ast.Call, *, token_infos: Mapping[str, TokenInfo]
+) -> list[tuple[str, LiteralMatch]]:
+    func: ast.expr = node.func
+    if not (isinstance(func, ast.Attribute) and func.attr == "format"):
+        return []
+    text: str | None = _literal_text(func.value)
+    if text is None:
+        return []
+    return [
+        ("format_compose", match)
+        for match in _composition_literal_matches(text, token_infos=token_infos)
+    ]
+
+
 @dataclass(frozen=True)
 class ScopeRecorder:
     findings: list[Finding]
@@ -334,6 +400,22 @@ class ScopeRecorder:
                 lineno=lineno,
             )
         )
+
+
+def _contexts_for_node(
+    node: ast.AST, *, token_infos: Mapping[str, TokenInfo]
+) -> list[tuple[str, LiteralMatch]]:
+    contexts: list[tuple[str, LiteralMatch]] = []
+    if isinstance(node, ast.Call):
+        contexts.extend(_call_contexts(node, token_infos=token_infos))
+        contexts.extend(_format_compose_contexts(node, token_infos=token_infos))
+    if isinstance(node, ast.Compare):
+        contexts.extend(_comparison_contexts(node, token_infos=token_infos))
+    if isinstance(node, ast.JoinedStr):
+        contexts.extend(_fstring_compose_contexts(node, token_infos=token_infos))
+    if isinstance(node, ast.BinOp):
+        contexts.extend(_concat_compose_contexts(node, token_infos=token_infos))
+    return contexts
 
 
 def _collect_scope(
@@ -372,14 +454,9 @@ def _collect_scope(
                 findings=findings,
             )
             return
-        contexts: list[tuple[str, LiteralMatch]] = []
-        if isinstance(node, ast.Call):
-            contexts.extend(_call_contexts(node, token_infos=token_infos))
-        if isinstance(node, ast.Compare):
-            contexts.extend(_comparison_contexts(node, token_infos=token_infos))
         lineno_value: object = getattr(node, "lineno", 0)
         lineno: int = lineno_value if isinstance(lineno_value, int) else 0
-        for context, match in contexts:
+        for context, match in _contexts_for_node(node, token_infos=token_infos):
             recorder.record(context=context, match=match, lineno=lineno)
         for child in _ordered_child_nodes(node):
             walk(child)

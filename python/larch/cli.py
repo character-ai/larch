@@ -461,6 +461,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "monkeypatch-facade-binding"): ("larch.lint.lint_monkeypatch_facade_binding", "main"),
     ("lint", "env-via-config-constant"): ("larch.lint.lint_env_via_config_constant", "main"),
     ("lint", "lifecycle-prefix-literal"): ("larch.lint.lint_lifecycle_prefix_literal", "main"),
+    ("lint", "prefix-case-variant"): ("larch.lint.lint_prefix_case_variant", "main"),
     ("lint", "shared-convention-regex"): ("larch.lint.lint_shared_convention_regex", "main"),
     ("lint", "renderer-golden-tests"): ("larch.lint.lint_renderer_golden_tests", "main"),
     ("lint", "suppression-reason"): ("larch.lint.lint_suppression_reason", "main"),
