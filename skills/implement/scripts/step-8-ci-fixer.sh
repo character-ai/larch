@@ -18,7 +18,9 @@ seen={}
 for raw in path.read_text(encoding="utf-8", errors="strict").splitlines():
     if not raw or "=" not in raw: raise SystemExit(2)
     key,value=raw.split("=",1)
-    if key in seen or not re.fullmatch(r"[A-Z][A-Z0-9_]*",key) or any(ord(c)<32 or ord(c)==127 for c in value): raise SystemExit(2)
+    if not re.fullmatch(r"[A-Z][A-Z0-9_]*",key):
+        continue
+    if key in seen or any(ord(c)<32 or ord(c)==127 for c in value): raise SystemExit(2)
     seen[key]=value
 print(seen.get(sys.argv[1],""))
 PY
