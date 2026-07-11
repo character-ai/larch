@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+import re
 from pathlib import Path
 
 from larch.core import config
@@ -234,3 +236,24 @@ def test_fixer_lane_budget_reserves_a_full_timeout_per_configured_tier() -> None
             len(external_defaults.tool_order(role_id))
             * config.FIXER_LANE_TIMEOUT_SEC
         )
+
+
+def test_step8_ci_fixer_shell_snippet_reads_canonical_tier_fields() -> None:
+    """Guard the shell-embedded tier-selection print against dataclass drift.
+
+    skills/implement/scripts/step-8-ci-fixer.sh prints the TierSelectResult
+    fields with an inline ``python3 - <<PY`` snippet. When that snippet read
+    the stale names ``result.tier``/``result.reason`` it raised AttributeError
+    and routed every PR CI failure to operator-bail (issue #6946). A rename on
+    either side must trip this test instead of silently regressing at runtime.
+    """
+    script = (
+        Path(__file__).resolve().parents[3]
+        / "skills/implement/scripts/step-8-ci-fixer.sh"
+    ).read_text(encoding="utf-8")
+    print_lines = [line for line in script.splitlines() if "result.action" in line]
+    assert len(print_lines) == 1
+    referenced = set(re.findall(r"result\.([a-z_]+)", print_lines[0]))
+    valid = {f.name for f in dataclasses.fields(external_defaults.TierSelectResult)}
+    assert referenced == {"action", "selected_tier", "failure_reason"}
+    assert referenced <= valid
