@@ -25,7 +25,7 @@ DEFAULT_VENDOR_MODEL = {
 # - Cursor docs models-and-pricing composer-2.5 row + Teams surcharge (see below).
 # - Anthropic Claude Opus/Sonnet/Haiku/Fable list-price buckets.
 
-# Teams plan per-token surcharge for non-Auto Cursor agent requests.
+# Teams plan per-token surcharge for pinned-model Cursor agent requests.
 # Applies to input, cache-read, and output for composer-2.5 (pinned-model) invocations.
 # Source: cursor.com/docs/account/teams/pricing — "Cursor Token Rate $0.25/1M tokens".
 # Empirically confirmed via June 2026 usage export (R²=0.998, no per-request fee).
@@ -62,7 +62,7 @@ DEFAULT_RATE_TABLE_PER_M = {
         "cache_read": 0.075,
         "output": 4.50,
     },
-    # Effective non-auto rates include the $0.25/M Teams surcharge per token.
+    # Effective composer-2.5 rates include the $0.25/M Teams surcharge per token.
     ("cursor", "composer-2.5"): {
         "input": CURSOR_COMPOSER_BASE["input"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
         "cache_read": CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,

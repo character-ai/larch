@@ -717,9 +717,9 @@ CODEX_VOTE_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_MODERATE: CODEX_VOTE_MODEL_DEFAULT,
     DIFFICULTY_TIER_HARD: CODEX_VOTE_MODEL_DEFAULT,
 }
-# Teams plan per-token surcharge on all tokens (input, cache-read, output) for non-Auto
+# Teams plan per-token surcharge on all tokens (input, cache-read, output) for pinned-model
 # Cursor agent requests. Source: cursor.com/docs/account/teams/pricing — "Cursor Token
-# Rate $0.25/1M tokens" applies to pinned-model (composer-2.5) non-Auto requests.
+# Rate $0.25/1M tokens" applies to pinned-model (composer-2.5) requests.
 # Empirically confirmed via June 2026 usage export (R²=0.998, no per-request fee).
 CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M: Final = 0.25
 ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M: Final = "LARCH_CURSOR_TEAMS_SURCHARGE_PER_M"
