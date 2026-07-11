@@ -1818,13 +1818,12 @@ def test_render_run_summary_cursor_lane_split_when_components_present() -> None:
         cursor_cost="2.00",
         cursor_composer_cost="1.20",
         cursor_grok_cost="0.60",
-        cursor_auto_cost="0.20",
         claude_sub_cost="0.25",
         total_tokens=5000,
         cost_unavailable=False,
         main_model="claude-opus-4-8",
     )
-    assert "Cursor $2.00 (Composer $1.20, Grok $0.60, Auto $0.20)" in body
+    assert "Cursor $2.00 (Composer $1.20, Grok $0.60)" in body
     assert "Cursor $2.00" in body
 
 
@@ -1858,14 +1857,13 @@ def test_render_run_summary_cursor_lane_with_zero_valued_component() -> None:
         cursor_cost="0.30",
         cursor_composer_cost="0.30",
         cursor_grok_cost="0.00",
-        cursor_auto_cost="0.00",
         claude_sub_cost="0.20",
         total_tokens=2000,
         cost_unavailable=False,
         main_model="claude-opus-4-8",
     )
     assert "Grok $0.00" in body
-    assert "Auto $0.00" in body
+    assert "Auto $0.00" not in body
 
 
 def test_render_run_summary_total_unchanged_by_cursor_split() -> None:
@@ -1892,7 +1890,6 @@ def test_render_run_summary_total_unchanged_by_cursor_split() -> None:
         cursor_cost="1.50",
         cursor_composer_cost="0.80",
         cursor_grok_cost="0.50",
-        cursor_auto_cost="0.20",
         claude_sub_cost="0.50",
         total_tokens=10000,
         cost_unavailable=False,

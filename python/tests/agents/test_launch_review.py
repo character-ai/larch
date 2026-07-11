@@ -248,18 +248,18 @@ JSON
             "--prompt",
             "hi",
             "--cursor-model",
-            "auto",
+            "sentinel-cursor-model",
         ],
         {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key", "LARCH_CURSOR_MODEL": "composer-2.5"},
     )
 
     assert proc.returncode == 0
     argv = argv_log.read_text(encoding="utf-8").splitlines()
-    assert argv[argv.index("--model") + 1] == "auto"
+    assert argv[argv.index("--model") + 1] == "sentinel-cursor-model"
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
-    assert "OUTER_LAUNCHER_CURSOR_MODEL=auto" in meta
+    assert "OUTER_LAUNCHER_CURSOR_MODEL=sentinel-cursor-model" in meta
     token_record = out.with_suffix(out.suffix + ".token-record").read_text(encoding="utf-8")
-    assert "MODEL=auto" in token_record
+    assert "MODEL=sentinel-cursor-model" in token_record
 
 
 def test_cursor_plan_review_launch_keeps_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
@@ -2117,7 +2117,7 @@ def _launch_review_argv_reject_case(
         ("codex", ["--token-budget-cap", "abc"], None, 2),
         ("codex", ["--timing-task-kind", "ok\nOUTER_LAUNCHER_WORKDIR=/tmp"], None, 2),
         ("codex", ["--risk", "high\nOUTER_LAUNCHER_WORKDIR=/tmp"], None, 2),
-        ("codex", ["--cursor-model", "auto"], None, 2),
+        ("codex", ["--cursor-model", "sentinel-cursor-model"], None, 2),
         ("cursor", ["--cursor-model", ""], None, 2),
         ("cursor", ["--cursor-model", "bad\nmodel"], None, 2),
     ],

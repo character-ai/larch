@@ -166,9 +166,12 @@ def _static_slot_rows(
             codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
             row["model_role"] = role
             row["resolved_model"] = _resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
-        elif slot.cursor_model:
-            row["cursor_model"] = slot.cursor_model
-            row["resolved_model"] = slot.cursor_model
+        elif slot.tool == "cursor":
+            if slot.cursor_model:
+                row["cursor_model"] = slot.cursor_model
+                row["resolved_model"] = slot.cursor_model
+            else:
+                row["resolved_model"] = _resolved_model_for_row("cursor")
         rows.append(row)
     generic = _generic_plan_codex_row(
         design=design,
@@ -407,8 +410,7 @@ def _dynamic_slot_rows(
             codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
             row["resolved_model"] = _resolved_model_for_row(tool, role, default_model=codex_panel_model)
         elif tool == "cursor":
-            row["cursor_model"] = config.CURSOR_AUTO_MODEL
-            row["resolved_model"] = config.CURSOR_AUTO_MODEL
+            row["resolved_model"] = _resolved_model_for_row("cursor")
         rows.append(row)
     return rows, failures
 

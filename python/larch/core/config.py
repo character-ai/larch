@@ -286,7 +286,6 @@ CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
 CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
-CURSOR_AUTO_MODEL: Final = "auto"
 CODER_TOOL_ORDER_BY_DIFFICULTY: Final[dict[str, tuple[str, ...]]] = {
     DIFFICULTY_TIER_TRIVIAL: ("codex", "cursor", "claude"),
     DIFFICULTY_TIER_MODERATE: ("cursor", "codex", "claude"),
@@ -374,9 +373,9 @@ def _waterfall_role(role_id: str, *, order: tuple[ToolName, ...], doc_phase: str
 ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
     "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick Cursor first for MODERATE and Codex first for TRIVIAL or HARD; --coder reorders the two external tools, then Claude."),
     "implement.lint_fix_coder": _waterfall_role("implement.lint_fix_coder", order=("claude", "codex", "cursor"), doc_phase="Lint/checks", doc_role="Repair local lint/check failures", doc_skills="/implement, /review", doc_fallback="Claude, then Codex, then Cursor; main agent required after external tiers fail."),
-    "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("codex", "cursor", "claude"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Codex fix, then Cursor auto, then Claude Sonnet 4.6 1M."),
+    "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("codex", "cursor", "claude"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Codex fix, then Cursor Composer 2.5 by default, then Claude Sonnet 4.6 1M."),
     "implement.rebase_conflict_fixer": _waterfall_role("implement.rebase_conflict_fixer", order=("claude", "codex", "cursor"), doc_phase="Rebase conflicts", doc_role="Resolve rebase conflicts", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
-    "review.fix_coder": _waterfall_role("review.fix_coder", order=("codex", "cursor", "claude"), doc_phase="Review fixes", doc_role="Apply accepted review findings", doc_skills="/implement, /review", doc_fallback="Codex fix, then Cursor auto, then Claude Sonnet 4.6 1M; main agent required after automated tiers fail."),
+    "review.fix_coder": _waterfall_role("review.fix_coder", order=("codex", "cursor", "claude"), doc_phase="Review fixes", doc_role="Apply accepted review findings", doc_skills="/implement, /review", doc_fallback="Codex fix, then Cursor Composer 2.5 by default, then Claude Sonnet 4.6 1M; main agent required after automated tiers fail."),
     "review.dynamic_archetype_scout": _waterfall_role("review.dynamic_archetype_scout", order=("cursor", "claude"), doc_phase="Code-review scout", doc_role="Propose dynamic reviewer archetypes", doc_skills="/review", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
     "design.plan_archetype_scout": _waterfall_role("design.plan_archetype_scout", order=("cursor", "claude"), doc_phase="Plan-review scout", doc_role="Propose dynamic plan-review archetypes", doc_skills="/design", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
     "design.plan_revision": _waterfall_role("design.plan_revision", order=("codex", "cursor", "claude"), doc_phase="Plan revision", doc_role="Apply accepted plan findings", doc_skills="/design", doc_fallback="Codex fix, then Cursor composer-2.5, then Claude Sonnet 4.6 1M."),
@@ -403,7 +402,6 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
                     agent=f"agents/reviewer-{archetype}.md",
                     output=f"{tool}-specialist-{archetype}-output.txt",
                     model_role="review" if tool == "codex" else "",
-                    cursor_model=CURSOR_AUTO_MODEL if tool == "cursor" else "",
                     archetype=archetype,
                 )
                 for archetype in _CODE_REVIEW_ARCHETYPES
@@ -414,7 +412,7 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         doc_phase="Code review panel",
         doc_role="Review code changes",
         doc_skills="/review, /implement Step 5",
-        doc_fallback="TRIVIAL emits Cursor auto singles when Cursor is available, else Codex review singles. MODERATE emits Cursor auto plus Codex gpt-5.6-luna pairs. HARD emits Cursor auto plus Codex gpt-5.6-terra pairs. Reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
+        doc_fallback="TRIVIAL emits Cursor Composer 2.5 singles when Cursor is available, else Codex review singles. MODERATE emits Cursor Composer 2.5 plus Codex gpt-5.6-luna pairs. HARD emits Cursor Composer 2.5 plus Codex gpt-5.6-terra pairs. Reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
     ),
     "design.plan_review_panel": RoleDefault(
         role_id="design.plan_review_panel",
@@ -427,7 +425,6 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
                     output=(f"codex-primary-plan-{archetype}-output.txt" if tool == "codex" else f"cursor-plan-{archetype}-output.txt"),
                     focus_area=archetype,
                     model_role="default" if tool == "codex" else "",
-                    cursor_model=CURSOR_AUTO_MODEL if tool == "cursor" else "",
                     archetype=archetype,
                 )
                 for archetype in _PLAN_REVIEW_ARCHETYPES
@@ -439,7 +436,7 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         doc_phase="Plan review panel",
         doc_role="Review implementation plans",
         doc_skills="/design",
-        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor reviewer rows emit with per-slot auto when Cursor is available; Codex rows emit when Codex is available; HARD rows can override the Codex model role per archetype, dynamic Codex rows use review, no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
+        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor reviewer rows resolve to Composer 2.5 by default when Cursor is available; Codex rows emit when Codex is available; HARD rows can override the Codex model role per archetype, dynamic Codex rows use review, no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
     ),
     "design.decompose_panel": RoleDefault(
         role_id="design.decompose_panel",
@@ -720,9 +717,9 @@ CODEX_VOTE_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_MODERATE: CODEX_VOTE_MODEL_DEFAULT,
     DIFFICULTY_TIER_HARD: CODEX_VOTE_MODEL_DEFAULT,
 }
-# Teams plan per-token surcharge on all tokens (input, cache-read, output) for non-Auto
+# Teams plan per-token surcharge on all tokens (input, cache-read, output) for pinned-model
 # Cursor agent requests. Source: cursor.com/docs/account/teams/pricing — "Cursor Token
-# Rate $0.25/1M tokens" applies to pinned-model (composer-2.5) non-Auto requests.
+# Rate $0.25/1M tokens" applies to pinned-model (composer-2.5) requests.
 # Empirically confirmed via June 2026 usage export (R²=0.998, no per-request fee).
 CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M: Final = 0.25
 ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M: Final = "LARCH_CURSOR_TEAMS_SURCHARGE_PER_M"

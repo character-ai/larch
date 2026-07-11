@@ -3988,6 +3988,44 @@ def test_launch_cursor_ci_resolves_consumer_workdir_and_preserves_fix_stall_chan
     assert f"OUTER_LAUNCHER_WORKDIR={consumer_repo}" in meta
 
 
+
+def test_launch_cursor_ci_fix_uses_resolved_cursor_model(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "cursor-ci.out"
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+
+    def fake_resolve(tool: str, **kwargs: object) -> agents.ModelArgResult:
+        assert tool == "cursor"
+        assert kwargs["with_effort"] is True
+        return agents.ModelArgResult(("--model", "composer-2.5"))
+
+    def fake_run(**kwargs: object) -> agents.RunExternalAgentResult:
+        captured.update(kwargs)
+        output_path = kwargs["output"]
+        assert isinstance(output_path, Path)
+        output_path.write_text('{"result":"fixed"}\n', encoding="utf-8")
+        output_path.with_suffix(output_path.suffix + ".inner.done").write_text("0\n", encoding="utf-8")
+        return agents.RunExternalAgentResult(0, output_path)
+
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", fake_resolve)
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run)
+    monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
+    monkeypatch.setattr(_ci_launcher, "_append_ci_failure", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
+
+    assert agents.launch_cursor_ci_main([
+        "--role", "fix", "--output", str(output), "--run-id", "run", "--repo", "o/r", "--timeout", "5",
+    ]) == 0
+    cmd = list(captured["cmd"])
+    assert cmd[cmd.index("--model") + 1] == "composer-2.5"
+
 def test_launch_cursor_ci_finalize_order_and_stall_guard(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

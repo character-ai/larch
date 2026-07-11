@@ -79,7 +79,6 @@ class RunRecord:
     main_model: str = ""
     cursor_composer_cost: float | None = None
     cursor_grok_cost: float | None = None
-    cursor_auto_cost: float | None = None
 
 
 @dataclass(frozen=True)
@@ -108,9 +107,6 @@ class DisplayRates:
     claude_blended: float
     codex_blended: float
     cursor_blended: float
-    cursor_auto_input: float = 0.0
-    cursor_auto_cache_read: float = 0.0
-    cursor_auto_output: float = 0.0
     cursor_grok_input: float = 0.0
     cursor_grok_cache_read: float = 0.0
     cursor_grok_output: float = 0.0

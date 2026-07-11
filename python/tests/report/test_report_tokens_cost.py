@@ -211,6 +211,11 @@ def test_claude_rate_rows_include_cache_tiers_and_default_opus() -> None:
     assert rate_row("claude", model="unknown") == rate_row("claude", model="claude-opus-4-8")
 
 
+def test_cursor_auto_rate_falls_back_to_composer_default() -> None:
+    assert ("cursor", "auto") not in DEFAULT_RATE_TABLE_PER_M
+    assert rate_row("cursor", model="auto") == rate_row("cursor", model="composer-2.5")
+
+
 def test_glm_5_2_rate_row_exact_values_and_zero_cache_create() -> None:
     row = rate_row("claude", model=larch_config.CLAUDE_GLM_5_2_MODEL)
     assert row == {
@@ -453,7 +458,6 @@ def test_render_cost_line_includes_compact_cursor_lanes(capsys: pytest.CaptureFi
     rc = render_cost_line_main([
         "--cursor-input-tokens", "1000000",
         "--cursor-grok-input-tokens", "1000000",
-        "--cursor-auto-input-tokens", "1000000",
     ])
 
     assert rc == 0
@@ -461,7 +465,7 @@ def test_render_cost_line_includes_compact_cursor_lanes(capsys: pytest.CaptureFi
     assert "Cursor $" in out
     assert "(Composer $" in out
     assert ", Grok $" in out
-    assert ", Auto $" in out
+    assert ", Auto $" not in out
 
 
 def test_display_rates_shipped_defaults_snapshot() -> None:
@@ -719,25 +723,11 @@ def test_cursor_non_auto_rates_include_teams_surcharge() -> None:
     assert row["output"] == 2.75
 
 
-def test_cursor_auto_rate_row_no_surcharge() -> None:
-    row = DEFAULT_RATE_TABLE_PER_M[("cursor", larch_config.CURSOR_AUTO_MODEL)]
-    assert row["input"] == 1.25
-    assert row["cache_read"] == 0.25
-    assert row["output"] == 6.00
-
-
-def test_display_rates_cursor_non_auto_default_is_surcharged() -> None:
+def test_display_rates_cursor_default_is_surcharged() -> None:
     rates = display_rates(environ={})
     assert rates.cursor_input == 0.75
     assert rates.cursor_cache_read == 0.45
     assert rates.cursor_output == 2.75
-
-
-def test_display_rates_cursor_auto_defaults() -> None:
-    rates = display_rates(environ={})
-    assert rates.cursor_auto_input == 1.25
-    assert rates.cursor_auto_cache_read == 0.25
-    assert rates.cursor_auto_output == 6.00
 
 
 def test_cursor_teams_surcharge_env_override() -> None:
@@ -745,28 +735,6 @@ def test_cursor_teams_surcharge_env_override() -> None:
     assert rates.cursor_input == CURSOR_COMPOSER_BASE["input"] + 0.50
     assert rates.cursor_cache_read == CURSOR_COMPOSER_BASE["cache_read"] + 0.50
     assert rates.cursor_output == CURSOR_COMPOSER_BASE["output"] + 0.50
-    # auto rates are unaffected by the non-auto surcharge override
-    assert rates.cursor_auto_input == 1.25
-
-
-def test_cursor_auto_rate_env_overrides() -> None:
-    rates = display_rates(environ={"LARCH_CURSOR_AUTO_INPUT_RATE_PER_M": "2.00", "LARCH_CURSOR_AUTO_OUTPUT_RATE_PER_M": "8.00"})
-    assert rates.cursor_auto_input == 2.00
-    assert rates.cursor_auto_output == 8.00
-    assert rates.cursor_auto_cache_read == 0.25
-
-
-def test_cursor_auto_tokens_price_at_auto_rates(capsys: pytest.CaptureFixture[str]) -> None:
-    rates = display_rates(environ={})
-    rc = token_cost_main([
-        "--cursor-auto-input-tokens", "1000000",
-        "--cursor-auto-cache-read-tokens", "1000000",
-        "--cursor-auto-output-tokens", "1000000",
-    ])
-    assert rc == 0
-    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
-    expected = f"{rates.cursor_auto_input + rates.cursor_auto_cache_read + rates.cursor_auto_output:.2f}"
-    assert parsed["CURSOR_COST"] == expected
 
 
 def test_cursor_non_auto_tokens_price_at_surcharged_rates(capsys: pytest.CaptureFixture[str]) -> None:
@@ -796,29 +764,20 @@ def test_token_cost_argv_splits_cursor_by_model() -> None:
         phase_rows=(), raw_report=report,
     )
     argv = token_cost_argv(record)
-    # non-auto routes to --cursor-*, auto routes to --cursor-auto-*
-    assert argv[argv.index("--cursor-input-tokens") + 1] == "1000000"
-    assert argv[argv.index("--cursor-cache-read-tokens") + 1] == "2000000"
-    assert argv[argv.index("--cursor-output-tokens") + 1] == "80000"
-    assert argv[argv.index("--cursor-auto-input-tokens") + 1] == "100000"
-    assert argv[argv.index("--cursor-auto-cache-read-tokens") + 1] == "200000"
-    assert argv[argv.index("--cursor-auto-output-tokens") + 1] == "20000"
-    # end-to-end: the two mode costs price differently
+    # Legacy auto and unknown model names fold into the Composer lane.
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "1100000"
+    assert argv[argv.index("--cursor-cache-read-tokens") + 1] == "2200000"
+    assert argv[argv.index("--cursor-output-tokens") + 1] == "100000"
+    assert "--cursor-auto-input-tokens" not in argv
     kv = dict(line.split("=", 1) for line in token_cost_from_args(argv[4:]).strip().splitlines())
     rates = display_rates(environ={})
-    expected_non_auto = round(
-        (1_000_000 / 1e6) * rates.cursor_input
-        + (2_000_000 / 1e6) * rates.cursor_cache_read
-        + (80_000 / 1e6) * rates.cursor_output,
+    expected = round(
+        (1_100_000 / 1e6) * rates.cursor_input
+        + (2_200_000 / 1e6) * rates.cursor_cache_read
+        + (100_000 / 1e6) * rates.cursor_output,
         2,
     )
-    expected_auto = round(
-        (100_000 / 1e6) * rates.cursor_auto_input
-        + (200_000 / 1e6) * rates.cursor_auto_cache_read
-        + (20_000 / 1e6) * rates.cursor_auto_output,
-        2,
-    )
-    assert abs(float(kv["CURSOR_COST"]) - round(expected_non_auto + expected_auto, 2)) < 0.01
+    assert float(kv["CURSOR_COST"]) == expected
 
 
 def test_token_cost_argv_cursor_without_by_model_falls_back_to_sum_bucket() -> None:
@@ -869,21 +828,19 @@ def test_token_cost_argv_splits_cursor_grok_by_model() -> None:
     assert cost["CURSOR_TOKENS"] == "390"
 
 
-def test_cursor_three_lanes_price_and_sum_together() -> None:
+def test_cursor_two_lanes_price_and_sum_together() -> None:
     rates = display_rates(environ={})
     parsed = _parsed_cost([
         "--cursor-input-tokens", "1000000",
         "--cursor-grok-input-tokens", "1000000",
-        "--cursor-auto-input-tokens", "1000000",
     ])
 
     composer = rates.cursor_input
     grok = rates.cursor_grok_input
-    auto = rates.cursor_auto_input
     assert parsed["CURSOR_COMPOSER_COST"] == f"{composer:.2f}"
     assert parsed["CURSOR_GROK_COST"] == f"{grok:.2f}"
-    assert parsed["CURSOR_AUTO_COST"] == f"{auto:.2f}"
-    assert parsed["CURSOR_COST"] == f"{composer + grok + auto:.2f}"
+    assert "CURSOR_AUTO_COST" not in parsed
+    assert parsed["CURSOR_COST"] == f"{composer + grok:.2f}"
 
 
 def test_cursor_grok_tokens_emit_component_costs_in_wire_order() -> None:
@@ -896,14 +853,12 @@ def test_cursor_grok_tokens_emit_component_costs_in_wire_order() -> None:
 
     assert cost["CURSOR_COMPOSER_COST"] == "0.00"
     assert cost["CURSOR_GROK_COST"] == "8.50"
-    assert cost["CURSOR_AUTO_COST"] == "0.00"
+    assert "CURSOR_AUTO_COST" not in cost
     assert float(cost["CURSOR_COST"]) == sum(
-        float(cost[key])
-        for key in ("CURSOR_COMPOSER_COST", "CURSOR_GROK_COST", "CURSOR_AUTO_COST")
+        float(cost[key]) for key in ("CURSOR_COMPOSER_COST", "CURSOR_GROK_COST")
     )
     assert cost_lines.index("CURSOR_COMPOSER_COST=0.00") < cost_lines.index("CURSOR_COST=8.50")
     assert cost_lines.index("CURSOR_GROK_COST=8.50") < cost_lines.index("CURSOR_COST=8.50")
-    assert cost_lines.index("CURSOR_AUTO_COST=0.00") < cost_lines.index("CURSOR_COST=8.50")
 
 
 def test_price_run_preserves_cursor_lanes_only_for_valid_model_map() -> None:
@@ -932,10 +887,8 @@ def test_price_run_preserves_cursor_lanes_only_for_valid_model_map() -> None:
 
     assert priced_detailed.cursor_composer_cost is not None
     assert priced_detailed.cursor_grok_cost is not None
-    assert priced_detailed.cursor_auto_cost is not None
     assert priced_malformed.cursor_composer_cost is None
     assert priced_malformed.cursor_grok_cost is None
-    assert priced_malformed.cursor_auto_cost is None
 
 
 def test_cursor_non_exact_grok_models_route_to_composer() -> None:

@@ -147,7 +147,7 @@ def test_write_final_report_renders_cursor_cost_lanes(tmp_path: Path) -> None:
     assert "Cursor $" in summary
     assert "Composer $" in summary
     assert "Grok $" in summary
-    assert "Auto $" in summary
+    assert "Auto $" not in summary
 
 
 def test_final_report_code_review_line_ignores_stale_ship_state(tmp_path: Path) -> None:
@@ -422,7 +422,6 @@ def test_final_report_token_fields_cursor_lanes_require_valid_model_map(tmp_path
 
     assert fields["cursor_composer_cost"] is not None
     assert fields["cursor_grok_cost"] is not None
-    assert fields["cursor_auto_cost"] is not None
 
     (run_dir / "token-report.json").write_text(
         json.dumps({
@@ -438,7 +437,6 @@ def test_final_report_token_fields_cursor_lanes_require_valid_model_map(tmp_path
 
     assert fallback_fields["cursor_composer_cost"] is None
     assert fallback_fields["cursor_grok_cost"] is None
-    assert fallback_fields["cursor_auto_cost"] is None
 
     (run_dir / "token-report.json").write_text(
         json.dumps({
@@ -457,7 +455,6 @@ def test_final_report_token_fields_cursor_lanes_require_valid_model_map(tmp_path
 
     assert top_level_fallback_fields["cursor_composer_cost"] is None
     assert top_level_fallback_fields["cursor_grok_cost"] is None
-    assert top_level_fallback_fields["cursor_auto_cost"] is None
 
 
 def test_final_report_token_fields_enriches_claude_sub_by_model_from_ledger(tmp_path: Path) -> None:
@@ -1060,7 +1057,7 @@ def test_cursor_token_argv_splits_mixed_model_buckets() -> None:
     assert cost["CURSOR_TOKENS"] == "6000000"
     assert cost["CURSOR_COMPOSER_COST"] == "3.95"
     assert cost["CURSOR_GROK_COST"] == "8.50"
-    assert cost["CURSOR_AUTO_COST"] == "0.00"
+    assert "CURSOR_AUTO_COST" not in cost
 
 
 def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:

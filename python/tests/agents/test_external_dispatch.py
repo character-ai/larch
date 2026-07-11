@@ -384,17 +384,17 @@ def test_agent_waterfall_cursor_model_row_validation_and_launch(tmp_path: Path, 
             "tool": "cursor",
             "output": str(tmp_path / "out.txt"),
             "prompt_file": str(tmp_path / "prompt.txt"),
-            "cursor_model": "auto",
+            "cursor_model": "sentinel-cursor-model",
         }
     )
     slot = agent_waterfall._parse_slot_row(cursor_row)  # pyright: ignore[reportPrivateUsage]
-    assert slot.cursor_model == "auto"
+    assert slot.cursor_model == "sentinel-cursor-model"
     assert slot.tool == "cursor"
 
     for invalid_row in (
         {**json.loads(cursor_row), "cursor_model": ""},
         {**json.loads(cursor_row), "cursor_model": "bad\nmodel"},
-        {**json.loads(cursor_row), "tool": "codex", "cursor_model": "auto"},
+        {**json.loads(cursor_row), "tool": "codex", "cursor_model": "sentinel-cursor-model"},
     ):
         with pytest.raises(agent_waterfall.ValidationError):
             agent_waterfall._parse_slot_row(json.dumps(invalid_row))  # pyright: ignore[reportPrivateUsage]
@@ -427,7 +427,7 @@ def test_agent_waterfall_cursor_model_row_validation_and_launch(tmp_path: Path, 
         opts=opts,
     )
 
-    assert captured_argv[captured_argv.index("--cursor-model") + 1] == "auto"
+    assert captured_argv[captured_argv.index("--cursor-model") + 1] == "sentinel-cursor-model"
 
 
 def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -465,7 +465,7 @@ def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: p
             output="cursor-sentinel.out",
             focus_area="sentinel",
             archetype="sentinel",
-            cursor_model=config.CURSOR_AUTO_MODEL,
+            cursor_model="sentinel-cursor-model",
         ),
         config.SlotDefault(slot="codex-plan-generic", tool="codex", output="generic.out", focus_area="generic", archetype="generic"),
     )
@@ -497,8 +497,8 @@ def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: p
     )
 
     assert [row["slot"] for row in rows] == ["cursor-plan-sentinel"]
-    assert rows[0]["cursor_model"] == "auto"
-    assert rows[0]["resolved_model"] == "auto"
+    assert rows[0]["cursor_model"] == "sentinel-cursor-model"
+    assert rows[0]["resolved_model"] == "sentinel-cursor-model"
     assert seen_slots == ["design.plan_review_panel"]
     assert seen_policy == ["design.plan_review_panel"]
 
@@ -514,7 +514,7 @@ def test_plan_review_panel_static_rows_zero_payload_on_render_failure(
             output="cursor-sentinel.out",
             focus_area="sentinel",
             archetype="sentinel",
-            cursor_model=config.CURSOR_AUTO_MODEL,
+            cursor_model="sentinel-cursor-model",
         ),
     )
     calls = {"count": 0}
@@ -559,11 +559,11 @@ def test_plan_review_panel_static_rows_zero_payload_on_render_failure(
     )
 
     assert first[0]["payload_bytes"] == 41
-    assert first[0]["cursor_model"] == "auto"
-    assert first[0]["resolved_model"] == "auto"
+    assert first[0]["cursor_model"] == "sentinel-cursor-model"
+    assert first[0]["resolved_model"] == "sentinel-cursor-model"
     assert second[0].get("payload_bytes", 0) == 0
-    assert second[0]["cursor_model"] == "auto"
-    assert second[0]["resolved_model"] == "auto"
+    assert second[0]["cursor_model"] == "sentinel-cursor-model"
+    assert second[0]["resolved_model"] == "sentinel-cursor-model"
     assert (tmp_path / "render-plan-cursor-sentinel.prompt").read_text(encoding="utf-8") == (
         "Review the design plan with a sentinel lens."
     )

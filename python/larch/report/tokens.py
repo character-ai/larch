@@ -1098,7 +1098,7 @@ def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], ven
         elif name == "cursor":
             data["BUCKETS_cursor"] = {"input": totals["input"], "cache_read": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
             # Per-model split so pricing keys on (vendor, model). Rows without a model
-            # field default to composer-2.5 (non-auto), matching pre-recording behavior.
+            # field default to composer-2.5, matching pre-recording behavior.
             # BUCKETS_cursor_by_model is parallel to BUCKETS_codex_by_model.
             by_model_cursor: dict[str, dict[str, int]] = {}
             for row in rows:

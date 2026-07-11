@@ -303,9 +303,12 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
         }
         if slot.focus_area:
             row["focus_area"] = slot.focus_area
-        if slot.cursor_model:
-            row["cursor_model"] = slot.cursor_model
-            row["resolved_model"] = slot.cursor_model
+        if slot.tool == "cursor":
+            if slot.cursor_model:
+                row["cursor_model"] = slot.cursor_model
+                row["resolved_model"] = slot.cursor_model
+            else:
+                row["resolved_model"] = _resolved_model_for_row("cursor")
         if slot.tool == "codex":
             row["model_role"] = "review"
             row["resolved_model"] = _resolved_model_for_row(slot.tool, "review", default_model=codex_panel_model)
@@ -395,8 +398,7 @@ def _synthesize_dynamic_slots(*,
                     "payload_bytes": payload_bytes,
                     "weight": weight,
                     "focus_area": focus_area,
-                    "cursor_model": config.CURSOR_AUTO_MODEL,
-                    "resolved_model": config.CURSOR_AUTO_MODEL,
+                    "resolved_model": _resolved_model_for_row("cursor"),
                 }
             )
             count += 1

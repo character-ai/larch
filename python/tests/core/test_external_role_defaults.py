@@ -52,7 +52,7 @@ def test_panel_role_metadata_is_separate() -> None:
     assert not any(slot.slot == deleted_auto_slot for slot in review_slots)
     assert not any(slot.slot == "generalist" for slot in review_slots)
     assert all(slot.model_role == "review" for slot in review_specialists if slot.tool == "codex")
-    assert all(slot.cursor_model == config.CURSOR_AUTO_MODEL for slot in review_specialists if slot.tool == "cursor")
+    assert all(slot.cursor_model == "" for slot in review_specialists if slot.tool == "cursor")
     review_policy = external_defaults.panel_dispatch_policy("review.panel")
     assert review_policy is not None
     assert review_policy.no_fallback_when_both_present_round_lt is None
@@ -61,7 +61,7 @@ def test_panel_role_metadata_is_separate() -> None:
     plan_slots = external_defaults.slot_defaults("design.plan_review_panel")
     assert {slot.archetype for slot in plan_slots if slot.archetype != "generic"} == {"arch", "innovation", "pragmatic", "requirements"}
     assert all(slot.model_role == "default" for slot in plan_slots if slot.tool == "codex" and slot.archetype != "generic")
-    assert all(slot.cursor_model == config.CURSOR_AUTO_MODEL for slot in plan_slots if slot.tool == "cursor")
+    assert all(slot.cursor_model == "" for slot in plan_slots if slot.tool == "cursor")
     plan_policy = external_defaults.panel_dispatch_policy("design.plan_review_panel")
     assert plan_policy is not None
     assert plan_policy.no_fallback_when_both_present_round_lt is None

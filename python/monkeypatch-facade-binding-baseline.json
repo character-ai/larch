@@ -541,6 +541,69 @@
   },
   {
     "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_ci_fix_uses_resolved_cursor_model",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_append_ci_failure",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 7,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_ci_fix_uses_resolved_cursor_model",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_resolve_review_codex_workdir",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 4,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_ci_fix_uses_resolved_cursor_model",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 6,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_ci_fix_uses_resolved_cursor_model",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_export_env",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 3,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_ci_fix_uses_resolved_cursor_model",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_auth_preflight",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 1,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_ci_fix_uses_resolved_cursor_model",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "cursor_preread_service_token",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 2,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_cursor_ci_fix_uses_resolved_cursor_model",
+    "facade_module": "larch.agents._ci_launcher",
+    "attribute": "resolve_model_args",
+    "defining_module": "larch.agents._launch_failure",
+    "occurrence": 5,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
     "qualified_symbol": "test_launch_cursor_ci_resolves_consumer_workdir_and_preserves_fix_stall_channel",
     "facade_module": "larch.agents._ci_launcher",
     "attribute": "_append_ci_failure",
@@ -9595,6 +9658,15 @@
   },
   {
     "file": "tests/review/test_review_and_fix.py",
+    "qualified_symbol": "test_run_coder_cursor_model_resolution_failure_skips_launch",
+    "facade_module": "larch.review.coder_runner",
+    "attribute": "_run",
+    "defining_module": "larch.review._raf_util",
+    "occurrence": 6,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
+  },
+  {
+    "file": "tests/review/test_review_and_fix.py",
     "qualified_symbol": "test_run_coder_cursor_normalizes_api_key_before_launch",
     "facade_module": "larch.review.coder_runner",
     "attribute": "_run",
@@ -9610,6 +9682,15 @@
     "defining_module": "larch.review._raf_util",
     "occurrence": 7,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/review/test_review_and_fix.py",
+    "qualified_symbol": "test_run_coder_cursor_uses_composer_default_model",
+    "facade_module": "larch.review.coder_runner",
+    "attribute": "_run",
+    "defining_module": "larch.review._raf_util",
+    "occurrence": 7,
+    "reason": "consuming module binding required to intercept call-time lookups; matches baselined sibling facade-patch tests"
   },
   {
     "file": "tests/review/test_review_and_fix.py",

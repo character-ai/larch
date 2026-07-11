@@ -2528,12 +2528,67 @@ def test_run_coder_cursor_acquires_external_startup_lock(tmp_path, monkeypatch):
     assert len(release_calls) == 1
     timing_calls = [call for call in run_calls if call[0][2:4] == ["timing", "record-vendor-task"]]
     assert len(timing_calls) == 1
+    cursor_calls = [call for call in run_calls if "run-external-agent" in call[0]]
+    assert len(cursor_calls) == 1
+    cursor_argv = cursor_calls[0][0]
+    assert cursor_argv[cursor_argv.index("--model") + 1] == "test"
     argv = timing_calls[0][0]
     assert argv[argv.index("--ledger") + 1] == str(tmp_path / "timing-ledger.tsv")
     assert argv[argv.index("--task-kind") + 1] == "cursor-review-fix"
     assert argv[argv.index("--output") + 1] == str(tmp_path / "coder-cursor.log")
     assert argv[argv.index("--start-s") + 1] == "100"
     assert argv[argv.index("--end-s") + 1] == "125"
+
+
+@MARK_DISPATCH
+def test_run_coder_cursor_uses_composer_default_model(tmp_path, monkeypatch):
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
+    monkeypatch.setattr(coder_runner, "_cursor_available", lambda: True)
+    monkeypatch.setattr(coder_runner.agents, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(
+        coder_runner.agents,
+        "cursor_auth_preflight",
+        lambda **_kw: coder_runner.agents.AuthVerdict(ok=True, rc=0),
+    )
+    monkeypatch.setattr(coder_runner.agents, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(coder_runner.agents, "external_startup_lock_acquire", lambda tool: coder_runner.agents.StartupLockState(None))
+    monkeypatch.setattr(coder_runner.agents, "external_startup_lock_release_after", lambda state: None)
+    run_calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        run_calls.append(argv)
+        stdout = "wrapped prompt" if "cursor-wrap-prompt" in argv else ""
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, stdout, "", 0.0)
+
+    monkeypatch.setattr(coder_runner, "_run", fake_run)
+
+    assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is True
+
+    cursor_argv = next(argv for argv in run_calls if "run-external-agent" in argv)
+    assert _arg_value(cursor_argv, "--model") == "composer-2.5"
+
+
+@MARK_DISPATCH
+def test_run_coder_cursor_model_resolution_failure_skips_launch(tmp_path, monkeypatch):
+    monkeypatch.setenv("CURSOR_BINARY_FOUND", "true")
+    monkeypatch.setattr(coder_runner, "_cursor_available", lambda: True)
+    monkeypatch.setattr(coder_runner.agents, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(
+        coder_runner.agents,
+        "cursor_auth_preflight",
+        lambda **_kw: coder_runner.agents.AuthVerdict(ok=True, rc=0),
+    )
+    monkeypatch.setattr(coder_runner.agents, "cursor_auth_export_env", lambda: None)
+
+    def fail_resolve(*_args: object, **_kwargs: object) -> coder_runner.agents.ModelArgResult:
+        raise ValueError("Cursor model unavailable")
+
+    monkeypatch.setattr(coder_runner.agents, "resolve_model_args", fail_resolve)
+    run_calls: list[list[str]] = []
+    monkeypatch.setattr(coder_runner, "_run", lambda argv, **_kwargs: run_calls.append(argv))
+
+    assert review_and_fix._run_coder_cursor(round_dir=tmp_path, prompt_body="prompt", tool_log=tmp_path / "tool.log") is False
+    assert not run_calls
 
 
 @MARK_DISPATCH
