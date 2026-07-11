@@ -1,0 +1,184 @@
+## Approach
+
+Treat each coverage or review snapshot as an artifact set with an expected root.
+
+Add opt-in I/O helpers that:
+
+- Reject symlinks, symlinked ancestors, non-regular files, and paths outside the expected root.
+- Open trusted files with no-follow semantics and verify the opened descriptor is regular.
+- Support unpredictable, exclusive atomic writes without changing `larch_io.atomic_write` defaults.
+- Revalidate containment and file type after security-critical replacement.
+
+Keep the existing pre-coder snapshot location policy. Harden the shared `/tmp/larch-pre-coder-snapshots/` path instead of adding a new persisted directory pointer or changing snapshot layout. Use random exclusive temporary names, reject unsafe ancestors and destinations, and validate every later read.
+
+For plan coverage:
+
+- Validate the JSON, env, untouched-path, todo, and disposition files as one contained artifact set.
+- Reject partial artifact sets. Preserve the absence of the full set as the legacy no-coverage case.
+- Validate embedded paths against the canonical paths under `tmpdir`.
+- Check counts, bands, booleans, fingerprints, and companion-file contents against the parsed coverage data.
+- When `repo_root` is available, recompute coverage and require the persisted semantic fields and fingerprint to match live inputs.
+- Remove advisory fallback to stale persisted coverage when a live recomputation fails.
+- Without `repo_root`, perform structural, containment, file-type, schema, internal-consistency, and coverage-to-disposition fingerprint checks.
+- Preserve touched-path rules, thresholds, todo classification, and valid disposition behavior.
+
+For review snapshots:
+
+- Route pre-coder and self-review snapshot writes through the safe atomic path.
+- Validate every snapshot file and diff before it affects cleanup, delta detection, or staging.
+- Require the snapshot HEAD to match the expected cleanup base where that gate already applies.
+- Fail closed when an expected snapshot is missing, malformed, unsafe, or inconsistent.
+- Preserve the existing full and legacy `head_untracked` cleanup modes for valid artifacts.
+
+## Files to modify/create
+
+### UPDATED: python/larch/io.py
+
+Add reusable trusted-artifact primitives for root containment, no-symlink regular-file reads, and post-write verification.
+
+Keep `atomic_write` defaults unchanged. Expose random, exclusive, no-follow behavior only through explicit arguments or a narrow wrapper.
+
+### UPDATED: python/larch/implement/scope_disposition.py
+
+Centralize coverage artifact-set validation.
+
+Make `load_coverage` distinguish a wholly absent legacy artifact from an invalid or partial artifact set. Validate canonical companion paths, companion contents, derived fields, and the stored fingerprint.
+
+Add an optional `repo_root` validation path that recomputes coverage and compares the persisted artifact with current plan, manifest, baseline, HEAD, and working-tree inputs.
+
+Use safe random atomic writes for every coverage artifact. Revalidate each final path before publishing the env file as the last artifact.
+
+Apply equivalent containment and regular-file checks to `scope-disposition.json`. Require its fingerprint to match trusted coverage before it controls deferred inventory or `part-of` versus `closes` behavior.
+
+Remove persisted advisory fallback from ship validation and commit-route recomputation failures. Return or raise the existing failure classes without changing valid-run disposition semantics.
+
+### UPDATED: python/larch/implement/dispatch_commit_route.py
+
+Stop accepting previously loaded coverage when live recomputation fails.
+
+Load persisted coverage only through the hardened structural path. Fail the route when coverage artifacts are unsafe or when current coverage cannot be recomputed.
+
+Preserve emitted `PLAN_COVERAGE_*` keys for valid runs.
+
+### UPDATED: python/larch/review/snapshot.py
+
+Add snapshot-local helpers that bind all artifact access to the expected snapshot root.
+
+Replace bare `write_text` calls for pre-coder and self-review heads, path inventories, and patch files with unpredictable exclusive atomic writes. Validate the final regular file after replacement.
+
+Validate snapshot roots, inventories, and patch files before mode detection, comparison, restoration, cleanup, or stage-path collection. Reject symlinked directories and files, non-regular files, escaped paths, and incomplete full snapshots.
+
+Keep the existing directory selection and snapshot formats. Preserve full and `head_untracked` behavior for legitimate snapshots.
+
+### UPDATED: python/tests/test_larch_io.py
+
+Cover trusted reads and post-write validation for:
+
+- Regular contained files.
+- Missing files.
+- Destination and ancestor symlinks.
+- Non-regular files.
+- Root escapes.
+- Random exclusive temporary writes.
+- Replacement-time validation failures.
+
+Confirm legacy `atomic_write` defaults remain unchanged.
+
+### UPDATED: python/tests/implement/test_scope_disposition.py
+
+Add artifact lifecycle tests for:
+
+- Safe creation of all coverage files.
+- Missing and partial artifact sets.
+- Symlinked files and ancestors.
+- Non-regular and out-of-root paths.
+- Embedded companion paths that do not match canonical paths.
+- Companion contents that disagree with JSON.
+- Invalid derived counts, bands, booleans, or fingerprints.
+- Live plan, manifest, baseline, HEAD, and diff changes after coverage creation.
+- Disposition fingerprints that do not match coverage.
+- Valid advisory, middle, high, partial, and bail flows remaining unchanged.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+Verify commit routing fails when live coverage recomputation fails, even if an advisory persisted artifact exists.
+
+Cover unsafe persisted artifacts and the valid recompute-and-relay path.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+Add pre-coder and self-review snapshot tests for:
+
+- Safe random atomic creation.
+- Symlinked snapshot roots, files, and patch entries.
+- FIFO, directory, and other non-regular entries.
+- Missing or incomplete snapshot sets.
+- Tampered or stale HEAD and patch data.
+- Containment failures.
+- Cleanup refusing unsafe snapshots without changing tracked, staged, or untracked state.
+- Valid full and `head_untracked` snapshots still restoring coder changes and preserving pre-existing dirty state.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+Verify the coverage summary accepts a valid contained artifact set and fails loudly on partial, symlinked, or internally inconsistent artifacts.
+
+Keep the existing summary text unchanged for valid coverage.
+
+### UPDATED: python/tests/git/test_pr.py
+
+Verify unsafe or fingerprint-mismatched disposition artifacts cannot select `part-of` or bypass the PR mutation gate.
+
+Keep valid partial and closing link behavior unchanged.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+Verify deferred inventory and issue-link rendering reject unsafe coverage or disposition artifacts.
+
+Keep valid inventory and `partial` link rendering unchanged.
+
+### UPDATED: python/tests/state/test_finalize.py
+
+Verify finalize does not use an unsafe or mismatched disposition artifact to suppress the `[DESIGNED]` to done transition.
+
+Preserve valid `proceed-partial` behavior.
+
+### UPDATED: SECURITY.md
+
+Document the coverage and review snapshot trust boundary, containment and regular-file rules, no-follow atomic creation, live revalidation behavior, and the remaining same-UID limitation of local temporary state.
+
+## Edge cases
+
+- No coverage files may still mean a legacy or non-applicable run. One or more files without the complete required set is corruption.
+- An empty untouched or todo inventory is valid when its file exists and matches the JSON.
+- A snapshot may contain zero tracked or untracked paths. Its inventory files must still be trusted regular files.
+- Dangling symlinks must be rejected even when `exists()` is false.
+- Resolve containment without accepting a symlinked root or ancestor.
+- Treat a file replaced between validation and open as unsafe. Validate the opened descriptor, not only the pathname.
+- Preserve the legacy `head_untracked` snapshot shape only where current code already supports it. Do not reinterpret an incomplete full snapshot as that legacy mode.
+- Do not allow malformed coverage to silently select `closes`, `part-of`, or an empty final-report summary.
+
+## Failure modes
+
+- Raise `ShipError` or return the existing nonzero workflow result when an artifact is present but cannot be trusted.
+- Fail ship and commit routing when live coverage recomputation fails. Do not fall back to persisted advisory data.
+- Abort coder cleanup before mutation when snapshot validation fails.
+- If a security-critical write cannot be revalidated, remove only the safe contained temporary file and leave no completion artifact.
+- Keep diagnostics path-focused but avoid printing artifact payloads.
+
+## Testing strategy
+
+Run focused tests for the changed files:
+
+- `python/tests/test_larch_io.py`
+- `python/tests/implement/test_scope_disposition.py`
+- `python/tests/implement/test_implement_dispatch.py`
+- `python/tests/review/test_review_and_fix.py`
+- `python/tests/report/test_final_report.py`
+- `python/tests/git/test_pr.py`
+- `python/tests/git/test_pr_body.py`
+- `python/tests/state/test_finalize.py`
+
+Run lint and type checks only for changed Python files. Confirm valid artifact fixtures retain existing coverage totals, bands, disposition results, final-report text, PR link kinds, and coder-cleanup outcomes.
+
+difficulty: HARD
+diff_lines: 720

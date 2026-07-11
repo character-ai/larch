@@ -1,0 +1,1 @@
+Harden both coverage and review snapshot lifecycles. Add opt-in trusted-file helpers, validate persisted coverage against live state where possible, reject unsafe artifacts elsewhere, and replace predictable unsafe writes. Preserve coverage and cleanup semantics.
