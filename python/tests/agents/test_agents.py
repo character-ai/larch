@@ -4087,7 +4087,7 @@ def test_launch_cursor_implement_selects_model_by_difficulty(
         _ = agents.LauncherPaths.from_output(output_path).inner_done.write_text("0\n", encoding="utf-8")
         return agents.RunExternalAgentResult(0, output_path)
 
-    def fake_record_usage(output_path: Path, model: str = "") -> None:  # noqa: ARG001
+    def fake_record_usage(_output_path: Path, model: str = "") -> None:
         recorded_usage_model["model"] = model
 
     monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
