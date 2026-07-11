@@ -37,6 +37,21 @@ def _write_text(*, path: Path, text: str) -> None:
     larch_io.trusted_atomic_write(path, text, root=path.parent)
 
 
+def _write_post_coder_head(round_dir: Path, head: str) -> None:
+    """Persist the post-coder commit through the trusted round artifact writer."""
+    path = round_dir / "post-coder-head.txt"
+    larch_io.ensure_trusted_directory(round_dir)
+    larch_io.trusted_atomic_write(path, head + "\n", root=round_dir, mode=0o444)
+    path.chmod(0o444)
+
+
+def _read_post_coder_head(round_dir: Path) -> str:
+    path = round_dir / "post-coder-head.txt"
+    if not larch_io.trusted_file_present(path, root=round_dir):
+        return ""
+    return larch_io.read_trusted_text(path, root=round_dir, errors="replace").strip()
+
+
 def _validate_snapshot_root(path: Path) -> Path:
     return larch_io.validate_trusted_directory(path)
 
@@ -132,6 +147,33 @@ def _snapshot_mode(round_dir: Path) -> Literal["full", "head_untracked", "missin
         snap_dir / "pre-coder-untracked-paths.txt", root=snap_dir
     )
     if tracked and head and untracked:
+        snapshot_head = _read_text(snap_dir / "pre-coder-head.txt").strip()
+        if not snapshot_head:
+            raise OSError(f"invalid pre-coder snapshot head: {snap_dir}")
+        paths = [
+            line
+            for line in _read_text(snap_dir / "pre-coder-tracked-paths.txt").splitlines()
+            if line
+        ]
+        safe_names = [_safe_patch_name(path) for path in paths]
+        if len(paths) != len(set(paths)) or len(safe_names) != len(set(safe_names)):
+            raise OSError(f"invalid pre-coder snapshot inventory: {snap_dir}")
+        diffs = larch_io.validate_trusted_directory(
+            snap_dir / "pre-coder-path-diffs", root=snap_dir
+        )
+        expected = {
+            f"{_safe_patch_name(path)}{suffix}"
+            for path in paths
+            for suffix in (".patch", ".cached.patch")
+        }
+        actual: set[str] = set()
+        for artifact in diffs.iterdir():
+            if not larch_io.trusted_file_present(artifact, root=diffs):
+                raise OSError(f"unsafe snapshot patch artifact: {artifact}")
+            actual.add(artifact.name)
+            _ = larch_io.read_trusted_text(artifact, root=diffs, errors="strict")
+        if actual != expected:
+            raise OSError(f"incomplete pre-coder snapshot patches: {snap_dir}")
         return "full"
     if head and untracked and not tracked:
         return "head_untracked"
@@ -646,10 +688,7 @@ def _cleanup_failed_coder_attempt(round_dir: Path) -> bool:
 def _round_diff_base(round_dir: Path, *, since_committed: bool) -> str:
     snap_dir = pre_coder_snapshot_dir(round_dir)
     if since_committed:
-        post_head_file = round_dir / "post-coder-head.txt"
-        if post_head_file.is_file() and post_head_file.stat().st_size:
-            return _read_text(post_head_file).strip()
-        return ""
+        return _read_post_coder_head(round_dir)
     pre_head_file = snap_dir / "pre-coder-head.txt"
     if pre_head_file.is_file() and pre_head_file.stat().st_size:
         return _read_text(pre_head_file).strip()
@@ -666,11 +705,11 @@ def _round_has_full_pre_coder_snapshot(round_dir: Path) -> bool:
 def _collect_round_stage_paths(
     round_dir: Path, *, since_committed: bool = False
 ) -> list[str]:
-    diff_base = _round_diff_base(round_dir, since_committed=since_committed)
-    if not diff_base:
-        return []
     mode = _snapshot_mode(round_dir)
     if mode not in {"full", "head_untracked"}:
+        return []
+    diff_base = _round_diff_base(round_dir, since_committed=since_committed)
+    if not diff_base:
         return []
     if mode == "full" and not _round_has_full_pre_coder_snapshot(round_dir):
         return []

@@ -860,9 +860,12 @@ def record_disposition(  # noqa: PLR0913
     manifest_path: Path | None = None,
     runner: Runner = proc,
 ) -> DispositionRecord:
-    active_coverage = coverage or load_live_coverage(
+    live_coverage = load_live_coverage(
         tmpdir=tmpdir, repo_root=repo_root, manifest_path=manifest_path, runner=runner
     )
+    if coverage is not None and coverage != live_coverage:
+        raise ShipError("supplied coverage does not match live repository inputs")
+    active_coverage = live_coverage
     if active_coverage is None:
         raise ShipError("scope disposition requires a readable coverage artifact")
     followup = FollowupIssue(number="", url="")

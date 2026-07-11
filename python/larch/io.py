@@ -15,7 +15,6 @@ import os
 import re
 import shutil
 import stat
-import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import TypeAlias, cast
@@ -164,40 +163,69 @@ def trusted_atomic_write(
     mode: int = 0o600,
     newline: str | None = None,
 ) -> None:
-    """Publish a contained artifact via a random exclusive no-follow temp file."""
+    """Publish a contained artifact via a descriptor-relative atomic replace."""
     destination, absolute_root = _assert_contained(path=Path(path), root=Path(root))
     validate_trusted_directory(absolute_root)
     validate_trusted_directory(destination.parent, root=absolute_root)
-    if destination.exists() or destination.is_symlink():
-        trusted_file_present(destination, root=absolute_root)
-    fd, raw_temp = tempfile.mkstemp(
-        prefix=f".{destination.name}.", suffix=".tmp", dir=destination.parent
-    )
-    temp_path = Path(raw_temp)
+    relative_parent = destination.parent.relative_to(absolute_root)
+    directory_flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        directory_flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+    root_fd = os.open(absolute_root, directory_flags)
+    parent_fd = root_fd
+    try:
+        for component in relative_parent.parts:
+            next_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+            if parent_fd != root_fd:
+                os.close(parent_fd)
+            parent_fd = next_fd
+        try:
+            existing = os.stat(destination.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            if not stat.S_ISREG(existing.st_mode):
+                raise OSError(f"trusted artifact is not a regular file: {destination}")
+        temp_name = f".{destination.name}.{os.getpid()}.{os.urandom(8).hex()}.tmp"
+        write_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+        if hasattr(os, "O_NOFOLLOW"):
+            write_flags |= os.O_NOFOLLOW
+        fd = os.open(temp_name, write_flags, mode, dir_fd=parent_fd)
+    except Exception:
+        if parent_fd != root_fd:
+            os.close(parent_fd)
+        os.close(root_fd)
+        raise
     published = False
     try:
         opened = os.fstat(fd)
         if not stat.S_ISREG(opened.st_mode):
-            raise OSError(f"trusted temporary artifact is not regular: {temp_path}")
+            raise OSError(f"trusted temporary artifact is not regular: {destination}")
         os.fchmod(fd, mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as handle:
             fd = -1
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
-        _ = read_trusted_text(temp_path, root=absolute_root, errors="strict")
-        _assert_no_symlink_components(destination)
-        temp_path.replace(destination)
+        os.replace(temp_name, destination.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
         published = True
-        _ = read_trusted_text(destination, root=absolute_root, errors="strict")
+        final = os.stat(destination.name, dir_fd=parent_fd, follow_symlinks=False)
+        if not stat.S_ISREG(final.st_mode):
+            raise OSError(f"trusted artifact is not a regular file: {destination}")
     finally:
         if fd >= 0:
             with contextlib.suppress(OSError):
                 os.close(fd)
         if not published:
             with contextlib.suppress(OSError):
-                if trusted_file_present(temp_path, root=absolute_root):
-                    temp_path.unlink()
+                os.unlink(temp_name, dir_fd=parent_fd)
+        if parent_fd != root_fd:
+            with contextlib.suppress(OSError):
+                os.close(parent_fd)
+        with contextlib.suppress(OSError):
+            os.close(root_fd)
 
 
 def _strip_cr(*, value: str, mode: str) -> str:
