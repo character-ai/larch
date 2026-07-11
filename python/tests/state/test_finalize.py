@@ -1120,14 +1120,14 @@ def _stub_teardown_side_effects(
     crumbs: list[str] = []
 
     class _Writer:
-        def emit(self, message: str, *, quiet: bool = True) -> None:  # noqa: ARG002
+        def emit(self, message: str, *, quiet: bool = True) -> None:
             crumbs.append(message)
 
     (tmp_path / "session-env.sh").write_text(
         f"REPO_ROOT={tmp_path}\nLARCH_RUN_ID=run-abc\n",
         encoding="utf-8",
     )
-    monkeypatch.setattr(finalize.logging_util, "BreadcrumbWriter", lambda: _Writer())
+    monkeypatch.setattr(finalize.logging_util, "BreadcrumbWriter", _Writer)
     monkeypatch.setattr(finalize, "_teardown_log_flush", lambda **_kwargs: True)
     monkeypatch.setattr(finalize, "kill_session_background_processes", lambda **_kwargs: True)
     monkeypatch.setattr(finalize, "_cleanup_target_ok", lambda **_kwargs: False)
