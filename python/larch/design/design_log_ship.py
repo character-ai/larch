@@ -558,7 +558,7 @@ def main(argv: list[str] | None = None) -> int:
         merge_cwd=args.merge_cwd,
     )
     logging_util.emit_kv(key="PUBLISH_OK", value="true" if result.ok else "false")
-    return 0
+    return 0 if result.ok else 1
 
 
 if __name__ == "__main__":

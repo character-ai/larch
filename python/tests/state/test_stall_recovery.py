@@ -2749,3 +2749,116 @@ def test_chat_print_delegates_to_compose_report(
     out = capsys.readouterr().out
     assert "STALL_RECOVERY_REPORT_KIND=terminal-failure" in out
     assert out_path.is_file()
+
+
+def test_classify_generic_current_publish_tail_is_recoverable(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    detail = tmp_path / "design-publish-tail.failure.log"
+    _ = detail.write_text("nested publish failure\n", encoding="utf-8")
+    primary = tmp_path / "design-failure-terminal-state.env"
+    _ = primary.write_text(
+        "DESIGN_FAILURE_VERSION=1\n"
+        "DESIGN_FAILURE_KIND=terminal\n"
+        "FAILURE_OUTCOME=failed-publish-tail\n"
+        "STALL_STEP=publish\n"
+        "PHASE=publish\n"
+        "SITE=design-publish\n"
+        "TRIGGER=publish-tail-failed\n"
+        "BAIL_REASON=publish-tail-failed\n"
+        "EXIT_CODE=5\n"
+        f"FAILURE_DETAIL_LOG={detail}\n"
+        "SOURCE_SCRIPT=design-step5c\n"
+        "PUBLISH_ATTEMPT_ID=12345678-current\n"
+        "PUBLISH_RC_SOURCE=returned\n"
+        "LATEST_PHASE=tracking-issue-rename\n"
+        "PLAN_WRITE_OK=true\n"
+        "PUBLISH_OK=false\n"
+        "RENAMED=true\n"
+        "LOG_PUBLISH_ATTEMPTED=false\n"
+        "LOG_PUBLISH_COMPLETED=false\n"
+        "DESIGNED_ADMISSION_READY=true\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--profile", "generic",
+        "--artifact-prefix", "design-failure",
+        "--primary-state-file", str(primary),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=recoverable" in out
+    assert "RESUME_HINT=resume-post-plan-publish" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=design-publish-tail-current-attempt" in out
+    # The classifier threads validated publish progress into the artifact so the
+    # report can render how far the salvage got without re-reading trusted state.
+    assert "LATEST_PHASE=tracking-issue-rename" in out
+    assert "PUBLISH_RC_SOURCE=returned" in out
+    assert "PLAN_WRITE_OK=true" in out
+    assert "PUBLISH_OK=false" in out
+    assert "RENAMED=true" in out
+    assert "LOG_PUBLISH_ATTEMPTED=false" in out
+    assert "LOG_PUBLISH_COMPLETED=false" in out
+
+
+def test_safe_class_value_keeps_recoverable() -> None:
+    # recoverable must survive report sanitization so salvageable runs are not
+    # re-misreported as unrecoverable (the core #6845 defect).
+    assert _sr_report._safe_class_value("recoverable") == "recoverable"  # pyright: ignore[reportPrivateUsage]
+    assert _sr_report._safe_class_value("not-a-class") == "unrecoverable"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_report_retry_policy_and_progress_render_recoverable(tmp_path: Path) -> None:
+    # The routing table carries recoverable with no auto-retry (retry automation
+    # unchanged), and the progress helper surfaces only present fixed-token fields.
+    policy = _sr_report._retry_policy_lines()  # pyright: ignore[reportPrivateUsage]
+    assert any(line.startswith("recoverable\t") for line in policy)
+    recoverable_line = next(line for line in policy if line.startswith("recoverable\t"))
+    assert recoverable_line.split("\t")[1] == "0"
+
+    class_file = tmp_path / "design-failure-classification.env"
+    _ = class_file.write_text(
+        "FAILURE_CLASS=recoverable\nRESUME_HINT=resume-post-plan-publish\n"
+        "LATEST_PHASE=complete\nPUBLISH_RC_SOURCE=returned\nPLAN_WRITE_OK=true\n"
+        "PUBLISH_OK=false\nRENAMED=true\nLOG_PUBLISH_ATTEMPTED=true\nLOG_PUBLISH_COMPLETED=true\n",
+        encoding="utf-8",
+    )
+    fields = dict(_sr_report._publish_progress_fields(class_file=class_file))  # pyright: ignore[reportPrivateUsage]
+    assert fields == {
+        "Latest phase": "complete",
+        "RC source": "returned",
+        "Plan written": "true",
+        "Publish ok": "false",
+        "Renamed": "true",
+        "Log publish attempted": "true",
+        "Log publish completed": "true",
+    }
+    # Absent keys are omitted rather than rendered as unknown.
+    sparse = tmp_path / "design-failure-classification-sparse.env"
+    _ = sparse.write_text("FAILURE_CLASS=unrecoverable\nPLAN_WRITE_OK=true\n", encoding="utf-8")
+    assert _sr_report._publish_progress_fields(class_file=sparse) == [("Plan written", "true")]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_classify_generic_publish_tail_without_plan_write_stays_unrecoverable(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    primary = tmp_path / "design-failure-terminal-state.env"
+    _ = primary.write_text(
+        "DESIGN_FAILURE_VERSION=1\nDESIGN_FAILURE_KIND=terminal\n"
+        "FAILURE_OUTCOME=failed-publish-tail\nSTALL_STEP=publish\nPHASE=publish\n"
+        "SITE=design-publish\nTRIGGER=publish-tail-failed\nBAIL_REASON=publish-tail-failed\n"
+        "EXIT_CODE=5\nFAILURE_DETAIL_LOG=\nSOURCE_SCRIPT=design-step5c\n"
+        "PUBLISH_ATTEMPT_ID=12345678-current\nPUBLISH_RC_SOURCE=returned\n"
+        "LATEST_PHASE=initialized\nPLAN_WRITE_OK=false\nPUBLISH_OK=false\nRENAMED=false\n"
+        "LOG_PUBLISH_ATTEMPTED=false\nLOG_PUBLISH_COMPLETED=false\nDESIGNED_ADMISSION_READY=false\n",
+        encoding="utf-8",
+    )
+
+    assert stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path), "--profile", "generic",
+        "--artifact-prefix", "design-failure", "--primary-state-file", str(primary),
+    ]) == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "RESUME_HINT=none" in out

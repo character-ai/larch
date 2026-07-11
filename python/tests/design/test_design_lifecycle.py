@@ -3174,6 +3174,115 @@ def _stage_terminal_for_report(tmp_path: Path, outcome: str = "failed-clarify") 
     assert rc == 0
 
 
+def _write_prior_failed_publish_tail_report(
+    design_tmpdir: Path, *, success: bool = True, publish_tail: bool = True, issue: str = "4242"
+) -> Path:
+    sentinel = design_tmpdir / "design-failure-terminal-report.env"
+    sentinel.write_text(
+        "STALL_RECOVERY_REPORT_STATUS=filed\n"
+        f"STALL_RECOVERY_REPORT_ISSUE_NUMBER={issue}\n"
+        f"STALL_RECOVERY_REPORT_ISSUE_URL=https://github.com/character-ai/larch/issues/{issue}\n",
+        encoding="utf-8",
+    )
+    state = design_tmpdir / "design-failure-terminal-state.env"
+    trigger = "publish-tail-failed" if publish_tail else "other-failure"
+    outcome_line = "FAILURE_OUTCOME=failed-publish-tail" if publish_tail else "FAILURE_OUTCOME=failed-clarify"
+    state.write_text(f"TRIGGER={trigger}\n{outcome_line}\n", encoding="utf-8")
+    result_env = design_tmpdir / config.DESIGN_PUBLISH_RESULT_FILE
+    if success:
+        result_env.write_text(
+            "PUBLISH_ATTEMPT_ID=12345678-current\n"
+            "PUBLISH_RC_SOURCE=returned\n"
+            "PLAN_WRITE_OK=true\n"
+            "RENAMED=true\n"
+            "LOG_PUBLISH_COMPLETED=true\n",
+            encoding="utf-8",
+        )
+    else:
+        result_env.write_text("PLAN_WRITE_OK=true\nRENAMED=false\nLOG_PUBLISH_COMPLETED=false\n", encoding="utf-8")
+    return sentinel
+
+
+def test_failure_report_reconciles_failed_publish_tail_after_salvage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_prior_failed_publish_tail_report(tmp_path, success=True)
+    calls: list[dict[str, str]] = []
+
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
+        calls.append({"report_issue": report_issue, "repo": repo})
+        return True, "reconciled"
+
+    monkeypatch.setattr(design_terminal, "_reconcile_post_recovery_comment", fake_comment)  # pyright: ignore[reportPrivateUsage]
+    rc, _ = design_lifecycle.failure_report_core(
+        ["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "approved", "--repo", "character-ai/larch"]
+    )
+    assert rc == 0
+    assert calls == [{"report_issue": "4242", "repo": "character-ai/larch"}]
+    reconcile_sentinel = tmp_path / "design-failure-reconcile-report.env"
+    assert reconcile_sentinel.is_file()
+    assert "STATUS=reconciled" in reconcile_sentinel.read_text(encoding="utf-8")
+
+
+def test_failure_report_reconcile_is_idempotent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_prior_failed_publish_tail_report(tmp_path, success=True)
+    calls: list[dict[str, str]] = []
+
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
+        calls.append({"report_issue": report_issue})
+        return True, "reconciled"
+
+    monkeypatch.setattr(design_terminal, "_reconcile_post_recovery_comment", fake_comment)  # pyright: ignore[reportPrivateUsage]
+    design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "approved"])
+    design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "approved"])
+    assert len(calls) == 1  # the durable sentinel prevents a second comment+close
+
+
+def test_failure_report_reconcile_skipped_without_success_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_prior_failed_publish_tail_report(tmp_path, success=False)
+    called = {"n": 0}
+
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
+        called["n"] += 1
+        return True, "reconciled"
+
+    monkeypatch.setattr(design_terminal, "_reconcile_post_recovery_comment", fake_comment)  # pyright: ignore[reportPrivateUsage]
+    rc, _ = design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "approved"])
+    assert rc == 0
+    assert called["n"] == 0
+    assert not (tmp_path / "design-failure-reconcile-report.env").exists()
+
+
+def test_failure_report_reconcile_skipped_when_not_publish_tail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_prior_failed_publish_tail_report(tmp_path, success=True, publish_tail=False)
+    called = {"n": 0}
+
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
+        called["n"] += 1
+        return True, "reconciled"
+
+    monkeypatch.setattr(design_terminal, "_reconcile_post_recovery_comment", fake_comment)  # pyright: ignore[reportPrivateUsage]
+    design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "approved"])
+    assert called["n"] == 0
+
+
+def test_failure_report_reconcile_failure_leaves_report_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_prior_failed_publish_tail_report(tmp_path, success=True)
+
+    def fake_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:  # noqa: ARG001  # pylint: disable=unused-argument
+        return False, "gh issue close failed"
+
+    monkeypatch.setattr(design_terminal, "_reconcile_post_recovery_comment", fake_comment)  # pyright: ignore[reportPrivateUsage]
+    rc, _ = design_lifecycle.failure_report_core(["--design-tmpdir", str(tmp_path.resolve()), "--outcome", "approved"])
+    assert rc == 0
+    reconcile_sentinel = tmp_path / "design-failure-reconcile-report.env"
+    assert reconcile_sentinel.is_file()
+    text = reconcile_sentinel.read_text(encoding="utf-8")
+    assert "STATUS=reconcile-failed" in text
+    assert "gh issue close failed" in text
+    execution_issues = tmp_path / "execution-issues.md"
+    assert execution_issues.is_file()
+    assert "reconcile failed" in execution_issues.read_text(encoding="utf-8")
+
+
 def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.MonkeyPatch | None = None) -> tuple[int, str, str]:
     if monkeypatch is not None:
         real_run_stall: Callable[..., int] = design_lifecycle._run_stall_main  # pyright: ignore[reportPrivateUsage, reportUnknownMemberType, reportUnknownVariableType]
@@ -6410,3 +6519,51 @@ def test_step_final_summary_deactivates_run_on_rendered_path(
 
     assert len(deactivate_calls) == 1
     assert deactivate_calls[0] == "terminal-run-9"
+
+
+def test_step5c_rc5_uses_current_attempt_progress_and_persists_tails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+
+    def fake_publish(_argv: list[str]) -> int:
+        attempt_id = os.environ[config.ENV_LARCH_DESIGN_PUBLISH_ATTEMPT_ID]
+        (design / config.DESIGN_PUBLISH_RESULT_FILE).write_text(
+            "\n".join(
+                [
+                    f"PUBLISH_ATTEMPT_ID={attempt_id}",
+                    "PUBLISH_RC_SOURCE=returned",
+                    "LATEST_PHASE=tracking-issue-rename",
+                    "PLAN_WRITE_OK=true",
+                    "PUBLISH_OK=false",
+                    "RENAMED=true",
+                    "LOG_PUBLISH_ATTEMPTED=false",
+                    "LOG_PUBLISH_COMPLETED=false",
+                    "DESIGNED_ADMISSION_READY=true",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        print("bounded stdout evidence")
+        print("nested failure", file=sys.stderr)
+        return 5
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    rc, _, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert rc == 1
+    state = (design / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    assert "PLAN_WRITE_OK=true" in state
+    assert "RENAMED=true" in state
+    assert "PUBLISH_RC_SOURCE=returned" in state
+    assert (design / config.DESIGN_PUBLISH_STDOUT_TAIL_FILE).read_text(encoding="utf-8")
+    assert "nested failure" in (design / config.DESIGN_PUBLISH_STDERR_TAIL_FILE).read_text(encoding="utf-8")
+    detail = (design / config.DESIGN_PUBLISH_FAILURE_DETAIL_FILE).read_text(encoding="utf-8")
+    assert "latest_phase=tracking-issue-rename" in detail
+    assert "plan_write_ok=true" in detail

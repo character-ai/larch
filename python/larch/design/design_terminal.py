@@ -20,7 +20,8 @@ from pathlib import Path
 from collections.abc import Callable, Iterable, Sequence
 
 from larch import io as larch_io
-from larch.core import config, logging_util
+from larch.core import config, logging_util, proc
+from larch.git import gh
 from larch.core.ctx import Ctx
 from larch.state import stall_recovery
 
@@ -278,6 +279,17 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     parser.add_argument("--root-cause-hint", default="")
     parser.add_argument("--summary-outcome", default="")
     parser.add_argument("--evidence-ref", default="")
+    parser.add_argument("--publish-attempt-id", default="")
+    parser.add_argument("--publish-rc-source", default="")
+    parser.add_argument("--latest-phase", default="")
+    parser.add_argument("--plan-write-ok", default="")
+    parser.add_argument("--publish-ok", default="")
+    parser.add_argument("--renamed", default="")
+    parser.add_argument("--log-publish-attempted", default="")
+    parser.add_argument("--log-publish-completed", default="")
+    parser.add_argument("--designed-admission-ready", default="")
+    parser.add_argument("--pr-url", default="")
+    parser.add_argument("--recovery-branch", default="")
     try:
         ns, extra = parser.parse_known_args(list(argv))
     except SystemExit:
@@ -357,6 +369,22 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             lines.append(f"ROOT_CAUSE_HINT={ns.root_cause_hint}")
         if ns.summary_outcome:
             lines.append(f"SUMMARY_OUTCOME={ns.summary_outcome}")
+        extras = {
+            "PUBLISH_ATTEMPT_ID": ns.publish_attempt_id,
+            "PUBLISH_RC_SOURCE": ns.publish_rc_source,
+            "LATEST_PHASE": ns.latest_phase,
+            "PLAN_WRITE_OK": ns.plan_write_ok,
+            "PUBLISH_OK": ns.publish_ok,
+            "RENAMED": ns.renamed,
+            "LOG_PUBLISH_ATTEMPTED": ns.log_publish_attempted,
+            "LOG_PUBLISH_COMPLETED": ns.log_publish_completed,
+            "DESIGNED_ADMISSION_READY": ns.designed_admission_ready,
+            "PR_URL": ns.pr_url,
+            "RECOVERY_BRANCH": ns.recovery_branch,
+        }
+        for key, value in extras.items():
+            if value:
+                lines.append(f"{key}={value}")
         lines.append(f"OCCURRED_AT={datetime.now(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}")
         if ns.evidence_ref:
             lines.append(f"EVIDENCE_REF={ns.evidence_ref}")
@@ -448,6 +476,194 @@ def _ledger_file_has_escalation_evidence(path: Path) -> bool:
     except OSError:
         return False
     return any(_ledger_row_has_escalation_evidence(row) for row in rows)
+
+
+_RECONCILE_PUBLISH_TAIL_MARKER = "<!-- larch-reconcile:failed-publish-tail -->"
+
+
+def _resolve_report_repo(*, url: str, fallback: str) -> str:
+    match = re.search(r"github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/issues/", url or "")
+    return match.group(1) if match else fallback
+
+
+def _salvage_success_proven(design_tmpdir: Path) -> bool:
+    """Return True only when local evidence proves the salvage completed.
+
+    Gates reconciliation on the current publish result env recording that the
+    plan wrote, the tracking issue was renamed to [DESIGNED], and the run log
+    published. Missing, stale, or unproven state returns False so the prior
+    report stays open for operator review instead of being mis-closed.
+    """
+    return _validated_salvage_publish_result(
+        design_tmpdir=design_tmpdir,
+        path=design_tmpdir / config.DESIGN_PUBLISH_RESULT_FILE,
+    ) is not None
+
+
+def _validated_publish_state(*, design_tmpdir: Path, path: Path) -> dict[str, str] | None:
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        resolved_root = design_tmpdir.resolve(strict=False)
+        resolved_path = path.resolve(strict=False)
+    except OSError:
+        return None
+    if resolved_path != resolved_root and resolved_root not in resolved_path.parents:
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    values: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        if not raw_line or raw_line.startswith("#"):
+            continue
+        if "=" not in raw_line:
+            return None
+        key, _, value = raw_line.partition("=")
+        if key in values:
+            return None
+        values[key] = value
+    return values
+
+
+def _validated_salvage_publish_result(*, design_tmpdir: Path, path: Path) -> dict[str, str] | None:
+    values = _validated_publish_state(design_tmpdir=design_tmpdir, path=path)
+    if values is None:
+        return None
+    if not re.fullmatch(r"[A-Za-z0-9._-]{8,128}", values.get("PUBLISH_ATTEMPT_ID", "")):
+        return None
+    if values.get("PUBLISH_RC_SOURCE") not in {"returned", "exception"}:
+        return None
+    if not (
+        values.get("PLAN_WRITE_OK") == "true"
+        and values.get("RENAMED") == "true"
+        and values.get("LOG_PUBLISH_COMPLETED") == "true"
+    ):
+        return None
+    return values
+
+
+def _reconcile_post_recovery_comment(*, design_tmpdir: Path, report_issue: str, repo: str) -> tuple[bool, str]:
+    """Post a marker-keyed recovery comment and close the prior report issue.
+
+    Returns (ok, detail). Kept as one seam so tests can fake the GitHub mutation
+    without exercising ``gh``. The comment body uses only fixed safe tokens and
+    is still run through the redaction filter before egress.
+    """
+    plugin_root = Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
+    body = design_tmpdir / "design-failure-reconcile-comment.body.md"
+    redacted = design_tmpdir / "design-failure-reconcile-comment.redacted.md"
+    body.write_text(
+        f"{_RECONCILE_PUBLISH_TAIL_MARKER}\n\n"
+        "The /design run that filed this terminal report later completed its "
+        "remaining publish work: the plan was published, the tracking issue was "
+        "renamed to [DESIGNED], and the run log was published. Closing this "
+        "auto-filed report as recovered.\n",
+        encoding="utf-8",
+    )
+    redact_cmd = ["python3", str(plugin_root / "python" / "cli.py"), "redact", "secrets"]
+    try:
+        with body.open("rb") as stdin, redacted.open("wb") as stdout:
+            redact_rc = subprocess.run(redact_cmd, stdin=stdin, stdout=stdout, stderr=subprocess.PIPE, check=False).returncode  # lint-subprocess-via-runner: ok redact-cli pipes stdin/stdout to open file handles
+    except OSError as exc:
+        return False, f"redact-secrets failed: {exc}"
+    if redact_rc != 0 or not redacted.is_file() or redacted.stat().st_size == 0:
+        return False, "redact-secrets failed"
+    comment_sent = design_tmpdir / "design-failure-reconcile-comment.sent"
+    if not comment_sent.is_file():
+        runner = proc.ProcRunner()
+        body_text = redacted.read_text(encoding="utf-8", errors="replace")
+        comment_result = gh.issue_comment(runner, report_issue, body_text, repo=repo)
+        comment_rc = comment_result.returncode
+        if comment_rc != 0:
+            return False, "gh issue comment failed"
+        comment_sent.touch()
+    close_argv = ["gh", "issue", "close", report_issue]
+    if repo:
+        close_argv.extend(["--repo", repo])
+    close_result = proc.run(
+        close_argv,
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+    close_rc = close_result.returncode
+    if close_rc != 0:
+        return False, "gh issue close failed"
+    view_argv = ["gh", "issue", "view", report_issue, "--json", "state"]
+    if repo:
+        view_argv.extend(["--repo", repo])
+    view = proc.run(
+        view_argv,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if view.returncode != 0 or '"CLOSED"' not in (view.stdout or ""):
+        return False, "gh issue close verification failed"
+    comment_sent.unlink(missing_ok=True)
+    return True, "reconciled"
+
+
+def _reconcile_failed_publish_tail_report(
+    *, design_tmpdir: Path, terminal_sentinel: Path, outcome: str, repo: str,
+) -> bool:
+    """Reconcile a prior failed-publish-tail terminal report after a salvage.
+
+    Runs only on an approved outcome when a prior failed-publish-tail report was
+    newly filed from the same DESIGN_TMPDIR and validated local evidence proves
+    the salvage completed. Marker-keyed and idempotent via a durable sentinel.
+    On any failure the report stays open and a bounded execution issue records
+    the reason. Returns True when a reconciliation action was taken this call so
+    the caller stops normal reporting; False to fall through to normal handling.
+    """
+    if outcome not in {"approved", "approved-partition"}:
+        return False
+    if not terminal_sentinel.is_file():
+        return False
+    reconcile_sentinel = design_tmpdir / "design-failure-reconcile-report.env"
+    if _read_env_value(path=reconcile_sentinel, key="STATUS", default="") == "reconciled":
+        return False
+    if _read_env_value(path=terminal_sentinel, key="STALL_RECOVERY_REPORT_STATUS", default="") != "filed":
+        return False
+    report_issue = _read_env_value(path=terminal_sentinel, key="STALL_RECOVERY_REPORT_ISSUE_NUMBER", default="")
+    if not (report_issue and report_issue.isdigit()):
+        return False
+    terminal_state = design_tmpdir / "design-failure-terminal-state.env"
+    terminal_values = _validated_publish_state(design_tmpdir=design_tmpdir, path=terminal_state)
+    if terminal_values is None or (
+        terminal_values.get("TRIGGER") != "publish-tail-failed"
+        and terminal_values.get("FAILURE_OUTCOME") != "failed-publish-tail"
+    ):
+        return False
+    if not _salvage_success_proven(design_tmpdir):
+        return False
+    plugin_root = Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
+    report_repo = _resolve_report_repo(
+        url=_read_env_value(path=terminal_sentinel, key="STALL_RECOVERY_REPORT_ISSUE_URL", default=""),
+        fallback=repo,
+    )
+    ok, detail = _reconcile_post_recovery_comment(design_tmpdir=design_tmpdir, report_issue=report_issue, repo=report_repo)
+    status = "reconciled" if ok else "reconcile-failed"
+    reconcile_sentinel.write_text(
+        f"DESIGN_FAILURE_RECONCILE_REPORT=true\nSTATUS={status}\nREPORT_ISSUE={report_issue}\n{detail}\n",
+        encoding="utf-8",
+    )
+    if ok:
+        logging_util.emit_kv(key="DESIGN_FAILURE_RECONCILE_STATUS", value="reconciled")
+        logging_util.emit_kv(key="DESIGN_FAILURE_RECONCILE_REPORT_ISSUE", value=report_issue)
+        _core_diagnostic(f"**\N{INFORMATION SOURCE} /design: reconciled prior failed-publish-tail report #{report_issue} after salvage.**")
+    else:
+        audit = design_tmpdir / "design-failure-reconcile-audit.log"
+        audit.write_text(detail + "\n", encoding="utf-8")
+        _append_failure(
+            plugin_root=plugin_root, design_tmpdir=design_tmpdir,
+            site="design failure reconcile", tool="gh issue", exit_code=1,
+            category="Warnings", output_file=audit,
+        )
+        _append_execution_issue(
+            design_tmpdir=design_tmpdir,
+            message=f"failed-publish-tail report #{report_issue} reconcile failed: {detail}; left open for operator review",
+        )
+        _core_diagnostic(f"**⚠ /design: failed-publish-tail report #{report_issue} reconcile failed ({detail}); left open.**")
+    return True
 
 
 def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
@@ -756,6 +972,8 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             return
         write_fallback_chat("compose-status-missing" if not status else f"compose-status-{status}")
 
+    if _reconcile_failed_publish_tail_report(design_tmpdir=design_tmpdir, terminal_sentinel=terminal_sentinel, outcome=outcome, repo=ns.repo):
+        return 0, []
     if terminal_sentinel.exists():
         _emit_skip("terminal-sentinel-present")
         return 0, []

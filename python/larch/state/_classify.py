@@ -341,14 +341,35 @@ def _classify_generic_from_terminal_state(*, args: argparse.Namespace, tmpdir: P
     )
     if not detail_log_valid:
         evidence = _read_optional_evidence(state_file)
-    klass, _hint, pattern = _classify_text(
-        text=evidence,
-        bail=bail_reason,
-        step=stall_step,
-        detail_log_valid=detail_log_valid,
-        exit_code=exit_code,
+    current_publish_tail = (
+        found.get("TRIGGER") == "publish-tail-failed"
+        and exit_code == "5"
+        and bool(found.get("PUBLISH_ATTEMPT_ID"))
+        and found.get("PUBLISH_RC_SOURCE") in {"returned", "exception"}
     )
-    resume_hint = "none"
+    if current_publish_tail and found.get("PLAN_WRITE_OK") == "true":
+        klass = "recoverable"
+        pattern = config.DESIGN_PUBLISH_CLASSIFIER_PATTERN
+        resume_hint = config.DESIGN_PUBLISH_RESUME_HINT
+    else:
+        klass, _hint, pattern = _classify_text(
+            text=evidence,
+            bail=bail_reason,
+            step=stall_step,
+            detail_log_valid=detail_log_valid,
+            exit_code=exit_code,
+        )
+        resume_hint = "none"
+    publish_progress: dict[str, str] = {}
+    if current_publish_tail:
+        for _progress_key in (
+            "LATEST_PHASE", "PUBLISH_RC_SOURCE", "PLAN_WRITE_OK", "PUBLISH_OK",
+            "RENAMED", "LOG_PUBLISH_ATTEMPTED", "LOG_PUBLISH_COMPLETED",
+            "PR_URL", "RECOVERY_BRANCH",
+        ):
+            _progress_value = found.get(_progress_key, "")
+            if _progress_value:
+                publish_progress[_progress_key] = _progress_value
     evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
     skill_label = _report_skill_label(profile="generic", prefix=prefix)
     signature = hashlib.sha256(
@@ -378,6 +399,7 @@ def _classify_generic_from_terminal_state(*, args: argparse.Namespace, tmpdir: P
         "EXIT_CODE": exit_code,
         "MATCHED_CLASSIFIER_PATTERN": _safe_matched_pattern_value(pattern),
         "DISPATCHER": _render_safe_source_script_value(source_script, generic=True),
+        **publish_progress,
     }
     classification_file = _artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_CLASSIFICATION_FILE, prefix=prefix)
     for key, value in values.items():
