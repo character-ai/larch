@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly requires preserving identity in each child terminal merge envelope, so this is already covered.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Pre-start merge seeding supplies the live identity, and a lookup-order refinement is not necessary to deliver the anchored stale-result fix.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior-round OOS observation.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan seeds merge identity before job start, so an early live window lacks the stated concrete trigger.

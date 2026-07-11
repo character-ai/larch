@@ -1,0 +1,175 @@
+## Plan
+
+confidence: high
+
+## Approach
+
+Add a checks-input identity that covers both committed and uncommitted repository state. Persist it with each checks bgjob result. Validate it before rejoining any live or completed job.
+
+The identity will contain:
+
+- The current `HEAD` SHA.
+- A deterministic fingerprint of the index, tracked worktree changes, untracked paths, and untracked file contents.
+- A version marker so the fingerprint grammar can evolve without accepting an older shape.
+
+Resolve the repository from persisted `REPO_ROOT`, not the launcher's current directory. After validating that root, explicitly propagate it to each child checks process through its immutable launch environment and execution directory so identity computation and checks execution use the same repository.
+
+Update both checks launchers—`run-step-checks.sh` for Step 3 and Step 5 self-review, and `step-6-entry.sh` for production Step 6—to:
+
+1. Compute the live identity before inspecting bgjob state.
+2. Seed the merge-result env with that identity before starting the child.
+3. Preserve the identity when the child publishes its terminal merge envelope.
+4. Rejoin a live registry row only when its seeded identity matches the live repository.
+5. Rejoin a completed result only when `STEP`, `BGJOB_RC`, a recognized terminal `NEXT_ACTION`, and both identity fields match.
+6. Clear a stale completed result and launch fresh checks.
+7. Fail closed on a live identity mismatch. Do not start a competing checks job.
+8. Keep the existing symlink and non-regular-file refusals.
+
+Use explicit terminal-action sets rather than truthiness. The shared set will include the union required by the checks wrappers: `continue`, `stall`, `checks-failed`, and Step 6’s `skip-to-7a`. An unchanged failed result may be rejoined, but any repository drift forces a new checks run.
+
+Step 6 retains its existing change gate and `--force-checks true` behavior. Its independent live and completed rejoin branches receive the same identity-aware contract; `--force-checks true` bypasses only the change gate, not identity validation.
+
+## Files to modify/create
+
+### NEW: python/larch/implement/checks_result_identity.py
+
+- Add a frozen identity type for checks launch inputs.
+- Compute `HEAD` and the working-tree fingerprint through the injected runner.
+- Include binary unstaged and staged diffs plus untracked path and content hashes.
+- Reject unresolved, symlinked, non-regular, or non-repository roots.
+- Fail closed when a Git command or required file read fails.
+- Parse checks result and merge env files through `larch.io` policy helpers.
+- Classify envelopes as matching, stale, incomplete, or unsafe.
+- Require exact identity fields and an explicit terminal `NEXT_ACTION` value for completed-result reuse.
+- Accept a caller-provided or shared terminal-action set so every production wrapper validates its supported terminal routes consistently.
+
+### UPDATED: python/larch/core/config.py
+
+- Define the checks identity KV names, fingerprint schema marker, and recognized checks terminal-action set once.
+- Include `skip-to-7a` in the shared set used by the Step 6 production launcher.
+- Keep these wire literals shared by the identity helper, launcher integrations, and tests.
+
+### UPDATED: skills/implement/scripts/run-step-checks.sh
+
+- Replace the current truthy-`NEXT_ACTION` completion test and retired inline result classifier with the shared identity classifier.
+- Resolve `REPO_ROOT` from `session-env.sh`, validate it, and compute the launch identity before live or completed rejoin decisions.
+- Seed the merge-result env with the identity before `bgjob start`.
+- Pass the validated `REPO_ROOT` and immutable launch identity into child mode, set the child execution directory to that root, and ensure the child uses that same root rather than inherited cwd or unrelated `CLAUDE_PROJECT_DIR`.
+- Include the immutable identity in the child’s final merge-result envelope.
+- For a matching live row, retain the zero-duration `bgjob wait` rejoin.
+- For a live row with missing or mismatched identity, emit a specific error and exit without deleting state or launching a duplicate.
+- For a stale completed result with no live row, safely remove the result and merge envs, verify cleanup, then follow the existing fresh-launch path.
+- Preserve current Step 3 and Step 5 step slugs, budgets, foreground `BGJOB_STATUS=STARTED` grammar, and Bash 3.2 compatibility.
+
+### UPDATED: skills/implement/scripts/step-6-entry.sh
+
+- Apply the shared identity classifier to both production Step 6 rejoin paths for `implement-step6-checks`; do not rely on `run-step-checks.sh --site step6` as coverage for this launcher.
+- Resolve and validate `REPO_ROOT` from `session-env.sh`, compute the live identity before inspecting live or completed Step 6 state, and use that root for child execution.
+- Seed the Step 6 merge-result env with the launch identity before starting checks, explicitly propagate the validated root and immutable identity into child checks, and preserve both fields in the terminal merge envelope.
+- Rejoin matching live and completed Step 6 results only when the persisted identity, required envelope fields, and a recognized Step 6 terminal action match.
+- Preserve valid `NEXT_ACTION=skip-to-7a` rejoin and routing behavior.
+- Fail closed on a live identity mismatch without deleting active state or launching a duplicate.
+- Safely clear completed stale Step 6 result and merge env state, verify cleanup, then use the existing fresh-launch path.
+- Preserve Step 6’s current change gate and `--force-checks true` semantics; force mode bypasses its change gate but still uses identity-aware rejoin decisions.
+
+### UPDATED: skills/implement/scripts/run-step-checks.md
+
+- Document the persisted identity fields, fingerprint coverage, and validated-root child execution contract.
+- State the live-row mismatch fail-closed behavior.
+- Clarify that matching failed results may rejoin, while any committed, staged, unstaged, or untracked input drift triggers fresh checks.
+- Name Step 3 and Step 5 self-review as consumers of this launcher contract.
+
+### UPDATED: skills/implement/scripts/step-6-entry.md
+
+- Document Step 6’s independent identity-aware live and completed rejoin contract.
+- Specify that `skip-to-7a` remains a recognized completed terminal action when the identity matches.
+- Clarify that `--force-checks true` bypasses the Step 6 change gate only and does not permit stale-result reuse.
+- Document validated `REPO_ROOT` propagation to the child checks process.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Replace assertions for the retired inline `step_checks_result_env_state` classifier with assertions for shared identity-classifier integration.
+- Pin identity-bearing merge-envelope seeding and validated-root propagation in `run-step-checks.sh`.
+- Add corresponding structural assertions for `step-6-entry.sh`, including its production live and completed rejoin handling.
+- Preserve existing launcher, budget, and continuation-contract assertions that remain valid.
+
+### NEW: python/tests/implement/test_checks_result_identity.py
+
+- Test deterministic identity generation for an unchanged repository.
+- Verify identity changes after:
+  - a new commit,
+  - staged changes,
+  - unstaged changes,
+  - an untracked file addition,
+  - untracked content changes,
+  - untracked deletion.
+- Test result classification for matching and mismatched step, return code, action, `HEAD`, fingerprint schema marker, and tree fingerprint.
+- Test all recognized actions, including Step 6 `skip-to-7a`.
+- Test unknown or missing `NEXT_ACTION` values as incomplete rather than reusable.
+- Test duplicate keys, malformed values, symlinks, non-regular files, failed Git commands, and unreadable untracked inputs.
+- Verify root validation and child-launch inputs bind the same resolved repository root.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Extend existing launcher structure assertions to pin shared identity-helper integration, identity-bearing merge envelopes, and explicit validated-root propagation to child checks.
+- Keep the existing budget, step-slug, and zero-duration wait assertions intact.
+- Assert neither launcher treats arbitrary non-empty `NEXT_ACTION` values as complete.
+- Assert Step 6 preserves `skip-to-7a` as a recognized identity-valid terminal result.
+
+### UPDATED: python/tests/implement/test_run_step_checks.py
+
+- Add subprocess regressions for `run-step-checks.sh` Step 3 and Step 5 self-review showing an old `NEXT_ACTION=checks-failed` result starts a fresh bgjob after committed, staged, unstaged, and untracked repository drift.
+- Cover matching completed rejoin, matching live rejoin, and active identity mismatch without duplicate launch.
+- Verify the child receives and executes against the persisted validated repository root rather than an inherited alternate cwd.
+
+### UPDATED: python/tests/implement/test_step_6_entry.py
+
+- Add subprocess regressions against production `step-6-entry.sh`, not only `run-step-checks.sh --site step6`.
+- Cover stale `implement-step6-checks` failed-result replacement after committed, staged, unstaged, and untracked drift.
+- Cover matching completed and live rejoin, active identity mismatch without duplicate launch, and stale completed-state cleanup before relaunch.
+- Exercise both normal Step 6 entry and repair re-entry with `--force-checks true`.
+- Verify identity-valid `NEXT_ACTION=skip-to-7a` rejoins and preserves its existing routing behavior.
+- Verify Step 6 child checks receive the validated persisted repository root.
+
+## Edge cases
+
+- A repair edits files without moving `HEAD`.
+- A repair stages changes but does not commit them.
+- An untracked file keeps the same path but changes contents.
+- The repository changes while a checks bgjob is still live.
+- A legacy result env lacks identity fields.
+- A result contains a valid identity but an unknown terminal action.
+- A valid Step 6 result contains `NEXT_ACTION=skip-to-7a`.
+- The result or merge env is a symlink, directory, or malformed KV file.
+- Git cannot resolve `HEAD`, inspect the index, or read an untracked entry.
+- The launcher’s inherited cwd or `CLAUDE_PROJECT_DIR` differs from persisted `REPO_ROOT`.
+- A dead registry row remains beside a stale result.
+
+## Failure modes
+
+- Treat identity computation or persisted-root validation failure as a launcher error. Never reuse a result without proven input identity.
+- Treat unsafe persisted files as hard errors rather than deleting them.
+- Treat an active identity mismatch as an integrity error. Preserve the live job state for diagnosis and avoid a second runner.
+- Treat missing or malformed identity on a completed, non-live result as stale. Safely clear it before relaunch.
+- Treat an unsupported terminal action as incomplete rather than reusable.
+- Preserve the existing bgjob wait and terminal-envelope behavior for identity-valid jobs.
+
+## Testing strategy
+
+Run targeted tests only:
+
+- `python3 -m pytest python/tests/implement/test_checks_result_identity.py`
+- `python3 -m pytest python/tests/implement/test_implement_dispatch.py`
+- `python3 -m pytest python/tests/implement/test_run_step_checks.py`
+- `python3 -m pytest python/tests/implement/test_step_6_entry.py`
+- Run targeted Ruff, Pyright, and Pylint checks for the changed Python files.
+- Run `bash -n skills/implement/scripts/run-step-checks.sh skills/implement/scripts/step-6-entry.sh`.
+- Run ShellCheck and the Bash 3.2 compatibility check against both changed shell launchers.
+- Run `bash scripts/test-implement-structure.sh`.
+- Run `bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` to confirm the existing caller and continuation contract remains intact.
+
+difficulty: MODERATE
+diff_added: 475
+diff_deleted: 95
+mechanical_churn: false
+diff_lines: 570

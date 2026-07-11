@@ -1,0 +1,50 @@
+## Summary
+
+`run-step-checks.sh` treats a previously-completed checks result as fresh and rejoinable whenever `STEP` matches, `BGJOB_RC=0`, and any `NEXT_ACTION` is present, regardless of the `NEXT_ACTION` value. A failed checks run writes `BGJOB_RC=0` (the wrapper itself succeeded) with `NEXT_ACTION=checks-failed`, so a later `run-step-checks.sh` invocation after a repair returns the stale pre-fix failed result instead of re-running the checks against the fixed tree. This is an I-Stale-1 violation (persisted step result consumed against the wrong inputs).
+
+## Original report
+
+During `/implement` Step 3, the relevant-checks bgjob failed (`agent-lint` orphaned-skill-files). A repair-loop commit fixed the tree. Re-running `run-step-checks.sh --site step3` returned `BGJOB_STATUS=DONE` immediately with the OLD `STATUS=fail` / `NEXT_ACTION=checks-failed` envelope and the OLD redacted log, instead of `BGJOB_STATUS=STARTED`. The result-env and redacted-log mtimes predated the fix commit, confirming no fresh run occurred. The operator had to delete the stale `implement-step3-checks.result.env` to force a fresh launch.
+
+## Reproduction scenario
+
+1. Run Step 3 checks; they fail (e.g. a lint error), writing `implement-step3-checks.result.env` with `STEP=implement-step3-checks`, `BGJOB_RC=0`, `NEXT_ACTION=checks-failed`.
+2. Repair the tree (lint-fix commit).
+3. Re-run `skills/implement/scripts/run-step-checks.sh --site step3 --commit-site step4 --rebase-checkpoint-4r`.
+4. Observe: the wrapper returns `BGJOB_STATUS=DONE` with the stale failed envelope, not `BGJOB_STATUS=STARTED`. No fresh checks run.
+
+## Expected behavior
+
+After the tree changes (repair commit, rebase, or any HEAD movement), re-running the checks launcher should run a fresh checks pass against the current tree, not return a cached failed result.
+
+## Observed behavior
+
+The wrapper returns the stale completed result and never re-runs. The run appears permanently stuck on the old failure until the result env is manually removed.
+
+## Root cause analysis
+
+`step_checks_result_env_state` classifies a result env as `complete` (and thus rejoinable) when `STEP` matches, `BGJOB_RC=0`, and `NEXT_ACTION` is present, without inspecting the `NEXT_ACTION` value and without any input identity (HEAD SHA, diff fingerprint, or tree mtime). A failed checks run satisfies all three, so the completed-rejoin branch (lines 222-225) returns the stale result via `bgjob wait --max-wait-s 0`. The wrapper never fingerprint-validates the persisted result against live inputs, unlike the assessment adapter's identity contract.
+
+## Evidence
+
+- `skills/implement/scripts/run-step-checks.sh:90-118` (`step_checks_result_env_state`): emits `complete` when `rows.get("STEP") == step and rows.get("BGJOB_RC") == "0" and rows.get("NEXT_ACTION")`. `NEXT_ACTION=checks-failed` satisfies `rows.get("NEXT_ACTION")`.
+- `skills/implement/scripts/run-step-checks.sh:222-225`: when `result_env_state == complete`, it rejoins via `bgjob wait --max-wait-s 0` and returns, skipping the fresh-launch path at line 226+.
+- Real run: after the Step 3 repair commit, `run-step-checks.sh` returned `BGJOB_STATUS=DONE STATUS=fail NEXT_ACTION=checks-failed`; `implement-step3-checks.result.env` and `step3-1.redacted.log` mtimes predated the fix commit. Deleting the result env forced `BGJOB_STATUS=STARTED` and the fresh run passed.
+
+## Affected files
+
+- `skills/implement/scripts/run-step-checks.sh` - the classifier and completed-rejoin branch that need input-identity validation.
+- The same wrapper shape backs Step 6 (`implement-step6-checks`) and Step 5 resume, so the fix should be evaluated for those re-entry points too.
+
+## Suggested fix(es)
+
+- Add input identity to the checks result env (HEAD sha and/or a diff fingerprint at run time) and validate it on re-entry; on mismatch, fall through to the fresh-launch path (clear the stale result first).
+- Minimally, treat `NEXT_ACTION=checks-failed` (and any non-success terminal action) as NOT `complete` for rejoin purposes, so a failed result is never silently reused.
+- Mirror the identity/rejoin contract used by the Step 8 assessment adapter (covered fingerprint + requested-inputs match), per I-Stale-1.
+
+## Open questions
+
+- Should the rejoin identity be HEAD-only, or also include a diff fingerprint to catch same-HEAD tree changes (e.g. untracked additions)?
+- Does Step 6 (`--force-checks true`) already sidestep this, or does it share the stale-result hazard?
+
+Related: this is the `/implement` Step 3 sibling of the `/design` stale-bgjob-rejoin bug fixed in #6633, and an I-Stale-1 sibling of the coverage-baseline bug #6875. Co-occurred in the same ship run as #6880 and the note-classifier false positive.
