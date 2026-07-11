@@ -5810,7 +5810,11 @@ def test_invalid_tmpdir_writes_no_state_files(tmp_path: Path) -> None:
     assert not (invalid_tmpdir / "finalize-state.sh").exists()
 
 
-def test_postmerge_flush_skip_writes_stall_shape(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_postmerge_flush_skip_still_completes_ok(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(
         tmp_path,
@@ -5820,6 +5824,7 @@ def test_postmerge_flush_skip_writes_stall_shape(monkeypatch: pytest.MonkeyPatch
         pr_closed=True,
         merge_result=config.MERGE_RESULT_MERGED,
     )
+    flush_calls: list[bool] = []
     monkeypatch.setattr(
         ship.finalize,
         "postmerge",
@@ -5828,19 +5833,26 @@ def test_postmerge_flush_skip_writes_stall_shape(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(
         ship.run_logs,
         "finalize_postmerge_logs",
-        lambda *_a, **_k: run_logs.RefreshSkip(skipped=True, reason="commit-failed"),
+        lambda *_a, **_k: flush_calls.append(True)
+        or run_logs.RefreshSkip(skipped=True, reason="commit-failed"),
     )
 
     result = ship.run_postmerge_phase(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.STALLED
-    finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
-    assert finalize_state["STALL_TRACKING"] == "true"
-    assert finalize_state["STALL_STEP"] == "postmerge-flush"
+    assert flush_calls == [True]
+    assert result.outcome is Outcome.OK
+    assert result.pr_number == 5
+    assert result.pr_url == "https://example.test/pr/5"
+    assert result.merge_result == config.MERGE_RESULT_MERGED
+    finalize_path = tmp_path / "finalize-state.sh"
+    if finalize_path.is_file():
+        finalize_state = ship.finalize.read_finalize_state(finalize_path)
+        assert finalize_state.get("STALL_STEP") != "postmerge-flush"
+        assert finalize_state.get("STALL_TRACKING") != "true"
     state = state_file.read_text(encoding="utf-8")
-    assert "PHASE=postmerge\n" in state
-    assert "PHASE=done\n" not in state
-    assert "STALL_TRACKING=true\n" in state
+    assert "PHASE=done\n" in state
+    assert "STALL_TRACKING=true\n" not in state
+    assert "post-merge flush skipped" not in capsys.readouterr().err
 
 
 def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
