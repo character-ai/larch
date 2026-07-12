@@ -283,7 +283,7 @@ def test_session_env_resolver_rejects_untrusted_symlink_sources(
     expected.symlink_to(target)
     unexpected = tmp_path / "current-design-env-456.sh"
     unexpected.symlink_to(target)
-    monkeypatch.setattr(cli.session_env, "_design_symlink_path", lambda pid: tmp_path / f"current-design-env-{pid}.sh")
+    monkeypatch.setattr(cli.session_env, "_design_symlink_path", lambda pid: tmp_path / f"current-design-env-{pid}.sh")  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     source = expected if source_kind == "wrong-pid" else unexpected
     owner_pid = "456" if source_kind == "wrong-pid" else "123"
 
@@ -428,7 +428,7 @@ def test_fresh_launch_failure_preserves_completion_marker(
     marker = tmp_path / ".completed" / "step-3"
     marker.parent.mkdir()
     marker.touch()
-    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: 2)
+    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: 2)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     with pytest.raises(adapt.AdaptError, match="daemon-start-failed"):
         _ = adapt.start_or_reattach(
@@ -473,7 +473,7 @@ def test_live_job_preserves_completion_marker_without_launch(
     _ = registry.write_entry(_entry(spec))
     monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
     monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(_verdict(live=True)))
-    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: pytest.fail("live job must reattach"))
+    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: pytest.fail("live job must reattach"))  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     assert adapt.start_or_reattach(
         spec,
