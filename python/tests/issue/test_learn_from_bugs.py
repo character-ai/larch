@@ -146,6 +146,13 @@ def test_diagnostic_prefix_uses_shared_marker_recognizer() -> None:
     assert prefix == "## Summary\n\nKeep this.\n\n"
     assert "Drop this." not in prefix
 
+    crlf_body = (
+        "## Summary\r\n\r\nKeep this.\r\n\r\n"
+        "  <!--   larch:plan:start   -->  \r\n"
+        "## Plan\r\nDrop this.\r\n"
+    )
+    assert learn_from_bugs.diagnostic_prefix(crlf_body) == "## Summary\r\n\r\nKeep this.\r\n\r\n"
+
     # Case/partial/split forms must not act as marker boundaries; omit heading
     # fallbacks from these bodies so only the shared recognizer is under test.
     case_variant = "## Summary\n\nKeep.\n\n<!-- LARCH:PLAN:START -->\nDrop if matched.\n"

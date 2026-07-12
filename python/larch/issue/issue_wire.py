@@ -60,7 +60,7 @@ def named_block_marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
     callers ``.search()`` a full issue body.
     """
     return re.compile(
-        rf"^[ \t]*<!--[ \t]+larch:{re.escape(marker)}:{kind}[ \t]+-->[ \t]*$",
+        rf"^[ \t]*<!--[ \t]+larch:{re.escape(marker)}:{kind}[ \t]+-->[ \t]*\r?$",
         re.MULTILINE,
     )
 

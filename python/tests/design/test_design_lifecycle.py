@@ -328,6 +328,7 @@ def test_design_route_empty_valid_plan_block_is_already_planned(tmp_path: Path) 
         "x\n<!-- larch:plan:start -->\nplan only\n",
         "x\n<!-- larch:plan:\nstart -->\nplan\n<!-- larch:plan:end -->\n",
         "x\n<!-- larch:plan:end -->\nplan\n<!-- larch:plan:start -->\n",
+        "x\n<!-- larch:plan:start -->\nfirst\n<!-- larch:plan:end -->\n<!-- larch:plan:start -->\nsecond\n<!-- larch:plan:end -->\n",
         "x\n<!-- LARCH:PLAN:START -->\nplan\n<!-- LARCH:PLAN:END -->\n",
         "x\nsee <!-- larch:plan:start --> in prose\nand <!-- larch:plan:end --> too\n",
     ],
