@@ -1,4 +1,4 @@
-"""Complete port of scripts/test-review-structure.sh."""
+"""Complete port of test-review-structure.sh."""
 from __future__ import annotations
 
 import re
