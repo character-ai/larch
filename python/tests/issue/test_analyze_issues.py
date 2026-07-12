@@ -76,13 +76,39 @@ def test_analyze_rich_fixture_pins_categories_duplicates_and_reviewers(tmp_path:
 
 
 def test_fetch_writes_private_output(monkeypatch, tmp_path: Path) -> None:
-    def fake_issue_list(_runner, **_kwargs):
+    calls: list[dict[str, object]] = []
+
+    def fake_issue_list(_runner, **kwargs):
+        calls.append(kwargs)
         return []
 
     monkeypatch.setattr(analyze_issues.gh, "issue_list_read", fake_issue_list)
     output = tmp_path / "issues.json"
     assert analyze_issues.fetch_main(["--repo", "o/r", "--limit", "10", "--output", str(output)]) == 0
     assert output.stat().st_mode & 0o777 == 0o600
+    assert calls == [{
+        "repo": "o/r",
+        "state": "all",
+        "fields": (
+            "number", "title", "state", "createdAt", "closedAt", "body", "labels",
+            "closedByPullRequestsReferences", "url", "stateReason",
+        ),
+        "limit": 10,
+    }]
+
+
+def test_write_issue_dump_cleans_temporary_file_when_replace_fails(monkeypatch, tmp_path: Path) -> None:
+    output = tmp_path / "issues.json"
+
+    def fail_replace(_source: Path, _target: Path) -> None:
+        raise OSError("replace failed")
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    with pytest.raises(OSError, match="replace failed"):
+        analyze_issues._write_issue_dump(path=output, text="[]")
+
+    assert not list(tmp_path.glob("issues.json.tmp.*"))
 
 
 def test_load_issues_duplicate_first_wins_and_warns(tmp_path: Path, capsys) -> None:

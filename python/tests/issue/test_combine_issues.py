@@ -16,7 +16,10 @@ from larch.core.proc import CommandResult
 class Runner:
     def __init__(self, stdout: str):
         self.stdout = stdout
+        self.calls: list[list[str]] = []
+
     def run(self, argv, **_kwargs):
+        self.calls.append(list(argv))
         if argv[:3] == ["gh", "issue", "list"]:
             return CommandResult(tuple(argv), 0, self.stdout, "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
@@ -31,8 +34,13 @@ def test_fetch_filters_busy_titles(monkeypatch, capsys):
         {"number":5,"title":"[LOCKED] not now"},
         {"number":6,"title":"[LOCKED]Do not combine"},
     ]
-    monkeypatch.setattr(combine_issues.proc, "run", Runner(json.dumps(issues)).run)
+    runner = Runner(json.dumps(issues))
+    monkeypatch.setattr(combine_issues.proc, "run", runner.run)
     assert combine_issues.fetch_main(["--repo", "o/r"]) == 0
+    assert runner.calls == [[
+        "gh", "issue", "list", "--repo", "o/r", "--state", "open", "--json",
+        "number,title,body,labels", "--limit", "200",
+    ]]
     out = dict(line.split("=",1) for line in capsys.readouterr().out.splitlines())
     assert out["COUNT"] == "2"
     issues_file = Path(out["ISSUES_FILE"])

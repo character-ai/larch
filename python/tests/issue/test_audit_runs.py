@@ -269,6 +269,11 @@ def test_bugs_backlog_nudge_uses_scan_started_at_when_present(
     monkeypatch.setattr(audit_runs.proc, "run", fake_run)
 
     assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert calls[0] == [
+        "gh", "issue", "list", "--repo", "o/r", "--state", "closed", "--json",
+        "number,title,closedAt", "--search", "[BUG] in:title closed:>2026-07-09T01:00:00Z",
+        "--limit", "100000",
+    ]
     assert any("closed:>2026-07-09T01:00:00Z" in token for token in calls[0])
 
 

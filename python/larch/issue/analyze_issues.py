@@ -222,10 +222,13 @@ def _write_issue_dump( *,path: Path, text: str, degraded_fields: Sequence[str] =
         except json.JSONDecodeError:
             payload = text
     tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
-    tmp.write_text(payload, encoding="utf-8")
-    tmp.chmod(0o600)
-    tmp.replace(path)
-    path.chmod(0o600)
+    try:
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.chmod(0o600)
+        tmp.replace(path)
+        path.chmod(0o600)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def fetch_main(argv: Sequence[str] | None = None) -> int:
