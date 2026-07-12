@@ -2162,3 +2162,60 @@ def test_build_analyze_report_includes_high_risk_oos_backlog(tmp_path: Path) -> 
 
     assert "## High-risk OOS Backlog" in text
     assert "#9" in text
+
+
+def test_ground_truth_metadata_helpers_preserve_policies(tmp_path: Path) -> None:
+    from larch.issue import _ground_truth as gt
+
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(json.dumps({"updated_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
+    (run / "run-manifest.json").write_text(
+        json.dumps({"started_at": "2026-03-01T00:00:00Z", "larch_version": "9.9.9"}),
+        encoding="utf-8",
+    )
+    assert gt._ground_truth_run_started_at(run) is not None
+    assert gt._ground_truth_run_started_at(run).isoformat().startswith("2026-02-01")
+    assert gt._ground_truth_run_started_at_strict(run).isoformat().startswith("2026-03-01")
+    assert gt._ground_truth_run_larch_version(run) == "9.9.9"
+
+    ended_run = tmp_path / "ended"
+    ended_run.mkdir()
+    (ended_run / "manifest.json").write_text(json.dumps({}), encoding="utf-8")
+    (ended_run / "run-manifest.json").write_text(
+        json.dumps({"ended_at": "2026-03-02T00:00:00Z", "updated_at": "2026-03-03T00:00:00Z"}),
+        encoding="utf-8",
+    )
+    assert gt._ground_truth_run_ended_at(ended_run).isoformat().startswith("2026-03-02")
+
+    empty_pref = tmp_path / "empty-pref"
+    empty_pref.mkdir()
+    (empty_pref / "manifest.json").write_text(json.dumps({"started_at": ""}), encoding="utf-8")
+    (empty_pref / "run-manifest.json").write_text(json.dumps({"started_at": "2026-04-01T00:00:00Z"}), encoding="utf-8")
+    assert gt._ground_truth_run_started_at_strict(empty_pref).isoformat().startswith("2026-04-01")
+
+
+def test_ground_truth_gc_slimmed_fallback_skips_symlinks(tmp_path: Path) -> None:
+    from larch.issue import _ground_truth as gt
+
+    log_root = tmp_path / "larch-logs"
+    real = log_root / "implement" / "run-real"
+    real.mkdir(parents=True)
+    (real / "gc-slimmed").write_text("1\n", encoding="utf-8")
+    linked = log_root / "implement" / "run-link"
+    linked.symlink_to(real)
+    assert gt._ground_truth_gc_slimmed_fallback(log_root, seen_gc=frozenset()) == 1
+
+
+def test_ground_truth_discover_skips_symlinked_runs(tmp_path: Path) -> None:
+    from larch.issue import _ground_truth as gt
+
+    log_root = tmp_path / "larch-logs"
+    real = log_root / "implement" / "run-real" / "round-1"
+    real.mkdir(parents=True)
+    (real / "findings-classification.tsv").write_text("h\n", encoding="utf-8")
+    linked = log_root / "implement" / "run-link"
+    linked.symlink_to(log_root / "implement" / "run-real")
+    rows = gt._ground_truth_discover_classifiers(log_root)
+    assert len(rows) == 1
+    assert "run-real" in rows[0][1].as_posix()

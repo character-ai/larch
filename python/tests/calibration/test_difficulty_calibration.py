@@ -526,3 +526,25 @@ def test_missing_log_root_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[
 # pyright: reportMissingParameterType=false, reportUnknownMemberType=false
 # pyright: reportUnknownParameterType=false, reportUnknownVariableType=false
 # pyright: reportUnusedCallResult=false
+
+
+def test_safe_child_warning_counters(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = dc.AnalyzerState()
+    missing = tmp_path / "missing-skill"
+    assert dc._safe_child_run_dirs(missing, state) == []  # pyright: ignore[reportPrivateUsage]
+    assert state.counters["missing_skill_roots"] == 1
+
+    root = tmp_path / "implement"
+    root.mkdir()
+    linked = root / "run-link"
+    linked.symlink_to(tmp_path / "outside")
+    (tmp_path / "outside").mkdir()
+    assert dc._safe_child_run_dirs(root, state) == []  # pyright: ignore[reportPrivateUsage]
+    assert state.counters["unsafe_run_dirs"] == 1
+
+    def _boom(*_args: object, **_kwargs: object) -> list[Path]:
+        raise OSError("denied")
+
+    monkeypatch.setattr(Path, "glob", _boom)
+    assert dc._safe_child_run_dirs(root, state) == []  # pyright: ignore[reportPrivateUsage]
+    assert state.counters["unreadable_skill_roots"] == 1

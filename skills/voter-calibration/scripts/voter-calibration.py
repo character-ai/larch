@@ -37,6 +37,7 @@ from larch.issue.analyze_issues import (  # noqa: E402
     load_issues,
     parse_iso,
 )
+from larch.report import run_log_corpus  # noqa: E402
 from larch.review import voting  # noqa: E402
 from larch.review.voting import (  # noqa: E402
     classification_tsv_schema_supported,
@@ -94,12 +95,13 @@ def _read_text(path: Path) -> str:
 
 def _discover(log_root: Path) -> list[tuple[str, Path]]:
     paths: list[tuple[str, Path]] = []
-    for path in sorted(log_root.glob("design/*/plan-review/round-*/findings-classification.tsv")):
-        paths.append(("design", path))
-    for path in sorted(log_root.glob("implement/*/round-*/findings-classification.tsv")):
-        paths.append(("code-review", path))
-    for path in sorted(log_root.glob("review/*/review-findings-classification-round-*.tsv")):
-        paths.append(("code-review", path))
+    for skill, path in run_log_corpus.discover_classifications(
+        log_root,
+        skills=("design", "implement", "review"),
+        round_sort="lexical",
+    ):
+        panel_kind = "design" if skill == "design" else "code-review"
+        paths.append((panel_kind, path))
     return paths
 
 

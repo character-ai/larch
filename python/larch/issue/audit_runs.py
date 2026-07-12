@@ -25,6 +25,7 @@ from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOT
 from larch.git import gh
 from larch.issue import learn_from_bugs
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
+from larch.report import run_log_corpus
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
 
@@ -803,9 +804,10 @@ def map_runs_main(argv: list[str] | None = None) -> int:
                 break
         candidates: list[Path] = []
         if closes:
-            for parent in root.glob("*/parent-issue.md"):
-                if _parent_issue_number(parent) == closes:
-                    candidates.append(parent.parent)
+            for run_dir in run_log_corpus.safe_child_run_dirs(root):
+                parent = run_dir / "parent-issue.md"
+                if parent.is_file() and _parent_issue_number(parent) == closes:
+                    candidates.append(run_dir)
         if candidates:
             candidates.sort(key=lambda d: _manifest_epoch(d / "manifest.json"), reverse=True)
             best_epoch = _manifest_epoch(candidates[0] / "manifest.json")
@@ -819,7 +821,10 @@ def map_runs_main(argv: list[str] | None = None) -> int:
                 started, ver, _ = _manifest_fields(path=best / "manifest.json")
         if not run_id:
             manifests: list[Path] = []
-            for mf in root.glob("*/manifest.json"):
+            for run_dir in run_log_corpus.safe_child_run_dirs(root):
+                mf = run_dir / "manifest.json"
+                if not mf.is_file() or mf.is_symlink():
+                    continue
                 try:
                     data = json.loads(mf.read_text(encoding="utf-8"))
                     if str(data.get("pr_number") or "") == pr:

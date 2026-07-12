@@ -1681,3 +1681,28 @@ def test_measure_panel_cost_skips_symlinked_panel_prompt_sizes(tmp_path: Path, m
     assert "agents/orchestrator-aggregator.md" in text
     assert "design" not in text
 # pyright: reportUnusedCallResult=false
+
+
+def test_iter_panel_and_checks_digest_skip_symlinked_run_dirs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "larch-logs"
+    real = root / "implement" / "run-real"
+    real.mkdir(parents=True)
+    panel = real / "nested" / tokens.PANEL_PROMPT_SIZE_BASENAME
+    panel.parent.mkdir(parents=True)
+    panel.write_text("site\tphase\n", encoding="utf-8")
+    digest = real / tokens.CHECKS_DIGEST_SIZE_BASENAME
+    digest.write_text("site\tattempt\n", encoding="utf-8")
+    linked = root / "implement" / "run-link"
+    linked.symlink_to(real)
+
+    monkeypatch.setattr(
+        tokens,
+        "_panel_context_from_tsv",
+        lambda path, repo: ("implement", "r1"),
+    )
+    panels = tokens._iter_panel_prompt_size_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    digests = tokens._iter_checks_digest_size_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert panels == [panel]
+    assert digests == [digest]

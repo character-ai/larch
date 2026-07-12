@@ -2549,11 +2549,13 @@ def _iter_panel_prompt_size_files(repo: Path) -> list[Path]:
     root = repo / "larch-logs"
     if not root.is_dir():
         return []
-    return sorted(
-        path
-        for path in root.glob(f"**/{PANEL_PROMPT_SIZE_BASENAME}")
-        if path.is_file() and not path.is_symlink() and _panel_context_from_tsv(path, repo) is not None
-    )
+    paths: list[Path] = []
+    for skill in ("design", "implement", "review"):
+        for run_dir in run_log_corpus.safe_child_run_dirs(root / skill):
+            for path in run_log_corpus.iter_validated_run_files(run_dir, name=PANEL_PROMPT_SIZE_BASENAME):
+                if path.is_file() and not path.is_symlink() and _panel_context_from_tsv(path, repo) is not None:
+                    paths.append(path)
+    return sorted(paths)
 
 
 def _uint_cell(row: Mapping[str, str], key: str) -> int:
@@ -2615,8 +2617,11 @@ def _iter_checks_digest_size_files(repo: Path) -> list[Path]:
         return []
     paths: list[Path] = []
     for skill in ("implement", "review"):
-        paths.extend(root.glob(f"{skill}/*/{CHECKS_DIGEST_SIZE_BASENAME}"))
-    return sorted(path for path in paths if path.is_file() and not path.is_symlink())
+        for run_dir in run_log_corpus.safe_child_run_dirs(root / skill):
+            candidate = run_dir / CHECKS_DIGEST_SIZE_BASENAME
+            if candidate.is_file() and not candidate.is_symlink():
+                paths.append(candidate)
+    return sorted(paths)
 
 
 def _read_checks_digest_size_file(path: Path) -> tuple[bool, int, int, list[dict[str, int]]]:

@@ -30,6 +30,7 @@ from typing import NamedTuple, cast
 
 from larch import io as larch_io
 from larch.core import config
+from larch.report import run_log_corpus
 from larch.report import run_logs
 from larch.review import voting
 from larch.review.review_types import count_non_security_blocks, is_canonical_heading, parse_blocks
@@ -514,7 +515,11 @@ def resolve_implement_run_id(tmpdir: Path, *, state: dict[str, str] | None = Non
         return run_id
     log_root = tmpdir / "larch-logs" / "implement"
     if log_root.is_dir():
-        matches = sorted(log_root.glob("*/oos-issues.ndjson"))
+        matches = [
+            run_dir / "oos-issues.ndjson"
+            for run_dir in run_log_corpus.safe_child_run_dirs(log_root)
+            if (run_dir / "oos-issues.ndjson").is_file()
+        ]
         if len(matches) == 1:
             return matches[0].parent.name
     return ""
@@ -587,7 +592,11 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
         if candidate.is_file():
             ndjson = candidate
     else:
-        matches = sorted((tmpdir / "larch-logs" / "implement").glob("*/oos-issues.ndjson"))
+        matches = [
+            run_dir / "oos-issues.ndjson"
+            for run_dir in run_log_corpus.safe_child_run_dirs(tmpdir / "larch-logs" / "implement")
+            if (run_dir / "oos-issues.ndjson").is_file()
+        ]
         if len(matches) == 1:
             ndjson = matches[0]
         elif len(matches) > 1:

@@ -2096,3 +2096,17 @@ def test_voter_calibration_snapshot_zero_severity_yes_votes_omitted(tmp_path: Pa
     )
     stats = voting.voter_calibration_stats_from_logs(log_root=log_root, window=1)
     assert stats == []
+
+
+def test_discover_voter_calibration_logs_skips_symlinks_and_keeps_order(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    implement = log_root / "implement" / "run-real" / "round-2"
+    implement.mkdir(parents=True)
+    (implement / "findings-classification.tsv").write_text("h\n", encoding="utf-8")
+    earlier = log_root / "implement" / "run-real" / "round-10"
+    earlier.mkdir(parents=True)
+    (earlier / "findings-classification.tsv").write_text("h\n", encoding="utf-8")
+    linked = log_root / "implement" / "run-link"
+    linked.symlink_to(log_root / "implement" / "run-real")
+    rows = voting.discover_voter_calibration_logs(log_root)
+    assert [row.path.parent.name for row in rows] == ["round-10", "round-2"]

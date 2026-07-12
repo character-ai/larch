@@ -22,6 +22,7 @@ from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
 from larch.git import repo_roots
+from larch.report import run_log_corpus
 from larch.review.review_types import JudgeSeverity, ReviewVote
 
 # ---------------------------------------------------------------------------
@@ -527,34 +528,30 @@ def _parse_iso_datetime(raw: str) -> datetime | None:
 
 
 def _voter_calibration_run_started_at(run_dir: Path) -> datetime | None:
-    for name in ("manifest.json", "run-manifest.json"):
-        path = run_dir / name
-        if not path.is_file() or path.is_symlink():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(data, Mapping):
-            return _parse_iso_datetime(str(data.get("started_at") or data.get("updated_at") or ""))
-    return None
+    return _parse_iso_datetime(
+        run_log_corpus.run_started_at(
+            run_dir,
+            allow_updated_at_fallback=True,
+            continue_on_empty=False,
+        )
+    )
 
 
 def discover_voter_calibration_logs(log_root: Path) -> list[VoterCalibrationDiscoveryRow]:
     root = Path(log_root)
     rows: list[VoterCalibrationDiscoveryRow] = []
-    for panel_kind, pattern in (
-        ("design", "design/*/plan-review/round-*/findings-classification.tsv"),
-        ("code-review", "implement/*/round-*/findings-classification.tsv"),
-        ("code-review", "review/*/review-findings-classification-round-*.tsv"),
+    for skill, path in run_log_corpus.discover_classifications(
+        root,
+        skills=("design", "implement", "review"),
+        round_sort="lexical",
     ):
-        rows.extend(
+        panel_kind = "design" if skill == "design" else "code-review"
+        rows.append(
             VoterCalibrationDiscoveryRow(
                 panel_kind=panel_kind,
                 path=path,
                 run_dir=_voter_calibration_run_dir(path, panel_kind=panel_kind),
             )
-            for path in sorted(root.glob(pattern))
         )
     return rows
 

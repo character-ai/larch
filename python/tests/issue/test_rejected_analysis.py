@@ -265,3 +265,39 @@ def test_record_partial_issue_failure_commits_safe_rows_only(tmp_path: Path, mon
     assert record.rc == 1
     ledger = (tmp_path / ra.LEDGER_PATH).read_text(encoding="utf-8")
     assert "dismissed:zero-yes" in ledger
+
+
+def test_prepare_skips_symlinked_run_dirs(tmp_path: Path) -> None:
+    _write_implement_fixture(tmp_path, run_id="RUN-REAL", finding_id="FINDING_1", json_id="REJ_CR1_1")
+    logs = tmp_path / "larch-logs" / "implement"
+    linked = logs / "RUN-LINK"
+    linked.symlink_to(logs / "RUN-REAL")
+    result = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+    assert result.stats.runs_seen == 1
+
+
+def test_run_started_at_updated_at_and_first_valid_stop(tmp_path: Path) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(json.dumps({"updated_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
+    (run / "run-manifest.json").write_text(json.dumps({"started_at": "2026-03-01T00:00:00Z"}), encoding="utf-8")
+    assert ra._run_started_at(run) == "2026-02-01T00:00:00Z"  # pyright: ignore[reportPrivateUsage]
+
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    (empty / "manifest.json").write_text(json.dumps({"started_at": "", "updated_at": ""}), encoding="utf-8")
+    (empty / "run-manifest.json").write_text(json.dumps({"started_at": "2026-04-01T00:00:00Z"}), encoding="utf-8")
+    assert ra._run_started_at(empty) == ""  # pyright: ignore[reportPrivateUsage]
+
+
+def test_classification_paths_are_lexical(tmp_path: Path) -> None:
+    from larch.report import run_log_corpus
+
+    run = tmp_path / "run"
+    for round_num in (10, 2):
+        round_dir = run / f"round-{round_num}"
+        round_dir.mkdir(parents=True)
+        (round_dir / "findings-classification.tsv").write_text("h\n", encoding="utf-8")
+    paths = run_log_corpus.classification_tsv_paths("implement", run, round_sort="lexical")
+    assert [path.parent.name for path in paths] == ["round-10", "round-2"]
+    assert ra._round_from_path(paths[0]) == "10"  # pyright: ignore[reportPrivateUsage]
