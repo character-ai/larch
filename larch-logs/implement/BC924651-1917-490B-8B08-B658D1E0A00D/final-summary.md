@@ -60,11 +60,24 @@ codex/apply              │                                                █�
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. G-Cfg-1: reconcile_manual_merge_main emits RECONCILE_STATUS=ok and RECONCILE_STATUS=failed as hardcoded string literals (4 call sites) without corresponding Final constants in config.py. The parall...
+
+## Architectural invariants
+
+No violations identified. The waiver mechanism requires independently authored operator input (not self-declared by the gated entity), satisfying I-Gate-1. Reconciliation operates only post-merge after verifying the PR is merged, satisfying I-Ship-1. The operator_waived flag is constrained to outcome=dropped/reason=unavailable by both writer (mark_operator_waived_outcomes) and validator (validate_invariant_ship_outcome_record), so no invariant-violation outcome can be waived. The waiver artifact is bound to LARCH_RUN_ID from trusted session-env.sh and the sidecar is re-validated before marking, so stale consumption is prevented (I-Stale-1). All I/O uses larch_io helpers with symlink rejection and atomic no-follow writes.
+
+## Architectural guidelines
+
+G-Cfg-1: reconcile_manual_merge_main emits RECONCILE_STATUS=ok and RECONCILE_STATUS=failed as hardcoded string literals (4 call sites) without corresponding Final constants in config.py. The parallel waiver flow correctly uses config.ASSESSMENT_WAIVER_STATUS_OK and config.ASSESSMENT_WAIVER_STATUS_FAILED for its analogous WAIVER_STATUS key, but no RECONCILE_STATUS_OK, RECONCILE_STATUS_FAILED, or RECONCILE_STATUS_KEY constant is defined. RECONCILE_STATUS is a machine-consumed stdout KV key (the verb is listed in _MACHINE_STDOUT_KEYS in cli.py), making its key name and values wire literals that G-Cfg-1 requires to be defined once as Finals. All other new config literals (ASSESSMENT_OPERATOR_WAIVER_FILENAME, ASSESSMENT_OPERATOR_WAIVER_SCHEMA_VERSION, ASSESSMENT_WAIVER_KINDS, TERMINAL_DONE_CLEAR_FIELDS, RECONCILE_TERMINAL_DONE_CLEAR_FIELDS) are properly centralized.
+
 ## /implement run BC924651-1917-490B-8B08-B658D1E0A00D: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:29:49
-- **Cost**: 💰 TOTAL ~$29.82: Claude $4.97, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.38  |  Tokens: 48599k
+- **Cost**: 💰 TOTAL ~$30.20: Claude $5.33, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.40  |  Tokens: 49736k
 - **Issue**: #7059: https://github.com/character-ai/larch/issues/7059
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -74,7 +87,7 @@ codex/apply              │                                                █�
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/BC924651-1917-490B-8B08-B658D1E0A00D/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
