@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Self
 
 from larch.agents import collect_results
 from larch.core.proc import CommandResult
@@ -32,6 +33,16 @@ class RecordingRunner:
     default: CommandResult | None = None
     _index: int = 0
 
+    @classmethod
+    def strict_queue(cls, *responses: CommandResult) -> Self:
+        """Create a runner that requires one response per call."""
+        return cls(responses=list(responses), strict=True)
+
+    @classmethod
+    def default_queue(cls, default: CommandResult | None = None) -> Self:
+        """Create a runner that returns a default response after its queue."""
+        return cls(responses=[], default=default)
+
     def run(
         self,
         argv: Sequence[str],
@@ -48,7 +59,7 @@ class RecordingRunner:
             if self.strict:
                 msg = f"no response for call {argv}"
                 raise AssertionError(msg)
-            return self.default or CommandResult(tuple(argv), 0, "", "", 0.01)
+            return self.default or ok(argv)
         result = self.responses[self._index]
         self._index += 1
         return result
@@ -56,6 +67,11 @@ class RecordingRunner:
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "python" / "cli.py"
+
+
+def repo_root() -> Path:
+    """Return the resolved repository root used by test helpers."""
+    return ROOT
 
 
 def run_cli(
@@ -108,6 +124,16 @@ PR_VIEW_BEHIND_JSON = '{"mergeStateStatus":"BEHIND","headRefOid":"abc"}'
 def gh_result(argv: tuple[str, ...], stdout: str = "") -> CommandResult:
     """Stubbed gh CommandResult: exit 0, empty stderr, 0.01s duration."""
     return CommandResult(argv, 0, stdout, "", 0.01)
+
+
+def ok(argv: Sequence[str], stdout: str = "") -> CommandResult:
+    """Build a successful CommandResult for a command argument sequence."""
+    return CommandResult(tuple(argv), 0, stdout, "", 0.01)
+
+
+def completed(argv: Sequence[str], stdout: str = "") -> subprocess.CompletedProcess[str]:
+    """Build a successful text CompletedProcess for the supplied arguments."""
+    return subprocess.CompletedProcess(argv, 0, stdout, "")
 
 
 def gh_pr_view(stdout: str) -> CommandResult:
