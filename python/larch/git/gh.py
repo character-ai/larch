@@ -1795,14 +1795,6 @@ def repo_name_with_owner_read(
     )
 
 
-def resolve_repo_gh_only(runner: Runner, *, cwd: str | None = None) -> str | None:
-    result = repo_name_with_owner_read(runner, cwd=cwd)
-    if result.returncode != 0:
-        return None
-    candidate = result.stdout.strip()
-    return candidate if validate_repo_slug(candidate) else None
-
-
 def issue_edit_body_with_retry(
     runner: Runner,
     issue: str,
@@ -1867,7 +1859,9 @@ def validate_repo_slug(value: str) -> bool:
         return False
     if value.startswith(("--", "/")) or "../" in value or "\\" in value:
         return False
-    return _REPO_RE.fullmatch(value) is not None
+    return _REPO_RE.fullmatch(value) is not None and not any(
+        part in {".", ".."} for part in value.split("/")
+    )
 
 
 def remote_repo(
@@ -1898,12 +1892,138 @@ def remote_repo(
     return None
 
 
+@dataclass(frozen=True)
+class RepoPrimaryFailure:
+    """Primary ``gh repo view`` failure retained for diagnostic callers."""
+
+    kind: str  # "nonzero" | "oserror"
+    returncode: int | None = None
+    stdout: str = ""
+    stderr: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class RepoResolution:
+    """Detailed ambient repository discovery result.
+
+    ``status`` is ``valid``, ``absent``, or ``invalid`` (non-empty but not a
+    safe OWNER/REPO slug). ``source`` is ``gh``, ``origin``, or ``none``.
+    ``resolve_repo`` exposes only the validating ``str | None`` adapter.
+    """
+
+    status: str
+    source: str
+    candidate: str = ""
+    primary_failure: RepoPrimaryFailure | None = None
+
+    @property
+    def repo(self) -> str | None:
+        return self.candidate if self.status == "valid" else None
+
+
+def _raw_remote_path_candidate(url: str) -> str:
+    """Extract a non-validated path-like candidate from a Git remote URL."""
+    text = url.strip().rstrip("/")
+    text = text.removesuffix(".git")
+    text = text.rstrip("/")
+    if not text:
+        return ""
+    scp = re.match(r"^[^@\s]+@[^:\s]+:(.+)$", text)
+    if scp:
+        return scp.group(1).lstrip("/")
+    if "://" in text:
+        parsed = urlparse(text)
+        return (parsed.path or "").lstrip("/")
+    return text
+
+
+def _origin_repo_candidate(
+    runner: Runner, *, cwd: str | None = None
+) -> tuple[str, bool]:
+    """Return ``(candidate, is_valid)`` for the ``origin`` remote.
+
+    A non-empty invalid candidate is preserved so callers can distinguish
+    malformed remotes from an absent remote.
+    """
+    try:
+        result = runner.run(["git", "remote", "get-url", "origin"], cwd=cwd)
+    except OSError:
+        return "", False
+    if result.returncode != 0:
+        return "", False
+    url = result.stdout.strip()
+    if not url:
+        return "", False
+    parsed = remote_repo(runner, url, cwd=cwd)
+    if parsed and validate_repo_slug(parsed):
+        return parsed, True
+    raw = _raw_remote_path_candidate(url) or url
+    return raw, False
+
+
+def resolve_repo_detailed(
+    runner: Runner, *, cwd: str | None = None
+) -> RepoResolution:
+    """Canonical ambient repository discovery with full candidate state."""
+    primary_failure: RepoPrimaryFailure | None = None
+    primary_invalid = ""
+    try:
+        result = repo_name_with_owner_read(runner, cwd=cwd)
+    except OSError as exc:
+        primary_failure = RepoPrimaryFailure(kind="oserror", detail=str(exc))
+    else:
+        if result.returncode != 0:
+            primary_failure = RepoPrimaryFailure(
+                kind="nonzero",
+                returncode=result.returncode,
+                stdout=result.stdout,
+                stderr=result.stderr,
+            )
+        else:
+            candidate = result.stdout.strip()
+            if candidate and validate_repo_slug(candidate):
+                return RepoResolution(
+                    status="valid",
+                    source="gh",
+                    candidate=candidate,
+                    primary_failure=None,
+                )
+            if candidate:
+                primary_invalid = candidate
+
+    origin_candidate, origin_valid = _origin_repo_candidate(runner, cwd=cwd)
+    if origin_valid and origin_candidate:
+        return RepoResolution(
+            status="valid",
+            source="origin",
+            candidate=origin_candidate,
+            primary_failure=primary_failure,
+        )
+    if origin_candidate:
+        return RepoResolution(
+            status="invalid",
+            source="origin",
+            candidate=origin_candidate,
+            primary_failure=primary_failure,
+        )
+    if primary_invalid:
+        return RepoResolution(
+            status="invalid",
+            source="gh",
+            candidate=primary_invalid,
+            primary_failure=primary_failure,
+        )
+    return RepoResolution(
+        status="absent",
+        source="none",
+        candidate="",
+        primary_failure=primary_failure,
+    )
+
+
 def resolve_repo(runner: Runner, *, cwd: str | None = None) -> str | None:
-    result = repo_name_with_owner_read(runner, cwd=cwd)
-    candidate = result.stdout.strip() if result.returncode == 0 else ""
-    if not candidate:
-        candidate = remote_repo(runner, "origin", cwd=cwd) or ""
-    return candidate if validate_repo_slug(candidate) else None
+    return resolve_repo_detailed(runner, cwd=cwd).repo
 
 
 def pr_edit_body_file(

@@ -1254,3 +1254,25 @@ def test_cli_registry_tracking_issue_write_verbs_validate_locally(
     assert rc == 1
     assert expected in captured.out
     assert not runner.calls
+
+
+def test_resolve_repo_or_fail_explicit_and_canonical(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tracking_issue.gh, "resolve_repo", lambda *_a, **_k: "from/gh")  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    assert tracking_issue._resolve_repo_or_fail(RecordingRunner([]), "owner/repo") == "owner/repo"  # type: ignore[reportPrivateUsage]
+    assert tracking_issue._resolve_repo_or_fail(RecordingRunner([]), None) == "from/gh"  # type: ignore[reportPrivateUsage]
+    with pytest.raises(tracking_issue.CliFailure, match="invalid repo"):
+        tracking_issue._resolve_repo_or_fail(RecordingRunner([]), "bad..repo")  # type: ignore[reportPrivateUsage]
+
+
+def test_resolve_repo_or_fail_unresolved_and_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_resolve(_runner: object, *, cwd: str | None = None) -> str | None:
+        seen["cwd"] = cwd
+
+    monkeypatch.setattr(tracking_issue.gh, "resolve_repo", fake_resolve)
+    with pytest.raises(tracking_issue.CliFailure) as exc:
+        tracking_issue._resolve_repo_or_fail(RecordingRunner([]), None, cwd="/tmp/work")  # type: ignore[reportPrivateUsage]
+    assert exc.value.exit_code == 2
+    assert "could not determine repo" in str(exc.value)
+    assert seen["cwd"] == "/tmp/work"

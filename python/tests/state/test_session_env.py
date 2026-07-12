@@ -1158,8 +1158,8 @@ def test_repo_from_gh_or_git_falls_back_when_gh_missing() -> None:
             del timeout, cwd, env, check, stdout, stderr
             if argv and argv[0] == "gh":
                 raise FileNotFoundError("gh")
-            if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
-                return proc.CommandResult(tuple(argv), 0, "owner/repo\n", "", 0.0)
+            if list(argv[:3]) == ["git", "remote", "get-url"]:
+                return proc.CommandResult(tuple(argv), 0, "git@github.com:owner/repo.git\n", "", 0.0)
             return proc.CommandResult(tuple(argv), 1, "", "", 0.0)
 
     assert session_env._repo_from_gh_or_git(MissingGhRunner()) == "owner/repo"  # pyright: ignore[reportPrivateUsage]
@@ -1193,8 +1193,8 @@ def test_setup_repo_fallback_without_gh(tmp_path: Path, monkeypatch: pytest.Monk
     def fake_run(argv: list[str], **_kwargs: object) -> proc.CommandResult:
         if argv and argv[0] == "gh":
             raise FileNotFoundError("gh")
-        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
-            return proc.CommandResult(tuple(argv), 0, "git-owner/repo\n", "", 0.0)
+        if list(argv[:3]) == ["git", "remote", "get-url"]:
+            return proc.CommandResult(tuple(argv), 0, "git@github.com:git-owner/repo.git\n", "", 0.0)
         return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
     monkeypatch.setattr(session_env.proc, "run", fake_run)
@@ -1225,8 +1225,8 @@ def test_setup_runs_admission_preflight_without_skip(tmp_path: Path, monkeypatch
             return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
         if argv and argv[0] == "gh":
             return proc.CommandResult(tuple(argv), 1, "", "", 0.0)
-        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
-            return proc.CommandResult(tuple(argv), 0, "owner/repo\n", "", 0.0)
+        if list(argv[:3]) == ["git", "remote", "get-url"]:
+            return proc.CommandResult(tuple(argv), 0, "git@github.com:owner/repo.git\n", "", 0.0)
         if argv and argv[0] in {"codex", "cursor"}:
             return proc.CommandResult(tuple(argv), 1, "", "", 0.0)
         return proc.CommandResult(tuple(argv), 0, "", "", 0.0)

@@ -2223,3 +2223,21 @@ def test_ground_truth_discover_skips_symlinked_runs(tmp_path: Path) -> None:
     rows = gt._ground_truth_discover_classifiers(log_root)
     assert len(rows) == 1
     assert "run-real" in rows[0][1].as_posix()
+
+
+def test_detect_repo_delegates_to_gh_resolve_repo(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[object, str | None]] = []
+
+    def fake_resolve(runner: object, *, cwd: str | None = None) -> str | None:
+        calls.append((runner, cwd))
+        return "owner/repo"
+
+    monkeypatch.setattr(analyze_issues.gh, "resolve_repo", fake_resolve)
+    assert analyze_issues._detect_repo() == "owner/repo"
+    assert calls
+    assert calls[0][0] is analyze_issues.proc
+
+
+def test_detect_repo_maps_none_to_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(analyze_issues.gh, "resolve_repo", lambda *_a, **_k: None)
+    assert analyze_issues._detect_repo() == ""

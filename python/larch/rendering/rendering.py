@@ -1744,10 +1744,9 @@ def diagrams_upsert_main(argv: list[str]) -> int:
         runner = proc.ProcRunner()
         if not args.dry_run:
             if not repo:
-                result = gh.repo_name_with_owner_read(runner)
-                if result.returncode != 0 or not result.stdout.strip():
+                repo = gh.resolve_repo(runner)
+                if not repo:
                     raise ShipError("could not determine repo")
-                repo = result.stdout.strip()
             if not gh.validate_repo_slug(repo):
                 raise UsageError("invalid repo: expected OWNER/REPO")
             try:

@@ -144,7 +144,7 @@ def _resolve_issue_wire_repo(*, runner: Runner, explicit: str | None) -> tuple[s
     if explicit:
         return explicit, ""
     try:
-        repo = gh.resolve_repo_gh_only(runner)
+        repo = gh.resolve_repo(runner)
     except ShipError:
         return None, "could not determine repo"
     if not repo:

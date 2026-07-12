@@ -1683,13 +1683,9 @@ def entry_gate_main(argv: list[str]) -> int:
 
 def _repo_from_gh_or_git(runner: Runner) -> str:
     try:
-        gh_result = gh.repo_name_with_owner_read(runner)
-    except (FileNotFoundError, OSError):
-        gh_result = proc.CommandResult(("gh",), 127, "", "", 0.0)
-    if gh_result.returncode == 0 and gh_result.stdout.strip():
-        return gh_result.stdout.strip()
-    helper = runner.run([sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "gh", "remote-repo", "origin"])
-    return helper.stdout.strip() if helper.returncode == 0 else ""
+        return gh.resolve_repo(runner) or ""
+    except OSError:
+        return ""
 
 
 def _make_session_tmpdir(prefix: str) -> Path:

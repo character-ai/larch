@@ -34,18 +34,6 @@ _INHERITED_EXCEPTION_PHASES = {"inherited_exception", "inherited_reclassified_ex
 _INHERITED_WRITE_PHASES = _INHERITED_SAFE_PHASES | _INHERITED_EXCEPTION_PHASES
 
 
-def _repo() -> str | None:
-    res = proc.run(["gh", "repo", "view", "--json", "nameWithOwner"])
-    if res.returncode != 0:
-        return None
-    try:
-        data: object = json.loads(res.stdout)
-    except json.JSONDecodeError:
-        return None
-    val: object | None = data.get("nameWithOwner") if isinstance(data, dict) else None
-    return str(val) if val else None
-
-
 def _resolve_repo(explicit: str = "") -> str | None:
     if explicit:
         return explicit

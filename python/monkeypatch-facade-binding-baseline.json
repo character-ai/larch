@@ -7615,7 +7615,7 @@
   },
   {
     "file": "tests/issue/test_issue_wire.py",
-    "qualified_symbol": "test_write_cli_no_repo_failure_has_no_origin_fallback",
+    "qualified_symbol": "test_write_cli_no_repo_resolves_with_gh_only",
     "facade_module": "larch.issue.issue_wire",
     "attribute": "proc",
     "defining_module": "larch.core",
@@ -7624,7 +7624,7 @@
   },
   {
     "file": "tests/issue/test_issue_wire.py",
-    "qualified_symbol": "test_write_cli_no_repo_resolves_with_gh_only",
+    "qualified_symbol": "test_write_cli_no_repo_unresolved_after_origin_fallback",
     "facade_module": "larch.issue.issue_wire",
     "attribute": "proc",
     "defining_module": "larch.core",

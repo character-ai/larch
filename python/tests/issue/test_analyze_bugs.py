@@ -274,7 +274,7 @@ def test_prefetch_emits_manifest_and_handoff_paths(tmp_path: Path) -> None:
     issues = [_issue(10, "[BUG] fixed")]
     runner = RecordingRunner(
         responses=[
-            _result(json.dumps({"nameWithOwner": "o/r"})),
+            _result("o/r\n"),
             _result(),
             _result("sha\n"),
             _result(json.dumps(issues)),

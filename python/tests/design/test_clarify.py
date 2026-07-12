@@ -214,12 +214,68 @@ def test_comment_fetch_missing_request_cli_fails(
 
 
 def test_empty_repo_resolution_cli_fails(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    runner = RecordingRunner(responses=[_result(rc=1, stderr="no repo")])
+    runner = RecordingRunner(
+        responses=[
+            _result(rc=1, stderr="no repo"),
+            _result(rc=1, stderr="no origin"),
+        ]
+    )
     monkeypatch.setattr(clarify, "proc", runner)
     monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
     rc = clarify.clarify_state_main(["--issue", "7"])
     assert rc == 2
     assert "FAILED=true" in capsys.readouterr().out
+
+
+def test_invalid_ambient_gh_candidate_cli_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            _result(stdout="bad..slug\n"),
+            _result(rc=1, stderr="no origin"),
+        ]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)  # lint-monkeypatch-binding: ok isolates ambient repository resolution
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_state_main(["--issue", "7"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "ERROR=invalid-repo" in out
+
+
+def test_malformed_origin_candidate_cli_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            _result(rc=1, stderr="no repo"),
+            _result(stdout="git@github.com:!!!/@@@\n"),
+        ]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)  # lint-monkeypatch-binding: ok isolates ambient repository resolution
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_state_main(["--issue", "7"])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "ERROR=invalid-repo" in out
+
+
+def test_origin_fallback_resolves_when_gh_fails(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            _result(rc=1, stderr="no repo"),
+            _result(stdout="git@github.com:o/r.git\n"),
+            _result(stdout="[]"),
+        ]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)  # lint-monkeypatch-binding: ok isolates ambient repository resolution
+    monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
+    rc = clarify.clarify_state_main(["--issue", "7"])
+    assert rc == 0
+    assert "STATE=clean" in capsys.readouterr().out
 
 
 def test_invalid_repo_state_cli_has_no_comments_call(

@@ -65,16 +65,22 @@ def _repo_slug(*, runner: Runner, override: str | None) -> str | None:
         if _valid_repo_slug(override):
             return override
         raise ShipError(f"ERROR: {config.ENV_LARCH_REPORT_TOKENS_REPO} must be a safe OWNER/REPO slug")
-    try:
-        result = gh.repo_name_with_owner_read(runner)
-    except OSError as exc:
-        print(f"ERROR: could not resolve GitHub repo owner/name: {redact.redact(str(exc))}", file=sys.stderr)
+    detailed = gh.resolve_repo_detailed(runner)
+    if detailed.status == "valid":
+        return detailed.candidate
+    failure = detailed.primary_failure
+    if failure is not None and failure.kind == "oserror":
+        print(
+            f"ERROR: could not resolve GitHub repo owner/name: {redact.redact(failure.detail)}",
+            file=sys.stderr,
+        )
         return None
-    if result.returncode == 0 and _valid_repo_slug(result.stdout.strip()):
-        return result.stdout.strip()
-    detail = (result.stderr or result.stdout).strip()
-    suffix = f": {redact.redact(detail)}" if detail else ""
-    print(f"ERROR: could not resolve GitHub repo owner/name{suffix}", file=sys.stderr)
+    if failure is not None and failure.kind == "nonzero":
+        detail = (failure.stderr or failure.stdout).strip()
+        suffix = f": {redact.redact(detail)}" if detail else ""
+        print(f"ERROR: could not resolve GitHub repo owner/name{suffix}", file=sys.stderr)
+        return None
+    print("ERROR: could not resolve GitHub repo owner/name", file=sys.stderr)
     return None
 
 def _token_basename(skill: Skill) -> str:

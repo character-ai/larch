@@ -358,13 +358,10 @@ def _parse_json_object(stdout: str, *, desc: str) -> dict[str, Any]:
 def resolve_repo(runner: Runner, explicit: str = "") -> str:
     if explicit:
         return explicit
-    result = gh.repo_name_with_owner_read(runner)
-    if result.returncode != 0:
+    resolved = gh.resolve_repo(runner)
+    if not resolved:
         raise AnalyzeBugsError("could not resolve GitHub repo; pass --repo OWNER/REPO")
-    repo = result.stdout.strip()
-    if "/" not in repo:
-        raise AnalyzeBugsError("gh repo view did not return nameWithOwner")
-    return repo
+    return resolved
 
 
 def resolve_evidence_ref(runner: Runner) -> str:
