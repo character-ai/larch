@@ -565,8 +565,7 @@ def _run_codex_probes(*, max_auth_retries: int, max_transient_retries: int, max_
     timed_out = False
     gate_detail: CodexGateDetail | None = None
     while True:
-        raw_result = _run_one_codex_probe(timeout)
-        result = raw_result if isinstance(raw_result, CodexProbeResult) else CodexProbeResult(raw_result)
+        result = _run_one_codex_probe(timeout)
         rc = result.rc
         if result.gate_detail is not None:
             gate_detail = result.gate_detail
