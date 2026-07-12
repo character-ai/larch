@@ -1,0 +1,5 @@
+1	the normal launcher-exit dispatch branch can reship a changed head without validating ancestry and the exact lane-step trailer, allowing subject-only, malformed, duplicate, mismatched, unrelated, or multi-commit heads to bypass provenance checks.
+1	the crashed-salvage shell fixture creates a subject-only commit and expects reship, so lane-bound trailer validation will make the existing integration harness fail unless the fixture is updated and the subject-only bail path is covered.
+1	tests do not require the normal dispatch path to bail after a salvage commit fails provenance verification, so an implementation could still reship an unverified commit.
+1	wrong-step and duplicate `larch-salvage-step` rejection tests are described as optional, allowing core provenance rejection paths to ship without regression coverage.
+2	normal direct-head dispatch, and its related salvage path, lack a mandatory regression test proving that a subject-only commit without the `larch-salvage-step` trailer fails closed. the primary `fixer-produced-change` reship bypass could therefore regress while crash-finalize coverage still passes.

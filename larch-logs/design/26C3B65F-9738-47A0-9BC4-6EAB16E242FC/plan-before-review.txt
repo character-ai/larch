@@ -1,0 +1,48 @@
+## Approach
+
+Bind each salvage commit to its deterministic lane step. Keep the existing subject, ancestry, and single-commit checks. Require exactly one matching `Larch-Salvage-Step` trailer before either normal dispatch or crash recovery authorizes reship.
+
+### UPDATED: python/larch/implement/ci_fixer_lane.py
+
+- Append `Larch-Salvage-Step: {identity.step}` to the salvage commit message.
+- Extend `_validated_salvage_head` to read the full commit body with `git show -s --format=%B`.
+- Require exactly one trailer whose value equals `identity.step`. Reject missing, duplicate, or mismatched trailers.
+- Reuse the validator after the normal salvage commit. Raise `LaneClosedError` instead of returning a reship result if post-commit provenance verification fails.
+- Keep crash-finalize behavior fail closed. A subject-only commit must return `crashed-lane-head-unverified`.
+
+### UPDATED: python/tests/implement/test_ci.py
+
+- Update the normal salvage test to assert the generated commit body contains the lane-bound trailer.
+- Update `test_crashed_lane_validated_salvage_commit_reships` to create a commit with the expected trailer.
+- Add `test_crashed_lane_spoofed_subject_without_trailer_bails`.
+- Assert the spoofed commit does not produce lineage state or authorize reship.
+- Cover malformed provenance such as a wrong or duplicate trailer if the shared validator handles those cases separately.
+
+### UPDATED: SECURITY.md
+
+- Document that CI-fixer salvage reship requires the expected subject, one-commit ancestry, and an exact lane-step trailer.
+- State that the trailer is deterministic provenance, not a cryptographic signature.
+
+## Edge cases
+
+- The commit has the expected subject but no trailer.
+- The trailer names another lane step.
+- Multiple provenance trailers make identity ambiguous.
+- Git cannot read the full commit body.
+- Normal dispatch creates a commit but cannot verify its provenance.
+
+## Failure modes
+
+All provenance read or validation failures must block reship. Preserve the commit for operator inspection, but do not treat it as an authorized fixer result.
+
+## Testing strategy
+
+Run the changed CI tests in `python/tests/implement/test_ci.py`. Confirm valid normal and crash salvage paths reship, while subject-only and malformed-provenance commits bail.
+
+Confidence: high. The approved outline and current producer, validator, and tests identify the complete change surface.
+
+difficulty: HARD
+diff_added: 42
+diff_deleted: 8
+mechanical_churn: false
+diff_lines: 50
