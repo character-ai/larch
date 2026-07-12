@@ -46,24 +46,24 @@ Warnings (1):
 
 ## Architectural invariants
 
-No violations identified. The changed code refactors ambient repository discovery (resolve_repo_detailed, resolve_repo, _origin_repo_candidate, _raw_remote_path_candidate, RepoPrimaryFailure, RepoResolution) and sweeps all call sites. None of the changes touch gate disarm logic (I-Gate-1), pause snapshot artifact sets (I-Pause-1), persisted step result consumption or fingerprint validation (I-Stale-1), run-log flush completeness (I-Flush-1), committed run-log field embedding (I-Commit-1), in-flight outcome labels (I-Outcome-1), panel slot accounting (I-Slot-1), agent evidence contracts (I-Agent-1), or pre-merge mutation guards on merged/closed PRs (I-Ship-1).
+No violations identified. The changes consolidate repository resolution logic in gh.py and update callers throughout the codebase. None of the changed code touches gate disarm logic (I-Gate-1), pause snapshot artifacts (I-Pause-1), persisted step result consumption (I-Stale-1), run-log flush (I-Flush-1, I-Commit-1, I-Outcome-1), panel slot accounting (I-Slot-1), agent verdict emission (I-Agent-1), or pre-merge PR mutations (I-Ship-1).
 
 ## Architectural guidelines
 
-No meaningful deviations identified. Key guideline checks: G-Py-1 — RepoPrimaryFailure and RepoResolution are @dataclass(frozen=True), compliant. G-Fix-1 — all call sites of the old repo resolution pattern (resolve_repo_gh_only, inline gh repo view subprocess calls) are swept in one change across clarify.py, design_pause.py, design_terminal.py, analyze_bugs.py, analyze_issues.py, combine_issues.py, issue_block.py, issue_create.py, issue_wire.py, tracking_issue.py, rendering.py, report_tokens_scan.py, _report.py, admission.py, session_env.py. G-Wire-3 — all consumers of the shared repo-resolution machinery are updated. G-Sec-1 — origin URL candidates are passed through validate_repo_slug() before status='valid' is returned; the invalid/diagnostic path never promotes an unvalidated slug. G-Sec-3 — redact.redact() applied to gh stderr in report_tokens_scan.py error paths. G-Py-11 — the suppression-reason-baseline.json entry for _report.py noqa:S607 is correctly removed alongside the subprocess.run it covered. Status/source/kind fields use string literals rather than enums (minor G-Py-3 consideration) but these are module-private, documented in the dataclass docstring, and consistent with the codebase's aspirational treatment of this guideline.
+No deviations identified. The change follows G-Fix-1 by fixing the entire class of scattered inline subprocess gh-repo-view calls across all callers rather than a single instance. RepoPrimaryFailure and RepoResolution are frozen dataclasses per G-Py-1. resolve_repo_detailed and resolve_repo wrap the gh and git CLIs as typed functions over the injected Runner per G-Py-7. The _origin_repo_candidate helper catches OSError narrowly per G-Py-4, and the failure is preserved in primary_failure rather than swallowed. validate_repo_slug is strengthened to reject dot and dot-dot slug components, aligning with G-Sec-1. The removal of the inline subprocess.run in design_terminal.py and analyze_issues._detect_repo eliminates grandfathered non-injectable calls per G-Py-5. All repo-resolution consumers are swept in this single change per G-Wire-3 and G-Fix-1. New tests cover origin fallback, malformed URL, invalid candidate, and oserror diagnostic paths per G-Fix-2. The suppression-reason-baseline.json correctly removes the noqa: S607 entry whose grandfathered inline call is now deleted.
 
-## /implement run C1D9A1A4-7E62-4BE9-870E-15ECC335AE38: shipping
+## /implement run C1D9A1A4-7E62-4BE9-870E-15ECC335AE38: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:59:01
-- **Cost**: 💰 TOTAL ~$20.26: Claude $1.21, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $6.48  |  Tokens: 35494k
+- **Cost**: 💰 TOTAL ~$24.88: Claude $5.77, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $6.54  |  Tokens: 45912k
 - **Issue**: #7054: https://github.com/character-ai/larch/issues/7054
+- **PR**: #7090: https://github.com/character-ai/larch/pull/7090
 - **Plan review**: N/A
-- **Plan coverage**: 25/32 firm headings; band: middle; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/8 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +647/-115, larch-logs +1043/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
