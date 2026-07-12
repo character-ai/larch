@@ -1,0 +1,35 @@
+Reviewing the firm-path coverage predicate and related tests in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/implement/scope_disposition.py:514-560	Plan omits frozen-fallback porcelain pre-filter that still exact-matches plan_paths	#7023 failed with untracked nested files under `python/tests/support/` while origin/HEAD used frozen fallback; line 514 drops descendant porcelain before `compute_coverage`, so a helper only in `compute_coverage` never sees those paths	Add `_frozen_fallback_touched_paths` to the plan: apply the same firm-path predicate when selecting porcelain (and keep provenance/committed attribution consistent), or stop exact-filtering there and let `compute_coverage` map raw paths to firm plan paths
+1	in_scope	minor	correctness	python/tests/implement/test_scope_disposition.py:305-332	Regression test strategy only exercises live `diff_paths`, not frozen-fallback porcelain	A `FakeRunner(diff_paths=[...])` test passes if only `compute_coverage` (lines 710-713) is fixed, while frozen-fallback runs that motivated #7023 still mis-report directory firm paths as untouched	Add a frozen-fallback case (`fail_symbolic_refs` + porcelain nested paths under a trailing-slash firm directory) that fails without the frozen-path fix and asserts reload/fingerprint consistency
+1	in_scope	minor	architecture	python/larch/implement/scope_disposition.py:842-844	[SCOPE-REDUCTION] Plan requires the coverage predicate in `_coverage_from_mapping` reload validation	On reload `touched_paths` are already firm plan paths; untouched recompute is `plan_path not in touched_set` (line 843). Re-applying raw descendant matching here risks divergent rules and adds complexity	Limit the shared predicate to raw→firm mapping in `compute_coverage` (and frozen fallback). Keep `_coverage_from_mapping` on firm-path set membership, or extract only a tiny `_untouched_plan_paths` helper
+
+## Findings
+
+**1. correctness — `python/larch/implement/scope_disposition.py:514-560`**
+
+The plan updates `compute_coverage` (lines 710-713) but not `_frozen_fallback_touched_paths`. Line 514 still does exact membership:
+
+```514:514:python/larch/implement/scope_disposition.py
+    porcelain_plan = {path for path in porcelain if path in plan_paths}
+```
+
+That drops nested porcelain such as `python/tests/support/__init__.py` when the firm path is `python/tests/support/`. The #7023 run hit this path: untracked children existed, but the directory stayed in `untouched_paths` and triggered disposition. A predicate only inside `compute_coverage` cannot fix frozen fallback because descendant paths never reach it.
+
+**Suggested revision:** Add an `### UPDATED:` bullet for `_frozen_fallback_touched_paths`: use the same predicate when selecting porcelain (and align provenance / `committed_plan` attribution), or pass unfiltered porcelain through and map in `compute_coverage`.
+
+**2. correctness — `python/tests/implement/test_scope_disposition.py:305-332`**
+
+The proposed regression test can mirror existing live-path tests (`FakeRunner(diff_paths=...)`) without covering frozen fallback. That would green-light a `compute_coverage`-only fix while production frozen runs still mis-credit directory firm paths.
+
+**Suggested revision:** Require a frozen-fallback subcase (`fail_symbolic_refs` + porcelain nested paths) matching the #7023 failure mode, plus the planned write/reload/fingerprint assertions.
+
+**3. architecture — `python/larch/implement/scope_disposition.py:842-844`**
+
+The plan says to use the coverage predicate in `_coverage_from_mapping` when recomputing untouched paths. On reload, `touched_paths` should already be firm plan paths; validation at line 843 is set membership only. Applying descendant matching on reload is unnecessary and could introduce inconsistent rules if misimplemented.
+
+**Suggested revision:** Scope the shared predicate to raw→firm mapping in `compute_coverage` and frozen fallback. Leave `_coverage_from_mapping` as firm-path set membership, or extract a small `_untouched_plan_paths(plan_paths, touched_paths)` helper shared for untouched tuple construction only.
+
+---
+
+**Plan elements that look sound (no finding):** single private predicate; preserve firm path spelling in `touched_paths` and fingerprint; trailing-slash prefix boundaries and non-directory exact-match rules in edge cases; plan_paths ordering for deterministic `touched_paths`; write/reload test for `_coverage_from_mapping` fingerprint validation.
