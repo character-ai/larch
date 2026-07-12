@@ -1262,21 +1262,30 @@ def _classify_attempt_issue(*, launcher_rc: int, run_dir: Path, log_name: str, u
     """Return a bounded failure classification before writing public evidence."""
     if launcher_rc == config.PROC_TIMEOUT_EXIT_CODE:
         return "timeout"
+    # #7074: classify only failed or useless attempts. A green fix (launcher exited
+    # 0 with a useful delta) is never an execution issue, so do not token-match its
+    # transcript — coder prose routinely names repo files like `preflight.py`.
+    if launcher_rc == 0 and useful_delta:
+        return ""
+    # Anchor token matching to launcher stderr only, not the full attempt log. The
+    # attempt log is the coder transcript; its prose collides with repo file names
+    # (`preflight.py`) and diagnostic phrases ("... not found"). Launcher failures
+    # (missing binary, auth/preflight) surface on stderr.
     text = ""
-    for path in (run_dir / log_name, run_dir / f"{log_name}.stderr-tail"):
-        try:
-            if path.is_file() and not path.is_symlink():
-                text += path.read_text(encoding="utf-8", errors="replace")[-8192:]
-        except OSError:
-            pass
+    stderr_tail = run_dir / f"{log_name}.stderr-tail"
+    try:
+        if stderr_tail.is_file() and not stderr_tail.is_symlink():
+            text = stderr_tail.read_text(encoding="utf-8", errors="replace")[-8192:]
+    except OSError:
+        pass
     lowered = text.lower()
-    if any(token in lowered for token in ("not found", "no such file", "missing binary", "command not found")):
+    if any(token in lowered for token in ("no such file", "missing binary", "command not found")):
         return "missing-binary"
-    if any(token in lowered for token in ("authentication", "not authenticated", "unauthorized", "login required", "preflight")):
+    if any(token in lowered for token in ("not authenticated", "unauthorized", "login required", "authentication")):
         return "authentication-preflight"
     if launcher_rc != 0:
         return "launcher-failure"
-    return "" if useful_delta else "no-op"
+    return "no-op"
 
 
 def _with_tier_ledger(outcome: FixOutcome, tier_ledger: Path) -> FixOutcome:
@@ -1315,7 +1324,10 @@ def _append_attempt_execution_issue(
     if attempt_log:
         try:
             text = Path(attempt_log).read_text(encoding="utf-8", errors="replace")
-            detail = text[-4096:].strip() or detail
+            # #7074: collapse the transcript tail to a single line so its own
+            # bullet lines ("- ...") do not become standalone exec-issue items and
+            # inflate the summary's exec-issue count. One appended row = one item.
+            detail = " ".join(text[-4096:].split()) or detail
         except OSError:
             pass
     entry = redact.redact(

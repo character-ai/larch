@@ -345,6 +345,11 @@ def _commit_route_log_failure(
     exit_code: int,
     output_file: Path,
 ) -> None:
+    # #7074: the append-failure emitter renders "**Step <site>: ...**", so passing
+    # the machine key "step7" produced the doubled "Step step7". Strip the leading
+    # "step" from these commit-route site keys (step7 -> 7, step5-self-review ->
+    # 5-self-review) so the rendered bullet reads "Step 7:", not "Step step7:".
+    display_site = site_name.removeprefix("step") or site_name
     result = _invoke_cli(
         [
             "run-log",
@@ -352,7 +357,7 @@ def _commit_route_log_failure(
             "--log",
             str(implement_tmpdir / "execution-issues.md"),
             "--site",
-            site_name,
+            display_site,
             "--tool",
             "python/cli.py review-and-fix commit-fixes --stage-all",
             "--exit-code",

@@ -3560,11 +3560,11 @@ def test_commit_route_success_relays_continue(
 
 
 @pytest.mark.parametrize(
-    ("site", "stall_step", "bail_reason"),
+    ("site", "stall_step", "bail_reason", "display_site"),
     [
-        ("step5-self-review", "5", "review-fix-commit-failed"),
-        ("step5-resume-handoff", "5", "resume-handoff-commit-failed"),
-        ("step7", "7", "review-fix-commit-failed"),
+        ("step5-self-review", "5", "review-fix-commit-failed", "5-self-review"),
+        ("step5-resume-handoff", "5", "resume-handoff-commit-failed", "5-resume-handoff"),
+        ("step7", "7", "review-fix-commit-failed", "7"),
     ],
 )
 @pytest.mark.parametrize(
@@ -3582,6 +3582,7 @@ def test_commit_route_failure_seeds_stall_and_logs_redacted(
     site: str,
     stall_step: str,
     bail_reason: str,
+    display_site: str,
     commit_stdout: str,
 ) -> None:
     impl, invoke_calls, _seed_calls = _setup_commit_route(
@@ -3605,6 +3606,11 @@ def test_commit_route_failure_seeds_stall_and_logs_redacted(
     log_calls = [call for call in invoke_calls if call[:2] == ["run-log", "append-failure"]]
     assert len(log_calls) == 1
     assert "--redact" in log_calls[0]
+    # #7074: the machine site key ("step7") must be de-prefixed for the emitter so
+    # the rendered bullet reads "Step 7:", not the doubled "Step step7:".
+    site_arg = log_calls[0][log_calls[0].index("--site") + 1]
+    assert site_arg == display_site
+    assert not site_arg.startswith("step")
 
 
 @pytest.mark.parametrize(("porcelain_stdout", "porcelain_rc"), [(" M leftover.txt\n", 0), ("", 1)])

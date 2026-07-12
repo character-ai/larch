@@ -21,6 +21,7 @@ from larch.core import config
 from larch.core import logging_util
 from larch.report import exec_issue_detail
 from larch import io as larch_io
+from larch.issue import execution_issues
 from larch.git import pr_body
 from larch.report import report_tokens_cost
 from larch.report import review_phase_detail
@@ -837,6 +838,60 @@ def _reconcile_manifest_for_terminal_report(
     return 0, ""
 
 
+# Outcomes where the merge actually completed; a stale needs-user handoff must not
+# override these into a needs-user display (#7074).
+_MERGE_COMPLETED_OUTCOMES = frozenset({"merged", "force-merged-externally"})
+
+
+def _needs_user_ship_handoff(implement_tmpdir: Path, *, outcome: str) -> tuple[str, str] | None:
+    """Return ``(reason, next_action)`` for a terminal needs-user ship handoff (#7074).
+
+    A needs-user bail (e.g. architectural assessments unavailable) creates the PR but
+    skips the merge and CI watch, so the summary must not read ``✅ DONE``. The signal
+    is ``NEEDS_USER_REASON`` in the committed ``.ship-route-exit-handoff.env``. Returns
+    None when the merge completed or no needs-user reason is recorded.
+    """
+    if outcome in _MERGE_COMPLETED_OUTCOMES:
+        return None
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    reason = _read_kv(path=handoff, key="NEEDS_USER_REASON")
+    if not reason:
+        return None
+    return reason, _read_kv(path=handoff, key="NEXT_ACTION")
+
+
+def _append_needs_user_execution_issue(
+    implement_tmpdir: Path, *, reason: str, next_action: str
+) -> None:
+    """Append an exec-issues row naming the skipped merge/CI watch and pending action (#7074).
+
+    Without this the operator cannot learn from the summary itself that the PR still
+    needs action. Idempotent: ``append_execution_issue`` dedupes on the exact entry.
+    """
+    pending = f"; pending NEXT_ACTION={next_action}" if next_action else ""
+    entry = f"- ship route: merge and CI watch skipped — needs user (reason: {reason}{pending})"
+    with contextlib.suppress(OSError):
+        execution_issues.append_execution_issue(
+            implement_tmpdir / "execution-issues.md",
+            category="Tool Failures",
+            entry=entry,
+        )
+
+
+def _prime_needs_user_execution_issue(implement_tmpdir: Path, *, outcome: str) -> tuple[str, str]:
+    """Append the needs-user exec-issues row when the handoff applies (#7074).
+
+    Returns ``(reason, next_action)`` (both empty when it does not apply). Callers
+    must load the issue counts *after* this so the appended row is counted.
+    """
+    needs_user = _needs_user_ship_handoff(implement_tmpdir, outcome=outcome)
+    if needs_user is None:
+        return "", ""
+    reason, next_action = needs_user
+    _append_needs_user_execution_issue(implement_tmpdir, reason=reason, next_action=next_action)
+    return reason, next_action
+
+
 def write_final_report(
     implement_tmpdir: Path,
     *,
@@ -857,7 +912,6 @@ def write_final_report(
     pr_number = _read_kv(path=ship, key="PR_NUMBER") or _read_kv(path=final, key="PR_NUMBER")
     pr_url = _read_kv(path=ship, key="PR_URL", default="N/A") or _read_kv(path=final, key="PR_URL", default="N/A")
     issue_url = f"https://github.com/{repo}/issues/{issue}" if repo and issue and issue != "0" else ""
-    run_dir, load_result, exec_count, warn_count = _issue_load_result_for_run(implement_tmpdir=implement_tmpdir, run_id=run_id)
     derived = _derive_final_report_fields(
         implement_tmpdir,
         run_id=run_id or "unknown",
@@ -876,6 +930,15 @@ def write_final_report(
         outcome=outcome_values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed"),
         ship=ship,
         final=final,
+    )
+    # #7074: a terminal needs-user ship handoff creates the PR but skips the merge
+    # and CI watch, so it must not render as ✅ DONE. Prime the exec-issues row from
+    # the committed handoff *before* loading the issue counts so the row is counted.
+    needs_user_reason, needs_user_next_action = _prime_needs_user_execution_issue(
+        implement_tmpdir, outcome=outcome
+    )
+    run_dir, load_result, exec_count, warn_count = _issue_load_result_for_run(
+        implement_tmpdir=implement_tmpdir, run_id=run_id
     )
     # #6995: pass manifest_path=None so the coverage line resolves the
     # *dispatcher* manifest (implement_tmpdir/manifest.json, which carries
@@ -911,6 +974,8 @@ def write_final_report(
         run_logs_path=f"larch-logs/implement/{run_id}/" if run_id else "N/A",
         force_requested=_read_kv(path=run_flags, key="FORCE_REQUESTED", default="false"),
         merge_downgraded=outcome_values.get("IMPLEMENT_MERGE_DOWNGRADED", "false"),
+        needs_user_reason=needs_user_reason,
+        needs_user_next_action=needs_user_next_action,
         manifest_path=str(run_dir / "manifest.json"),
         **cost_fields,
     )

@@ -4311,7 +4311,7 @@
     "file": "larch/report/final_report.py",
     "code": "PLR0915",
     "qualified_symbol": "write_final_report",
-    "metric": 63
+    "metric": 64
   },
   {
     "file": "larch/report/gc_run_logs.py",

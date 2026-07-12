@@ -615,6 +615,35 @@ def test_render_run_summary_includes_cost_line() -> None:
     assert "**Cost note**:" not in body
 
 
+def test_render_run_summary_needs_user_outcome_not_done() -> None:
+    # #7074: a terminal needs-user ship handoff must not render as ✅ DONE even
+    # though the outcome token stays pr-created.
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="pr-created",
+        run_id="run1",
+        needs_user_reason="architectural-assessments",
+        needs_user_next_action="assessments",
+        cost_unavailable=True,
+    )
+    outcome_line = next(line for line in body.splitlines() if "**Outcome**" in line)
+    assert "✅ DONE" not in outcome_line
+    assert "NEEDS USER" in outcome_line
+    assert "architectural-assessments" in outcome_line
+    assert "assessments" in outcome_line
+
+
+def test_render_run_summary_pr_created_stays_done_without_handoff() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="pr-created",
+        run_id="run1",
+        cost_unavailable=True,
+    )
+    outcome_line = next(line for line in body.splitlines() if "**Outcome**" in line)
+    assert outcome_line.strip() == "- **Outcome**: ✅ DONE"
+
+
 def test_render_run_summary_glm_main_lane_plan_estimate() -> None:
     # Token Claude $15.00 → estimated $1.00; TOTAL replaces Claude with estimate:
     # 38.23 - 15.00 + 1.00 = 24.23

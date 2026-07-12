@@ -122,6 +122,52 @@ def test_write_final_report_module_renders_summary(tmp_path: Path, monkeypatch) 
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
+def test_needs_user_ship_handoff_reader(tmp_path: Path) -> None:
+    (tmp_path / ".ship-route-exit-handoff.env").write_text(
+        "NEEDS_USER_REASON=architectural-assessments\nNEXT_ACTION=assessments\n", encoding="utf-8",
+    )
+    assert final_report._needs_user_ship_handoff(tmp_path, outcome="pr-created") == (
+        "architectural-assessments",
+        "assessments",
+    )
+    # #7074: a stale handoff must not override a merge-completed outcome.
+    assert final_report._needs_user_ship_handoff(tmp_path, outcome="merged") is None
+
+
+def test_needs_user_ship_handoff_absent_or_no_reason(tmp_path: Path) -> None:
+    assert final_report._needs_user_ship_handoff(tmp_path, outcome="pr-created") is None
+    # A plain (non-needs-user) handoff carries no NEEDS_USER_REASON.
+    (tmp_path / ".ship-route-exit-handoff.env").write_text("NEXT_ACTION=reship\n", encoding="utf-8")
+    assert final_report._needs_user_ship_handoff(tmp_path, outcome="pr-created") is None
+
+
+def test_write_final_report_renders_needs_user_from_handoff(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # #7074: a terminal needs-user ship handoff (merge + CI watch skipped) must
+    # render a distinct outcome and an exec-issues row, not ✅ DONE.
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    (tmp_path / ".ship-route-exit-handoff.env").write_text(
+        "NEEDS_USER_REASON=architectural-assessments\nNEXT_ACTION=assessments\nDETAIL=invariants,guidelines\n",
+        encoding="utf-8",
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    assert (rc, err) == (0, "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    outcome_line = next(line for line in summary.splitlines() if "**Outcome**" in line)
+    assert "NEEDS USER" in outcome_line
+    assert "✅ DONE" not in outcome_line
+    assert "merge and CI watch skipped" in summary
+    assert "pending NEXT_ACTION=assessments" in summary
+
+
+def test_write_final_report_no_handoff_keeps_normal_outcome(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    assert (rc, err) == (0, "")
+    assert "NEEDS USER" not in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+
+
 def test_write_final_report_renders_cursor_cost_lanes(tmp_path: Path) -> None:
     _write_minimal_state(tmp_path)
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
