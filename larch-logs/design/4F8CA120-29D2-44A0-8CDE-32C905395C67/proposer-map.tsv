@@ -1,0 +1,6 @@
+# attributed_ballot_sha256=f084a44715a5efcfe3f67ad067b422bfb571c5112d2636c17829efb99f47ec07
+# neutral_ballot_sha256=3d94c822b6f5188ea15b3277163bd7d41cf422d13d5834374ea36bb50f8c4aec
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Arch, Cursor-Requirements	- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+FINDING_2	Cursor-Requirements	- **Reviewer(s)**: Cursor-Requirements
+OOS_1	Cursor-Arch	- **Reviewer**: Cursor-Arch
