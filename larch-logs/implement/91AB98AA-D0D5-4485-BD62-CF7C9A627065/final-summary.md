@@ -71,14 +71,6 @@ Exec Issues (2):
 Warnings (1):
   1. One deviation from G-Py-12: `python/larch/core/redact.py` adds a top-level import `from larch.review.review_types import parse_blocks`. G-Py-12 states that `larch.core` leaf modules must not import...
 
-## Architectural invariants
-
-Architectural assessment unavailable.
-
-## Architectural guidelines
-
-Architectural assessment unavailable.
-
 ## /implement run 91AB98AA-D0D5-4485-BD62-CF7C9A627065: pr-created
 
 - **Outcome**: ✅ DONE
