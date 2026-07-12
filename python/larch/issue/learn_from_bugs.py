@@ -758,7 +758,7 @@ def render_zones_search(zones: Sequence[str]) -> str:
     if not zones:
         raise LearnFromBugsError("--zones requires at least one non-empty zone name")
     joined = " OR ".join(zones)
-    return f"[BUG] ({joined}) in:title,body"
+    return f"{BUG_PREFIX} ({joined}) in:title,body"
 
 
 def resolve_zone_search(
