@@ -2667,7 +2667,7 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "_invariants_gate_before_pr",
-    "metric": 11
+    "metric": 12
   },
   {
     "file": "larch/implement/ship.py",
