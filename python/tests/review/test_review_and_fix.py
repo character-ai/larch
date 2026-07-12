@@ -1996,7 +1996,7 @@ def test_commit_fixes_stage_all_clean_collected_paths_noops(tmp_path, monkeypatc
     impl = _tmp_impl(tmp_path)
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
         review_and_fix,
         "_collect_review_fix_stage_paths",
         lambda _impl: ["a.py", "b.py"],
@@ -2015,7 +2015,9 @@ def test_commit_fixes_stage_all_clean_collected_paths_noops(tmp_path, monkeypatc
         committed_calls.append(argv)
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
-    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
+        review_and_fix, "_run", fake_run
+    )
     rc = review_and_fix.commit_fixes(["--stage-all"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -2447,7 +2449,7 @@ def test_commit_fixes_stage_all_git_fixture_clean_collected_noops(tmp_path, monk
     review_and_fix._run(["git", "add", "fix.py"], cwd=repo)
     review_and_fix._run(["git", "commit", "--quiet", "-m", "add fix"], cwd=repo)
     (repo / "baseline.json").write_text('{"n": 1}\n', encoding="utf-8")
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
         review_and_fix,
         "_collect_review_fix_stage_paths",
         lambda _impl: ["fix.py"],
@@ -2477,7 +2479,7 @@ def test_commit_fixes_stage_all_git_fixture_partial_dirty_commits_subset(tmp_pat
     review_and_fix._run(["git", "commit", "--quiet", "-m", "seed"], cwd=repo)
     (repo / "dirty.py").write_text("v2\n", encoding="utf-8")
     (repo / "baseline.json").write_text('{"n": 1}\n', encoding="utf-8")
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
         review_and_fix,
         "_collect_review_fix_stage_paths",
         lambda _impl: ["clean.py", "dirty.py"],
@@ -2520,7 +2522,7 @@ def test_commit_fixes_stage_all_git_fixture_untracked_nested_file(tmp_path, monk
         cwd=repo,
     ).stdout
     assert "nested/new.py" in all_porcelain
-    monkeypatch.setattr(
+    monkeypatch.setattr(  # lint-monkeypatch-binding: ok commit_fixes resolves this imported binding
         review_and_fix,
         "_collect_review_fix_stage_paths",
         lambda _impl: ["nested/new.py"],
