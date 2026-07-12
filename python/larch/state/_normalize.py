@@ -220,20 +220,28 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     forked = ship.get("FORKED_TARGET") or fin_eff.get("FORKED_TARGET") or ses.get("FORKED_TARGET", "false")
     ci_passed = ship.get("CI_PASSED") or fin_eff.get("CI_PASSED", "false")
     design_done = fin_eff.get("DESIGN_ONLY_DONE", "false")
-    bail_user = fin_eff.get("BAIL_NEEDS_USER_INPUT", "false")
+    bail_user = (
+        _state_value(ship=ship, fin=fin_eff, key="BAIL_NEEDS_USER_INPUT") or "false"
+    )
 
-    if (any_stall or phase_stalled) and _stall_signal_is_terminal(
+    terminal_merge = merge_result in _TERMINAL_MERGE_RESULTS
+    stall_is_terminal = terminal_merge or _stall_signal_is_terminal(
+        ship=ship, fin=fin_eff, bail_user=bail_user
+    )
+    if (any_stall or phase_stalled) and stall_is_terminal:
+        outcome = "stalled"
+    elif terminal_merge and _has_failure_signals(
         ship=ship, fin=fin_eff, bail_user=bail_user
     ):
-        outcome = "stalled"
-    elif _truthy(forked):
-        outcome = "forked-dry-run"
-    elif _truthy(design_done):
-        outcome = "design-only"
+        outcome = "bailed"
     elif merge_result in {"merged", "admin_merged"}:
         outcome = "merged"
     elif merge_result == "already_merged":
         outcome = "force-merged-externally"
+    elif _truthy(forked):
+        outcome = "forked-dry-run"
+    elif _truthy(design_done):
+        outcome = "design-only"
     elif (
         _has_pr_evidence(ship=ship, fin=fin_eff)
         and not merge_result

@@ -59,6 +59,50 @@ def _valid_guideline_ship_outcome_record(**overrides: object) -> dict[str, objec
     } | overrides
 
 
+def test_ship_outcome_operator_waiver_marker_is_additive_and_constrained() -> None:
+    unavailable = _valid_guideline_ship_outcome_record(
+        outcome="dropped",
+        reason="unavailable",
+        assessment_kind="",
+        operator_waived=True,
+    )
+    assert ag.validate_guideline_ship_outcome_record(unavailable) is None
+    assert (
+        ag.validate_guideline_ship_outcome_record(
+            _valid_guideline_ship_outcome_record()
+        )
+        is None
+    )
+    assert "boolean" in str(
+        ag.validate_guideline_ship_outcome_record(
+            unavailable | {"operator_waived": "true"}
+        ),
+    )
+    assert "requires unavailable" in str(
+        ag.validate_guideline_ship_outcome_record(
+            _valid_guideline_ship_outcome_record(operator_waived=True)
+        ),
+    )
+
+    invariant = {
+        "schema_version": "1",
+        "phase": "implement",
+        "step": "8",
+        "outcome": "dropped",
+        "reason": "unavailable",
+        "detail": "",
+        "invariants_status": "present",
+        "head_sha": "abc123",
+        "base_ref": "origin/main",
+        "assessment_kind": "",
+        "operator_waived": True,
+    }
+    assert ag.validate_invariant_ship_outcome_record(invariant) is None
+    assert "boolean" in str(
+        ag.validate_invariant_ship_outcome_record(invariant | {"operator_waived": 1}),
+    )
+
+
 def test_absent_file_returns_absent(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     result = ag.read_guidelines(repo_root=repo)

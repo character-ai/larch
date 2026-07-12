@@ -8,7 +8,9 @@ import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
+from larch import io as larch_io
 from larch.core import architectural_guidelines
 from larch.core import config
 from larch.core import logging_util
@@ -93,8 +95,9 @@ class GuidelinesShipOutcome:
     head_sha: str
     base_ref: str
     assessment_kind: str
+    operator_waived: bool = False
 
-    def as_json(self) -> dict[str, str]:
+    def as_json(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
             "phase": self.phase,
@@ -106,6 +109,7 @@ class GuidelinesShipOutcome:
             "head_sha": self.head_sha,
             "base_ref": self.base_ref,
             "assessment_kind": self.assessment_kind,
+            "operator_waived": self.operator_waived,
         }
 
 
@@ -133,8 +137,9 @@ class InvariantsShipOutcome:
     head_sha: str
     base_ref: str
     assessment_kind: str
+    operator_waived: bool = False
 
-    def as_json(self) -> dict[str, str]:
+    def as_json(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
             "phase": self.phase,
@@ -146,6 +151,7 @@ class InvariantsShipOutcome:
             "head_sha": self.head_sha,
             "base_ref": self.base_ref,
             "assessment_kind": self.assessment_kind,
+            "operator_waived": self.operator_waived,
         }
 
 
@@ -212,11 +218,64 @@ def read_unavailable_outcome_detail(
     return _bounded_detail(detail)
 
 
-def _write_json_atomic(*, path: Path, data: dict[str, str]) -> None:
+def _write_json_atomic(*, path: Path, data: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
     _ = tmp.write_text(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
     _ = tmp.replace(path)
+
+
+def mark_operator_waived_outcomes(
+    *, implement_tmpdir: str, kinds: frozenset[str]
+) -> frozenset[str]:
+    """Mark existing unavailable outcome sidecars for the waived kinds."""
+    if not implement_tmpdir or not kinds:
+        return frozenset()
+    tmpdir = Path(implement_tmpdir)
+    marked: set[str] = set()
+    paths = {
+        config.ASSESSMENT_KIND_INVARIANTS: architectural_guidelines.invariant_ship_outcome_path(
+            tmpdir
+        ),
+        config.ASSESSMENT_KIND_GUIDELINES: architectural_guidelines.guideline_ship_outcome_path(
+            tmpdir
+        ),
+    }
+    validators = {
+        config.ASSESSMENT_KIND_INVARIANTS: architectural_guidelines.validate_invariant_ship_outcome_record,
+        config.ASSESSMENT_KIND_GUIDELINES: architectural_guidelines.validate_guideline_ship_outcome_record,
+    }
+    for kind in kinds:
+        path = paths[kind]
+        try:
+            if not larch_io.trusted_file_present(path, root=tmpdir):
+                continue
+            raw = json.loads(
+                larch_io.read_trusted_text(path, root=tmpdir, reject_cr=True)
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(raw, dict):
+            continue
+        data = cast("dict[str, object]", raw)
+        if validators[kind](data) is not None:
+            continue
+        if (
+            data.get("outcome") != OUTCOME_DROPPED
+            or data.get("reason") != REASON_UNAVAILABLE
+        ):
+            continue
+        data["operator_waived"] = True
+        try:
+            larch_io.trusted_atomic_write(
+                path,
+                json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n",
+                root=tmpdir,
+            )
+        except OSError:
+            continue
+        marked.add(kind)
+    return frozenset(marked)
 
 
 def _classify_ship_outcome(

@@ -6522,6 +6522,148 @@ def test_combined_assessment_result_both_unavailable_lists_both_kinds(tmp_path: 
     assert result.detail == "invariants,guidelines"
 
 
+def _write_assessment_waiver(
+    tmp_path: Path, *, kinds: list[str], run_id: str = "run-abc"
+) -> None:
+    (tmp_path / "session-env.sh").write_text(
+        f"LARCH_RUN_ID={run_id}\n", encoding="utf-8"
+    )
+    (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).write_text(
+        json.dumps({"schema_version": "1", "kinds": kinds, "run_id": run_id}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_unavailable_assessment_sidecars(tmp_path: Path) -> None:
+    common = {
+        "schema_version": "1",
+        "phase": "implement",
+        "step": "8",
+        "outcome": "dropped",
+        "reason": "unavailable",
+        "detail": "",
+        "head_sha": "abc123",
+        "base_ref": "origin/main",
+        "assessment_kind": "",
+    }
+    ship.architectural_guidelines.invariant_ship_outcome_path(tmp_path).write_text(
+        json.dumps(common | {"invariants_status": "present"}) + "\n",
+        encoding="utf-8",
+    )
+    ship.architectural_guidelines.guideline_ship_outcome_path(tmp_path).write_text(
+        json.dumps(common | {"guidelines_status": "present"}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_combined_assessment_result_full_waiver_proceeds(tmp_path: Path) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants", "guidelines"])
+    _write_unavailable_assessment_sidecars(tmp_path)
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+    )
+
+    assert (
+        ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path)) is None
+    )
+    for path in (
+        ship.architectural_guidelines.invariant_ship_outcome_path(tmp_path),
+        ship.architectural_guidelines.guideline_ship_outcome_path(tmp_path),
+    ):
+        assert json.loads(path.read_text(encoding="utf-8"))["operator_waived"] is True
+
+
+def test_combined_assessment_result_partial_waiver_keeps_unwaived_kind(
+    tmp_path: Path,
+) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"])
+    _write_unavailable_assessment_sidecars(tmp_path)
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "guidelines"
+
+
+def test_combined_assessment_result_waiver_without_auditable_sidecar_is_ignored(
+    tmp_path: Path,
+) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"])
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "invariants"
+
+
+def test_combined_assessment_result_malformed_waiver_is_ignored(tmp_path: Path) -> None:
+    (tmp_path / "session-env.sh").write_text("LARCH_RUN_ID=run-abc\n", encoding="utf-8")
+    (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).write_text(
+        "{not-json}\n", encoding="utf-8"
+    )
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "invariants"
+
+
+def test_combined_assessment_result_stale_waiver_is_ignored(tmp_path: Path) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"], run_id="other-run")
+    (tmp_path / "session-env.sh").write_text("LARCH_RUN_ID=run-abc\n", encoding="utf-8")
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "invariants"
+
+
+def test_combined_assessment_result_violation_is_not_waivable(tmp_path: Path) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"])
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            assessment_kind="violation", note="violated I-Test-1"
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.needs_user_reason == "architectural-invariants-violation"
+
+
 def test_combined_assessment_result_clean_gates_do_not_bail(tmp_path: Path) -> None:
     gates = ship._AssessmentGatePair(
         invariants=ship.InvariantsGateResult(),

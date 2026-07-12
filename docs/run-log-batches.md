@@ -49,6 +49,11 @@ guidelines, reason `deterministic-clean` requires `outcome=clean` and
 empty assessment kind. The same combinations apply to invariant outcomes, with
 `violation` reserved for an authored `violation-note`.
 
+New schema-version `1` writers may add optional boolean `operator_waived`.
+`true` is valid only with `outcome=dropped`, `reason=unavailable`, and an empty
+assessment kind. Missing and `false` remain valid for historical records and
+non-waived outcomes.
+
 Runs below `GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION`, or runs that did not
 reach the Step 8 condition, are pre-feature-era for this batch. At or above the
 cutover, Step 8-eligible runs without the artifact fail the audit scan.

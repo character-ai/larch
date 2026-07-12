@@ -76,12 +76,13 @@ Architectural assessment unavailable.
 
 Architectural assessment unavailable.
 
-## /implement run BD267D84-8B70-4E30-9FC7-E60E4328D5FE: shipping
+## /implement run BD267D84-8B70-4E30-9FC7-E60E4328D5FE: merged
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:46:40
 - **Cost**: 💰 TOTAL ~$21.45: Claude $2.21, Codex-5.6 $11.41, Codex-mini $0.08, Cursor $7.43 (Composer $7.43, Grok $0.00), Claude (subprocess) $0.32  |  Tokens: 31301k
 - **Issue**: #7028: https://github.com/character-ai/larch/issues/7028
+- **PR**: #7049: https://github.com/character-ai/larch/pull/7049
 - **Plan review**: N/A
 - **Plan coverage**: 13/14 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD

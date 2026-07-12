@@ -240,7 +240,7 @@ require('skills/implement/scripts/step-18.sh', 'STALL_TRACKING_FINALIZE=', 'step
 require('skills/implement/scripts/step-18.sh', 'STALL_TRACKING_SESSION=', 'step-18 stall session layer')
 require('skills/implement/scripts/step-18.sh', 'STALL_RECOVERY_REQUIRED=', 'step-18 stall recovery kv')
 require('skills/implement/scripts/step-18.sh', 'set +e', 'step-18 non-aborting blocks')
-require('skills/implement/scripts/step-18.sh', 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"', 'step-18 live step18b path')
+require('skills/implement/scripts/step-18.sh', 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" --step17-emitted "$STEP17_EMITTED"', 'step-18 live step18b path')
 require('skills/implement/scripts/step-18.sh', 'print_summary_markers', 'step-18 marker helper')
 require('skills/implement/scripts/step-18.sh', '---LARCH-SUMMARY-FINAL-BEGIN---', 'step-18 begin marker')
 require('skills/implement/scripts/step-18.sh', '_restore_finalize=false', 'step-18 restore gate')

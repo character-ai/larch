@@ -173,6 +173,11 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
     reason = str(d.get("reason") or "")
     guidelines_status = str(d.get("guidelines_status") or "")
     assessment_kind = str(d.get("assessment_kind") or "")
+    operator_waived = d.get("operator_waived", False)
+    if not isinstance(operator_waived, bool):
+        return "guideline outcome operator_waived must be boolean"
+    if operator_waived and (outcome != OUTCOME_DROPPED or reason != REASON_UNAVAILABLE):
+        return "guideline outcome operator_waived requires unavailable dropped outcome"
     if phase != "implement":
         return "guideline outcome phase must be implement"
     if step != "8":
@@ -235,6 +240,13 @@ def validate_invariant_ship_outcome_record(data: object) -> str | None:  # noqa:
     reason = str(d.get("reason") or "")
     invariants_status = str(d.get("invariants_status") or "")
     assessment_kind = str(d.get("assessment_kind") or "")
+    operator_waived = d.get("operator_waived", False)
+    if not isinstance(operator_waived, bool):
+        return "invariant outcome operator_waived must be boolean"
+    if operator_waived and (
+        outcome != "dropped" or reason != config.REASON_UNAVAILABLE
+    ):
+        return "invariant outcome operator_waived requires unavailable dropped outcome"
     if phase != "implement":
         return "invariant outcome phase must be implement"
     if step != "8":

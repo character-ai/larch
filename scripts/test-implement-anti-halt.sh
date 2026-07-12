@@ -5,6 +5,7 @@
 # Invoked via:  bash scripts/test-implement-anti-halt.sh
 # Wired into:   make lint (via the test-implement-anti-halt Makefile target).
 
+# shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
 set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -84,6 +85,18 @@ check_contains "Post-preflight boundary — silent halt covered" "skills/impleme
   "do NOT end the turn on the audit-pass envelope"
 check_contains "Post-/review boundary — silent halt covered" "skills/implement/SKILL.md" \
   "Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn"
+check_contains "Assessment proceed writes waiver" "skills/implement/SKILL.md" \
+  'ship waive-assessment --implement-tmpdir "$IMPLEMENT_TMPDIR" --kinds "$DETAIL"'
+check_contains "Assessment proceed directly relaunches Step 8" "skills/implement/SKILL.md" \
+  "directly relaunches the existing Step 8 ship bgjob start/wait pair"
+check_contains "Assessment proceed forbids reship and stall seed" "skills/implement/SKILL.md" \
+  'must not set `NEXT_ACTION=reship`, run pre-fix rebase, enter Step 12d, or seed `STALL_TRACKING`'
+check_contains "Recovery blocks reporting until reconciliation" "skills/implement/SKILL.md" \
+  'do not start Steps 16, 16a, 17, or 18 until `ship reconcile-manual-merge` returns verified `RECONCILE_STATUS=ok`, including the bail-overlay post-read'
+check_contains "Manual recovery clears in-memory stall" "skills/implement/SKILL.md" \
+  'set in-memory `STALL_TRACKING=false` and pass `--stall-tracking-memory false`'
+check_contains "Deferred emit survives next turn" "skills/implement/SKILL.md" \
+  "the in-context cached-body obligation survives into the next turn"
 
 echo ""
 echo "--- /design step-boundary anti-halt coverage ---"

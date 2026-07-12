@@ -109,10 +109,12 @@ from larch.implement.ship_guidelines import (
     clear_invariant_ship_outcome_sidecar,
     load_or_prepare_guidelines_note,
     load_or_prepare_invariants_note,
+    mark_operator_waived_outcomes,
     read_unavailable_outcome_detail,
     write_guideline_ship_outcome,
     write_invariant_ship_outcome,
 )
+from larch.implement.ship_recovery import load_assessment_waiver
 from larch.implement.ship_pr import (
     _postmerge_should_flush,
     _pr_title,
@@ -680,6 +682,29 @@ def _combined_assessment_result(
         unavailable_kinds.append(config.ASSESSMENT_KIND_INVARIANTS)
     if gates.guidelines.note_state == config.NOTE_STATE_UNAVAILABLE:
         unavailable_kinds.append(config.ASSESSMENT_KIND_GUIDELINES)
+    waived = load_assessment_waiver(pr_context.tmpdir)
+    requested = frozenset(unavailable_kinds) & waived
+    if requested:
+        applied = mark_operator_waived_outcomes(
+            implement_tmpdir=pr_context.tmpdir,
+            kinds=requested,
+        )
+    else:
+        applied = frozenset[str]()
+    if applied:
+        ordered_applied = [
+            kind
+            for kind in (
+                config.ASSESSMENT_KIND_INVARIANTS,
+                config.ASSESSMENT_KIND_GUIDELINES,
+            )
+            if kind in applied
+        ]
+        _breadcrumb(
+            step="assessment-waiver",
+            detail=f"assessment waiver applied: {','.join(ordered_applied)}",
+        )
+        unavailable_kinds = [kind for kind in unavailable_kinds if kind not in applied]
     if unavailable_kinds:
         return ShipResult(
             Outcome.NEEDS_USER_INPUT,
