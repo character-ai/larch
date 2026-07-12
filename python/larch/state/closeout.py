@@ -391,8 +391,18 @@ def step_16_17(argv: list[str] | None = None) -> int:
             category="Tool Failures",
             output_file=step17_log,
         )
-    if step17_rc == 0 and _summary_nonempty(tmpdir) and _print_summary_markers(tmpdir, sentinel=".step17-printed") != 0:
-        print("closeout: failed to emit summary markers", file=sys.stderr)
+    if step17_rc == 0 and _summary_nonempty(tmpdir):
+        if _print_summary_markers(tmpdir, sentinel=".step17-printed") != 0:
+            print("closeout: failed to emit summary markers", file=sys.stderr)
+    elif not _summary_nonempty(tmpdir):
+        # Step 17 render failed before writing a body (#6979): say so loudly
+        # instead of leaving step-16-17 with empty stdout and no signal. Step 18b
+        # remains the terminal authority and also surfaces ERROR=/a warning.
+        print(
+            f"closeout: Step 17 final report render failed (rc={step17_rc}); "
+            "no summary body written. Step 18b will report the cause.",
+            file=sys.stderr,
+        )
     return 0
 
 

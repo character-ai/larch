@@ -261,9 +261,154 @@ def test_write_final_report_includes_uncapped_review_timing_gantt(tmp_path: Path
 
 def test_step18b_reports_write_failure(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(final_report, "write_final_report", lambda _tmpdir: (7, "", "boom"))
-    emit, rc, _present, _snapshot = final_report.step18b_final_report(tmp_path)
+    emit, rc, _present, _snapshot, err = final_report.step18b_final_report(tmp_path)
     assert emit is False
     assert rc == 7
+    assert err == "boom"
+
+
+def test_step18b_emits_error_kv_on_render_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """#6979: a render failure must surface ERROR= alongside WFR_RC, not silence."""
+
+    def boom(_tmpdir: Path) -> tuple[int, str, str]:
+        return 1, "", "summary-final write failed: [Errno 28] No space left on device"
+
+    monkeypatch.setattr(final_report, "write_final_report", boom)
+    (tmp_path / ".step16-16a-done").touch()
+    rc = final_report.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "EMIT_BODY=false" in out
+    assert "WFR_RC=1" in out
+    assert "ERROR=summary-final write failed:" in out
+    assert "No space left on device" in out
+
+
+def test_step18b_catches_composition_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """#6979: an uncaught composition exception must not crash the terminal step.
+
+    Previously write_final_report had no try/except at the step18b call site, so a
+    composition exception escaped and produced a silent EMIT_BODY=false with no
+    diagnosable cause. It must now surface as WFR_RC=1 + ERROR=.
+    """
+
+    def raise_exc(_tmpdir: Path) -> tuple[int, str, str]:
+        raise RuntimeError("composition exploded")
+
+    monkeypatch.setattr(final_report, "write_final_report", raise_exc)
+    (tmp_path / ".step16-16a-done").touch()
+    rc = final_report.step18b_final_report_main(["--implement-tmpdir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "WFR_RC=1" in out
+    assert "EMIT_BODY=false" in out
+    assert "ERROR=final report render failed:" in out
+    assert "composition exploded" in out
+
+
+def test_write_final_report_non_fatal_runlog_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#6979: a run-log final-summary.md copy failure must not suppress the report.
+
+    The user-visible summary-final.md is written first; the committed run-log copy
+    is best-effort. Its failure emits a breadcrumb and continues (rc=0).
+    """
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    original_write_text = Path.write_text
+
+    def patched_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        if self.name == "final-summary.md":
+            raise OSError("run-log copy blocked")
+        return original_write_text(self, data, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "write_text", patched_write_text)
+
+    rc, _url, err = final_report.write_final_report(tmp_path)
+
+    assert (rc, err) == (0, "")
+    assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+
+
+def test_write_final_report_non_fatal_tracking_upsert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#6979: a tracking-issue upsert failure must not suppress the report.
+
+    The tracking comment is bookkeeping; its failure emits a breadcrumb and
+    continues (rc=0) so the user still sees the body via summary-final.md.
+    """
+    _write_minimal_state(tmp_path)
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
+    _stub_cost_and_assessment(monkeypatch)
+    (tmp_path / "ship-pr-state.sh").write_text(
+        "PR_NUMBER=0\nPR_URL=N/A\n",
+        encoding="utf-8",
+    )
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "tracking-issue" in argv and "upsert-summary" in argv:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="upsert boom")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(final_report.subprocess, "run", fake_run)
+
+    rc, url, err = final_report.write_final_report(tmp_path)
+
+    assert (rc, err) == (0, "")
+    assert url == ""
+    assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+
+
+def test_write_final_report_non_fatal_manifest_reconcile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#6979: a manifest-reconcile failure must not suppress the report."""
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    monkeypatch.setattr(
+        final_report,
+        "_reconcile_manifest_for_terminal_report",
+        lambda *a, **k: (1, "run-log manifest reconcile failed: boom"),  # noqa: ARG005
+    )
+
+    rc, _url, err = final_report.write_final_report(tmp_path)
+
+    assert (rc, err) == (0, "")
+    assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+
+
+def test_write_final_report_summary_write_failure_persists_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#6979: the fatal summary-write failure still returns its reason (now durable)."""
+    _write_minimal_state(tmp_path)
+    original_write_text = Path.write_text
+
+    def patched_write_text(self: Path, data: str, *args: object, **kwargs: object) -> int:
+        if self.name == "summary-final.md":
+            raise OSError("disk full")
+        return original_write_text(self, data, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "write_text", patched_write_text)
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 1
+    assert "summary-final write failed" in err
 
 
 def test_refresh_issue_counts_counts_ndjson_urls_separately(tmp_path: Path) -> None:
