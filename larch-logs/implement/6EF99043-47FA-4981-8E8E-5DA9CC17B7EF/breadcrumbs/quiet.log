@@ -45,7 +45,10 @@ python/subprocess-via-runner-exemptions.json:16: references retired path 'script
 === larch-quiet-read-session-env-key.sh-95514.log ===
 === larch-quiet-scout-plan-archetypes-wrapper.sh-59516.log ===
 === larch-quiet-sessionstart-health.sh-12090.log ===
+=== larch-quiet-sessionstart-health.sh-2725.log ===
+=== larch-quiet-sessionstart-health.sh-4390.log ===
 === larch-quiet-sessionstart-health.sh-65651.log ===
+=== larch-quiet-sessionstart-health.sh-6759.log ===
 === larch-quiet-sessionstart-health.sh-69703.log ===
 === larch-quiet-sessionstart-health.sh-71153.log ===
 === larch-quiet-sessionstart-health.sh-72277.log ===
@@ -55,3 +58,5 @@ python/subprocess-via-runner-exemptions.json:16: references retired path 'script
 === larch-quiet-sessionstart-health.sh-79008.log ===
 === larch-quiet-sessionstart-health.sh-79983.log ===
 === larch-quiet-sessionstart-health.sh-81166.log ===
+=== larch-quiet-sessionstart-health.sh-8529.log ===
+=== larch-quiet-sessionstart-health.sh-85504.log ===

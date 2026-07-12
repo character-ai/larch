@@ -70,11 +70,19 @@ Exec Issues (4):
 Warnings (1):
   1. Step 2 — Cursor bailed: cursor-runtime-failure
 
+## Architectural invariants
+
+Architectural assessment unavailable.
+
+## Architectural guidelines
+
+Architectural assessment unavailable.
+
 ## /implement run 6EF99043-47FA-4981-8E8E-5DA9CC17B7EF: shipping
 
 - **Outcome**: shipping
 - **Duration**: 03:18:51
-- **Cost**: 💰 TOTAL ~$46.22: Claude $19.25, Codex-5.6 $10.54, Codex-mini $0.08, Cursor $8.92 (Composer $8.92, Grok $0.00), Claude (subprocess) $7.43  |  Tokens: 85861k
+- **Cost**: 💰 TOTAL ~$46.78: Claude $19.76, Codex-5.6 $10.54, Codex-mini $0.08, Cursor $8.92 (Composer $8.92, Grok $0.00), Claude (subprocess) $7.48  |  Tokens: 87571k
 - **Issue**: #7061: https://github.com/character-ai/larch/issues/7061
 - **Plan review**: N/A
 - **Plan coverage**: 56/56 firm headings; band: advisory; disposition: none; todos_left: 0
