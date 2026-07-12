@@ -127,8 +127,7 @@ def route_main(argv: Sequence[str]) -> int:
             if title_kv.get("BRAINSTORM", ["false"])[-1] == "true":
                 brainstorm_prefix = "true"
             has_clarify = required["--has-clarify-label"] == "true"
-            plan_inner, _malformed = issue_wire.parse_named_block(body=body, marker="plan")
-            has_plan = plan_inner is not None
+            has_plan = issue_wire.parse_named_block(body=body, marker="plan")[0] is not None
             if has_clarify:
                 route = "clarify"
             elif has_plan:
