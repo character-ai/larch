@@ -334,7 +334,9 @@ def _is_safe_refname(refname: str) -> bool:
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._/+\-]*", refname):
         return False
     return all(
-        component and not component.startswith(".") and not component.endswith(".")
+        component
+        and not component.startswith(".")
+        and not component.endswith(".")
         and not component.endswith(".lock")
         for component in refname.split("/")
     )
@@ -468,9 +470,7 @@ def _parse_fallback_provenance(parsed: object) -> FallbackProvenance | None:
     )
 
 
-def _write_fallback_provenance(
-    tmpdir: Path, provenance: FallbackProvenance
-) -> None:
+def _write_fallback_provenance(tmpdir: Path, provenance: FallbackProvenance) -> None:
     payload = {
         "schema_version": "3",
         "session_id": provenance.session_id,
@@ -495,6 +495,28 @@ def _fallback_path_signature(*, repo_root: Path, path: str) -> str:
         return "unreadable"
 
 
+def _firm_path_covered_by(firm_path: str, touched_path: str) -> bool:
+    """Return True when *touched_path* covers firm plan path *firm_path*.
+
+    Exact matches always count. Only firm paths ending in ``/`` also accept
+    descendants with that exact prefix; similarly prefixed siblings do not.
+    """
+    if touched_path == firm_path:
+        return True
+    return firm_path.endswith("/") and touched_path.startswith(firm_path)
+
+
+def _map_touched_to_firm_paths(
+    plan_paths: Sequence[str], raw_touched: Sequence[str]
+) -> tuple[str, ...]:
+    """Map raw touched paths onto ordered firm plan paths via coverage predicate."""
+    return tuple(
+        firm
+        for firm in plan_paths
+        if any(_firm_path_covered_by(firm, touched) for touched in raw_touched)
+    )
+
+
 def _frozen_fallback_touched_paths(
     *,
     tmpdir: Path,
@@ -511,16 +533,26 @@ def _frozen_fallback_touched_paths(
     if status.returncode != 0:
         raise ShipError("working-tree status failed")
     porcelain = _porcelain_paths_z(status.stdout)
-    porcelain_plan = {path for path in porcelain if path in plan_paths}
+    # Keep raw porcelain child paths for provenance/signature inputs; coverage
+    # mapping to firm plan-path spelling happens later in compute_coverage.
+    porcelain_plan = {
+        path
+        for path in porcelain
+        if any(_firm_path_covered_by(firm, path) for firm in plan_paths)
+    }
 
     session_id = _fallback_session_id(tmpdir)
     head = _git(runner, ["rev-parse", "HEAD"], cwd=repo_root)
-    if head.returncode != 0 or not re.fullmatch(r"[0-9a-f]{40,64}", head.stdout.strip()):
+    if head.returncode != 0 or not re.fullmatch(
+        r"[0-9a-f]{40,64}", head.stdout.strip()
+    ):
         return tuple(sorted(porcelain_plan))
     current_head = head.stdout.strip()
     provenance = _read_fallback_provenance(tmpdir)
     active_provenance = (
-        provenance if provenance is not None and provenance.session_id == session_id else None
+        provenance
+        if provenance is not None and provenance.session_id == session_id
+        else None
     )
     committed_plan: set[str] = set()
     if active_provenance is not None:
@@ -541,7 +573,9 @@ def _frozen_fallback_touched_paths(
             )
         )
     if session_id:
-        path_signatures = dict(active_provenance.path_signatures) if active_provenance else {}
+        path_signatures = (
+            dict(active_provenance.path_signatures) if active_provenance else {}
+        )
         path_signatures.update(
             {
                 path: _fallback_path_signature(repo_root=repo_root, path=path)
@@ -552,7 +586,9 @@ def _frozen_fallback_touched_paths(
             tmpdir,
             FallbackProvenance(
                 session_id=session_id,
-                anchor_head=(active_provenance.anchor_head if active_provenance else current_head),
+                anchor_head=(
+                    active_provenance.anchor_head if active_provenance else current_head
+                ),
                 path_signatures=path_signatures,
             ),
         )
@@ -704,11 +740,11 @@ def compute_coverage(
     # Coverage and its fingerprint must stay stable across relaunches. The raw
     # touched set can include the selected remote's own evolution plus the ship
     # driver's larch-logs flush commits, so it drifts on every relaunch and
-    # would invalidate a recorded disposition. Keep only plan paths: non-plan
-    # paths (run logs, upstream source churn) cannot affect plan coverage.
+    # would invalidate a recorded disposition. Keep only firm plan paths: map
+    # raw touched files (including directory descendants) onto ordered firm
+    # plan-path spelling. Non-plan paths cannot affect plan coverage.
     # Frozen fallback never attributes committed upstream churn at all.
-    plan_set = frozenset(plan_paths)
-    touched = tuple(path for path in raw_touched if path in plan_set)
+    touched = _map_touched_to_firm_paths(plan_paths, raw_touched)
     touched_set = set(touched)
     untouched_paths = tuple(path for path in plan_paths if path not in touched_set)
     total = len(plan_paths)
@@ -840,7 +876,11 @@ def _coverage_from_mapping(data: Mapping[str, object], *, tmpdir: Path) -> PlanC
     ):
         raise ShipError("coverage artifact contains mismatched companion paths")
     expected_untouched_paths = tuple(
-        path for path in coverage.plan_paths if path not in set(coverage.touched_paths)
+        path
+        for path in coverage.plan_paths
+        if not any(
+            _firm_path_covered_by(path, touched) for touched in coverage.touched_paths
+        )
     )
     expected_percent = (
         int((coverage.untouched * 100) / coverage.total) if coverage.total else 0
@@ -1212,8 +1252,22 @@ def _create_followup_issue(
     ]
     session_env_path = tmpdir / "session-env.sh"
     if session_env_path.is_file():
-        run_id = session_env_path.read_text(encoding="utf-8", errors="replace").split("LARCH_RUN_ID=", 1)[-1].splitlines()[0].strip()
-        create_args.extend(["--context-file", str(session_env_path), "--run-id", run_id, "--trusted-root", str(tmpdir)])
+        run_id = (
+            session_env_path.read_text(encoding="utf-8", errors="replace")
+            .split("LARCH_RUN_ID=", 1)[-1]
+            .splitlines()[0]
+            .strip()
+        )
+        create_args.extend(
+            [
+                "--context-file",
+                str(session_env_path),
+                "--run-id",
+                run_id,
+                "--trusted-root",
+                str(tmpdir),
+            ]
+        )
     created = _run_cli(create_args)
     fields = _require_cli_success(created, label="issue create-one")
     number = fields.get("ISSUE_NUMBER", "")
