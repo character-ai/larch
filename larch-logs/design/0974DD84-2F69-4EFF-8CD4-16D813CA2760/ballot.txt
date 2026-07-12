@@ -1,0 +1,20 @@
+### FINDING_1: Injectable path enumeration for shared delta classification
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The shared delta classifier must accept caller-supplied path enumeration rather than ref strings that always map to `_tracked_paths_vs_ref`; otherwise self-review may reintroduce the cached probe and alter commit-route staging.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Define the shared classifier as inventory-set plus patch-match loop over a caller-supplied path list (or `enumerate_paths` callback). Keep `patch_match_ref` as the head passed to patch matching. Pre-coder supplies `_tracked_paths_vs_ref(diff_base)`; self-review supplies worktree-only `git diff --name-only <pre_head>`.
+
+### FINDING_2: Preserve safe patch-name collision checks
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: Reusing `_snapshot_inventory()` without retaining `_safe_patch_name` collision checks can allow distinct tracked paths to target the same patch artifact and misclassify deltas.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In the self-review facade (and pre-coder validation), keep the existing safe-name collision guard after `_snapshot_inventory()` on tracked inventories; do not treat inventory parsing alone as sufficient patch-collision protection.
+
+### FINDING_3: Add a firm heading for the executable test
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Concern**: The planned executable-test fix is incomplete because the test file lacks a firm heading, allowing the mandated artifact-path regression test to be omitted.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add `### UPDATED: python/tests/review/test_review_and_fix.py` for the planned test changes
