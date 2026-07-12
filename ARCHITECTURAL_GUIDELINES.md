@@ -182,6 +182,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: read the prior state file before seeding; never reseed with hardcoded constants, and never let a sticky completion flag suppress handling of new work performed after the flag was set.
 - Deviate when: only on an explicit operator override, and record the override next to the overwritten value.
 
+### G-Idem-4: At a ship gate, distinguish a transient assessment failure from a genuine defect by its reason token, and route the transient case to operator-bail rather than a hard-stall the reship will replay byte-identically
+- Why: the Step 8 invariant/guideline ship gate mapped a transient `unavailable` assessor result to the same `outcome=dropped` hard-stall as a real violation, and the stall classifier read the transient-failure detail in the evidence as `transient-infra`, so `/implement --merge` reshipped, re-ran the assessment, failed again, and restalled until the attempt cap with no operator path (#7022). `unavailable` is a documented non-violation fallback (`docs/run-logs.md`), not a code defect.
+- Guidance: when a gate acts on an outcome that has both a value and a reason, branch on the reason before stalling; reserve the hard-stall for reasons that denote a genuine defect (`compose-materialization-failed`, `unknown`, read/redaction failures) and route transient reasons (`unavailable`) to `Outcome.NEEDS_USER_INPUT` so the dispatcher maps them to `NEXT_ACTION=operator-bail` and the operator decides from the run-log assessment receipt. The assessor already retried before declaring `unavailable`, so an automated reship is not a useful recovery there.
+- Deviate when: a transient failure has a bounded, idempotent in-process retry that the gate itself owns and that converges before any stall is written.
+
 ## Determinism and identity
 
 ### G-Det-1: Derive a stable cross-run identity (hash, dedup key) only from durable content, excluding run ids, paths, line hints, timestamps, and filesystem state

@@ -103,6 +103,7 @@ from larch.implement.ship_guidelines import (
     GuidelinesShipOutcome,
     InvariantsGateResult,
     InvariantsShipOutcome,
+    REASON_UNAVAILABLE,
     _pin_and_load_guidelines_note,
     clear_guideline_ship_outcome_sidecar,
     clear_invariant_ship_outcome_sidecar,
@@ -510,7 +511,11 @@ def _invariants_gate_before_pr(
         raise Stalled(f"architectural-invariants outcome sidecar write failed: {logging_util.sanitize_diagnostic_line(str(exc))}") from exc
     if pr_context.no_logs_commit:
         return result
-    if outcome is not None and outcome.outcome == "dropped":
+    # A `dropped` outcome with reason `unavailable` is a transient assessor
+    # failure (non-violation fallback per docs/run-logs.md), not a code defect.
+    # Do not hard-stall it here; `_combined_assessment_result` routes it to
+    # operator-bail so the run does not loop on futile reships (issue #7022).
+    if outcome is not None and outcome.outcome == "dropped" and outcome.reason != REASON_UNAVAILABLE:
         _write_terminal_state(
             ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-invariant-outcome-dropped"),
             result=Outcome.STALLED,
@@ -579,7 +584,10 @@ def _guidelines_gate_before_pr(
         cwd=repo_root,
         resume=resume,
     )
-    if outcome is not None and outcome.outcome == "dropped":
+    # See `_invariants_gate_before_pr`: a `dropped` outcome with reason
+    # `unavailable` is a transient assessor failure routed to operator-bail by
+    # `_combined_assessment_result`, not a hard-stall (issue #7022).
+    if outcome is not None and outcome.outcome == "dropped" and outcome.reason != REASON_UNAVAILABLE:
         _write_terminal_state(
             ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-guideline-outcome-dropped"),
             result=Outcome.STALLED,
@@ -642,15 +650,34 @@ def _combined_assessment_result(
         assessment_kinds.append(config.ASSESSMENT_KIND_INVARIANTS)
     if gates.guidelines.needs_assessment:
         assessment_kinds.append(config.ASSESSMENT_KIND_GUIDELINES)
-    if not assessment_kinds:
-        return None
-    return ShipResult(
-        Outcome.NEEDS_USER_INPUT,
-        needs_user_reason=config.NEEDS_USER_ARCHITECTURAL_ASSESSMENTS,
-        detail=",".join(assessment_kinds),
-        pr_number=pr_context.pr_number,
-        pr_url=pr_context.pr_url,
-    )
+    if assessment_kinds:
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason=config.NEEDS_USER_ARCHITECTURAL_ASSESSMENTS,
+            detail=",".join(assessment_kinds),
+            pr_number=pr_context.pr_number,
+            pr_url=pr_context.pr_url,
+        )
+    # A transient assessor failure leaves a durable `unavailable` note (a
+    # non-violation fallback per docs/run-logs.md). The ship gate no longer
+    # hard-stalls it; route to operator-bail so the operator decides whether it
+    # is safe to proceed instead of looping on futile reships to the attempt
+    # cap (issue #7022). The adapter already retried before declaring
+    # `unavailable`, so an automated reship is not a useful recovery here.
+    unavailable_kinds: list[str] = []
+    if gates.invariants.note_state == config.NOTE_STATE_UNAVAILABLE:
+        unavailable_kinds.append(config.ASSESSMENT_KIND_INVARIANTS)
+    if gates.guidelines.note_state == config.NOTE_STATE_UNAVAILABLE:
+        unavailable_kinds.append(config.ASSESSMENT_KIND_GUIDELINES)
+    if unavailable_kinds:
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason="architectural-assessment-unavailable",
+            detail=",".join(unavailable_kinds),
+            pr_number=pr_context.pr_number,
+            pr_url=pr_context.pr_url,
+        )
+    return None
 
 
 def _compose_assessment_gate_before_pr(
