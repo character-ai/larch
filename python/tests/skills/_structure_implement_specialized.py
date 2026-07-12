@@ -1,9 +1,11 @@
-"""Ported implement structure checks from scripts/test-implement-structure.sh."""
+"""Ported implement structure checks from test-implement-structure.sh."""
 from __future__ import annotations
 
 import os
 import re
 from pathlib import Path
+
+from ._structure_label_inventory import assertion_labels
 
 
 def run(repo_root: Path) -> list[str]:
@@ -1020,4 +1022,5 @@ def run(repo_root: Path) -> list[str]:
         os.chdir(prev)
 
 
-LEGACY_LABELS: frozenset[str] = frozenset({"implement-structure-body"})
+LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
+LEGACY_ASSERTION_LABEL_COUNT = 363

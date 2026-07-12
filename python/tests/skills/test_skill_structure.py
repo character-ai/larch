@@ -182,6 +182,27 @@ def evaluate_pin(pin: StructurePin, *, repo_root: Path | None = None) -> None:
             )
         return
 
+    if pin.kind == "cross_file_bound":
+        other = root / pin.path2
+        if not other.is_file():
+            raise AssertionError(f"{prefix}: missing second target {pin.path2}")
+        other_text = other.read_text(encoding="utf-8")
+        assert pin.bound is not None
+        anchor_lines = _match_lines(text, pin.needle, match=pin.match)
+        if not anchor_lines:
+            raise AssertionError(f"{prefix}: missing anchor {pin.needle!r} in {pin.path}")
+        token_lines = _match_lines(other_text, pin.needle2, match=pin.match)
+        if not token_lines:
+            raise AssertionError(
+                f"{prefix}: missing token {pin.needle2!r} in {pin.path2}"
+            )
+        if any(abs(anchor - token) <= pin.bound for anchor in anchor_lines for token in token_lines):
+            return
+        raise AssertionError(
+            f"{prefix}: token {pin.needle2!r} not within bound={pin.bound} "
+            f"of anchor {pin.needle!r} across {pin.path} / {pin.path2}"
+        )
+
     raise AssertionError(f"{prefix}: unknown predicate")
 
 
@@ -296,6 +317,12 @@ def test_legacy_label_inventory_maps_every_label_to_one_collected_node() -> None
         labels = getattr(mod, "LEGACY_LABELS", None)
         assert isinstance(labels, frozenset), skill
         assert labels, f"{skill} specialized module has empty LEGACY_LABELS"
+        expected_count = getattr(mod, "LEGACY_ASSERTION_LABEL_COUNT", None)
+        if expected_count is not None:
+            assert len(labels) == expected_count, (
+                f"{skill} specialized assertion inventory changed: "
+                f"expected {expected_count}, found {len(labels)}"
+            )
         owner = f"tests/skills/test_skill_structure.py::{SPECIALIZED_LABEL_OWNERS[skill]}"
         for label in labels:
             label_owners.setdefault((skill, label), []).append(owner)
@@ -491,6 +518,34 @@ def test_evaluator_adjacent_pair_and_same_line(tmp_path: Path) -> None:
             ),
             repo_root=tmp_path,
         )
+    _ = (tmp_path / "other.md").write_text("A\nX\nY\n", encoding="utf-8")
+    evaluate_pin(
+        StructurePin(
+            skill="t",
+            label="cross-file",
+            path="p.md",
+            path2="other.md",
+            kind="cross_file_bound",
+            needle="A",
+            needle2="A",
+            bound=1,
+        ),
+        repo_root=tmp_path,
+    )
+    with pytest.raises(AssertionError, match="within bound"):
+        evaluate_pin(
+            StructurePin(
+                skill="t",
+                label="cross-file-fail",
+                path="p.md",
+                path2="other.md",
+                kind="cross_file_bound",
+                needle="B",
+                needle2="A",
+                bound=0,
+            ),
+            repo_root=tmp_path,
+        )
     _ = (tmp_path / "s.md").write_text("foo bar baz\nfoo only\n", encoding="utf-8")
     evaluate_pin(
         StructurePin(
@@ -542,6 +597,10 @@ def test_validate_pin_table_rejects_empty_needle() -> None:
         (StructurePin(skill="t", label="mode", path="a", kind="ordered", needle="n", needle2="m", match_mode="invalid"), "unknown match mode"),  # type: ignore[arg-type]
         (StructurePin(skill="t", label="bound", path="a", kind="count_at_least", needle="n", expected=-1, comparator="at_least"), "non-negative"),
         (StructurePin(skill="t", label="compat", path="a", kind="count_at_least", needle="n", expected=1), "requires comparator"),
+        (StructurePin(skill="t", label="adj-count", path="a", kind="adjacent_pair_count_at_least", needle="a", needle2="b", expected=True, count_unit="adjacent_pair", comparator="at_least"), "non-negative"),
+        (StructurePin(skill="t", label="adj-unit", path="a", kind="adjacent_pair_count_at_least", needle="a", needle2="b", expected=1, comparator="at_least"), "count_unit"),
+        (StructurePin(skill="t", label="adj-compare", path="a", kind="adjacent_pair_count_at_least", needle="a", needle2="b", expected=1, count_unit="adjacent_pair"), "comparator"),
+        (StructurePin(skill="t", label="cross-bound", path="a", path2="b", kind="cross_file_bound", needle="a", needle2="b", bound=-1), "non-negative"),  # type: ignore[arg-type]
     ],
 )
 def test_validate_pin_table_rejects_invalid_modes_and_bounds(pin: StructurePin, message: str) -> None:

@@ -19,6 +19,7 @@ PredicateKind = Literal[
     "ordered",
     "same_line",
     "adjacent_pair_count_at_least",
+    "cross_file_bound",
 ]
 MatchKind = Literal["fixed", "regex"]
 CountUnit = Literal["physical_line", "matching_line", "substring", "adjacent_pair"]
@@ -392,6 +393,7 @@ def validate_pin_table(pins: tuple[StructurePin, ...]) -> None:
             "ordered",
             "same_line",
             "adjacent_pair_count_at_least",
+            "cross_file_bound",
         }:
             raise ValueError(f"unknown predicate: {pin.kind!r}")
         if not pin.label.strip():
@@ -415,8 +417,35 @@ def validate_pin_table(pins: tuple[StructurePin, ...]) -> None:
         if pin.kind == "ordered" and (not pin.needle or not pin.needle2):
             raise ValueError(f"ordered pin incomplete: {pin.label!r}")
         if pin.kind == "adjacent_pair_count_at_least":
-            if not pin.needle or not pin.needle2 or pin.expected is None:
+            if not pin.needle or not pin.needle2:
                 raise ValueError(f"adjacent-pair incomplete: {pin.label!r}")
+            if (
+                not isinstance(pin.expected, int)
+                or isinstance(pin.expected, bool)
+                or pin.expected < 0
+            ):
+                raise ValueError(
+                    f"adjacent-pair needs non-negative integer expected: {pin.label!r}"
+                )
+            if pin.count_unit != "adjacent_pair":
+                raise ValueError(
+                    f"adjacent-pair requires count_unit='adjacent_pair': {pin.label!r}"
+                )
+            if pin.comparator != "at_least":
+                raise ValueError(
+                    f"adjacent-pair requires comparator='at_least': {pin.label!r}"
+                )
+        if pin.kind == "cross_file_bound":
+            if not pin.path2 or not pin.needle or not pin.needle2:
+                raise ValueError(f"cross_file_bound incomplete: {pin.label!r}")
+            if (
+                not isinstance(pin.bound, int)
+                or isinstance(pin.bound, bool)
+                or pin.bound < 0
+            ):
+                raise ValueError(
+                    f"cross_file_bound needs non-negative integer bound: {pin.label!r}"
+                )
         if pin.kind in {"exact_count", "count_at_least"}:
             if not isinstance(pin.expected, int) or isinstance(pin.expected, bool) or pin.expected < 0:
                 raise ValueError(f"count pin needs non-negative integer expected: {pin.label!r}")

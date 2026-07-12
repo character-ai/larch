@@ -1,4 +1,4 @@
-"""Non-pin assertions ported from scripts/test-design-structure.sh."""
+"""Non-pin assertions ported from test-design-structure.sh."""
 from __future__ import annotations
 
 import re
@@ -7,45 +7,11 @@ import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
+from ._structure_label_inventory import assertion_labels
 
-LEGACY_LABELS: frozenset[str] = frozenset(
-    {
-        "skills/design/SKILL.md closure growth ratchet failed",
-        "/design Step 3 launch loads bgjob-wait contract",
-        "/design Step 3 launch pins BGJOB_RC gate",
-        "/design Step 3 launch names bgjob result env",
-        "/design Step 5c uses the bgjob wait contract",
-        "/design Step 5c names bgjob result env",
-        "/design Step 3 resume back-reference precedes its bgjob fence",
-        "SKILL.md still references retired",
-        "retired script still exists",
-        "migrated-scripts.tsv missing",
-        "cli _DESIGN_LIFECYCLE_STDOUT_KEYS block extraction incomplete after 3 attempts",
-        "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design",
-        "shared postplan body must",
-        "MAY_UPDATE",
-        "Gate C missing",
-        "Gate C invariant",
-        "SKILL missing invariant assessment special case",
-        "SKILL missing guideline assessment special case",
-        "SKILL invariant assessment special case must precede guideline case",
-        "retired G6.2 script still exists",
-        "retired Step 2 script still exists",
-        "retired Step 6 script still exists",
-        "finalize-step5 reference missing",
-        "finalize-step5 must anchor",
-        "SKILL must retain exactly one Step 3 entry launcher fence",
-        "SKILL Gate-B-bypass routing row owns contract",
-        "assert_timing_task_kind_allowlist",
-        "finalize-step5 must reference readability-style.md once",
-        "dialectic legacy attic doc missing",
-        "retired dialectic-legacy runtime reference still exists",
-        "oos step5b dispatch reference missing",
-        "oos step5b dispatch must anchor When to load header",
-        "settle rc dispatch reference missing",
-        "settle rc dispatch must anchor When to load header",
-    }
-)
+
+LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
+LEGACY_ASSERTION_LABEL_COUNT = 20
 
 
 def run(repo_root: Path) -> list[str]:
@@ -210,8 +176,9 @@ def run(repo_root: Path) -> list[str]:
     for name in terminal_retired:
         if (p("skills/design/scripts") / name).exists(): failures.append(f"retired G6.2 script still exists: {name}")
         if f"skills/design/scripts/{name}" not in migrated_text: failures.append(f"migrated-scripts.tsv missing {name}")
-    if p("scripts/debug-step5c-once.sh").exists(): failures.append("retired G6.2 script still exists: scripts/debug-step5c-once.sh")
-    if "scripts/debug-step5c-once.sh" not in migrated_text: failures.append("migrated-scripts.tsv missing scripts/debug-step5c-once.sh")
+    debug_once = "debug-step5c-once.sh"
+    if (p("scripts") / debug_once).exists(): failures.append(f"retired G6.2 script still exists: scripts/{debug_once}")
+    if f"scripts/{debug_once}" not in migrated_text: failures.append(f"migrated-scripts.tsv missing scripts/{debug_once}")
 
     step2_retired = ["design-step2a.sh", "design-step2a.md", "design-step2b-drafter.sh", "design-step2b-drafter.md", "design-step2b-postplan.sh", "design-step2b-postplan.md", "design-step2b5.sh", "design-step2b5.md", "design-step-validator-autofix.sh", "design-step-validator-autofix.md", "design-step2b-prelude.sh", "design-step2b-prelude.md", "test-design-step2b-drafter.sh", "test-design-step2b-drafter.md", "test-design-step-validator-autofix.sh", "test-design-step-validator-autofix.md"]
     for name in step2_retired:
