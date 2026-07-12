@@ -1,0 +1,98 @@
+## Approach
+
+Add the proposal fields and enforcement together. Build the manifest lint on the shared lint engine. Seed existing modules as legacy, while recording the new lint as justified by the commissioning issue.
+
+## Files to modify/create
+
+### UPDATED: skills/learn-from-bugs/SKILL.md
+
+- Require **Host**, **Size budget**, and **Cheaper alternative** in Step 4 sections 4 and 7.
+- Require the fields for section 5 proposals whose `best-home` is `lint` or `hook`.
+- Define size as new non-test lines. Require justification above 150 lines.
+- Route proposals above 400 lines to operator approval at the default Step 5 gate.
+- Require filing mode to split proposals above 400 lines before filing.
+- Add the fields to the Lint, Hook-contract, and Regression test filing body contracts.
+- Make the pre-filing completeness pass fail closed when any applicable proposal omits a field or threshold justification.
+
+### UPDATED: python/tests/skills/_structure_learn_from_bugs_specialized.py
+
+- Pin the exact field names `Host`, `Size budget`, and `Cheaper alternative`.
+- Pin their presence in the applicable report and filing contracts.
+- Pin the fail-closed completeness rule and both size thresholds.
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+- Append a new `## Prevention discipline` section.
+- Add `G-Prev-1` in the repository’s heading and bullet style.
+- Preserve the requested host-first rule, 2026-07 evidence, cheaper-mechanism preference, and narrow deviation.
+
+### NEW: python/lint-module-manifest.json
+
+- Add one deterministic record per existing `python/larch/lint/lint_*.py` module.
+- Seed pre-existing modules with `host_decision: "legacy"` and `source_issue: 0`, without retroactive justification.
+- Add `lint_module_manifest.py` as `new-module-justified`, with a one-sentence justification and the positive commissioning issue number.
+- Keep records sorted by module name and use an explicit, stable JSON schema.
+
+### NEW: python/larch/lint/lint_module_manifest.py
+
+- Expose `main(argv) -> int` and use `LintRule`, `Finding`, and `run_rule`.
+- Validate the manifest before comparing it with regular, non-symlink `lint_*.py` files.
+- Reject malformed JSON, wrong record shapes or types, duplicate modules, unsupported `host_decision` values, and unsafe module names as contract errors.
+- Report lint findings for missing module entries, stale entries, and `new-module-justified` rows without a non-empty justification or positive integer `source_issue`.
+- Keep legacy rows exempt from retroactive justification.
+- Produce deterministic findings and preserve the shared engine’s clean, finding, and error exit classes.
+
+### NEW: python/tests/lint/test_lint_module_manifest.py
+
+- Cover a clean seeded manifest and deterministic output.
+- Cover missing, stale, and duplicate entries.
+- Cover empty justification and invalid `source_issue` values for new modules.
+- Cover accepted legacy rows and rejected enum, schema, JSON, path, symlink, and unreadable-input cases.
+- Verify the committed manifest matches the live lint-module inventory.
+- Exercise `main` through an injected or fake runner so tests remain offline.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("lint", "module-manifest")` to the new module’s `main`.
+
+### UPDATED: Makefile
+
+- Add phony `lint-module-manifest` and `test-lint-module-manifest` targets.
+- Add `module-manifest` to `py-lint-checks-fast`.
+- Add the lint target to local `make lint` so both documented lint paths enforce the manifest.
+
+### UPDATED: docs/linting.md
+
+- Document the manifest path, record fields, allowed host decisions, and legacy policy.
+- Document missing, stale, and justification failures.
+- List the CLI and Make targets and note fast-lint integration.
+
+## Edge cases
+
+- The manifest lint must include its own new module.
+- JSON booleans must not count as positive integer issue numbers.
+- Basenames must not contain separators or traversal segments.
+- Legacy rows must not become a backdoor for newly added modules.
+- A deleted lint module must leave a stale-entry finding until its manifest row is removed.
+
+## Failure modes
+
+- Fail with the tool-error exit for malformed or unreadable manifest data.
+- Fail with findings for validly parsed policy violations.
+- Do not silently skip missing manifests, unsafe filesystem entries, or duplicate records.
+- Keep proposal filing blocked until every applicable cost field is complete.
+
+## Testing strategy
+
+- Run `make test-learn-from-bugs-structure`.
+- Run `make test-lint-module-manifest`.
+- Run `make lint-module-manifest`.
+- Run focused pytest for both changed test modules.
+- Run `make py-lint` and `make lint` for acceptance coverage.
+
+difficulty: HARD
+diff_added: 690
+diff_deleted: 5
+mechanical_churn: true
+oversize_override: operator
+diff_lines: 695

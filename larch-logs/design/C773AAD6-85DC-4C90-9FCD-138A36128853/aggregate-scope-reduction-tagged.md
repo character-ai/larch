@@ -1,0 +1,15 @@
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/larch/lint/lint_module_manifest.py
+- **Concern**: [SCOPE-REDUCTION] Do not route manifest reconciliation through `run_rule`. Scenario: Manifest work is global: parse one JSON file, diff manifest rows against the lint-module inventory, and emit set-level missing/stale/legacy-policy findings. `run_rule` is per tracked file with a `detect(SourceFile)` hook; forcing it here adds complexity and invites cached-only inventory or duplicated global findings.
+- **Proposed resolution**: Keep `Finding` and 0/1/2 exit classes from `python/larch/lint/engine.py`, but implement `main()` like `lint_complexity_baseline.py`: validate manifest once, enumerate inventory once, emit sorted findings. Drop the plan requirement to call `run_rule` unless a narrow per-file check remains.
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/larch/lint/lint_module_manifest.py
+- **Concern**: [SCOPE-REDUCTION] Drop the mandatory run_rule/LintRule wiring for manifest parity. Scenario: Plan requires run_rule, but engine.run_rule only walks git ls-files --cached paths (python/larch/lint/engine.py:177-178) and runs per-file detect. No existing lint_*.py uses run_rule today; peer manifest checks (lint_complexity_baseline.py, lint_skill_closure_growth.py, lint_run_log_walkers.py) use standalone main() with repo-global validation. Wiring this lint through run_rule adds integration surface without helping stale-row detection, which needs a manifest-wide pass the plan already describes separately.
+- **Proposed resolution**: Implementer follows run_rule literally and either misses stale manifest rows or duplicates global logic around the engine. Revise lint_module_manifest.py to use a standalone main() like complexity-baseline: validate schema, enumerate python/larch/lint/lint_*.py via lint_dir.glob or lint_common.git_ls_files_z with symlink rejection, bidirectionally compare, emit findings with shared exit codes 0/1/2. Reuse Finding/render_finding only if helpful; do not require run_rule. 1. **[architecture]** `python/larch/lint/lint_module_manifest.py` — **[SCOPE-REDUCTION] Drop the mandatory `run_rule`/`LintRule` wiring.** The plan tells implementers to use the shared `run_rule` engine, but that API only discovers `git ls-files --cached` paths and scans them one file at a time. Manifest parity needs a repo-global bidirectional compare (missing rows, stale rows, legacy seed policy) that none of the existing `lint_*.py` modules implement through `run_rule`; they use standalone `main()` instead (`lint_complexity_baseline.py`, `lint_skill_closure_growth.py`, `lint_run_log_walkers.py`). **Suggested revision:** Describe a standalone `main(argv)` validator matching those peers; enumerate inventory with `lint_dir.glob("lint_*.py")` or `lint_common.git_ls_files_z`, keep the frozen `LEGACY_SEED_MODULES` gate, and optionally reuse `Finding`/`render_finding` for output only.

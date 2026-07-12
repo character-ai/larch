@@ -1,0 +1,92 @@
+#### Problem
+
+The 2026-07 bug wave is being answered with prevention machinery whose size dwarfs the fixes:
+
+- #6873 adopted `/learn-from-bugs` preventions as three new lint modules, +2,245 lines in one commit.
+- #6619, #6622, #6750, #6675 each added another standalone lint (550-900 lines each).
+- #6526 added a new gate (+997 lines to `python/larch`); #6852 and #6643 added hardening layers (+819 and +529).
+- The median fix commit in the same window added 68 lines to `python/larch`. Prevention adoptions, not features, drive the complexity growth.
+
+New machinery carries normal defect density and lands in the chronic zones. Preventions have already spawned their own bugs: #6881 in the new bgjob wrapper, and the classifier chain (#6882 followed by #6955) inside the new assessment lanes. No stage of `/learn-from-bugs`, its filed issues, or review asks what a prevention costs or whether a cheaper mechanism exists.
+
+#### Required changes
+
+1. `/learn-from-bugs` proposal contract. In `skills/learn-from-bugs/SKILL.md`, extend Step 4 sections 4 (lint rules), 5 (invariants with best-home `lint` or `hook`), and 7 (regression tests), plus the filing-mode body contracts for "Lint", "Hook-contract", and "Regression test". Every proposal gains three required fields:
+   - **Host**: the existing lint rule, module, hook, or harness this extends. "New module" is allowed only with one sentence naming the closest existing host and why it cannot absorb the rule.
+   - **Size budget**: estimated new lines excluding tests. Over 150 lines requires explicit justification in the proposal. Over 400 lines requires operator approval at the Step 5 gate in default mode, or splitting the proposal in filing mode.
+   - **Cheaper alternative**: the nearest cheaper mechanism (extend an existing rule, add a manifest or table entry, add an invariant test, add a hook line) and one sentence on why it is insufficient.
+
+   The filing-mode pre-filing completeness pass must treat a lint, hook, or regression-test proposal missing these fields as incomplete (fail-closed, consistent with the existing completeness check).
+2. Guideline. Append to `ARCHITECTURAL_GUIDELINES.md`, matching the existing heading and body style (see G-Fix-1). Proposed text, with the ID adjusted at implementation time to the file's area conventions:
+
+   ```markdown
+   ### G-Prevent-1: Prevention machinery names its host before it is commissioned
+
+   Before proposing or implementing a new lint, gate, classifier, or hardening layer, name the existing module that hosts the rule, or justify in one sentence why no existing host fits, and state the expected size in lines. Prefer extending an existing rule, a manifest or table entry, an invariant test, or a hook line over creating a new module.
+
+   **Why**: prevention adoptions were the largest source of new complexity in the 2026-07 bug wave (#6873 added 2,245 lint lines in one commit), and new prevention machinery has itself spawned bugs (#6881, #6955).
+
+   **Deviate when**: the rule scans a genuinely new surface no existing module touches, and the proposal says so explicitly.
+   ```
+3. Mechanical backstop: `lint-module-manifest`. A small new lint (build it on the shared lint engine if that sibling issue has landed; standalone otherwise) requiring every `python/larch/lint/lint_*.py` to have an entry in a new `python/lint-module-manifest.json`:
+
+   ```json
+   {"module": "lint_example.py", "host_decision": "legacy", "justification": "<one sentence>", "source_issue": 0}
+   ```
+
+   - `host_decision` is `legacy` (seeded for all current modules) or `new-module-justified` (requires a non-empty `justification` and a positive `source_issue`).
+   - The lint fails on a module with no entry, an empty justification for `new-module-justified`, or a manifest entry with no matching module (stale).
+   - Register as `("lint", "module-manifest")` in `python/larch/cli.py`, add `lint-module-manifest` / `test-lint-module-manifest` Makefile targets, and include it in the fast lint set.
+
+   The effect: every new lint module forces one reviewable JSON diff stating why it exists and which issue commissioned it.
+
+#### Non-goals
+
+- No enforcement inside `/design` or `/implement` prompts in this issue. If field compliance stays low, file a follow-up.
+- No retroactive re-justification of the existing modules beyond the seeded `legacy` entries.
+- No restriction on what `/learn-from-bugs` may propose; this changes only what a proposal must state.
+
+#### Acceptance criteria
+
+1. `skills/learn-from-bugs/SKILL.md` carries the three fields in the section contracts and body contracts named above; the skill's structure harness (extend it if present, otherwise add a minimal one) pins the three field names.
+2. The guideline lands in `ARCHITECTURAL_GUIDELINES.md` with correct numbering and style, so the `/learn-from-bugs` coverage indexer sees it as existing coverage on future runs.
+3. Manifest, seed entries, lint, registration, Makefile targets, and tests land; `make lint` and `make py-lint` stay green.
+4. `docs/linting.md` documents the manifest contract.
+
+#### Backing evidence
+
+97 fix commits between 2026-07-08 and 2026-07-11 added +18.9k lines to `python/larch`; the top five commits were all prevention machinery. Guideline G-Fix-1 ("Fix the class, not the instance") states the principle; this issue gives it a cost gate at the point where new machinery is commissioned. Filed together with "[FEATURE] Shared lint engine" and "[FEATURE] Complexity-baseline debt ratchet".
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add three required proposal fields (Host, Size budget, Cheaper alternative) to learn-from-bugs lint/hook/test proposals.
+- Add G-Prev-1 guideline to ARCHITECTURAL_GUIDELINES.md under a new Prevention discipline section.
+- Add lint-module-manifest: JSON seed file, new lint module, CLI registration, Makefile targets, and docs entry.
+
+### Non-goals
+- No enforcement inside /design or /implement prompts.
+- No retroactive re-justification of existing lint modules beyond seeded legacy entries.
+- No changes to what /learn-from-bugs may propose; only what proposals must state.
+
+### Approach sketch
+- Extend SKILL.md Step 4 sections 4, 5 (lint/hook best-home), and 7 with three required fields; extend filing body contracts and completeness pass to treat missing fields as incomplete.
+- Extend `_structure_learn_from_bugs_specialized.py` harness with pin checks for the three field names.
+- Append G-Prev-1 under a new `## Prevention discipline` section at the end of ARCHITECTURAL_GUIDELINES.md.
+- Create `python/larch/lint/lint_module_manifest.py` on the shared engine; create `python/lint-module-manifest.json` seeded with legacy entries for all current `lint_*.py` modules.
+- Register `("lint", "module-manifest")` in `python/larch/cli.py`; add `lint-module-manifest` and `test-lint-module-manifest` Makefile targets; document in `docs/linting.md`.
+
+### Surfaces in scope
+- `skills/learn-from-bugs/SKILL.md`
+- `python/tests/skills/_structure_learn_from_bugs_specialized.py`
+- `ARCHITECTURAL_GUIDELINES.md`
+- `python/larch/lint/lint_module_manifest.py` (new)
+- `python/lint-module-manifest.json` (new)
+- `python/larch/cli.py`
+- `Makefile`
+- `docs/linting.md`
+
+### Open questions
+- None.
