@@ -472,7 +472,7 @@ def _parse_issue_url(url: str, *, expected_repo: str) -> int:
     return int(match.group(2))
 
 
-def _filed_pieces(design_tmpdir: Path, *, repo: str) -> tuple[FiledPiece, ...]:
+def filed_pieces(design_tmpdir: Path, *, repo: str) -> tuple[FiledPiece, ...]:
     sent = design_tmpdir / ".decompose-issues-filed"
     if not sent.is_file() or sent.is_symlink():
         raise UsageError("migrate-deps: missing complete annotation sentinel")
@@ -647,7 +647,7 @@ def migrate_dependencies(*, design_tmpdir: Path, original_issue: str, repo: str)
         _emit_kv(key="DECOMPOSE_DEPS_AUTH_REASON", value=reason)
         return "authorization-denied"
     try:
-        pieces = _filed_pieces(design_tmpdir, repo=repo)
+        pieces = filed_pieces(design_tmpdir, repo=repo)
         manifest_path = design_tmpdir / "decompose" / "dependency-migration.json"
         if manifest_path.is_file():
             migration = _load_migration(manifest_path)
@@ -668,12 +668,15 @@ def migrate_dependencies(*, design_tmpdir: Path, original_issue: str, repo: str)
         if ready and sentinel.is_file() and _live_original_edges_match_migration(migration) and _migration_postcondition(migration):
             return "ok"
         sentinel.unlink(missing_ok=True)
+        failure: tuple[str, str] | None = None
         if not ready or not _apply_migration(migration):
-            return _record_migration_failure(design_tmpdir, phase="migration", detail="dependency mutation or verification failed")
-        if not _live_original_edges_match_migration(migration):
-            return _record_migration_failure(design_tmpdir, phase="live-dependency-drift", detail="original dependency graph changed")
-        if not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces):
-            return _record_migration_failure(design_tmpdir, phase="intra-piece-postcondition", detail="declared piece dependency missing")
+            failure = ("migration", "dependency mutation or verification failed")
+        elif not _live_original_edges_match_migration(migration):
+            failure = ("live-dependency-drift", "original dependency graph changed")
+        elif not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces):
+            failure = ("intra-piece-postcondition", "declared piece dependency missing")
+        if failure is not None:
+            return _record_migration_failure(design_tmpdir, phase=failure[0], detail=failure[1])
         sentinel.touch()
         return "ok"
     except (OSError, RuntimeError, TypeError, ValueError) as exc:

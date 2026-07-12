@@ -64,7 +64,7 @@ def test_filed_pieces_rejects_non_unique_or_non_contiguous_mapping(tmp_path: Pat
     (d / ".decompose-issues-filed").write_text(records, encoding="utf-8")
 
     with pytest.raises(decompose.UsageError, match="incomplete or duplicate filed mapping"):
-        decompose._filed_pieces(d, repo="o/r")
+        decompose.filed_pieces(d, repo="o/r")
 
 
 def test_prepare_bad_dependency_and_cycle(tmp_path: Path) -> None:
@@ -497,7 +497,7 @@ def test_migrate_dependencies_rejects_live_dependency_drift(tmp_path: Path, monk
     (dec / "partition-deps.tsv").write_text("", encoding="utf-8")
     (dec / "dependency-migration.json").write_text(json.dumps({"schema_version": "1", "original_issue": 99, "repo": "o/r", "pieces": [{"piece": 1, "issue": 101, "repo": "o/r"}, {"piece": 2, "issue": 102, "repo": "o/r"}], "incoming": [{"blocked": 99, "blocker": 7}], "outgoing": []}) + "\n", encoding="utf-8")
     monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
-    monkeypatch.setattr(decompose, "_read_dependencies", lambda *, issue, repo: ((8,), ()) if issue == 99 else ((), ()))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(decompose, "_read_dependencies", lambda *, issue, **_: ((8,), ()) if issue == 99 else ((), ()))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     assert decompose.migrate_dependencies(design_tmpdir=d, original_issue="99", repo="o/r") == "failed"
     assert "phase=live-dependency-drift" in (dec / "migration-failure.txt").read_text(encoding="utf-8")
