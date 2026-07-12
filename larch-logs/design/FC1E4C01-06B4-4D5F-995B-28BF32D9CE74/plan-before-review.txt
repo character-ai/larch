@@ -1,0 +1,175 @@
+## Approach
+
+1. Expand `run_log_corpus.py` without changing `load_run_manifest` semantics.
+   - Keep `load_run_manifest` limited to accepted `manifest.json` files.
+   - Expose the existing symlink-safe child-directory walk as a public helper.
+   - Add `run_started_at`, `larch_version`, `round_num_from_path`, and `discover_classifications`.
+   - Centralize safe reads of `manifest.json` and `run-manifest.json` for the metadata helpers.
+   - Let callers choose whether `updated_at` may serve as the timestamp fallback, so strict ground-truth filtering keeps its current behavior.
+   - Return deterministic classification results for the design, implement, and review layouts.
+
+2. Repoint every in-scope scanner.
+   - Remove copied directory safety checks, round parsing, classification triple-globs, and dual-manifest metadata loops.
+   - Preserve caller-specific behavior such as schema filtering, JSONL fallbacks, warning counters, date parsing, and report ordering.
+   - Keep `retro_fix_cursor.py`, `retro_v3_sweep.py`, and `cleanup_implement_logs.py` unchanged because #7008 owns their deletion.
+
+3. Add a mechanical adoption ratchet.
+   - Scan tracked Python sources with AST-based call inspection.
+   - Reject new raw run-log corpus glob, walk, `scandir`, classification-discovery, and dual-manifest traversal patterns outside `run_log_corpus.py`.
+   - Use a narrow, reason-bearing exemption for the three #7008 dead-code modules while they remain present.
+   - Register `lint run-log-walkers` and run it from the Makefile lint aggregate.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/run_log_corpus.py
+
+- Promote the safe child-directory walker to the shared public API.
+- Add a private manifest-candidate reader that:
+  - Checks `manifest.json` before `run-manifest.json`.
+  - Rejects symlinks and non-files.
+  - Treats unreadable, malformed, or non-object JSON as unavailable.
+- Add `run_started_at` with explicit control over the `updated_at` fallback.
+- Add `larch_version` with the existing empty-string behavior for absent or invalid values.
+- Add `round_num_from_path`, preserving support for both `round-N` directories and filenames containing `round-N`.
+- Add `discover_classifications` for the three canonical classification layouts. Return stable panel-kind and path pairs in deterministic order.
+- Keep `load_run_manifest` and `run_dirs` manifest-acceptance behavior unchanged. Do not let `run-manifest.json` satisfy that gate.
+
+### UPDATED: python/larch/calibration/difficulty_calibration.py
+
+- Replace `_safe_child_run_dirs` and `_round_num_from_path` with shared helpers.
+- Use shared classification discovery for TSV sources while retaining the implement and review JSONL fallback paths.
+- Adapt shared walker warnings into existing `AnalyzerState` counters so missing roots, unreadable roots, and unsafe directories remain observable.
+- Preserve manifest parsing used for difficulty records unless the shared acceptance helper is behaviorally equivalent for this scanner.
+
+### UPDATED: python/larch/issue/_ground_truth.py
+
+- Replace the classification triple-glob and round parser with shared helpers.
+- Replace the repeated dual-name manifest loops with `run_started_at` and `larch_version`.
+- Preserve review TSV schema filtering after discovery.
+- Preserve the distinction between normal timestamp selection and strict `started_at`-only verdict eligibility.
+- Keep current version validation and datetime parsing at the caller boundary.
+
+### UPDATED: python/larch/issue/rejected_analysis.py
+
+- Replace `_run_started_at` and `_round_from_path` with shared metadata and round helpers.
+- Use shared classification discovery or shared per-run classification results where it removes copied glob logic without changing fallback ordering.
+- Preserve current empty-value, date-window, and review-versus-implement behavior.
+
+### UPDATED: python/larch/review/_voting_calibration.py
+
+- Replace the dual-manifest timestamp loop and classification triple-glob.
+- Convert the shared timestamp string through the existing datetime parser.
+- Preserve `VoterCalibrationDiscoveryRow`, run-directory derivation, sorting, and recent-run window behavior.
+
+### UPDATED: python/larch/report/gc_run_logs.py
+
+- Replace `_iter_run_dirs` with the shared safe child-directory walker.
+- Replace direct `started_at` parsing with `run_started_at`.
+- Preserve the Git commit-date fallback for runs without usable manifest timestamps.
+- Keep the deeper escape-symlink check before any slimming or deletion.
+
+### UPDATED: python/larch/report/final_report.py
+
+- Route committed run-manifest reads used by scanner-style report recovery through the shared corpus API where its acceptance contract matches.
+- Preserve status recovery, main-model lookup, and empty-value behavior.
+- Leave dispatcher and session manifest reads alone because they are not committed corpus walks.
+
+### UPDATED: python/larch/issue/audit_runs.py
+
+- Use the shared committed-run manifest reader for audit scans where an accepted run manifest is required.
+- Preserve direct reads of non-corpus state and sidecar artifacts.
+- Keep existing informational versus failing outcomes for missing, malformed, or pre-cutover data.
+
+### UPDATED: skills/fluff-analysis/scripts/fluff-analysis.py
+
+- Import the shared corpus helpers through the script’s existing `python/` path setup.
+- Replace copied manifest metadata reads, round parsing, and canonical classification discovery.
+- Preserve string-shaped report fields, deterministic ordering, thread-pool behavior, JSONL fallbacks, and in-progress session analysis.
+- Remove imports from sibling scanner modules when the shared corpus API now owns those helpers.
+
+### UPDATED: skills/voter-calibration/scripts/voter-calibration.py
+
+- Replace `_discover` with `discover_classifications`.
+- Keep the script’s existing panel labels and downstream row format.
+- Preserve plugin-root import bootstrapping and CLI output.
+
+### NEW: python/larch/lint/lint_run_log_walkers.py
+
+- Implement the AST ratchet as a module-level `main(argv) -> int`.
+- Enumerate tracked Python files while excluding generated, fixture, cache, and committed run-log trees.
+- Detect raw corpus traversal calls and copied canonical classification or dual-manifest discovery patterns.
+- Exempt `run_log_corpus.py` as the owner.
+- Temporarily exempt the three #7008 deletion targets with inline reasons. Do not create a broad exemption that permits new scanners.
+- Emit stable file, line, and remediation diagnostics. Fail closed on unreadable or invalid Python source.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("lint", "run-log-walkers")` to the new lint module.
+
+### UPDATED: Makefile
+
+- Add a `lint-run-log-walkers` target.
+- Add the target to `.PHONY`.
+- Add it to the `lint` aggregate so the ratchet runs in the standard local lint sweep.
+
+### UPDATED: python/tests/report/test_run_log_corpus.py
+
+- Cover safe child discovery, including missing roots, symlink children, containment, ordering, and warnings.
+- Prove `load_run_manifest` remains `manifest.json`-only.
+- Cover dual-name precedence and fallback for `run_started_at` and `larch_version`.
+- Cover strict timestamp mode that does not substitute `updated_at`.
+- Cover malformed JSON, non-object JSON, symlink manifests, missing fields, and invalid value types.
+- Cover round extraction from directories, filenames, and paths without a round.
+- Cover all three classification layouts and deterministic ordering.
+
+### NEW: python/tests/lint/test_lint_run_log_walkers.py
+
+- Test accepted shared-helper usage.
+- Test rejection of raw glob, walk, `scandir`, classification triple-glob, and dual-manifest loop patterns.
+- Test that unrelated file traversal and ordinary manifest reads do not trigger.
+- Test owner exclusion and the narrow #7008 exemptions.
+- Test CLI return codes and stable diagnostics.
+
+## Edge cases
+
+- A review artifact may have only `run-manifest.json`; metadata helpers must still read it.
+- If both manifest names exist, `manifest.json` must win.
+- `load_run_manifest` must continue rejecting a run that has only `run-manifest.json`.
+- A malformed preferred manifest may require checking the alternate candidate, matching current dual-loop callers.
+- Strict ground-truth verdict filtering must not accept `updated_at` when `started_at` is absent.
+- Review classification files still need caller-owned schema validation.
+- GC must scan safely even when a run lacks an accepted manifest, because it can recover the date from Git.
+- JSONL fallback sources are caller-specific and must not disappear when TSV discovery moves to the shared helper.
+- The lint must not classify run-log writers, fixed artifact lookups, or session-local paths as corpus walkers.
+- The lint exemption must remain limited to the three files scheduled for deletion by #7008.
+
+## Failure modes
+
+- A helper return-type change could alter date comparisons, panel labels, or round identities.
+- Applying manifest acceptance to review artifacts could silently drop valid `run-manifest.json` data.
+- Replacing GC enumeration with manifest-filtered `run_dirs` could hide malformed runs from retention.
+- Overbroad lint matching could block legitimate artifact code. Narrow tests must cover negative cases.
+- Underbroad lint matching could allow another copied walker. Positive fixtures must cover each forbidden traversal shape.
+- The skill scripts can fail outside the checkout if imports bypass their existing plugin-root bootstrap.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/report/test_run_log_corpus.py python/tests/lint/test_lint_run_log_walkers.py -q`.
+- Run the existing affected suites:
+  - `python3 -m pytest python/tests/calibration/test_difficulty_calibration.py -q`
+  - `python3 -m pytest python/tests/issue/test_rejected_analysis.py python/tests/issue/test_audit_runs.py -q`
+  - `python3 -m pytest python/tests/review/test_voting.py -q`
+  - `python3 -m pytest python/tests/report/test_gc_run_logs.py python/tests/report/test_final_report.py -q`
+- Run `bash skills/fluff-analysis/scripts/test-fluff-analysis.sh`.
+- Run `bash skills/fluff-analysis/scripts/test-fluff-analysis-corpus.sh`.
+- Run `bash skills/voter-calibration/scripts/test-voter-calibration.sh`.
+- Run `python3 python/cli.py lint run-log-walkers`.
+- Run Python lint and type checks only for the changed Python files.
+- Verify the refactor leaves report output and scanner counts unchanged on existing fixtures.
+
+difficulty: MODERATE
+diff_added: 310
+diff_deleted: 430
+mechanical_churn: true
+oversize_override: operator
+diff_lines: 740

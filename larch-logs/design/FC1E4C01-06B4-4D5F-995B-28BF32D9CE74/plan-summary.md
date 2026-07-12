@@ -1,0 +1,1 @@
+Centralize committed run-log discovery and metadata reads in `run_log_corpus.py`. Repoint nine scanners and add a lint ratchet that blocks new bypasses while temporarily exempting the three modules targeted for deletion by #7008.
