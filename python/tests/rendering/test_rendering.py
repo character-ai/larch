@@ -1062,12 +1062,26 @@ def test_render_plan_review_tsv_contract_hardening(
     assert "no other value such as completeness" in out
     assert "Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer" in out
     assert "skills/shared/oos-acceptance-rubric.md" in out
+    assert (
+        "the plan must name the offline harness or test case that replays the failure, "
+        "or include an explicit one-line no-repro justification"
+    ) in out
 
 
 def test_specialist_tagging_includes_oos_proposal_cap() -> None:
     text = rendering._specialist_tagging(diff_mode="generic", mode="diff")  # pyright: ignore[reportPrivateUsage]
     assert "Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer" in text
     assert "skills/shared/oos-acceptance-rubric.md" in text
+
+
+def test_specialist_tagging_includes_bug_class_or_instance_instruction() -> None:
+    text = rendering._specialist_tagging(diff_mode="generic", mode="diff")  # pyright: ignore[reportPrivateUsage]
+    assert (
+        "For `[BUG]` fixes: classify whether the change addresses the class or only an instance; "
+        "name sibling sites checked, or state that a grep for the defect pattern found none."
+    ) in text
+    docs_only = rendering._specialist_tagging(diff_mode="docs-only", mode="diff")  # pyright: ignore[reportPrivateUsage]
+    assert "For `[BUG]` fixes:" not in docs_only
 
 
 def test_specialist_tagging_preserves_output_anchors() -> None:

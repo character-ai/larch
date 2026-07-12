@@ -32,11 +32,12 @@ findings_file="$TMP/findings.md"
 checks_log="$TMP/checks.log"
 
 cat > "$plan_file" <<'EOF'
-Plan:
-- Update python/cli.py plan-review voter-dispatch.
-- Add regression coverage for prompt rendering and retries.
+## Plan
+
+### UPDATED: python/larch/implement/dispatch_ship.py
+- Fix ship postmerge routing for closed PRs.
 EOF
-printf 'Harden prompt render paths.\n' > "$feature_file"
+printf '[BUG] Harden prompt render paths for recovery routing.\n' > "$feature_file"
 cat > "$diff_file" <<'EOF'
 diff --git a/scripts/foo.sh b/scripts/foo.sh
 --- a/scripts/foo.sh
@@ -259,11 +260,13 @@ plan_review_out="$TMP/render-plan-review-prompt.txt"
 design_tmpdir="$TMP/design-tmpdir"
 mkdir -p "$design_tmpdir"
 cp "$plan_file" "$design_tmpdir/plan.txt"
+cp "$feature_file" "$design_tmpdir/feature-description.txt"
 printf '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n' > "$design_tmpdir/run-params.json"
 python3 "$REPO_ROOT/python/cli.py" render plan-review \
     --archetype arch \
     --vendor codex \
     --plan-file "$design_tmpdir/plan.txt" \
+    --feature-file "$design_tmpdir/feature-description.txt" \
     --design-tmpdir "$design_tmpdir" > "$plan_review_out"
 
 assert_contains "plan-reviewer TSV header literal" \
@@ -282,6 +285,16 @@ assert_contains "plan-reviewer focus_area allowlist" \
     'focus_area exactly one of code-quality, risk-integration, correctness, architecture, security' "$plan_review_out"
 assert_contains "plan-reviewer focus_area rejects completeness" \
     'no other value such as completeness' "$plan_review_out"
+assert_contains "plan-reviewer G-Fix-2 harness-or-no-repro checklist" \
+    'the plan must name the offline harness or test case that replays the failure, or include an explicit one-line no-repro justification' "$plan_review_out"
+assert_contains "G-Fix-2 executable-reproduction guideline" \
+    'A recovery-path bug fix ships with an executable reproduction' "$REPO_ROOT/ARCHITECTURAL_GUIDELINES.md"
+assert_contains "G-Fix-2 recovery-surface guidance" \
+    'implement steps, ship and postmerge routing, bgjob, design publish and resume, CI fixer, stall classifiers' "$REPO_ROOT/ARCHITECTURAL_GUIDELINES.md"
+assert_contains "Code Reviewer [BUG] class-or-instance wording" \
+    'classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none' "$REPO_ROOT/skills/shared/reviewer-templates.md"
+assert_contains "Code Reviewer agent [BUG] class-or-instance wording" \
+    'classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none' "$REPO_ROOT/agents/code-reviewer.md"
 
 # ── python/cli.py render specialist runtime render smoke ─────────────────────────
 
@@ -299,6 +312,18 @@ assert_contains "specialist focus-area contract" \
     'code-quality / risk-integration / correctness / architecture / security' "$specialist_out"
 assert_contains "specialist bullet punctuation" \
     "- **<focus-area>** \`<path>:<line-range>\` — <one-paragraph issue text>." "$specialist_out"
+
+correctness_specialist_out="$TMP/render-specialist-correctness-prompt.txt"
+python3 "$REPO_ROOT/python/cli.py" render specialist \
+    --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" \
+    --mode diff \
+    --diff-mode generic \
+    --diff-file "$diff_file" \
+    --plan-file "$plan_file" \
+    --feature-file "$feature_file" > "$correctness_specialist_out"
+
+assert_contains "generic diff-specialist [BUG] class-or-instance instruction" \
+    'For `[BUG]` fixes: classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none.' "$correctness_specialist_out"
 
 # ── plan_scout.py static source assertions ─────────────────────
 
