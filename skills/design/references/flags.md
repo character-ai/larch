@@ -52,7 +52,7 @@ The historical **ownership-domains** sprawl heuristic is **not** part of L1; it 
 - `mechanical_churn: true` downgrades only the diff trigger to a soft advisory (`SOFT_ADVISORY`); plan-body hard triggers are unchanged.
 - `oversize_override: operator` suppresses hard triggers and emits `OVERSIZE_OVERRIDE=operator`.
 
-**`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to **Split-path** even if no hard threshold fired. That path runs the real decomposition panel via `python/cli.py agent dispatch-waterfall`; procedure and filing semantics live in `skills/design/references/decompose-panel.md`.
+**`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to **Split-path** even if no hard threshold fired. That path uses the main agent to prepare a proposal inline. All size and partition routes share its one question and proposal-declared dependency graph. Invalid proposals are repaired inline; unrecoverable validation still reaches the same one-question fallback.
 
 ## Step 3 review env vars
 

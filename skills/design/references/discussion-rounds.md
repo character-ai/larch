@@ -41,7 +41,7 @@ Identify key **scope and requirements decisions** from the feature description b
 
 Walk each branch one question at a time via sequential `AskUserQuestion` calls, providing a **recommended answer** for each question. If codebase exploration can answer the question, report the finding instead of asking.
 
-After each answer, apply the **same semantic sprawl heuristic** as Step 1c (Split / Cancel only, no Continue; on Cancel export `SUMMARY_OUTCOME=cancelled-sprawl`, run `### Final summary block` through Read/cache, print the operator line, then emit the cached summary as terminal text). **Cap**: at most **once** per Step 1d invocation; if it already fired during Step 1c or earlier in Step 1d, do not re-fire.
+After each answer, apply the **same semantic sprawl heuristic** as Step 1c (direct unified Split-path entry, with no preliminary prompt; on Cancel export `SUMMARY_OUTCOME=cancelled-sprawl`, run `### Final summary block` through Read/cache, print the operator line, then emit the cached summary as terminal text). **Cap**: at most **once** per Step 1d invocation; if it already fired during Step 1c or earlier in Step 1d, do not re-fire.
 
 **Explicit prohibition**: Do NOT ask about implementation approach, architectural preferences, library choices, or file organization. Those belong to Step 2b plan drafting and Step 3 plan review. Round 1 is strictly requirements/scope clarification.
 
