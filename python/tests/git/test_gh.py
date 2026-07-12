@@ -1836,7 +1836,7 @@ def test_issue_list_read_builds_argv_preserving_field_and_label_order() -> None:
     assert "--paginate" not in runner.calls[0]
 
 
-def test_issue_list_read_omits_search_and_limit_when_absent() -> None:
+def test_issue_list_read_omits_empty_search_and_preserves_zero_limit() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "issue", "list"), 0, "[]", "", 0.01),
@@ -1848,6 +1848,8 @@ def test_issue_list_read_omits_search_and_limit_when_absent() -> None:
             repo="o/r",
             state="all",
             fields=("number",),
+            search="",
+            limit=0,
         )
         == []
     )
@@ -1861,6 +1863,8 @@ def test_issue_list_read_omits_search_and_limit_when_absent() -> None:
         "all",
         "--json",
         "number",
+        "--limit",
+        "0",
     ]
 
 
@@ -2112,6 +2116,29 @@ def test_issue_close_builds_optional_argv_and_returns_failures() -> None:
     assert failed.returncode == 1
     assert "Could not resolve host" in failed.stderr
     assert len(runner.calls) == 3
+
+
+def test_issue_close_omits_empty_repo_and_redacts_comment() -> None:
+    token = "ghp_" + "a" * 36
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "close", "11"), 0, "", "", 0.01),
+        ],
+    )
+    assert (
+        gh.issue_close(
+            runner, 11, repo="", reason="", comment=f"done {token}"
+        ).returncode
+        == 0
+    )
+    assert runner.calls[0] == [
+        "gh",
+        "issue",
+        "close",
+        "11",
+        "--comment",
+        "done <REDACTED-TOKEN>",
+    ]
 
 
 def test_issue_edit_body_file_passes_caller_path_without_retry() -> None:

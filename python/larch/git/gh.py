@@ -1515,7 +1515,7 @@ def issue_list_read(
     ]
     for label in labels:
         argv.extend(["--label", label])
-    if search is not None:
+    if search:
         argv.extend(["--search", search])
     if limit is not None:
         argv.extend(["--limit", str(limit)])
@@ -1536,12 +1536,12 @@ def issue_close(
 ) -> CommandResult:
     """Close an issue with one ``gh`` call; no mutation retries."""
     argv = ["issue", "close", str(issue)]
-    if repo is not None:
+    if repo:
         argv.extend(["--repo", repo])
-    if reason is not None:
+    if reason:
         argv.extend(["--reason", reason])
-    if comment is not None:
-        argv.extend(["--comment", comment])
+    if comment:
+        argv.extend(["--comment", _redact_gh_scalar(comment)])
     return _gh(runner, argv, cwd=cwd)
 
 
