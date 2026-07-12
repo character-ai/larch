@@ -64,14 +64,6 @@ codex/apply                               │                                 �
 
 **Reviewer slot failures**: 0
 
-## Architectural invariants
-
-Architectural assessment unavailable.
-
-## Architectural guidelines
-
-Architectural assessment unavailable.
-
 ## /implement run 37BF4F96-C65D-43BD-9C9F-B3905661C23C: pr-created
 
 - **Outcome**: ✅ DONE
