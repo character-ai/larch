@@ -8,6 +8,11 @@ IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 export IMPLEMENT_TMPDIR
 
 STEP="implement-step8-assessment"
+# Cap the bounded reassessment cycle per covered fingerprint. A re-author-required
+# terminal is rejoinable: the adapter clears the preserved terminal and starts one
+# fresh attempt-1 child. After this many reassessment cycles it publishes fail-closed
+# so existing Step 8 Tool Failure handling applies. See issue #7143.
+REASSESS_CAP=1
 # Reserve a full waterfall and one complete retry. Codex and Cursor each need
 # their shared-launcher grace period beyond the lane timeout on both attempts.
 LANE_BUDGET_S=$(PYTHONPATH="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
@@ -411,6 +416,67 @@ clear_stale_state() {
   MERGE_RESULT_ENV=$merge_env
 }
 
+reassess_env_path() {
+  printf '%s\n' "$IMPLEMENT_TMPDIR/bgjob/$STEP.reassess.env"
+}
+
+read_reassess_cycle() {
+  # Echo the reassessment cycle count for the current covered fingerprint.
+  # Returns 0 when the sidecar is absent, unsafe, keyed to a different
+  # fingerprint, or holds a non-numeric cycle. Pure stdout; no side effects.
+  local sidecar fp cycle
+  sidecar=$(reassess_env_path)
+  if { [ -e "$sidecar" ] || [ -L "$sidecar" ]; }; then
+    if safe_regular_path_under_tmpdir "$sidecar"; then
+      fp=$(read_env_key ASSESSMENT_COVERED_FINGERPRINT "$sidecar")
+      cycle=$(read_env_key ASSESSMENT_REASSESS_CYCLE "$sidecar")
+      if [ "$fp" = "$ASSESSMENT_COVERED_FINGERPRINT" ]; then
+        case "$cycle" in
+          ''|*[!0-9]*) ;;
+          *) printf '%s' "$cycle"; return 0 ;;
+        esac
+      fi
+    fi
+  fi
+  printf '0'
+}
+
+bump_reassess_cycle() {
+  local cycle=$1 sidecar
+  sidecar=$(reassess_env_path)
+  safe_truncate "$sidecar"
+  write_merge_kvs "$sidecar" \
+    ASSESSMENT_COVERED_FINGERPRINT "$ASSESSMENT_COVERED_FINGERPRINT" \
+    ASSESSMENT_REASSESS_CYCLE "$cycle"
+}
+
+reset_reassess_cycle() {
+  local sidecar
+  sidecar=$(reassess_env_path)
+  safe_unlink "$sidecar"
+}
+
+handle_reassess_terminal() {
+  # Entered when handle_terminal_outcome classifies a validated re-author-required
+  # terminal. Owns the bounded reassessment cycle per covered fingerprint.
+  # Sets REASSESS_VERDICT=restart|terminal:
+  # - restart: bumped the cycle sidecar (under cap), cleared result and merge
+  #   state while preserving the sidecar; caller falls through to a fresh
+  #   attempt-1 child.
+  # - terminal: cap reached; published fail-closed; caller exits 0.
+  local cycle detail
+  cycle=$(read_reassess_cycle)
+  if [ "$cycle" -lt "$REASSESS_CAP" ]; then
+    bump_reassess_cycle $((cycle + 1))
+    clear_stale_state
+    REASSESS_VERDICT=restart
+    return 0
+  fi
+  detail="architectural assessment re-authoring exhausted after $REASSESS_CAP reassessment cycle(s)"
+  publish_fail_closed_terminal 2 "$detail"
+  REASSESS_VERDICT=terminal
+}
+
 seed_merge_for_attempt() {
   local attempt=$1
   local status=""
@@ -584,13 +650,13 @@ terminal_retryable() {
 }
 
 handle_terminal_outcome() {
-  # Sets HANDLE_ACTION=emit-success|emit-fail-closed|retry|fresh-identity|error
+  # Sets HANDLE_ACTION=emit-success|emit-fail-closed|reassess|retry|fresh-identity|error
   if terminal_is_success; then
     HANDLE_ACTION=emit-success
     return 0
   fi
   if terminal_is_reauthor_required; then
-    HANDLE_ACTION=emit-reauthor
+    HANDLE_ACTION=reassess
     return 0
   fi
   if terminal_is_fail_closed; then
@@ -647,12 +713,19 @@ run_wait_validate_path() {
 
 publish_fail_closed_terminal() {
   local attempt=${1:-2}
+  local detail_override=${2:-}
   local rc=${TERM_BGJOB_RC:-}
   local merge_env result_env child_detail
   merge_env=$(merge_env_path)
   result_env=$(result_env_path)
-  child_detail=${TERM_CHILD_DETAIL:-}
+  child_detail=${detail_override:-${TERM_CHILD_DETAIL:-}}
   [ -n "$child_detail" ] || child_detail=$(read_env_key ASSESSMENT_CHILD_DETAIL "$merge_env")
+  # The merge env may be absent when this terminal is reached on rejoin before a
+  # child seeds it (e.g. reassessment-cap exhaustion). Create it as a safe regular
+  # file so the fail-closed KVs can be written.
+  if [ ! -e "$merge_env" ]; then
+    safe_truncate "$merge_env"
+  fi
   if [ -n "$child_detail" ]; then
     write_merge_kvs "$merge_env" \
       ASSESSMENT_REQUESTED_KINDS "$ASSESSMENT_REQUESTED_KINDS" \
@@ -882,12 +955,16 @@ if [ "$REGISTRY_STATE" = "live" ]; then
     run_wait_validate_path true
     case "$HANDLE_ACTION" in
       emit-success)
+        reset_reassess_cycle
         emit_terminal_stdout
         exit 0
         ;;
-      emit-reauthor)
-        emit_terminal_stdout
-        exit 0
+      reassess)
+        handle_reassess_terminal
+        if [ "$REASSESS_VERDICT" = terminal ]; then
+          exit 0
+        fi
+        CURRENT_ATTEMPT=1
         ;;
       emit-fail-closed)
         if [ "${TERM_STATUS:-}" = "fail-closed" ] && [ "${TERM_ATTEMPT:-}" = "2" ]; then
@@ -905,6 +982,7 @@ if [ "$REGISTRY_STATE" = "live" ]; then
       fresh-identity)
         parse_requested_kinds
         compute_launch_identity
+        reset_reassess_cycle
         CURRENT_ATTEMPT=1
         clear_stale_state
         ;;
@@ -932,14 +1010,18 @@ if [ "${CURRENT_ATTEMPT:-}" = "" ]; then
       run_wait_validate_path true
       case "$HANDLE_ACTION" in
         emit-success)
+          reset_reassess_cycle
           emit_terminal_stdout
           exit 0
           ;;
-        emit-reauthor)
-        emit_terminal_stdout
-        exit 0
-        ;;
-      emit-fail-closed)
+        reassess)
+          handle_reassess_terminal
+          if [ "$REASSESS_VERDICT" = terminal ]; then
+            exit 0
+          fi
+          CURRENT_ATTEMPT=1
+          ;;
+        emit-fail-closed)
           if terminal_is_fail_closed; then
             emit_terminal_stdout
           else
@@ -952,6 +1034,7 @@ if [ "${CURRENT_ATTEMPT:-}" = "" ]; then
           clear_stale_state
           ;;
         fresh-identity)
+          reset_reassess_cycle
           CURRENT_ATTEMPT=1
           clear_stale_state
           ;;
@@ -994,10 +1077,15 @@ while :; do
   run_wait_validate_path false
   case "$HANDLE_ACTION" in
     emit-success)
+      reset_reassess_cycle
       emit_terminal_stdout
       exit 0
       ;;
-    emit-reauthor)
+    reassess)
+      # A child in this invocation returned re-author-required. Emit the
+      # terminal envelope and defer to the orchestrator's assessments re-route;
+      # the bounded reassessment cycle (clear + fresh child) is owned by the
+      # rejoin path on the next invocation. See issue #7143.
       emit_terminal_stdout
       exit 0
       ;;
@@ -1018,6 +1106,7 @@ while :; do
       exit 0
       ;;
     fresh-identity)
+      reset_reassess_cycle
       CURRENT_ATTEMPT=1
       continue
       ;;

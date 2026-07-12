@@ -580,21 +580,67 @@ def test_waterfall_caps_clean_outcome_retry_at_one_attempt(monkeypatch: pytest.M
     evidence = _run_evidence(tmp_path)
     _stub_materialization(monkeypatch, {evidence.kind: evidence})
     monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
-    # Both the original attempt and the retry cite a G-* identifier, so the retry
-    # also mismatches and the run terminates with re-author-required (capped at one retry).
+    # Cursor's fresh attempt and its one in-lane retry both cite a G-* identifier.
+    # After the retry fails the kind returns to the waterfall so Codex gets one
+    # fresh attempt (issue #7143); the retry itself stays capped at one per kind.
     cursor = _SequenceLauncher([
         assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
         assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Still clean per G-Py-4."}), ""),
     ])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Still clean per G-Py-4."}), "")])
 
     result = assessment.run(
         kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor}, availability={"cursor": True, "codex": True, "claude": True},
+        launchers={"cursor": cursor, "codex": codex}, availability={"cursor": True, "codex": True, "claude": True},
     )
 
+    # Codex's fresh attempt also mismatches; with no retry left the kind is terminal re-author-required.
     assert result == ("guidelines:re-author-required:clean-outcome-prose-mismatch",)
-    # One original attempt plus one capped retry; later lanes do not re-attempt a reauthor-marked kind.
-    assert cursor.calls == 2
+    # Cursor: one fresh attempt plus one capped retry. Codex: one fresh attempt, no retry.
+    assert (cursor.calls, codex.calls) == (2, 1)
+
+
+def test_waterfall_clean_mismatch_retry_re_mismatch_routes_kind_to_next_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
+    # Cursor mismatches and its retry also mismatches; the kind returns to the
+    # waterfall and Codex resolves it with clean, identifier-free prose (#7143).
+    cursor = _SequenceLauncher([
+        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
+        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Still clean per G-Py-4."}), ""),
+    ])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "No deviations identified."}), "")])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor, "codex": codex}, availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    assert result == ("guidelines:clean",)
+    assert (cursor.calls, codex.calls) == (2, 1)
+
+
+def test_waterfall_clean_mismatch_retry_launch_failure_routes_kind_to_next_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
+    # Cursor's fresh attempt mismatches; its in-lane retry launch fails outright
+    # (empty stdout). The kind must still return to the waterfall so Codex can
+    # resolve it, instead of stranding on the re-author-required terminal (#7143).
+    cursor = _SequenceLauncher([
+        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
+        assessment.LaunchResult(0, "", "cursor retry launch returned empty output"),
+    ])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "No deviations identified."}), "")])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor, "codex": codex}, availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    assert result == ("guidelines:clean",)
+    assert (cursor.calls, codex.calls) == (2, 1)
 
 
 def test_waterfall_does_not_retry_non_clean_mismatch_reauthor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

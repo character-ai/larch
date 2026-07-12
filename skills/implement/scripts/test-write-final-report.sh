@@ -15,6 +15,16 @@ fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
 assert_not_contains(){ case "$2" in *"$1"*) fail "$3 (unexpected $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; *) pass "$3" ;; esac; }
 assert_eq(){ if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (expected=$1 actual=$2)"; fi; }
+# The Claude main-lane cost segment renders as "Claude $X" under standard Claude
+# pricing and as "Claude/GLM-5.2 token $X (estimated $Y)" when the main agent runs
+# GLM-5.2 (see python/larch/git/pr_body.py _glm_main_lane_cost_parts). Accept either.
+assert_claude_main_lane_cost(){
+    local label=$1 line=$2
+    case "$line" in
+        *"Claude $"*|*"Claude/GLM-5.2 token $"*) pass "$label" ;;
+        *) fail "$label (missing Claude main-lane cost)"; printf 'ACTUAL: %s\n' "$line" >&2 ;;
+    esac
+}
 stdout_summary_block() {
     printf '%s\n' "$1" | awk '
         /^COMMENT_URL=|^STATUS=|^REASON=|^ERROR=/ { exit }
@@ -428,7 +438,7 @@ cost_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/conte
       "$HELPER" --implement-tmpdir "$impl_cost" --print-stdout)
 cost_line=$(printf '%s\n' "$cost_stdout" | grep -F -- '- **Cost**:' || true)
 assert_contains '💰 TOTAL' "$cost_line" 'per-agent stdout cost has total'
-assert_contains 'Claude $' "$cost_line" 'per-agent stdout cost has Claude'
+assert_claude_main_lane_cost 'per-agent stdout cost has Claude' "$cost_line"
 assert_contains 'Codex-5.6 $' "$cost_line" 'per-agent stdout cost has Codex-5.6'
 assert_contains 'Codex-mini $' "$cost_line" 'per-agent stdout cost has Codex-mini'
 assert_contains 'Cursor $' "$cost_line" 'per-agent stdout cost has Cursor'
@@ -802,7 +812,7 @@ EOF
     assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$fixture/summary-final.md")" "matrix $expected file keeps sentinel"
     if [ "$expected" = "merged" ] || [ "$expected" = "forked-dry-run" ] || [ "$expected" = "pr-created" ] || [ "$expected" = "pr-created-draft" ] || [ "$expected" = "force-merged-externally" ]; then
         assert_contains '💰 TOTAL' "$cost_line" "matrix $expected cost line has total"
-        assert_contains 'Claude $' "$cost_line" "matrix $expected cost line has Claude"
+        assert_claude_main_lane_cost "matrix $expected cost line has Claude" "$cost_line"
         assert_contains 'Codex-5.6 $' "$cost_line" "matrix $expected cost line has Codex-5.6"
         assert_contains 'Codex-mini $' "$cost_line" "matrix $expected cost line has Codex-mini"
         assert_contains 'Cursor $' "$cost_line" "matrix $expected cost line has Cursor"

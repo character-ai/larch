@@ -79,4 +79,4 @@ Invoke `${CLAUDE_PLUGIN_ROOT}/python/cli.py execution-issues flush` per its cont
 
 Pre-PR Step 2 main-health repair is documented in `step2-main-health-fix.md`, not this post-driver matrix. A recorded repair marker may allow merging over the same red main failure; new or different default-branch failures route through `main-ci-fail`.
 
-| Step 8 assessment | `ASSESSMENT_STATUS=re-author-required`, `BGJOB_RC=0` | `NEXT_ACTION=assessments`; preserve results; no retry or ship relaunch |
+| Step 8 assessment | `ASSESSMENT_STATUS=re-author-required`, `BGJOB_RC=0` | `NEXT_ACTION=assessments`; re-run normalization + adapter; adapter owns the one-cycle reassessment cap then `fail-closed`; no ship relaunch |
