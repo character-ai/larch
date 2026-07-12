@@ -6,6 +6,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Iterator
+from typing import cast
 from functools import cache
 from pathlib import Path
 
@@ -316,6 +317,7 @@ def test_legacy_label_inventory_maps_every_label_to_one_collected_node() -> None
         mod = importlib.import_module(f".{mod_name}", package=__package__)
         labels = getattr(mod, "LEGACY_LABELS", None)
         assert isinstance(labels, frozenset), skill
+        labels = cast("frozenset[str]", labels)
         assert labels, f"{skill} specialized module has empty LEGACY_LABELS"
         expected_count = getattr(mod, "LEGACY_ASSERTION_LABEL_COUNT", None)
         if expected_count is not None:
