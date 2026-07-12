@@ -379,7 +379,8 @@ def test_state_write_and_read_schema_version_one(tmp_path: Path) -> None:
     learn_from_bugs.write_state(marker, state)
 
     payload = json.loads(marker.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 2
+    assert payload["proposals"] == []
     assert payload["scan_started_at"] == "2026-07-09T11:00:00Z"
     assert learn_from_bugs.read_state(marker) == state
 
@@ -748,3 +749,309 @@ def test_prepare_main_rejects_abbreviated_search_flag(
                 str(tmp_path),
             ]
         )
+
+def _proposal(
+    proposal_id: str = "add-audit-lint",
+    proposal_type: learn_from_bugs.ProposalType = "lint",
+    target: str = "registration:audit-lint",
+    status: learn_from_bugs.ProposalStatus = "proposed",
+    filed_issue: int | None = None,
+) -> learn_from_bugs.Proposal:
+    return learn_from_bugs.Proposal(
+        id=proposal_id,
+        type=proposal_type,
+        target=target,
+        run_date="2026-07-01T00:00:00Z",
+        status=status,
+        filed_issue=filed_issue,
+    )
+
+
+def test_state_v1_reads_as_v2_with_empty_proposals(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker.parent.mkdir(parents=True)
+    marker.write_text(
+        json.dumps({"schema_version": 1, "run_date": "2026-07-01", "repo": "o/r"}),
+        encoding="utf-8",
+    )
+
+    state = learn_from_bugs.read_state(marker)
+
+    assert state is not None
+    assert state.schema_version == 2
+    assert state.proposals == ()
+
+
+def test_state_v2_round_trip_preserves_proposals(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    proposal = _proposal(status="pending", filed_issue=123)
+    state = learn_from_bugs.LearnFromBugsState(
+        run_date="2026-07-09T12:00:00Z",
+        repo="o/r",
+        search="x",
+        state="closed",
+        selected_count=1,
+        highest_closed_issue_number_scanned=3,
+        proposals=(proposal,),
+    )
+
+    learn_from_bugs.write_state(marker, state)
+
+    assert learn_from_bugs.read_state(marker) == state
+
+
+@pytest.mark.parametrize(
+    ("proposal_type", "target"),
+    [
+        ("fix", "issue:1"),
+        ("test", "../test_x.py"),
+        ("lint", "module:/tmp/x.py"),
+        ("guideline", "README.md"),
+    ],
+)
+def test_invalid_canonical_targets_are_rejected(
+    tmp_path: Path, proposal_type: str, target: str
+) -> None:
+    path = tmp_path / "proposals.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "id": "bad-target",
+                "type": proposal_type,
+                "target": target,
+                "run_date": "2026-07-01",
+                "status": "pending",
+                "filed_issue": None,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+
+def test_load_proposals_preserves_historical_issue_linkage(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    first = _proposal(status="pending", filed_issue=42).to_json()
+    second = _proposal(status="proposed").to_json()
+    path.write_text(
+        json.dumps(first) + "\n" + json.dumps(second) + "\n", encoding="utf-8"
+    )
+
+    proposals = learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+    assert proposals == (_proposal(status="proposed", filed_issue=42),)
+
+
+def test_repository_checks_ignore_fenced_architectural_heading(tmp_path: Path) -> None:
+    (tmp_path / "ARCHITECTURAL_GUIDELINES.md").write_text(
+        "```md\n### G-X-1: Fake\n```\n", encoding="utf-8"
+    )
+    proposal = _proposal(
+        proposal_type="guideline", target="ARCHITECTURAL_GUIDELINES.md#G-X-1"
+    )
+
+    checked = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), (proposal,), tmp_path, "o/r"
+    )
+
+    assert checked[0].status == "pending"
+
+
+def test_filed_issue_status_precedes_repository_target(tmp_path: Path) -> None:
+    (tmp_path / "python" / "larch").mkdir(parents=True)
+    (tmp_path / "python" / "larch" / "cli.py").write_text(
+        '("lint", "audit-lint", "x")\n', encoding="utf-8"
+    )
+    proposal = _proposal(filed_issue=9)
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "NOT_PLANNED"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    checked = learn_from_bugs.check_proposals(runner, (proposal,), tmp_path, "o/r")
+
+    assert checked[0].status == "orphaned"
+
+
+def test_adoption_summary_orders_pending_and_clamps_future_age() -> None:
+    proposals = (
+        _proposal("z-last", target="registration:z-last", status="pending"),
+        learn_from_bugs.Proposal(
+            "a-first", "fix", "fix:a-first", "2026-08-01", "pending"
+        ),
+        _proposal("adopted-one", target="registration:adopted-one", status="adopted"),
+    )
+
+    summary = learn_from_bugs.render_adoption_summary(
+        proposals, today=learn_from_bugs.date(2026, 7, 11)
+    )
+
+    assert "Adoption rate: 33.3%" in summary
+    assert summary.index("z-last") < summary.index("a-first")
+    assert "`a-first`: 0 days" in summary
+
+
+def test_reconcile_keeps_stable_fix_target_and_filed_issue() -> None:
+    historical = _proposal("fix-one", "fix", "fix:stable-problem", "pending", 77)
+    residual = _proposal("fix-one", "fix", "fix:stable-problem", "proposed")
+
+    assert learn_from_bugs.reconcile_proposals((historical,), (residual,)) == (
+        historical,
+    )
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"type": "unknown"},
+        {"status": "done"},
+        {"id": "Not-Kebab"},
+        {"filed_issue": 0},
+        {"run_date": "not-a-date"},
+    ],
+)
+def test_load_proposals_rejects_malformed_fields(
+    tmp_path: Path, patch: dict[str, object]
+) -> None:
+    path = tmp_path / "proposals.jsonl"
+    payload = _proposal().to_json()
+    payload.update(patch)
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+
+def test_load_proposals_rejects_missing_field(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    payload = _proposal().to_json()
+    del payload["target"]
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+
+def test_load_proposals_rejects_conflicting_duplicate(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    first = _proposal().to_json()
+    second = _proposal(target="registration:other-lint").to_json()
+    path.write_text(
+        json.dumps(first) + "\n" + json.dumps(second) + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="conflicting stable"):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+
+def test_load_proposals_rejects_conflicting_issue_numbers(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    first = _proposal(filed_issue=41).to_json()
+    second = _proposal(filed_issue=42).to_json()
+    path.write_text(
+        json.dumps(first) + "\n" + json.dumps(second) + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="conflicting filed"):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+
+def test_safe_target_rejects_symlink_escape(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-proposal.py"
+    outside.write_text("pass\n", encoding="utf-8")
+    link = tmp_path / "linked.py"
+    try:
+        link.symlink_to(outside)
+        path = tmp_path / "proposals.jsonl"
+        path.write_text(
+            json.dumps(_proposal(target="module:linked.py").to_json()) + "\n",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(
+            learn_from_bugs.LearnFromBugsError, match="escapes analysis root"
+        ):
+            learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+    finally:
+        outside.unlink(missing_ok=True)
+
+
+def test_pending_proposal_lookup_only_returns_unresolved() -> None:
+    pending = _proposal(status="pending")
+    adopted = _proposal("adopted", target="registration:adopted", status="adopted")
+
+    assert (
+        learn_from_bugs.pending_proposal_by_id((pending, adopted), pending.id)
+        == pending
+    )
+    assert (
+        learn_from_bugs.pending_proposal_by_id((pending, adopted), adopted.id) is None
+    )
+
+
+def test_check_proposals_main_does_not_write_outputs_after_failed_issue_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    learn_from_bugs.write_state(
+        marker,
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/r",
+            search="x",
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=3,
+            proposals=(_proposal(filed_issue=9),),
+        ),
+    )
+    proposals_out = tmp_path / "checked.jsonl"
+    adoption_out = tmp_path / "adoption.md"
+    monkeypatch.setattr(
+        learn_from_bugs,
+        "_runner",
+        lambda: RecordingRunner(responses=[_result(rc=1, stderr="boom")], strict=True),
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="boom"):
+        learn_from_bugs.check_proposals_main(
+            [
+                "--root",
+                str(tmp_path),
+                "--repo",
+                "o/r",
+                "--proposals-out",
+                str(proposals_out),
+                "--adoption-out",
+                str(adoption_out),
+            ]
+        )
+
+    assert not proposals_out.exists()
+    assert not adoption_out.exists()
+
+
+def test_filed_issue_rejects_unknown_closed_reason() -> None:
+    proposal = _proposal(filed_issue=9)
+    runner = RecordingRunner(
+        responses=[
+            _result(
+                json.dumps(
+                    {"number": 9, "state": "CLOSED", "stateReason": "UNKNOWN"}
+                )
+            )
+        ],
+        strict=True,
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="closed issue reason"):
+        learn_from_bugs.check_proposals(runner, (proposal,), Path.cwd(), "o/r")
