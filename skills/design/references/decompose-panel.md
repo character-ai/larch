@@ -1,5 +1,11 @@
 # Split-path: inline partition
 
+**Consumer**: `/design` skill orchestrator at every Split-path entry: size-triggered routes, explicit `--partition` / `-p`, semantic-sprawl, Gate B, settle-dispatch, and Step 5c publish-size refusal.
+
+**Contract**: normative inline partition procedure — main-agent builds proposal, one `AskUserQuestion`, then file/annotate/migrate-deps/close-original.
+
+**When to load**: load when any Split-path entry condition triggers in `SKILL.md` or the referenced routing files.
+
 This file is the normative partition procedure for every size trigger, explicit `--partition` / `-p`, semantic-sprawl route, Gate B route, settle-dispatch route, and Step 5c publish-size refusal.
 
 ## 1. Build the proposal inline

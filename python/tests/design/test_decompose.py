@@ -445,7 +445,7 @@ def test_migrate_dependencies_denies_before_github_calls(tmp_path: Path, monkeyp
     monkeypatch.setattr(decompose.proc, "run", lambda *_args, **_kwargs: calls.append(object()))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     assert decompose.migrate_dependencies(design_tmpdir=d, original_issue="99", repo="o/r") == "authorization-denied"
-    assert calls == []
+    assert not calls
     assert not (d / ".decompose-deps-migrated").exists()
 
 
