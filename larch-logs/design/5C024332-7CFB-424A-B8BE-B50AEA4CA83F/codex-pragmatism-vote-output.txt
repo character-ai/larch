@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The required comment-token contract can be specified without pinning a particular private helper or cross-module reference.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Normalizing alternative lexical root spellings is robustness beyond the required repository-root validation.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This repeats a previously rejected metric-domain ambiguity and does not block the scan-only feature.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
