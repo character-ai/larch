@@ -65,11 +65,19 @@ Exec Issues (0):
 Warnings (1):
   1. G-Cfg-1: reconcile_manual_merge_main emits RECONCILE_STATUS=ok and RECONCILE_STATUS=failed as hardcoded string literals (4 call sites) without corresponding Final constants in config.py. The parall...
 
+## Architectural invariants
+
+No violations identified. The assessment waiver path (ship_recovery.py:waive_assessment_main, ship_guidelines.py:mark_operator_waived_outcomes) satisfies I-Gate-1: the gate is disarmed by an explicit operator decision recorded in trusted run state (LARCH_RUN_ID-bound artifact), not by metadata authored by the gated entity; waivers are rejected for any outcome other than unavailable/dropped. The reconcile-manual-merge path satisfies I-Ship-1: it verifies the PR is already MERGED before any state write and performs no pre-merge mutations (no rebase, no push). I-Outcome-1 is satisfied: reconciliation writes PHASE=done with MERGE_RESULT=merged, never a stalled or in-progress label. I-Stale-1 is satisfied: the waiver artifact is bound to LARCH_RUN_ID from trusted session-env.sh and validated against the live run ID before application.
+
+## Architectural guidelines
+
+No deviations identified. G-IO-1: all reads and writes in ship_recovery.py and mark_operator_waived_outcomes use larch_io helpers (trusted_file_present, read_trusted_text, trusted_atomic_write, parse_kv, format_kvs). G-Cfg-1: new constants (ASSESSMENT_OPERATOR_WAIVER_FILENAME, ASSESSMENT_OPERATOR_WAIVER_SCHEMA_VERSION, ASSESSMENT_WAIVER_KINDS, TERMINAL_DONE_CLEAR_FIELDS, RECONCILE_TERMINAL_DONE_CLEAR_FIELDS) are defined in config.py. G-CLI-1: waive-assessment and reconcile-manual-merge are registered in the cli.py dispatch table with machine-stdout-keys entries. G-Wire-2: operator_waived is additive; validators accept absent or False for historical records. G-Py-8: _verify_reconciliation re-reads all three layers, the post-merge sentinel, and the manifest after writes and raises on postcondition failure. G-Sec-4: _trusted_tmpdir validates containment via _tmpdir_under_allowed_root and larch_io.validate_trusted_directory before any operation. G-Fix-2: offline test cases in test_ship.py cover the waiver and reconcile recovery paths. G-Idem-4: the waiver provides the operator path for unavailable outcomes without stalling; invariant violations remain non-waivable.
+
 ## /implement run BC924651-1917-490B-8B08-B658D1E0A00D: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 01:29:49
-- **Cost**: 💰 TOTAL ~$40.02: Claude $14.91, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.64  |  Tokens: 72311k
+- **Cost**: 💰 TOTAL ~$42.57: Claude $17.40, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.70  |  Tokens: 80119k
 - **Issue**: #7059: https://github.com/character-ai/larch/issues/7059
 - **PR**: #7091: https://github.com/character-ai/larch/pull/7091
 - **Plan review**: N/A
@@ -77,7 +85,7 @@ Warnings (1):
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/15 accepted
-- **Lines (PR diff)**: code +1565/-52, larch-logs +1404/-3
+- **Lines (PR diff)**: code +1566/-52, larch-logs +1411/-3
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
