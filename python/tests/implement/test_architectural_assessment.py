@@ -133,7 +133,7 @@ def test_parse_results_independently_discards_valid_row_after_malformed_duplicat
     parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
         json.dumps({"schema_version": "1", "results": [valid, malformed]}), [evidence]
     )
-    assert parsed == ()
+    assert not parsed
     assert set(invalid) == {"guidelines"}
 
 
@@ -145,7 +145,7 @@ def test_parse_results_independently_rejects_unknown_extra_row() -> None:
     parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
         json.dumps({"schema_version": "1", "results": [valid, extra]}), [evidence]
     )
-    assert parsed == ()
+    assert not parsed
     assert set(invalid) == {"guidelines"}
 
 
