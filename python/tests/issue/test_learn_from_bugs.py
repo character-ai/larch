@@ -524,6 +524,42 @@ def test_write_state_cli_requires_proposals_file_for_existing_history(tmp_path: 
         ])
 
 
+def test_write_state_cli_preserves_newer_existing_proposals(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    remote_proposal = _proposal(status="adopted")
+    remote_only = _proposal(
+        "remote-only", target="registration:remote-only", status="pending"
+    )
+    learn_from_bugs.write_state(
+        marker,
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/r",
+            search="x",
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=3,
+            proposals=(remote_proposal, remote_only),
+        ),
+    )
+    proposals_file = tmp_path / "reconciled-proposals.jsonl"
+    local_stale = _proposal(status="pending")
+    proposals_file.write_text(
+        json.dumps(local_stale.to_json()) + "\n", encoding="utf-8"
+    )
+
+    assert learn_from_bugs.write_state_main([
+        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
+        "--selected-count", "2", "--highest-closed-issue-number-scanned", "4",
+        "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
+        "--proposals-file", str(proposals_file),
+    ]) == 0
+
+    written = learn_from_bugs.read_state(marker)
+    assert written is not None
+    assert written.proposals == (remote_proposal, remote_only)
+
+
 def test_read_state_cli_reports_missing_without_crashing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert learn_from_bugs.read_state_main(["--root", str(tmp_path)]) == 0
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())

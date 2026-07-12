@@ -1493,6 +1493,11 @@ def write_state_main(argv: list[str]) -> int:
     existing = _read_existing_state(path)
     if args.proposals_file:
         proposals = load_proposals_jsonl(Path(args.proposals_file), root=root)
+        if existing is not None:
+            # The state worktree is based on a freshly fetched default branch.
+            # Retain any proposal records or lifecycle updates published since
+            # the scan assembled its local reconciliation artifact.
+            proposals = reconcile_proposals(existing.proposals, proposals)
     elif existing is not None and existing.proposals:
         raise LearnFromBugsError("--proposals-file is required to preserve proposal history")
     else:
