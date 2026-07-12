@@ -70,33 +70,35 @@ Exec Issues (3):
   1. lint-fix tier=claude category=authentication-preflight; Verification complete. Both signals the checks harness uses now pass on the edited file:
   2. pyright CLI: `0 errors, 0 warnings, 0 informations`: (was the sole failure — `reportUnusedFunction` on `_is_trailer_region_line:118`)
   3. ruff CLI: `All checks passed!`
-Warnings (2):
+Warnings (3):
   1. Step 7a.1 — 9 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/tests/design/test_plan_quality.py, python/tests/calibration/test_difficulty...
   2. One G-Cfg-3 deviation: `_RECOGNIZED_TRAILER_PREFIX_RE` in `python/larch/implement/preflight.py` (added in this diff at line ~962) manually re-lists all eight trailer key names (`review_status|round...
+  3. G-Md-3 deviation: plan_grammar.iter_heading_events (plan_grammar.py lines 574-597) re-derives fence-state tracking using local fence_mark/fence_length variables rather than reusing the _balanced_fe...
 
 ## Architectural invariants
 
-No invariant violations. The change centralizes plan grammar in plan_grammar.py and migrates all consumers. The tightened mechanical_churn and diff_added parsing improves I-Gate-1 compliance by rejecting non-canonical self-declared values (numeric mechanical_churn, octal-invalid diff_added). No changes touch fingerprint validation (I-Stale-1), pause snapshot allowlists (I-Pause-1), run-log flush paths (I-Flush-1, I-Commit-1, I-Outcome-1), panel slot accounting (I-Slot-1), agent evidence contracts (I-Agent-1), or ship lifecycle guards (I-Ship-1).
+No invariant violations identified. The change centralizes plan heading and trailer grammar into plan_grammar.py. No gate disarm inputs are weakened or expanded (I-Gate-1 is strengthened: mechanical_churn accepts only 'true'/'false' so a drafter can no longer self-report a numeric churn value to relax the size trigger). Fingerprint and stale-result validation paths are untouched (I-Stale-1). Run-log flush, outcome labels, panel slot accounting, agent evidence contracts, and ship recovery routes are outside the diff surface.
 
 ## Architectural guidelines
 
-One G-Cfg-3 deviation: `_RECOGNIZED_TRAILER_PREFIX_RE` in `python/larch/implement/preflight.py` (added in this diff at line ~962) manually re-lists all eight trailer key names (`review_status|rounds_completed|difficulty|diff_added|diff_deleted|mechanical_churn|oversize_override|diff_lines`) as a string literal instead of deriving from `plan_grammar.TRAILER_KEYS`. This is the same convention whose canonical definition was just centralized in plan_grammar.py. If a new trailer key is added to `plan_grammar.TRAILER_KEYS`, this regex silently fails to flag malformed trailer lines for that key during preflight. The fix is `re.compile(r'^(' + '|'.join(plan_grammar.TRAILER_KEYS) + r'):')`. All other consumers correctly delegate to plan_grammar, and the fence-aware heading parsing (G-Md-3), consumer sweep (G-Wire-1, G-Wire-3), and frozen-dataclass use (G-Py-1) are compliant.
+G-Md-3 deviation: plan_grammar.iter_heading_events (plan_grammar.py lines 574-597) re-derives fence-state tracking using local fence_mark/fence_length variables rather than reusing the _balanced_fence_line_indices helper from python/larch/issue/issue_create.py as G-Md-3 explicitly requires. The spirit of G-Md-3 is satisfied (fenced headings are correctly suppressed, including the stronger length-matched fence closing), and importing issue_create from plan_grammar would invert the established import direction (issue_wire already imports plan_grammar), so the architectural justification is clear. All other guideline surfaces are aligned: G-Wire-1 and G-Wire-3 are honoured by the full consumer sweep with the Gate B legacy path explicitly preserved and documented; G-Py-1 is followed with frozen dataclasses HeadingMatch, HeadingEvent, TrailerMatch, PlanTrailers; G-Py-3 is followed with HeadingKind and TrailerKey Literal types; G-Py-11 is followed with reason-bearing type: ignore suppressions; G-Cfg-3 is strengthened by making every writer and selector consume the same HEADING_KINDS and TRAILER_KEYS constants.
 
-## /implement run F438D8FB-D306-4235-8BC8-D201830D887C: shipping
+## /implement run F438D8FB-D306-4235-8BC8-D201830D887C: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:52:32
-- **Cost**: 💰 TOTAL ~$26.55: Claude $1.63, Codex-5.6 $13.00, Codex-mini $0.12, Cursor $9.65 (Composer $9.65, Grok $0.00), Claude (subprocess) $2.15  |  Tokens: 38175k
+- **Cost**: 💰 TOTAL ~$27.19: Claude $2.19, Codex-5.6 $13.00, Codex-mini $0.12, Cursor $9.65 (Composer $9.65, Grok $0.00), Claude (subprocess) $2.23  |  Tokens: 39981k
 - **Issue**: #7000: https://github.com/character-ai/larch/issues/7000
+- **PR**: #7048: https://github.com/character-ai/larch/pull/7048
 - **Plan review**: N/A
 - **Plan coverage**: 20/24 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 24/24 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +607/-299, larch-logs +1394/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7047
 - **Exec issues**: 3
-- **Warnings**: 2
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/F438D8FB-D306-4235-8BC8-D201830D887C/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
