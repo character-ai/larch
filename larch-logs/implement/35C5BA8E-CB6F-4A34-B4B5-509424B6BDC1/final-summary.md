@@ -60,11 +60,24 @@ codex/apply              │                                ██████�
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. G-Wire-1 deviation: the non-crash finalize success path in ci_fixer_lane.py renames its machine-consumed output token from STATUS=complete to STATUS=closed, but the new test test_fixer_lane_main_pe...
+
+## Architectural invariants
+
+No invariant violations found. The crash-finalization path validates the bgjob result envelope against the launch-derived step identity before acting (I-Stale-1). Crash diagnostic persistence writes a category-keyed entry to execution-issues.md before any lineage advancement is attempted, and validation or persistence failures raise LaneClosedError blocking the tier advance (I-Flush-1). The diagnostic embeds redacted stdout/stderr content directly; tmpdir and repo paths are replaced with redacted tokens and verified absent before persisting (I-Commit-1). The salvage-reship path only triggers after verifying a single commit ahead of starting_head with the exact expected subject; arbitrary HEAD drift or a clean identical HEAD routes to operator-bail or retry, never to a pre-merge ship for a merged/closed PR (I-Ship-1). No gate is disarmed by data authored by the gated entity: the lineage marker is a SHA-256 hash of identity fields validated from the bgjob result envelope, which the crashed daemon cannot retroactively forge to skip the diagnostic write (I-Gate-1).
+
+## Architectural guidelines
+
+G-Wire-1 deviation: the non-crash finalize success path in ci_fixer_lane.py renames its machine-consumed output token from STATUS=complete to STATUS=closed, but the new test test_fixer_lane_main_persists_run_b_after_valid_run_a (added in the same diff, python/tests/implement/test_ci.py) asserts the string "STATUS=complete\nRESULT=retry-next-tool", a consumer of the changed grammar that was not updated with the renamed token. The assertion would fail in CI. G-Wire-1 requires preserving byte-compatibility for existing readers or updating every consumer in the same change; the renamed token was not swept to all consumers introduced in this diff.
+
 ## /implement run 35C5BA8E-CB6F-4A34-B4B5-509424B6BDC1: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:56:29
-- **Cost**: 💰 TOTAL ~$24.94: Claude $1.41, Codex-5.6 $17.51, Codex-mini $0.07, Cursor $5.64 (Composer $5.64, Grok $0.00), Claude (subprocess) $0.31  |  Tokens: 32707k
+- **Cost**: 💰 TOTAL ~$25.24: Claude $1.71, Codex-5.6 $17.51, Codex-mini $0.07, Cursor $5.64 (Composer $5.64, Grok $0.00), Claude (subprocess) $0.31  |  Tokens: 33515k
 - **Issue**: #7066: https://github.com/character-ai/larch/issues/7066
 - **Plan review**: N/A
 - **Plan coverage**: 6/6 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -74,7 +87,7 @@ codex/apply              │                                ██████�
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7088
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/35C5BA8E-CB6F-4A34-B4B5-509424B6BDC1/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
