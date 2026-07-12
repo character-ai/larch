@@ -38,6 +38,18 @@ _REAUTHOR_REASONS: Final[frozenset[str]] = frozenset({
     config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH,
     config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
 })
+# A clean-outcome prose mismatch is a formatting defect, not an architectural
+# verdict: the lane confirmed `clean` but cited a G-*/I-* identifier in the
+# supporting prose. Re-author once with this constraint appended so the retry
+# keeps the clean verdict while dropping the identifier reference. See issue #7113.
+_CLEAN_PROSE_CONSTRAINT: Final = (
+    "\n\nADDITIONAL CONSTRAINT FOR THIS RETRY: A previous attempt marked a result "
+    "`clean` while its assessment text cited a `G-*` or `I-*` identifier, which the "
+    "coordinator treats as a deviation/violation signal. For every `clean` result, "
+    "write the assessment in plain prose that mentions NO `G-*` or `I-*` identifier "
+    "anywhere; affirm the clean verdict in one plain sentence and cite `G-*`/`I-*` "
+    "identifiers only inside `deviation` or `violation` results."
+)
 
 
 @dataclass(frozen=True)
@@ -578,7 +590,12 @@ def _validate_launch_evidence(*, evidence_dir: Path, copied: dict[str, tuple[Pat
         raise OSError("unsafe launch agent contract")
 
 
-def _launch_prompt(evidences: Sequence[MaterializedEvidence], copied: dict[str, tuple[Path, Path]]) -> str:
+def _launch_prompt(
+    evidences: Sequence[MaterializedEvidence],
+    copied: dict[str, tuple[Path, Path]],
+    *,
+    clean_prose_constraint: bool = False,
+) -> str:
     requests: list[dict[str, str]] = []
     for evidence in evidences:
         diff_path, knowledge_path = copied[evidence.kind]
@@ -593,7 +610,12 @@ def _launch_prompt(evidences: Sequence[MaterializedEvidence], copied: dict[str, 
                 "knowledge_path": str(knowledge_path),
             }
         )
-    return _AGENT_PROMPT.read_text(encoding="utf-8") + "\n\nREQUESTS_JSON=" + json.dumps(requests, separators=(",", ":"))
+    prompt = _AGENT_PROMPT.read_text(encoding="utf-8")
+    if clean_prose_constraint:
+        # Keep REQUESTS_JSON last: _validate_prompt_evidence_paths parses the
+        # suffix after the final REQUESTS_JSON marker, so the constraint precedes it.
+        prompt += _CLEAN_PROSE_CONSTRAINT
+    return prompt + "\n\nREQUESTS_JSON=" + json.dumps(requests, separators=(",", ":"))
 
 
 def _validate_prompt_evidence_paths(prompt: str, *, evidence_dir: Path) -> None:
@@ -1062,6 +1084,8 @@ def _attempt_lane(
     tool: str,
     unresolved: Sequence[MaterializedEvidence],
     context: LaneContext,
+    *,
+    clean_prose_constraint: bool = False,
 ) -> LaneOutcome:
     outcome = LaneOutcome()
     try:
@@ -1069,7 +1093,7 @@ def _attempt_lane(
     except OSError as exc:
         outcome = LaneOutcome(unavailable_detail=str(exc))
     else:
-        prompt = _launch_prompt(unresolved, context.copied)
+        prompt = _launch_prompt(unresolved, context.copied, clean_prose_constraint=clean_prose_constraint)
         _validate_prompt_evidence_paths(prompt, evidence_dir=context.evidence_dir)
         launcher = context.launchers.get(tool)
         if launcher is None:
@@ -1117,6 +1141,30 @@ def _record_unresolved_lane_rows(
     return [evidence for evidence in unresolved if evidence.kind not in statuses]
 
 
+def _clean_mismatch_retry_evidence(
+    results: Sequence[AssessmentResult],
+    *,
+    evidence_by_kind: Mapping[str, MaterializedEvidence],
+    statuses: Mapping[str, str],
+    retried: set[str],
+) -> list[MaterializedEvidence]:
+    """Return evidence for clean-outcome-prose-mismatch kinds not yet retried.
+
+    A clean-outcome prose mismatch is a formatting defect (the lane confirmed
+    ``clean`` but cited an identifier), so the coordinator re-authors it once with
+    the tightened clean-prose prompt instead of terminating the run. Kinds already
+    retried are excluded, capping the retry at one per kind. See issue #7113.
+    """
+    retry: list[MaterializedEvidence] = []
+    mismatch_status = _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)
+    for result in results:
+        if result.kind in retried:
+            continue
+        if statuses.get(result.kind) == mismatch_status:
+            retry.append(evidence_by_kind[result.kind])
+    return retry
+
+
 def _run_waterfall(
     pending: Sequence[MaterializedEvidence],
     *,
@@ -1132,6 +1180,7 @@ def _run_waterfall(
     context = LaneContext(copied, evidence_dir, repo_root, implement_tmpdir, launchers)
     unresolved: list[MaterializedEvidence] = list(pending)
     attempted: list[str] = []
+    clean_retried: set[str] = set()
     latest_detail: dict[str, str] = {evidence.kind: "no assessment lane was available" for evidence in pending}
     while unresolved:
         selection = external_defaults.next_untried_tier(
@@ -1160,6 +1209,30 @@ def _run_waterfall(
             repo_root=repo_root,
             implement_tmpdir=implement_tmpdir,
         )
+        retry_evidence = _clean_mismatch_retry_evidence(
+            outcome.results,
+            evidence_by_kind=evidence_by_kind,
+            statuses=statuses,
+            retried=clean_retried,
+        )
+        if retry_evidence:
+            # Clean-outcome prose mismatch is a formatting defect; re-author once
+            # in-lane with the tightened clean-prose prompt before giving up. See #7113.
+            clean_retried.update(evidence.kind for evidence in retry_evidence)
+            retry_outcome = _attempt_lane(
+                tool,
+                retry_evidence,
+                context,
+                clean_prose_constraint=True,
+            )
+            if not retry_outcome.unavailable_detail:
+                _persist_authored_results(
+                    retry_outcome.results,
+                    evidence_by_kind=evidence_by_kind,
+                    statuses=statuses,
+                    repo_root=repo_root,
+                    implement_tmpdir=implement_tmpdir,
+                )
         unresolved = _record_unresolved_lane_rows(
             unresolved,
             outcome=outcome,

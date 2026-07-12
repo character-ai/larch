@@ -36,6 +36,8 @@ For a crashed lane, apply this precedence:
 
 Route `RESULT=reship` through the existing Step 8 ship bgjob. Route `RESULT=retry-next-tool` through a fresh start, byte-identical wait loop, and finalize cycle. Capture its new dynamic `STEP`; never reuse the crashed step. The wrapper retains stable lineage while binding the new launch to the current `HEAD` and diff fingerprint. Route exhausted tiers through `RESULT=operator-bail` with bail reason `ci-fix-exhausted`; route every crash-finalization validation or persistence failure through the existing operator-bail gate.
 
+`step-8-ci-fixer.sh --finalize` pushes the lane-owned salvage commit to origin via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch` before emitting `RESULT=reship`, so a later terminal exit (for example an architectural assessment gate) cannot strand the fix locally and leave PR CI looking at the pre-fixer diff. A push failure fails closed as `RESULT=operator-bail` with reason `fixer-reship-push-failed`.
+
 Do not rerun architectural-guidelines Phase A and do not call guideline invalidate or pin helpers. The main agent must not read default-path CI evidence, invariant evidence, merge envelopes, `fixer-status.env`, lane transcripts, daemon stdout or stderr logs, or failure digests. It must not run `gh run-logs`, `ci distill-log`, Agent-tool fixer rounds, or edit repository files on this path.
 
 ## Kill switch
