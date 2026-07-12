@@ -32,6 +32,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.report import run_logs
 from larch.review import voting
+from larch.review.review_types import count_non_security_blocks, is_canonical_heading, parse_blocks
 from larch.issue.issue_create import ParsedItem, parse_issue_input, _balanced_fence_line_indices  # type: ignore[reportPrivateUsage]
 from larch.core.redact import redact
 
@@ -49,21 +50,12 @@ class IssueCapInvalidEnv(ValueError):
 # ---------------------------------------------------------------------------
 # Regexes (ported from oos.py)
 # ---------------------------------------------------------------------------
-_OOS_HEADER_RE = re.compile(
-    r"^###\s+(?:OOS_|FINDING_\d+:.*\[(?:OUT_OF_SCOPE|OOS)\])",
-    re.MULTILINE,
-)
+
+
 _FOCUS_AREA_LINE_RE = re.compile(
     r"^[ \t-]*(?:[-*][ \t]*)?(?:\*\*)?focus[- \t]*area(?:\*\*)?[ \t]*[:=][ \t]*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
     re.IGNORECASE | re.MULTILINE,
-)
-_SECURITY_FOCUS_RE = _FOCUS_AREA_LINE_RE
-_SECURITY_HEADER_RE = re.compile(
-    r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*"
-    r"(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
-    r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
-    re.IGNORECASE,
 )
 
 
@@ -86,28 +78,8 @@ def _github_issue_url_pattern() -> re.Pattern[str]:
 # Block-counting (ported from oos.py; includes #3550 legacy-header support)
 # ---------------------------------------------------------------------------
 def _count_non_security_markdown(text: str) -> int:
-    """Count non-security accepted OOS blocks in markdown text.
-
-    Blocks start on canonical ``### OOS_`` headers and on legacy tagged
-    ``### FINDING_N: [OUT_OF_SCOPE]`` headers (tag required — bare
-    ``### FINDING_N:`` stays in-scope; #3550).
-    """
-    count = 0
-    in_block = False
-    security = False
-    for line in text.splitlines():
-        if _OOS_HEADER_RE.match(line):
-            if in_block and not security:
-                count += 1
-            in_block = True
-            security = bool(_SECURITY_HEADER_RE.match(line))
-            continue
-        normalized = line.replace("`", "").replace("*", "")
-        if in_block and _SECURITY_FOCUS_RE.match(normalized):
-            security = True
-    if in_block and not security:
-        count += 1
-    return count
+    """Count accepted non-security OOS blocks with shared policy."""
+    return count_non_security_blocks(text)
 
 
 def count_non_security(accepted_paths: tuple[str, ...]) -> int:
@@ -118,8 +90,7 @@ def count_non_security(accepted_paths: tuple[str, ...]) -> int:
         if not file_path.is_file():
             continue
         text = file_path.read_text(encoding="utf-8")
-        if _OOS_HEADER_RE.search(text):
-            total += _count_non_security_markdown(text)
+        total += _count_non_security_markdown(text)
     return total
 
 
@@ -225,7 +196,6 @@ _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _PHONE_RE = re.compile(r"(?:\+?1[ .-]?)?\(?[0-9]{3}\)?[ .-]?[0-9]{3}[ .-]?[0-9]{4}")
 _SSN_RE = re.compile(r"[0-9]{3}-[0-9]{2}-[0-9]{4}")
 _ACCOUNT_RE = re.compile(r"\b(?:account|user|customer|employee|tenant|org)[_-]?[A-Za-z0-9]{8,}\b", re.IGNORECASE)
-_OOS_BLOCK_RE = re.compile(r"(?ms)^###\s+OOS_(\d+):\s*(.*?)$(.*?)(?=^###\s+OOS_\d+:|\Z)")
 _STRICT_FILED_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)(?:[ \t].*)?$", re.MULTILINE)
 _REJECTED_MARKER_RE = re.compile(r"OOS_\d+")
 _INLINE_TRIAGE_RE = re.compile(r"Inline-triage rule")
@@ -299,19 +269,22 @@ def _load_manifest_observations(path: Path, *, count_only: bool = False) -> list
 def _existing_oos_titles(path: Path) -> set[str]:
     if not path.is_file():
         return set()
-    titles: set[str] = set()
-    for match in re.finditer(r"^### OOS_\d+:[ \t]*(.*?)\s*$", path.read_text(encoding="utf-8"), re.MULTILINE):
-        titles.add(_normalize_title(match.group(1)).lower())
-    return titles
+    return {
+        _normalize_title(block.title).lower()
+        for block in parse_blocks(path.read_text(encoding="utf-8"), boundary="oos-heading")
+        if block.kind == "OOS"
+    }
 
 
 def _next_oos_number(path: Path) -> int:
     if not path.is_file():
         return 1
-    max_n = 0
-    for match in re.finditer(r"^### OOS_(\d+):", path.read_text(encoding="utf-8"), re.MULTILINE):
-        max_n = max(max_n, int(match.group(1)))
-    return max_n + 1
+    numbers = [
+        int(block.item_id.removeprefix("OOS_"))
+        for block in parse_blocks(path.read_text(encoding="utf-8"), boundary="oos-heading")
+        if block.kind == "OOS"
+    ]
+    return max(numbers, default=0) + 1
 
 
 def _append_run_log_warning(*, tmpdir: Path, entry: str) -> None:
@@ -677,8 +650,11 @@ class OosItem:
 
 
 def _parse_oos_blocks(text: str) -> list[OosItem]:
-    matches = list(_OOS_BLOCK_RE.finditer(text))
-    return [OosItem(int(match.group(1)), match.group(2).strip(), match.group(0).rstrip()) for match in matches]
+    return [
+        OosItem(int(block.item_id.removeprefix("OOS_")), block.title, block.block.rstrip())
+        for block in parse_blocks(text, boundary="item-heading")
+        if block.kind == "OOS"
+    ]
 
 
 def _normalize_rollup_text(text: str) -> str:
@@ -704,7 +680,7 @@ def _renumber_oos_headings(text: str) -> str:
     idx = 0
     out: list[str] = []
     for line in text.splitlines():
-        if re.match(r"^### OOS_\d+:", line):
+        if is_canonical_heading(line, kind="OOS"):
             idx += 1
             out.append(re.sub(r"^### OOS_\d+:", f"### OOS_{idx}:", line))
         else:
@@ -760,7 +736,7 @@ def _validate_issue_cap_input(text: str) -> list[ParsedItem]:
     heading_count = sum(
         1
         for index, line in enumerate(lines)
-        if index not in fenced_lines and re.match(r"^### OOS_\d+:", line)
+        if index not in fenced_lines and is_canonical_heading(line, kind="OOS")
     )
     if items and heading_count == 0:
         msg = "input is not OOS-shaped (no '### OOS_<N>:' headings)"

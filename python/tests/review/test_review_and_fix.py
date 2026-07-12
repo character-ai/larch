@@ -4272,6 +4272,31 @@ def test_shared_finding_parser_preserves_filter_preamble_and_inner_headings(tmp_
     )
 
 
+def test_filter_in_scope_drops_intervening_canonical_oos_block(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    out = tmp_path / "in-scope.md"
+    accepted.write_text(
+        "Coder preamble\n\n"
+        "### FINDING_1: keep\n"
+        "body\n"
+        "### OOS_1: private\n"
+        "private body\n"
+        "### FINDING_2: keep later\n"
+        "later body\n",
+        encoding="utf-8",
+    )
+
+    round_runner._filter_in_scope(accepted_file=accepted, output=out)
+
+    assert out.read_text(encoding="utf-8") == (
+        "Coder preamble\n\n"
+        "### FINDING_1: keep\n"
+        "body\n\n"
+        "### FINDING_2: keep later\n"
+        "later body\n"
+    )
+
+
 def test_parser_backed_extraction_and_counts_tolerate_malformed_utf8(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
     findings.write_bytes(b"### FINDING_1: title\nbody\xff\n### Details\nignored by extraction\n")

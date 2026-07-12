@@ -20,7 +20,7 @@ from larch import io as larch_io
 from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.review import voting
-from larch.review.review_types import JudgeSeverity, ReviewVote
+from larch.review.review_types import JudgeSeverity, ReviewVote, is_canonical_heading, is_security_block_text, parse_blocks
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _THREE_SLOT_COUNT = 3
@@ -31,8 +31,6 @@ _CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
 )
 _OOS_AGGREGATE_POOL = "oos-aggregate-pool.md"
-_OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):", re.MULTILINE)
-_OOS_POOL_HEADER_RE = re.compile(r"^###\s+(?:OOS|FINDING)_\d+:", re.MULTILINE)
 
 
 def _error(message: str) -> int:
@@ -278,7 +276,7 @@ def _seed_oos_seq(session_env_path: str) -> int:
     count = 0
     in_block = False
     for line in _read(accumulated).splitlines():
-        if re.match(r"^###[ \t]+(OOS_[0-9]+:|FINDING_[0-9]+:)", line):
+        if is_canonical_heading(line):
             if in_block:
                 count += 1
             in_block = True
@@ -466,16 +464,11 @@ def _aggregate_parent(*, review_tmpdir: Path, session_env_path: str = "", implem
 
 def _aggregate_oos_blocks(text: str) -> list[str]:
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    matches = list(_OOS_POOL_HEADER_RE.finditer(normalized))
-    if not matches:
-        return []
-    blocks: list[str] = []
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
-        block = normalized[match.start():end].strip("\n")
-        if block:
-            blocks.append(block + "\n")
-    return blocks
+    return [
+        block.block.strip("\n") + "\n"
+        for block in parse_blocks(normalized, boundary="item-heading")
+        if block.block.strip("\n")
+    ]
 
 
 def _aggregate_block_identity(block: str) -> str:
@@ -501,7 +494,7 @@ def _append_oos_pool_candidate(*, pool_file: Path, text: str) -> None:
 
 
 def _next_oos_number(text: str) -> int:
-    numbers = [int(match.group(1)) for match in _OOS_HEADER_RE.finditer(text)]
+    numbers = [int(block.item_id.removeprefix("OOS_"), 10) for block in parse_blocks(text, boundary="oos-heading") if block.kind == "OOS"]
     return max(numbers, default=0) + 1
 
 
@@ -512,7 +505,7 @@ def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | No
         [
             block
             for block in _aggregate_oos_blocks(_read(main_agent))
-            if not voting.is_security_block_text(block)
+            if not is_security_block_text(block)
         ]
         if main_agent is not None and main_agent.is_file()
         else []
@@ -521,7 +514,7 @@ def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | No
         [
             block
             for block in _aggregate_oos_blocks(_read(pool))
-            if not voting.is_security_block_text(block)
+            if not is_security_block_text(block)
             and re.search(r"(?mi)^Vote tally:.*\bResult=accepted\b", block)
             and voting.artifact_marked_fileable(block)
         ]
@@ -1245,7 +1238,10 @@ def _non_security_oos_count(path: Path, *, review_tmpdir: Path) -> int:
     if not path.is_file() or path.stat().st_size == 0:
         return 0
     count = 0
-    for block in re.split(r"(?m)^(?=### OOS_[0-9]+:)", _read(path)):
+    for parsed in parse_blocks(_read(path), boundary="oos-heading"):
+        if parsed.kind != "OOS":
+            continue
+        block = parsed.block
         if not block.startswith("### OOS_"):
             continue
         fd, tmp_name = tempfile.mkstemp(dir=review_tmpdir)

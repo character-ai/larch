@@ -87,6 +87,24 @@ Vote tally: YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
     assert _record_field_by_id(output, "OOS_CR1_2", "reviewer_slots") == ""
 
 
+def test_compose_findings_uses_canonical_finding_headings(tmp_path: Path) -> None:
+    impl = tmp_path / "impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "accepted-findings.md").write_text(
+        "### FINDING_1: canonical title\n"
+        "- **Reviewer**: codex\n"
+        "- **Concern**: retained\n",
+        encoding="utf-8",
+    )
+    output = tmp_path / "findings.jsonl"
+
+    result = run_review("compose-findings", "--implement-tmpdir", str(impl), "--issue", "1", "--output", str(output))
+
+    assert result.returncode == 0, result.stderr
+    assert _record_field_by_id(output, "FINDING_1", "prose_body")
+
+
 def test_compose_findings_oos_missing_scratch_dir_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -129,25 +147,25 @@ def test_compose_findings_design_gate_b_skip_and_accepted_all_precedence(tmp_pat
     design = tmp_path / "design-map"
     _ = (design / "plan-review" / "round-1").mkdir(parents=True)
     _ = (design / "accepted-plan-findings.md").write_text(
-        """### FINDING_OLD: Per-round file should lose to -all
+        """### FINDING_1: Per-round file should lose to -all
 - **Reviewer**: Cursor-Arch
 - **Concern**: This file is not the cumulative source.
 """,
         encoding="utf-8",
     )
     _ = (design / "accepted-plan-findings-all.md").write_text(
-        """### FINDING_ALL: Cumulative accepted
+        """### FINDING_2: Cumulative accepted
 - **Reviewer**: Cursor-Arch
 - **Concern**: accepted all wins.
 
-### FINDING_SKIP: Skipped during Gate B
+### FINDING_3: Skipped during Gate B
 - **Reviewer**: Cursor-Arch
 - **Concern**: skip me.
 """,
         encoding="utf-8",
     )
     _ = (design / "rejected-findings.md").write_text(
-        """### FINDING_SKIP: Skipped during Gate B
+        """### FINDING_3: Skipped during Gate B
 - **Reviewer**: Cursor-Arch
 - **Concern**: skip me.
 - **Reason**: rejected by user during one-by-one review
@@ -168,9 +186,9 @@ def test_compose_findings_design_gate_b_skip_and_accepted_all_precedence(tmp_pat
 
     assert result.returncode == 0, result.stderr
     assert "FINDINGS_TOTAL=1" in result.stdout
-    assert _record_field_by_id(output, "FINDING_OLD", "phase") == ""
-    assert _record_field_by_id(output, "FINDING_SKIP", "phase") == ""
-    assert "FINDING_ALL" in output.read_text(encoding="utf-8")
+    assert _record_field_by_id(output, "FINDING_1", "phase") == ""
+    assert _record_field_by_id(output, "FINDING_3", "phase") == ""
+    assert "FINDING_2" in output.read_text(encoding="utf-8")
 
 
 def test_compose_findings_falls_back_to_accepted_round_when_all_missing(tmp_path: Path) -> None:

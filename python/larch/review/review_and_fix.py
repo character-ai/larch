@@ -126,7 +126,6 @@ def _progress_note(*, step: str, text: str) -> None:
 
 # Keep these module-level constants for backward compatibility with any code
 # that reads them via review_and_fix._PLUGIN_ROOT etc.
-_FINDING_RE = re.compile(r"^### FINDING_[0-9]+:")
 _SKIPPED_RE = re.compile(r"^SKIPPED:\s*(FINDING_\d+)")
 _HIGH_RE = re.compile(
     r"(^### FINDING_[0-9]+:[^\n]*(\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
@@ -135,7 +134,6 @@ _HIGH_RE = re.compile(
     r"|^- \*\*Concern\*\*:\s*\[[Bb]locking\](?:[\s,:;.\)]|$)"
     r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
 )
-_OOS_HEADING_RE = re.compile(r"^### FINDING_[0-9]+:.*\[(?:OUT_OF_SCOPE|OOS)\]")
 _STEP5_REVIEW_RESULT_ENV = ".step5-review-result.env"
 
 

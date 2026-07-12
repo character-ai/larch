@@ -15,23 +15,16 @@ from larch.core import config
 from larch.core import proc
 from larch.issue import file_oos
 from larch.issue import oos_priority
+from larch.review.review_types import is_security_block_text, parse_blocks
 
 OOS_ISSUE_STDOUT_FILE = "oos-issue.stdout.txt"
 OOS_AGGREGATE_POOL_FILE = "oos-aggregate-pool.md"
 _GH_ISSUE_URL_RE = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:")
-_OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):[^\n]*\n", re.MULTILINE)
-_POOL_BLOCK_HEADER_RE = re.compile(r"^###\s+(?:OOS|FINDING)_(\d+):[^\n]*\n", re.MULTILINE)
 _SECURITY_FOCUS_RE = re.compile(
     r"^[ \t-]*(?:[-*][ \t]*)?(?:\*\*)?focus[- \t]*area(?:\*\*)?[ \t]*[:=][ \t]*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
     re.IGNORECASE | re.MULTILINE,
-)
-_SECURITY_HEADER_RE = re.compile(
-    r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*"
-    r"(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
-    r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
-    re.IGNORECASE,
 )
 _ISSUE_URL_KV_RE = re.compile(r"^ISSUE_(?:(\d+)_)?(URL|DUPLICATE_OF_URL)=(.*)$")
 _ISSUE_FAILED_KV_RE = re.compile(r"^ISSUE_(\d+)_FAILED=true$")
@@ -85,13 +78,13 @@ def _require_design_tmpdir(argv: Sequence[str], *, prog: str) -> Path | None:
 
 
 def _extract_unfiled_blocks(text: str) -> str:
-    indices: list[int] = [match.start() for match in _OOS_HEADER_RE.finditer(text)]
-    if not indices:
+    parsed = parse_blocks(text, boundary="oos-heading")
+    oos_blocks = [b for b in parsed if b.kind == "OOS"]
+    if not oos_blocks:
         return ""
     blocks: list[str] = []
-    for index, start in enumerate(indices):
-        end = indices[index + 1] if index + 1 < len(indices) else len(text)
-        block = text[start:end]
+    for parsed_block in oos_blocks:
+        block = parsed_block.block
         if _FILED_URL_LINE_RE.search(block):
             continue
         blocks.append(block.rstrip("\n"))
@@ -106,29 +99,12 @@ def _count_non_security_blocks(text: str) -> int:
     return file_oos._count_non_security_markdown(text)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 
 
-def _is_security_block_text(text: str) -> bool:
-    text_no_fence = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-    text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
-    if re.search(r"focus-area\s*=\s*security", text_no_backtick, flags=re.IGNORECASE):
-        return True
-    lines = text_no_fence.splitlines()
-    if lines and _SECURITY_HEADER_RE.search(lines[0]):
-        return True
-    return any(_SECURITY_FOCUS_RE.search(line.replace("`", "").replace("*", "")) for line in lines)
+_is_security_block_text = is_security_block_text
 
 
 def _aggregate_oos_blocks(text: str) -> list[str]:
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
-    matches = list(_POOL_BLOCK_HEADER_RE.finditer(normalized))
-    if not matches:
-        return []
-    blocks: list[str] = []
-    for index, match in enumerate(matches):
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
-        block = normalized[match.start():end].strip("\n")
-        if block:
-            blocks.append(block + "\n")
-    return blocks
+    return [block.block.strip("\n") + "\n" for block in parse_blocks(normalized, boundary="item-heading")]
 
 
 def _aggregate_block_identity(block: str) -> str:
@@ -147,7 +123,11 @@ def _aggregate_identity_signature(text: str) -> tuple[str, ...]:
 
 
 def _next_oos_number(text: str) -> int:
-    numbers = [int(match.group(1)) for match in _OOS_HEADER_RE.finditer(text)]
+    numbers = [
+        int(b.item_id.removeprefix("OOS_"))
+        for b in parse_blocks(text, boundary="oos-heading")
+        if b.kind == "OOS"
+    ]
     return max(numbers, default=0) + 1
 
 
@@ -454,14 +434,11 @@ def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
 
 
 def _block_range(*, text: str, os_number: str) -> tuple[int, int] | None:
-    pattern = re.compile(
-        rf"(^###\s+OOS_{re.escape(os_number)}:[^\n]*\n)([\s\S]*?)(?=^###\s+OOS_|\Z)",
-        re.MULTILINE,
-    )
-    match = pattern.search(text)
-    if not match:
-        return None
-    return match.start(), match.end()
+    item_id = f"OOS_{os_number}"
+    for block in parse_blocks(text, boundary="item-heading"):
+        if block.kind == "OOS" and block.item_id == item_id:
+            return block.start, block.end
+    return None
 
 
 def _recover_accepted_from_sentinel(*, accepted_text: str, sentinel_text: str) -> tuple[bool, str]:
@@ -491,17 +468,16 @@ def _recover_accepted_from_sentinel(*, accepted_text: str, sentinel_text: str) -
         return True, text
     if not plain_urls:
         return True, text
-    blocks = [match.group(0) for match in re.finditer(r"(?ms)^###\s+OOS_(\d+):[^\n]*\n.*?(?=^###\s+OOS_|\Z)", text)]
+    blocks = [block.block for block in parse_blocks(text, boundary="item-heading") if block.kind == "OOS"]
     unfiled = [block for block in blocks if not _FILED_URL_LINE_RE.search(block)]
     if len(plain_urls) > 1 or len(unfiled) > 1:
         return False, accepted_text
     for url in plain_urls:
-        for match in re.finditer(r"(?ms)^###\s+OOS_(\d+):[^\n]*\n.*?(?=^###\s+OOS_|\Z)", text):
-            block = match.group(0)
-            if _FILED_URL_LINE_RE.search(block):
+        for parsed in parse_blocks(text, boundary="item-heading"):
+            if parsed.kind != "OOS" or _FILED_URL_LINE_RE.search(parsed.block):
                 continue
-            new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
-            text = text[:match.start()] + new_block + text[match.end():]
+            new_block = parsed.block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
+            text = text[:parsed.start] + new_block + text[parsed.end:]
             break
     return True, text
 
@@ -582,7 +558,11 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
     _ = combined.write_text(unfiled, encoding="utf-8")
-    headers = [match.group(1) for match in _OOS_HEADER_RE.finditer(unfiled)]
+    headers = [
+        b.item_id.removeprefix("OOS_")
+        for b in parse_blocks(unfiled, boundary="oos-heading")
+        if b.kind == "OOS"
+    ]
     if not headers:
         combined.unlink(missing_ok=True)
         _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from larch.review.plan_review_common import AcceptedFinding, GateBDisplayRow, GateBSeveritySummary
+from larch.review.review_types import parse_blocks
 
 _STRUCTURED_GATE_B_SEVERITIES = {"major", "minor", "nit"}
 _GATE_B_LABELS_STRUCTURED = {
@@ -43,15 +44,15 @@ def _parse_accepted_findings(tmpdir: Path) -> list[AcceptedFinding]:
         return []
     text = path.read_text(encoding="utf-8", errors="replace")
     findings: list[AcceptedFinding] = []
-    for block in re.findall(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", text):
-        id_match = re.search(r"(?m)^### FINDING_([0-9]+):", block)
-        if not id_match:
+    for parsed in parse_blocks(text, boundary="level-three-heading"):
+        if parsed.kind != "FINDING":
             continue
+        block = parsed.block
         severity_match = re.search(r"(?mi)^-\s+\*\*Severity\*\*:\s*([A-Za-z_-]+)\s*$", block)
         severity_raw = severity_match.group(1).lower() if severity_match else ""
         findings.append(
             AcceptedFinding(
-                finding_id=int(id_match.group(1), 10),
+                finding_id=int(parsed.item_id.removeprefix("FINDING_"), 10),
                 block=block,
                 severity_raw=severity_raw,
                 concern=_accepted_finding_field(block=block, label="Concern"),

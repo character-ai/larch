@@ -9,20 +9,10 @@ from collections.abc import Callable
 from pathlib import Path
 
 from larch.review import voting
+from larch.review.review_types import is_oos_eligible_block, is_security_block_text, parse_blocks
 
 
 _HEADER_TOKEN_RE = re.compile(r"^###[ \t]+[A-Za-z]+_[0-9]+:")
-_CANONICAL_SECURITY_TOKEN_RE = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)
-_EXPLICIT_SECURITY_HEADER_RE = re.compile(
-    r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
-    r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
-    re.IGNORECASE,
-)
-_FOCUS_AREA_FIELD_RE = re.compile(
-    r"^[ \t-]*focus[- ]area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
-    re.IGNORECASE,
-)
-_FINDING_HEADER_RE = re.compile(r"^###\s+(?:FINDING|OOS)_\d+:")
 _PRESENT_RESULT_RE = re.compile(r"(^|[ \t])Result=")
 _ACCEPTED_RESULT_RE = re.compile(r"(^|[ \t])Result=accepted([ \t]|$)")
 
@@ -46,44 +36,16 @@ def normalize_oos_block_header(*, seq: int, block_text: str) -> str:
     return "".join(lines)
 
 
-def is_security_tagged(block_text: str) -> bool:
-    """Return True when an OOS block carries a security tag."""
-    text_no_fence = re.sub(r"```.*?```", "", block_text, flags=re.DOTALL)
-    text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
-    found = bool(_CANONICAL_SECURITY_TOKEN_RE.search(text_no_backtick))
-    lines = text_no_fence.splitlines()
-    if not found and lines and _EXPLICIT_SECURITY_HEADER_RE.search(lines[0]):
-        found = True
-    if not found:
-        for line in lines:
-            normalized = line.replace("`", "").replace("*", "").strip()
-            if _FOCUS_AREA_FIELD_RE.search(normalized):
-                found = True
-                break
-    return found
+is_security_tagged = is_security_block_text
 
 
 def _iter_finding_blocks(text: str) -> list[str]:
-    blocks: list[str] = []
-    in_block = False
-    current: list[str] = []
-    for line in text.splitlines():
-        if _FINDING_HEADER_RE.search(line):
-            if in_block:
-                blocks.append("".join(current))
-            in_block = True
-            current = [f"{line}\n"]
-            continue
-        if in_block:
-            current.append(f"{line}\n")
-    if in_block:
-        blocks.append("".join(current))
-    return blocks
+    return [block.block for block in parse_blocks(text, boundary="item-heading")]
 
 
 def _is_oos_block(block: str) -> bool:
-    first_line = block.splitlines()[0] if block else ""
-    return bool(re.match(r"^###\s+OOS_[0-9]+:", first_line)) or "[OUT_OF_SCOPE]" in block or "[OOS]" in block
+    parsed = parse_blocks(block, boundary="item-heading")
+    return len(parsed) == 1 and is_oos_eligible_block(parsed[0])
 
 
 def _is_vote_tally_eligible(block: str) -> bool:

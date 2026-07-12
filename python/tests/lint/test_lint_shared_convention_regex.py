@@ -163,3 +163,82 @@ def test_scope_excludes_tests_helpers_and_vendor_dirs(tmp_path: Path) -> None:
         "larch/pkg/prod.py"
     ]
     assert lscr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_reviewer_item_heading_regex_calls_and_assignments_are_detected(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/compiled.py": _module('ITEM_RE = re.compile(r"(?ms)^### (?:FINDING|OOS)_[0-9]+:.*?(?=^### |\\Z)")\n'),
+            "larch/direct.py": _module('def run(text: str) -> object:\n    return re.search(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\\Z)", text)\n'),
+            "larch/assigned.py": _module('ITEM_PATTERN = r"(?ms)^### OOS_[0-9]+:.*?(?=^### OOS_|\\Z)"\n'),
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 1
+    assert capsys.readouterr().err.count("use review_types.parse_blocks or review_types.parse_canonical_heading") == 3
+
+
+def test_review_types_owner_is_exempt(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/review/review_types.py": _module('ITEM_RE = re.compile(r"^### FINDING_[0-9]+:")\n')},
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_inline_multiline_block_sentinel_detected(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/seg.py": _module(
+                'HEADING_RE = re.compile(r"(?m)^### (?:FINDING|OOS)_[0-9]+(?:\\b|:).*$")\n'
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 1
+    assert "use review_types.parse_blocks or review_types.parse_canonical_heading" in capsys.readouterr().err
+
+
+def test_canonical_id_capture_group_detected(tmp_path: Path, capsys: CaptureFixture) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/hdr.py": _module(
+                r'OOS_RE = re.compile(r"^###\s+OOS_(\d+):[^\n]*\n", re.MULTILINE)' + "\n"
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 1
+    assert "use review_types.parse_blocks or review_types.parse_canonical_heading" in capsys.readouterr().err
+
+
+def test_vote_line_and_field_regex_non_matches(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/voter.py": _module(
+                'VOTE_ROW_RE = re.compile(r"^\\| (FINDING_[0-9]+) \\| (YES|NO) \\|")\n'
+                'FIELD_RE = re.compile(r"(?i)focus-area\\s*[:=]\\s*security")\n'
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_suppression_on_retained_line_scan(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "larch/retained.py": _module(
+                'BALLOT_RE = re.compile(r"(?m)^### (?:FINDING|OOS)_[0-9]+(?:\\b|:).*$")  '
+                "# lint-shared-convention-regex: ok distinct historical ballot grammar\n"
+            )
+        },
+    )
+
+    assert lscr.main(["--root", str(tmp_path)]) == 0

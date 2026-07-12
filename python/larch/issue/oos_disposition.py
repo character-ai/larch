@@ -10,6 +10,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch.review.review_types import count_non_security_blocks
+
 
 @dataclass(frozen=True)
 class OosDispositionCounts:
@@ -39,33 +41,10 @@ def count_filed_urls_union_files(paths: list[Path]) -> int:
     return len(urls)
 
 
-def _is_security_header(line: str) -> bool:
-    lower = line.lower()
-    return bool(re.match(r"^###[ \t]+(oos_[0-9]+:|finding_[0-9]+:)[ \t]*(\[(out_of_scope|oos)\][ \t]*)?`?(\[security\]|<security>)`?([ \t]|$|[:-])", lower))
-
-
 def count_non_security_oos_blocks(path: Path) -> int:
     if not path.is_file():
         return 0
-    count = 0
-    in_block = False
-    security = False
-    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.rstrip("\r")
-        starts = bool(re.match(r"^###[ \t]+OOS_", line)) or (re.match(r"^###[ \t]+FINDING_[0-9]+:", line) and re.search(r"\[(OUT_OF_SCOPE|OOS)\]", line))
-        if starts:
-            if in_block and not security:
-                count += 1
-            in_block = True
-            security = _is_security_header(line)
-            continue
-        if in_block:
-            lower = line.lower().replace("`", "").replace("*", "")
-            if re.match(r"^[ \t-]*focus[- \t]*area[ \t]*[:=][ \t]*security([- \t:A-Za-z0-9_]*)([ \t]|$|\(|#|\.|,)", lower):
-                security = True
-    if in_block and not security:
-        count += 1
-    return count
+    return count_non_security_blocks(path.read_text(encoding="utf-8", errors="replace"))
 
 
 def count_rejected_oos_markers_from_ndjson(path: Path) -> tuple[int, bool]:

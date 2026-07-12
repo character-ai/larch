@@ -17,14 +17,13 @@ from larch.core import external_defaults
 from larch.core import logging_util
 from larch.issue.oos import is_security_tagged
 from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
-from larch.review.review_types import parse_findings_text, parse_findings
+from larch.review.review_types import is_canonical_heading, parse_blocks, parse_findings_text, parse_findings
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 _SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(major|minor|nit)\s*$", re.IGNORECASE)
 _NIT_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*nit\s*$", re.IGNORECASE)
 _BLANK_SEVERITY_RE = re.compile(r"(?m)^(-\s*\*\*Severity\*\*:\s*)$")
-_ITEM_BLOCK_RE = re.compile(r"(?ms)^### (?:FINDING|OOS)_[0-9]+:.*?(?=^### |\Z)")
 _MIN_AGGREGATE_INPUTS = 2
 _MOVE_FAILED_RC = 3
 _VALIDATION_FAILED_RC = 4
@@ -84,7 +83,7 @@ def _finding_blocks(text: str) -> list[str]:
 
 
 def _item_blocks(text: str) -> list[str]:
-    return [match.group(0).strip() for match in _ITEM_BLOCK_RE.finditer(text)]
+    return [block.block.strip() for block in parse_blocks(text, boundary="level-three-heading")]
 
 
 def _count_finding_blocks(path: Path) -> int:
@@ -279,7 +278,7 @@ def _has_preamble_finding_signal(text: str) -> bool:
 
 
 def _line_opens_valid_finding_block(line: str) -> bool:
-    return bool(re.match(r"^### FINDING_[0-9]+:", line.lstrip("\t ")))
+    return is_canonical_heading(line.lstrip("\t "), kind="FINDING")
 
 
 def _has_nonconforming_finding_heading_markers(text: str) -> bool:

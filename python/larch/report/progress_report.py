@@ -27,6 +27,7 @@ from larch.report.timing import TIMING_VENDOR_MIN_COLS
 from larch.review import plan_review_round
 from larch.report import report_tokens_cost
 from larch.review import voting
+from larch.review.review_types import is_security_block_text, parse_blocks
 
 TIMING_ROUND_MIN_COLS = 8
 TIMING_ROUND_SKILL_COL = 3
@@ -1387,7 +1388,6 @@ def _oos_result_rows(*, round_dir: Path, source: str) -> list[tuple[str, str]]:
 
 
 def _extract_oos_block(*, round_dir: Path, oos_id: str) -> str:
-    pattern = re.compile(rf"(?ms)^### {re.escape(oos_id)}:.*?(?=^### |\Z)")
     for name in ("findings-oos.md", "findings.md", "oos.md", "findings-in-scope.md"):
         path = round_dir / name
         if not path.is_file():
@@ -1396,9 +1396,9 @@ def _extract_oos_block(*, round_dir: Path, oos_id: str) -> str:
             text = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        match = pattern.search(text)
-        if match:
-            return match.group(0)
+        for parsed_block in parse_blocks(text, boundary="level-three-heading"):
+            if parsed_block.item_id == oos_id:
+                return parsed_block.block
     return ""
 
 
@@ -1412,15 +1412,7 @@ def _adjust_design_security_oos(
         block = _extract_oos_block(round_dir=round_dir, oos_id=oos_id)
         if not block:
             continue
-        tmp = round_dir / f".oos-sec-{oos_id}.tmp"
-        try:
-            tmp.write_text(block, encoding="utf-8")
-            is_security = voting.is_security_block(tmp)
-        except Exception:  # pylint: disable=broad-except
-            is_security = False
-        finally:
-            with contextlib.suppress(OSError):
-                tmp.unlink()
+        is_security = is_security_block_text(block)
         if not is_security:
             continue
         if result == "accepted":

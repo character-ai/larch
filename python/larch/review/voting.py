@@ -25,7 +25,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
-from larch.review.review_types import JudgeSeverity, ReviewVote
+from larch.review.review_types import JudgeSeverity, ReviewVote, is_security_block_text
 
 LONG_EXTS = "cc|cfg|cjs|cpp|css|csv|cs|dart|gradle|groovy|go|html|htm|hpp|java|json|jsx|js|kt|lua|mjs|mk|mm|md|php|pl|proto|py|rb|rs|sass|scala|scss|sh|sql|swift|toml|tsx|tsv|ts|vue|xml|yaml|yml"
 SHORT_EXTS = "lock|env|txt|c|h|m|r"
@@ -818,31 +818,6 @@ def restore_reviewer_attribution(*, block_text: str, reviewer_line: str) -> str:
             lines.insert(idx + 1, reviewer_line + "\n")
             return "".join(lines)
     return reviewer_line + "\n" + block_text
-
-
-def is_security_block_text(text: str) -> bool:
-    text_no_fence = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-    text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
-    canonical_token = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)
-    explicit_header = re.compile(
-        r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
-        r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
-        re.IGNORECASE,
-    )
-    field_value = re.compile(
-        r"^[ \t-]*focus[- ]area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
-        re.IGNORECASE,
-    )
-    lines = text_no_fence.splitlines()
-    if canonical_token.search(text_no_backtick):
-        return True
-    if lines and explicit_header.search(lines[0]):
-        return True
-    for line in lines:
-        normalized = line.replace("`", "").replace("*", "").strip()
-        if field_value.search(normalized):
-            return True
-    return False
 
 
 def is_security_block(block_file: str | Path) -> bool:

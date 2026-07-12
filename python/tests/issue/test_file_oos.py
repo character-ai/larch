@@ -39,6 +39,24 @@ def test_count_non_security_counts_multiple_blocks(tmp_path: Path) -> None:
     assert file_oos.count_non_security((str(accepted),)) == 2
 
 
+def test_parse_oos_blocks_stops_at_intervening_finding_heading() -> None:
+    text = (
+        "### OOS_1: first\n"
+        "first body\n"
+        "### FINDING_2: middle\n"
+        "finding body\n"
+        "### OOS_3: last\n"
+        "last body\n"
+    )
+
+    blocks = file_oos._parse_oos_blocks(text)  # pyright: ignore[reportPrivateUsage]
+
+    assert [(block.number, block.body) for block in blocks] == [
+        (1, "### OOS_1: first\nfirst body"),
+        (3, "### OOS_3: last\nlast body"),
+    ]
+
+
 def test_count_non_security_counts_legacy_tagged_headers(tmp_path: Path) -> None:
     accepted = tmp_path / "accepted.md"
     _ = accepted.write_text(

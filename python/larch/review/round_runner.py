@@ -45,8 +45,6 @@ from larch.review._raf_util import (
     _write_text,
 )
 from larch.review.batch_report import (
-    _FINDING_RE,
-    _OOS_HEADING_RE,
     _append_round_oos_artifact,
     _compose_review_findings_output,
     _core_status_is,
@@ -62,7 +60,7 @@ from larch.review.coder_runner import CoderResult, apply_findings_with_coder
 from larch.review.snapshot import (
     _write_post_coder_head,
 )
-from larch.review.review_types import ReviewCoreStatus, parse_findings
+from larch.review.review_types import ReviewCoreStatus, is_canonical_heading, is_oos_eligible_block, parse_blocks
 
 ReviewCoreImpl = Callable[[list[str]], int]
 
@@ -143,27 +141,38 @@ def review_core_capture(*,
 
 def _filter_in_scope(*, accepted_file: Path, output: Path) -> None:
     text = _read_text(accepted_file)
-    first = re.search(r"^### FINDING_[0-9]+:", text, flags=re.MULTILINE)
-    preamble = text[: first.start()] if first else text
-    kept = [finding.block.rstrip() for finding in parse_findings(accepted_file, boundary="finding_heading") if not _OOS_HEADING_RE.match(finding.block.splitlines()[0] if finding.block else "")]
+    blocks = parse_blocks(text, boundary="item-heading")
+    first_start = blocks[0].start if blocks else None
+    preamble = text[:first_start] if first_start is not None else text
+    kept = [block.block.rstrip() for block in blocks if block.kind == "FINDING" and not is_oos_eligible_block(block)]
     findings_text = "\n\n".join(kept) + ("\n" if kept else "")
     _write_text(path=output, text=preamble + findings_text)
 
 
+_HEADING_SEVERITY_RE = re.compile(
+    r"\*\*Major\*\*|\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*"
+)
+_BODY_SEVERITY_RE = re.compile(
+    r"(\*\*[Mm]ajor\*\*"
+    r"|\*\*[Bb]locking\*\*"
+    r"|\*\*[Ii]mportant\*\*"
+    r"|^- \*\*Severity\*\*:\s*major(?:[\s,:;.\)]|$)"
+    r"|^- \*\*Concern\*\*:\s*\[[Mm]ajor\](?:[\s,:;.\)]|$)"
+    r"|^- \*\*Concern\*\*:\s*\[[Bb]locking\](?:[\s,:;.\)]|$)"
+    r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
+)
+
+
+def _is_high_severity_line(line: str) -> bool:
+    if is_canonical_heading(line, kind="FINDING") and _HEADING_SEVERITY_RE.search(line):
+        return True
+    return bool(_BODY_SEVERITY_RE.search(line))
+
+
 def _high_severity_count(path: Path) -> int:
-    _HIGH_RE = re.compile(
-        r"(^### FINDING_[0-9]+:[^\n]*(\*\*Major\*\*|\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
-        r"|\*\*[Mm]ajor\*\*"
-        r"|\*\*[Bb]locking\*\*"
-        r"|\*\*[Ii]mportant\*\*"
-        r"|^- \*\*Severity\*\*:\s*major(?:[\s,:;.\)]|$)"
-        r"|^- \*\*Concern\*\*:\s*\[[Mm]ajor\](?:[\s,:;.\)]|$)"
-        r"|^- \*\*Concern\*\*:\s*\[[Bb]locking\](?:[\s,:;.\)]|$)"
-        r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
-    )
     if not path.is_file():
         return 0
-    return sum(1 for line in _read_text(path).splitlines() if _HIGH_RE.search(line))
+    return sum(1 for line in _read_text(path).splitlines() if _is_high_severity_line(line))
 
 
 def _nit_count(path: Path) -> int:
@@ -171,7 +180,7 @@ def _nit_count(path: Path) -> int:
     in_block = False
     nit = False
     for line in _read_text(path).splitlines() if path.is_file() else []:
-        if _FINDING_RE.match(line):
+        if is_canonical_heading(line, kind="FINDING"):
             if in_block and nit:
                 count += 1
             in_block = True
@@ -189,17 +198,7 @@ def _nit_count(path: Path) -> int:
 
 
 def _important_present(path: Path) -> bool:
-    _HIGH_RE = re.compile(
-        r"(^### FINDING_[0-9]+:[^\n]*(\*\*Major\*\*|\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
-        r"|\*\*[Mm]ajor\*\*"
-        r"|\*\*[Bb]locking\*\*"
-        r"|\*\*[Ii]mportant\*\*"
-        r"|^- \*\*Severity\*\*:\s*major(?:[\s,:;.\)]|$)"
-        r"|^- \*\*Concern\*\*:\s*\[[Mm]ajor\](?:[\s,:;.\)]|$)"
-        r"|^- \*\*Concern\*\*:\s*\[[Bb]locking\](?:[\s,:;.\)]|$)"
-        r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
-    )
-    return any(_HIGH_RE.search(line) for line in _read_text(path).splitlines()) if path.is_file() else False
+    return any(_is_high_severity_line(line) for line in _read_text(path).splitlines()) if path.is_file() else False
 
 
 def _write_summary(*, path: Path, result: RoundResult, round_cap: int) -> None:

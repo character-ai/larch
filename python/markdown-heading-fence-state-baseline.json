@@ -28,34 +28,6 @@
     "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
   },
   {
-    "file": "larch/issue/file_oos.py",
-    "qualified_symbol": "_count_non_security_markdown",
-    "pattern_name": "_OOS_HEADER_RE",
-    "occurrence": 3,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
-    "file": "larch/issue/file_oos.py",
-    "qualified_symbol": "_count_non_security_markdown",
-    "pattern_name": "_SECURITY_HEADER_RE",
-    "occurrence": 1,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
-    "file": "larch/issue/file_oos.py",
-    "qualified_symbol": "_count_non_security_markdown",
-    "pattern_name": "_SECURITY_HEADER_RE",
-    "occurrence": 2,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
-    "file": "larch/issue/oos.py",
-    "qualified_symbol": "_iter_finding_blocks",
-    "pattern_name": "_FINDING_HEADER_RE",
-    "occurrence": 1,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
     "file": "larch/review/voting.py",
     "qualified_symbol": "ballot_text_is_neutralized",
     "pattern_name": "BALLOT_HEADING_RE",

@@ -1061,15 +1061,15 @@ def test_write_implement_round_meta_records_canonical_decomposition(tmp_path: Pa
     assert meta["nit_pruned_count"] == "1"
 
 
-def test_write_design_round_meta_security_oos_and_panel(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_write_design_round_meta_security_oos_and_panel(tmp_path: Path) -> None:
     round_dir = tmp_path / "plan-review" / "round-1"
     round_dir.mkdir(parents=True)
     (round_dir / "voting-tally.md").write_text(
-        "## Findings\n\n| Item | Result |\n|--|--|\n| OOS_SEC | accepted |\n",
+        "## Findings\n\n| Item | Result |\n|--|--|\n| OOS_1 | accepted |\n",
         encoding="utf-8",
     )
     (round_dir / "findings-oos.md").write_text(
-        "### OOS_SEC: security item\nfocus-area=security\n",
+        "### OOS_1: security item\nfocus-area=security\n",
         encoding="utf-8",
     )
     (round_dir / "plan-review-slots.ndjson").write_text(
@@ -1079,7 +1079,6 @@ def test_write_design_round_meta_security_oos_and_panel(tmp_path: Path, monkeypa
     (round_dir / "round-summary.env").write_text("COLLECT_FAILURE_COUNT=2\n", encoding="utf-8")
     (round_dir / "revise").mkdir()
     (round_dir / "revise" / "revise.env").write_text("REVISE_STATUS=ok-fallback\nREVISE_TIER=primary\n", encoding="utf-8")
-    monkeypatch.setattr(progress_report.voting, "is_security_block", lambda _path: True)
     assert progress_report.write_design_round_meta(round_dir) == 0
     meta = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
     assert meta["tally"]["OOS_PROPOSED_COUNT"] == "0"

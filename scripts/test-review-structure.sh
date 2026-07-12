@@ -402,7 +402,10 @@ fi
 # (20) Security-tag exclusion contract for accepted OOS items. After #2207
 # voting.md is gone; the canonical security regex + invariant prose live in
 # skills/shared/voting-protocol.md, and the mechanical enforcement lives in
-# python/voting.py::is_security_block (shared by both tally scripts).
+# python/voting.py::is_security_block (shared by both tally scripts). After the
+# contract-unification migration the canonical security regex was consolidated
+# into review_types.is_security_block_text; voting.py::is_security_block now
+# delegates to it.
 # ---------------------------------------------------------------------------
 PROTOCOL_MD="$REPO_ROOT/skills/shared/voting-protocol.md"
 [[ -f "$PROTOCOL_MD" ]] \
@@ -416,8 +419,13 @@ grep -Fq 'Security counter-invariant' "$PROTOCOL_MD" \
 VOTING_PY="$REPO_ROOT/python/larch/review/voting.py"
 [[ -f "$VOTING_PY" ]] \
   || fail "(20) python/larch/review/voting.py missing"
-grep -Fq 'focus-area\s*=\s*security' "$VOTING_PY" \
-  || fail "(20d) voting.py must carry canonical focus-area\\s*=\\s*security token for is_security_block"
+REVIEW_TYPES_PY="$REPO_ROOT/python/larch/review/review_types.py"
+[[ -f "$REVIEW_TYPES_PY" ]] \
+  || fail "(20) python/larch/review/review_types.py missing"
+grep -Fq 'focus-area\s*=\s*security' "$REVIEW_TYPES_PY" \
+  || fail "(20d) review_types.py must carry canonical focus-area\\s*=\\s*security token for is_security_block_text"
+grep -Fq 'is_security_block_text' "$VOTING_PY" \
+  || fail "(20e) voting.py::is_security_block must delegate to review_types.is_security_block_text"
 
 # ---------------------------------------------------------------------------
 # (21) Stage 4 (#3119): Family-B fence shape must stay absent from review orchestrator docs.

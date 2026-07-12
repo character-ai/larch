@@ -14,6 +14,7 @@ from pathlib import Path
 from larch.core import logging_util
 from larch.core import redact
 from larch.review.plan_review_accepted_audit import filter_gate_b_skipped_files
+from larch.review.review_types import parse_canonical_heading
 from larch.review import voting
 
 
@@ -260,7 +261,13 @@ def _parse_artifact(*, path: Path, kind: str, round_num: str, ctx: _ParseContext
 
     for line in _read(path).splitlines():
         if kind in {"plan-review-accepted", "code-review-accepted"}:
-            match = re.match(r"^###\s+(FINDING_[0-9A-Za-z_]+):\s*(.*)$", line)
+            heading = parse_canonical_heading(line)
+            if heading is not None and heading.kind == "FINDING":
+                flush()
+                pending_id = heading.item_id
+                pending_title = heading.title
+                continue
+            match = re.match(r"^###\s+(FINDING_[A-Za-z_][0-9A-Za-z_]*):\s*(.*)$", line)
             if match:
                 flush()
                 pending_id = match.group(1)

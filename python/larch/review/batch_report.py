@@ -1,5 +1,5 @@
 """Findings processing and batch log flush for the review-and-fix subsystem."""
-# ruff: noqa: SIM114, PIE810, PERF401
+# ruff: noqa: SIM114, PERF401 - pre-existing batch-report blanket suppression
 # pyright: reportUnusedCallResult=false, reportArgumentType=false
 
 from __future__ import annotations
@@ -23,11 +23,9 @@ from larch.review._raf_util import (
     _run,
     _write_text,
 )
-from larch.review.review_types import ReviewCoreStatus, parse_findings_text
+from larch.review.review_types import ReviewCoreStatus, is_canonical_heading, parse_findings_text
 
-_FINDING_RE = re.compile(r"^### FINDING_[0-9]+:")
 _SKIPPED_RE = re.compile(r"^SKIPPED:\s*(FINDING_\d+)")
-_OOS_HEADING_RE = re.compile(r"^### FINDING_[0-9]+:.*\[(?:OUT_OF_SCOPE|OOS)\]")
 _SETTLING_CORE_STATUSES = frozenset({
     ReviewCoreStatus.ok,
     ReviewCoreStatus.fix_required,
@@ -92,7 +90,7 @@ def _oos_write_seq(oos_markdown: Path) -> int:
         return 0
     count = 0
     for line in _read_text(oos_markdown).splitlines():
-        if line.startswith("### OOS_"):
+        if is_canonical_heading(line, kind="OOS"):
             count += 1
     return count
 
@@ -306,7 +304,7 @@ def write_rejected_findings_aggregate(*, impl_tmpdir: Path, fallback_file: Path 
 def _render_rejected_findings_for_tally(path: Path) -> str:
     lines: list[str] = []
     for line in _read_text(path).splitlines():
-        if line.startswith("### [") or line.startswith("### FINDING_"):
+        if line.startswith("### [") or is_canonical_heading(line, kind="FINDING"):
             lines.append(line)
         elif lines:
             lines.append(line)

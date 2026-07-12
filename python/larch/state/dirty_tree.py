@@ -14,6 +14,7 @@ from pathlib import Path
 
 from larch.issue import issue_wire
 from larch.core import logging_util
+from larch.review.review_types import parse_canonical_heading
 
 _META_PATH_RE = re.compile(r"^[A-Za-z0-9./_-]+$")
 
@@ -250,8 +251,10 @@ def has_scope_reduction_marker(text: str) -> bool:
     body = _strip_code(text)
     for line in body.splitlines():
         stripped = line.strip()
-        match = re.match(r"^###\s+FINDING_[0-9]+:\s*(.*)$", stripped, re.IGNORECASE)
-        if match and re.match(r"^\[SCOPE-REDUCTION\]", _norm_candidate(match.group(1))):
+        heading = parse_canonical_heading(stripped)
+        if heading is not None and heading.kind == "FINDING" and re.match(
+            r"^\[SCOPE-REDUCTION\]", _norm_candidate(heading.title)
+        ):
             return True
         match = re.match(r"^-?\s*(?:\*\*)?Concern(?:\*\*)?:\s*(.*)$", stripped, re.IGNORECASE)
         if match and re.match(r"^\[SCOPE-REDUCTION\]", _norm_candidate(match.group(1))):
