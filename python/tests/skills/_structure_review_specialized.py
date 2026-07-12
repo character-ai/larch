@@ -1,4 +1,5 @@
 """Complete port of test-review-structure.sh."""
+# pylint: disable=multiple-statements,subprocess-run-check
 from __future__ import annotations
 
 import re

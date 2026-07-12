@@ -1,4 +1,5 @@
 """Ported implement structure checks from test-implement-structure.sh."""
+# pylint: disable=multiple-statements,subprocess-run-check,chained-comparison
 from __future__ import annotations
 
 import os
