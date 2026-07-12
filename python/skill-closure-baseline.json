@@ -41,8 +41,8 @@
     "closure_content_estimated_tokens": 45649,
     "closure_estimated_tokens": 45769,
     "closure_lines": 1337,
-    "conditional_content_estimated_tokens": 24319,
-    "conditional_estimated_tokens": 24377,
+    "conditional_content_estimated_tokens": 24330,
+    "conditional_estimated_tokens": 24388,
     "conditional_files": [
       "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
