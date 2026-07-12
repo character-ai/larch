@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 from __future__ import annotations
 
+import argparse
 import errno
 import fcntl
 import json
@@ -12,12 +13,11 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
 from larch import io as larch_io
-from larch.bgjob import model as bgjob_model
 from larch.cli import _REGISTRY
 
 from larch.agents import agents
@@ -44,6 +44,9 @@ from larch.outcomes import Outcome
 from larch.report import run_logs
 
 from test_support import make_implement_tmpdir
+
+if TYPE_CHECKING:
+    from larch.bgjob import model as bgjob_model
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -90,7 +93,7 @@ def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, mo
 
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
 
-    args = SimpleNamespace(site="step5", commit_site="", rebase_checkpoint_4r=False, forked_target="false")
+    args = argparse.Namespace(site="step5", commit_site="", rebase_checkpoint_4r=False, forked_target="false")
     assert dispatch_commit_route._run_step_checks_worker(args, tmp, plugin_root) == 0
 
 
@@ -3938,7 +3941,7 @@ def _mock_step6_check_changes(
 def _step6_worker_main(argv: list[str]) -> int:
     forked_target = argv[argv.index("--forked-target") + 1] if "--forked-target" in argv else "false"
     force_checks = argv[argv.index("--force-checks") + 1] if "--force-checks" in argv else "false"
-    args = SimpleNamespace(forked_target=forked_target, force_checks=force_checks)
+    args = argparse.Namespace(forked_target=forked_target, force_checks=force_checks)
     return dispatch_commit_route._step6_entry_worker(
         args,
         Path(os.environ["IMPLEMENT_TMPDIR"]),
@@ -6028,7 +6031,7 @@ def _step5_resume_worker_main(argv: list[str]) -> int:
     round_num = argv[argv.index("--final-round-num") + 1]
     if not round_num.isdigit() or "--record-only" in argv:
         return dispatch_commit_route.step5_resume_main(argv)
-    args = SimpleNamespace(
+    args = argparse.Namespace(
         final_round_num=round_num,
         checks_site="",
         ready_to_commit="--ready-to-commit" in argv,

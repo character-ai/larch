@@ -4,11 +4,14 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from larch.bgjob import model
 from larch.implement import ci_fixer_adapter
+
+if TYPE_CHECKING:
+    from larch.bgjob import model
 
 
 def _fixed_launch(

@@ -5,12 +5,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from larch.bgjob import model
 from larch.implement import checks_result_identity as identity
 from larch.implement import dispatch_commit_route as route
 
 if TYPE_CHECKING:
     import pytest
+
+    from larch.bgjob import model
 
 
 def _capture_spec(captured: list[model.JobSpec]) -> Callable[[model.JobSpec], int]:
