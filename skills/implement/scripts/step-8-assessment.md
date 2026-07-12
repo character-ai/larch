@@ -63,8 +63,10 @@ contract; they do not reimplement Piece 2.
 ### `ASSESSMENT_STATUS`
 
 - `complete`: child validation succeeded
-- `fail-closed`: terminal failure after retry exhaustion or non-retryable
-  validation failure on attempt 2
+- `fail-closed`: terminal failure after retry exhaustion, non-retryable
+  validation failure on attempt 2, or reassessment-cap exhaustion
+- `re-author-required`: one or more kinds need re-authoring; rejoinable while
+  the reassessment cycle is under cap (see "Re-author-required terminal")
 
 ### `ASSESSMENT_ATTEMPT`
 
@@ -182,4 +184,11 @@ Keep this document aligned with:
 
 ## Re-author-required terminal
 
-`re-author-required` is an allowed per-kind `ASSESSMENT_RESULTS` state. If any requested kind has that state, the adapter writes `ASSESSMENT_STATUS=re-author-required` with `BGJOB_RC=0` and preserves the request identity and full results. This envelope is terminal and rejoinable, but it is not successful coverage and is not retryable. The parent routes it to `NEXT_ACTION=assessments` and must not invoke `step-8-ship.sh`.
+`re-author-required` is an allowed per-kind `ASSESSMENT_RESULTS` state. If any requested kind has that state, the adapter writes `ASSESSMENT_STATUS=re-author-required` with `BGJOB_RC=0` and preserves the request identity and full results. This envelope is not successful coverage and does not proceed to ship.
+
+The adapter owns a bounded reassessment cycle per covered fingerprint (cap: one cycle, `REASSESS_CAP`). On rejoin of an identity-matching `re-author-required` envelope, the adapter clears the preserved result and merge state, starts a fresh attempt-1 child, and re-delegates authorship. The cycle counter is a sidecar under `$IMPLEMENT_TMPDIR/bgjob/` keyed by the covered fingerprint; it resets on identity drift and on a `complete` terminal.
+
+- If the fresh attempt resolves to `complete`, the adapter emits the complete envelope and resets the counter.
+- If the fresh attempt returns `re-author-required` again, the adapter emits the `re-author-required` envelope; the next rejoin finds the counter at the cap and the adapter publishes `fail-closed` (existing Step 8 Tool Failure handling).
+
+A child returning `re-author-required` within a single invocation emits the terminal envelope and exits; the clear-and-restart happens on the next rejoin, so each invocation performs at most one reassessment. The parent re-routes a validated `re-author-required` envelope to `NEXT_ACTION=assessments` (re-run the normalization and adapter fences) and must not invoke `step-8-ship.sh`.

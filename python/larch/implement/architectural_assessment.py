@@ -1233,6 +1233,15 @@ def _run_waterfall(
                     repo_root=repo_root,
                     implement_tmpdir=implement_tmpdir,
                 )
+            # A clean-prose retry that did not resolve the mismatch (launch
+            # failure, invalid rows, or another mismatch) must not strand the
+            # kind on the re-author-required terminal: drop the stale mismatch
+            # status so the kind returns to the waterfall and the remaining
+            # lanes each get one attempt. See issue #7143.
+            mismatch_status = _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)
+            for retried in retry_evidence:
+                if statuses.get(retried.kind) == mismatch_status:
+                    _ = statuses.pop(retried.kind, None)
         unresolved = _record_unresolved_lane_rows(
             unresolved,
             outcome=outcome,

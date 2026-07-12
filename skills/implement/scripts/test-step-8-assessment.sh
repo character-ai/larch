@@ -55,6 +55,8 @@ assert_not_contains 'Path(sys.argv[1]).open("wb")' "$helper_text" 'static: child
 assert_not_contains 'declare -A' "$helper_text" 'static: no associative arrays'
 assert_not_contains 'nameref' "$helper_text" 'static: no namerefs'
 assert_not_contains 'mapfile' "$helper_text" 'static: no mapfile'
+assert_contains 'REASSESS_CAP=' "$helper_text" 'static: reassessment cap pinned'
+assert_not_contains 'emit-reauthor' "$helper_text" 'static: dead-end emit-reauthor action removed'
 
 # --- fake plugin + stub modules ---
 FAKE_PLUGIN="$TMP_ROOT/plugin"
@@ -1178,6 +1180,75 @@ ENV
     fail "identity-drift-$identity_field: expected 1 fresh start got $START_COUNT"
   fi
 done
+
+# --- routed reassessment: re-author terminal starts a fresh attempt-1 child ---
+setup_impl reassess-resolves
+FP_EXPECTED=$(expected_fingerprint)
+# Plant the result env from the prior invocation: a re-author-required terminal.
+cat >"$IMPL_TMP/bgjob/implement-step8-assessment.result.env" <<ENV
+BGJOB_RC=0
+STEP=implement-step8-assessment
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$FP_EXPECTED
+ASSESSMENT_STATUS=re-author-required
+ASSESSMENT_ATTEMPT=1
+ASSESSMENT_RESULTS=invariants:re-author-required:clean-outcome-prose-mismatch,guidelines:clean
+ENV
+# The reassessment start synthesizes a complete result.
+printf '1:0:complete:invariants:clean,guidelines:clean\n' >"$IMPL_TMP/.test-start-seq"
+printf '1:DONE:0\n' >"$IMPL_TMP/.test-wait-script"
+printf 'yes\n' >"$IMPL_TMP/.test-wait-reset-on-start"
+set +e
+REASSESS_OUT=$(run_helper 2>"$TMP_ROOT/reassess-resolves.err")
+REASSESS_RC=$?
+set -e
+assert_rc "$REASSESS_RC" 0 'reassess-resolves: exits 0'
+assert_contains 'ASSESSMENT_STATUS=complete' "$REASSESS_OUT" 'reassess-resolves: reassessment resolves to complete'
+assert_contains 'ASSESSMENT_ATTEMPT=1' "$REASSESS_OUT" 'reassess-resolves: fresh attempt-1 after rejoin'
+START_COUNT=$(cat "$IMPL_TMP/.test-start-count" 2>/dev/null || echo 0)
+if [ "$START_COUNT" = "1" ]; then
+  pass 'reassess-resolves: one fresh child after re-author terminal'
+else
+  fail "reassess-resolves: expected 1 start got $START_COUNT"
+fi
+if [ -e "$IMPL_TMP/bgjob/implement-step8-assessment.reassess.env" ]; then
+  fail 'reassess-resolves: cycle sidecar should reset on complete'
+else
+  pass 'reassess-resolves: cycle sidecar reset on complete'
+fi
+
+# --- reassessment cap exhaustion converts the terminal to fail-closed ---
+setup_impl reassess-cap-exhausted
+FP_EXPECTED=$(expected_fingerprint)
+# Plant a re-author-required terminal from the prior invocation.
+cat >"$IMPL_TMP/bgjob/implement-step8-assessment.result.env" <<ENV
+BGJOB_RC=0
+STEP=implement-step8-assessment
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$FP_EXPECTED
+ASSESSMENT_STATUS=re-author-required
+ASSESSMENT_ATTEMPT=1
+ASSESSMENT_RESULTS=invariants:re-author-required:clean-outcome-prose-mismatch,guidelines:clean
+ENV
+# Pre-plant the cycle sidecar at the cap: one reassessment already consumed.
+cat >"$IMPL_TMP/bgjob/implement-step8-assessment.reassess.env" <<ENV
+ASSESSMENT_COVERED_FINGERPRINT=$FP_EXPECTED
+ASSESSMENT_REASSESS_CYCLE=1
+ENV
+printf '1:DONE:0\n' >"$IMPL_TMP/.test-wait-script"
+set +e
+CAP_OUT=$(run_helper 2>"$TMP_ROOT/reassess-cap.err")
+CAP_RC=$?
+set -e
+assert_rc "$CAP_RC" 0 'reassess-cap-exhausted: exits 0'
+assert_contains 'ASSESSMENT_STATUS=fail-closed' "$CAP_OUT" 'reassess-cap-exhausted: cap converts to fail-closed'
+assert_contains 're-authoring exhausted' "$CAP_OUT" 'reassess-cap-exhausted: descriptive terminal detail'
+assert_contains 'BGJOB_RC=1' "$CAP_OUT" 'reassess-cap-exhausted: fail-closed non-zero rc'
+if [ -e "$IMPL_TMP/bgjob-start-argv.txt" ]; then
+  fail 'reassess-cap-exhausted: must not start a child after cap'
+else
+  pass 'reassess-cap-exhausted: no child start after cap'
+fi
 
 printf '\nPassed: %s Failed: %s\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
