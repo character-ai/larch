@@ -20,11 +20,12 @@ from pathlib import Path
 
 from larch.calibration.difficulty import resolve_step2_effective_difficulty
 from larch.state import dirty_tree
-from larch.core import config, external_defaults
+from larch.core import config, external_defaults, proc
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.calibration import difficulty
 from larch.design import plan_grammar
+from larch.git import gh
 from larch.report.progress_file import validate_run_id
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -918,14 +919,24 @@ def _phase_plan(st: BootstrapState) -> None:
                 encoding="utf-8",
             )
             st.emit_tmp_step_failed("gh-issue-view")
-        gh_args = ["gh", "issue", "view", issue, "--json", "title,body", "--template", "{{.title}}\n\n{{.body}}"]
-        if st.opts.forked_target == "true" and st.opts.upstream_repo:
-            gh_args[4:4] = ["--repo", st.opts.upstream_repo]
-        gh = _run(gh_args)
-        if gh.returncode != 0:
-            (Path(st.implement_tmpdir) / "gh-issue-view.stderr.log").write_text(gh.stderr, encoding="utf-8")
+        view_repo = (
+            st.opts.upstream_repo
+            if st.opts.forked_target == "true" and st.opts.upstream_repo
+            else None
+        )
+        view_result = gh.issue_view_template_read(
+            proc,
+            issue,
+            "title,body",
+            "{{.title}}\n\n{{.body}}",
+            repo=view_repo,
+        )
+        if view_result.returncode != 0:
+            (Path(st.implement_tmpdir) / "gh-issue-view.stderr.log").write_text(
+                view_result.stderr, encoding="utf-8"
+            )
             st.emit_tmp_step_failed("gh-issue-view")
-        feature_file.write_text(gh.stdout, encoding="utf-8")
+        feature_file.write_text(view_result.stdout, encoding="utf-8")
         if not _persist_run_flags(st):
             return
     dirty_lines = dirty_tree.checkpoint()

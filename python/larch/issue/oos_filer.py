@@ -22,6 +22,7 @@ from typing import Literal, cast
 
 from larch.core import config
 from larch.core import proc
+from larch.git import gh
 from larch.issue import file_oos
 from larch.issue import oos_priority
 from larch.review.review_types import is_security_block_text, parse_canonical_heading
@@ -643,7 +644,7 @@ def _apply_priority_label(*, tmpdir: Path, url: str, repo: str) -> bool:
         detail = "missing repo for oos-correctness label application" if not repo else f"could not parse issue number from {url}"
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="gh issue edit", rc=1, output=detail)
         return False
-    result = _run_gh(oos_priority.label_edit_argv(number, repo=repo))
+    result = gh.issue_label_add(proc, number, oos_priority.OOS_CORRECTNESS_LABEL, repo=repo)
     if result.returncode == 0:
         return True
     _append_tool_failure(

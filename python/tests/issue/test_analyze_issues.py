@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core.proc import CommandResult
 from larch.issue import analyze_issues
 from larch.issue import _ground_truth as gt
 from larch.issue import _oos
@@ -1622,19 +1623,21 @@ def test_ground_truth_calibration_incentive_ignores_fetch_failed_stub_when_bulk_
         }
     }
 
-    def fake_run(_argv, **_kwargs):
-        class Result:
-            returncode = 0
-            stdout = json.dumps({
+    def fake_view(_runner, issue, fields, *, repo=None, cwd=None):
+        _ = issue, fields, repo, cwd
+        return CommandResult(
+            ("gh",),
+            0,
+            json.dumps({
                 "state": incentive["state"],
                 "stateReason": incentive["stateReason"],
                 "closedByPullRequestsReferences": incentive["closedByPullRequestsReferences"],
-            })
-            stderr = ""
+            }),
+            "",
+            0.01,
+        )
 
-        return Result()
-
-    monkeypatch.setattr(analyze_issues.subprocess, "run", fake_run)
+    monkeypatch.setattr(_oos.gh, "issue_view_field_read", fake_view)
     shipped, reason = analyze_issues._ground_truth_calibration_incentive_shipped(
         issues=[],
         filed_issue_details=filed_issue_details,

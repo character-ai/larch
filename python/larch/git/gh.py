@@ -1540,7 +1540,7 @@ def issue_close(
         argv.extend(["--repo", repo])
     if reason:
         argv.extend(["--reason", reason])
-    if comment:
+    if comment is not None:
         argv.extend(["--comment", _redact_gh_scalar(comment)])
     return _gh(runner, argv, cwd=cwd)
 

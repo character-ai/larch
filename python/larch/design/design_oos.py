@@ -13,6 +13,7 @@ from collections.abc import Sequence
 
 from larch.core import config
 from larch.core import proc
+from larch.git import gh
 from larch.issue import file_oos
 from larch.issue import oos_priority
 from larch.review.review_types import is_security_block_text, parse_blocks
@@ -845,7 +846,7 @@ def _apply_oos_correctness_label(*, url: str, repo: str) -> bool:
     number = oos_priority.issue_number_from_url(url)
     if not repo or not number:
         return False
-    result = _run_gh(repo=repo, argv=oos_priority.label_edit_argv(number))
+    result = gh.issue_label_add(proc, number, oos_priority.OOS_CORRECTNESS_LABEL, repo=repo)
     return result.returncode == 0
 
 

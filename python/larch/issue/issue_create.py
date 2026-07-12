@@ -447,7 +447,7 @@ def _parse_created_url(output: str) -> tuple[str, str] | None:
 
 
 def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "") -> None:
-    close = proc.run(["gh", "issue", "close", "--repo", repo, number, "--reason", "not planned"])
+    close = gh.issue_close(proc, number, repo=repo, reason="not planned")
     if close.returncode == 0:
         warn(f"ROLLBACK: closed orphan issue #{number} after id-lookup failure")
         return
@@ -901,11 +901,12 @@ def fetch_issue_details_main(argv: list[str]) -> int:
             emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: skipping non-numeric issue id: {raw}")
             continue
-        cmd = ["gh", "issue", "view", number]
-        if repo:
-            cmd.extend(["--repo", repo])
-        cmd.extend(["--json", "number,title,body,state,url,closedAt,comments"])
-        result = _gh_read(cmd)
+        result = gh.issue_view_field_read(
+            proc,
+            number,
+            "number,title,body,state,url,closedAt,comments",
+            repo=repo or None,
+        )
         if result.returncode != 0 or not result.stdout.strip():
             emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: gh issue view failed for #{number}")
@@ -1036,7 +1037,7 @@ def cleanup_failed_main(argv: list[str]) -> int:
             emit_kv(key="ISSUE", value=issue)
             emit_kv(key="ERROR", value="could not determine repo")
             return 0
-    result = proc.run(["gh", "issue", "close", "--repo", repo, issue, "--reason", "not planned"])
+    result = gh.issue_close(proc, issue, repo=repo, reason="not planned")
     if result.returncode == 0:
         emit_kv(key="CLOSED", value="true")
         emit_kv(key="ISSUE", value=issue)

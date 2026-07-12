@@ -10,7 +10,6 @@ import json
 import re
 import sys
 import tempfile
-import time
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, cast
@@ -719,24 +718,13 @@ def _combined_away_close_comment(*, issue: str, combined: str) -> str:
     )
 
 
-def _close_issue_with_retry(issue: str, repo: str, combined: str, *, attempts: int = 3) -> proc.CommandResult:
-    result: proc.CommandResult | None = None
+def _close_combined_away_issue(issue: str, repo: str, combined: str) -> proc.CommandResult:
     comment = _combined_away_close_comment(issue=issue, combined=combined)
-    for attempt in range(attempts):
-        result = proc.run(["gh", "issue", "close", issue, "--repo", repo, "--comment", comment])
-        if result.returncode == 0:
-            return result
-        if attempt + 1 < attempts:
-            time.sleep(1)
-    assert result is not None
-    return result
+    return gh.issue_close(proc, issue, repo=repo, comment=comment)
 
 
 def _close_stale_issue(*, issue: str, repo: str, reason: str, comment: str | None) -> proc.CommandResult:
-    argv = ["gh", "issue", "close", issue, "--repo", repo, "--reason", reason]
-    if comment is not None:
-        argv.extend(["--comment", comment])
-    return proc.run(argv)
+    return gh.issue_close(proc, issue, repo=repo, reason=reason, comment=comment)
 
 
 def apply_main(argv: list[str] | None = None) -> int:
@@ -801,7 +789,7 @@ def apply_main(argv: list[str] | None = None) -> int:
         closed = 0
         warnings: list[str] = []
         for issue in issues:
-            res = _close_issue_with_retry(issue, repo, combined)
+            res = _close_combined_away_issue(issue, repo, combined)
             if res.returncode == 0:
                 closed += 1
             else:
@@ -842,7 +830,7 @@ def close_sources_main(argv: list[str] | None = None) -> int:
         if skip_reason is not None:
             warnings.append(f"Skipped #{source}: {skip_reason}")
             continue
-        res = _close_issue_with_retry(str(source), repo, str(combined))
+        res = _close_combined_away_issue(str(source), repo, str(combined))
         if res.returncode == 0:
             closed += 1
         else:

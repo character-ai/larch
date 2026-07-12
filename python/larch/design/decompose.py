@@ -737,9 +737,9 @@ def close_original_issue(*, design_tmpdir: Path, original_issue: str, repo: str)
             return "failed"
         comment_sent.touch()
 
-    result = retry.with_transient_retry(lambda: run_gh(["gh", "issue", "close", original_issue, "--repo", repo]))
-    if result.last_returncode != 0:
-        _append_failure(design_tmpdir, site="design decompose close-original", tool="gh issue close", exit_code=result.last_returncode, output_file=redacted)
+    close_result = gh.issue_close(proc, original_issue, repo=repo)
+    if close_result.returncode != 0:
+        _append_failure(design_tmpdir, site="design decompose close-original", tool="gh issue close", exit_code=close_result.returncode, output_file=redacted)
         return "failed"
     comment_sent.unlink(missing_ok=True)
     (design_tmpdir / ".decompose-original-closed").touch()

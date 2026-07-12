@@ -530,6 +530,29 @@ def test_apply_rewrites_only_skips_edges(tmp_path: Path, monkeypatch, capsys) ->
     assert not any("block-issue" in call for call in calls)
 
 
+def test_apply_rewrite_passes_existing_temporary_body_file_and_cleans_it(monkeypatch) -> None:
+    seen: dict[str, Any] = {}
+
+    def edit_body(_runner: object, issue: str, body_file: str, *, repo: str) -> CommandResult:
+        path = Path(body_file)
+        seen["issue"] = issue
+        seen["repo"] = repo
+        seen["path"] = path
+        seen["body"] = path.read_text(encoding="utf-8")
+        assert path.is_file()
+        return result(["gh", "issue", "edit", issue])
+
+    monkeypatch.setattr(deps_audit.gh, "issue_edit_body_file", edit_body)
+
+    ok, error = deps_audit._apply_rewrite(repo="o/r", issue=7, body="updated\n")  # pyright: ignore[reportPrivateUsage]
+
+    assert (ok, error) == (True, "")
+    assert seen["issue"] == "7"
+    assert seen["repo"] == "o/r"
+    assert seen["body"] == "updated\n"
+    assert not Path(seen["path"]).exists()
+
+
 def test_apply_edges_only_skips_rewrites_and_closes(tmp_path: Path, monkeypatch, capsys) -> None:
     patch_origin_match(monkeypatch)
     plan = make_plan_fixture(

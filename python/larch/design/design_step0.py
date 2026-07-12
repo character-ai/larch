@@ -13,7 +13,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Iterable, Mapping, Sequence
@@ -272,20 +271,15 @@ def resolve_repo() -> str:
 
 
 def _read_json_issue(*, issue_number: str, repo: str) -> tuple[str, str, str]:
-    command = ["gh", "issue", "view", issue_number]
-    if repo:
-        command.extend(["--repo", repo])
-    command.extend(["--json", "body,labels,number,title"])
-    last = subprocess.CompletedProcess(command, 1, "", "")
-    for attempt in range(2):
-        last = subprocess.run(command, capture_output=True, text=True, check=False)
-        if last.returncode == 0:
-            break
-        if attempt == 0:
-            time.sleep(1)
-    if last.returncode != 0:
+    result = gh.issue_view_field_read(
+        proc,
+        issue_number,
+        "body,labels,number,title",
+        repo=repo or None,
+    )
+    if result.returncode != 0:
         raise RuntimeError("gh issue view failed")
-    raw = json.loads(last.stdout or "{}")
+    raw = json.loads(result.stdout or "{}")
     labels = raw.get("labels", [])
     has_clarify = any(isinstance(label, dict) and label.get("name") == "needs-design-clarification" for label in labels)
     return str(raw.get("title") or ""), str(raw.get("body") or ""), "true" if has_clarify else "false"

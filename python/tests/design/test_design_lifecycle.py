@@ -35,6 +35,7 @@ from larch.design import (
 from larch.design import design_pause
 from larch.design import design_publish
 from larch.core import logging_util
+from larch.core.proc import CommandResult
 from larch.report import progress_file
 from larch.core import proc as proc_module
 from larch.state import session_env
@@ -80,6 +81,41 @@ def _fake_read_json_issue_title(*_args: object, **_kwargs: object) -> tuple[str,
 
 def _fake_read_json_issue_t(*_args: object, **_kwargs: object) -> tuple[str, str, str]:
     return ("T", "body", "false")
+
+
+@pytest.mark.parametrize(
+    ("repo", "expected_argv"),
+    [
+        ("", ("gh", "issue", "view", "42", "--json", "body,labels,number,title")),
+        ("owner/repo", ("gh", "issue", "view", "42", "--json", "body,labels,number,title", "--repo", "owner/repo")),
+    ],
+)
+def test_read_json_issue_uses_canonical_wrapper_argv_and_parses_clarification_label(
+    repo: str,
+    expected_argv: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    payload = {"title": "Title", "body": "body", "labels": [{"name": "other"}, {"name": "needs-design-clarification"}]}
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        calls.append(tuple(argv))
+        return CommandResult(tuple(argv), 0, json.dumps(payload), "", 0.0)
+
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+
+    assert design_step0._read_json_issue(issue_number="42", repo=repo) == ("Title", "body", "true")  # pyright: ignore[reportPrivateUsage]
+    assert calls == [expected_argv]
+
+
+def test_read_json_issue_raises_on_wrapper_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 1, "", "gh failed", 0.0)
+
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+
+    with pytest.raises(RuntimeError, match="gh issue view failed"):
+        design_step0._read_json_issue(issue_number="42", repo="owner/repo")  # pyright: ignore[reportPrivateUsage]
 
 
 def _step0_wrapper_args(env_path: Path) -> list[str]:
@@ -1830,6 +1866,21 @@ def test_step0_route_enables_brainstorm_from_prefix(tmp_path: Path, monkeypatch:
     assert run_params["brainstorm_requested"] is True
 
 
+def test_step0_route_aborts_when_issue_view_wrapper_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
+
+    def failed_view(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("gh",), 1, "", "gh failed", 0.0)
+
+    monkeypatch.setattr(design_step0.gh, "issue_view_field_read", failed_view)
+
+    assert design_lifecycle.step0_route_main(_step0_wrapper_args(env_path)) == 1
+    assert "gh issue view failed for issue 42" in capsys.readouterr().err
+
+
 
 def test_step0_route_proceed_folds_init_after_route_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
@@ -3314,6 +3365,65 @@ def test_reconcile_post_recovery_comment_pins_design_tmpdir_for_authorization(
         "run_id": "run-1",
         "trusted_root": tmp_path,
     }]
+
+
+@pytest.mark.parametrize(
+    ("close_rc", "view_rc", "view_stdout", "expected"),
+    [
+        (0, 0, '{"state":"CLOSED"}', (True, "reconciled")),
+        (1, 0, '{"state":"CLOSED"}', (False, "gh issue close failed")),
+        (0, 1, "", (False, "gh issue close verification failed")),
+    ],
+)
+def test_reconcile_post_recovery_comment_uses_lifecycle_wrappers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_rc: int,
+    view_rc: int,
+    view_stdout: str,
+    expected: tuple[bool, str],
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    source_env.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(design_terminal._session_env_dt, "check_live_mutation_auth", lambda **_kwargs: (True, ""))  # pyright: ignore[reportPrivateUsage]
+
+    def fake_run(_argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs["stdout"]
+        assert hasattr(stdout, "write")
+        _ = stdout.write(b"redacted comment\n")  # type: ignore[union-attr]
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    def comment(_runner: object, issue: str, body: str, *, repo: str) -> CommandResult:
+        calls.append(("comment", issue, repo))
+        assert body == "redacted comment\n"
+        return CommandResult(("gh",), 0, "", "", 0.01)
+
+    def close(_runner: object, issue: str, *, repo: str | None) -> CommandResult:
+        calls.append(("close", issue, repo or ""))
+        return CommandResult(("gh",), close_rc, "", "", 0.01)
+
+    def view(_runner: object, issue: str, fields: str, *, repo: str | None) -> CommandResult:
+        calls.append(("view", issue, repo or ""))
+        assert fields == "state"
+        return CommandResult(("gh",), view_rc, view_stdout, "", 0.01)
+
+    monkeypatch.setattr(design_terminal.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_terminal.gh, "issue_comment", comment)
+    monkeypatch.setattr(design_terminal.gh, "issue_close", close)
+    monkeypatch.setattr(design_terminal.gh, "issue_view_field_read", view)
+
+    assert design_terminal._reconcile_post_recovery_comment(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path,
+        report_issue="42",
+        repo="owner/repo",
+    ) == expected
+    assert calls[:2] == [("comment", "42", "owner/repo"), ("close", "42", "owner/repo")]
+    assert ("view", "42", "owner/repo") in calls if close_rc == 0 else len(calls) == 2
 
 
 def test_failure_report_reconciles_failed_publish_tail_after_salvage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

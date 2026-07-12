@@ -776,14 +776,14 @@ def _apply_rewrite(*, repo: str, issue: int, body: str) -> tuple[bool, str]:
         handle.write(sanitized)
         path = handle.name
     try:
-        result = proc.run(["gh", "issue", "edit", str(issue), "--repo", repo, "--body-file", path])
+        result = gh.issue_edit_body_file(proc, str(issue), path, repo=repo)
     finally:
         Path(path).unlink(missing_ok=True)
     return result.returncode == 0, _redacted_gh_error(result) if result.returncode != 0 else ""
 
 
 def _apply_close(*, repo: str, issue: int) -> tuple[bool, str]:
-    result = proc.run(["gh", "issue", "close", str(issue), "--repo", repo, "--reason", "not planned"])
+    result = gh.issue_close(proc, str(issue), repo=repo, reason="not planned")
     return result.returncode == 0, _redacted_gh_error(result) if result.returncode != 0 else ""
 
 

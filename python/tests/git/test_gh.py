@@ -2123,6 +2123,7 @@ def test_issue_close_omits_empty_repo_and_redacts_comment() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "issue", "close", "11"), 0, "", "", 0.01),
+            CommandResult(("gh", "issue", "close", "12"), 0, "", "", 0.01),
         ],
     )
     assert (
@@ -2139,6 +2140,8 @@ def test_issue_close_omits_empty_repo_and_redacts_comment() -> None:
         "--comment",
         "done <REDACTED-TOKEN>",
     ]
+    assert gh.issue_close(runner, 12, comment="").returncode == 0
+    assert runner.calls[1] == ["gh", "issue", "close", "12", "--comment", ""]
 
 
 def test_issue_edit_body_file_passes_caller_path_without_retry() -> None:

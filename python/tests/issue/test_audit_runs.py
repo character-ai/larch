@@ -1005,7 +1005,7 @@ def test_resolve_prs_reports_issue_view_failure(monkeypatch, capsys):
     prior = json.dumps([{"number": 12, "title": "[Implement Run Logs Audit 2026 Report]", "createdAt": "2026-01-01T00:00:00Z"}])
     runner = AuditRunner({
         ("gh","issue","list","--state","all","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title,createdAt"): cr(("gh",), stdout=prior),
-        ("gh","issue","view","12","--repo","o/r","--json","body"): cr(("gh",), stderr="boom", rc=1),
+        ("gh","issue","view","12","--json","body","--repo","o/r"): cr(("gh",), stderr="boom", rc=1),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     assert audit_runs.resolve_prs_main(["--skill","implement","--repo","o/r"]) == 0
@@ -1017,7 +1017,7 @@ def test_resolve_prs_ignores_audited_range_outside_frontmatter(monkeypatch, caps
     body = json.dumps({"body": "---\ntitle: report\n---\n\n```yaml\naudited_pr_range:\n  last: 99\n```\n"})
     runner = AuditRunner({
         ("gh","issue","list","--state","all","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title,createdAt"): cr(("gh",), stdout=prior),
-        ("gh","issue","view","12","--repo","o/r","--json","body"): cr(("gh",), stdout=body),
+        ("gh","issue","view","12","--json","body","--repo","o/r"): cr(("gh",), stdout=body),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     assert audit_runs.resolve_prs_main(["--skill","implement","--repo","o/r"]) == 0

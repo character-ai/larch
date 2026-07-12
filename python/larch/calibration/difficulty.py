@@ -17,6 +17,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.design import plan_grammar
 from larch.core import proc
+from larch.git import gh
 
 TRIVIAL = config.DIFFICULTY_TIER_TRIVIAL
 MODERATE = config.DIFFICULTY_TIER_MODERATE
@@ -983,15 +984,19 @@ def sync_labels_main(argv: list[str] | None = None) -> int:
     if not tier_valid(tier):
         print("STATUS=error\nERROR=invalid-tier")
         return 2
-    repo_args = ["--repo", args.repo] if args.repo else []
+    repo = args.repo or None
     for label in known_labels():
-        proc.run(["gh", "issue", "edit", str(args.issue), *repo_args, "--remove-label", label], check=False)
+        _ = gh.issue_label_remove(proc, str(args.issue), label, repo=repo)
     label = label_for_tier(tier)
-    create = proc.run(["gh", "label", "create", label, *repo_args, "--color", "ededed", "--description", "larch difficulty rating"], check=False)
+    create_argv = ["gh", "label", "create", label]
+    if repo:
+        create_argv.extend(["--repo", repo])
+    create_argv.extend(["--color", "ededed", "--description", "larch difficulty rating"])
+    create = proc.run(create_argv, check=False)
     if create.returncode != 0 and "already exists" not in (create.stderr + create.stdout).lower():
         print("STATUS=warning")
         print("WARNING=label-create-failed")
-    add = proc.run(["gh", "issue", "edit", str(args.issue), *repo_args, "--add-label", label], check=False)
+    add = gh.issue_label_add(proc, str(args.issue), label, repo=repo)
     if add.returncode != 0:
         print("STATUS=error")
         print("ERROR=label-add-failed")
