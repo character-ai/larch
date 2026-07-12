@@ -72,6 +72,35 @@ def test_registry_round_trip_accepts_uppercase_uuid_run_id(
     assert loaded.run_id == entry.run_id
 
 
+def test_registry_round_trip_accepts_external_log_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    identity = _identity()
+    log_dir = tmp_path.parent / f"{tmp_path.name}-external-logs"
+    log_dir.mkdir()
+    entry = model.RegistryEntry(
+        step="demo-step",
+        run_id="run-1",
+        tmpdir=tmp_path,
+        log_dir=log_dir,
+        clone_path=Path.cwd().resolve(),
+        daemon=identity,
+        child=identity,
+        owner=None,
+        start_epoch=1,
+        budget_s=30,
+        stdout_log=log_dir / "demo-step.stdout.log",
+        stderr_log=log_dir / "demo-step.stderr.log",
+        result_env=tmp_path / "bgjob/demo-step.result.env",
+    )
+
+    loaded = registry.read_entry(registry.write_entry(entry))
+
+    assert loaded is not None
+    assert loaded.log_dir == log_dir
+
+
 def test_registry_ignores_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
     root = model.registry_root()

@@ -17,7 +17,6 @@ from larch.report.progress_file import validate_run_id
 
 _DEAD_IDENTITY_REASONS = frozenset(
     {
-        "missing-pid",
         "pgid-mismatch",
         "start-time-mismatch",
         "command-mismatch",
@@ -144,7 +143,9 @@ def _parse_completed_rows(*, text: str, step: str) -> model.ResultEnvRows | None
     rows: list[tuple[str, str]] = []
     valid = True
     for line in text.splitlines():
-        if not line or "=" not in line:
+        if not line:
+            continue
+        if "=" not in line:
             valid = False
             break
         key, value = line.split("=", 1)
@@ -278,10 +279,8 @@ def _prepare_launch_spec(spec: model.JobSpec) -> model.JobSpec:
         merge_env = _merge_env_path(spec=spec)
     except (OSError, ValueError) as exc:
         raise AdaptError("unsafe-path") from exc
-    if merge_env.is_symlink() or (merge_env.exists() and not merge_env.is_file()):
-        raise AdaptError("unsafe-path")
     try:
-        larch_io.atomic_write(path=merge_env, text="", nofollow=True, mode=0o600)
+        larch_io.trusted_atomic_write(path=merge_env, text="", root=root, mode=0o600)
     except (OSError, ValueError) as exc:
         raise AdaptError("unsafe-path") from exc
     command = (*spec.command, "--bgjob-child", "--merge-result-env", str(merge_env))
@@ -395,6 +394,8 @@ def _handle_active(
         if not child_state.proven_dead:
             raise AdaptError("registry-identity-unverifiable")
         raise AdaptError("registry-dead")
+    if not child_state.live and child_state.proven_dead:
+        raise AdaptError("registry-identity-unverifiable")
     if _result_or_none(spec=spec):
         return 0
     _ = _verify_same_snapshot(spec=spec, previous=snapshot)

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -100,10 +101,6 @@ def _record_start(
 
 def _start_ok(_spec: model.JobSpec) -> int:
     return 0
-
-
-def _start_nonzero(_spec: model.JobSpec) -> int:
-    return 2
 
 
 def _start_exception(_spec: model.JobSpec) -> int:
@@ -258,6 +255,28 @@ def test_completed_result_emits_wait_compatible_rows_without_launch(
     )
 
 
+def test_completed_result_accepts_blank_lines_like_wait(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(
+        path=result,
+        values=[("BGJOB_RC", "0"), ("STEP", spec.step)],
+    )
+    _ = result.write_text(f"\n{result.read_text(encoding='utf-8')}\n", encoding="utf-8")
+
+    def fail_start(_spec: model.JobSpec) -> int:
+        pytest.fail("completed results must not launch")
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", fail_start)
+
+    assert adapt.start_or_reattach(spec) == 0
+    assert capsys.readouterr().out.startswith("BGJOB_STATUS=DONE\n")
+
+
 @pytest.mark.parametrize(
     "text",
     [
@@ -329,7 +348,7 @@ def test_live_daemon_and_child_reattach_with_validated_child_pgid(
         (
             _verdict(live=False, reason="missing-pid"),
             _verdict(live=False, reason="missing-pid"),
-            "registry-dead",
+            "registry-identity-unverifiable",
         ),
         (
             _verdict(live=False, reason="identity-probe-timeout"),
@@ -381,6 +400,42 @@ def test_live_daemon_reattaches_while_it_finalizes_child(
     assert capsys.readouterr().out == "BGJOB_STATUS=STARTED STEP=demo-step PGID=303\n"
 
 
+def test_live_daemon_reattaches_with_external_log_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    external_log_dir = tmp_path.parent / f"{tmp_path.name}-external-logs"
+    external_log_dir.mkdir()
+    spec = replace(_spec(tmp_path), log_dir=external_log_dir)
+    _ = registry.write_entry(_entry(spec))
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(_verdict(live=True)))
+
+    assert adapt.start_or_reattach(spec) == 0
+    assert capsys.readouterr().out == "BGJOB_STATUS=STARTED STEP=demo-step PGID=303\n"
+
+
+def test_live_daemon_rejects_child_identity_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    _ = registry.write_entry(_entry(spec))
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(
+        adapt.registry,
+        "child_liveness",
+        _return_verdict(_verdict(live=False, reason="pgid-mismatch")),
+    )
+
+    with pytest.raises(adapt.AdaptError, match="registry-identity-unverifiable"):
+        _ = adapt.start_or_reattach(spec)
+
+    assert "PGID=" not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("live_part", ["daemon", "child"])
 def test_expired_live_registry_fails_closed(
     live_part: str,
@@ -407,7 +462,7 @@ def test_expired_live_registry_fails_closed(
     assert path.is_file()
 
 
-def test_expired_verified_dead_registry_is_cleared_then_restarted(
+def test_expired_registry_with_missing_pid_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -419,9 +474,10 @@ def test_expired_verified_dead_registry_is_cleared_then_restarted(
     launches: list[model.JobSpec] = []
     monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
 
-    assert adapt.start_or_reattach(spec) == 0
-    assert not old_path.exists()
-    assert len(launches) == 1
+    with pytest.raises(adapt.AdaptError, match="registry-identity-unverifiable"):
+        _ = adapt.start_or_reattach(spec)
+    assert old_path.is_file()
+    assert not launches
 
 
 @pytest.mark.parametrize("field", ["step", "run_id", "tmpdir", "clone_path"])
@@ -547,6 +603,28 @@ def test_merge_env_rejects_unsafe_existing_path(
         _ = adapt.start_or_reattach(spec)
 
 
+def test_merge_env_publication_uses_pinned_bgjob_directory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    observed: dict[str, Path] = {}
+    original = adapt.larch_io.trusted_atomic_write
+
+    def capture(*, path: Path, text: str, root: Path, mode: int) -> None:
+        observed.update(path=path, root=root)
+        original(path=path, text=text, root=root, mode=mode)
+
+    monkeypatch.setattr(adapt.larch_io, "trusted_atomic_write", capture)
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _start_ok)
+
+    assert adapt.start_or_reattach(spec) == 0
+    assert observed == {
+        "path": tmp_path / "bgjob" / "demo-step.merge.env",
+        "root": tmp_path / "bgjob",
+    }
+
+
 def test_persisted_plugin_root_is_rehydrated(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -585,26 +663,65 @@ def test_missing_or_malformed_plugin_root_fails_before_launch(
     assert not launches
 
 
-@pytest.mark.parametrize(
-    ("start_behavior", "token"),
-    [
-        (_start_nonzero, "daemon-start-failed"),
-        (_start_exception, "daemon-start-exception"),
-    ],
-)
+@pytest.mark.parametrize("pipe_payload", [b"", b"not-a-startup-record\n"])
 def test_daemon_start_failures_are_machine_readable(
-    start_behavior: Callable[[model.JobSpec], int],
-    token: str,
+    pipe_payload: bytes,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    read_fd, write_fd = os.pipe()
+    original_close = daemon.os.close
+
+    def fake_pipe() -> tuple[int, int]:
+        return read_fd, write_fd
+
+    def fake_fork() -> int:
+        if pipe_payload:
+            _ = os.write(write_fd, pipe_payload)
+        return 1
+
+    def close_except_startup_writer(fd: int) -> None:
+        if fd != write_fd or not pipe_payload:
+            original_close(fd)
+
     monkeypatch.setattr(
         cli.daemon,
         "owner_identity_from_env",
         _owner_none,
     )
-    monkeypatch.setattr(adapt.daemon, "start_daemon", start_behavior)
+    monkeypatch.setattr(daemon.os, "pipe", fake_pipe)
+    monkeypatch.setattr(daemon.os, "fork", fake_fork)
+    monkeypatch.setattr(daemon.os, "close", close_except_startup_writer)
+
+    try:
+        rc = cli.adapt_main(
+            [
+                "--step",
+                "demo-step",
+                "--tmpdir",
+                str(tmp_path),
+                "--budget-s",
+                "10",
+                "--",
+                "true",
+            ]
+        )
+    finally:
+        if pipe_payload:
+            original_close(write_fd)
+
+    assert rc == 2
+    assert capsys.readouterr().out == "BGJOB_ERROR=daemon-start-failed\n"
+
+
+def test_daemon_start_exception_is_machine_readable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", _owner_none)
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _start_exception)
 
     rc = cli.adapt_main(
         [
@@ -620,7 +737,7 @@ def test_daemon_start_failures_are_machine_readable(
     )
 
     assert rc == 2
-    assert capsys.readouterr().out == f"BGJOB_ERROR={token}\n"
+    assert capsys.readouterr().out == "BGJOB_ERROR=daemon-start-exception\n"
 
 
 def test_dispatcher_registers_adapt_as_machine_stdout(
@@ -718,14 +835,20 @@ def test_concurrent_adapter_decisions_launch_once(
     assert "BGJOB_STATUS=STARTED STEP=demo-step PGID=303" in capsys.readouterr().out
 
 
-def test_merge_env_rows_are_published_by_daemon(tmp_path: Path) -> None:
-    spec = _spec(tmp_path)
+def test_merge_env_rows_are_published_after_child_writes(tmp_path: Path) -> None:
+    spec = replace(
+        _spec(tmp_path),
+        command=(
+            sys.executable,
+            "-c",
+            "import pathlib, sys; pathlib.Path(sys.argv[sys.argv.index('--merge-result-env') + 1]).write_text('CHILD_WRITTEN=ok\\n', encoding='utf-8')",
+        ),
+    )
     launch_spec = adapt._prepare_launch_spec(spec)
     assert launch_spec.merge_result_env is not None
-    _ = launch_spec.merge_result_env.write_text("PRESEEDED=yes\nCHILD_WRITTEN=ok\n", encoding="utf-8")
+    _ = subprocess.run(launch_spec.command, check=True)
 
     daemon.write_result(spec=launch_spec, rc="0", elapsed_s=1)
 
     rows = larch_io.read_kvs(model.result_env_path(tmpdir=tmp_path, step=spec.step))
-    assert rows["PRESEEDED"] == "yes"
     assert rows["CHILD_WRITTEN"] == "ok"
