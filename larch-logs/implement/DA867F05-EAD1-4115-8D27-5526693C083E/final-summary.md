@@ -65,13 +65,22 @@ codex/apply                 │                                                 
 ## Exec Issues and Warnings
 Exec Issues (1):
   1. Step 5 (code review): Review hit the 2-round HARD cap without converging. Fixes from both review rounds were applied. Proceeding to Step 6.
-Warnings (0):
+Warnings (1):
+  1. G-Py-9: Two locals derived from Mapping[str, object] value lookups are unannotated, matching the guideline's anti-pattern example. In ship_guidelines.py:read_unavailable_outcome_detail, `detail = r...
+
+## Architectural invariants
+
+No invariant violations. The new read_unavailable_outcome_detail function in ship_guidelines.py validates head_sha and base_ref before consuming a persisted outcome's detail field, directly satisfying I-Stale-1. The sanitizer explicitly replaces implement-tmpdir paths with <implement-tmpdir> before any egress, satisfying I-Commit-1. Gate logic is unchanged and no gate is disarmed by data authored by the gated entity (I-Gate-1). No committed outcome labels for in-flight runs are modified (I-Outcome-1). All other invariants are unaffected by the changed code.
+
+## Architectural guidelines
+
+G-Py-9: Two locals derived from Mapping[str, object] value lookups are unannotated, matching the guideline's anti-pattern example. In ship_guidelines.py:read_unavailable_outcome_detail, `detail = record.get("detail", "")` where record is dict[str, object] gives pyright an inferred type of object rather than the programmer's intended str; an explicit annotation and cast after the isinstance guard would conform. In dispatch_ship.py:_assessment_unavailable_kinds, `raw_kinds = payload.get("detail")` similarly infers object | None from Mapping[str, object] with no annotation, and `kinds = normalize_kinds(raw_kinds.split(","))` is also unannotated. The isinstance checks downstream correctly narrow the values before use, so there is no functional defect, but the missing annotations hide intent in exactly the way G-Py-9 identifies. All other guidelines checked (G-Sec-3, G-Sec-4, G-IO-2, G-Wire-1, G-Wire-2, G-Wire-3, G-Fix-2, G-Py-4, G-Py-8, G-Py-11, G-Idem-4, G-Gate-1) are satisfied by the changed code.
 
 ## /implement run DA867F05-EAD1-4115-8D27-5526693C083E: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:27:19
-- **Cost**: 💰 TOTAL ~$42.82: Claude $5.78, Codex-5.6 $26.19, Codex-mini $0.06, Cursor $8.76 (Composer $8.76, Grok $0.00), Claude (subprocess) $2.03  |  Tokens: 58327k
+- **Cost**: 💰 TOTAL ~$43.66: Claude $6.57, Codex-5.6 $26.19, Codex-mini $0.06, Cursor $8.76 (Composer $8.76, Grok $0.00), Claude (subprocess) $2.08  |  Tokens: 59541k
 - **Issue**: #7057: https://github.com/character-ai/larch/issues/7057
 - **Plan review**: N/A
 - **Plan coverage**: 15/15 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -81,7 +90,7 @@ Warnings (0):
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 1
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/DA867F05-EAD1-4115-8D27-5526693C083E/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
