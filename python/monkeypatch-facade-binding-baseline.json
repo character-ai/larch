@@ -9189,6 +9189,15 @@
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
   },
   {
+    "file": "tests/review/test_plan_review_round.py",
+    "qualified_symbol": "test_plan_review_tally_security_classifier_failure_aborts_without_public_oos",
+    "facade_module": "larch.review.voting",
+    "attribute": "is_security_block_text",
+    "defining_module": "larch.review.review_types",
+    "occurrence": 1,
+    "reason": "plan_review_tally reads voting.is_security_block_text via call-time attribute lookup; patching the voting facade binding is the correct intercept point"
+  },
+  {
     "file": "tests/review/test_review_and_fix.py",
     "qualified_symbol": "test_apply_findings_rehydrates_session_env_before_coder",
     "facade_module": "larch.review.review_and_fix",

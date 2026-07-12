@@ -89,8 +89,8 @@ def test_parse_canonical_heading_depth_and_case() -> None:
 
 
 def test_parse_blocks_empty_and_preamble() -> None:
-    assert parse_blocks("") == []
-    assert parse_blocks("preamble only\nno headings\n") == []
+    assert not parse_blocks("")
+    assert not parse_blocks("preamble only\nno headings\n")
     blocks = parse_blocks("preamble\n### FINDING_1: t\nbody\n")
     assert len(blocks) == 1
     assert blocks[0].start > 0

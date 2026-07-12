@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 from larch.core import config
-from larch.review.review_types import parse_blocks
 
 # Line-local secret families (byte-for-byte ports of python3 python/cli.py redact secrets sed -E)
 _SK_RE = re.compile(r"sk-(ant-)?[A-Za-z0-9_-]{20,}")
@@ -538,6 +537,7 @@ def discover_submodule_paths(cwd: Path) -> set[str]:
 
 
 def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path) -> tuple[int, bool]:
+    from larch.review.review_types import parse_blocks  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.review  # lint-layering: ok review_types is stdlib-only so no import cycle
     text = input_path.read_text(encoding="utf-8", errors="replace")
     repo = Path.cwd()
     submodules = discover_submodule_paths(repo)
