@@ -1367,7 +1367,9 @@ def test_check_reviewers_positive_and_negative_stamp_rules(monkeypatch: pytest.M
     _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     codex.chmod(0o755)
     env = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "USER": "stamp-user"}
-    stamp = tmp_path / "larch-codex-login-present-stamp-user.stamp"
+    with _auth._temporary_environ(env):  # pylint: disable=protected-access
+        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
+        stamp = _auth._probe_stamp_path(identity)  # pylint: disable=protected-access
     _ = stamp.write_text("true\n", encoding="utf-8")
     assert agents.check_reviewers(skip_cursor_probe=True, env=env).codex_present is True
     _ = stamp.write_text("false\n", encoding="utf-8")
@@ -1385,7 +1387,10 @@ def test_check_reviewers_expired_stamp_misses_and_auth_retry(
     codex = bin_dir / "codex"
     _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     codex.chmod(0o755)
-    stamp = tmp_path / "larch-codex-login-present-larch.stamp"
+    env = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_EXTERNAL_AUTH_RETRIES": "2"}
+    with _auth._temporary_environ(env):  # pylint: disable=protected-access
+        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
+        stamp = _auth._probe_stamp_path(identity)  # pylint: disable=protected-access
     _ = stamp.write_text("true\n", encoding="utf-8")
     old = time.time() - 120
     agents.os.utime(stamp, (old, old))
@@ -1399,7 +1404,7 @@ def test_check_reviewers_expired_stamp_misses_and_auth_retry(
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
-        env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_EXTERNAL_AUTH_RETRIES": "2"},
+        env=env,
     )
     assert result.codex_present is True
     assert calls == 2
@@ -1411,9 +1416,13 @@ def test_check_reviewers_codex_login_and_env_key_stamps_are_isolated(tmp_path: P
     codex = bin_dir / "codex"
     _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     codex.chmod(0o755)
-    _ = (tmp_path / "larch-codex-login-present-larch.stamp").write_text("true\n", encoding="utf-8")
-    _ = (tmp_path / "larch-codex-env-key-present-larch.stamp").write_text("false\n", encoding="utf-8")
     base = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_NEGATIVE_TTL_SECONDS": "60"}
+    with _auth._temporary_environ(base):  # pylint: disable=protected-access
+        login_identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
+        _auth._probe_stamp_path(login_identity).write_text("true\n", encoding="utf-8")  # pylint: disable=protected-access
+    with _auth._temporary_environ({**base, "OPENAI_API_KEY": "sk-test"}):  # pylint: disable=protected-access
+        env_identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
+        _auth._probe_stamp_path(env_identity).write_text("false\n", encoding="utf-8")  # pylint: disable=protected-access
     assert agents.check_reviewers(skip_cursor_probe=True, env=base).codex_present is True
     assert agents.check_reviewers(skip_cursor_probe=True, env={**base, "OPENAI_API_KEY": "sk-test"}).codex_present is False
 
@@ -1915,7 +1924,7 @@ def test_check_reviewers_codex_auth_setup_failure(
     probe_calls = 0
     real_probe = agents._run_one_codex_probe
 
-    def counting_probe(timeout: int) -> int:
+    def counting_probe(timeout: int) -> agents.CodexProbeResult:
         nonlocal probe_calls
         probe_calls += 1
         return real_probe(timeout)
@@ -5854,6 +5863,44 @@ def test_status_check_version_and_probe_fallback(monkeypatch: pytest.MonkeyPatch
     assert "DEGRADED=true" in out
 
 
+def test_status_check_appends_current_codex_gate_detail(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    detail = agents.CodexGateDetail(
+        model="gpt-5.6-luna",
+        signal="newer-codex-required",
+        message="codex CLI too old for gpt-5.6-luna; run `npm install -g @openai/codex@latest`",
+    )
+    monkeypatch.setattr(_auth, "_read_plugin_version_best_effort", lambda: "1.2.3")
+    monkeypatch.setattr(
+        _auth,
+        "check_reviewers",
+        lambda: agents.CheckReviewersResult(
+            codex_binary_found=True,
+            cursor_binary_found=True,
+            codex_present=False,
+            cursor_present=True,
+            codex_gate_detail=detail,
+        ),
+    )
+    monkeypatch.setattr(_auth, "_current_codex_gate_detail", lambda: detail)
+
+    assert agents.status_check_main([]) == 0
+
+    assert capsys.readouterr().out.splitlines() == [
+        "LARCH_PLUGIN_VERSION=1.2.3",
+        "CODEX_BINARY_FOUND=true",
+        "CURSOR_BINARY_FOUND=true",
+        "CODEX_PRESENT=false",
+        "CURSOR_PRESENT=true",
+        "CODEX_STATE=probe-failed",
+        "CURSOR_STATE=ok",
+        "DEGRADED=true",
+        "CODEX_PROBE_DETAIL=codex CLI too old for gpt-5.6-luna; run `npm install -g @openai/codex@latest`",
+    ]
+
+
 def test_review_specialist_render_args_nested_implement_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     impl = tmp_path / "impl"
     round_dir = impl / "round-2"
@@ -5927,11 +5974,153 @@ def test_model_args_main_codex_role_uses_default_model_after_role_env(
 
 
 def test_codex_probe_blank_default_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("LARCH_CODEX_MODEL", "   ")
+    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setattr(_auth, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
 
-    assert agents._run_one_codex_probe(1) == agents._PROBE_NO_RETRY_RC  # pylint: disable=protected-access
+    assert agents._run_one_codex_probe(1).rc == agents._PROBE_NO_RETRY_RC  # pylint: disable=protected-access
+
+
+@pytest.mark.parametrize(
+    ("diagnostic", "fallback", "expected_model", "expected_signal"),
+    [
+        ("warning: Model metadata for gpt-5.6-sol not found. Defaulting", "gpt-5.6-luna", "gpt-5.6-sol", "model-metadata-not-found"),
+        ("The 'gpt-5.6-terra' model requires a newer version of Codex.", "gpt-5.6-luna", "gpt-5.6-terra", "newer-codex-required"),
+        ("requires a newer version of Codex", "gpt-5.6-luna", "gpt-5.6-luna", "newer-codex-required"),
+        ("Model metadata for bad\x07model not found", "gpt-5.6-luna", "gpt-5.6-luna", "model-metadata-not-found"),
+    ],
+)
+def test_detect_codex_cli_gate(
+    diagnostic: str,
+    fallback: str,
+    expected_model: str,
+    expected_signal: str,
+) -> None:
+    detail = agents.detect_codex_cli_gate(diagnostic, fallback_model=fallback)
+
+    assert detail == agents.CodexGateDetail(
+        model=expected_model,
+        signal=expected_signal,
+        message=f"codex CLI too old for {expected_model}; run `npm install -g @openai/codex@latest`",
+    )
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        "Model metadata refreshed",
+        "400 invalid_request_error",
+        "authentication requires a newer token",
+        "quota exceeded for model metadata",
+    ],
+)
+def test_detect_codex_cli_gate_near_misses(diagnostic: str) -> None:
+    assert agents.detect_codex_cli_gate(diagnostic, fallback_model="gpt-5.6-luna") is None
+
+
+def test_codex_probe_uses_review_role_and_stops_on_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "gpt-5.6-review-test")
+    monkeypatch.setattr(_auth, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
+    seen: list[str] = []
+
+    def fake_probe(cmd: Sequence[str], **kwargs: object) -> int:
+        seen.extend(cmd)
+        stderr = kwargs["stderr"]
+        assert isinstance(stderr, Path)
+        stderr.write_text("requires a newer version of Codex\n", encoding="utf-8")
+        return 1
+
+    monkeypatch.setattr(_auth, "_run_probe_command", fake_probe)
+
+    result = agents._run_one_codex_probe(1)  # pylint: disable=protected-access
+
+    assert seen[seen.index("-m") + 1] == "gpt-5.6-review-test"
+    assert result.rc == agents._PROBE_NO_RETRY_RC
+    assert result.gate_detail is not None
+    assert result.gate_detail.model == "gpt-5.6-review-test"
+
+
+def test_check_reviewers_gate_detail_cache_identity_and_ttl_zero_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
+        nonlocal calls
+        calls += 1
+        return agents.CodexProbeResult(
+            agents._PROBE_NO_RETRY_RC,
+            agents.CodexGateDetail(
+                model="gpt-5.6-luna",
+                signal="newer-codex-required",
+                message="codex CLI too old for gpt-5.6-luna; run `npm install -g @openai/codex@latest`",
+            ),
+        )
+
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
+    base = {"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"}
+    result = agents.check_reviewers(skip_cursor_probe=True, env=base)
+
+    assert result.codex_gate_detail is not None
+    with _auth._temporary_environ(base):  # pylint: disable=protected-access
+        assert _auth._current_codex_gate_detail() == result.codex_gate_detail  # pylint: disable=protected-access
+    assert calls == 1
+
+    changed = agents.check_reviewers(
+        skip_cursor_probe=True,
+        env={**base, "LARCH_CODEX_REVIEW_MODEL": "gpt-5.6-other"},
+    )
+    assert changed.codex_gate_detail is not None
+    assert calls == 2
+
+
+def test_check_reviewers_cached_negative_reloads_and_healthy_probe_clears_gate_detail(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = bin_dir / "codex"
+    codex.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    codex.chmod(0o755)
+    calls = 0
+    detail = agents.CodexGateDetail(
+        model="gpt-5.6-luna",
+        signal="newer-codex-required",
+        message="codex CLI too old for gpt-5.6-luna; run `npm install -g @openai/codex@latest`",
+    )
+
+    def gated_probe(_timeout: int) -> agents.CodexProbeResult:
+        nonlocal calls
+        calls += 1
+        return agents.CodexProbeResult(agents._PROBE_NO_RETRY_RC, detail)
+
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", gated_probe)
+    cached_env = {
+        "PATH": str(bin_dir),
+        "TMPDIR": str(tmp_path),
+        "LARCH_PROBE_TTL_SECONDS": "60",
+        "LARCH_PROBE_NEGATIVE_TTL_SECONDS": "60",
+    }
+    assert agents.check_reviewers(skip_cursor_probe=True, env=cached_env).codex_gate_detail == detail
+    assert agents.check_reviewers(skip_cursor_probe=True, env=cached_env).codex_gate_detail == detail
+    assert calls == 1
+
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: 0)
+    healthy_env = {**cached_env, "LARCH_PROBE_TTL_SECONDS": "0"}
+    assert agents.check_reviewers(skip_cursor_probe=True, env=healthy_env).codex_present is True
+    with _auth._temporary_environ(healthy_env):  # pylint: disable=protected-access
+        assert _auth._current_codex_gate_detail() is None  # pylint: disable=protected-access
 
 
 def test_parse_drafter_output_extracts_dialectic_without_promoting(tmp_path: Path) -> None:

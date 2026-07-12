@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Literal
@@ -22,6 +23,7 @@ from larch.agents._types import (
     _CTRL_RE,
     _PY_CLI,
     LaunchFailure,
+    CodexGateDetail,
     TierAttempt,
     ModelArgResult,
     _err,
@@ -29,6 +31,42 @@ from larch.agents._types import (
     _emit_kv,
     _read_text,
 )
+
+_CODEX_METADATA_GATE_RE = re.compile(
+    r"Model metadata for\s+(?P<model>\S+)\s+not found",
+    re.IGNORECASE,
+)
+_CODEX_VERSION_GATE_RE = re.compile(
+    r"(?:(?P<model>['\"]?[^\s'\"]+['\"]?)\s+model\s+)?requires a newer version of Codex",
+    re.IGNORECASE,
+)
+_SAFE_CODEX_MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]*")
+
+
+def _safe_codex_gate_model(value: str) -> str | None:
+    candidate = value.strip().strip("'\"")
+    if _CTRL_RE.search(candidate) or not _SAFE_CODEX_MODEL_RE.fullmatch(candidate):
+        return None
+    return candidate
+
+
+def detect_codex_cli_gate(text: str, *, fallback_model: str = "") -> CodexGateDetail | None:
+    """Classify Codex model diagnostics that require a newer CLI."""
+    metadata = _CODEX_METADATA_GATE_RE.search(text)
+    version = _CODEX_VERSION_GATE_RE.search(text)
+    if metadata is None and version is None:
+        return None
+    diagnostic_model = ""
+    signal = "model-metadata-not-found" if metadata is not None else "newer-codex-required"
+    if metadata is not None:
+        diagnostic_model = metadata.group("model")
+    elif version is not None:
+        diagnostic_model = version.group("model") or ""
+    model = _safe_codex_gate_model(diagnostic_model)
+    if model is None:
+        model = _safe_codex_gate_model(fallback_model) or "unknown"
+    message = f"codex CLI too old for {model}; run `npm install -g @openai/codex@latest`"
+    return CodexGateDetail(model=model, signal=signal, message=message)
 
 def is_transient_infra_failure(
     *, tool: str,

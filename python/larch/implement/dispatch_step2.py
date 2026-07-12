@@ -16,7 +16,8 @@ import sys
 from pathlib import Path
 
 from larch import io as larch_io
-from larch.agents._launch_failure import is_quota_failure
+from larch.agents._launch_failure import detect_codex_cli_gate, is_quota_failure
+from larch.agents._types import CodexGateDetail
 from larch.core import config
 from larch.core import architectural_guidelines
 from larch.core import logging_util
@@ -269,8 +270,8 @@ def _launcher_args(st: DispatchState) -> list[str]:
 
 def _run_launcher(st: DispatchState) -> tuple[int, dict[str, str], str]:
     result = _invoke_cli(_launcher_args(st), cwd=st.repo_root)
-    out = (result.stdout or "")[:65536]
-    return result.returncode, _parse_kv(out), out + (result.stderr or "")
+    stdout = result.stdout or ""
+    return result.returncode, _parse_kv(stdout[:65536]), stdout + (result.stderr or "")
 
 
 def _append_warning(*, st: DispatchState, text: str) -> None:
@@ -376,6 +377,39 @@ def _resolve_implement_rater_model(*, tool: str, session_env: Path, difficulty_t
     else:
         value = "unknown"
     return _model_value_safe(value)
+
+
+def _codex_gate_after_launch(*, st: DispatchState, launcher_capture: str) -> CodexGateDetail | None:
+    if st.coder != "codex" or _manifest_complete_salvageable(st.manifest_path):
+        return None
+    diagnostics: list[str] = [launcher_capture]
+    for path in (st.sidecar_log, st.transcript_path):
+        try:
+            if path.is_file():
+                diagnostics.append(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+    model = _resolve_implement_rater_model(
+        tool="codex",
+        session_env=st.tmpdir / "session-env.sh",
+        difficulty_tier=st.difficulty,
+    )
+    return detect_codex_cli_gate("\n".join(diagnostics), fallback_model=model)
+
+
+def _codex_gate_dispatch_result(*, st: DispatchState, detail: CodexGateDetail) -> int:
+    dirty = _git_stdout(st.repo_root, "status", "--porcelain")
+    current_head = _git_stdout(st.repo_root, "rev-parse", "HEAD")
+    index_lock = st.repo_root / ".git" / "index.lock"
+    if dirty or index_lock.exists() or current_head != st.baseline_sha:
+        return st.emit_bailed(detail.message)
+    _ensure_step2_baseline(st.tmpdir)
+    _clear_external_scout_state(st.tmpdir)
+    _emit_kv(key="STATUS", value="claude_fallback")
+    _emit_kv(key="REASON", value=detail.message)
+    _emit_kv(key="TOOL", value=st.tool_tag)
+    _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="allowed")
+    return 0
 
 
 def _write_step2_difficulty_record(*, st: DispatchState, manifest: dict[str, object], changed_paths: set[str] | None) -> None:
@@ -600,7 +634,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     _clear_external_scout_state(tmpdir)
     _write_prelaunch_baseline(st)
 
-    wrapper_rc, kv, _ = _run_launcher(st)
+    wrapper_rc, kv, launcher_capture = _run_launcher(st)
     if wrapper_rc == WRAPPER_VALIDATION_RC:
         return st.emit_bailed("wrapper-validation-failure")
     launcher_exit = kv.get("LAUNCHER_EXIT", "99")
@@ -608,13 +642,16 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     launcher_status = kv.get("STATUS", "")
     if launcher_status == "cap_hit":
         return st.emit_bailed("cap_hit")
+    gate_detail = _codex_gate_after_launch(st=st, launcher_capture=launcher_capture)
+    if gate_detail is not None:
+        return _codex_gate_dispatch_result(st=st, detail=gate_detail)
     if (wrapper_rc != 0 or manifest_written != "true" or launcher_exit != "0") and manifest_written != "true":
         dirty = _git_stdout(repo_root, "status", "--porcelain")
         index_lock = repo_root / ".git" / "index.lock"
         current_head = _git_stdout(repo_root, "rev-parse", "HEAD")
         if dirty or index_lock.exists() or current_head != st.baseline_sha:
             return st.emit_bailed("dirty-state-after-timeout")
-        wrapper_rc, kv, _ = _run_launcher(st)
+        wrapper_rc, kv, launcher_capture = _run_launcher(st)
         if wrapper_rc == WRAPPER_VALIDATION_RC:
             return st.emit_bailed("wrapper-validation-failure")
         launcher_exit = kv.get("LAUNCHER_EXIT", "99")
@@ -622,6 +659,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         launcher_status = kv.get("STATUS", "")
         if launcher_status == "cap_hit":
             return st.emit_bailed("cap_hit")
+        gate_detail = _codex_gate_after_launch(st=st, launcher_capture=launcher_capture)
+        if gate_detail is not None:
+            return _codex_gate_dispatch_result(st=st, detail=gate_detail)
     if wrapper_rc != 0:
         return st.emit_bailed(st.runtime_failure_token)
     if manifest_written != "true":

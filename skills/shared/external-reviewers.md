@@ -5,9 +5,13 @@
 - `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND`: whether the CLI binary is on `PATH`.
 - `CODEX_PRESENT` / `CURSOR_PRESENT`: immediate Step 0 probe health for the degraded-tools gate only.
 
+The Codex probe resolves the luna review role. It classifies either `Model metadata for <model> not found` or `requires a newer version of Codex` as a CLI model gate. The degraded-tools gate and `/status` then show ``codex CLI too old for <model>; run `npm install -g @openai/codex@latest```. The diagnostic is paired with the probe's review-model and auth-mode cache identity. A short-lived handoff preserves it for the immediate degraded-tools call when normal probe caching is disabled.
+
 Durable session env files must keep only the binary-found keys. Do not persist `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_AVAILABLE`, or `CURSOR_AVAILABLE`. Treat legacy `--codex-present`, `--cursor-present`, `--codex-available`, and `--cursor-available` flags as compatibility input only.
 
 Later vendor routing must use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` or a fresh `command -v` / `shutil.which()` check. Step 0 probe health is not a launch-routing input.
+
+The Step 0 probe does not probe the sol implementation role or terra vote and fix roles. Those models remain launch-time checks, and their failures use the existing local fallback paths.
 
 ## Degraded-tools gate (Step 0)
 

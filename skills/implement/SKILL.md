@@ -378,7 +378,7 @@ From the combined wrapper stdout capture, first token-scan all `PHANTOM_*` KVs p
 
 Print one of the following based on which path landed here, evaluated **in this exact order** (first match wins):
 - When `coder=claude` AND `coder_fallback=true`: `**⚠ Cursor and Codex unavailable — implementing with main agent.**`
-- When `coder=codex`: `**⚠ Codex selection drifted after Step 0; Step 2 fell back to the main agent.**` Also log `Step 2 — codex selection drift: session-env no longer permits codex, dispatcher returned claude_fallback` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
+- When `coder=codex`: print `**⚠ Codex selection drifted after Step 0; Step 2 fell back to the main agent.**` If `REASON` is the classified CLI-upgrade message, append `REASON` to that banner and log `Step 2 — codex selection drift: $REASON` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. Otherwise, log `Step 2 — codex selection drift: session-env no longer permits codex, dispatcher returned claude_fallback` as before.
 - When `coder=claude`: `**ℹ Implementing with main agent (coder=claude).**`
 
 If `coder=cursor` and Step 2 returned `STATUS=claude_fallback`, that is **not** a Step 2.4 messaging branch. Step 2 must already have failed closed before entering 2.4 because the bootstrap-selected Cursor path is not allowed to silently drift into Claude fallback.
