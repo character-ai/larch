@@ -53,11 +53,19 @@ Warnings (2):
   1. python/tests/issue/test_rejected_analysis.py adds file-wide Pyright diagnostic suppressions without inline reasons or narrow scopes.
   2. preflight_main catches a failed audit-report issue query, substitutes an empty result, and reports PREFLIGHT_OK=true without recording the degraded concurrency guard.
 
+## Architectural invariants
+
+No invariant violations identified.
+
+## Architectural guidelines
+
+No deviations identified.
+
 ## /implement run E3E20E21-B5B8-49D0-8337-578B5B8AC58C: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:08:55
-- **Cost**: 💰 TOTAL ~$21.33: Claude $4.42, Codex-5.6 $3.46, Codex-mini $1.46, Cursor $9.68 (Composer $8.71, Grok $0.97), Claude (subprocess) $2.31  |  Tokens: 42026k
+- **Cost**: 💰 TOTAL ~$25.16: Claude $4.89, Codex-5.6 $3.90, Codex-mini $1.46, Cursor $9.74 (Composer $8.77, Grok $0.97), Claude (subprocess) $5.17  |  Tokens: 46197k
 - **Issue**: #7052: https://github.com/character-ai/larch/issues/7052
 - **PR**: #7163: https://github.com/character-ai/larch/pull/7163
 - **Plan review**: N/A
@@ -65,7 +73,7 @@ Warnings (2):
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/6 accepted
-- **Lines (PR diff)**: code +446/-265, larch-logs +892/-0
+- **Lines (PR diff)**: code +445/-264, larch-logs +888/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 2
