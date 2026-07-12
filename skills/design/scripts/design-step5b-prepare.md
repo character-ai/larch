@@ -7,7 +7,6 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 ## Primary callers
 
 - `skills/design/SKILL.md`
-- `skills/design/scripts/design-step5.sh` for deprecated compatibility delegation
 
 ## Invariants
 

@@ -8,7 +8,6 @@ scripts/test-external-tool-registry.sh	FAIL_DETAILS	legacy harness diagnostics a
 scripts/test-lint-bash32.sh	items	self-test fixture contains unguarded expansion examples for this lint
 scripts/test-sessionstart-health.sh	FAILED_TESTS	legacy harness accumulator is intentionally baselined before fixture cleanup
 skills/design/scripts/design-clarify.sh	_delegate_args	legacy delegate argv array is intentionally baselined before wrapper cleanup
-skills/design/scripts/design-step5.sh	_delegate_args	legacy delegate argv array is intentionally baselined before wrapper cleanup
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh	DIFF_ARGS	legacy diff argv array is intentionally baselined before wrapper cleanup
 skills/implement/scripts/test-oos-disposition-gate.sh	TMPDIRS	uses conditional ${TMPDIRS[@]+"${TMPDIRS[@]}"} expansion that is Bash 3.2-safe; A4 lint sees inner reference
 skills/rejected-analysis/scripts/rejected-analysis.sh	args	legacy wrapper argv array is intentionally baselined before wrapper cleanup

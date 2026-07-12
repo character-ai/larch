@@ -64,7 +64,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 - **`/review --subagent` requires `SendMessage`.** If `SendMessage` is unavailable, omit `--subagent`. `/implement` Step 5 calls `python/cli.py review-and-fix step5` directly.
 - **`/design` is inline-only** in the invoking agent. Follow `skills/design/SKILL.md` and `skills/design/references/flags.md`.
 - **NEVER improvise ScheduleWakeup outside skill-script direction.** After a one-shot skill's terminal `✅`, do not call `ScheduleWakeup`, narrate loop-sleep prose, or schedule another turn unless that skill's script explicitly directs it. See `skills/shared/orchestrator-never.md`.
-- **NEVER write `$IMPLEMENT_TMPDIR/session-env.sh` from prompt-side orchestrator code.** Treat it read-only like `finalize-state.sh`; use guarded `python/cli.py session write-*` verbs, `python/cli.py session setup`, and `scripts/persist-post-plan-keys.sh`. If plan materialization drops keys, fix the upstream writer.
+- **NEVER write `$IMPLEMENT_TMPDIR/session-env.sh` from prompt-side orchestrator code.** Treat it read-only like `finalize-state.sh`; use guarded `python/cli.py session write-*` verbs, `python/cli.py session setup`. If plan materialization drops keys, fix the upstream writer.
 
 ## Honesty
 
