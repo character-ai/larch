@@ -22,7 +22,7 @@ import sys
 import time
 from collections import OrderedDict
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any, Final, cast
 
@@ -45,6 +45,22 @@ EVIDENCE_TOKEN_LABEL: Final = "evidence_token"
 EVIDENCE_TOKEN_PATTERN: Final = re.compile(r"^evidence_token: (\S+)$")
 EVIDENCE_TOKEN_SCAN_LINES: Final = 20
 LEGACY_TRIAGE_WARN_LIMIT: Final = 20
+HISTORICAL_MARKER_BACKFILL_LIMIT: Final = 50
+PYTHON_ZONE_PARTS: Final = 3
+GENERAL_ZONE_PARTS: Final = 2
+NUMSTAT_FIELDS: Final = 3
+CHURN_COMMIT_THRESHOLD: Final = 3
+CHRONIC_BUG_THRESHOLD: Final = 3
+CHAIN_MEMBER_THRESHOLD: Final = 2
+LARGE_FIX_ADDED_LINES: Final = 300
+ANALYTICS_METADATA_VERSION: Final = 1
+DAY_SECONDS: Final = 86_400
+MARKER_PHRASE_RE: Final = re.compile(
+    r"(?i)(?:incomplete|persists\s+after|residual|regression\s+from|after\s+the)"
+)
+ISSUE_REFERENCE_RE: Final = re.compile(r"(?<![A-Za-z0-9])#([1-9][0-9]*)")
+BASELINE_PATH_RE: Final = re.compile(r"^python/[^/]+-baseline\.json$")
+VERIFIED_PREDICATE_VERSION: Final = "final-tier-non-pending-v1"
 
 
 @dataclass(frozen=True)
@@ -85,6 +101,12 @@ class BundleRecord:
     mechanical_reason: str
     cache_key: str
     sampled: bool = False
+    fix_time: int = 0
+    added_lines: int = 0
+    marker_references: tuple[int, ...] = ()
+    marker_fingerprint: str = ""
+    zones: tuple[str, ...] = ()
+    baseline_extended: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,6 +141,14 @@ class LedgerRecord:
     sampled: bool = False
     stages_complete: tuple[str, ...] = ()
     updated_at: int = 0
+    touched_files: tuple[str, ...] = ()
+    fix_time: int = 0
+    added_lines: int = 0
+    marker_references: tuple[int, ...] = ()
+    marker_fingerprint: str = ""
+    zones: tuple[str, ...] = ()
+    baseline_extended: bool = False
+    metadata_version: int = 0
 
 
 @dataclass(frozen=True)
@@ -154,6 +184,69 @@ class ReportCounts:
     regressed: int = 0
     wontfix: int = 0
     unverifiable: int = 0
+
+
+@dataclass(frozen=True)
+class AnalyticsCorpusRecord:
+    record: LedgerRecord
+    append_ordinal: int
+
+
+@dataclass(frozen=True)
+class ChainEdge:
+    from_issue: int
+    to_issue: int
+    detector_kind: str
+
+    @property
+    def identity(self) -> str:
+        return f"{self.from_issue}>{self.to_issue}:{self.detector_kind}"
+
+
+@dataclass(frozen=True)
+class AnalyticsRecord:
+    issue: int
+    cache_key: str
+    fix_sha: str
+    touched_files: tuple[str, ...]
+    fix_time: int
+    added_lines: int
+    marker_references: tuple[int, ...]
+    marker_fingerprint: str
+    zones: tuple[str, ...]
+    baseline_extended: bool
+    ledger_record: LedgerRecord | None = None
+    bundle: BundleRecord | None = None
+
+
+@dataclass(frozen=True)
+class ChronicZone:
+    zone: str
+    issues: tuple[int, ...]
+    churned_files: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class AnalyticsView:
+    records: tuple[AnalyticsRecord, ...]
+    chain_edges: tuple[ChainEdge, ...]
+    chronic_zones: tuple[ChronicZone, ...]
+    churned_files: tuple[str, ...]
+    baseline_issues: tuple[int, ...]
+    hydrated_records: tuple[LedgerRecord, ...] = ()
+
+
+@dataclass(frozen=True)
+class RunSnapshot:
+    schema_version: str
+    repo: str
+    run_id: str
+    generated_at: int
+    selected_issues: tuple[int, ...]
+    verified_issues: tuple[int, ...]
+    chronic_zones: tuple[str, ...]
+    chain_edges: tuple[str, ...]
+    verified_predicate: str = VERIFIED_PREDICATE_VERSION
 
 
 class AnalyzeBugsError(RuntimeError):
@@ -526,6 +619,55 @@ def _git_stdout(runner: Runner, argv: Sequence[str]) -> str:
     return result.stdout
 
 
+def zone_for_path(path: str) -> str:
+    """Map a repository-relative path to its stable analytics zone."""
+    parts = [part for part in Path(path).parts if part not in {"", "."}]
+    if not parts:
+        return ""
+    first = parts[0]
+    if len(parts) >= PYTHON_ZONE_PARTS and parts[:GENERAL_ZONE_PARTS] == ["python", "larch"]:
+        return "/".join(parts[:PYTHON_ZONE_PARTS])
+    if first in {"scripts", "docs"}:
+        return first
+    if len(parts) >= GENERAL_ZONE_PARTS:
+        return "/".join(parts[:GENERAL_ZONE_PARTS])
+    return first
+
+
+def _zones_for_files(files: Sequence[str]) -> tuple[str, ...]:
+    return tuple(sorted({zone for path in files if (zone := zone_for_path(path))}))
+
+
+def _marker_evidence(title: str, body: str) -> tuple[tuple[int, ...], str]:
+    text = f"{title}\n{body}"
+    fingerprint = hashlib.sha256(text.encode()).hexdigest()
+    if not MARKER_PHRASE_RE.search(text):
+        return (), fingerprint
+    references = tuple(sorted({int(match.group(1)) for match in ISSUE_REFERENCE_RE.finditer(text)}))
+    return references, fingerprint
+
+
+def _fix_metadata(runner: Runner, *, fix_sha: str) -> tuple[int, int]:
+    if not fix_sha:
+        return 0, 0
+    timestamp = _git_stdout(runner, ["git", "show", "-s", "--format=%ct", fix_sha]).strip()
+    try:
+        fix_time = int(timestamp)
+    except ValueError:
+        fix_time = 0
+    numstat = _git_stdout(runner, ["git", "show", "--numstat", "--format=", fix_sha])
+    added_lines = 0
+    for line in numstat.splitlines():
+        fields = line.split("	", 2)
+        if len(fields) == NUMSTAT_FIELDS and fields[0].isdecimal():
+            added_lines += int(fields[0])
+    return fix_time, added_lines
+
+
+def _baseline_extended(files: Sequence[str]) -> bool:
+    return any(BASELINE_PATH_RE.fullmatch(path) for path in files)
+
+
 def _touched_files(runner: Runner, *, fix_sha: str) -> tuple[str, ...]:
     if not fix_sha:
         return ()
@@ -588,6 +730,10 @@ def build_bundle_record(
     fix = resolve_fix_evidence(runner, issue=issue, repo=repo, evidence_ref=evidence_ref)
     mechanical, reason = _mechanical_verdict(issue, fix=fix, strip_malformed=malformed)
     touched = _touched_files(runner, fix_sha=fix.fix_sha)
+    fix_time, added_lines = _fix_metadata(runner, fix_sha=fix.fix_sha)
+    marker_references, marker_fingerprint = _marker_evidence(issue.title, stripped_body)
+    zones = _zones_for_files(touched)
+    baseline_extended = _baseline_extended(touched)
     later = _later_history(runner, fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=touched)
     later_hash = _later_history_hash(fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=touched, later_history=later)
     cache_key = _cache_key(
@@ -649,6 +795,12 @@ def build_bundle_record(
         mechanical_verdict=mechanical,
         mechanical_reason=reason,
         cache_key=cache_key,
+        fix_time=fix_time,
+        added_lines=added_lines,
+        marker_references=marker_references,
+        marker_fingerprint=marker_fingerprint,
+        zones=zones,
+        baseline_extended=baseline_extended,
     )
 
 
@@ -751,6 +903,12 @@ def _bundle_from_mapping(row: Mapping[str, Any]) -> BundleRecord:
         mechanical_reason=str(row.get("mechanical_reason") or ""),
         cache_key=str(row.get("cache_key") or ""),
         sampled=bool(row.get("sampled", False)),
+        fix_time=int(row.get("fix_time", 0) or 0),
+        added_lines=int(row.get("added_lines", 0) or 0),
+        marker_references=tuple(sorted({int(item) for item in row.get("marker_references", []) if isinstance(item, int) and not isinstance(item, bool) and item > 0})),
+        marker_fingerprint=str(row.get("marker_fingerprint") or ""),
+        zones=tuple(str(item) for item in row.get("zones", []) if isinstance(item, str)),
+        baseline_extended=bool(row.get("baseline_extended", False)),
     )
 
 
@@ -788,8 +946,45 @@ def _ledger_record_from_mapping(raw: Mapping[str, Any]) -> LedgerRecord | None:
         deep_reason=str(raw.get("deep_reason") or ""),
         sampled=bool(raw.get("sampled", False)),
         stages_complete=stages,
-        updated_at=int(raw.get("updated_at", 0) or 0),
+        updated_at=int(raw.get("updated_at", 0) or 0) if str(raw.get("updated_at", 0) or 0).lstrip("-").isdigit() else 0,
+        touched_files=tuple(str(item) for item in raw.get("touched_files", []) if isinstance(item, str)),
+        fix_time=int(raw.get("fix_time", 0) or 0) if str(raw.get("fix_time", 0) or 0).lstrip("-").isdigit() else 0,
+        added_lines=int(raw.get("added_lines", 0) or 0) if str(raw.get("added_lines", 0) or 0).lstrip("-").isdigit() else 0,
+        marker_references=tuple(sorted({int(item) for item in raw.get("marker_references", []) if isinstance(item, int) and not isinstance(item, bool) and item > 0})),
+        marker_fingerprint=str(raw.get("marker_fingerprint") or ""),
+        zones=tuple(str(item) for item in raw.get("zones", []) if isinstance(item, str)),
+        baseline_extended=bool(raw.get("baseline_extended", False)),
+        metadata_version=int(raw.get("metadata_version", 0) or 0) if str(raw.get("metadata_version", 0) or 0).isdigit() else 0,
     )
+
+
+def load_analytics_corpus(path: Path) -> tuple[list[AnalyticsCorpusRecord], int]:
+    records: list[AnalyticsCorpusRecord] = []
+    corrupt: list[str] = []
+    if not path.exists():
+        return records, 0
+    ordinal = 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+        except json.JSONDecodeError:
+            corrupt.append(line)
+            continue
+        if not isinstance(raw, dict):
+            corrupt.append(line)
+            continue
+        record = _ledger_record_from_mapping(cast("Mapping[str, Any]", raw))
+        if record is None or not record.cache_key:
+            corrupt.append(line)
+            continue
+        ordinal += 1
+        records.append(AnalyticsCorpusRecord(record=record, append_ordinal=ordinal))
+    if corrupt:
+        quarantine = path.with_name(f"{path.name}.corrupt-{int(time.time())}")
+        _atomic_write_text(quarantine, "\n".join(corrupt) + "\n")
+    return records, len(corrupt)
 
 
 def load_ledger(path: Path) -> tuple[dict[str, LedgerRecord], int]:
@@ -869,15 +1064,236 @@ def _write_triage_batches(run_dir: Path, bundles: Sequence[BundleRecord], *, bat
     return tuple(paths)
 
 
+def _analytics_record_from_bundle(bundle: BundleRecord, record: LedgerRecord | None) -> AnalyticsRecord:
+    return AnalyticsRecord(
+        issue=bundle.issue_number,
+        cache_key=bundle.cache_key,
+        fix_sha=bundle.fix_sha,
+        touched_files=bundle.touched_files or (record.touched_files if record else ()),
+        fix_time=bundle.fix_time or (record.fix_time if record else 0),
+        added_lines=bundle.added_lines if bundle.fix_time or bundle.added_lines else (record.added_lines if record else 0),
+        marker_references=bundle.marker_references or (record.marker_references if record else ()),
+        marker_fingerprint=bundle.marker_fingerprint or (record.marker_fingerprint if record else ""),
+        zones=bundle.zones or (record.zones if record else _zones_for_files(bundle.touched_files)),
+        baseline_extended=bundle.baseline_extended or (record.baseline_extended if record else False),
+        ledger_record=record,
+        bundle=bundle,
+    )
+
+
+def _analytics_record_from_ledger(record: LedgerRecord) -> AnalyticsRecord:
+    return AnalyticsRecord(
+        issue=record.issue,
+        cache_key=record.cache_key,
+        fix_sha=record.fix_sha,
+        touched_files=record.touched_files,
+        fix_time=record.fix_time,
+        added_lines=record.added_lines,
+        marker_references=record.marker_references,
+        marker_fingerprint=record.marker_fingerprint,
+        zones=record.zones or _zones_for_files(record.touched_files),
+        baseline_extended=record.baseline_extended or _baseline_extended(record.touched_files),
+        ledger_record=record,
+    )
+
+
+def _chain_components(edges: Sequence[ChainEdge]) -> dict[int, frozenset[int]]:
+    adjacency: dict[int, set[int]] = {}
+    for edge in edges:
+        adjacency.setdefault(edge.from_issue, set()).add(edge.to_issue)
+        adjacency.setdefault(edge.to_issue, set()).add(edge.from_issue)
+    components: dict[int, frozenset[int]] = {}
+    for issue in adjacency:
+        if issue in components:
+            continue
+        pending = [issue]
+        members: set[int] = set()
+        while pending:
+            current = pending.pop()
+            if current in members:
+                continue
+            members.add(current)
+            pending.extend(adjacency.get(current, ()))
+        frozen = frozenset(members)
+        for member in members:
+            components[member] = frozen
+    return components
+
+
+def _historical_marker_backfill(runner: Runner, *, repo: str, issue: int) -> tuple[tuple[int, ...], str]:
+    result = gh.api_read(runner, [f"/repos/{repo}/issues/{issue}", "--jq", '{title: .title, body: (.body // "")}'])
+    if result.returncode != 0:
+        return (), ""
+    try:
+        raw = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return (), ""
+    if not isinstance(raw, dict):
+        return (), ""
+    title = raw.get("title")
+    body = raw.get("body")
+    if not isinstance(title, str) or not isinstance(body, str):
+        return (), ""
+    stripped_body, malformed = _strip_plan(body)
+    if malformed:
+        return (), ""
+    return _marker_evidence(title, stripped_body)
+
+
+def build_analytics_view(
+    *,
+    manifest: Mapping[str, Any],
+    bundles: Sequence[BundleRecord],
+    ledger_path: Path,
+    runner: Runner | None = None,
+) -> AnalyticsView:
+    generated_at = int(manifest.get("generated_at", 0) or 0)
+    window_start = generated_at - (14 * DAY_SECONDS)
+    corpus, _corrupt = load_analytics_corpus(ledger_path)
+    chosen: dict[int, AnalyticsCorpusRecord] = {}
+    for row in corpus:
+        record = row.record
+        if record.fix_time and not (window_start < record.fix_time <= generated_at):
+            continue
+        previous = chosen.get(record.issue)
+        key = (max(0, record.updated_at), row.append_ordinal)
+        previous_key = ((previous.record.updated_at if previous and previous.record.updated_at > 0 else 0), previous.append_ordinal if previous else 0)
+        if previous is None or key > previous_key:
+            chosen[record.issue] = row
+    records: dict[int, AnalyticsRecord] = {issue: _analytics_record_from_ledger(row.record) for issue, row in chosen.items()}
+    for bundle in bundles:
+        matching = next((row.record for row in reversed(corpus) if row.record.cache_key == bundle.cache_key), None)
+        records[bundle.issue_number] = _analytics_record_from_bundle(bundle, matching)
+
+    hydrated: list[LedgerRecord] = []
+    if runner is not None:
+        for issue, record in tuple(records.items()):
+            if not record.fix_sha or (record.fix_time and record.touched_files):
+                continue
+            touched = record.touched_files or _touched_files(runner, fix_sha=record.fix_sha)
+            fix_time, added_lines = _fix_metadata(runner, fix_sha=record.fix_sha)
+            updated = AnalyticsRecord(
+                issue=record.issue,
+                cache_key=record.cache_key,
+                fix_sha=record.fix_sha,
+                touched_files=touched,
+                fix_time=fix_time or record.fix_time,
+                added_lines=added_lines if fix_time or added_lines else record.added_lines,
+                marker_references=record.marker_references,
+                marker_fingerprint=record.marker_fingerprint,
+                zones=_zones_for_files(touched),
+                baseline_extended=_baseline_extended(touched),
+                ledger_record=record.ledger_record,
+                bundle=record.bundle,
+            )
+            records[issue] = updated
+
+        repo = str(manifest.get("repo") or "")
+        backfill_count = 0
+        for issue, record in tuple(sorted(records.items())):
+            if backfill_count >= HISTORICAL_MARKER_BACKFILL_LIMIT:
+                break
+            if record.bundle is not None or record.marker_fingerprint or not repo:
+                continue
+            backfill_count += 1
+            references, fingerprint = _historical_marker_backfill(runner, repo=repo, issue=issue)
+            if not fingerprint:
+                continue
+            updated = replace(record, marker_references=references, marker_fingerprint=fingerprint)
+            records[issue] = updated
+            if record.ledger_record is not None:
+                hydrated.append(
+                    replace(
+                        record.ledger_record,
+                        marker_references=references,
+                        marker_fingerprint=fingerprint,
+                        metadata_version=ANALYTICS_METADATA_VERSION,
+                    )
+                )
+
+    marker_edges = {
+        ChainEdge(record.issue, reference, "marker")
+        for record in records.values()
+        for reference in record.marker_references
+        if reference != record.issue
+    }
+    ordered = sorted((record for record in records.values() if record.fix_time), key=lambda item: (item.fix_time, item.issue))
+    file_edges: set[ChainEdge] = set()
+    for index, newer in enumerate(ordered):
+        newer_files = set(newer.touched_files)
+        if not newer_files:
+            continue
+        for prior in ordered[:index]:
+            if newer.issue == prior.issue or newer.fix_sha == prior.fix_sha:
+                continue
+            if newer.fix_time - prior.fix_time >= 14 * DAY_SECONDS:
+                continue
+            if newer_files.intersection(prior.touched_files):
+                file_edges.add(ChainEdge(newer.issue, prior.issue, "file_intersection"))
+    edges = tuple(sorted(marker_edges | file_edges, key=lambda edge: (edge.from_issue, edge.to_issue, edge.detector_kind)))
+
+    seven_day_start = generated_at - (7 * DAY_SECONDS)
+    commits_by_file: dict[str, set[str]] = {}
+    for record in records.values():
+        if not record.fix_sha or not (seven_day_start < record.fix_time <= generated_at):
+            continue
+        for path in record.touched_files:
+            commits_by_file.setdefault(path, set()).add(record.fix_sha)
+    churned_files = tuple(sorted(path for path, commits in commits_by_file.items() if len(commits) >= CHURN_COMMIT_THRESHOLD))
+
+    zone_members: dict[str, set[int]] = {}
+    for record in records.values():
+        if record.fix_time and not (window_start < record.fix_time <= generated_at):
+            continue
+        for zone in record.zones:
+            zone_members.setdefault(zone, set()).add(record.issue)
+    components = _chain_components(edges)
+    chronic: list[ChronicZone] = []
+    for zone, members in sorted(zone_members.items()):
+        connected = any(len(component.intersection(members)) >= CHAIN_MEMBER_THRESHOLD for component in set(components.values()))
+        if len(members) >= CHRONIC_BUG_THRESHOLD or connected:
+            zone_churn = tuple(path for path in churned_files if zone_for_path(path) == zone)
+            chronic.append(ChronicZone(zone=zone, issues=tuple(sorted(members)), churned_files=zone_churn))
+    baseline_issues = tuple(sorted(record.issue for record in records.values() if record.baseline_extended))
+    return AnalyticsView(
+        records=tuple(sorted(records.values(), key=lambda item: item.issue)),
+        chain_edges=edges,
+        chronic_zones=tuple(chronic),
+        churned_files=churned_files,
+        baseline_issues=baseline_issues,
+        hydrated_records=tuple(hydrated),
+    )
+
+
+def _risk_reason(issue: int, view: AnalyticsView) -> str:
+    record = next((item for item in view.records if item.issue == issue), None)
+    if record is None:
+        return ""
+    if any(issue in {edge.from_issue, edge.to_issue} for edge in view.chain_edges):
+        return "chain-linked"
+    chronic_names = {zone.zone for zone in view.chronic_zones}
+    if chronic_names.intersection(record.zones):
+        return "chronic-zone"
+    has_python = any(path.startswith("python/") for path in record.touched_files)
+    has_contract = any(path.startswith(("scripts/", "skills/")) for path in record.touched_files)
+    if has_python and has_contract:
+        return "cross-language"
+    if record.added_lines > LARGE_FIX_ADDED_LINES:
+        return "size"
+    return ""
+
+
 def _priority_deep_candidates(
     *,
     bundles: Sequence[BundleRecord],
     ledger: Mapping[str, LedgerRecord],
     sample: int,
     refresh: bool,
+    analytics: AnalyticsView | None = None,
 ) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     by_priority: list[tuple[int, BundleRecord, LedgerRecord | None, str]] = []
+    risk_priorities = {"chain-linked": 3, "chronic-zone": 4, "cross-language": 5, "size": 6}
     for bundle in bundles:
         record = _record_for_bundle(ledger, bundle)
         if bundle.fix_sha and _complete(record, "deep", refresh=refresh):
@@ -887,8 +1303,14 @@ def _priority_deep_candidates(
             continue
         if _triage_complete(record, refresh=refresh) and record and record.triage_verdict == "SUSPECT":
             by_priority.append((1, bundle, record, "triage"))
-        elif _triage_complete(record, refresh=refresh) and record and (record.triage_verdict == "NEEDS_DEEP" or record.triage_needs_deep):
+            continue
+        if _triage_complete(record, refresh=refresh) and record and (record.triage_verdict == "NEEDS_DEEP" or record.triage_needs_deep):
             by_priority.append((2, bundle, record, "triage"))
+            continue
+        if _triage_complete(record, refresh=refresh) and record and record.triage_verdict in {"FIXED_CLEAR", "FIXED_LIKELY"} and analytics:
+            reason = _risk_reason(bundle.issue_number, analytics)
+            if reason:
+                by_priority.append((risk_priorities[reason], bundle, record, reason))
     seen: set[int] = set()
     for _priority, bundle, record, source in sorted(by_priority, key=lambda item: (item[0], item[1].issue_number)):
         if bundle.issue_number in seen:
@@ -956,7 +1378,15 @@ def _validate_deep_model(alias: str) -> tuple[str, str]:
     return pair
 
 
-def _upsert_record(base: LedgerRecord | None, bundle: BundleRecord, *, triage: TriageIngest | None = None, deep: DeepIngest | None = None, sampled: bool | None = None) -> LedgerRecord:
+def _upsert_record(
+    base: LedgerRecord | None,
+    bundle: BundleRecord,
+    *,
+    triage: TriageIngest | None = None,
+    deep: DeepIngest | None = None,
+    sampled: bool | None = None,
+    updated_at: int | None = None,
+) -> LedgerRecord:
     stages = set(base.stages_complete if base else ())
     triage_verdict = base.triage_verdict if base else ""
     triage_reason = base.triage_reason if base else ""
@@ -996,7 +1426,15 @@ def _upsert_record(base: LedgerRecord | None, bundle: BundleRecord, *, triage: T
         deep_reason=deep_reason,
         sampled=sampled_value,
         stages_complete=tuple(sorted(stages)),
-        updated_at=int(time.time()),
+        updated_at=int(time.time()) if updated_at is None else updated_at,
+        touched_files=bundle.touched_files or (base.touched_files if base else ()),
+        fix_time=bundle.fix_time or (base.fix_time if base else 0),
+        added_lines=bundle.added_lines if bundle.fix_time or bundle.added_lines else (base.added_lines if base else 0),
+        marker_references=bundle.marker_references or (base.marker_references if base else ()),
+        marker_fingerprint=bundle.marker_fingerprint or (base.marker_fingerprint if base else ""),
+        zones=bundle.zones or (base.zones if base else ()),
+        baseline_extended=bundle.baseline_extended or (base.baseline_extended if base else False),
+        metadata_version=ANALYTICS_METADATA_VERSION,
     )
 
 
@@ -1015,14 +1453,27 @@ def ledger_compute(
     deep_model: str,
     batch_size: int,
 ) -> dict[str, Any]:
-    _manifest, bundles = _load_manifest(manifest_path)
+    manifest, bundles = _load_manifest(manifest_path)
     ledger, corrupt_count = load_ledger(ledger_path)
+    analytics = build_analytics_view(manifest=manifest, bundles=bundles, ledger_path=ledger_path, runner=_runner())
+    metadata_records: list[LedgerRecord] = []
+    for bundle in bundles:
+        base = ledger.get(bundle.cache_key)
+        updated = _upsert_record(base, bundle, updated_at=int(manifest.get("generated_at", 0) or 0))
+        if base is None or any(
+            getattr(base, field) != getattr(updated, field)
+            for field in ("touched_files", "fix_time", "added_lines", "marker_references", "marker_fingerprint", "zones", "baseline_extended", "metadata_version")
+        ):
+            ledger[bundle.cache_key] = updated
+            metadata_records.append(updated)
+    if metadata_records:
+        _append_private_jsonl(ledger_path, (_record_json(record) for record in metadata_records))
     task_model, rate_model = _validate_deep_model(deep_model)
     unverified_legacy_issues = _unverified_legacy_triage_issues(bundles=bundles, ledger=ledger)
     _warn_unverified_legacy_triage(unverified_legacy_issues)
     pending_triage = [bundle for bundle in bundles if bundle.fix_sha and not bundle.mechanical_verdict and not _triage_complete(_record_for_bundle(ledger, bundle), refresh=refresh)]
     triage_paths = _write_triage_batches(run_dir, pending_triage, batch_size=batch_size)
-    candidates = _priority_deep_candidates(bundles=bundles, ledger=ledger, sample=sample, refresh=refresh)
+    candidates = _priority_deep_candidates(bundles=bundles, ledger=ledger, sample=sample, refresh=refresh, analytics=analytics)
     truncated = candidates[deep_max:] if deep_max >= 0 else []
     selected = candidates[:deep_max] if deep_max >= 0 else candidates
     deep_queue = run_dir / "deep-queue.jsonl"
@@ -1034,6 +1485,7 @@ def ledger_compute(
         "DEEP_PENDING": len(selected),
         "DEEP_CAP_TRUNCATED": "true" if truncated else "false",
         "DEEP_TRUNCATED_ISSUES": [row["issue"] for row in truncated],
+        "DEEP_TRUNCATED_CANDIDATES": [{"issue": row["issue"], "reason": row["source"]} for row in truncated],
         "DEEP_MODEL": task_model,
         "DEEP_RATE_MODEL": rate_model,
         "LEDGER_CORRUPT_LINES": corrupt_count,
@@ -1203,7 +1655,7 @@ def ledger_main(argv: list[str]) -> int:
     parser.add_argument("--ingest-triage", default="")
     parser.add_argument("--ingest-deep", default="")
     parser.add_argument("--refresh", action="store_true")
-    parser.add_argument("--sample", type=int, default=0)
+    parser.add_argument("--sample", type=int, default=3)
     parser.add_argument("--deep-max", type=int, default=config.ANALYZE_BUGS_DEFAULT_DEEP_MAX)
     parser.add_argument("--deep-model", default="sonnet")
     parser.add_argument("--batch-size", type=int, default=config.ANALYZE_BUGS_DEFAULT_BATCH_SIZE)
@@ -1224,18 +1676,56 @@ def ledger_main(argv: list[str]) -> int:
     return 0
 
 
-def _final_verdict(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, tuple[str, ...], bool]:
+def _final_verdict_with_tier(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, str, tuple[str, ...], bool]:
     if bundle.mechanical_verdict and bundle.mechanical_verdict != "NEEDS_DEEP":
-        return bundle.mechanical_verdict, bundle.mechanical_reason, (), False
+        return bundle.mechanical_verdict, "MECH", bundle.mechanical_reason, (), False
     if record and record.deep_verdict:
-        return record.deep_verdict, record.deep_reason, (), record.sampled
+        return record.deep_verdict, "DEEP", record.deep_reason, (), record.sampled
     if _triage_complete(record, refresh=False) and record and record.triage_verdict:
         if record.triage_verdict in {"SUSPECT", "NEEDS_DEEP"} or record.triage_needs_deep:
-            return "NEEDS_DEEP", record.triage_reason, record.triage_missing_items, record.sampled
-        return record.triage_verdict, record.triage_reason, record.triage_missing_items, record.sampled
+            return "NEEDS_DEEP", "TRIAGE", record.triage_reason, record.triage_missing_items, record.sampled
+        return record.triage_verdict, "TRIAGE", record.triage_reason, record.triage_missing_items, record.sampled
     if bundle.mechanical_verdict:
-        return bundle.mechanical_verdict, bundle.mechanical_reason, (), False
-    return "NEEDS_DEEP", "not yet triaged", (), False
+        return bundle.mechanical_verdict, "MECH", bundle.mechanical_reason, (), False
+    return "NEEDS_DEEP", "", "not yet triaged", (), False
+
+
+def _verified_issue(verdict: str, tier: str) -> bool:
+    return bool(tier) and verdict != "NEEDS_DEEP"
+
+
+def _snapshot_from_mapping(raw: Mapping[str, Any], *, path: Path) -> RunSnapshot:
+    required = {"schema_version", "repo", "run_id", "generated_at", "selected_issues", "verified_issues", "chronic_zones", "chain_edges", "verified_predicate"}
+    if set(raw) != required or str(raw.get("schema_version")) != "1" or raw.get("verified_predicate") != VERIFIED_PREDICATE_VERSION:
+        raise AnalyzeBugsError(f"malformed analyze-bugs run snapshot: {path}")
+    try:
+        generated_at = int(raw["generated_at"])
+        selected = tuple(sorted(int(item) for item in cast("list[Any]", raw["selected_issues"])))
+        verified = tuple(sorted(int(item) for item in cast("list[Any]", raw["verified_issues"])))
+        zones = tuple(sorted(str(item) for item in cast("list[Any]", raw["chronic_zones"])))
+        edges = tuple(sorted(str(item) for item in cast("list[Any]", raw["chain_edges"])))
+    except (TypeError, ValueError) as exc:
+        raise AnalyzeBugsError(f"malformed analyze-bugs run snapshot: {path}") from exc
+    if any(not re.fullmatch(r"[1-9][0-9]*>[1-9][0-9]*:(?:marker|file_intersection)", edge) for edge in edges):
+        raise AnalyzeBugsError(f"malformed analyze-bugs run snapshot edge: {path}")
+    return RunSnapshot("1", str(raw["repo"]), str(raw["run_id"]), generated_at, selected, verified, zones, edges)
+
+
+def _previous_snapshot(run_dir: Path, *, repo: str, generated_at: int) -> RunSnapshot | None:
+    candidates: list[RunSnapshot] = []
+    runs_root = run_dir.parent
+    if not runs_root.is_dir():
+        return None
+    for path in sorted(runs_root.glob("*/run-state.json")):
+        raw = _load_json(path)
+        snapshot = _snapshot_from_mapping(raw, path=path)
+        if snapshot.repo == repo and snapshot.generated_at < generated_at:
+            candidates.append(snapshot)
+    return max(candidates, key=lambda item: (item.generated_at, item.run_id), default=None)
+
+
+def _format_issues(values: Sequence[int]) -> str:
+    return ", ".join(f"#{item}" for item in values) or "None"
 
 
 def _counts(verdicts: Sequence[str]) -> ReportCounts:
@@ -1283,19 +1773,23 @@ def _estimate_cost(*, bundles: Sequence[BundleRecord], deep_rate_model: str) -> 
 def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> str:
     manifest, bundles = _load_manifest(manifest_path)
     ledger, corrupt_count = load_ledger(ledger_path)
+    analytics = build_analytics_view(manifest=manifest, bundles=bundles, ledger_path=ledger_path, runner=_runner())
     summary_path = run_dir / "ledger-summary.json"
     summary = _load_json(summary_path) if summary_path.exists() else {}
     truncated = {int(item) for item in summary.get("DEEP_TRUNCATED_ISSUES", []) if isinstance(item, int)}
-    rows: list[tuple[BundleRecord, str, str, tuple[str, ...], bool]] = []
+    rows: list[tuple[BundleRecord, str, str, str, tuple[str, ...], bool]] = []
     verdict_values: list[str] = []
+    verified_issues: list[int] = []
     for bundle in bundles:
         record = _record_for_bundle(ledger, bundle)
-        verdict, reason, missing, sampled = _final_verdict(bundle, record)
+        verdict, tier, reason, missing, sampled = _final_verdict_with_tier(bundle, record)
         if bundle.issue_number in truncated:
             verdict = "NEEDS_DEEP"
             reason = "deep cap truncated this candidate"
-        rows.append((bundle, verdict, reason, missing, sampled))
+        rows.append((bundle, verdict, tier, reason, missing, sampled))
         verdict_values.append(verdict)
+        if _verified_issue(verdict, tier):
+            verified_issues.append(bundle.issue_number)
     counts = _counts(verdict_values)
     count_table = _markdown_table(
         [
@@ -1310,52 +1804,76 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
             ["Unverifiable", str(counts.unverifiable)],
         ]
     )
-    detail_rows = [["Issue", "Fix", "Verdict", "Reason", "Missing items"]]
-    for bundle, verdict, reason, missing, _sampled in rows:
+    detail_rows = [["Issue", "Fix", "Tier", "Verdict", "Reason", "Missing items"]]
+    for bundle, verdict, tier, reason, missing, _sampled in rows:
         issue_link = f"#{bundle.issue_number}" if not bundle.url else f"[#{bundle.issue_number}]({bundle.url})"
-        detail_rows.append([issue_link, _short_sha(bundle.fix_sha), verdict, reason, "; ".join(missing)])
-    sampled_rows = [(bundle, verdict) for bundle, verdict, _reason, _missing, sampled in rows if sampled]
+        detail_rows.append([issue_link, _short_sha(bundle.fix_sha), tier or "PENDING", verdict, reason, "; ".join(missing)])
+    sampled_rows = [(bundle, verdict) for bundle, verdict, _tier, _reason, _missing, sampled in rows if sampled]
     sampled_failures = sum(1 for _bundle, verdict in sampled_rows if verdict in {"INCOMPLETE", "REGRESSED", "NOT_FIXED", "UNVERIFIABLE"})
     sample_rate = (sampled_failures / len(sampled_rows)) if sampled_rows else 0.0
-    followups = [(bundle, verdict, reason) for bundle, verdict, reason, _missing, _sampled in rows if verdict in TERMINAL_FOLLOWUP_VERDICTS]
+    followups = [(bundle, verdict, reason) for bundle, verdict, _tier, reason, _missing, _sampled in rows if verdict in TERMINAL_FOLLOWUP_VERDICTS]
     followup_path = run_dir / "follow-up-issue.md"
     if followups:
         body_lines = ["# Analyze-bugs follow-up", "", f"Repo: {manifest.get('repo', '')}", "", "Findings:"]
         for bundle, verdict, reason in followups:
             body_lines.append(f"- #{bundle.issue_number}: {verdict}. {reason}")
         _atomic_write_text(followup_path, "\n".join(body_lines) + "\n")
+
+    snapshot = RunSnapshot(
+        schema_version="1",
+        repo=str(manifest.get("repo", "")),
+        run_id=str(manifest.get("run_id", run_dir.name)),
+        generated_at=int(manifest.get("generated_at", 0) or 0),
+        selected_issues=tuple(sorted(bundle.issue_number for bundle in bundles)),
+        verified_issues=tuple(sorted(verified_issues)),
+        chronic_zones=tuple(zone.zone for zone in analytics.chronic_zones),
+        chain_edges=tuple(edge.identity for edge in analytics.chain_edges),
+    )
+    predecessor = _previous_snapshot(run_dir, repo=snapshot.repo, generated_at=snapshot.generated_at)
+    prior_selected = set(predecessor.selected_issues if predecessor else ())
+    prior_verified = set(predecessor.verified_issues if predecessor else ())
+    prior_edges = set(predecessor.chain_edges if predecessor else ())
+    prior_zones = set(predecessor.chronic_zones if predecessor else ())
+    current_zones = set(snapshot.chronic_zones)
+
+    zone_rows = [["Zone", "Bug count", "Member issues", "Churned files"]]
+    zone_rows.extend([zone.zone, str(len(zone.issues)), _format_issues(zone.issues), ", ".join(zone.churned_files) or "None"] for zone in analytics.chronic_zones)
+    chain_rows = [["From", "To", "Detector"]]
+    chain_rows.extend([f"#{edge.from_issue}", f"#{edge.to_issue}", edge.detector_kind] for edge in analytics.chain_edges)
+    baseline_rows = [["Issue", "Fix"]]
+    by_issue = {bundle.issue_number: bundle for bundle in bundles}
+    baseline_rows.extend([f"#{issue}", _short_sha(by_issue[issue].fix_sha) if issue in by_issue else "historical"] for issue in analytics.baseline_issues)
+
     rate_model = str(summary.get("DEEP_RATE_MODEL") or config.ANALYZE_BUGS_DEEP_MODEL_ALIASES["sonnet"][1])
     cost = _estimate_cost(bundles=bundles, deep_rate_model=rate_model)
     parts = [
-        "# Analyze Bugs Report",
-        "",
-        f"Repo: {manifest.get('repo', '')}",
-        f"Evidence ref: {manifest.get('evidence_ref', '')}",
-        f"Requested: {manifest.get('bugs_requested', '')}",
-        f"Selected: {manifest.get('bugs_selected', '')}",
-        "",
-        "## Counts",
-        "",
-        count_table,
-        "",
-        "## Issues",
-        "",
-        _markdown_table(detail_rows),
-        "",
-        "## Sample calibration",
-        "",
-        f"Sample size: {len(sampled_rows)}",
-        f"Sampled failures: {sampled_failures}",
-        f"Triage false-pass rate: {sample_rate:.2%}",
-        "",
+        "# Analyze Bugs Report", "", f"Repo: {snapshot.repo}", f"Evidence ref: {manifest.get('evidence_ref', '')}",
+        f"Requested: {manifest.get('bugs_requested', '')}", f"Selected: {manifest.get('bugs_selected', '')}", "",
+        "## Counts", "", count_table, "", "## Issues", "", _markdown_table(detail_rows), "",
+        "## Chronic zones", "", _markdown_table(zone_rows) if analytics.chronic_zones else "None.", "",
+        "## Fix chains", "", _markdown_table(chain_rows) if analytics.chain_edges else "None.", "",
+        "## Baseline-extending fixes", "", _markdown_table(baseline_rows) if analytics.baseline_issues else "None.", "",
+        "## Since last run", "", "First run: yes" if predecessor is None else "First run: no",
+        f"Newly selected: {_format_issues(sorted(set(snapshot.selected_issues) - prior_selected))}",
+        f"Newly verified: {_format_issues(sorted(set(snapshot.verified_issues) - prior_verified))}",
+        f"New chain edges: {', '.join(sorted(set(snapshot.chain_edges) - prior_edges)) or 'None'}",
+        f"Zones entering chronic status: {', '.join(sorted(current_zones - prior_zones)) or 'None'}",
+        f"Zones leaving chronic status: {', '.join(sorted(prior_zones - current_zones)) or 'None'}", "",
+        "## Sample calibration", "", f"Sample size: {len(sampled_rows)}", f"Sampled failures: {sampled_failures}",
+        f"Triage false-pass rate: {sample_rate:.2%}", "",
     ]
     if corrupt_count:
         parts.extend([f"Ledger corrupt lines quarantined: {corrupt_count}", ""])
     if followups:
         parts.extend(["## Follow-up issue body", "", f"Follow-up body file: {followup_path}", ""])
+    if analytics.chronic_zones:
+        parts.extend([f"Suggestion: run /learn-from-bugs scoped to {', '.join(zone.zone for zone in analytics.chronic_zones)}.", ""])
     parts.append(f"ANALYZE_BUGS_COST_ESTIMATE={cost}")
     report = "\n".join(parts) + "\n"
     _atomic_write_text(run_dir / "report.md", report)
+    if analytics.hydrated_records:
+        _append_private_jsonl(ledger_path, (_record_json(record) for record in analytics.hydrated_records))
+    _write_json(run_dir / "run-state.json", asdict(snapshot))
     return report
 
 
