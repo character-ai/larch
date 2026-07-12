@@ -1,0 +1,1 @@
+G-Py-1: DispatchState stays mutable. voter_*_parse_rate_status fields are updated in place after dispatch. Both existing copies already @dataclass without frozen=True. G-Py-1 is aspirational per its own note.
