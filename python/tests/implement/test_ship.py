@@ -6536,7 +6536,9 @@ def test_invariants_gate_does_not_stall_on_unavailable_outcome(
 ) -> None:
     # Issue #7022: a dropped outcome with reason `unavailable` must not raise
     # Stalled at the ship gate; it returns so `_combined_assessment_result` can
-    # route the transient assessor failure to operator-bail.
+    # route the transient assessor failure to operator-bail. The real
+    # classifier turns an `unavailable` note-state into outcome `dropped` with
+    # reason `unavailable`, so no outcome patch is needed.
     monkeypatch.setattr(
         ship.architectural_guidelines,
         "read_invariants",
@@ -6550,22 +6552,6 @@ def test_invariants_gate_does_not_stall_on_unavailable_outcome(
             invariants_status="present",
             note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
             reason=ship_guidelines.REASON_UNAVAILABLE,
-        ),
-    )
-    monkeypatch.setattr(
-        ship,
-        "write_invariant_ship_outcome",
-        lambda **_k: ship.InvariantsShipOutcome(
-            schema_version="1",
-            phase="implement",
-            step="8",
-            outcome=ship_guidelines.OUTCOME_DROPPED,
-            reason=ship_guidelines.REASON_UNAVAILABLE,
-            detail="",
-            invariants_status="present",
-            head_sha="abc123",
-            base_ref="origin/main",
-            assessment_kind="",
         ),
     )
 
@@ -6586,6 +6572,8 @@ def test_invariants_gate_stalls_on_genuine_dropped_outcome(
 ) -> None:
     # Regression for issue #7022: a genuine dropped outcome (e.g. compose
     # materialization failed) still hard-stalls; only `unavailable` is exempt.
+    # The real classifier turns this note-less result into outcome `dropped`
+    # with a non-`unavailable` reason.
     monkeypatch.setattr(
         ship.architectural_guidelines,
         "read_invariants",
@@ -6597,22 +6585,6 @@ def test_invariants_gate_stalls_on_genuine_dropped_outcome(
         lambda **_k: ship.InvariantsGateResult(
             invariants_status="present",
             reason=ship_guidelines.REASON_COMPOSE_MATERIALIZATION_FAILED,
-        ),
-    )
-    monkeypatch.setattr(
-        ship,
-        "write_invariant_ship_outcome",
-        lambda **_k: ship.InvariantsShipOutcome(
-            schema_version="1",
-            phase="implement",
-            step="8",
-            outcome=ship_guidelines.OUTCOME_DROPPED,
-            reason=ship_guidelines.REASON_COMPOSE_MATERIALIZATION_FAILED,
-            detail="",
-            invariants_status="present",
-            head_sha="abc123",
-            base_ref="origin/main",
-            assessment_kind="",
         ),
     )
 
@@ -6630,6 +6602,9 @@ def test_guidelines_gate_does_not_stall_on_unavailable_outcome(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Mirror of the invariant gate test: the real classifier turns an
+    # `unavailable` note-state into outcome `dropped` with reason `unavailable`,
+    # which the gate must not stall on (issue #7022).
     monkeypatch.setattr(
         ship,
         "load_or_prepare_guidelines_note",
@@ -6638,22 +6613,6 @@ def test_guidelines_gate_does_not_stall_on_unavailable_outcome(
             guidelines_status="present",
             note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
             reason=ship_guidelines.REASON_UNAVAILABLE,
-        ),
-    )
-    monkeypatch.setattr(
-        ship,
-        "write_guideline_ship_outcome",
-        lambda **_k: ship.GuidelinesShipOutcome(
-            schema_version="1",
-            phase="implement",
-            step="8",
-            outcome=ship_guidelines.OUTCOME_DROPPED,
-            reason=ship_guidelines.REASON_UNAVAILABLE,
-            detail="",
-            guidelines_status="present",
-            head_sha="abc123",
-            base_ref="origin/main",
-            assessment_kind="",
         ),
     )
 
