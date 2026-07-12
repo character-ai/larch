@@ -2184,4 +2184,3 @@ def test_design_source_helper_matches_writer_key_contract(tmp_path: Path) -> Non
     assert json.loads(params.read_text(encoding="utf-8"))["schema_version"] == 3
     refreshed = write_design_source_env(design, overrides={"REPO": "owner/name"})
     assert "export REPO=owner/name\n" in refreshed.read_text(encoding="utf-8")
-
