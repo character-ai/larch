@@ -46,17 +46,17 @@ Warnings (1):
 
 ## Architectural invariants
 
-No violations identified. The diff consolidates ad-hoc `gh repo view` subprocess calls into `gh.resolve_repo` / `gh.resolve_repo_detailed` with an origin fallback. No gate arming/disarming logic is touched (I-Gate-1), no pause snapshot or resume guard paths are modified (I-Pause-1), no persisted step results or fingerprint consumers are changed (I-Stale-1), no run-log flush or commit paths are altered (I-Flush-1, I-Commit-1, I-Outcome-1), no panel slot accounting is touched (I-Slot-1), no machine-ingested agent verdict paths change (I-Agent-1), and no pre-merge mutation routes are affected (I-Ship-1).
+No invariant violations identified. The diff is a refactoring of ambient repository resolution—consolidating scattered ad-hoc `gh repo view` subprocess calls and `resolve_repo_gh_only` usages into the canonical `resolve_repo` / `resolve_repo_detailed` path. It does not touch gate disarming logic (I-Gate-1), pause snapshots (I-Pause-1), persisted step result consumers (I-Stale-1), run-log flush paths (I-Flush-1, I-Commit-1, I-Outcome-1), panel slot accounting (I-Slot-1), agent-verdict dispatch (I-Agent-1), or ship/recovery routing (I-Ship-1).
 
 ## Architectural guidelines
 
-No meaningful deviations identified. The change is a comprehensive class-level fix (G-Fix-1, G-Wire-3): all ad-hoc `subprocess.run` / raw `gh repo view` call sites across 14+ files are consolidated into the canonical `gh.resolve_repo` / `gh.resolve_repo_detailed` helpers. New structured types `RepoPrimaryFailure` and `RepoResolution` are `@dataclass(frozen=True)` (G-Py-1). The injectable `Runner` seam is preserved throughout (G-Py-5, G-Py-7). `validate_repo_slug` gains a stricter dot-component rejection that closes a path-traversal gap (G-Sec-1). The suppression-reason baseline correctly drops the now-removed `noqa: S607` entry (G-Py-11). Tests added for fallback paths (G-Fix-2). Minor inconsistency: a few new test `monkeypatch.setattr` lambdas with parameters (in `test_combine_issues.py`, `test_stall_recovery.py`, `test_analyze_issues.py`) omit the `# type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]` annotation present on equivalent lambdas in `test_tracking_issue.py` (G-Py-14), but this does not rise to a meaningful deviation under aspirational guidelines given that typed helper functions are also used where appropriate in the same diff.
+No meaningful deviations identified. The change affirmatively follows several guidelines: G-Fix-1 (sweeps every call site of `repo_name_with_owner_read` and `resolve_repo_gh_only` across thirteen production files and their tests in a single change); G-Py-1 (new `RepoPrimaryFailure` and `RepoResolution` are `@dataclass(frozen=True)`); G-Py-5 and G-Py-7 (all callers replaced bare `subprocess.run` calls with runner-injected helpers, including `design_terminal.py` and `state/_report.py` which had grandfathered `lint-subprocess-via-runner` and `noqa: S607` suppressions that are now correctly retired); G-Sec-1 (`validate_repo_slug` extended to reject `.` and `..` slug components, closing a path-traversal edge). The `RepoResolution.status` and `RepoPrimaryFailure.kind` fields use raw string discriminators rather than typed enums (G-Py-3), but this is an aspirational guideline and the pattern is consistent with the existing codebase. Tests cover origin-fallback success, invalid-slug detection, missing-`gh` OSError, and secret-redaction in error diagnostics, satisfying G-Fix-2 for the new resolution paths.
 
 ## /implement run C1D9A1A4-7E62-4BE9-870E-15ECC335AE38: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:59:01
-- **Cost**: 💰 TOTAL ~$36.38: Claude $15.74, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $8.07  |  Tokens: 76308k
+- **Cost**: 💰 TOTAL ~$38.90: Claude $18.21, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $8.12  |  Tokens: 83929k
 - **Issue**: #7054: https://github.com/character-ai/larch/issues/7054
 - **PR**: #7090: https://github.com/character-ai/larch/pull/7090
 - **Plan review**: N/A
@@ -64,7 +64,7 @@ No meaningful deviations identified. The change is a comprehensive class-level f
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/8 accepted
-- **Lines (PR diff)**: code +646/-117, larch-logs +1060/-0
+- **Lines (PR diff)**: code +647/-117, larch-logs +1067/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
