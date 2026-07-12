@@ -4339,6 +4339,15 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_run_relevant_checks_binds_persisted_root_over_claude_project_dir",
+    "facade_module": "larch.implement.dispatch_commit_route",
+    "attribute": "_run_leg_with_timeout",
+    "defining_module": "larch.implement.dispatch_leg",
+    "occurrence": 1,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_run_relevant_checks_for_site_does_not_allow_skip",
     "facade_module": "larch.implement.dispatch_commit_route",
     "attribute": "_run_leg_with_timeout",
@@ -4350,15 +4359,6 @@
     "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_run_relevant_checks_for_site_does_not_allow_skip",
     "facade_module": "larch.implement.implement_dispatch",
-    "attribute": "_run_leg_with_timeout",
-    "defining_module": "larch.implement.dispatch_leg",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_run_relevant_checks_binds_persisted_root_over_claude_project_dir",
-    "facade_module": "larch.implement.dispatch_commit_route",
     "attribute": "_run_leg_with_timeout",
     "defining_module": "larch.implement.dispatch_leg",
     "occurrence": 1,
@@ -6400,6 +6400,15 @@
   },
   {
     "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_guidelines_gate_does_not_stall_on_unavailable_outcome",
+    "facade_module": "larch.implement.ship",
+    "attribute": "load_or_prepare_guidelines_note",
+    "defining_module": "larch.implement.ship_guidelines",
+    "occurrence": 1,
+    "reason": "ship.py binds these note loaders via `from larch.implement.ship_guidelines import ...` and calls them as module globals in the PR gate, so the test must patch the consuming-module facade to feed a controlled note-state outcome (#7022)"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_guidelines_pin_warning_flushes_before_pr_body",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
@@ -6568,6 +6577,24 @@
     "defining_module": "larch.report.run_log_flush",
     "occurrence": 12,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_invariants_gate_does_not_stall_on_unavailable_outcome",
+    "facade_module": "larch.implement.ship",
+    "attribute": "load_or_prepare_invariants_note",
+    "defining_module": "larch.implement.ship_guidelines",
+    "occurrence": 2,
+    "reason": "ship.py binds these note loaders via `from larch.implement.ship_guidelines import ...` and calls them as module globals in the PR gate, so the test must patch the consuming-module facade to feed a controlled note-state outcome (#7022)"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_invariants_gate_stalls_on_genuine_dropped_outcome",
+    "facade_module": "larch.implement.ship",
+    "attribute": "load_or_prepare_invariants_note",
+    "defining_module": "larch.implement.ship_guidelines",
+    "occurrence": 2,
+    "reason": "ship.py binds these note loaders via `from larch.implement.ship_guidelines import ...` and calls them as module globals in the PR gate, so the test must patch the consuming-module facade to feed a controlled note-state outcome (#7022)"
   },
   {
     "file": "tests/implement/test_ship.py",

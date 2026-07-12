@@ -6462,6 +6462,171 @@ def test_compose_assessment_gate_invariant_violation_short_circuits(
     assert result.detail == "violated I-Test-1"
 
 
+def _present_invariants_file(
+    tmp_path: Path,
+) -> ship.architectural_guidelines.ArchitecturalGuidelinesResult:
+    return ship.architectural_guidelines.ArchitecturalGuidelinesResult(
+        status="present",
+        repo_root=tmp_path,
+        path=tmp_path / ship.architectural_guidelines.INVARIANTS_FILENAME,
+        content="### I-Test-1: keep\n",
+    )
+
+
+def test_combined_assessment_result_invariants_unavailable_routes_to_operator_bail(
+    tmp_path: Path,
+) -> None:
+    # Issue #7022: a transient `unavailable` assessment is a non-violation
+    # fallback; route it to operator-bail instead of hard-stalling PR creation.
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
+            reason=ship_guidelines.REASON_UNAVAILABLE,
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.outcome == Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "architectural-assessment-unavailable"
+    assert result.detail == "invariants"
+
+
+def test_combined_assessment_result_guidelines_unavailable_routes_to_operator_bail(
+    tmp_path: Path,
+) -> None:
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(),
+        guidelines=ship.GuidelinesGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
+            reason=ship_guidelines.REASON_UNAVAILABLE,
+        ),
+    )
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.needs_user_reason == "architectural-assessment-unavailable"
+    assert result.detail == "guidelines"
+
+
+def test_combined_assessment_result_both_unavailable_lists_both_kinds(tmp_path: Path) -> None:
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE),
+        guidelines=ship.GuidelinesGateResult(note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE),
+    )
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.needs_user_reason == "architectural-assessment-unavailable"
+    assert result.detail == "invariants,guidelines"
+
+
+def test_combined_assessment_result_clean_gates_do_not_bail(tmp_path: Path) -> None:
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+    assert ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path)) is None
+
+
+def test_invariants_gate_does_not_stall_on_unavailable_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Issue #7022: a dropped outcome with reason `unavailable` must not raise
+    # Stalled at the ship gate; it returns so `_combined_assessment_result` can
+    # route the transient assessor failure to operator-bail. The real
+    # classifier turns an `unavailable` note-state into outcome `dropped` with
+    # reason `unavailable`, so no outcome patch is needed.
+    monkeypatch.setattr(
+        ship.architectural_guidelines,
+        "read_invariants",
+        lambda **_k: _present_invariants_file(tmp_path),
+    )
+    monkeypatch.setattr(
+        ship,
+        "load_or_prepare_invariants_note",
+        lambda **_k: ship.InvariantsGateResult(
+            note="Architectural assessment unavailable.",
+            invariants_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
+            reason=ship_guidelines.REASON_UNAVAILABLE,
+        ),
+    )
+
+    result = ship._invariants_gate_before_pr(
+        runner=RecordingRunner(),
+        pr_context=_ctx(tmp_path),
+        repo_root=str(tmp_path),
+        base_ref="main",
+        resume=_pre_pr_resume_plan(),
+    )
+
+    assert result.note_state == ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+
+
+def test_invariants_gate_stalls_on_genuine_dropped_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Regression for issue #7022: a genuine dropped outcome (e.g. compose
+    # materialization failed) still hard-stalls; only `unavailable` is exempt.
+    # The real classifier turns this note-less result into outcome `dropped`
+    # with a non-`unavailable` reason.
+    monkeypatch.setattr(
+        ship.architectural_guidelines,
+        "read_invariants",
+        lambda **_k: _present_invariants_file(tmp_path),
+    )
+    monkeypatch.setattr(
+        ship,
+        "load_or_prepare_invariants_note",
+        lambda **_k: ship.InvariantsGateResult(
+            invariants_status="present",
+            reason=ship_guidelines.REASON_COMPOSE_MATERIALIZATION_FAILED,
+        ),
+    )
+
+    with pytest.raises(Stalled):
+        ship._invariants_gate_before_pr(
+            runner=RecordingRunner(),
+            pr_context=_ctx(tmp_path),
+            repo_root=str(tmp_path),
+            base_ref="main",
+            resume=_pre_pr_resume_plan(),
+        )
+
+
+def test_guidelines_gate_does_not_stall_on_unavailable_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Mirror of the invariant gate test: the real classifier turns an
+    # `unavailable` note-state into outcome `dropped` with reason `unavailable`,
+    # which the gate must not stall on (issue #7022).
+    monkeypatch.setattr(
+        ship,
+        "load_or_prepare_guidelines_note",
+        lambda **_k: ship.GuidelinesGateResult(
+            note="Architectural assessment unavailable.",
+            guidelines_status="present",
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE,
+            reason=ship_guidelines.REASON_UNAVAILABLE,
+        ),
+    )
+
+    result = ship._guidelines_gate_before_pr(
+        runner=RecordingRunner(),
+        pr_context=_ctx(tmp_path),
+        repo_root=str(tmp_path),
+        base_ref="main",
+        resume=_pre_pr_resume_plan(),
+    )
+
+    assert result.note_state == ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+
+
 def test_load_or_prepare_guidelines_note_drops_on_redaction_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
