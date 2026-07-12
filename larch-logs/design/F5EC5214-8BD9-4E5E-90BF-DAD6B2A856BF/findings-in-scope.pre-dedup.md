@@ -1,0 +1,20 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Focus area**: correctness
+- **Location**: python/larch/core/architectural_guidelines.py:2388-2532
+- **Concern**: Encode persist-design-assessment stdout asymmetry before shared emitter helpers. Scenario: Step 2 proposes kind-bound shared parser and emitter helpers, but persist_design_assessment_main always prints ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_* rows (including failed flag/file paths) while invariants_persist_design_assessment_main stays stdout-silent on success and most failures; both verbs stay in _MACHINE_STDOUT_KEYS and Gate C tests assert the guideline rows
+- **Proposed resolution**: Add a descriptor persist_stdout policy (or keep separate entry emitters) and add an explicit required regression that invariant persist-design-assessment success/failure stdout stays empty while guideline paths keep the existing ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_* grammar
+
+
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Focus area**: correctness
+- **Location**: python/larch/core/architectural_guidelines.py:1267-1326
+- **Concern**: Encode per-kind invalidate artifact lists in AssessmentKind. Scenario: invalidate_implement_note clears LEGACY_WARNING and LEGACY_WARNING_ENV plus guideline staged/durable/dropped/sidecar artifacts; invalidate_invariant_implement_note uses a shorter INVARIANT_* list with no legacy entries; the descriptor field list and required regressions never name these divergent invalidate sets
+- **Proposed resolution**: Add invalidate_artifacts (or equivalent) per GUIDELINES/INVARIANTS instance and a parity test that guideline invalidate removes legacy warning artifacts while invariant invalidate leaves unrelated legacy files untouched ### 1. correctness — `python/larch/core/architectural_guidelines.py:2388-2532` **Concern:** Step 2 calls for shared parser and emitter helpers, but `persist_design_assessment_main` always emits `ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_*` machine rows (including invalid-flag and unreadable-file paths) while `invariants_persist_design_assessment_main` stays stdout-silent on success and most failures. Both verbs remain in `_MACHINE_STDOUT_KEYS`; `test_persist_design_assessment_machine_lines_*` locks the guideline grammar, and the plan’s required regressions do not cover invariant silence. **Suggested revision:** Add a descriptor-level persist-stdout policy (or keep separate entry emitters) and add an explicit required regression that invariant `persist-design-assessment` stdout stays empty while guideline paths keep the existing `ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_*` grammar. ### 2. correctness — `python/larch/core/architectural_guidelines.py:1267-1326` **Concern:** `_INVALIDATE_ARTIFACTS` includes `LEGACY_WARNING` / `LEGACY_WARNING_ENV`; `_INVARIANT_INVALIDATE_ARTIFACTS` does not. The plan’s descriptor checklist and failure modes do not name these divergent invalidate sets, so a generic `invalidate(kind, …)` helper could leave stale guideline legacy warnings or over-delete during invariant invalidation. **Suggested revision:** Add per-kind `invalidate_artifacts` (or equivalent) on `AssessmentKind` and a parity test that guideline invalidate clears legacy warning artifacts while invariant invalidate does not touch them.
+
+
+

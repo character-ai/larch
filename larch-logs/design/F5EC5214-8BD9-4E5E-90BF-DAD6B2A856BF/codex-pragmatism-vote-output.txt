@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Duplicate of rejected FINDING_7; the plan already retains stdout fields and exact stdout/status coverage for both verb families.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected FINDING_9 with no materially new evidence; the plan already scopes invalidation and requires descriptor parity coverage.
