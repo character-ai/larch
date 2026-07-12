@@ -1,0 +1,7 @@
+# [BUG] review-and-fix commit-fixes --stage-all exits 1 when review-delta paths are clean and only regenerated baselines are dirty
+
+**Observed** (`/im 7001`, run `91AB98AA-D0D5-4485-BD62-CF7C9A627065`, step7 exec issue): `python/cli.py review-and-fix commit-fixes --stage-all` failed with exit 1. Stdout: `COMMITTED=false`, `COMMIT_OUTCOME=failed`, git error "no changes added to commit". The worktree was dirty only in `python/markdown-heading-fence-state-baseline.json` and `python/suppression-reason-baseline.json`.
+
+**Mechanism**: `_commit_fixes_stage_all` (`python/larch/review/review_and_fix.py:177`) commits only the paths from `_collect_review_fix_stage_paths` (`python/larch/review/coder_runner.py:339`) via `git commit --only --pathspec-from-file`. Every collected path was already committed. The only dirty files were ratchet baselines regenerated after the last fix commit, and they sat outside the collected set. `git commit --only` over clean paths exits 1. The step recorded a hard Tool Failure, and the baseline drift stayed uncommitted into steps 7a and 8. The issue #5715 guard (`review_and_fix.py:195`) covers only the empty-path-list case, not the nonempty-but-all-clean case.
+
+**Proposed fix**: intersect the collected stage paths with `git status --porcelain` dirty paths. Treat an empty intersection as the same benign noop as #5715. Separately, decide ownership of harness-regenerated baseline files: either stage them with the fix commit when checks regenerate them, or revert them, so they cannot strand the tree dirty.
