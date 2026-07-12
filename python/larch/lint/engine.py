@@ -375,12 +375,7 @@ def _validate_finding(
         raise ScanError(
             f"finding rule_id {rule_id!r} does not match active rule {rule.rule_id!r}"
         )
-    if (
-        not isinstance(line, int)
-        or isinstance(line, bool)
-        or line < 1
-        or line > len(source.lines)
-    ):
+    if isinstance(line, bool) or line < 1 or line > len(source.lines):
         raise ScanError(
             f"finding line {line!r} is out of range for {source.path} "
             f"({len(source.lines)} lines)"
@@ -395,7 +390,7 @@ def _validate_finding(
         raise ScanError(
             "finding qualified_symbol must be a non-empty single-line string when present"
         )
-    metric = _validate_metric(cast(object, finding.metric))
+    metric = _validate_metric(finding.metric)
     return Finding(
         path=path,
         line=line,
