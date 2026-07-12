@@ -1,0 +1,5 @@
+# Add another specialist review archetype to /design, /implement, and /review: architectural guidelines and invariants compliance checker
+
+This archetype should concentrate on validating that the code (or design plan for /design) is compliant with all architectural guidelines and invariants.  Further, all OTHER reviewer archetypes should stop getting fed guidelines and invariants as they are today, since now it will be the job of a dedicated specialist to check that.
+
+The new archetype should be treated exactly the same as the other archetypes for each difficulty level.
