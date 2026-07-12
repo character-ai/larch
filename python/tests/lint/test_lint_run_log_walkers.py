@@ -84,7 +84,7 @@ def ok(log_root: Path) -> None:
         ):
             print(path)
 """
-    assert lint.scan_source(relpath="larch/example.py", source=source) == []
+    assert not lint.scan_source(relpath="larch/example.py", source=source)
 
 
 def test_scan_allows_session_local_and_unrelated_traversal() -> None:
@@ -97,7 +97,7 @@ def unrelated(skills: Path) -> None:
     for path in skills.glob("*/scripts/test-*.sh"):
         print(path)
 """
-    assert lint.scan_source(relpath="larch/example.py", source=source) == []
+    assert not lint.scan_source(relpath="larch/example.py", source=source)
 
 
 def test_owner_and_exemptions_are_skipped(tmp_path: Path, monkeypatch: object) -> None:
@@ -129,7 +129,7 @@ def test_owner_and_exemptions_are_skipped(tmp_path: Path, monkeypatch: object) -
         ]
 
     monkeypatch.setattr(lint, "_tracked_python_relpaths", _tracked)  # type: ignore[attr-defined]
-    assert lint.collect_findings(root) == []
+    assert not lint.collect_findings(root)
 
 
 def test_main_returns_zero_when_clean(tmp_path: Path, monkeypatch: object) -> None:

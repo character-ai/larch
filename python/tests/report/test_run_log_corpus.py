@@ -94,7 +94,7 @@ def test_safe_child_run_dirs_skips_symlinks_and_escapes(tmp_path: Path) -> None:
 def test_safe_child_run_dirs_missing_root(tmp_path: Path) -> None:
     warnings: list[run_log_corpus.WalkWarning] = []
     dirs = run_log_corpus.safe_child_run_dirs(tmp_path / "missing", on_warning=warnings.append)
-    assert dirs == []
+    assert not dirs
     assert warnings[0].kind is run_log_corpus.WalkWarningKind.ROOT_MISSING
 
 
@@ -105,8 +105,8 @@ def test_safe_child_run_dirs_rejects_symlinked_and_non_directory_roots(tmp_path:
     linked.symlink_to(target)
     file_root = tmp_path / "file-root"
     _ = file_root.write_text("not a directory\n", encoding="utf-8")
-    assert run_log_corpus.safe_child_run_dirs(linked) == []
-    assert run_log_corpus.safe_child_run_dirs(file_root) == []
+    assert not run_log_corpus.safe_child_run_dirs(linked)
+    assert not run_log_corpus.safe_child_run_dirs(file_root)
 
 
 def test_run_started_at_policies(tmp_path: Path) -> None:
@@ -243,7 +243,7 @@ def test_iter_validated_run_files_skips_fifo(tmp_path: Path) -> None:
     run_dir.mkdir(parents=True)
     fifo = run_dir / "findings-classification.tsv"
     os.mkfifo(fifo)
-    assert list(run_log_corpus.iter_validated_run_files(run_dir, name=fifo.name, contain_root=run_dir.parent)) == []
+    assert not list(run_log_corpus.iter_validated_run_files(run_dir, name=fifo.name, contain_root=run_dir.parent))
 
 
 def test_safe_child_run_dirs_enumeration_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -255,7 +255,7 @@ def test_safe_child_run_dirs_enumeration_error(tmp_path: Path, monkeypatch: pyte
 
     monkeypatch.setattr(Path, "glob", _boom)
     warnings: list[run_log_corpus.WalkWarning] = []
-    assert run_log_corpus.safe_child_run_dirs(root, on_warning=warnings.append) == []
+    assert not run_log_corpus.safe_child_run_dirs(root, on_warning=warnings.append)
     assert warnings[0].kind is run_log_corpus.WalkWarningKind.ROOT_UNREADABLE
 
 

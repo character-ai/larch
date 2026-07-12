@@ -14,12 +14,6 @@
   {
     "file": "larch/agents/_auth.py",
     "code": "C901",
-    "qualified_symbol": "_run_one_codex_probe",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/_auth.py",
-    "code": "C901",
     "qualified_symbol": "cursor_auth_preflight",
     "metric": 13
   },
@@ -3165,7 +3159,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "map_runs_main",
-    "metric": 25
+    "metric": 23
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3249,7 +3243,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "map_runs_main",
-    "metric": 25
+    "metric": 23
   },
   {
     "file": "larch/issue/audit_runs.py",
