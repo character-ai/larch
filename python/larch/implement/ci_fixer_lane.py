@@ -765,26 +765,41 @@ def _read_lineage(identity: CrashFinalizeIdentity) -> tuple[tuple[str, ...], ...
 
 
 def _read_log_tail(path: Path, *, root: Path, label: str) -> str:
-    if not path.exists():
-        return "[unavailable]"
-    if path.parent != root or path.is_symlink() or not path.is_file():
+    if path.parent != root:
         raise LaneClosedError(f"{label} is unsafe")
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
     try:
-        descriptor = os.open(path, flags)
-        with os.fdopen(descriptor, "rb") as handle:
-            opened = os.fstat(handle.fileno())
-            current = path.stat(follow_symlinks=False)
-            if not stat.S_ISREG(opened.st_mode) or (
-                opened.st_dev, opened.st_ino
-            ) != (current.st_dev, current.st_ino):
-                raise LaneClosedError(f"{label} changed while opening")
-            _ = handle.seek(0, os.SEEK_END)
-            size = handle.tell()
-            _ = handle.seek(max(0, size - config.BGJOB_LOG_TAIL_BYTES))
-            return handle.read(config.BGJOB_LOG_TAIL_BYTES).decode("utf-8", errors="replace")
+        parent_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            parent_flags |= os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            parent_flags |= os.O_NOFOLLOW
+        parent_descriptor = os.open(root, parent_flags)
+        try:
+            opened_parent = os.fstat(parent_descriptor)
+            current_parent = root.stat(follow_symlinks=False)
+            if not stat.S_ISDIR(opened_parent.st_mode) or (
+                opened_parent.st_dev, opened_parent.st_ino
+            ) != (current_parent.st_dev, current_parent.st_ino):
+                raise LaneClosedError(f"{label} parent changed while opening")
+            descriptor = os.open(path.name, flags, dir_fd=parent_descriptor)
+            with os.fdopen(descriptor, "rb") as handle:
+                opened = os.fstat(handle.fileno())
+                current = os.stat(path.name, dir_fd=parent_descriptor, follow_symlinks=False)
+                if not stat.S_ISREG(opened.st_mode) or (
+                    opened.st_dev, opened.st_ino
+                ) != (current.st_dev, current.st_ino):
+                    raise LaneClosedError(f"{label} changed while opening")
+                _ = handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                _ = handle.seek(max(0, size - config.BGJOB_LOG_TAIL_BYTES))
+                return handle.read(config.BGJOB_LOG_TAIL_BYTES).decode("utf-8", errors="replace")
+        finally:
+            os.close(parent_descriptor)
+    except FileNotFoundError:
+        return "[unavailable]"
     except OSError as exc:
         raise LaneClosedError(f"{label} could not be read") from exc
 
@@ -828,7 +843,7 @@ def _crash_diagnostic(identity: CrashFinalizeIdentity) -> str:
         safe_context + "\nStdout tail\n" + bounded_stdout
         + "\n\nStderr tail\n" + bounded_stderr
     ).replace("```", "` ` `")
-    _scrubbed, residual = redact.scrub_log_secrets(safe)
+    safe, residual = redact.scrub_log_secrets(safe)
     if residual or str(identity.implement_tmpdir) in safe or str(identity.repo_root) in safe:
         raise LaneClosedError("crash diagnostic redaction verification failed")
     return safe.encode("utf-8")[: config.BGJOB_LOG_TAIL_BYTES].decode("utf-8", errors="ignore")

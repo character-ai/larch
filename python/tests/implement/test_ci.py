@@ -1064,6 +1064,40 @@ def test_fixer_lane_recovery_persists_with_foreign_round(
     assert len(rounds.read_text(encoding="utf-8").splitlines()) == 2
 
 
+def test_fixer_lane_main_persists_run_b_after_valid_run_a(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    head = _init_repo(repo)
+    identity = _lane_identity(repo, tmp_path / "impl")
+    rounds = identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE
+    rounds.write_text(
+        f"1\tcodex\t41\t{head}\t{'a' * 64}\tretry-next-tool\t{head}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "prepare_failure_evidence",
+        lambda *_args, **_kwargs: ci_monitor.LogCollectResult("failed check\n", "ready"),
+    )
+
+    assert ci.ci_fixer_lane.main([
+        "--repo-root", str(identity.repo_root), "--implement-tmpdir", str(identity.implement_tmpdir),
+        "--handoff-dir", str(identity.handoff_dir), "--repo", "o/r", "--run-id", identity.run_id,
+        "--tier", identity.tier, "--attempt", str(identity.attempt),
+        "--starting-head", identity.starting_head, "--input-fingerprint", identity.input_fingerprint,
+        "--bgjob-result-env", str(identity.result_env),
+    ], runner=proc, launchers={"codex": lambda _argv: 0}) == config.EXIT_OK
+
+    assert "STATUS=complete\nRESULT=retry-next-tool" in capsys.readouterr().out
+    status = (identity.handoff_dir / config.CI_FIXER_STATUS_FILE).read_text(encoding="utf-8")
+    assert identity.result_env.read_text(encoding="utf-8") == status
+    assert "RUN_ID=42\n" in status
+    assert "RESULT=retry-next-tool\n" in status
+    assert rounds.read_text(encoding="utf-8").splitlines()[0].split("\t")[2] == "41"
+    assert len(rounds.read_text(encoding="utf-8").splitlines()) == 2
+
+
 @pytest.mark.parametrize(
     "row",
     [
@@ -1197,6 +1231,49 @@ def test_crashed_lane_dirty_or_unverified_head_bails(tmp_path: Path) -> None:
     assert not unknown.lineage.exists()
 
 
+def test_crash_lineage_rejects_malformed_row(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+    identity.lineage.write_text("not-a-lineage-row\n", encoding="utf-8")
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="lineage file is malformed"):
+        ci.ci_fixer_lane._read_lineage(identity)
+
+
+def test_crash_finalize_wrapper_bails_for_unrelated_advanced_commit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl", starting_head=starting_head)
+    launch = identity.handoff_dir / f"launch-{identity.step}.env"
+    launch.write_text(
+        f"MODE={identity.mode}\nRUN_ID={identity.run_id}\n"
+        f"STARTING_HEAD={identity.starting_head}\n"
+        f"INPUT_FINGERPRINT={identity.input_fingerprint}\nTIER={identity.tier}\n"
+        f"ATTEMPT={identity.attempt}\nSTEP={identity.step}\nLINEAGE={identity.lineage}\n",
+        encoding="utf-8",
+    )
+    result_env = identity.implement_tmpdir / "bgjob" / f"{identity.step}.result.env"
+    result_env.write_text(
+        f"BGJOB_RC=1\nBGJOB_ELAPSED_S=12\nSTEP={identity.step}\n", encoding="utf-8"
+    )
+    (repo / "tracked.txt").write_text("unrelated\n", encoding="utf-8")
+    _run_git(repo, "add", "tracked.txt")
+    _run_git(repo, "commit", "-m", "unrelated commit")
+
+    assert ci.ci_fixer_lane.main([
+        "--finalize-crash", "--repo-root", str(identity.repo_root),
+        "--implement-tmpdir", str(identity.implement_tmpdir),
+        "--handoff-dir", str(identity.handoff_dir), "--step", identity.step,
+    ], runner=proc) == config.EXIT_OK
+
+    out = capsys.readouterr().out
+    assert "RESULT=operator-bail" in out
+    assert "REASON=crashed-lane-head-unverified" in out
+
+
 def test_crash_diagnostic_redacts_and_caps_combined_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1217,6 +1294,36 @@ def test_crash_diagnostic_redacts_and_caps_combined_payload(
     assert str(identity.implement_tmpdir) not in diagnostic
     assert "Stdout tail" in diagnostic
     assert "Stderr tail" in diagnostic
+
+
+def test_crash_diagnostic_scrubs_extra_secret_family(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+    token = "crsr_1620" + "abcdefghijklmnopqrstuvwxyz0123456789"
+    bgjob = identity.implement_tmpdir / "bgjob"
+    (bgjob / f"{identity.step}.stdout.log").write_text(token, encoding="utf-8")
+
+    diagnostic = ci.ci_fixer_lane._crash_diagnostic(identity)
+
+    assert token not in diagnostic
+    assert config.REDACTED_TOKEN in diagnostic
+
+
+def test_crash_diagnostic_rejects_replaced_bgjob_parent(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+    bgjob = identity.implement_tmpdir / "bgjob"
+    original = identity.implement_tmpdir / "original-bgjob"
+    attacker = identity.implement_tmpdir / "attacker-bgjob"
+    bgjob.rename(original)
+    attacker.mkdir()
+    (attacker / f"{identity.step}.stdout.log").write_text("attacker content\n", encoding="utf-8")
+    bgjob.symlink_to(attacker, target_is_directory=True)
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="could not be read"):
+        ci.ci_fixer_lane._crash_diagnostic(identity)
 
 
 def test_crash_diagnostic_failure_prevents_lineage_advance(
