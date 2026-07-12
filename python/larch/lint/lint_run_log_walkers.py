@@ -171,6 +171,32 @@ class _Walker(ast.NodeVisitor):
         self.relpath = relpath
         self.findings: list[Finding] = []
         self._manifest_loop_names: set[str] = set()
+        self._corpus_aliases: set[str] = set()
+        self._safe_run_aliases: set[str] = set()
+
+    def _expr_is_safe_run(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id in self._safe_run_aliases
+        if isinstance(node, ast.Call) and _call_name(node) in {"str", "Path"} and node.args:
+            return self._expr_is_safe_run(node.args[0])
+        return False
+
+    def _expr_is_corpus(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Name):
+            return node.id in self._corpus_aliases or _looks_like_corpus_receiver(node)
+        if self._expr_is_safe_run(node):
+            return False
+        if _looks_like_corpus_receiver(node):
+            return True
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+            return self._expr_is_corpus(node.left)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            return self._expr_is_corpus(node.func.value)
+        return False
+
+    @staticmethod
+    def _target_names(node: ast.AST) -> set[str]:
+        return set(_iter_loop_targets(node))
 
     def _add(self, node: ast.AST, rule: str, message: str) -> None:
         self.findings.append(
@@ -203,7 +229,19 @@ class _Walker(ast.NodeVisitor):
                 "dual-manifest-loop",
                 "use run_log_corpus metadata helpers instead of dual-manifest candidate loops",
             )
+        if isinstance(iter_node, ast.Call) and _call_name(iter_node) == "safe_child_run_dirs":
+            self._safe_run_aliases.update(self._target_names(node.target))
         self.generic_visit(node)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self.generic_visit(node)
+        names = set().union(*(self._target_names(target) for target in node.targets))
+        if self._expr_is_safe_run(node.value):
+            self._safe_run_aliases.update(names)
+            self._corpus_aliases.difference_update(names)
+        elif self._expr_is_corpus(node.value):
+            self._corpus_aliases.update(names)
+            self._safe_run_aliases.difference_update(names)
 
     def _loop_uses_both_manifests(self, node: ast.For) -> bool:
         seen: set[str] = set()
@@ -219,7 +257,7 @@ class _Walker(ast.NodeVisitor):
             self._check_glob_call(node, name)
         elif name == "walk":
             root = _attr_root_name(node.func)
-            if (root == "os" or (isinstance(node.func, ast.Attribute) and _looks_like_corpus_receiver(node.func.value))) and self._walk_looks_like_corpus(node):
+            if (root == "os" or (isinstance(node.func, ast.Attribute) and self._expr_is_corpus(node.func.value))) and self._walk_looks_like_corpus(node):
                 self._add(
                     node,
                     "raw-walk",
@@ -246,9 +284,9 @@ class _Walker(ast.NodeVisitor):
         stdlib_glob = isinstance(receiver, ast.Name) and receiver.id == "glob"
         corpusish = False
         if receiver is not None and not stdlib_glob:
-            corpusish = _looks_like_corpus_receiver(receiver)
+            corpusish = self._expr_is_corpus(receiver)
         if stdlib_glob and pattern_arg is not None:
-            corpusish = _looks_like_corpus_receiver(pattern_arg)
+            corpusish = self._expr_is_corpus(pattern_arg)
         pattern_text = _const_str(pattern_arg) or ""
         if name == "rglob" and corpusish:
             self._add(
@@ -282,7 +320,7 @@ class _Walker(ast.NodeVisitor):
     def _walk_looks_like_corpus(self, node: ast.Call) -> bool:
         if not node.args:
             return False
-        return _looks_like_corpus_receiver(node.args[0])
+        return self._expr_is_corpus(node.args[0])
 
 
 def scan_source(*, relpath: str, source: str) -> list[Finding]:

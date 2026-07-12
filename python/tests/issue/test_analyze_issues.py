@@ -2185,7 +2185,7 @@ def test_ground_truth_metadata_helpers_preserve_policies(tmp_path: Path) -> None
         json.dumps({"ended_at": "2026-03-02T00:00:00Z", "updated_at": "2026-03-03T00:00:00Z"}),
         encoding="utf-8",
     )
-    assert gt._ground_truth_run_ended_at(ended_run).isoformat().startswith("2026-03-02")
+    assert gt._ground_truth_run_ended_at(ended_run) is None
 
     empty_pref = tmp_path / "empty-pref"
     empty_pref.mkdir()

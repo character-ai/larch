@@ -39,6 +39,28 @@ def walk(log_root: Path) -> None:
     assert "raw-scandir" in rules
 
 
+def test_scan_rejects_raw_rglob() -> None:
+    source = """
+from pathlib import Path
+def walk(log_root: Path) -> None:
+    for path in log_root.rglob("findings-classification.tsv"):
+        print(path)
+"""
+    rules = {finding.rule for finding in lint.scan_source(relpath="larch/example.py", source=source)}
+    assert "raw-rglob" in rules
+
+
+def test_scan_tracks_corpus_aliases_and_derived_paths() -> None:
+    source = """
+from pathlib import Path
+def walk(log_root: Path) -> None:
+    corpus = log_root
+    implement = corpus / "implement"
+    list(implement.glob("*"))
+"""
+    assert "raw-glob" in {finding.rule for finding in lint.scan_source(relpath="larch/example.py", source=source)}
+
+
 def test_scan_allows_shared_helpers_and_fixed_artifact_reads() -> None:
     source = """
 from pathlib import Path
@@ -47,7 +69,9 @@ def ok(log_root: Path) -> None:
     for run_dir in run_log_corpus.safe_child_run_dirs(log_root):
         manifest = run_dir / "manifest.json"
         print(manifest.read_text())
-        for path in run_log_corpus.iter_validated_run_files(run_dir, name="panel-prompt-sizes.tsv"):
+        for path in run_log_corpus.iter_validated_run_files(
+            run_dir, name="panel-prompt-sizes.tsv", contain_root=log_root
+        ):
             print(path)
 """
     assert lint.scan_source(relpath="larch/example.py", source=source) == []

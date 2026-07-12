@@ -359,7 +359,7 @@ def _ground_truth_run_ended_at(run_dir: Path) -> datetime | None:
     return parse_iso(
         run_log_corpus.run_ended_at(
             run_dir,
-            continue_on_empty=True,
+            continue_on_empty=False,
         )
     )
 

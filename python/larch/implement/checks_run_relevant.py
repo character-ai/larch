@@ -383,8 +383,9 @@ def _checks_digest_run_artifact(canonical_tmp: Path) -> Path | None:
     for skill in ("implement", "review"):
         for run_dir in run_log_corpus.safe_child_run_dirs(root / skill):
             candidate = run_dir / CHECKS_DIGEST_SIZE_BASENAME
-            if candidate.is_file() and not candidate.is_symlink():
-                candidates.append(candidate)
+            if candidate.is_symlink() or (candidate.exists() and not candidate.is_file()):
+                continue
+            candidates.append(candidate)
     return candidates[0] if len(candidates) == 1 else None
 
 

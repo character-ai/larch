@@ -662,27 +662,16 @@ def _parse_started_at(raw):
         return None
 
 
-def _design_run_manifest(run_dir):
-    try:
-        data = json.loads(read_text(os.path.join(run_dir, "manifest.json")) or "{}")
-    except (ValueError, TypeError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def _enumerate_design_run_dirs(design_root, cutoff, since_version):
     if not os.path.isdir(design_root):
         return []
     run_dirs = []
     for run_path in run_log_corpus.safe_child_run_dirs(Path(design_root)):
         run_dir = str(run_path)
-        manifest = _design_run_manifest(run_dir)
-        if manifest is None:
-            continue
-        started_at = manifest.get("started_at")
-        larch_version = manifest.get("larch_version", "")
+        started_at = manifest_started(run_dir)
+        larch_version = manifest_larch_version(run_dir)
         if since_version is not None:
-            parsed = parse_larch_version(larch_version if isinstance(larch_version, str) else "")
+            parsed = parse_larch_version(larch_version)
             if parsed is None or parsed < since_version:
                 continue
         elif cutoff is not None:
@@ -693,7 +682,7 @@ def _enumerate_design_run_dirs(design_root, cutoff, since_version):
                 started = started.replace(tzinfo=datetime.timezone.utc)
             if started < cutoff:
                 continue
-        run_dirs.append((run_dir, manifest))
+        run_dirs.append((run_dir, {"started_at": started_at or "", "larch_version": larch_version}))
     return run_dirs
 
 

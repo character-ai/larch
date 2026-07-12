@@ -277,6 +277,19 @@ def test_prepare_skips_symlinked_run_dirs(tmp_path: Path) -> None:
     assert result.stats.runs_seen == 1
 
 
+def test_prepare_skips_escaping_child_directory(tmp_path: Path) -> None:
+    run = _write_implement_fixture(tmp_path, run_id="RUN-REAL", finding_id="FINDING_1", json_id="REJ_CR1_1")
+    outside = tmp_path / "outside-round"
+    outside.mkdir()
+    _ = (outside / "findings-classification.tsv").write_text("untrusted\n", encoding="utf-8")
+    (run / "round-escape").symlink_to(outside, target_is_directory=True)
+
+    result = ra.prepare(days=7, log_root=tmp_path / "larch-logs", work_dir=tmp_path / "work", repo_root=tmp_path, open_issues=[])
+
+    assert result.stats.runs_seen == 1
+    assert result.verify_count == 1
+
+
 def test_run_started_at_updated_at_and_first_valid_stop(tmp_path: Path) -> None:
     run = tmp_path / "run"
     run.mkdir()

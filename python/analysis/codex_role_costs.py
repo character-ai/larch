@@ -42,6 +42,7 @@ if str(_PYTHON_DIR) not in sys.path:
     sys.path.insert(0, str(_PYTHON_DIR))
 
 from larch.report import tokens  # noqa: E402
+from larch.report import run_log_corpus  # noqa: E402
 from larch.core import config  # noqa: E402 - import after sys.path bootstrap above
 
 from larch.report.report_tokens_cost import (  # noqa: E402
@@ -404,7 +405,7 @@ class Collection:
 def collect(log_root: Path, skill: str, days: int, rates: DisplayRates) -> Collection:
     cutoff = datetime.now(UTC) - timedelta(days=days)
     base = log_root / skill
-    run_dirs = [p for p in base.glob("*") if p.is_dir() and not p.is_symlink()]
+    run_dirs = run_log_corpus.safe_child_run_dirs(base)
     runs: list[RunCost] = []
     skipped = excluded = 0
     for run_dir in run_dirs:

@@ -7,6 +7,7 @@ import os
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -51,6 +52,10 @@ def _emit_walk_warning(
     if on_warning is not None:
         on_warning(warning)
     _warn(warn, warning.message)
+
+
+def _raise_walk_error(exc: OSError) -> None:
+    raise exc
 
 
 def load_run_manifest(run_dir: Path, warn: Callable[[str], None] | None = None) -> dict[str, Any] | None:
@@ -109,7 +114,7 @@ def safe_child_run_dirs(
     dirs: list[Path] = []
     try:
         resolved_base = log_base.resolve(strict=True)
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         _emit_walk_warning(
             WalkWarning(
                 kind=WalkWarningKind.ROOT_MISSING,
@@ -122,7 +127,7 @@ def safe_child_run_dirs(
         return []
     try:
         children = sorted(log_base.glob("*"))
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         _emit_walk_warning(
             WalkWarning(
                 kind=WalkWarningKind.ROOT_UNREADABLE,
@@ -134,7 +139,21 @@ def safe_child_run_dirs(
         )
         return []
     for path in children:
-        if path.is_symlink():
+        try:
+            is_symlink = path.is_symlink()
+            is_dir = path.is_dir()
+        except (OSError, RuntimeError) as exc:
+            _emit_walk_warning(
+                WalkWarning(
+                    kind=WalkWarningKind.CHILD_UNRESOLVABLE,
+                    message=f"could not inspect run directory {path}: {exc}; skipping",
+                    path=path,
+                ),
+                warn=warn,
+                on_warning=on_warning,
+            )
+            continue
+        if is_symlink:
             _emit_walk_warning(
                 WalkWarning(
                     kind=WalkWarningKind.CHILD_SYMLINK,
@@ -145,11 +164,11 @@ def safe_child_run_dirs(
                 on_warning=on_warning,
             )
             continue
-        if not path.is_dir():
+        if not is_dir:
             continue
         try:
             resolved = path.resolve(strict=True)
-        except OSError as exc:
+        except (OSError, RuntimeError) as exc:
             _emit_walk_warning(
                 WalkWarning(
                     kind=WalkWarningKind.CHILD_UNRESOLVABLE,
@@ -231,16 +250,21 @@ def _iter_metadata_objects(
             yield data
 
 
-def _string_field(data: Mapping[str, Any], *keys: str) -> str:
+def _timestamp_field(data: Mapping[str, Any], *keys: str) -> tuple[str, bool]:
+    """Return a valid timestamp and whether a populated value was invalid."""
     for key in keys:
         value = data.get(key)
-        if isinstance(value, str) and value.strip():
-            return value
-        if value is not None and not isinstance(value, str):
-            text = str(value).strip()
-            if text:
-                return text
-    return ""
+        if value is None or (isinstance(value, str) and not value.strip()):
+            continue
+        if not isinstance(value, str):
+            return "", True
+        text = value.strip()
+        try:
+            _ = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return "", True
+        return text, False
+    return "", False
 
 
 def run_started_at(
@@ -259,13 +283,17 @@ def run_started_at(
     candidates; otherwise the first valid object stops the search.
     """
     for data in _iter_metadata_objects(run_dir, manifest_candidates=manifest_candidates):
-        started = _string_field(data, "started_at")
+        started, invalid_started = _timestamp_field(data, "started_at")
         if started:
             return started
         if allow_updated_at_fallback:
-            updated = _string_field(data, "updated_at")
+            updated, invalid_updated = _timestamp_field(data, "updated_at")
             if updated:
                 return updated
+            if invalid_started or invalid_updated:
+                continue
+        elif invalid_started:
+            continue
         if not continue_on_empty:
             return ""
     return ""
@@ -279,12 +307,14 @@ def run_ended_at(
 ) -> str:
     """Return an ended-at timestamp preserving ended/completed/updated precedence."""
     for data in _iter_metadata_objects(run_dir, manifest_candidates=manifest_candidates):
-        ended = _string_field(data, "ended_at", "completed_at")
+        ended, invalid_ended = _timestamp_field(data, "ended_at", "completed_at")
         if ended:
             return ended
-        updated = _string_field(data, "updated_at")
+        updated, invalid_updated = _timestamp_field(data, "updated_at")
         if updated:
             return updated
+        if invalid_ended or invalid_updated:
+            continue
         if not continue_on_empty:
             return ""
     return ""
@@ -299,14 +329,11 @@ def larch_version(
     """Return ``larch_version`` text, or ``""`` when absent or invalid."""
     for data in _iter_metadata_objects(run_dir, manifest_candidates=manifest_candidates):
         value = data.get("larch_version")
-        if isinstance(value, str):
-            text = value.strip()
-        elif value is None:
-            text = ""
-        else:
-            text = str(value).strip()
+        text = value.strip() if isinstance(value, str) else ""
         if text:
-            return text
+            if re.fullmatch(r"[vV]?\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?", text):
+                return text
+            continue
         if not continue_on_empty:
             return ""
     return ""
@@ -342,14 +369,33 @@ def classification_tsv_paths(
     round_sort: RoundSort = "numeric",
 ) -> list[Path]:
     """Return canonical classification TSV paths for one contained run directory."""
+    expected_parts: tuple[str, ...]
     if skill == "design":
-        paths = list((run_dir / "plan-review").glob("round-*/findings-classification.tsv"))
+        expected_parts = ("plan-review",)
     elif skill == "implement":
-        paths = list(run_dir.glob("round-*/findings-classification.tsv"))
+        expected_parts = ()
     elif skill == "review":
-        paths = list(run_dir.glob("review-findings-classification-round-*.tsv"))
+        expected_parts = ()
     else:
         return []
+    paths: list[Path] = []
+    try:
+        canonical_run = run_dir.resolve(strict=True)
+    except (OSError, RuntimeError):
+        return []
+    for path in iter_validated_run_files(run_dir, name="findings-classification.tsv", contain_root=run_dir.parent):
+        try:
+            relative = path.relative_to(canonical_run)
+        except ValueError:
+            continue
+        if skill == "design" and len(relative.parts) == 3 and relative.parts[0] == expected_parts[0] and _ROUND_DIR_RE.fullmatch(relative.parts[1]):
+            paths.append(path)
+        elif skill == "implement" and len(relative.parts) == 2 and _ROUND_DIR_RE.fullmatch(relative.parts[0]):
+            paths.append(path)
+    if skill == "review":
+        for path in iter_validated_run_files(run_dir, name="", contain_root=run_dir.parent):
+            if re.fullmatch(r"review-findings-classification-round-.*\.tsv", path.name) and path.parent == canonical_run:
+                paths.append(path)
     return _sort_classification_paths(paths, round_sort=round_sort)
 
 
@@ -390,55 +436,58 @@ def discover_design_classification_paths(
     """
     paths: list[Path] = []
     for run_dir in safe_child_run_dirs(design_root, warn=warn, on_warning=on_warning):
-        paths.extend(iter_validated_run_files(run_dir, name="findings-classification.tsv"))
+        paths.extend(iter_validated_run_files(run_dir, name="findings-classification.tsv", contain_root=design_root))
     return sorted(paths)
 
 
-def _assert_validated_run_dir(run_dir: Path) -> Path:
+def _assert_validated_run_dir(run_dir: Path, *, contain_root: Path) -> Path:
     """Resolve ``run_dir`` and require it to be a real directory (not a symlink)."""
     if run_dir.is_symlink():
         raise ValueError(f"validated run walk rejected symlink run directory: {run_dir}")
     try:
         resolved = run_dir.resolve(strict=True)
-    except OSError as exc:
+    except (OSError, RuntimeError) as exc:
         raise ValueError(f"validated run walk could not resolve run directory {run_dir}: {exc}") from exc
     if not resolved.is_dir():
         raise ValueError(f"validated run walk requires a directory: {run_dir}")
+    try:
+        resolved_contain = contain_root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ValueError(f"validated run walk could not resolve contain_root {contain_root}: {exc}") from exc
+    if resolved.parent != resolved_contain:
+        raise ValueError(f"validated run walk requires a direct safe child of {contain_root}: {run_dir}")
     return resolved
 
 
 def iter_validated_run_walk(
     run_dir: Path,
     *,
-    contain_root: Path | None = None,
+    contain_root: Path,
 ) -> Iterator[tuple[Path, list[str], list[str]]]:
     """Yield ``(root, dirnames, filenames)`` under a validated run directory.
 
-    Callers must pass a run directory previously returned by
-    ``safe_child_run_dirs`` (or an equivalent containment proof). Escaping
-    descendants are omitted from the walk. This is not a corpus-root traversal
-    API.
+    ``contain_root`` must be the parent corpus directory used with
+    ``safe_child_run_dirs``. Escaping descendants are omitted from the walk.
+    This is not a corpus-root traversal API.
     """
-    resolved_run = _assert_validated_run_dir(run_dir)
+    resolved_run = _assert_validated_run_dir(run_dir, contain_root=contain_root)
     try:
-        resolved_contain = (
-            contain_root.resolve(strict=True) if contain_root is not None else resolved_run
-        )
-    except OSError as exc:
+        resolved_contain = contain_root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
         raise ValueError(f"validated run walk could not resolve contain_root {contain_root}: {exc}") from exc
 
     def _under_contain(path: Path) -> bool:
         try:
             resolved = path.resolve(strict=False)
             _ = resolved.relative_to(resolved_contain)
-        except (OSError, ValueError):
+        except (OSError, RuntimeError, ValueError):
             return False
         return True
 
     if not _under_contain(resolved_run):
         raise ValueError(f"validated run walk rejected escaping run directory: {run_dir}")
 
-    for root, dirnames, filenames in os.walk(run_dir, followlinks=False):
+    for root, dirnames, filenames in os.walk(resolved_run, followlinks=False, onerror=_raise_walk_error):
         root_path = Path(root)
         keep_dirs: list[str] = []
         for name in list(dirnames):
@@ -456,25 +505,28 @@ def iter_validated_run_walk(
         yield root_path, dirnames, keep_files
 
 
-def iter_validated_run_files(run_dir: Path, *, name: str) -> Iterator[Path]:
+def iter_validated_run_files(run_dir: Path, *, name: str, contain_root: Path) -> Iterator[Path]:
     """Yield regular contained files named ``name`` under a validated run directory."""
-    for root_path, _dirnames, filenames in iter_validated_run_walk(run_dir):
-        if name in filenames:
-            yield root_path / name
+    for root_path, _dirnames, filenames in iter_validated_run_walk(run_dir, contain_root=contain_root):
+        if name:
+            if name in filenames:
+                yield root_path / name
+        else:
+            yield from (root_path / filename for filename in filenames)
 
 
 def validated_run_has_escape_symlink(run_dir: Path, *, contain_root: Path) -> bool:
     """Return True when a validated run contains a symlink that escapes ``contain_root``."""
     try:
-        resolved_run = _assert_validated_run_dir(run_dir)
+        resolved_run = _assert_validated_run_dir(run_dir, contain_root=contain_root)
         resolved_contain = contain_root.resolve(strict=True)
-    except (OSError, ValueError):
+    except (OSError, RuntimeError, ValueError):
         return True
 
     def _under_contain(path: Path) -> bool:
         try:
             _ = path.resolve(strict=False).relative_to(resolved_contain)
-        except (OSError, ValueError):
+        except (OSError, RuntimeError, ValueError):
             return False
         return True
 
@@ -487,7 +539,7 @@ def validated_run_has_escape_symlink(run_dir: Path, *, contain_root: Path) -> bo
                 child = root_path / entry_name
                 if child.is_symlink() and not _under_contain(child):
                     return True
-    except OSError:
+    except (OSError, RuntimeError):
         return True
     return False
 
@@ -495,7 +547,7 @@ def validated_run_has_escape_symlink(run_dir: Path, *, contain_root: Path) -> bo
 def validated_run_dir_bytes(run_dir: Path) -> int:
     """Return total bytes under a validated run directory, skipping escaping links."""
     total = 0
-    for root_path, _dirnames, filenames in iter_validated_run_walk(run_dir):
+    for root_path, _dirnames, filenames in iter_validated_run_walk(run_dir, contain_root=run_dir.parent):
         for name in filenames:
             child = root_path / name
             try:

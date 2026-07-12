@@ -161,6 +161,20 @@ def test_larch_version_continue_on_empty(tmp_path: Path) -> None:
     assert run_log_corpus.larch_version(run_dir, continue_on_empty=True) == "1.2.3"
 
 
+def test_metadata_skips_invalid_values_for_valid_fallbacks(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_manifest(run_dir, {"started_at": 42, "updated_at": "not-a-timestamp", "larch_version": "bad"})
+    _write_manifest(
+        run_dir,
+        {"started_at": "2026-05-01T00:00:00Z", "ended_at": "2026-05-02T00:00:00Z", "larch_version": "1.2.3"},
+        name="run-manifest.json",
+    )
+    assert run_log_corpus.run_started_at(run_dir) == "2026-05-01T00:00:00Z"
+    assert run_log_corpus.run_ended_at(run_dir) == "2026-05-02T00:00:00Z"
+    assert run_log_corpus.larch_version(run_dir) == "1.2.3"
+
+
 def test_round_num_from_path() -> None:
     assert run_log_corpus.round_num_from_path(Path("round-3/findings-classification.tsv")) == 3
     assert run_log_corpus.round_num_from_path(Path("review-findings-classification-round-12.tsv")) == 12
@@ -206,7 +220,9 @@ def test_validated_run_escape_and_bytes(tmp_path: Path) -> None:
     assert run_log_corpus.validated_run_has_escape_symlink(run_dir, contain_root=logs) is True
     assert run_log_corpus.validated_run_dir_bytes(run_dir) >= 3
     with pytest.raises(ValueError, match="could not resolve run directory"):
-        _ = list(run_log_corpus.iter_validated_run_walk(tmp_path / "missing-run"))
+        _ = list(run_log_corpus.iter_validated_run_walk(tmp_path / "missing-run", contain_root=tmp_path))
+    with pytest.raises(ValueError, match="direct safe child"):
+        _ = list(run_log_corpus.iter_validated_run_walk(logs, contain_root=logs))
 
 
 def test_safe_child_run_dirs_enumeration_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -255,3 +271,13 @@ def test_classification_numeric_sort_orders_by_round(tmp_path: Path) -> None:
     lexical = run_log_corpus.classification_tsv_paths("implement", run_dir, round_sort="lexical")
     assert [path.parent.name for path in numeric] == ["round-2", "round-10"]
     assert [path.parent.name for path in lexical] == ["round-10", "round-2"]
+
+
+def test_classification_paths_reject_symlinked_tsv(tmp_path: Path) -> None:
+    run_dir = tmp_path / "implement" / "run"
+    round_dir = run_dir / "round-1"
+    round_dir.mkdir(parents=True)
+    outside = tmp_path / "outside.tsv"
+    _ = outside.write_text("untrusted\n", encoding="utf-8")
+    (round_dir / "findings-classification.tsv").symlink_to(outside)
+    assert run_log_corpus.classification_tsv_paths("implement", run_dir) == []
