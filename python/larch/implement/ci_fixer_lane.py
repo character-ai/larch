@@ -15,7 +15,7 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.agents import agents
-from larch.core import config, external_defaults, proc, redact
+from larch.core import config, external_defaults, logging_util, proc, redact
 from larch.core.proc import Runner
 from larch.git import git
 from larch.implement import ci_monitor
@@ -32,6 +32,12 @@ _SALVAGE_STEP_TRAILER = "Larch-Salvage-Step"
 _SALVAGE_STEP_TRAILER_RE = re.compile(
     rf"^{re.escape(_SALVAGE_STEP_TRAILER)}:[ \t]*(.*)$", re.MULTILINE
 )
+# Operator-bail reason when a fixer edit did not shrink the failing CI job set
+# versus the prior reship, so the lane stops reshipping a non-fixing edit (#7122).
+_NO_PROGRESS_REASON = "fixer-no-cross-cycle-progress"
+# A persisted signature row is "<count>\t<sha256>\t<name>..."; the first two
+# fields are the count and digest, the rest are sanitized failing-job names.
+_SIGNATURE_HEADER_FIELDS = 2
 
 Launcher = Callable[[list[str] | None], int]
 
@@ -447,33 +453,36 @@ def _dirty_fingerprints(runner: Runner, *, cwd: Path) -> dict[str, str] | None:
     return fingerprints
 
 
-def _salvage_uncommitted_fixer_edits(
+def _salvage_delta(
     identity: LaneIdentity, *, runner: Runner, baseline: dict[str, str] | None
-) -> str | None:
-    """Commit a fixer's uncommitted working-tree edit and return the new HEAD.
+) -> tuple[str, ...]:
+    """Return the sorted repo-relative paths a fixer edit dirtied versus ``baseline``.
 
-    The CI fixer prompt forbids committing, so a tier that produced a correct
-    edit would otherwise be misclassified as no-progress when HEAD did not
-    advance. When the dirty-tree set changed relative to ``baseline`` (and the
-    launcher exited cleanly), stage exactly the delta paths and commit them so
-    the lane can reship. Returns None when there is nothing to salvage. Raises
-    ``LaneClosedError`` if staging or committing fails so the run surfaces
-    loudly instead of silently abandoning the edit.
+    Non-committing detection shared by the reship gate and the salvage commit so
+    a non-fixing edit can be rejected before it is committed. Returns ``()`` when
+    there is nothing to salvage or the dirty set cannot be measured (callers fall
+    back to the legacy no-progress path).
     """
     if baseline is None:
-        return None
+        return ()
     current = _dirty_fingerprints(runner, cwd=identity.repo_root)
     if current is None:
-        return None
-    delta = tuple(
-        sorted(
-            path
-            for path in (set(baseline) | set(current))
-            if baseline.get(path) != current.get(path)
-        )
-    )
-    if not delta:
-        return None
+        return ()
+    return tuple(sorted(
+        path
+        for path in (set(baseline) | set(current))
+        if baseline.get(path) != current.get(path)
+    ))
+
+
+def _commit_salvage(identity: LaneIdentity, *, runner: Runner, delta: tuple[str, ...]) -> str:
+    """Stage ``delta`` and commit it as a lane-owned salvage edit (#6959).
+
+    The CI fixer prompt forbids committing, so a tier that produced a correct edit
+    would otherwise be misclassified as no-progress when HEAD did not advance.
+    Raises ``LaneClosedError`` if staging or committing fails so the run surfaces
+    loudly instead of silently abandoning the edit.
+    """
     add_result = runner.run(["git", "add", "--", *delta], cwd=str(identity.repo_root))
     if add_result.returncode != 0:
         raise LaneClosedError("failed to stage CI fixer working-tree edits")
@@ -490,6 +499,136 @@ def _salvage_uncommitted_fixer_edits(
         _ = runner.run(["git", "reset", "--quiet", "--", *delta], cwd=str(identity.repo_root))
         raise LaneClosedError("failed to commit CI fixer working-tree edits")
     return _current_head(runner, cwd=identity.repo_root)
+
+
+def _signature_store_path(identity: LaneIdentity) -> Path:
+    key = hashlib.sha256(f"{identity.mode}\0{identity.repo}".encode()).hexdigest()[:20]
+    return identity.handoff_dir / f"{config.CI_FIXER_SIGNATURE_FILE}-{key}.tsv"
+
+
+def _failing_job_signature(
+    runner: Runner, *, run_id: str, repo: str, cwd: str
+) -> frozenset[str] | None:
+    """Return the set of failing CI job names for ``run_id``, or None when unavailable.
+
+    This set is the cross-cycle progress signal: a reship is only progress when
+    it strictly shrinks versus the prior reship. Returns None on any gh/parse
+    failure so the caller fails open (reship) rather than wedging the loop on a
+    measurement gap.
+    """
+    try:
+        jobs, state = ci_monitor.read_failed_jobs(runner, run_id=run_id, repo=repo, cwd=cwd)
+    except Exception:  # pylint: disable=broad-except  # gh failures must fail open, not wedge the loop
+        return None
+    if state != "ready":
+        return None
+    names = {logging_util.sanitize_diagnostic_line(job.name) for job in jobs}
+    names.discard("")
+    return frozenset(names) if names else None
+
+
+def _parse_signature_store(text: str) -> frozenset[str] | None:
+    """Parse a persisted signature row, or None when malformed (self-heal)."""
+    lines = text.splitlines()
+    if len(lines) != 1:
+        return None
+    parts = lines[0].split("\t")
+    if (
+        len(parts) < _SIGNATURE_HEADER_FIELDS
+        or not parts[0].isdigit()
+        or not re.fullmatch(r"[0-9a-f]{64}", parts[1])
+    ):
+        return None
+    names = parts[_SIGNATURE_HEADER_FIELDS:]
+    if int(parts[0]) != len(names) or any(not name or _contains_control(name) for name in names):
+        return None
+    if hashlib.sha256("\t".join(names).encode("utf-8")).hexdigest() != parts[1]:
+        return None
+    return frozenset(names)
+
+
+def _read_prior_signature(identity: LaneIdentity) -> frozenset[str] | None:
+    """Read the last reship's failing-job signature, or None when absent/unreadable.
+
+    Fails open (None) on a missing, symlinked, oversized, or malformed store so
+    corruption self-heals on the next reship instead of wedging the lane.
+    """
+    path = _signature_store_path(identity)
+    if not path.exists() or path.is_symlink() or not path.is_file():
+        return None
+    try:
+        if path.stat().st_size > _MAX_EVIDENCE_BYTES:
+            return None
+        text = path.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeDecodeError):
+        return None
+    return _parse_signature_store(text)
+
+
+def _persist_signature(identity: LaneIdentity, signature: frozenset[str]) -> None:
+    if not signature:
+        return
+    names = sorted(signature)
+    for name in names:
+        if _contains_control(name):
+            raise LaneClosedError("refusing to persist an unsafe CI fixer failing-job signature")
+    digest = hashlib.sha256("\t".join(names).encode("utf-8")).hexdigest()
+    line = f"{len(names)}\t{digest}\t" + "\t".join(names) + "\n"
+    larch_io.atomic_write(_signature_store_path(identity), line, mode=0o600, nofollow=True)
+
+
+def _progress_gate(
+    identity: LaneIdentity, *, runner: Runner
+) -> tuple[bool, frozenset[str] | None]:
+    """Decide whether a fixer edit may reship based on cross-cycle failing-job progress.
+
+    Returns ``(allow_reship, current_signature)``. Fails open (allow) when the
+    current failing set cannot be measured, so a measurement gap never wedges the
+    loop. A reship is progress only when no prior signature exists or the current
+    failing set is a strict subset of the prior reship's set; an equal, larger, or
+    incomparable set means the edit did not clear the failing gate (#7122).
+    """
+    current = _failing_job_signature(
+        runner, run_id=identity.run_id, repo=identity.repo, cwd=str(identity.repo_root)
+    )
+    if current is None:
+        return True, None
+    prior = _read_prior_signature(identity)
+    if prior is None or current < prior:
+        return True, current
+    return False, current
+
+
+def _gated_reship(
+    identity: LaneIdentity, *, runner: Runner, final_head: str, reason: str
+) -> LaneResult:
+    """Apply the cross-cycle progress gate to an already-attributed fixer change."""
+    allow, current_sig = _progress_gate(identity, runner=runner)
+    if not allow:
+        return LaneResult("operator-bail", _NO_PROGRESS_REASON, final_head)
+    if current_sig is not None:
+        _persist_signature(identity, current_sig)
+    return LaneResult("reship", reason, final_head)
+
+
+def _gated_salvage_reship(
+    identity: LaneIdentity, *, runner: Runner, delta: tuple[str, ...], uncommitted_head: str
+) -> LaneResult:
+    """Gate, then salvage-commit and reship a fixer's uncommitted working-tree edit.
+
+    The gate runs before the salvage commit so a non-fixing edit is rejected
+    (operator-bail) and left uncommitted instead of being committed and reshipped
+    forever (#7122). Preserves #6959 on the progress path.
+    """
+    allow, current_sig = _progress_gate(identity, runner=runner)
+    if not allow:
+        return LaneResult("operator-bail", _NO_PROGRESS_REASON, uncommitted_head)
+    committed_head = _commit_salvage(identity, runner=runner, delta=delta)
+    if not _salvage_provenance_valid(identity, runner=runner, live_head=committed_head):
+        raise SalvageProvenanceError("CI fixer salvage commit provenance is unverified")
+    if current_sig is not None:
+        _persist_signature(identity, current_sig)
+    return LaneResult("reship", "fixer-produced-uncommitted-change", committed_head)
 
 
 def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner, launchers: Mapping[str, Launcher]) -> LaneResult:
@@ -520,19 +659,15 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
     if launcher_exit == 0 and final_head != identity.starting_head:
         if not _salvage_provenance_valid(identity, runner=runner, live_head=final_head):
             raise SalvageProvenanceError("CI fixer salvage commit provenance is unverified")
-        return LaneResult("reship", "fixer-produced-change", final_head)
+        return _gated_reship(identity, runner=runner, final_head=final_head, reason="fixer-produced-change")
     if launcher_exit != 0 and final_head != identity.starting_head:
         return LaneResult("operator-bail", "failed-launcher-modified-head", final_head)
     if launcher_exit == 0 and final_head == identity.starting_head:
-        committed_head = _salvage_uncommitted_fixer_edits(
-            identity, runner=runner, baseline=baseline
-        )
-        if committed_head is not None:
-            if not _salvage_provenance_valid(
-                identity, runner=runner, live_head=committed_head
-            ):
-                raise SalvageProvenanceError("CI fixer salvage commit provenance is unverified")
-            return LaneResult("reship", "fixer-produced-uncommitted-change", committed_head)
+        delta = _salvage_delta(identity, runner=runner, baseline=baseline)
+        if delta:
+            return _gated_salvage_reship(
+                identity, runner=runner, delta=delta, uncommitted_head=final_head
+            )
         return LaneResult("retry-next-tool", "fixer-made-no-progress", final_head)
     return LaneResult("retry-next-tool", f"launcher-exit-{launcher_exit}", final_head)
 
