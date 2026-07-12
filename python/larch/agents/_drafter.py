@@ -15,6 +15,7 @@ import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import NoReturn
 
 from larch.core import config
 from larch.design import design_dialectic, plan_grammar
@@ -422,7 +423,7 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
     db = _positions(lines=lines, marker="LARCH_DIALECTIC_BEGIN")
     de = _positions(lines=lines, marker="LARCH_DIALECTIC_END")
 
-    def fail(message: str) -> None:
+    def fail(message: str) -> NoReturn:
         if scout_tmp is not None:
             with contextlib.suppress(FileNotFoundError):
                 scout_tmp.unlink()
