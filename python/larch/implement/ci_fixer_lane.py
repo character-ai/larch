@@ -7,16 +7,19 @@ import contextlib
 import hashlib
 import os
 import re
+import shutil
+import stat
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
 from larch.agents import agents
-from larch.core import config, proc, redact
+from larch.core import config, external_defaults, proc, redact
 from larch.core.proc import Runner
 from larch.git import git
 from larch.implement import ci_monitor
+from larch.report import run_log_batch
 
 _RESULT_TOKENS = frozenset({"reship", "retry-next-tool", "operator-bail"})
 _TIERS = frozenset({"codex", "cursor", "claude"})
@@ -24,6 +27,7 @@ _HEX_RE = re.compile(r"^[0-9a-f]{40,64}$")
 _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _MAX_EVIDENCE_BYTES = 1_048_576
 _ROUNDS_COLUMNS = 7
+_LINEAGE_COLUMNS = 6
 
 Launcher = Callable[[list[str] | None], int]
 
@@ -58,6 +62,30 @@ class LaneResult:
     result: str
     reason: str
     final_head: str
+
+
+@dataclass(frozen=True)
+class CrashFinalizeIdentity:
+    mode: str
+    repo_root: Path
+    implement_tmpdir: Path
+    handoff_dir: Path
+    run_id: str
+    tier: str
+    attempt: int
+    starting_head: str
+    input_fingerprint: str
+    step: str
+    lineage: Path
+    bgjob_rc: str
+    bgjob_elapsed_s: str
+
+
+@dataclass(frozen=True)
+class ToolAvailability:
+    codex: bool
+    cursor: bool
+    claude: bool
 
 
 class LaneClosedError(RuntimeError):
@@ -492,21 +520,36 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
     return LaneResult("retry-next-tool", f"launcher-exit-{launcher_exit}", final_head)
 
 
-def _read_rounds(path: Path, *, identity: LaneIdentity) -> tuple[tuple[str, ...], ...]:
+def _valid_round_parts(parts: tuple[str, ...]) -> bool:
+    if len(parts) != _ROUNDS_COLUMNS or not parts[0].isdigit():
+        return False
+    typed_fields_valid = parts[1] in _TIERS and bool(parts[2]) and parts[5] in _RESULT_TOKENS
+    hashes_valid = (
+        _HEX_RE.fullmatch(parts[3]) is not None
+        and re.fullmatch(r"[0-9a-f]{64}", parts[4]) is not None
+        and _HEX_RE.fullmatch(parts[6]) is not None
+    )
+    return typed_fields_valid and hashes_valid
+
+
+def _read_rounds(path: Path) -> tuple[tuple[str, ...], ...]:
     if not path.exists():
         return ()
     if path.is_symlink() or not path.is_file():
         raise LaneClosedError("rounds file is unsafe")
     rows: list[tuple[str, ...]] = []
-    attempts: set[int] = set()
+    attempts: set[tuple[str, int]] = set()
     for raw in path.read_text(encoding="utf-8", errors="strict").splitlines():
         parts = tuple(raw.split("\t"))
-        if len(parts) != _ROUNDS_COLUMNS or not parts[0].isdigit() or parts[1] not in _TIERS:
+        if not _valid_round_parts(parts):
             raise LaneClosedError("rounds file is malformed")
         attempt = int(parts[0], 10)
-        if attempt in attempts or parts[2] != identity.run_id:
-            raise LaneClosedError("rounds file contains duplicate or foreign identity")
-        attempts.add(attempt)
+        if attempt <= 0:
+            raise LaneClosedError("rounds file is malformed")
+        key = (parts[2], attempt)
+        if key in attempts:
+            raise LaneClosedError("rounds file contains duplicate identity")
+        attempts.add(key)
         rows.append(parts)
     return tuple(rows)
 
@@ -549,8 +592,8 @@ def _persist(identity: LaneIdentity, result: LaneResult, evidence: EvidenceState
     for path in (status_path, rounds_path, bail_path, identity.result_env):
         if path.is_symlink():
             raise LaneClosedError("refusing symlinked result sidecar")
-    prior = _read_rounds(rounds_path, identity=identity)
-    if any(int(row[0]) == identity.attempt for row in prior):
+    prior = _read_rounds(rounds_path)
+    if any(row[2] == identity.run_id and int(row[0]) == identity.attempt for row in prior):
         raise LaneClosedError("attempt was already recorded")
     final_head = _current_head(runner, cwd=identity.repo_root)
     if final_head != result.final_head:
@@ -582,6 +625,10 @@ def _persist(identity: LaneIdentity, result: LaneResult, evidence: EvidenceState
         result_bytes = result_checked.read_bytes()
         if status_bytes != result_bytes or status_bytes != payload.encode():
             raise LaneClosedError("status and bgjob result env disagree")
+        persisted_rounds = _read_rounds(rounds_path)
+        expected_rounds = (*prior, tuple(round_row.rstrip("\n").split("\t")))
+        if persisted_rounds != expected_rounds:
+            raise LaneClosedError("rounds file verification failed")
     except (OSError, UnicodeError, ValueError, LaneClosedError):
         _rollback_sidecars(previous)
         raise
@@ -596,12 +643,377 @@ def _unavailable_evidence(identity: LaneIdentity) -> EvidenceState:
     )
 
 
+def _read_unique_kvs(path: Path, *, root: Path, label: str) -> dict[str, str]:
+    checked = _regular_under(str(path), root=root, label=label)
+    rows: dict[str, str] = {}
+    for raw in checked.read_text(encoding="utf-8", errors="strict").splitlines():
+        if not raw or "=" not in raw:
+            raise LaneClosedError(f"{label} is malformed")
+        key, value = raw.split("=", 1)
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or key in rows or _contains_control(value):
+            raise LaneClosedError(f"{label} is malformed")
+        rows[key] = value
+    return rows
+
+
+def _expected_lineage_path(*, handoff_dir: Path, mode: str, run_id: str) -> Path:
+    key = hashlib.sha256(f"{mode}\0{run_id}".encode()).hexdigest()[:20]
+    return handoff_dir / f"lineage-{key}.tsv"
+
+
+def _validate_crash_identity(  # noqa: C901 - one fail-closed validator owns the hostile envelope boundary
+    *, repo_root_raw: str, implement_tmpdir_raw: str, handoff_dir_raw: str, step: str,
+    runner: Runner,
+) -> CrashFinalizeIdentity:
+    if not re.fullmatch(config.BGJOB_SLUG_PATTERN, step):
+        raise LaneClosedError("step is malformed")
+    repo_root = _canonical_dir(repo_root_raw, label="repo root")
+    tmpdir = _canonical_dir(implement_tmpdir_raw, label="implement tmpdir")
+    handoff = _canonical_dir(handoff_dir_raw, label="handoff directory")
+    if handoff != tmpdir / "ci-fixer" or not _under(handoff, tmpdir):
+        raise LaneClosedError("handoff directory is not canonical")
+    if _repo_toplevel(runner, cwd=repo_root) != repo_root:
+        raise LaneClosedError("repo root does not match git toplevel")
+    launch = handoff / f"launch-{step}.env"
+    launch_rows = _read_unique_kvs(launch, root=handoff, label="launch envelope")
+    required = {
+        "MODE", "RUN_ID", "STARTING_HEAD", "INPUT_FINGERPRINT", "TIER", "ATTEMPT",
+        "STEP", "LINEAGE",
+    }
+    if set(launch_rows) != required or launch_rows["STEP"] != step:
+        raise LaneClosedError("launch envelope identity mismatch")
+    mode = launch_rows["MODE"]
+    run_id = launch_rows["RUN_ID"]
+    if mode not in {"ci", "invariant-primary"}:
+        raise LaneClosedError("launch mode is malformed")
+    if (mode == "ci" and not run_id.isdigit()) or (
+        mode == "invariant-primary" and re.fullmatch(r"[A-Za-z0-9._-]+", run_id) is None
+    ):
+        raise LaneClosedError("launch run id is malformed")
+    tier = launch_rows["TIER"]
+    if tier not in _TIERS:
+        raise LaneClosedError("launch tier is malformed")
+    attempt = _positive_int(launch_rows["ATTEMPT"], label="attempt")
+    starting_head = launch_rows["STARTING_HEAD"]
+    fingerprint = launch_rows["INPUT_FINGERPRINT"]
+    if _HEX_RE.fullmatch(starting_head) is None or re.fullmatch(r"[0-9a-f]{64}", fingerprint) is None:
+        raise LaneClosedError("launch repository identity is malformed")
+    expected_step = _identity_step(
+        identity=(mode, run_id, attempt, tier, starting_head, fingerprint)
+    )
+    if step != expected_step:
+        raise LaneClosedError("launch step does not match its identity")
+    lineage = Path(launch_rows["LINEAGE"])
+    expected_lineage = _expected_lineage_path(handoff_dir=handoff, mode=mode, run_id=run_id)
+    if lineage != expected_lineage or lineage.is_symlink():
+        raise LaneClosedError("launch lineage path is malformed")
+    bgjob_dir = tmpdir / config.BGJOB_TMP_SUBDIR
+    bgjob_dir = _canonical_dir(str(bgjob_dir), label="bgjob directory")
+    result_path = bgjob_dir / f"{step}{config.BGJOB_RESULT_ENV_SUFFIX}"
+    result_rows = _read_unique_kvs(result_path, root=bgjob_dir, label="bgjob result envelope")
+    if result_rows.get("STEP") != step:
+        raise LaneClosedError("bgjob result step mismatch")
+    bgjob_rc = result_rows.get(config.BGJOB_RC_KEY, "")
+    elapsed = result_rows.get(config.BGJOB_ELAPSED_KEY, "")
+    valid_crash_rc = (
+        re.fullmatch(r"-?[1-9][0-9]*", bgjob_rc) is not None
+        or bgjob_rc in {config.BGJOB_RC_TIMEOUT, config.BGJOB_RC_ORPHANED}
+    )
+    if not valid_crash_rc or not elapsed.isdigit():
+        raise LaneClosedError("bgjob result is not a crashed-lane envelope")
+    return CrashFinalizeIdentity(
+        mode=mode, repo_root=repo_root, implement_tmpdir=tmpdir, handoff_dir=handoff,
+        run_id=run_id, tier=tier, attempt=attempt, starting_head=starting_head,
+        input_fingerprint=fingerprint, step=step, lineage=lineage, bgjob_rc=bgjob_rc,
+        bgjob_elapsed_s=elapsed,
+    )
+
+
+def _valid_lineage_parts(parts: tuple[str, ...]) -> bool:
+    if len(parts) != _LINEAGE_COLUMNS or not parts[0].isdigit():
+        return False
+    typed_fields_valid = (
+        int(parts[0], 10) > 0 and parts[1] in _TIERS and parts[4] in _RESULT_TOKENS
+    )
+    hashes_valid = (
+        _HEX_RE.fullmatch(parts[2]) is not None
+        and re.fullmatch(r"[0-9a-f]{64}", parts[3]) is not None
+        and _HEX_RE.fullmatch(parts[5]) is not None
+    )
+    return typed_fields_valid and hashes_valid
+
+
+def _read_lineage(identity: CrashFinalizeIdentity) -> tuple[tuple[str, ...], ...]:
+    if not identity.lineage.exists():
+        return ()
+    if identity.lineage.is_symlink() or not identity.lineage.is_file():
+        raise LaneClosedError("lineage file is unsafe")
+    rows: list[tuple[str, ...]] = []
+    attempts: set[int] = set()
+    tiers: set[str] = set()
+    for raw in identity.lineage.read_text(encoding="utf-8", errors="strict").splitlines():
+        parts = tuple(raw.split("\t"))
+        if not _valid_lineage_parts(parts):
+            raise LaneClosedError("lineage file is malformed")
+        attempt = int(parts[0], 10)
+        if attempt in attempts or parts[1] in tiers:
+            raise LaneClosedError("lineage file contains conflicting rows")
+        attempts.add(attempt)
+        tiers.add(parts[1])
+        rows.append(parts)
+    return tuple(rows)
+
+
+def _read_log_tail(path: Path, *, root: Path, label: str) -> str:
+    if path.parent != root:
+        raise LaneClosedError(f"{label} is unsafe")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        parent_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            parent_flags |= os.O_DIRECTORY
+        if hasattr(os, "O_NOFOLLOW"):
+            parent_flags |= os.O_NOFOLLOW
+        parent_descriptor = os.open(root, parent_flags)
+        try:
+            opened_parent = os.fstat(parent_descriptor)
+            current_parent = root.stat(follow_symlinks=False)
+            if not stat.S_ISDIR(opened_parent.st_mode) or (
+                opened_parent.st_dev, opened_parent.st_ino
+            ) != (current_parent.st_dev, current_parent.st_ino):
+                raise LaneClosedError(f"{label} parent changed while opening")
+            descriptor = os.open(path.name, flags, dir_fd=parent_descriptor)
+            with os.fdopen(descriptor, "rb") as handle:
+                opened = os.fstat(handle.fileno())
+                current = os.stat(path.name, dir_fd=parent_descriptor, follow_symlinks=False)
+                if not stat.S_ISREG(opened.st_mode) or (
+                    opened.st_dev, opened.st_ino
+                ) != (current.st_dev, current.st_ino):
+                    raise LaneClosedError(f"{label} changed while opening")
+                _ = handle.seek(0, os.SEEK_END)
+                size = handle.tell()
+                _ = handle.seek(max(0, size - config.BGJOB_LOG_TAIL_BYTES))
+                return handle.read(config.BGJOB_LOG_TAIL_BYTES).decode("utf-8", errors="replace")
+        finally:
+            os.close(parent_descriptor)
+    except FileNotFoundError:
+        return "[unavailable]"
+    except OSError as exc:
+        raise LaneClosedError(f"{label} could not be read") from exc
+
+
+def _crash_diagnostic(identity: CrashFinalizeIdentity) -> str:
+    bgjob_dir = identity.implement_tmpdir / config.BGJOB_TMP_SUBDIR
+    stdout_tail = _read_log_tail(
+        bgjob_dir / f"{identity.step}.stdout.log", root=bgjob_dir, label="bgjob stdout log"
+    )
+    stderr_tail = _read_log_tail(
+        bgjob_dir / f"{identity.step}.stderr.log", root=bgjob_dir, label="bgjob stderr log"
+    )
+    context = (
+        "Launch context\n"
+        f"mode={identity.mode} run_id={identity.run_id} attempt={identity.attempt} "
+        f"tier={identity.tier} step={identity.step}\n"
+        f"bgjob_rc={identity.bgjob_rc} elapsed_s={identity.bgjob_elapsed_s}\n"
+    )
+    def redact_part(text: str) -> str:
+        without_live_paths = text.replace(
+            str(identity.implement_tmpdir), "<REDACTED-TMPDIR>"
+        ).replace(str(identity.repo_root), "<REDACTED-REPO>")
+        return redact.redact_secrets_only(redact.redact_tmpdir_paths(without_live_paths))
+
+    safe_context = redact_part(context)
+    safe_stdout = redact_part(stdout_tail)
+    safe_stderr = redact_part(stderr_tail)
+    framing = safe_context + "\nStdout tail\n\n\nStderr tail\n"
+    available = max(0, config.BGJOB_LOG_TAIL_BYTES - len(framing.encode("utf-8")))
+    stdout_budget = available // 2
+    stderr_budget = available - stdout_budget
+    stdout_bytes = safe_stdout.encode("utf-8")
+    stderr_bytes = safe_stderr.encode("utf-8")
+    bounded_stdout = (
+        stdout_bytes[-stdout_budget:].decode("utf-8", errors="ignore") if stdout_budget else ""
+    )
+    bounded_stderr = (
+        stderr_bytes[-stderr_budget:].decode("utf-8", errors="ignore") if stderr_budget else ""
+    )
+    safe = (
+        safe_context + "\nStdout tail\n" + bounded_stdout
+        + "\n\nStderr tail\n" + bounded_stderr
+    ).replace("```", "` ` `")
+    safe, residual = redact.scrub_log_secrets(safe)
+    if residual or str(identity.implement_tmpdir) in safe or str(identity.repo_root) in safe:
+        raise LaneClosedError("crash diagnostic redaction verification failed")
+    return safe.encode("utf-8")[: config.BGJOB_LOG_TAIL_BYTES].decode("utf-8", errors="ignore")
+
+
+def _diagnostic_marker(identity: CrashFinalizeIdentity) -> str:
+    material = "\0".join(
+        (identity.mode, identity.run_id, str(identity.attempt), identity.tier, identity.step)
+    )
+    return hashlib.sha256(material.encode()).hexdigest()[:24]
+
+
+def _persist_crash_diagnostic(identity: CrashFinalizeIdentity, diagnostic: str) -> None:
+    marker = _diagnostic_marker(identity)
+    marker_line = f"<!-- larch:ci-fixer-crash:{marker} -->"
+    entry = (
+        f"- **CI fixer lane crashed (`{marker}`)**:\n"
+        f"  {marker_line}\n"
+        "  ```text\n"
+        f"{diagnostic.rstrip()}\n"
+        "  ```"
+    )
+    log = identity.implement_tmpdir / "execution-issues.md"
+    if log.is_symlink() or (log.exists() and not log.is_file()):
+        raise LaneClosedError("crash diagnostic log is unsafe")
+    current = log.read_text(encoding="utf-8", errors="strict") if log.exists() else ""
+    if marker_line in current:
+        if current.count(marker_line) != 1 or entry not in current:
+            raise LaneClosedError("crash diagnostic identity conflicts with persisted content")
+        return
+    try:
+        run_log_batch.append_execution_issue(log_file=log, category="CI Issues", entry=entry)
+        verified = log.read_text(encoding="utf-8", errors="strict")
+    except (OSError, UnicodeError) as exc:
+        raise LaneClosedError("crash diagnostic persistence failed") from exc
+    if verified.count(marker_line) != 1 or entry not in verified:
+        raise LaneClosedError("crash diagnostic verification failed")
+
+
+def _worktree_clean(identity: CrashFinalizeIdentity, *, runner: Runner) -> bool:
+    status = git.status_porcelain(runner, untracked_files="all", cwd=str(identity.repo_root))
+    if status.returncode != 0:
+        raise LaneClosedError("repository status failed")
+    return not status.stdout.strip()
+
+
+def _validated_salvage_head(identity: CrashFinalizeIdentity, *, runner: Runner, live_head: str) -> bool:
+    if live_head == identity.starting_head:
+        return False
+    count = _git_read(
+        runner, ["rev-list", "--count", f"{identity.starting_head}..{live_head}"],
+        cwd=identity.repo_root,
+    )
+    parent = _git_read(runner, ["rev-parse", f"{live_head}^"], cwd=identity.repo_root)
+    subject = _git_read(runner, ["show", "-s", "--format=%s", live_head], cwd=identity.repo_root)
+    return (
+        count == "1" and parent == identity.starting_head
+        and subject == f"Apply CI fixer working-tree edits ({identity.tier})"
+    )
+
+
+def _persist_crash_lineage(
+    identity: CrashFinalizeIdentity, *, prior: tuple[tuple[str, ...], ...], live_head: str
+) -> None:
+    row = (
+        str(identity.attempt), identity.tier, identity.starting_head,
+        identity.input_fingerprint, "retry-next-tool", live_head,
+    )
+    same_attempt = tuple(existing for existing in prior if int(existing[0]) == identity.attempt)
+    if same_attempt:
+        if same_attempt != (row,):
+            raise LaneClosedError("crashed lane conflicts with persisted lineage")
+        return
+    text = "".join("\t".join(existing) + "\n" for existing in (*prior, row))
+    previous = identity.lineage.read_bytes() if identity.lineage.exists() else None
+    try:
+        larch_io.atomic_write(identity.lineage, text, mode=0o600, nofollow=True)
+        if _read_lineage(identity) != (*prior, row):
+            raise LaneClosedError("crash lineage verification failed")
+    except (OSError, UnicodeError, ValueError, LaneClosedError):
+        with contextlib.suppress(OSError):
+            if previous is None:
+                identity.lineage.unlink(missing_ok=True)
+            else:
+                larch_io.atomic_write(
+                    identity.lineage, previous.decode("utf-8"), mode=0o600, nofollow=True
+                )
+        raise
+
+
+def finalize_crashed_lane(
+    identity: CrashFinalizeIdentity, *, runner: Runner,
+    availability: ToolAvailability,
+) -> LaneResult:
+    prior = _read_lineage(identity)
+    existing = tuple(row for row in prior if int(row[0]) == identity.attempt)
+    live_head = _current_head(runner, cwd=identity.repo_root)
+    clean = _worktree_clean(identity, runner=runner)
+    diagnostic = _crash_diagnostic(identity)
+    _persist_crash_diagnostic(identity, diagnostic)
+    if not clean:
+        return LaneResult("operator-bail", "crashed-lane-worktree-drift", live_head)
+    if live_head != identity.starting_head:
+        if _validated_salvage_head(identity, runner=runner, live_head=live_head):
+            return LaneResult("reship", "crashed-lane-salvage-commit", live_head)
+        return LaneResult("operator-bail", "crashed-lane-head-unverified", live_head)
+    expected_existing = (
+        str(identity.attempt), identity.tier, identity.starting_head,
+        identity.input_fingerprint, "retry-next-tool", live_head,
+    )
+    if existing:
+        if existing != (expected_existing,):
+            raise LaneClosedError("crashed lane identity conflicts with persisted lineage")
+        return LaneResult("retry-next-tool", "crashed-lane-recorded", live_head)
+    attempted = (*(row[1] for row in prior), identity.tier)
+    try:
+        selected = external_defaults.next_untried_tier(
+            "implement.ci_recovery_fixer", attempted,
+            codex_present=availability.codex, cursor_present=availability.cursor,
+            claude_present=availability.claude,
+        )
+    except external_defaults.ExternalDefaultError as exc:
+        raise LaneClosedError("crash lineage tier selection failed") from exc
+    if selected.action != config.FIXER_TIER_ACTION_SELECTED:
+        return LaneResult("operator-bail", "crashed-lane-tiers-exhausted", live_head)
+    _persist_crash_lineage(identity, prior=prior, live_head=live_head)
+    return LaneResult("retry-next-tool", "crashed-lane-recorded", live_head)
+
+
+def _crash_finalize_main(argv: list[str], *, runner: Runner) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py ci fixer-lane --finalize-crash")
+    _ = parser.add_argument("--repo-root", required=True)
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    _ = parser.add_argument("--handoff-dir", required=True)
+    _ = parser.add_argument("--step", required=True)
+    args = parser.parse_args(argv)
+    identity: CrashFinalizeIdentity | None = None
+    try:
+        identity = _validate_crash_identity(
+            repo_root_raw=args.repo_root, implement_tmpdir_raw=args.implement_tmpdir,
+            handoff_dir_raw=args.handoff_dir, step=args.step, runner=runner,
+        )
+        result = finalize_crashed_lane(
+            identity, runner=runner,
+            availability=ToolAvailability(
+                codex=shutil.which("codex") is not None,
+                cursor=shutil.which("cursor") is not None,
+                claude=shutil.which("claude") is not None,
+            ),
+        )
+    except (LaneClosedError, OSError, UnicodeError, ValueError):
+        print(f"RESULT=operator-bail\nREASON=crash-finalization-failed\nSTEP={args.step}")
+        return config.EXIT_OK
+    print(
+        f"RESULT={result.result}\nREASON={result.reason}\nMODE={identity.mode}\n"
+        f"RUN_ID={identity.run_id}\nATTEMPT={identity.attempt}\nTIER={identity.tier}\n"
+        f"STEP={identity.step}\nSTARTING_HEAD={identity.starting_head}\n"
+        f"INPUT_FINGERPRINT={identity.input_fingerprint}\nFINAL_HEAD={result.final_head}"
+    )
+    return config.EXIT_OK
+
+
 def main(
     argv: list[str],
     *,
     runner: Runner = proc,
     launchers: Mapping[str, Launcher] | None = None,
 ) -> int:
+    if argv and argv[0] == "--finalize-crash":
+        return _crash_finalize_main(argv[1:], runner=runner)
     selected_launchers: Mapping[str, Launcher] = launchers or {
         "codex": agents.launch_codex_ci_main,
         "cursor": agents.launch_cursor_ci_main,
@@ -632,7 +1044,7 @@ def main(
                 print(f"STATUS=closed-failure\nREASON={redact.redact(str(exc)).replace(chr(10), ' ')}")
                 return config.EXIT_INTERNAL_ERROR
             print(
-                f"STATUS=complete\nRESULT={result.result}\nRUN_ID={identity.run_id}\n"
+                f"STATUS=closed\nRESULT={result.result}\nRUN_ID={identity.run_id}\n"
                 f"ATTEMPT={identity.attempt}\nTIER={identity.tier}\nSTEP={identity.step}"
             )
             return config.EXIT_OK

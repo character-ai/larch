@@ -181,6 +181,18 @@ def test_trusted_text_rejects_symlink_and_partial_escape(tmp_path: Path) -> None
         larch_io.trusted_atomic_write(tmp_path / "escape.txt", "x", root=root)
 
 
+def test_read_trusted_tail_pins_root_and_reads_from_offset(tmp_path: Path) -> None:
+    root = tmp_path / "artifacts"
+    root.mkdir()
+    payload = root / "payload.txt"
+    _ = payload.write_bytes(b"before-after")
+
+    offset, data = larch_io.read_trusted_tail(payload, root=root, offset=len(b"before-"))
+
+    assert offset == len(b"before-after")
+    assert data == b"after"
+
+
 def test_trusted_atomic_write_publishes_regular_file(tmp_path: Path) -> None:
     root = tmp_path / "artifacts"
     root.mkdir()

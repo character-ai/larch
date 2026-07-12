@@ -13,12 +13,12 @@ import shlex
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from threading import Timer
 
+from larch import io as larch_io
 from larch.core import config
 from larch.core.ctx import Ctx
 from larch.core import logging_util
@@ -730,6 +730,15 @@ def _read_tail_update(*, path: Path, offset: int) -> TailReadResult:
     if not path.is_file():
         return TailReadResult(offset=offset, text="")
     try:
+        implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+        root = Path(implement_tmpdir) if implement_tmpdir else None
+        if root is not None and path.absolute().is_relative_to(root.absolute()):
+            next_offset, data = larch_io.read_trusted_tail(
+                path, root=root, offset=offset
+            )
+            return TailReadResult(
+                offset=next_offset, text=data.decode("utf-8", errors="replace")
+            )
         size = path.stat().st_size
         start = 0 if size < offset else offset
         with path.open("rb") as handle:
@@ -907,11 +916,11 @@ def _append_vendor_failure_diagnostics(source: Path, *, site: str, exit_code: in
     if not tmpdir:
         return
     root = Path(tmpdir)
-    if not root.is_dir():
-        return
-    parts_dir = root / "vendor-failure-diagnostics.parts"
     try:
-        parts_dir.mkdir(parents=True, exist_ok=True)
+        root = larch_io.validate_trusted_directory(root)
+        parts_dir = larch_io.ensure_trusted_directory(
+            root / "vendor-failure-diagnostics.parts", root=root
+        )
         cap = _vendor_failure_diag_cap()
         if source.is_file() and source.stat().st_size > 0:
             body = source.read_text(encoding="utf-8", errors="replace")
@@ -920,9 +929,9 @@ def _append_vendor_failure_diagnostics(source: Path, *, site: str, exit_code: in
         text = f"===== {site} =====\nexit-code: {exit_code}\n{body.rstrip()}\n"
         redacted = redact.redact_secrets_only(redact.redact_tmpdir_paths(text))
         capped = _truncate_utf8_bytes(text=redacted, cap=cap)
-        fd, _part = tempfile.mkstemp(prefix="part.", dir=str(parts_dir))
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(capped)
+        larch_io.trusted_atomic_write(
+            parts_dir / f"part.{os.urandom(8).hex()}", capped, root=root
+        )
     except OSError:
         return
 

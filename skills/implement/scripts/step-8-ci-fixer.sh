@@ -99,6 +99,20 @@ if [ "$MODE_ARG" = "--finalize" ]; then
   STEP=$(read_key STEP "$LAUNCH") || fail invalid-launch-envelope
   LINEAGE=$(read_key LINEAGE "$LAUNCH") || fail invalid-launch-envelope
   [ "$STEP" = "$STEP_ARG" ] || fail launch-step-mismatch
+  BGJOB_RESULT="$BGJOB_DIR/$STEP.result.env"
+  safe_child_file "$BGJOB_DIR" "$BGJOB_RESULT" || fail unsafe-bgjob-result
+  [ -f "$BGJOB_RESULT" ] && [ ! -L "$BGJOB_RESULT" ] || fail missing-bgjob-result
+  RESULT_STEP=$(read_key STEP "$BGJOB_RESULT") || fail invalid-bgjob-result
+  BGJOB_RC=$(read_key BGJOB_RC "$BGJOB_RESULT") || fail invalid-bgjob-result
+  BGJOB_ELAPSED_S=$(read_key BGJOB_ELAPSED_S "$BGJOB_RESULT") || fail invalid-bgjob-result
+  [ "$RESULT_STEP" = "$STEP" ] && [ -n "$BGJOB_RC" ] || fail invalid-bgjob-result
+  case "$BGJOB_ELAPSED_S" in ''|*[!0-9]*) fail invalid-bgjob-result ;; esac
+  if [ "$BGJOB_RC" != 0 ]; then
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ci fixer-lane --finalize-crash \
+      --repo-root "$REPO_ROOT" --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+      --handoff-dir "$HANDOFF_DIR" --step "$STEP"
+    exit 0
+  fi
   MERGE_ENV="$BGJOB_DIR/$STEP.merge.env"
   safe_child_file "$BGJOB_DIR" "$MERGE_ENV" || fail unsafe-merge-result
   STATUS="$HANDOFF_DIR/fixer-status.env"

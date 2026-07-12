@@ -22,13 +22,21 @@ Run one tier with this protocol:
 2. Require `BGJOB_STATUS=STARTED`. Capture the emitted dynamic `STEP` exactly. Never derive, hardcode, or reuse it.
 3. Run only `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step "$STEP" --max-wait-s 270` while that tier is active.
 4. On `BGJOB_STATUS=WAIT`, repeat that byte-identical wait command. Run no prose, reads, sleeps, wrapper calls, or alternate polling between waits.
-5. On `BGJOB_STATUS=DONE`, require `BGJOB_RC=0`. Then run `bash "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ci-fixer.sh" --finalize --step "$STEP"`.
+5. On `BGJOB_STATUS=DONE`, branch on `BGJOB_RC`, then run `bash "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ci-fixer.sh" --finalize --step "$STEP"` once.
+   - For `BGJOB_RC=0`, finalize follows the existing validated lane-result route.
+   - For any other `BGJOB_RC`, finalize validates the daemon result envelope, repository safety, crash diagnostics, lineage accounting, and retry selection.
 
 Start and finalize never wait. The Step 8 prompt is the sole wait owner. Only finalize may validate the launch envelope, bgjob merge envelope, `fixer-status.env`, final `HEAD`, and waterfall lineage, then emit compact routing KVs.
 
-Route `RESULT=reship` through the existing Step 8 ship bgjob. Route `RESULT=retry-next-tool` through a fresh start, wait, and finalize cycle. Capture its new dynamic `STEP`; the wrapper retains stable lineage while binding the new launch to the current `HEAD` and diff fingerprint. Route exhausted lineage to `ci-fix-exhausted`. Route `RESULT=operator-bail` through the existing operator-bail gate.
+For a crashed lane, apply this precedence:
 
-Do not rerun architectural-guidelines Phase A and do not call guideline invalidate or pin helpers. The main agent must not read default-path CI evidence, invariant evidence, merge envelopes, `fixer-status.env`, lane transcripts, or failure digests. It must not run `gh run-logs`, `ci distill-log`, Agent-tool fixer rounds, or edit repository files on this path.
+1. A clean, validated lane-owned salvage commit that advanced from `STARTING_HEAD` returns `RESULT=reship`.
+2. Uncommitted drift or an unverified `HEAD` change returns `RESULT=operator-bail`.
+3. Only an unchanged, clean launch state may record the crashed tier and return `RESULT=retry-next-tool` when another tier remains.
+
+Route `RESULT=reship` through the existing Step 8 ship bgjob. Route `RESULT=retry-next-tool` through a fresh start, byte-identical wait loop, and finalize cycle. Capture its new dynamic `STEP`; never reuse the crashed step. The wrapper retains stable lineage while binding the new launch to the current `HEAD` and diff fingerprint. Route exhausted tiers through `RESULT=operator-bail` with bail reason `ci-fix-exhausted`; route every crash-finalization validation or persistence failure through the existing operator-bail gate.
+
+Do not rerun architectural-guidelines Phase A and do not call guideline invalidate or pin helpers. The main agent must not read default-path CI evidence, invariant evidence, merge envelopes, `fixer-status.env`, lane transcripts, daemon stdout or stderr logs, or failure digests. It must not run `gh run-logs`, `ci distill-log`, Agent-tool fixer rounds, or edit repository files on this path.
 
 ## Kill switch
 
