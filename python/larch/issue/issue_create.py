@@ -16,7 +16,7 @@ from collections.abc import Callable
 
 from larch.core import config
 from larch.core import proc
-from larch.design.plan_grammar import _balanced_fence_line_indices  # type: ignore[reportPrivateUsage]  # shared fence helper; plan_grammar owns the definition
+from larch.design.plan_grammar import balanced_fence_line_indices
 from larch.git import gh
 from larch.core.redact import redact_secrets_outbound
 from larch.state import session_env as _session_env
@@ -201,7 +201,7 @@ class ParseState:
 def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
     state = ParseState()
     lines = text.splitlines()
-    fenced_lines = _balanced_fence_line_indices(lines)
+    fenced_lines = balanced_fence_line_indices(lines)
     for index, line in enumerate(lines):
         in_fence = index in fenced_lines
         if not in_fence and (match := OOS_HEADING_RE.match(line)):

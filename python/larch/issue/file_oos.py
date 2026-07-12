@@ -34,7 +34,7 @@ from larch.report import run_log_corpus
 from larch.report import run_logs
 from larch.review import voting
 from larch.review.review_types import count_non_security_blocks, is_canonical_heading, parse_blocks
-from larch.design.plan_grammar import _balanced_fence_line_indices  # type: ignore[reportPrivateUsage]  # shared fence helper; plan_grammar owns the definition
+from larch.design.plan_grammar import balanced_fence_line_indices
 from larch.issue.issue_create import ParsedItem, parse_issue_input
 from larch.core.redact import redact
 
@@ -742,7 +742,7 @@ def _validate_issue_cap_input(text: str) -> list[ParsedItem]:
         return []
     items, _mode = parse_issue_input(text)
     lines = text.splitlines()
-    fenced_lines = _balanced_fence_line_indices(lines)
+    fenced_lines = balanced_fence_line_indices(lines)
     heading_count = sum(
         1
         for index, line in enumerate(lines)
