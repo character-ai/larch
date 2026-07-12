@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import re
 import subprocess
 import sys
@@ -11,6 +12,7 @@ from functools import cache
 from pathlib import Path
 
 import pytest
+from pytest_sharding import ENV_SHARD_COUNT, ENV_SHARD_ID
 
 from .skill_structure_pins import (
     ALL_PINS,
@@ -283,7 +285,17 @@ def _collect_node_ids(*, selection: str | None = None) -> set[str]:
     command = [sys.executable, "-m", "pytest", "--collect-only", "-q", __file__]
     if selection is not None:
         command.extend(("-k", selection))
-    result = subprocess.run(command, cwd=REPO_ROOT, text=True, capture_output=True, check=False)
+    env = os.environ.copy()
+    _ = env.pop(ENV_SHARD_ID, None)
+    _ = env.pop(ENV_SHARD_COUNT, None)
+    result = subprocess.run(
+        command,
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+        env=env,
+    )
     assert result.returncode == 0, result.stdout + result.stderr
     return {
         line.removeprefix("python/")
