@@ -61,6 +61,16 @@ def walk(log_root: Path) -> None:
     assert "raw-glob" in {finding.rule for finding in lint.scan_source(relpath="larch/example.py", source=source)}
 
 
+def test_scan_tracks_annotated_corpus_aliases() -> None:
+    source = """
+from pathlib import Path
+def walk(log_root: Path) -> None:
+    corpus: Path = log_root
+    list(corpus.glob("*"))
+"""
+    assert "raw-glob" in {finding.rule for finding in lint.scan_source(relpath="larch/example.py", source=source)}
+
+
 def test_scan_allows_shared_helpers_and_fixed_artifact_reads() -> None:
     source = """
 from pathlib import Path

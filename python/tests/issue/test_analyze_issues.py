@@ -2187,6 +2187,15 @@ def test_ground_truth_metadata_helpers_preserve_policies(tmp_path: Path) -> None
     )
     assert gt._ground_truth_run_ended_at(ended_run) is None
 
+    invalid_ended = tmp_path / "invalid-ended"
+    invalid_ended.mkdir()
+    (invalid_ended / "manifest.json").write_text(json.dumps({"ended_at": "not-a-timestamp"}), encoding="utf-8")
+    (invalid_ended / "run-manifest.json").write_text(
+        json.dumps({"ended_at": "2026-03-02T00:00:00Z"}),
+        encoding="utf-8",
+    )
+    assert gt._ground_truth_run_ended_at(invalid_ended) is None
+
     empty_pref = tmp_path / "empty-pref"
     empty_pref.mkdir()
     (empty_pref / "manifest.json").write_text(json.dumps({"started_at": ""}), encoding="utf-8")

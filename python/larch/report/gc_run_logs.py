@@ -100,8 +100,8 @@ def _is_under(*, path: Path, root: Path) -> bool:
     return True
 
 
-def _has_escape_symlink(*, path: Path, logs_root: Path) -> bool:
-    return run_log_corpus.validated_run_has_escape_symlink(path, contain_root=logs_root)
+def _has_escape_symlink(*, path: Path, contain_root: Path) -> bool:
+    return run_log_corpus.validated_run_has_escape_symlink(path, contain_root=contain_root)
 
 
 def _keep_file(*, filename: str, skill: str) -> bool:
@@ -156,7 +156,7 @@ def _plan(*, repo_root: Path, logs_root: Path, older_than: int, delete: bool = F
                 is_recent = run_date >= cutoff_dt
             if is_recent:
                 continue
-            if _has_escape_symlink(path=run_dir, logs_root=logs_root):
+            if _has_escape_symlink(path=run_dir, contain_root=logs_root / skill):
                 counters.skipped += 1
                 _err(f"  skip (escape-symlink): {skill}/{run_name}")
                 continue
@@ -194,8 +194,8 @@ def _slim_dir(*, logs_root: Path, item: PlannedDir) -> int:
             _remove_tree(path)
         elif entry.is_file(follow_symlinks=False) and not _keep_file(filename=path.name, skill=item.skill):
             path.unlink()
-    (item.path / "gc-slimmed").write_text(item.run_date + "\n", encoding="utf-8")
     after = _dir_bytes(item.path)
+    (item.path / "gc-slimmed").write_text(item.run_date + "\n", encoding="utf-8")
     return max(0, before - after)
 
 

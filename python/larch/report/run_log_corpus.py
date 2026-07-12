@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import stat
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -56,6 +57,34 @@ def _emit_walk_warning(
 
 def _raise_walk_error(exc: OSError) -> None:
     raise exc
+
+
+def _is_safe_log_root(
+    log_base: Path,
+    *,
+    warn: Callable[[str], None] | None,
+    on_warning: Callable[[WalkWarning], None] | None,
+) -> bool:
+    try:
+        unsafe_root = log_base.is_symlink() or not log_base.is_dir()
+    except (OSError, RuntimeError) as exc:
+        unsafe_root = True
+        root_error = str(exc)
+    else:
+        root_error = ""
+    if not unsafe_root:
+        return True
+    detail = f": {root_error}" if root_error else ""
+    _emit_walk_warning(
+        WalkWarning(
+            kind=WalkWarningKind.ROOT_MISSING,
+            message=f"log root {log_base} is missing, not a directory, or a symlink{detail}; no run logs scanned",
+            path=log_base,
+        ),
+        warn=warn,
+        on_warning=on_warning,
+    )
+    return False
 
 
 def load_run_manifest(run_dir: Path, warn: Callable[[str], None] | None = None) -> dict[str, Any] | None:
@@ -112,6 +141,8 @@ def safe_child_run_dirs(
     distinct counters. Does not require an accepted ``manifest.json``.
     """
     dirs: list[Path] = []
+    if not _is_safe_log_root(log_base, warn=warn, on_warning=on_warning):
+        return []
     try:
         resolved_base = log_base.resolve(strict=True)
     except (OSError, RuntimeError) as exc:
@@ -456,6 +487,8 @@ def _assert_validated_run_dir(run_dir: Path, *, contain_root: Path) -> Path:
         raise ValueError(f"validated run walk could not resolve contain_root {contain_root}: {exc}") from exc
     if resolved.parent != resolved_contain:
         raise ValueError(f"validated run walk requires a direct safe child of {contain_root}: {run_dir}")
+    if not any(child.resolve(strict=True) == resolved for child in safe_child_run_dirs(contain_root)):
+        raise ValueError(f"validated run walk requires safe-child selection from {contain_root}: {run_dir}")
     return resolved
 
 
@@ -510,9 +543,20 @@ def iter_validated_run_files(run_dir: Path, *, name: str, contain_root: Path) ->
     for root_path, _dirnames, filenames in iter_validated_run_walk(run_dir, contain_root=contain_root):
         if name:
             if name in filenames:
-                yield root_path / name
+                candidate = root_path / name
+                try:
+                    if stat.S_ISREG(candidate.lstat().st_mode):
+                        yield candidate
+                except OSError:
+                    continue
         else:
-            yield from (root_path / filename for filename in filenames)
+            for filename in filenames:
+                candidate = root_path / filename
+                try:
+                    if stat.S_ISREG(candidate.lstat().st_mode):
+                        yield candidate
+                except OSError:
+                    continue
 
 
 def validated_run_has_escape_symlink(run_dir: Path, *, contain_root: Path) -> bool:
@@ -533,7 +577,7 @@ def validated_run_has_escape_symlink(run_dir: Path, *, contain_root: Path) -> bo
     if not _under_contain(resolved_run):
         return True
     try:
-        for root, dirs, files in os.walk(run_dir, followlinks=False):
+        for root, dirs, files in os.walk(run_dir, followlinks=False, onerror=_raise_walk_error):
             root_path = Path(root)
             for entry_name in list(dirs) + files:
                 child = root_path / entry_name

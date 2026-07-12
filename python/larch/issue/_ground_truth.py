@@ -360,6 +360,7 @@ def _ground_truth_run_ended_at(run_dir: Path) -> datetime | None:
         run_log_corpus.run_ended_at(
             run_dir,
             continue_on_empty=False,
+            manifest_candidates=("manifest.json",),
         )
     )
 

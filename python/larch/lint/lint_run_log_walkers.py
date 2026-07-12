@@ -233,15 +233,25 @@ class _Walker(ast.NodeVisitor):
             self._safe_run_aliases.update(self._target_names(node.target))
         self.generic_visit(node)
 
-    def visit_Assign(self, node: ast.Assign) -> None:
+    def _track_assignment(self, node: ast.Assign | ast.AnnAssign) -> None:
         self.generic_visit(node)
-        names = set().union(*(self._target_names(target) for target in node.targets))
-        if self._expr_is_safe_run(node.value):
+        targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+        names = set().union(*(self._target_names(target) for target in targets))
+        value = node.value
+        if value is None:
+            return
+        if self._expr_is_safe_run(value):
             self._safe_run_aliases.update(names)
             self._corpus_aliases.difference_update(names)
-        elif self._expr_is_corpus(node.value):
+        elif self._expr_is_corpus(value):
             self._corpus_aliases.update(names)
             self._safe_run_aliases.difference_update(names)
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        self._track_assignment(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        self._track_assignment(node)
 
     def _loop_uses_both_manifests(self, node: ast.For) -> bool:
         seen: set[str] = set()
@@ -342,8 +352,10 @@ def collect_findings(root: Path) -> list[Finding]:
         if _is_excluded_relpath(rel) and not tracked.startswith("skills/"):
             continue
         path = root / tracked
-        if not path.is_file() or path.is_symlink():
-            continue
+        if path.is_symlink():
+            raise RuntimeError(f"tracked Python source is a symlink: {tracked}")
+        if not path.is_file():
+            raise RuntimeError(f"tracked Python source is not a regular file: {tracked}")
         try:
             source = path.read_text(encoding="utf-8")
         except OSError as exc:
