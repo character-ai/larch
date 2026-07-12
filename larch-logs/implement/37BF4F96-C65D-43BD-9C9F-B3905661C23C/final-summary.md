@@ -66,17 +66,17 @@ codex/apply                               │                                 �
 
 ## Architectural invariants
 
-Architectural assessment unavailable.
+No invariants apply to this change. The diff introduces a new shared lint engine module and tests, which does not intersect with any invariant-covered areas (gates, pause/resume, run-logs, panels, ship lifecycle, or agent contract consumption).
 
 ## Architectural guidelines
 
-Architectural assessment unavailable.
+No deviations identified. The code follows architectural guidelines: uses frozen dataclasses (G-Py-1), annotates types beyond signatures including locals (G-Py-2), prefers domain types over primitives (G-Py-3), fails loudly with specific exceptions (G-Py-4), isolates side effects behind injected Runner (G-Py-5), uses typed functions over external CLIs with injected Runner (G-Py-7), acquires resources through context managers (os.fdopen, G-Py-13), defines constants as module-level Final (G-Cfg-1), and validates untrusted git outputs against allowlists (G-Sec-1).
 
 ## /implement run 37BF4F96-C65D-43BD-9C9F-B3905661C23C: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:35:30
-- **Cost**: 💰 TOTAL ~$12.69: Claude/GLM-5.2 token $1.02 (estimated $0.07), Codex-5.6 $4.88, Codex-mini $0.81, Cursor $6.52 (Composer $4.06, Grok $2.46), Claude (subprocess) $0.41  |  Tokens: 19705k
+- **Cost**: 💰 TOTAL ~$12.82: Claude/GLM-5.2 token $2.98 (estimated $0.20), Codex-5.6 $4.88, Codex-mini $0.81, Cursor $6.52 (Composer $4.06, Grok $2.46), Claude (subprocess) $0.41  |  Tokens: 26212k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7019: https://github.com/character-ai/larch/issues/7019
 - **Plan review**: N/A
