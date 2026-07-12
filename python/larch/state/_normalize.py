@@ -224,7 +224,7 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     )
 
     terminal_merge = merge_result in _TERMINAL_MERGE_RESULTS
-    stall_is_terminal = _stall_signal_is_terminal(
+    stall_is_terminal = terminal_merge or _stall_signal_is_terminal(
         ship=ship, fin=fin_eff, bail_user=bail_user
     )
     if (any_stall or phase_stalled) and stall_is_terminal:
