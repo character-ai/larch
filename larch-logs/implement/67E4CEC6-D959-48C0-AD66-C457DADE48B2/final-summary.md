@@ -72,24 +72,25 @@ Warnings (1):
 
 ## Architectural invariants
 
-No invariant violations identified. The change migrates raw corpus walkers (glob/scandir/walk/dual-manifest loops) to a centralized run_log_corpus module, adds a lint rule to enforce the new boundary, and migrates all call sites. None of the changed code touches gate disarm logic (I-Gate-1), pause/resume artifacts (I-Pause-1), persisted step result identity or stale-result consumers (I-Stale-1), run-log flush completeness or execution-issue recording (I-Flush-1 / I-Commit-1), committed outcome labels (I-Outcome-1), panel slot tracking (I-Slot-1), agent-tool-contract compliance (I-Agent-1), or pre-merge mutation guards on closed PRs (I-Ship-1).
+No invariant violations identified. The diff introduces a new lint tool enforcing `run_log_corpus` as the sole corpus-walker owner, promotes `_safe_child_run_dirs` to a public API, and migrates scattered raw `glob`/`scandir`/`walk` call sites to the shared helpers. None of the changed code touches gate disarm logic (I-Gate-1), pause snapshots (I-Pause-1), persisted step-result consumption (I-Stale-1), run-log flush paths (I-Flush-1, I-Commit-1), outcome labels (I-Outcome-1), panel slot accounting (I-Slot-1), agent verdict emission (I-Agent-1), or ship/recovery routes (I-Ship-1).
 
 ## Architectural guidelines
 
-No guideline deviations identified. The change exemplifies G-Fix-1 (fixes the class by consolidating all corpus walkers into run_log_corpus rather than patching individual sites), G-Enf-1 (promotes the convention to a pre-commit lint and make target), and G-Enf-2 (three known residual modules are exempted with issue-number-bearing reasons in EXEMPT_RELPATHS, functioning as a shrinking baseline). New dataclasses (WalkWarning, Finding) use frozen=True per G-Py-1. All noqa/lint suppressions carry inline reasons per G-Py-11. The gc_run_logs.py contain_root tightening from logs_root to logs_root/skill is correct: validated_run_has_escape_symlink requires the immediate parent, and this is now consistent across the codebase. The reordering of after=_dir_bytes before writing gc-slimmed in _slim_dir is not a G-Idem-2 violation because gc-slimmed is the completion marker and is now correctly written only after the postcondition (the slimmed byte total) is measured. The fluff-analysis.py _enumerate_design_run_dirs change removes the manifest-is-None skip guard; runs without manifests are now included when no since_version/cutoff filter is active, but this is a calibration script with loose data contracts and the downstream code handles empty started_at gracefully via _parse_started_at returning None.
+No guideline deviations identified. The change is directly aligned with G-Enf-1 (promoting a recurring judgment call to a mechanical lint) and G-Enf-2 (EXEMPT_RELPATHS carries per-entry #7008 reasons, shrinking as the deletion targets land). The new WalkWarning dataclass uses frozen=True (G-Py-1). Inline suppressions carry explicit reasons (G-Py-11). The new main() is registered by (domain, verb) in cli.py (G-CLI-1). Symlink rejection and containment checking are extended, not relaxed (G-Sec-4). The reordering of gc-slimmed marker write to occur after _dir_bytes() measurement in _slim_dir aligns with G-Idem-2 (write completion marker after the postcondition is verified). The contain_root narrowing from logs_root to logs_root/skill in _has_escape_symlink is a security tightening, not a deviation.
 
-## /implement run 67E4CEC6-D959-48C0-AD66-C457DADE48B2: shipping
+## /implement run 67E4CEC6-D959-48C0-AD66-C457DADE48B2: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 01:34:24
-- **Cost**: 💰 TOTAL ~$39.53: Claude $6.82, Codex-5.6 $11.73, Codex-mini $1.70, Cursor $15.82 (Composer $12.26, Grok $3.56), Claude (subprocess) $3.46  |  Tokens: 70002k
+- **Cost**: 💰 TOTAL ~$40.53: Claude $7.77, Codex-5.6 $11.73, Codex-mini $1.70, Cursor $15.82 (Composer $12.26, Grok $3.56), Claude (subprocess) $3.51  |  Tokens: 73027k
 - **Issue**: #7009: https://github.com/character-ai/larch/issues/7009
+- **PR**: #7093: https://github.com/character-ai/larch/pull/7093
 - **Plan review**: N/A
 - **Plan coverage**: 25/27 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 23/34 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1777/-292, larch-logs +1816/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
