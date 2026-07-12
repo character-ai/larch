@@ -34,7 +34,7 @@ For a crashed lane, apply this precedence:
 2. Uncommitted drift or an unverified `HEAD` change returns `RESULT=operator-bail`.
 3. Only an unchanged, clean launch state may record the crashed tier and return `RESULT=retry-next-tool` when another tier remains.
 
-Route `RESULT=reship` through the existing Step 8 ship bgjob. Route `RESULT=retry-next-tool` through a fresh start, byte-identical wait loop, and finalize cycle. Capture its new dynamic `STEP`; never reuse the crashed step. The wrapper retains stable lineage while binding the new launch to the current `HEAD` and diff fingerprint. Route exhausted tiers and every crash-finalization validation or persistence failure through `RESULT=operator-bail` and the existing operator-bail gate.
+Route `RESULT=reship` through the existing Step 8 ship bgjob. Route `RESULT=retry-next-tool` through a fresh start, byte-identical wait loop, and finalize cycle. Capture its new dynamic `STEP`; never reuse the crashed step. The wrapper retains stable lineage while binding the new launch to the current `HEAD` and diff fingerprint. Route exhausted tiers through `RESULT=operator-bail` with bail reason `ci-fix-exhausted`; route every crash-finalization validation or persistence failure through the existing operator-bail gate.
 
 Do not rerun architectural-guidelines Phase A and do not call guideline invalidate or pin helpers. The main agent must not read default-path CI evidence, invariant evidence, merge envelopes, `fixer-status.env`, lane transcripts, daemon stdout or stderr logs, or failure digests. It must not run `gh run-logs`, `ci distill-log`, Agent-tool fixer rounds, or edit repository files on this path.
 
