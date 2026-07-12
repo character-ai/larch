@@ -1,0 +1,45 @@
+#### Problem
+
+`python/larch/core/architectural_guidelines.py` (3,216 lines, the largest runtime module) maintains the guidelines and invariants lifecycles as hand-synced twins: 44 of its 149 top-level functions are invariant-named, 37 of them exact name-twins of guideline functions. Example: `prepare_compose_assessment` (line 1855) vs `prepare_invariant_compose_assessment` (line 1987) are 78 lines each with 10 lines differing, all mechanical renames; docstrings admit it ("mirrors guideline artifact writer", line 863; "mirrors guideline gate exits", 1932). The twin family continues in `implement/ship_guidelines.py` (~250 of 772 lines: paired GateResult types, classify/read/load functions), `ship.py` (`_guidelines_gate_before_pr`/`_invariants_gate_before_pr`, paired flush and outcome-match helpers), 22 paired CLI verbs (`larch/cli.py:165-187`), and the 24-line script pair `skills/implement/scripts/step-architectural-{guidelines,invariants}-write-compose.sh` (differ by ~2 lines).
+
+Drift is live: `_classify_invariant_ship_outcome` grew a `REASON_INVARIANTS_EMPTY` branch its guideline twin lacks. Every schema or gate change must land twice per layer across three layers.
+
+#### Goal
+
+A frozen `AssessmentKind` descriptor (artifact paths, KV prefix, status-field name, reason-token set, heading regex, outcome vocabulary) with single generic gate/classify/read/prepare/compose functions. `implement/architectural_assessment.py:210` (`_kind_paths(kind, ...)`) already proves the parameterized design over the same artifacts. Both CLI verb families stay as 2-line partials so skill surfaces do not change.
+
+#### Size
+
+About 2,000 lines of paired code; net reduction 900-1,200 lines, and the contract's edit fan-out drops from two copies per layer to one.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Collapse the guideline/invariant twin function families into single generic functions driven by a frozen `AssessmentKind` descriptor.
+- Hit the issue's net -900 to -1,200 line reduction; drop the edit fan-out from two copies per layer to one.
+- Preserve current behavior exactly. Every twin divergence becomes descriptor config, not a behavior change.
+
+### Non-goals
+- No ship-gate behavior change. The empty-invariants and `violation`-vocab drift is preserved via the descriptor, not reconciled.
+- No change to skill-facing surfaces: the 22 `cli.py` verb keys, their `_MACHINE_STDOUT_KEYS` entries, the `validate_*_ship_outcome_record` JSON schema, and the shell verb names.
+- No new invariant functionality for guideline-only asymmetries (staged-write, pin/invalidate helpers stay as they are).
+
+### Approach sketch
+- Add a frozen `AssessmentKind` descriptor with two instances (GUIDELINES, INVARIANTS) carrying artifact paths, KV prefix, status-field name, reason-token set, heading regex, outcome vocabulary, and empty-handling policy.
+- Rewrite the ~37 mechanical-rename twins in `architectural_guidelines.py` as one generic function each, keeping every public twin name as a thin partial that delegates to the generic.
+- Fold the ~6 truly divergent twins (present-empty precheck, the two validators, `parse_*_entries`, the ship classifiers) into descriptor-branched single functions.
+- Collapse the ship layer (`ship_guidelines.py` GateResult/ShipOutcome + classify/read/load; `ship.py` gate/flush/outcome-match helpers) the same way; delete the dead invariant flush.
+- Keep the 22 CLI verbs as 2-line partials; reduce the shell-script pair to thin wrappers over one parameterized verb path.
+
+### Surfaces in scope
+- `python/larch/core/architectural_guidelines.py`, `config.py`
+- `python/larch/implement/ship_guidelines.py`, `ship.py`
+- `python/larch/cli.py` (registry keys unchanged; partial targets)
+- `skills/implement/scripts/step-architectural-{guidelines,invariants}-write-compose.sh`
+- `python/tests/core/test_architectural_guidelines.py`, `python/tests/implement/test_ship.py`
+
+### Open questions
+- Descriptor home: extend `config.py` vs. a small new `assessment_kind.py` module. Resolve in drafting.
+- Shell pair: two thin wrappers vs. one shared parameterized script. Resolve in drafting.

@@ -1,0 +1,15 @@
+# contract-unification [FEATURE] Kind-parameterize guidelines/invariants twins
+
+#### Problem
+
+`python/larch/core/architectural_guidelines.py` (3,216 lines, the largest runtime module) maintains the guidelines and invariants lifecycles as hand-synced twins: 44 of its 149 top-level functions are invariant-named, 37 of them exact name-twins of guideline functions. Example: `prepare_compose_assessment` (line 1855) vs `prepare_invariant_compose_assessment` (line 1987) are 78 lines each with 10 lines differing, all mechanical renames; docstrings admit it ("mirrors guideline artifact writer", line 863; "mirrors guideline gate exits", 1932). The twin family continues in `implement/ship_guidelines.py` (~250 of 772 lines: paired GateResult types, classify/read/load functions), `ship.py` (`_guidelines_gate_before_pr`/`_invariants_gate_before_pr`, paired flush and outcome-match helpers), 22 paired CLI verbs (`larch/cli.py:165-187`), and the 24-line script pair `skills/implement/scripts/step-architectural-{guidelines,invariants}-write-compose.sh` (differ by ~2 lines).
+
+Drift is live: `_classify_invariant_ship_outcome` grew a `REASON_INVARIANTS_EMPTY` branch its guideline twin lacks. Every schema or gate change must land twice per layer across three layers.
+
+#### Goal
+
+A frozen `AssessmentKind` descriptor (artifact paths, KV prefix, status-field name, reason-token set, heading regex, outcome vocabulary) with single generic gate/classify/read/prepare/compose functions. `implement/architectural_assessment.py:210` (`_kind_paths(kind, ...)`) already proves the parameterized design over the same artifacts. Both CLI verb families stay as 2-line partials so skill surfaces do not change.
+
+#### Size
+
+About 2,000 lines of paired code; net reduction 900-1,200 lines, and the contract's edit fan-out drops from two copies per layer to one.
