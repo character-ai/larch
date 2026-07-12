@@ -1,0 +1,1 @@
+Add a guarded `/triage` workflow that verifies issue claims, produces a design-ready diagnosis, and applies verified GitHub mutations. Keep investigation inline, isolate scratch writes, and put deterministic mutation, redaction, concurrency, and postcondition checks behind `python/cli.py`.
