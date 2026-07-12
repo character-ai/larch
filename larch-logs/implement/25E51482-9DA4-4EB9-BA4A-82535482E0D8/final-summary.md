@@ -66,17 +66,17 @@ Warnings (0):
 
 ## Architectural invariants
 
-No violations identified. The waterfall coordinator computes diff fingerprints and knowledge SHA256s independently and validates them against the agent-echoed values in `_parse_result_row`; no gate disarms on agent-authored metadata (I-Gate-1 clean). Each lane result is accepted only when its embedded `head_sha`, `base_ref`, `diff_fingerprint`, and `knowledge_sha256` match the coordinator-computed evidence; `_HeadDrift` propagates up through `_prepare_pending` and `run()` triggers a full re-materialization (I-Stale-1 clean). The change does not touch pause snapshots, run-log flush paths, committed run-log fields, panel slot accounting, or pre-merge mutation routes; those invariants are not implicated by the changed code.
+No violations identified. The waterfall validates evidence paths before granting agent access (_validate_prompt_evidence_paths, G-Sec-4 pattern); Cursor write-cleanliness is verified via an independently computed dirty-tree sidecar (_cursor_dirty_tree_clean, consistent with I-Gate-1); HEAD SHA, diff_fingerprint, and knowledge_sha256 propagate through every parsed result row and are validated in _parse_result_row (I-Stale-1); lane failures are recorded to the latest_detail map and written to persisted unavailable sidecars (I-Flush-1); unknown extra result rows cause parsed.clear() so no fabricated verdict survives (I-Agent-1).
 
 ## Architectural guidelines
 
-No deviations identified. New constants (`ARCHITECTURAL_ASSESSMENT_ROLE`, `ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL`, `ARCHITECTURAL_ASSESSMENT_CODEX_MODEL`, `ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL`, `ENV_CLAUDE_BINARY_FOUND`) are defined once in `config.py` as `Final` and consumed via those constants at every call site (G-Cfg-1). New dataclasses (`AssessmentLane`, `LaneOutcome`, `LaneContext`) are `frozen=True` (G-Py-1). Side effects are injectable through `launchers` and `availability` params; tests exercise them (G-Py-5). `_write_text_atomic` delegates to `larch_io.trusted_atomic_write`; `_lane_output_path`, `_write_json_atomic`, and `_review_validate_args` all reject symlinks and non-regular files at use time (G-IO-1, G-Sec-4). `_validate_prompt_evidence_paths` rejects any diff or knowledge path outside the evidence directory, preventing path escape. `_record_invalid_result_row` clears all parsed results on an unknown extra row — fail-closed (G-Py-4). The waterfall advances to the next lane on any `unavailable_detail`, matching G-Idem-4's transient-failure routing guidance. `_preflight_bundle` now writes `.sidecar` alongside `.diag`, sweeping the shared preflight writer so `SharedReviewLauncher` can surface preflight diagnostics through the same sidecar path it reads (G-Wire-3). Documentation corrections to `external-reviewers.md` align the prose with the actual `config.py` waterfall orders. The `ClaudeLauncher` rename to `DirectClaudeLauncher` is fully swept across production code and tests (G-Md-2).
+No deviations identified. AssessmentLane, LaneOutcome, and LaneContext are frozen dataclasses (G-Py-1). All new tunables and env-var names are Final constants in config.py (G-Cfg-1). _write_text_atomic delegates to larch_io.trusted_atomic_write (G-IO-1). _lane_output_path rejects symlinks and containment-checks before unlink (G-Sec-4). Both Cursor and Codex assessment invocations are covered by exact-argv tests (G-Ext-1). The dirty-tree guard runs on the Cursor success path (G-Ext-4). Zero-findings clean result is first-class (G-Orch-3). launchers and availability are injectable seams enabling offline tests (G-Py-5). The ClaudeLauncher rename to DirectClaudeLauncher is swept through tests in the same change (G-Md-2).
 
 ## /implement run 25E51482-9DA4-4EB9-BA4A-82535482E0D8: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:54:33
-- **Cost**: 💰 TOTAL ~$42.69: Claude $6.54, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.42  |  Tokens: 57748k
+- **Cost**: 💰 TOTAL ~$44.57: Claude $8.40, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.44  |  Tokens: 60936k
 - **Issue**: #7097: https://github.com/character-ai/larch/issues/7097
 - **PR**: #7106: https://github.com/character-ai/larch/pull/7106
 - **Plan review**: N/A
@@ -84,7 +84,7 @@ No deviations identified. New constants (`ARCHITECTURAL_ASSESSMENT_ROLE`, `ARCHI
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 13/15 accepted
-- **Lines (PR diff)**: code +1337/-223, larch-logs +1168/-0
+- **Lines (PR diff)**: code +1349/-229, larch-logs +1175/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 0
