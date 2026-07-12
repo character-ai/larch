@@ -1,0 +1,53 @@
+=== larch-quiet-cli.py-11304.log ===
+python/subprocess-via-runner-exemptions.json:4: references retired path 'scripts/test-design-structure.sh'
+python/subprocess-via-runner-exemptions.json:8: references retired path 'scripts/test-implement-structure.sh'
+python/subprocess-via-runner-exemptions.json:12: references retired path 'scripts/test-research-structure.sh'
+python/subprocess-via-runner-exemptions.json:16: references retired path 'scripts/test-review-structure.sh'
+=== larch-quiet-cli.py-17506.log ===
+=== larch-quiet-cli.py-26820.log ===
+=== larch-quiet-cli.py-35855.log ===
+=== larch-quiet-cli.py-60274.log ===
+=== larch-quiet-cli.py-60979.log ===
+=== larch-quiet-cli.py-66741.log ===
+=== larch-quiet-cli.py-9498.log ===
+python/subprocess-via-runner-exemptions.json:4: references retired path 'scripts/test-design-structure.sh'
+python/subprocess-via-runner-exemptions.json:8: references retired path 'scripts/test-implement-structure.sh'
+python/subprocess-via-runner-exemptions.json:12: references retired path 'scripts/test-research-structure.sh'
+python/subprocess-via-runner-exemptions.json:16: references retired path 'scripts/test-review-structure.sh'
+=== larch-quiet-cli.py-99173.log ===
+=== larch-quiet-cli.py-99422.log ===
+=== larch-quiet-read-session-env-key.sh-13409.log ===
+=== larch-quiet-read-session-env-key.sh-13439.log ===
+=== larch-quiet-read-session-env-key.sh-13472.log ===
+=== larch-quiet-read-session-env-key.sh-15081.log ===
+=== larch-quiet-read-session-env-key.sh-15243.log ===
+=== larch-quiet-read-session-env-key.sh-15540.log ===
+=== larch-quiet-read-session-env-key.sh-23471.log ===
+=== larch-quiet-read-session-env-key.sh-23494.log ===
+=== larch-quiet-read-session-env-key.sh-23528.log ===
+=== larch-quiet-read-session-env-key.sh-30856.log ===
+=== larch-quiet-read-session-env-key.sh-30867.log ===
+=== larch-quiet-read-session-env-key.sh-30884.log ===
+=== larch-quiet-read-session-env-key.sh-47193.log ===
+=== larch-quiet-read-session-env-key.sh-47203.log ===
+=== larch-quiet-read-session-env-key.sh-47207.log ===
+=== larch-quiet-read-session-env-key.sh-60778.log ===
+=== larch-quiet-read-session-env-key.sh-60847.log ===
+=== larch-quiet-read-session-env-key.sh-60881.log ===
+=== larch-quiet-read-session-env-key.sh-6550.log ===
+=== larch-quiet-read-session-env-key.sh-6559.log ===
+=== larch-quiet-read-session-env-key.sh-6563.log ===
+=== larch-quiet-read-session-env-key.sh-84057.log ===
+=== larch-quiet-read-session-env-key.sh-84067.log ===
+=== larch-quiet-read-session-env-key.sh-84074.log ===
+=== larch-quiet-read-session-env-key.sh-95505.log ===
+=== larch-quiet-read-session-env-key.sh-95507.log ===
+=== larch-quiet-read-session-env-key.sh-95514.log ===
+=== larch-quiet-scout-plan-archetypes-wrapper.sh-59516.log ===
+=== larch-quiet-sessionstart-health.sh-12090.log ===
+=== larch-quiet-sessionstart-health.sh-65651.log ===
+=== larch-quiet-sessionstart-health.sh-69703.log ===
+=== larch-quiet-sessionstart-health.sh-71153.log ===
+=== larch-quiet-sessionstart-health.sh-72277.log ===
+=== larch-quiet-sessionstart-health.sh-73489.log ===
+=== larch-quiet-sessionstart-health.sh-74795.log ===
