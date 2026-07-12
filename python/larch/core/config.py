@@ -79,6 +79,26 @@ SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION: Final = "halt-scope-disposition"
 SHIP_ROUTE_ACTION_ASSESSMENTS: Final = "assessments"
 ASSESSMENT_KIND_INVARIANTS: Final = "invariants"
 ASSESSMENT_KIND_GUIDELINES: Final = "guidelines"
+ASSESSMENT_OPERATOR_WAIVER_FILENAME: Final = "assessment-operator-waiver.json"
+ASSESSMENT_OPERATOR_WAIVER_SCHEMA_VERSION: Final = "1"
+ASSESSMENT_WAIVER_STATUS_OK: Final = "ok"
+ASSESSMENT_WAIVER_STATUS_FAILED: Final = "failed"
+ASSESSMENT_WAIVER_KINDS: Final[frozenset[str]] = frozenset(
+    {ASSESSMENT_KIND_INVARIANTS, ASSESSMENT_KIND_GUIDELINES}
+)
+TERMINAL_DONE_CLEAR_FIELDS: Final[tuple[tuple[str, str], ...]] = (
+    ("STALL_TRACKING", "false"),
+    ("STALL_STEP", ""),
+    ("BAIL_REASON", ""),
+    ("BAIL_NEEDS_USER_INPUT", "false"),
+    ("BAIL_FAILURE_DETAIL_LOG", ""),
+    ("FAILED_RUN_ID", ""),
+    ("EXIT_CODE", "0"),
+)
+RECONCILE_TERMINAL_DONE_CLEAR_FIELDS: Final[tuple[tuple[str, str], ...]] = (
+    *TERMINAL_DONE_CLEAR_FIELDS,
+    ("IMPLEMENT_BAIL_REASON", ""),
+)
 ASSESSMENT_OUTCOME_CLEAN: Final = "clean"
 ASSESSMENT_OUTCOME_VIOLATION: Final = "violation"
 ASSESSMENT_OUTCOME_DEVIATION: Final = "deviation"

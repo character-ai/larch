@@ -221,6 +221,7 @@ assert_contains 'FINALIZE_SUBCOMMAND=teardown' "$text" 'teardown subcommand rela
 assert_contains 'FINALIZE_WARNINGS=none' "$text" 'teardown warnings relay'
 log_text=$(cat "$log")
 assert_contains 'step18b sentinel=false argv=final-report step18b --implement-tmpdir' "$log_text" 'finalize step18b invocation'
+assert_contains '--step17-emitted false' "$log_text" 'finalize false step17 flag forwarding'
 assert_contains 'flush-safety-net --log-root' "$log_text" 'finalize flush safety net'
 assert_contains '--run-id RUN1' "$log_text" 'finalize safety net run id'
 assert_contains 'capture-transcript --source-file source.jsonl --log-root' "$log_text" 'finalize transcript capture'
@@ -244,6 +245,7 @@ out="$TMP_ROOT/step17-present.out"; log="$TMP_ROOT/step17-present.log"
 STEP18_STUB_EMIT_BODY=false run_step18 "$impl" "$out" "$log" --phase finalize --step17-emitted true || fail 'step17-present exited non-zero'
 assert_eq false "$(kv EMIT_BODY "$out")" 'step17-present EMIT_BODY'
 assert_contains 'step18b sentinel=true' "$(cat "$log")" 'step17-present pre-step18b sentinel'
+assert_contains '--step17-emitted true' "$(cat "$log")" 'finalize true step17 flag forwarding'
 assert_eq 0 "$(count_literal '---LARCH-SUMMARY-FINAL-BEGIN---' "$out")" 'step17-present marker suppressed'
 
 # Step18b failure tolerance.

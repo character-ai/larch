@@ -1,6 +1,6 @@
 """Tests for final_report.py extraction surface."""
 
-# pyright: reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownLambdaType=false
+# pyright: reportUnusedCallResult=false, reportPrivateUsage=false, reportUnknownMemberType=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 
 
 from __future__ import annotations
@@ -265,6 +265,90 @@ def test_step18b_reports_write_failure(tmp_path: Path, monkeypatch) -> None:  # 
     assert emit is False
     assert rc == 7
     assert err == "boom"
+
+
+def test_step18b_explicit_false_overrides_stale_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".step17-emitted").touch()
+    (tmp_path / ".step16-16a-done").touch()
+
+    def render(path: Path) -> tuple[int, str, str]:
+        (path / "summary-final.md").write_text("merged\n", encoding="utf-8")
+        return 0, "", ""
+
+    monkeypatch.setattr(final_report, "write_final_report", render)
+
+    emit, rc, present, _snapshot, _error = final_report.step18b_final_report(
+        tmp_path,
+        step17_emitted=False,
+    )
+
+    assert (emit, rc, present) == (True, 0, False)
+
+
+def test_step18b_explicit_true_suppresses_unchanged_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".step16-16a-done").touch()
+    (tmp_path / "summary-final.md").write_text("same\n", encoding="utf-8")
+    monkeypatch.setattr(final_report, "write_final_report", lambda _path: (0, "", ""))
+
+    emit, rc, present, _snapshot, _error = final_report.step18b_final_report(
+        tmp_path,
+        step17_emitted=True,
+    )
+
+    assert (emit, rc, present) == (False, 0, True)
+
+
+def test_step18b_explicit_true_emits_changed_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".step16-16a-done").touch()
+    (tmp_path / "summary-final.md").write_text("shipping\n", encoding="utf-8")
+
+    def render(path: Path) -> tuple[int, str, str]:
+        (path / "summary-final.md").write_text("merged\n", encoding="utf-8")
+        return 0, "", ""
+
+    monkeypatch.setattr(final_report, "write_final_report", render)
+
+    emit, rc, present, _snapshot, _error = final_report.step18b_final_report(
+        tmp_path,
+        step17_emitted=True,
+    )
+
+    assert (emit, rc, present) == (True, 0, True)
+
+
+def test_step18b_omitted_flag_uses_sentinel_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / ".step17-emitted").touch()
+    (tmp_path / ".step16-16a-done").touch()
+    (tmp_path / "summary-final.md").write_text("same\n", encoding="utf-8")
+    monkeypatch.setattr(final_report, "write_final_report", lambda _path: (0, "", ""))
+
+    emit, rc, present, _snapshot, _error = final_report.step18b_final_report(tmp_path)
+
+    assert (emit, rc, present) == (False, 0, True)
+
+
+def test_step18b_rejects_invalid_explicit_flag(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = final_report.step18b_final_report_main(
+        ["--implement-tmpdir", str(tmp_path), "--step17-emitted", "maybe"],
+    )
+
+    assert rc == config.EXIT_USAGE
+    assert capsys.readouterr().out == "ERROR=usage\n"
 
 
 def test_step18b_emits_error_kv_on_render_failure(

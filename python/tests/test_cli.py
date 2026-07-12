@@ -272,6 +272,8 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
         (["ship", "pre-driver"], "larch.implement.implement_dispatch", "ship_pre_driver_main"),
         (["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"], "larch.implement.implement_dispatch", "ship_pre_fix_rebase_main"),
         (["ship", "route-exit"], "larch.implement.implement_dispatch", "ship_route_exit_main"),
+        (["ship", "waive-assessment"], "larch.implement.ship_recovery", "waive_assessment_main"),
+        (["ship", "reconcile-manual-merge"], "larch.implement.ship_recovery", "reconcile_manual_merge_main"),
         (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
         (["implement", "step-6-entry"], "larch.implement.implement_dispatch", "step6_entry_main"),
         (["implement", "step-8-oos-checkpoint"], "larch.implement.implement_dispatch", "step8_oos_checkpoint_main"),

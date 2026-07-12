@@ -1011,8 +1011,16 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     return rc
 
 
-def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str, str]:
-    step17_present = (implement_tmpdir / ".step17-emitted").exists()
+def step18b_final_report(
+    implement_tmpdir: Path,
+    *,
+    step17_emitted: bool | None = None,
+) -> tuple[bool, int, bool, str, str]:
+    step17_present = (
+        (implement_tmpdir / ".step17-emitted").exists()
+        if step17_emitted is None
+        else step17_emitted
+    )
     if not (implement_tmpdir / ".step16-16a-done").exists():
         closeout.step_16_16a(["--implement-tmpdir", str(implement_tmpdir)])
     emit_body = not step17_present
@@ -1054,8 +1062,17 @@ def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str, 
 def step18b_final_report_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py final-report step18b")
     parser.add_argument("--implement-tmpdir", required=True)
-    args = parser.parse_args(argv)
-    emit_body, wfr_rc, present, snapshot, error = step18b_final_report(Path(args.implement_tmpdir))
+    parser.add_argument("--step17-emitted", choices=("true", "false"))
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        _emit_kv(key="ERROR", value="usage")
+        return config.EXIT_USAGE
+    explicit = None if args.step17_emitted is None else args.step17_emitted == "true"
+    emit_body, wfr_rc, present, snapshot, error = step18b_final_report(
+        Path(args.implement_tmpdir),
+        step17_emitted=explicit,
+    )
     _emit_kv(key="EMIT_BODY", value=str(emit_body).lower())
     _emit_kv(key="WFR_RC", value=wfr_rc)
     _emit_kv(key="STEP17_EMITTED_PRESENT", value=str(present).lower())

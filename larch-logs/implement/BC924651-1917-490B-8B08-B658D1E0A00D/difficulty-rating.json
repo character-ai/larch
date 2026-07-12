@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": false,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "Cross-cutting ship driver changes: new recovery verbs (waive-assessment, reconcile-manual-merge), waiver gate in _combined_assessment_result, bail-overlay clearance across three state layers, terminal-merge prioritization in normalization, and SKILL.md operator-bail proceed rewrite. Touches ship.py, ship_state.py, ship_guidelines.py, _normalize.py, final_report.py, and SKILL.md orchestration contract.",
+  "round_cap": 2,
+  "schema_version": 1
+}

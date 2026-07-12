@@ -104,7 +104,7 @@ finalize_invocations=$(command grep -Fc '"$HOME/.cache/larch/sessions/implement-
 [ "$finalize_invocations" -eq 1 ] || fail "expected one step-18.sh invocation in SKILL.md, found $finalize_invocations"
 command grep -Fq '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-finalize' "$skill_file" || fail 'SKILL.md lacks composite Step 18 launcher'
 command grep -Fq 'implement-finalize teardown --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$finalizer" || fail 'step-18.sh lacks exact teardown argv'
-command grep -Fq 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$finalizer" || fail 'step-18.sh lacks live step18b argv'
+command grep -Fq 'final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" --step17-emitted "$STEP17_EMITTED"' "$finalizer" || fail 'step-18.sh lacks live step18b argv'
 command grep -Fq 'print_summary_markers' "$finalizer" || fail 'step-18.sh lacks marker helper'
 command grep -Fq 'set +e' "$finalizer" || fail 'step-18.sh lacks set +e tolerance blocks'
 

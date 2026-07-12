@@ -39,6 +39,8 @@ Use this procedure when any cleanup, warning replay, operator line, footer, sent
 5. Choose the terminal body by the call-site precedence rules.
 6. Emit the selected cached final-summary body, followed immediately by any cached sidecar bodies, as the sole terminal plain-chat output. No tool call or recap may follow.
 
+If a user message interrupts after finalize returns but before terminal emission, carry the in-context cached-body obligation into the next turn. Emit the cached body verbatim as the first text, before answering the intervening message. Do not use Read or a disk cache to reconstruct a lost body. If the in-context cache is unavailable, point to the tracking-issue comment and stop.
+
 ## `/design` Read-always readiness profile
 
 Use this profile for `/design` final `bgjob wait` `DONE` stdout and the matching bgjob result env.

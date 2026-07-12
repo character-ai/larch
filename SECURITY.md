@@ -541,6 +541,12 @@ The terminal shared Bash libraries are retired. Retained Bash trust boundaries a
 
 Invariant Step 8 violations route through the autonomous repair branch as untrusted evidence and hard-stop after retry exhaustion; there is no operator override path for accepting a violation.
 
+## Assessment waiver and manual reconciliation boundaries
+
+Assessment waivers are confined to the validated implement tmpdir. Writers and readers reject symlinks, use atomic no-follow publication, allow only configured assessment kinds, and bind the artifact to `LARCH_RUN_ID` from trusted `session-env.sh`. An unavailable assessment may be waived. An invariant violation cannot be waived.
+
+Manual-merge reconciliation validates the repository slug and proves the PR is merged before its first write. It writes only the three trusted state layers, the post-merge sentinel, and the matching run manifest. Success requires a post-read that proves all stall and bail overlays are clear. Any unsafe path, partial update, stale bail field, or failed verification returns failure.
+
 ## Coverage and review snapshot artifacts
 
 Plan-coverage artifacts and review snapshots are untrusted local state. Readers require a contained, non-symlinked root and ancestors, open regular files with no-follow semantics, and validate the opened descriptor before using artifact data. Coverage JSON, env, untouched-path inventory, and todo inventory form one required set: a wholly absent set preserves legacy behavior, while a partial, malformed, stale, mismatched, symlinked, or non-regular present set fails closed. Scope disposition remains a separate optional artifact, but any present disposition must match live-validated coverage before it can select issue-link or deferred-inventory behavior. Declaring implement context through a tmpdir, environment value, or explicit manifest requires a valid trusted tmpdir; PR mutation, body rendering, finalization, and report coverage fail closed when that root or any present artifact is invalid. Explicit manifest identity is propagated through those consumers instead of inferred from an arbitrary parent directory.

@@ -41,12 +41,12 @@ Only empty and `false` are inactive.
 ## Finalize phase
 
 The finalize phase never re-runs the active-stall gate.
-When `--step17-emitted true` is passed, the wrapper writes `$IMPLEMENT_TMPDIR/.step17-emitted` before calling Step 18b so `EMIT_BODY` sees the prompt-side Step 17 body cached for deferred terminal emission.
+The wrapper passes `--step17-emitted "$STEP17_EMITTED"` to Step 18b. This explicit value overrides stale sentinel presence. When `--step17-emitted true` is passed, the wrapper also writes `$IMPLEMENT_TMPDIR/.step17-emitted` before calling Step 18b so the sentinel remains available for diagnostics and deduplication.
 
 The wrapper calls the live Step 18b path only:
 
 ```bash
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" --step17-emitted "$STEP17_EMITTED"
 ```
 
 When `.step16-16a-done` is absent (terminal stall recover-then-report path), Step 18b runs rejected-findings replay and best-effort Slack notify through `python/cli.py implement step-16-16a` before `final-report write`. Green-path Step 16-17 runs write `.step16-16a-done` after Step 16/16a even when Step 17 fails, so Step 18b does not duplicate those side effects.

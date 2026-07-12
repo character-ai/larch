@@ -178,7 +178,7 @@ run_finalize() {
     step18b_err="$IMPLEMENT_TMPDIR/step18b-final-report.stderr"
     : >"$step18b_err" 2>/dev/null || true
     set +e
-    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$step18b_out" 2>"$step18b_err"
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" final-report step18b --implement-tmpdir "$IMPLEMENT_TMPDIR" --step17-emitted "$STEP17_EMITTED" >"$step18b_out" 2>"$step18b_err"
     step18b_rc=$?
     set -e
 

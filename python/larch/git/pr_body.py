@@ -911,8 +911,15 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     return _final_report_module().write_final_report_main(argv)  # type: ignore[attr-defined]
 
 
-def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str, str]:
-    return _final_report_module().step18b_final_report(implement_tmpdir)  # type: ignore[attr-defined]
+def step18b_final_report(
+    implement_tmpdir: Path,
+    *,
+    step17_emitted: bool | None = None,
+) -> tuple[bool, int, bool, str, str]:
+    return _final_report_module().step18b_final_report(  # type: ignore[attr-defined]
+        implement_tmpdir,
+        step17_emitted=step17_emitted,
+    )
 
 
 def step18b_final_report_main(argv: list[str] | None = None) -> int:

@@ -353,15 +353,7 @@ def _write_ship_state(
     if last_monitored_head is not None:
         fields["LAST_MONITORED_HEAD"] = last_monitored_head
     if phase == "done":
-        fields.update({
-            "STALL_TRACKING": "false",
-            "STALL_STEP": "",
-            "BAIL_REASON": "",
-            "BAIL_NEEDS_USER_INPUT": "false",
-            "BAIL_FAILURE_DETAIL_LOG": "",
-            "EXIT_CODE": "0",
-            "FAILED_RUN_ID": "",
-        })
+        fields.update(dict(config.TERMINAL_DONE_CLEAR_FIELDS))
     else:
         if terminal_outcome is not None or ctx.stall_tracking or "STALL_TRACKING" not in fields:
             fields["STALL_TRACKING"] = _state_bool(value=ctx.stall_tracking)

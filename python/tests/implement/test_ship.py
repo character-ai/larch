@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from larch.core import config
@@ -6520,6 +6520,238 @@ def test_combined_assessment_result_both_unavailable_lists_both_kinds(tmp_path: 
     assert result is not None
     assert result.needs_user_reason == "architectural-assessment-unavailable"
     assert result.detail == "invariants,guidelines"
+
+
+def _write_assessment_waiver(
+    tmp_path: Path, *, kinds: list[str], run_id: str = "run-abc"
+) -> None:
+    (tmp_path / "session-env.sh").write_text(
+        f"LARCH_RUN_ID={run_id}\n", encoding="utf-8"
+    )
+    (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).write_text(
+        json.dumps({"schema_version": "1", "kinds": kinds, "run_id": run_id}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _write_unavailable_assessment_sidecars(tmp_path: Path) -> None:
+    common = {
+        "schema_version": "1",
+        "phase": "implement",
+        "step": "8",
+        "outcome": "dropped",
+        "reason": "unavailable",
+        "detail": "",
+        "head_sha": "abc123",
+        "base_ref": "origin/main",
+        "assessment_kind": "",
+    }
+    ship.architectural_guidelines.invariant_ship_outcome_path(tmp_path).write_text(
+        json.dumps(common | {"invariants_status": "present"}) + "\n",
+        encoding="utf-8",
+    )
+    ship.architectural_guidelines.guideline_ship_outcome_path(tmp_path).write_text(
+        json.dumps(common | {"guidelines_status": "present"}) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_combined_assessment_result_full_waiver_proceeds(tmp_path: Path) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants", "guidelines"])
+    _write_unavailable_assessment_sidecars(tmp_path)
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+    )
+
+    assert (
+        ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path)) is None
+    )
+    for path in (
+        ship.architectural_guidelines.invariant_ship_outcome_path(tmp_path),
+        ship.architectural_guidelines.guideline_ship_outcome_path(tmp_path),
+    ):
+        assert json.loads(path.read_text(encoding="utf-8"))["operator_waived"] is True
+
+
+def test_waived_assessment_resume_preserves_counters_and_flushes_audit_before_pr_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants", "guidelines"])
+    _write_unavailable_assessment_sidecars(tmp_path)
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=assessments\nBRANCH_NAME=feature\nREPO=o/r\nRUN_ID=run-abc\n"
+        "MERGE=false\nDRAFT=false\nITERATION=3\nREBASE_COUNT=2\n"
+        "FIX_ATTEMPTS=1\nTRANSIENT_RETRIES=4\n",
+        encoding="utf-8",
+    )
+    counters_at_pr_create: dict[str, int] = {}
+    flushes: list[tuple[bool, bool]] = []
+    original_write_state = ship._write_ship_state  # pyright: ignore[reportPrivateUsage]
+
+    def capture_write_state(ctx: RunContext, **kwargs: Any) -> None:
+        phase = kwargs.get("phase")
+        original_write_state(ctx, **kwargs)
+        if phase == "pr-create":
+            counters_at_pr_create.update(
+                {
+                    key.lower(): int(run_logs.read_state_kv(state_file=str(state_file), key=key))
+                    for key in ("ITERATION", "REBASE_COUNT", "FIX_ATTEMPTS", "TRANSIENT_RETRIES")
+                }
+            )
+
+    def flush_after_waiver(**_kwargs: object) -> run_logs.RefreshSkip:
+        sidecars = (
+            ship.architectural_guidelines.invariant_ship_outcome_path(tmp_path),
+            ship.architectural_guidelines.guideline_ship_outcome_path(tmp_path),
+        )
+        flushes.append(
+            (
+                bool(json.loads(sidecars[0].read_text(encoding="utf-8"))["operator_waived"]),
+                bool(json.loads(sidecars[1].read_text(encoding="utf-8"))["operator_waived"]),
+            )
+        )
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feature")
+    monkeypatch.setattr(
+        ship,
+        "_invariants_gate_before_pr",
+        lambda **_k: ship.InvariantsGateResult(note_state=config.NOTE_STATE_UNAVAILABLE),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_guidelines_gate_before_pr",
+        lambda **_k: ship.GuidelinesGateResult(note_state=config.NOTE_STATE_UNAVAILABLE),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", flush_after_waiver)  # lint-monkeypatch-binding: ok ship calls its imported binding directly
+    monkeypatch.setattr(ship, "_write_ship_state", capture_write_state)  # lint-monkeypatch-binding: ok ship calls its imported binding directly
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_complete_pr_created_without_merge",
+        lambda **_k: ship.ShipResult(Outcome.OK),
+    )
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    result = ship.run_ship(
+        _ctx(
+            tmp_path,
+            state_file=str(state_file),
+            branch="feature",
+            branch_name="feature",
+            repo="o/r",
+            merge=False,
+        ),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert counters_at_pr_create == {
+        "iteration": 3,
+        "rebase_count": 2,
+        "fix_attempts": 1,
+        "transient_retries": 4,
+    }
+    assert flushes == [(True, True)]
+
+
+def test_combined_assessment_result_partial_waiver_keeps_unwaived_kind(
+    tmp_path: Path,
+) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"])
+    _write_unavailable_assessment_sidecars(tmp_path)
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "guidelines"
+
+
+def test_combined_assessment_result_waiver_without_auditable_sidecar_is_ignored(
+    tmp_path: Path,
+) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"])
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "invariants"
+
+
+def test_combined_assessment_result_malformed_waiver_is_ignored(tmp_path: Path) -> None:
+    (tmp_path / "session-env.sh").write_text("LARCH_RUN_ID=run-abc\n", encoding="utf-8")
+    (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).write_text(
+        "{not-json}\n", encoding="utf-8"
+    )
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "invariants"
+
+
+def test_combined_assessment_result_stale_waiver_is_ignored(tmp_path: Path) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"], run_id="other-run")
+    (tmp_path / "session-env.sh").write_text("LARCH_RUN_ID=run-abc\n", encoding="utf-8")
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            note_state=ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.detail == "invariants"
+
+
+def test_combined_assessment_result_violation_is_not_waivable(tmp_path: Path) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants"])
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(
+            assessment_kind="violation", note="violated I-Test-1"
+        ),
+        guidelines=ship.GuidelinesGateResult(),
+    )
+
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+
+    assert result is not None
+    assert result.needs_user_reason == "architectural-invariants-violation"
 
 
 def test_combined_assessment_result_clean_gates_do_not_bail(tmp_path: Path) -> None:
