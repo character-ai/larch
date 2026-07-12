@@ -808,7 +808,7 @@ def test_state_v1_reads_as_v2_with_empty_proposals(tmp_path: Path) -> None:
 
     assert state is not None
     assert state.schema_version == 2
-    assert state.proposals == ()
+    assert not state.proposals
 
 
 def test_state_v2_round_trip_preserves_proposals(tmp_path: Path) -> None:
