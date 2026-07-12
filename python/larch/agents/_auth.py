@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import hashlib
 import json
 import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -242,6 +244,31 @@ def _codex_probe_identity(model: str) -> str:
 
 def _codex_gate_detail_path(identity: str) -> Path:
     return _probe_tmpdir() / f"larch-{identity}-gate-{_probe_user()}.json"
+
+
+def _codex_probe_update_lock_path(identity: str) -> Path:
+    return _probe_tmpdir() / f"larch-{identity}-probe-{_probe_user()}.lock"
+
+
+@contextlib.contextmanager
+def _codex_probe_update_lock(identity: str):
+    path = _codex_probe_update_lock_path(identity)
+    fd: int | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(path, flags, 0o600)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(f"refusing non-regular Codex probe update lock: {path}")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        if fd is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
 
 
 def _clear_codex_gate_detail(identity: str) -> None:
@@ -677,17 +704,27 @@ def check_reviewers(
                         max_age=max(negative_ttl, config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC),
                     )
             else:
-                codex_present, codex_probe_timed_out, codex_gate_detail = _run_codex_probes(
-                    max_auth_retries=max_auth_retries,
-                    max_transient_retries=max_transient_retries,
-                    max_timeout_retries=max_timeout_retries,
-                    timeout=timeout,
-                )
-                _write_probe_stamp(stamp=stamp, value=codex_present)
-                if codex_gate_detail is None:
-                    _clear_codex_gate_detail(codex_identity)
-                else:
-                    _write_codex_gate_detail(identity=codex_identity, detail=codex_gate_detail)
+                with _codex_probe_update_lock(codex_identity):
+                    cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
+                    if cached is not None:
+                        codex_present = cached
+                        if not cached:
+                            codex_gate_detail = _read_codex_gate_detail(
+                                identity=codex_identity,
+                                max_age=max(negative_ttl, config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC),
+                            )
+                    else:
+                        codex_present, codex_probe_timed_out, codex_gate_detail = _run_codex_probes(
+                            max_auth_retries=max_auth_retries,
+                            max_transient_retries=max_transient_retries,
+                            max_timeout_retries=max_timeout_retries,
+                            timeout=timeout,
+                        )
+                        _write_probe_stamp(stamp=stamp, value=codex_present)
+                        if codex_gate_detail is None:
+                            _clear_codex_gate_detail(codex_identity)
+                        else:
+                            _write_codex_gate_detail(identity=codex_identity, detail=codex_gate_detail)
 
         return CheckReviewersResult(
             codex_binary_found=codex_binary_found,

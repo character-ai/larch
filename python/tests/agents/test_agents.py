@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import FrozenInstanceError, fields
@@ -6160,6 +6161,55 @@ def test_read_codex_gate_detail_rejects_stale_record_after_clear_failure(tmp_pat
         _auth._write_codex_gate_detail(identity=identity, detail=detail)  # pylint: disable=protected-access
         stamp = _auth._probe_stamp_path(identity)  # pylint: disable=protected-access
         _auth._write_probe_stamp(stamp=stamp, value=True)  # pylint: disable=protected-access
+        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
+
+
+def test_codex_probe_update_lock_serializes_gate_detail_updates(tmp_path: Path) -> None:
+    env = {"TMPDIR": str(tmp_path), "USER": "gate-detail-user"}
+    detail = agents.CodexGateDetail(
+        model=config.CODEX_REVIEW_MODEL_DEFAULT,
+        signal="newer-codex-required",
+        message=f"codex CLI too old for {config.CODEX_REVIEW_MODEL_DEFAULT}; run `npm install -g @openai/codex@latest`",
+    )
+    with _auth._temporary_environ(env):  # pylint: disable=protected-access
+        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
+        stale_started = threading.Event()
+        release_stale = threading.Event()
+        healthy_started = threading.Event()
+        healthy_published = threading.Event()
+
+        def publish_stale_gate() -> None:
+            with _auth._codex_probe_update_lock(identity):  # pylint: disable=protected-access
+                stale_started.set()
+                assert release_stale.wait(timeout=1)
+                _auth._write_probe_stamp(  # pylint: disable=protected-access
+                    stamp=_auth._probe_stamp_path(identity),  # pylint: disable=protected-access
+                    value=False,
+                )
+                _auth._write_codex_gate_detail(identity=identity, detail=detail)  # pylint: disable=protected-access
+
+        def publish_healthy_probe() -> None:
+            healthy_started.set()
+            with _auth._codex_probe_update_lock(identity):  # pylint: disable=protected-access
+                _auth._write_probe_stamp(  # pylint: disable=protected-access
+                    stamp=_auth._probe_stamp_path(identity),  # pylint: disable=protected-access
+                    value=True,
+                )
+                _auth._clear_codex_gate_detail(identity)  # pylint: disable=protected-access
+                healthy_published.set()
+
+        stale = threading.Thread(target=publish_stale_gate)
+        healthy = threading.Thread(target=publish_healthy_probe)
+        stale.start()
+        assert stale_started.wait(timeout=1)
+        healthy.start()
+        assert healthy_started.wait(timeout=1)
+        assert not healthy_published.wait(timeout=0.1)
+        release_stale.set()
+        stale.join(timeout=1)
+        healthy.join(timeout=1)
+        assert not stale.is_alive()
+        assert not healthy.is_alive()
         assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
 
 
