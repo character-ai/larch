@@ -153,7 +153,7 @@ For each issue, parse its body and extract the individual items. Then for each i
       The helper sanitizes the path to `[A-Za-z0-9/._-]`, passes the sanitized full path to `gh issue list --json number,title,body --search` as a single argv element, and requires the implementing issue title to match `^\[(DESIGNING|IMPLEMENTING)\]` followed by a space, with an explicit reference to the full sanitized path in title or body. `STATUS=ambiguous` or `STATUS=invalid_path` means the item is **not** blocked.
    b. If `STATUS=blocked` and `IMPLEMENTING_ISSUE=<M>` (a positive integer from the helper output), the item is **blocked** — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — blocked by #<M> ("<implementing title>").` Wire the blocked-by relationship using only the validated `IMPLEMENTING_ISSUE` value:
       ```bash
-      python3 "$PWD/python/cli.py" block-issue add-blocked-by <N> <M> --repo "$REPO"
+      python3 "$PWD/python/cli.py" block-issue add-blocked-by <N> <M> --repo "$REPO" --operator-invoked
       ```
       On failure, still keep the item as **actual** (not blocked) and emit a warning.
    c. If `STATUS=none` or `STATUS=invalid_path`, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.

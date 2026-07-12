@@ -297,6 +297,70 @@ def test_sanitize_outbound_redacts_and_neutralizes() -> None:
     assert "<REDACTED-TOKEN>" in sanitized
 
 
+def test_sanitize_outbound_rejects_malformed_triage_artifacts() -> None:
+    with pytest.raises(triage.TriageError, match="only one validated triage block") as error:
+        triage.sanitize_outbound(
+            "outside\n<!-- larch:triage:start -->\nbody\n<!-- larch:triage:end -->",
+            allow_triage_block=True,
+        )
+    assert error.value.exit_code == triage.EXIT_REDACTION
+
+
+def test_sanitize_outbound_fails_closed_when_pii_survives_redaction(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.setattr(
+        triage.redact, "redact_outbound", lambda _value: "person@example.com"
+    )
+    with pytest.raises(triage.TriageError, match="redaction could not be verified") as error:
+        triage.sanitize_outbound("person@example.com")
+    assert error.value.exit_code == triage.EXIT_REDACTION
+
+
+def test_protected_marker_inside_triage_block_refuses_update() -> None:
+    snapshot = triage.IssueSnapshot(
+        number=7,
+        repo="owner/repo",
+        title="Bug report",
+        body=(
+            "Original report\n\n<!-- larch:triage:start -->\n"
+            "<!-- larch:plan:start -->\n<!-- larch:triage:end -->\n"
+        ),
+        state="OPEN",
+        state_reason="",
+        url="https://github.com/owner/repo/issues/7",
+        updated_at="2026-07-12T10:00:00Z",
+        labels=(),
+        comments=(),
+    )
+    assert triage._has_protected_state(snapshot, allow_stale_title=False)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_valid_apply_reports_a_verified_noop(monkeypatch: Any, capsys: Any, triage_root: Path) -> None:
+    body_file = triage_root / "body.md"
+    block = "<!-- larch:triage:start -->\n## Summary\n\nCorrected diagnosis.\n<!-- larch:triage:end -->"
+    body_file.write_text(block, encoding="utf-8")
+    existing_body = f"Original report\n\n{block}\n"
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout="[]")
+        return _result(argv, stdout=_snapshot(body=existing_body))
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    assert triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "valid",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--body-file", str(body_file), "--operator-invoked",
+    ]) == 0
+    output = capsys.readouterr().out
+    assert "ISSUE_UPDATED=false" in output
+    assert "UPDATED_AT=2026-07-12T10:00:00Z" in output
+    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)
+
+
 def test_paginated_security_comment_blocks_public_mutation(
     monkeypatch: Any, triage_root: Path
 ) -> None:
@@ -465,6 +529,60 @@ def test_close_restores_title_and_verifies_not_planned(
     assert any(call[:4] == ["gh", "issue", "close", "7"] and call[-2:] == ["--reason", "not planned"] for call in calls)
 
 
+@pytest.mark.parametrize(
+    ("verdict", "canonical"),
+    [("already-fixed", None), ("duplicate", 8)],
+)
+def test_close_successfully_applies_already_fixed_and_duplicate_verdicts(
+    monkeypatch: Any, capsys: Any, triage_root: Path, verdict: str, canonical: int | None
+) -> None:
+    comment_file = triage_root / "comment.md"
+    comment_file.write_text("Verified outcome.", encoding="utf-8")
+    updated_at = "2026-07-12T10:00:00Z"
+    state = "OPEN"
+    state_reason = ""
+    comments: list[dict[str, str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        nonlocal updated_at, state, state_reason
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout=json.dumps(comments))
+        if argv[:4] == ["gh", "issue", "view", "8"]:
+            return _result(argv, stdout=_snapshot(number=8))
+        if argv[:4] == ["gh", "issue", "comment", "7"]:
+            content = "Verified outcome."
+            if verdict == "duplicate":
+                content = "Duplicate of #8.\n\nVerified outcome."
+            comments.append({"body": f"<!-- larch:triage-verdict:{verdict} -->\n{content}"})
+            updated_at = "2026-07-12T10:00:01Z"
+            return _result(argv)
+        if argv[:4] == ["gh", "issue", "close", "7"]:
+            state = "CLOSED"
+            state_reason = "NOT_PLANNED"
+            updated_at = "2026-07-12T10:00:02Z"
+            return _result(argv)
+        return _result(
+            argv,
+            stdout=_snapshot(
+                state=state,
+                state_reason=state_reason,
+                updated_at=updated_at,
+                comments=comments,
+            ),
+        )
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    argv = [
+        "7", "--repo", "owner/repo", "--verdict", verdict,
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--comment-file", str(comment_file), "--operator-invoked",
+    ]
+    if canonical is not None:
+        argv.extend(["--canonical-duplicate", str(canonical)])
+    assert triage.apply_main(argv) == 0
+    assert f"TRIAGE_VERDICT={verdict}" in capsys.readouterr().out
+
+
 def test_inconclusive_verdict_makes_no_github_calls(monkeypatch: Any, triage_root: Path) -> None:
     calls: list[list[str]] = []
     monkeypatch.setattr(triage.proc, "run", lambda argv, **_: calls.append(argv))
@@ -514,6 +632,49 @@ def test_inspect_reads_only_immutable_git_object(
     assert "immutable content" in output
 
 
+def test_inspect_reports_an_unavailable_immutable_main_as_an_evidence_gap(
+    monkeypatch: Any, capsys: Any, tmp_path: Path
+) -> None:
+    sha = "a" * 40
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[-3:] == ["remote", "get-url", "origin"]:
+            return _result(argv, stdout="git@github.com:owner/repo.git\n")
+        if "ls-remote" in argv:
+            return _result(argv, stdout=f"{sha}\trefs/heads/main\n")
+        return _result(argv, returncode=1, stderr="missing")
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    assert triage.inspect_main(["--repo-root", str(tmp_path), "--path", "src/app.py"]) == triage.EXIT_POSTCONDITION
+    output = capsys.readouterr().out
+    assert "EVIDENCE_STATUS=gap" in output
+    assert "immutable main object is unavailable" in output
+
+
+def test_inspect_marks_truncated_evidence(monkeypatch: Any, capsys: Any, tmp_path: Path) -> None:
+    sha = "a" * 40
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[-3:] == ["remote", "get-url", "origin"]:
+            return _result(argv, stdout="git@github.com:owner/repo.git\n")
+        if "ls-remote" in argv:
+            return _result(argv, stdout=f"{sha}\trefs/heads/main\n")
+        if "cat-file" in argv:
+            return _result(argv)
+        if "show" in argv:
+            return _result(argv, stdout="ABCDE")
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    assert triage.inspect_main([
+        "--repo-root", str(tmp_path), "--path", "src/app.py", "--max-bytes", "3",
+    ]) == 0
+    output = capsys.readouterr().out
+    assert "EVIDENCE_TRUNCATED=true" in output
+    assert "\nABC\n" in output
+    assert "ABCDE" not in output
+
+
 @pytest.mark.parametrize("value", ["../secret", "/etc/passwd", "--option", "bad\\path"])
 def test_inspect_rejects_unsafe_paths_without_git_calls(
     monkeypatch: Any, tmp_path: Path, value: str
@@ -549,4 +710,22 @@ def test_probe_runs_fixed_argv_with_scrubbed_environment(
 
     monkeypatch.setattr(triage.proc, "run", fake_run)
     assert triage.probe_main(["--name", "git-version"]) == 0
+    assert "PROBE_STATUS=completed" in capsys.readouterr().out
+
+
+def test_codex_model_probe_uses_fixed_readonly_argv(monkeypatch: Any, capsys: Any) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "secret")
+
+    def fake_run(argv: list[str], **kwargs: object) -> proc.CommandResult:
+        assert argv == [
+            "codex", "exec", "--sandbox", "read-only", "--model", "gpt-5",
+            "Reply with OK only.",
+        ]
+        env = kwargs["env"]
+        assert isinstance(env, dict)
+        assert "OPENAI_API_KEY" not in env
+        return _result(argv, stdout="OK\n")
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    assert triage.probe_main(["--name", "codex-model-readonly", "--arg", "gpt-5"]) == 0
     assert "PROBE_STATUS=completed" in capsys.readouterr().out

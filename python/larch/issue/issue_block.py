@@ -255,6 +255,11 @@ def _mutate_dependency(args: MutationArgs, *, remove: bool) -> str:
     graphql_field = "removeBlockedBy" if remove else "addBlockedBy"
     mutation_query = REMOVE_MUTATION if remove else ADD_MUTATION
     _triage_precondition(args)
+    if args.triage_controlled and _relation_present(
+        repo=args.repo, issue=args.issue, blocker=args.blocker
+    ) == (not remove):
+        _triage_precondition(args)
+        return args.expected_updated_at
     node_a, node_b = _lookup_nodes(args)
     _triage_precondition(args)
     mutation = proc.run(

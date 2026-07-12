@@ -548,7 +548,7 @@ def _load_migration(path: Path) -> DependencyMigration:
 
 def _run_dependency_mutation(*, remove: bool, blocked: int, blocker: int, repo: str) -> bool:
     verb = "remove-blocked-by" if remove else "add-blocked-by"
-    result = proc.run([sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "block-issue", verb, str(blocked), str(blocker), "--repo", repo])
+    result = proc.run([sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "block-issue", verb, str(blocked), str(blocker), "--repo", repo, "--operator-invoked"])
     return result.returncode == 0
 
 

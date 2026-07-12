@@ -150,7 +150,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" triage apply "$ISSUE_NUMBER" --rep
 
 For a close verdict, replace `--body-file` with `--comment-file`; for `duplicate`, also pass the verified `--canonical-duplicate <positive-number>`.
 
-The helper re-reads immediately before every mutation, compares exact `updatedAt`, and refuses missing, closed, pull-request, transferred, concurrently updated, protected, or security-sensitive targets. It verifies exact body/comment, title restoration, `CLOSED` state, `NOT_PLANNED` reason when exposed, and fresh timestamp after each mutation. Parse `TRIAGE_VERDICT`, `ISSUE_UPDATED`, `TRIAGE_FAILURE`, and `UPDATED_AT`. Any nonzero result or non-true update stops all later operations without a success claim.
+The helper re-reads immediately before every mutation, compares exact `updatedAt`, and refuses missing, closed, pull-request, transferred, concurrently updated, protected, or security-sensitive targets. It verifies exact body/comment, title restoration, `CLOSED` state, `NOT_PLANNED` reason when exposed, and fresh timestamp after each mutation. Parse `TRIAGE_VERDICT`, `ISSUE_UPDATED`, `TRIAGE_FAILURE`, and `UPDATED_AT`. Any nonzero result, non-`none` failure, or missing timestamp stops all later operations without a success claim. A verified `valid` no-op may continue to dependency processing with its returned timestamp.
 
 > **Continue to Step 7 IMMEDIATELY.** A verified primary update does not verify dependency or follow-up work. → shared/subskill-invocation.md#step-boundary
 
@@ -162,7 +162,7 @@ Run this step only after verified primary-update read-back and only for a `valid
 
 > **Continue after child returns.** When `/block-issue` returns, parse its result and continue this dependency sequence; do NOT end the turn or summarize. → shared/subskill-invocation.md#anti-halt
 
-Require `SUCCESS=true`, `RELATION_VERIFIED=true`, the exact requested blocked-by relation, and a non-empty fresh `UPDATED_AT`. Advance the expected timestamp only from that verified read-back. On any mismatch, stop dependency and follow-up processing and emit `TRIAGE_FAILURE=dependency-postcondition`. Never silently substitute a dependency direction or issue.
+Require `SUCCESS=true`, `RELATION_VERIFIED=true`, the exact requested blocked-by relation, and a non-empty `UPDATED_AT`. Advance the expected timestamp only from that verified read-back; an already-present relation may return the unchanged verified timestamp. On any mismatch, stop dependency and follow-up processing and emit `TRIAGE_FAILURE=dependency-postcondition`. Never silently substitute a dependency direction or issue.
 
 ## Step 8 - File verified follow-ups
 

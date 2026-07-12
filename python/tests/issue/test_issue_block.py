@@ -161,22 +161,26 @@ def test_triage_expected_timestamp_is_required(capsys: Any) -> None:
 def test_triage_dependency_rechecks_and_returns_fresh_timestamp(
     monkeypatch: Any, capsys: Any
 ) -> None:
-    calls = 0
+    relations = 0
+    snapshots = 0
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        nonlocal calls
-        calls += 1
+        nonlocal relations, snapshots
         if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/1/comments"]:
             return _result(argv, stdout="[]")
-        if calls in {1, 4}:
-            return _result(argv, stdout=_snapshot())
-        if calls == 3:
-            return _result(argv, stdout=_lookup())
-        if calls == 6:
-            return _result(argv, stdout=_mutation("addBlockedBy"))
-        if calls == 7:
-            return _result(argv, stdout='[{"number": 2}]')
-        return _result(argv, stdout=_snapshot("2026-07-12T10:00:01Z"))
+        if "dependencies/blocked_by" in " ".join(argv):
+            relations += 1
+            return _result(argv, stdout="[]" if relations == 1 else '[{"number": 2}]')
+        if argv[:3] == ["gh", "api", "graphql"]:
+            return _result(
+                argv,
+                stdout=_lookup() if "query=query" in argv[-1] else _mutation("addBlockedBy"),
+            )
+        snapshots += 1
+        return _result(
+            argv,
+            stdout=_snapshot("2026-07-12T10:00:01Z" if snapshots == 3 else "2026-07-12T10:00:00Z"),
+        )
 
     monkeypatch.setattr(issue_block.proc, "run", fake_run)
     rc = issue_block.add_blocked_by_main(
@@ -195,6 +199,51 @@ def test_triage_dependency_rechecks_and_returns_fresh_timestamp(
     output = capsys.readouterr().out
     assert "RELATION_VERIFIED=true" in output
     assert "UPDATED_AT=2026-07-12T10:00:01Z" in output
+
+
+def test_triage_dependency_accepts_an_already_present_relation(
+    monkeypatch: Any, capsys: Any
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/1/comments"]:
+            return _result(argv, stdout="[]")
+        if "dependencies/blocked_by" in " ".join(argv):
+            return _result(argv, stdout='[{"number": 2}]')
+        return _result(argv, stdout=_snapshot())
+
+    monkeypatch.setattr(issue_block.proc, "run", fake_run)
+    assert issue_block.add_blocked_by_main([
+        "1", "2", "--repo", "owner/repo", "--operator-invoked",
+        "--triage-controlled", "--expected-updated-at", "2026-07-12T10:00:00Z",
+    ]) == 0
+    output = capsys.readouterr().out
+    assert "RELATION_VERIFIED=true" in output
+    assert "UPDATED_AT=2026-07-12T10:00:00Z" in output
+    assert not any(call[:3] == ["gh", "api", "graphql"] for call in calls)
+
+
+def test_triage_dependency_rejects_a_stale_precondition(
+    monkeypatch: Any, capsys: Any
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/1/comments"]:
+            return _result(argv, stdout="[]")
+        return _result(argv, stdout=_snapshot("2026-07-12T10:00:01Z"))
+
+    monkeypatch.setattr(issue_block.proc, "run", fake_run)
+    assert issue_block.add_blocked_by_main([
+        "1", "2", "--repo", "owner/repo", "--operator-invoked",
+        "--triage-controlled", "--expected-updated-at", "2026-07-12T10:00:00Z",
+    ]) == 4
+    assert not any("dependencies/blocked_by" in " ".join(call) for call in calls)
+    assert not any(call[:3] == ["gh", "api", "graphql"] for call in calls)
+    assert "changed since the expected triage snapshot" in capsys.readouterr().err
 
 
 def test_triage_dependency_refuses_paginated_security_comment(

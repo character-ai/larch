@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core import proc
 from larch.design import decompose
 
 
@@ -447,6 +448,22 @@ def test_migrate_dependencies_denies_before_github_calls(tmp_path: Path, monkeyp
     assert decompose.migrate_dependencies(design_tmpdir=d, original_issue="99", repo="o/r") == "authorization-denied"
     assert not calls
     assert not (d / ".decompose-deps-migrated").exists()
+
+
+def test_dependency_mutation_passes_operator_authorization(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        return proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(decompose.proc, "run", fake_run)
+    assert decompose._run_dependency_mutation(remove=False, blocked=101, blocker=99, repo="o/r")  # pyright: ignore[reportPrivateUsage]
+    assert calls == [[
+        sys.executable, str(decompose.PLUGIN_ROOT / "python" / "cli.py"),
+        "block-issue", "add-blocked-by", "101", "99", "--repo", "o/r",
+        "--operator-invoked",
+    ]]
 
 
 def test_migrate_dependencies_replaces_incoming_and_outgoing_edges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

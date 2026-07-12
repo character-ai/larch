@@ -245,7 +245,13 @@ def _has_protected_state(snapshot: IssueSnapshot, *, allow_stale_title: bool) ->
     body_without_triage = snapshot.body
     span = _triage_span(snapshot.body)
     if span is not None:
-        body_without_triage = snapshot.body[: span[0]] + snapshot.body[span[1] :]
+        body_without_triage = (
+            snapshot.body[: span[0]]
+            + snapshot.body[
+                span[0] + len(TRIAGE_MARKER_START) : span[1] - len(TRIAGE_MARKER_END)
+            ]
+            + snapshot.body[span[1] :]
+        )
     if _PROTECTED_MARKER_RE.search(body_without_triage):
         return True
     return (
