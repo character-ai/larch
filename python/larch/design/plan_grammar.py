@@ -55,7 +55,7 @@ _SIZE_INTEGER_RE: Final[re.Pattern[str]] = re.compile(r"(?:0[0-7]*|[1-9][0-9]*)"
 _DIGITS_RE: Final[re.Pattern[str]] = re.compile(r"[0-9]+")
 
 
-def _balanced_fence_line_indices(lines: list[str]) -> set[int]:
+def balanced_fence_line_indices(lines: list[str]) -> set[int]:
     """Return 0-based indices of lines strictly inside balanced code fences.
 
     An unmatched opener does not fence later lines, so headings after a truncated
@@ -80,6 +80,11 @@ def _balanced_fence_line_indices(lines: list[str]) -> set[int]:
             _ = stack.pop()
             fenced_lines.update(range(top_index + 1, index))
     return fenced_lines
+
+
+def is_fence_marker(line: str) -> bool:
+    """Return whether a line is a Markdown fence marker."""
+    return _FENCE_MARKER_RE.match(line.strip()) is not None
 
 
 @dataclass(frozen=True)
@@ -144,10 +149,10 @@ def match_heading(line: str, *, line_number: int = 0) -> HeadingMatch | None:
 def iter_heading_events(text: str) -> Iterator[HeadingEvent]:
     """Yield non-fenced heading events, with recognized headings taking precedence."""
     lines = text.splitlines()
-    fenced_lines = _balanced_fence_line_indices(lines)
+    fenced_lines = balanced_fence_line_indices(lines)
     for line_number, line in enumerate(lines, start=1):
         index = line_number - 1
-        if index in fenced_lines or _FENCE_MARKER_RE.match(line.strip()) is not None:
+        if index in fenced_lines or is_fence_marker(line):
             continue
         heading = match_heading(line, line_number=line_number)
         yield HeadingEvent(

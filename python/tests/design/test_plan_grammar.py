@@ -39,12 +39,12 @@ def test_balanced_fence_helper_covers_backtick_tilde_and_unclosed() -> None:
     unclosed = ["```md", "## NEW: after-unclosed.py"]
     mismatched = ["```md", "## NEW: still-open.py", "~~~"]
 
-    assert plan_grammar._balanced_fence_line_indices(backtick) == {2}  # pyright: ignore[reportPrivateUsage]
-    assert plan_grammar._balanced_fence_line_indices(tilde) == {2}  # pyright: ignore[reportPrivateUsage]
-    assert plan_grammar._balanced_fence_line_indices(longer) == {1, 2}  # pyright: ignore[reportPrivateUsage]
-    assert plan_grammar._balanced_fence_line_indices(invalid_closer) == set()  # pyright: ignore[reportPrivateUsage]
-    assert plan_grammar._balanced_fence_line_indices(unclosed) == set()  # pyright: ignore[reportPrivateUsage]
-    assert plan_grammar._balanced_fence_line_indices(mismatched) == set()  # pyright: ignore[reportPrivateUsage]
+    assert plan_grammar.balanced_fence_line_indices(backtick) == {2}
+    assert plan_grammar.balanced_fence_line_indices(tilde) == {2}
+    assert plan_grammar.balanced_fence_line_indices(longer) == {1, 2}
+    assert plan_grammar.balanced_fence_line_indices(invalid_closer) == set()
+    assert plan_grammar.balanced_fence_line_indices(unclosed) == set()
+    assert plan_grammar.balanced_fence_line_indices(mismatched) == set()
 
 
 def test_iter_heading_events_preserves_headings_after_unmatched_opener() -> None:

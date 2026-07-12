@@ -468,13 +468,18 @@ def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, 
     plugin = Path(plugin_root).resolve() if plugin_root else _plugin_root(repo)
     rows: list[PlanCommandRow] = []
     lines = plan_text.splitlines()
+    fenced_lines = plan_grammar.balanced_fence_line_indices(lines)
+    fence_ends: dict[int, int] = {}
+    for fence_line in sorted(fenced_lines):
+        if fence_line - 1 in fence_ends or fence_line - 1 in fenced_lines:
+            continue
+        fence_start = fence_line - 1
+        fence_end = fence_line
+        while fence_end + 1 in fenced_lines:
+            fence_end += 1
+        fence_ends[fence_start] = fence_end + 1
     files_section = ""
     pending_updated = ""
-    in_fence = False
-    fence_mark = ""
-    fence_length = 0
-    fence_start = 0
-    fence_buf: list[str] = []
     uid_next = [0]
 
     def process_fence(*, start: int, text: str) -> None:
@@ -491,28 +496,12 @@ def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, 
                     _parse_command_segment(rows=rows, source_line=line_no, seg=seg, repo_root=repo, plugin_root=plugin, uid_next=uid_next)
 
     for idx, raw in enumerate(lines, start=1):
-        fence = re.match(r"^[ \t]*(`{3,}|~{3,})", raw)
-        if fence is not None:
-            mark = fence.group(1)
-            if not fence_mark:
-                fence_mark = mark[0]
-                fence_length = len(mark)
-                if re.match(r"^[ \t]*```[ \t]*(bash|sh)[ \t]*$", raw):
-                    in_fence = True
-                    fence_start = idx
-                    fence_buf = []
-            elif mark[0] == fence_mark and len(mark) >= fence_length:
-                if in_fence:
-                    process_fence(start=fence_start, text="\n".join(fence_buf))
-                    in_fence = False
-                    fence_start = 0
-                    fence_buf = []
-                fence_mark = ""
-                fence_length = 0
+        fence_start = idx - 1
+        if fence_start in fence_ends:
+            if re.match(r"^[ \t]*```[ \t]*(bash|sh)[ \t]*$", raw):
+                process_fence(start=idx, text="\n".join(lines[idx : fence_ends[fence_start]]))
             continue
-        if fence_mark:
-            if in_fence:
-                fence_buf.append(raw)
+        if fence_start in fenced_lines or plan_grammar.is_fence_marker(raw):
             continue
         if re.match(r"^###[ \t]+Files[ \t]+to[ \t]+create([ \t]|$)", raw):
             files_section = "create"
@@ -549,8 +538,6 @@ def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, 
             flag = re.sub(r"^[ \t]+-[ \t]+Adds[ \t]+flag:[ \t]*", "", raw).strip()
             _emit_updated_flag(rows=rows, path=pending_updated, flag=flag, line=idx)
 
-    if in_fence and fence_buf:
-        process_fence(start=fence_start, text="\n".join(fence_buf))
     return rows
 
 
