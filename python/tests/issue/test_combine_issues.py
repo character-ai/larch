@@ -19,7 +19,7 @@ class Runner:
     def run(self, argv, **_kwargs):
         if argv[:3] == ["gh", "issue", "list"]:
             return CommandResult(tuple(argv), 0, self.stdout, "", 0.01)
-        return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+        return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
 
 def test_fetch_filters_busy_titles(monkeypatch, capsys):
@@ -111,7 +111,7 @@ class ApplyRunner:
             return CommandResult(tuple(argv), 1, "", "temporary error", 0.01)
         if argv[:3] == ["gh", "issue", "close"]:
             return CommandResult(tuple(argv), 0, "", "", 0.01)
-        return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+        return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
 
 class FailingCreateRunner:
@@ -121,7 +121,7 @@ class FailingCreateRunner:
     def run(self, argv, **_kwargs):
         if argv[:3] == ["gh", "issue", "create"]:
             return self.result
-        return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+        return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
 
 def test_apply_create_failure_withholds_gh_output(monkeypatch, tmp_path: Path, capsys):
@@ -167,7 +167,7 @@ def test_apply_close_warning_redacts_failed_close_stderr(monkeypatch, tmp_path: 
                 return CommandResult(tuple(argv), 0, "https://github.com/o/r/issues/99\n", "", 0.01)
             if argv[:3] == ["gh", "issue", "close"]:
                 return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
-            return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+            return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
     body = tmp_path / "body.md"
     body.write_text("Combined body\n", encoding="utf-8")
@@ -820,7 +820,7 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
                 return CommandResult(tuple(argv), 0, json.dumps({"title": title, "state": "OPEN"}), "", 0.01)
             if argv[:3] == ["gh", "issue", "close"]:
                 return CommandResult(tuple(argv), 0, "", "", 0.01)
-            return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+            return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
     runner = RefreshRunner()
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
@@ -841,7 +841,7 @@ def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):
         def run(self, argv, **_kwargs):
             if argv[:3] == ["gh", "issue", "close"]:
                 return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
-            return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+            return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
     monkeypatch.setattr(combine_issues.proc, "run", CloseSourcesFailRunner().run)
     monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)
@@ -912,7 +912,7 @@ def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, caps
         calls.append(list(argv))
         if argv[:3] == ["gh", "issue", "close"]:
             return CommandResult(tuple(argv), 0, "", "", 0.01)
-        return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+        return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
     comment = tmp_path / "comment.md"
     comment.write_text("Stale discard summary\n", encoding="utf-8")
@@ -956,7 +956,7 @@ def test_close_stale_warning_redacts_failed_close_stderr(monkeypatch, capsys):
         def run(self, argv, **_kwargs):
             if argv[:3] == ["gh", "issue", "close"]:
                 return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
-            return CommandResult(tuple(argv), 0, 'o/r\n', "", 0.01)
+            return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
     monkeypatch.setattr(combine_issues.proc, "run", CloseStaleFailRunner().run)
     monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)

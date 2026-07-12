@@ -1923,8 +1923,7 @@ class RepoResolution:
 def _raw_remote_path_candidate(url: str) -> str:
     """Extract a non-validated path-like candidate from a Git remote URL."""
     text = url.strip().rstrip("/")
-    if text.endswith(".git"):
-        text = text[:-4]
+    text = text.removesuffix(".git")
     text = text.rstrip("/")
     if not text:
         return ""

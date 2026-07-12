@@ -2226,7 +2226,7 @@ def test_ground_truth_discover_skips_symlinked_runs(tmp_path: Path) -> None:
 
 
 def test_detect_repo_delegates_to_gh_resolve_repo(monkeypatch: pytest.MonkeyPatch) -> None:
-    calls: list[object] = []
+    calls: list[tuple[object, str | None]] = []
 
     def fake_resolve(runner: object, *, cwd: str | None = None) -> str | None:
         calls.append((runner, cwd))
@@ -2234,7 +2234,8 @@ def test_detect_repo_delegates_to_gh_resolve_repo(monkeypatch: pytest.MonkeyPatc
 
     monkeypatch.setattr(analyze_issues.gh, "resolve_repo", fake_resolve)
     assert analyze_issues._detect_repo() == "owner/repo"
-    assert calls and calls[0][0] is analyze_issues.proc
+    assert calls
+    assert calls[0][0] is analyze_issues.proc
 
 
 def test_detect_repo_maps_none_to_empty(monkeypatch: pytest.MonkeyPatch) -> None:

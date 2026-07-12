@@ -1642,7 +1642,7 @@ def test_resolve_repo_detailed_missing_gh_falls_back_to_origin() -> None:
         def run(self, argv, **kwargs):  # type: ignore[no-untyped-def]
             if argv and argv[0] == "gh":
                 raise FileNotFoundError("gh")
-            return super().run(argv, **kwargs)
+            return super().run(argv, **kwargs)  # type: ignore[reportUnknownArgumentType]
 
     runner = MissingGhRunner(
         responses=[
