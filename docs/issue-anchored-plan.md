@@ -123,8 +123,8 @@ paths, so `WARN_PLAN_FILES_UNTOUCHED` compares only firm headings.
 When the plan-size guardrail sends a design through the decomposition path, each
 filed child issue contains a placeholder `larch:plan` block. The scaffold also
 records the parent firm-heading inventory and acceptance criteria for that piece.
-Child issues are serialized with adjacent `blocked-by` rows (`1→2`, `2→3`, ...),
-plus any acyclic panel dependencies. A child issue still requires its own
+Child issues preserve only the proposal's declared acyclic `blocked-by` rows.
+Independent pieces remain independent. A child issue still requires its own
 `/design` and Gate C approval before it is `[DESIGNED]` or ready for
 `/implement`.
 

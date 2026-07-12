@@ -7,12 +7,10 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from larch.design import decompose
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _design_tmp(tmp_path: Path) -> Path:
@@ -29,7 +27,7 @@ def test_prepare_happy_path_multi_blocker_and_neutralizes_feature(tmp_path: Path
         "## Pieces\n\n"
         "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
         "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: blocked-by Piece 1\n\n"
-        "### Piece 3: UI\n- Scope: ui\n- Firm-headings: ui/file.py\n- Acceptance: verify ui\n- Dependencies: blocked-by Piece 1, Piece 2 and Piece 2\n",
+        "### Piece 3: UI\n- Scope: ui\n- Firm-headings: ui/file.py\n- Acceptance: verify ui\n- Dependencies: blocked-by Piece 1, Piece 2\n",
         encoding="utf-8",
     )
     status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="123")
@@ -39,6 +37,34 @@ def test_prepare_happy_path_multi_blocker_and_neutralizes_feature(tmp_path: Path
     batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
     assert "#123" in batch
     assert "\u200b### embedded heading" in batch
+
+
+def test_prepare_rejects_duplicate_declared_dependency(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: blocked-by Piece 1, Piece 1\n",
+        encoding="utf-8",
+    )
+
+    assert decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition)[0] == "bad-dependency-ref"
+
+
+@pytest.mark.parametrize(
+    "records",
+    [
+        "PARTITION_FILE_MAP\t1\thttps://github.com/o/r/issues/101\nPARTITION_FILE_MAP\t2\thttps://github.com/o/r/issues/101\n",
+        "PARTITION_FILE_MAP\t1\thttps://github.com/o/r/issues/101\nPARTITION_FILE_MAP\t3\thttps://github.com/o/r/issues/103\n",
+    ],
+)
+def test_filed_pieces_rejects_non_unique_or_non_contiguous_mapping(tmp_path: Path, records: str) -> None:
+    d = _design_tmp(tmp_path)
+    (d / ".decompose-issues-filed").write_text(records, encoding="utf-8")
+
+    with pytest.raises(decompose.UsageError, match="incomplete or duplicate filed mapping"):
+        decompose._filed_pieces(d, repo="o/r")
 
 
 def test_prepare_bad_dependency_and_cycle(tmp_path: Path) -> None:

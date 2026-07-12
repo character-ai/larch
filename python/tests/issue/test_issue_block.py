@@ -102,6 +102,17 @@ def test_remove_graphql_success(monkeypatch: Any, capsys: Any) -> None:
     assert "is no longer blocked by" in capsys.readouterr().out
 
 
+def test_remove_lookup_failure(monkeypatch: Any, capsys: Any) -> None:
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "repo", "view"]:
+            return _result(argv, stdout="owner/repo\n")
+        return _result(argv, returncode=1, stderr="bad")
+
+    monkeypatch.setattr(issue_block.proc, "run", fake_run)
+    assert issue_block.remove_blocked_by_main(["1", "2"]) == 1
+    assert "ERROR=GraphQL node-ID lookup failed:" in capsys.readouterr().err
+
+
 def test_remove_mutation_failure(monkeypatch: Any, capsys: Any) -> None:
     calls = 0
 

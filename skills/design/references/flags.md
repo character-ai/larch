@@ -15,7 +15,7 @@ Step 0-pre validation and positional classification use `python/cli.py design pa
 
 - `--no-dedup`: forward to `/larch:issue` on verbal-create path. Default `false`.
 - `--run-id <ID>`: stable run id. Default empty.
-- `--partition` / `-p`: default `false`. Step **2b.5** goes straight to **Split-path** when no hard threshold fired: no Continue option or threshold inspection. Hard plans still show **Split/Cancel** before automatic Split-path entry; `--partition` gives small plans the same override. Persist as `partition_requested` (boolean) in `$DESIGN_TMPDIR/run-params.json` for later re-entries.
+- `--partition` / `-p`: default `false`. Step **2b.5** goes straight to **Split-path** when no hard threshold fired. The Split-path has one question with Partition, Override, and Other/chat. `--partition` gives small plans the same route. Persist as `partition_requested` (boolean) in `$DESIGN_TMPDIR/run-params.json` for later re-entries.
 - `--brainstorm`: default `false`. Step **1d.5** runs after Round 1 discussion and before Step **1d.7** outline-approval (Gate A re-entry only post-plan). Persist as `brainstorm_requested` (boolean).
 - `--per-round-approval`: default `false`. Controls Gate B (Step 3.5). Default (`approve_requested=false`): Gate B **auto-applies** accepted in-scope findings with no `AskUserQuestion`. Set (`approve_requested=true`): Gate B asks `Apply all` / `Go through each` / `Switch to discussion mode` each review round. The latter two choices are reachable only here; discussion otherwise remains via Gate C `Discuss further`. Persist as `approve_requested` (boolean). Size brakes and validator auto-fix still run.
 - `--skip-approve` / `-s`: default `false`. Auto-approves only Step **1d.7** outline-approval and Step **4b** Gate C final-plan approval as if the operator chose "Approve". It does **not** skip or answer Step 1c clarify, Step 1d round-1, degraded-tools gate, plan-size hard/drift brakes, validator escalation, dirty-tree recovery, decomposition panel, or Gate B finding-apply. Persist as `skip_approve_requested` (boolean) in `run-params.json`. Compatible with `--per-round-approval`. `-s` is the short alias and is parsed before generic short-flag rejection.
@@ -30,7 +30,7 @@ Step 0-pre validation and positional classification use `python/cli.py design pa
 
 **Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `python/cli.py design postplan-emit --with-plan-size`. It runs `python/cli.py plan check-size` and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`python/cli.py plan check-size` remains standalone** for retained Step 2b.5 paths.
 
-**Site-aware hard prompts**: initial Step 2b and discussion paths use Split/Cancel; retained Gate B paths use Split/Override/Cancel.
+**Site-aware hard prompts**: all size-triggered paths use the unified Split-path question with Partition, Override, and Other/chat.
 
 ### `LARCH_DESIGN_DRIFT_MULTIPLE`
 

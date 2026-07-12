@@ -115,7 +115,7 @@ def _prepare_parse_dependency(*, dep: str, index_by_num: dict[int, int]) -> list
             return None
         blocker = int(sm.group(1))
         if blocker in seen:
-            continue
+            return None
         seen.add(blocker)
         if blocker not in index_by_num:
             return None
@@ -482,7 +482,14 @@ def _filed_pieces(design_tmpdir: Path, *, repo: str) -> tuple[FiledPiece, ...]:
         if len(parts) != PARTITION_MAP_FIELD_COUNT or parts[0] != "PARTITION_FILE_MAP" or not parts[1].isdigit():
             raise UsageError("migrate-deps: invalid annotation record")
         pieces.append(FiledPiece(piece=int(parts[1]), issue=_parse_issue_url(parts[2], expected_repo=repo), repo=repo))
-    if len(pieces) < MIN_PARTITION_PIECES or len({piece.piece for piece in pieces}) != len(pieces):
+    piece_numbers = {piece.piece for piece in pieces}
+    issue_numbers = {piece.issue for piece in pieces}
+    if (
+        len(pieces) < MIN_PARTITION_PIECES
+        or len(piece_numbers) != len(pieces)
+        or len(issue_numbers) != len(pieces)
+        or piece_numbers != set(range(1, len(pieces) + 1))
+    ):
         raise UsageError("migrate-deps: incomplete or duplicate filed mapping")
     return tuple(sorted(pieces, key=lambda piece: piece.piece))
 
@@ -616,10 +623,12 @@ def _apply_migration(migration: DependencyMigration) -> bool:
     for edge in _replacement_edges(migration):
         if not _edge_present(edge, repo=migration.repo) and (not _run_dependency_mutation(remove=False, blocked=edge.blocked, blocker=edge.blocker, repo=migration.repo) or not _edge_present(edge, repo=migration.repo)):
             return False
+    if not _live_original_edges_match_migration(migration):
+        return False
     for edge in (*migration.incoming, *migration.outgoing):
         if _edge_present(edge, repo=migration.repo) and (not _run_dependency_mutation(remove=True, blocked=edge.blocked, blocker=edge.blocker, repo=migration.repo) or _edge_present(edge, repo=migration.repo)):
             return False
-    return _migration_postcondition(migration)
+    return _live_original_edges_match_migration(migration) and _migration_postcondition(migration)
 
 
 def migrate_dependencies(*, design_tmpdir: Path, original_issue: str, repo: str) -> str:
@@ -656,11 +665,13 @@ def migrate_dependencies(*, design_tmpdir: Path, original_issue: str, repo: str)
             _write_migration(manifest_path, migration)
         sentinel = design_tmpdir / ".decompose-deps-migrated"
         ready = _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces)
-        if ready and sentinel.is_file() and _migration_postcondition(migration):
+        if ready and sentinel.is_file() and _live_original_edges_match_migration(migration) and _migration_postcondition(migration):
             return "ok"
         sentinel.unlink(missing_ok=True)
         if not ready or not _apply_migration(migration):
             return _record_migration_failure(design_tmpdir, phase="migration", detail="dependency mutation or verification failed")
+        if not _live_original_edges_match_migration(migration):
+            return _record_migration_failure(design_tmpdir, phase="live-dependency-drift", detail="original dependency graph changed")
         if not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces):
             return _record_migration_failure(design_tmpdir, phase="intra-piece-postcondition", detail="declared piece dependency missing")
         sentinel.touch()
@@ -676,7 +687,13 @@ def close_original_issue(*, design_tmpdir: Path, original_issue: str, repo: str)
     if not (design_tmpdir / ".decompose-deps-migrated").is_file() or not migration_path.is_file():
         raise UsageError("close-original: dependency migration is not complete")
     migration = _load_migration(migration_path)
-    if migration.original_issue != int(original_issue) or migration.repo != repo or not _migration_postcondition(migration) or not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=migration.pieces):
+    if (
+        migration.original_issue != int(original_issue)
+        or migration.repo != repo
+        or not _live_original_edges_match_migration(migration)
+        or not _migration_postcondition(migration)
+        or not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=migration.pieces)
+    ):
         raise UsageError("close-original: dependency migration postcondition failed")
     filed = dec / "partition-filed.md"
     if not filed.is_file():
