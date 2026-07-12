@@ -3284,6 +3284,33 @@ def test_step2_dispatch_launcher_retries_on_clean_post_failure(repo: Path, tmp_p
     assert "STATUS=complete" in out
 
 
+def test_step2_dispatch_codex_runtime_failure_retries_then_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _ = repo
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    calls = 0
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        nonlocal calls
+        calls += 1
+        return 0, {"LAUNCHER_EXIT": "99", "MANIFEST_WRITTEN": "false"}, "unrelated Codex failure"
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    assert calls == 2
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=codex-runtime-failure" in out
+
+
 def test_step2_dispatch_oos_materialize_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     plugin_root = Path(__file__).resolve().parents[3]
@@ -6490,6 +6517,88 @@ def test_step2_dispatch_dirty_state_after_timeout_bails(repo: Path, tmp_path: Pa
     assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
 
 
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        "warning: Model metadata for gpt-5.6-sol not found. Defaulting to fallback metadata",
+        "The 'gpt-5.6-sol' model requires a newer version of Codex.",
+    ],
+)
+def test_step2_dispatch_codex_cli_gate_clean_tree_falls_back_without_retry(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    diagnostic: str,
+) -> None:
+    _ = repo
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    calls = 0
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        nonlocal calls
+        calls += 1
+        return 0, {"LAUNCHER_EXIT": "99", "MANIFEST_WRITTEN": "false"}, diagnostic
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    assert calls == 1
+    out = capsys.readouterr().out
+    expected = "codex CLI too old for gpt-5.6-sol; run `npm install -g @openai/codex@latest`"
+    assert "STATUS=claude_fallback" in out
+    assert f"REASON={expected}" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=allowed" in out
+
+
+@pytest.mark.parametrize("mutation", ["dirty", "head", "index-lock"])
+def test_step2_dispatch_codex_cli_gate_mutation_fails_closed(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    mutation: str,
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        if mutation == "dirty":
+            (repo / "partial.txt").write_text("partial\n", encoding="utf-8")
+        elif mutation == "head":
+            (repo / "README.md").write_text("changed\n", encoding="utf-8")
+            subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+            subprocess.run(["git", "commit", "-m", "partial"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+        else:
+            (repo / ".git" / "index.lock").write_text("locked\n", encoding="utf-8")
+        return 1, {"LAUNCHER_EXIT": "99", "MANIFEST_WRITTEN": "false"}, "requires a newer version of Codex"
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    rc = implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=codex CLI too old for gpt-5.6-sol; run `npm install -g @openai/codex@latest`" in out
+    assert "ORCHESTRATOR_EDIT_AUTHORITY=forbidden" in out
+
+
 def test_step2_dispatch_codex_nonzero_exit_salvages_complete(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
@@ -6501,7 +6610,7 @@ def test_step2_dispatch_codex_nonzero_exit_salvages_complete(repo: Path, tmp_pat
             json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README after self-verify failure")),
             encoding="utf-8",
         )
-        return 0, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "true"}, ""
+        return 0, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "true"}, "Codex requires a newer version of Codex"
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
     monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)

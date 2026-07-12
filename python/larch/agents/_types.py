@@ -102,6 +102,19 @@ class LaunchFailure:
 
 
 @dataclass(frozen=True)
+class CodexGateDetail:
+    model: str
+    signal: str
+    message: str
+
+
+@dataclass(frozen=True)
+class CodexProbeResult:
+    rc: int
+    gate_detail: CodexGateDetail | None = None
+
+
+@dataclass(frozen=True)
 class TierAttempt:
     tier: str
     wrapper_rc: int
@@ -259,6 +272,7 @@ class CheckReviewersResult:
     cursor_present: bool
     codex_probe_timed_out: bool = False
     cursor_probe_timed_out: bool = False
+    codex_gate_detail: CodexGateDetail | None = None
 
     def kv(self) -> dict[str, str]:
         return {

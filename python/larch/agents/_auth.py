@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
+import hashlib
 import json
 import os
 import platform
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -19,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core import config
+from larch import io as larch_io
 from larch.core.ctx import Ctx
 from larch.core import logging_util
 
@@ -30,6 +34,8 @@ from larch.agents._types import (
     CURSOR_PREREAD_FAIL_MSG,
     AuthVerdict,
     CheckReviewersResult,
+    CodexGateDetail,
+    CodexProbeResult,
     DegradedToolsResult,
     _err,
     _emit,
@@ -40,6 +46,7 @@ from larch.agents._types import (
     _env_int,
 )
 from larch.agents._launch_failure import (
+    detect_codex_cli_gate,
     resolve_model_args,
 )
 from larch.agents._run_external import (
@@ -224,8 +231,132 @@ def _probe_stamp_path(kind: str) -> Path:
     return _probe_tmpdir() / f"larch-{kind}-present-{_probe_user()}.stamp"
 
 
-def _codex_probe_stamp_kind() -> str:
-    return "codex-env-key" if _codex_env_key_enabled() else "codex-login"
+def _resolved_codex_review_model() -> str:
+    argv = resolve_model_args("codex", codex_role="review").argv
+    return next((argv[index + 1] for index, token in enumerate(argv[:-1]) if token == "-m"), config.CODEX_REVIEW_MODEL_DEFAULT)
+
+
+def _codex_probe_identity(model: str) -> str:
+    auth_mode = "env-key" if _codex_env_key_enabled() else "login"
+    model_hash = hashlib.sha256(model.encode("utf-8")).hexdigest()[:16]
+    return f"codex-{auth_mode}-{model_hash}"
+
+
+def _codex_gate_detail_path(identity: str) -> Path:
+    return _probe_tmpdir() / f"larch-{identity}-gate-{_probe_user()}.json"
+
+
+def _codex_probe_update_lock_path(identity: str) -> Path:
+    return _probe_tmpdir() / f"larch-{identity}-probe-{_probe_user()}.lock"
+
+
+@contextlib.contextmanager
+def _codex_probe_update_lock(identity: str):
+    path = _codex_probe_update_lock_path(identity)
+    fd: int | None = None
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        flags = os.O_RDWR | os.O_CREAT
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(path, flags, 0o600)
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise OSError(f"refusing non-regular Codex probe update lock: {path}")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        if fd is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+
+def _clear_codex_gate_detail(identity: str) -> None:
+    path = _codex_gate_detail_path(identity)
+    try:
+        if path.is_symlink():
+            return
+        path.unlink(missing_ok=True)
+    except OSError:
+        return
+
+
+def _write_codex_gate_detail(*, identity: str, detail: CodexGateDetail) -> None:
+    path = _codex_gate_detail_path(identity)
+    payload: dict[str, str | int] = {
+        "schema_version": 1,
+        "identity": identity,
+        "model": detail.model,
+        "signal": detail.signal,
+        "message": detail.message,
+    }
+    try:
+        larch_io.atomic_write(
+            path=path,
+            text=json.dumps(payload, separators=(",", ":")) + "\n",
+            prefix="larch-codex-gate-detail.",
+            nofollow=True,
+            mode=0o600,
+        )
+    except (OSError, ValueError):
+        _clear_codex_gate_detail(identity)
+
+
+def _parse_codex_gate_detail(*, payload: object, identity: str) -> CodexGateDetail | None:
+    if not isinstance(payload, dict) or payload.get("schema_version") != 1 or payload.get("identity") != identity:
+        return None
+    model = payload.get("model")
+    signal = payload.get("signal")
+    message = payload.get("message")
+    expected = detect_codex_cli_gate(
+        "requires a newer version of Codex",
+        fallback_model=str(model),
+    )
+    if (
+        not all(isinstance(value, str) for value in (model, signal, message))
+        or expected is None
+        or model != expected.model
+        or message != expected.message
+        or signal not in {"model-metadata-not-found", "newer-codex-required"}
+    ):
+        return None
+    return CodexGateDetail(model=str(model), signal=str(signal), message=str(message))
+
+
+def _read_codex_gate_detail(*, identity: str, max_age: int) -> CodexGateDetail | None:
+    if max_age <= 0:
+        return None
+    path = _codex_gate_detail_path(identity)
+    try:
+        if path.is_symlink() or not path.is_file():
+            return None
+        detail_stat = path.stat()
+        age = time.time() - detail_stat.st_mtime
+        if age < 0 or age > max_age:
+            return None
+        stamp = _probe_stamp_path(identity)
+        if stamp.is_file() and not stamp.is_symlink() and detail_stat.st_mtime_ns < stamp.stat().st_mtime_ns:
+            return None
+        payload: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return _parse_codex_gate_detail(payload=payload, identity=identity)
+
+
+def _codex_gate_detail_max_age() -> int:
+    ttl = _env_int(name="LARCH_PROBE_TTL_SECONDS", default=60)
+    negative_ttl = _env_int(name="LARCH_PROBE_NEGATIVE_TTL_SECONDS", default=0)
+    immediate = config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC
+    return max(negative_ttl, ttl if ttl > 0 else immediate)
+
+
+def _current_codex_gate_detail() -> CodexGateDetail | None:
+    try:
+        model = _resolved_codex_review_model()
+    except ValueError:
+        return None
+    identity = _codex_probe_identity(model)
+    return _read_codex_gate_detail(identity=identity, max_age=_codex_gate_detail_max_age())
 
 
 def _read_fresh_probe_stamp(*, stamp: Path, ttl: int, negative_ttl: int) -> bool | None:
@@ -377,7 +508,18 @@ def _run_one_cursor_probe(timeout: int) -> int:
                 probe_out.unlink()
 
 
-def _run_one_codex_probe(timeout: int) -> int:
+def _codex_probe_result(*, rc: int, diagnostics: str, resolved_model: str, probe_out: Path, probe_side: Path) -> CodexProbeResult:
+    gate_detail = detect_codex_cli_gate(diagnostics, fallback_model=resolved_model)
+    if gate_detail is not None:
+        return CodexProbeResult(_PROBE_NO_RETRY_RC, gate_detail)
+    if rc in {config.EXIT_TIMEOUT, 0}:
+        return CodexProbeResult(rc)
+    if external_auth_verdict("codex", probe_out, probe_side) == "auth":
+        return CodexProbeResult(_AUTH_RETRY_RC)
+    return CodexProbeResult(1)
+
+
+def _run_one_codex_probe(timeout: int) -> CodexProbeResult:
     probe_out: Path | None = None
     probe_side: Path | None = None
     codex_home: Path | None = None
@@ -393,12 +535,13 @@ def _run_one_codex_probe(timeout: int) -> int:
                 _append(path=probe_side, text=prep_msg + "\n")
             if _codex_env_key_enabled():
                 _err("agent check-reviewers: Codex OPENAI_API_KEY auth setup failed")
-            return _PROBE_NO_RETRY_RC
+            return CodexProbeResult(_PROBE_NO_RETRY_RC)
         try:
-            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="default").argv)
+            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="review").argv)
         except ValueError as exc:
             _append(path=probe_side, text=f"model args failed: {exc}\n")
-            return _PROBE_NO_RETRY_RC
+            return CodexProbeResult(_PROBE_NO_RETRY_RC)
+        resolved_model = next((model_args[index + 1] for index, token in enumerate(model_args[:-1]) if token == "-m"), config.CODEX_REVIEW_MODEL_DEFAULT)
         probe_workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
             "codex",
@@ -421,13 +564,18 @@ def _run_one_codex_probe(timeout: int) -> int:
         state = external_startup_lock_acquire(tool="codex")
         external_startup_lock_release_after(state=state)
         rc = _run_probe_command(cmd, timeout=timeout, env=env, stderr=probe_side)
-        if rc == config.EXIT_TIMEOUT:
-            return config.EXIT_TIMEOUT
-        if rc == 0:
-            return 0
-        if external_auth_verdict("codex", probe_out, probe_side) == "auth":
-            return _AUTH_RETRY_RC
-        return 1
+        diagnostics = "\n".join(
+            path.read_text(encoding="utf-8", errors="replace")
+            for path in (probe_out, probe_side)
+            if path.is_file()
+        )
+        return _codex_probe_result(
+            rc=rc,
+            diagnostics=diagnostics,
+            resolved_model=resolved_model,
+            probe_out=probe_out,
+            probe_side=probe_side,
+        )
     finally:
         if codex_home is not None:
             shutil.rmtree(codex_home, ignore_errors=True)
@@ -437,32 +585,32 @@ def _run_one_codex_probe(timeout: int) -> int:
                     path.unlink()
 
 
-def _run_codex_probes(*, max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
-    auth_failures = 0
-    transient_retries_used = 0
-    timeout_retries_used = 0
+def _run_codex_probes(*, max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool, CodexGateDetail | None]:
+    retry_limits: dict[int, int] = {
+        config.EXIT_TIMEOUT: max_timeout_retries,
+        _AUTH_RETRY_RC: max(max_auth_retries, 1) - 1,
+        1: max_transient_retries,
+    }
+    retries_used: dict[int, int] = dict.fromkeys(retry_limits, 0)
+    present = False
+    timed_out = False
+    gate_detail: CodexGateDetail | None = None
     while True:
-        rc = _run_one_codex_probe(timeout)
-        if rc == config.EXIT_TIMEOUT:
-            if timeout_retries_used < max_timeout_retries:
-                timeout_retries_used += 1
-                continue
-            return False, True
+        result = _run_one_codex_probe(timeout)
+        rc = result.rc
+        if result.gate_detail is not None:
+            gate_detail = result.gate_detail
+            break
         if rc == 0:
-            return True, False
-        if rc == _PROBE_NO_RETRY_RC:
-            return False, False
-        if rc == _AUTH_RETRY_RC:
-            auth_failures += 1
-            if auth_failures >= max(max_auth_retries, 1):
-                return False, False
+            present = True
+            break
+        retry_limit = retry_limits.get(rc)
+        if retry_limit is not None and retries_used[rc] < retry_limit:
+            retries_used[rc] += 1
             continue
-        if rc == 1:
-            if transient_retries_used >= max_transient_retries:
-                return False, False
-            transient_retries_used += 1
-            continue
-        return False, False
+        timed_out = rc == config.EXIT_TIMEOUT
+        break
+    return present, timed_out, gate_detail
 
 
 def _run_cursor_probes(*, max_auth_retries: int, max_transient_retries: int, max_timeout_retries: int, timeout: int) -> tuple[bool, bool]:
@@ -499,6 +647,51 @@ def _run_cursor_probes(*, max_auth_retries: int, max_transient_retries: int, max
         _cursor_probe_cleanup_private_config_dir(setup)
 
 
+@dataclass(frozen=True)
+class _ProbeRetryLimits:
+    auth: int
+    transient: int
+    timeout: int
+
+
+def _check_codex_reviewer(
+    *,
+    ttl: int,
+    negative_ttl: int,
+    retry_limits: _ProbeRetryLimits,
+    timeout: int,
+) -> tuple[bool, bool, CodexGateDetail | None]:
+    try:
+        codex_review_model = _resolved_codex_review_model()
+    except ValueError:
+        codex_review_model = "unknown"
+    codex_identity = _codex_probe_identity(codex_review_model)
+    stamp = _probe_stamp_path(codex_identity)
+    max_gate_age = max(negative_ttl, config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC)
+    cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
+    if cached is not None:
+        gate_detail = _read_codex_gate_detail(identity=codex_identity, max_age=max_gate_age) if not cached else None
+        return cached, False, gate_detail
+
+    with _codex_probe_update_lock(codex_identity):
+        cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
+        if cached is not None:
+            gate_detail = _read_codex_gate_detail(identity=codex_identity, max_age=max_gate_age) if not cached else None
+            return cached, False, gate_detail
+        codex_present, codex_probe_timed_out, codex_gate_detail = _run_codex_probes(
+            max_auth_retries=retry_limits.auth,
+            max_transient_retries=retry_limits.transient,
+            max_timeout_retries=retry_limits.timeout,
+            timeout=timeout,
+        )
+        _write_probe_stamp(stamp=stamp, value=codex_present)
+        if codex_gate_detail is None:
+            _clear_codex_gate_detail(codex_identity)
+        else:
+            _write_codex_gate_detail(identity=codex_identity, detail=codex_gate_detail)
+        return codex_present, codex_probe_timed_out, codex_gate_detail
+
+
 def check_reviewers(
     *,
     skip_codex_probe: bool = False,
@@ -522,6 +715,7 @@ def check_reviewers(
         cursor_present = False
         codex_probe_timed_out = False
         cursor_probe_timed_out = False
+        codex_gate_detail: CodexGateDetail | None = None
 
         if cursor_binary_found and not skip_cursor_probe:
             cached = _read_fresh_probe_stamp(stamp=_probe_stamp_path("cursor"), ttl=ttl, negative_ttl=negative_ttl)
@@ -540,18 +734,16 @@ def check_reviewers(
                 _write_probe_stamp(stamp=_probe_stamp_path("cursor"), value=cursor_present)
 
         if codex_binary_found and not skip_codex_probe:
-            stamp = _probe_stamp_path(_codex_probe_stamp_kind())
-            cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
-            if cached is not None:
-                codex_present = cached
-            else:
-                codex_present, codex_probe_timed_out = _run_codex_probes(
-                    max_auth_retries=max_auth_retries,
-                    max_transient_retries=max_transient_retries,
-                    max_timeout_retries=max_timeout_retries,
-                    timeout=timeout,
-                )
-                _write_probe_stamp(stamp=stamp, value=codex_present)
+            codex_present, codex_probe_timed_out, codex_gate_detail = _check_codex_reviewer(
+                ttl=ttl,
+                negative_ttl=negative_ttl,
+                retry_limits=_ProbeRetryLimits(
+                    auth=max_auth_retries,
+                    transient=max_transient_retries,
+                    timeout=max_timeout_retries,
+                ),
+                timeout=timeout,
+            )
 
         return CheckReviewersResult(
             codex_binary_found=codex_binary_found,
@@ -560,6 +752,7 @@ def check_reviewers(
             cursor_present=cursor_present,
             codex_probe_timed_out=codex_probe_timed_out,
             cursor_probe_timed_out=cursor_probe_timed_out,
+            codex_gate_detail=codex_gate_detail,
         )
 
 
@@ -651,12 +844,13 @@ def degraded_tools_result(
     degraded = codex_state != "ok" or cursor_state != "ok"
     both_down = codex_state != "ok" and cursor_state != "ok"
     explanation: list[str] = []
+    codex_gate_detail = _current_codex_gate_detail() if codex_state == "probe-failed" else None
     if degraded:
         explanation.extend(
             [
                 f"⚠ Degraded external-tool availability for this /{skill} run:",
                 "",
-                f"  • Codex:  {_state_phrase(codex_state)}",
+                f"  • Codex:  {codex_gate_detail.message if codex_gate_detail is not None else _state_phrase(codex_state)}",
                 f"  • Cursor: {_state_phrase(cursor_state)}",
                 "",
             ]
@@ -777,4 +971,8 @@ def status_check_main(argv: list[str] | None = None) -> int:
     _emit_kv(key="CODEX_STATE", value=degraded.codex_state)
     _emit_kv(key="CURSOR_STATE", value=degraded.cursor_state)
     _emit_kv(key="DEGRADED", value=str(degraded.degraded).lower())
+    if degraded.codex_state == "probe-failed":
+        gate_detail = reviewer_result.codex_gate_detail or _current_codex_gate_detail()
+        if gate_detail is not None:
+            _emit_kv(key="CODEX_PROBE_DETAIL", value=gate_detail.message)
     return 0

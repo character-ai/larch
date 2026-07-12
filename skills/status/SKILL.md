@@ -18,14 +18,15 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" status check
 
 Parse all KV pairs from stdout without `eval`/`source`. Extract at minimum:
 `LARCH_PLUGIN_VERSION`, `CODEX_STATE`, `CURSOR_STATE`, `CODEX_BINARY_FOUND`,
-`CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_PRESENT`, and `DEGRADED`.
+`CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `DEGRADED`, and the
+optional `CODEX_PROBE_DETAIL`.
 
 <!-- step:2 — Render and report -->
 
 Render a human-readable status report using the parsed values:
 
 - **Version**: `LARCH_PLUGIN_VERSION`
-- **Codex**: translate `CODEX_STATE` — `ok` → `ok`; `binary-missing` → `binary not found on PATH`; `probe-failed` → `binary found but runtime probe failed`; `unknown` → `probe did not run`
+- **Codex**: translate `CODEX_STATE` — `ok` → `ok`; `binary-missing` → `binary not found on PATH`; `probe-failed` with `CODEX_PROBE_DETAIL` → render that detail; other `probe-failed` → `binary found but runtime probe failed`; `unknown` → `probe did not run`
 - **Cursor**: same translation using `CURSOR_STATE`
 
 When `DEGRADED=true`, append a brief note based on vendor availability: if exactly one vendor is unavailable, `/implement` requires explicit operator confirmation and then continues with that external dropped from the reduced panel; if both vendors are unavailable, `/implement` hard-fails until at least one vendor is fixed.
