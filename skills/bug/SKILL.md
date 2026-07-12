@@ -131,7 +131,7 @@ Use `Write` to create `$BUG_TMPDIR/bug-issue-body.md` with exactly these ten `##
 
 ## Root cause analysis
 
-<Likely root cause. If uncertain, state uncertainty explicitly and explain why.>
+<Likely root cause. If uncertain, state uncertainty explicitly and explain why. When the introducing change is known, name it with one canonical origin phrase: "introduced by #N", "introduced by PR #N", "introduced in #N", "incomplete fix of #N", "persists after #N", or "residual of #N".>
 
 ## Evidence
 
