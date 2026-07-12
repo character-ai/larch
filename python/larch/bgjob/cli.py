@@ -5,10 +5,17 @@ from __future__ import annotations
 import argparse
 import os
 from pathlib import Path
+from typing import Never
 
-from larch.bgjob import daemon, model, registry, wait
+from larch.bgjob import adapt, daemon, model, registry, wait
 from larch.core import config, process_identity
 from larch.report.progress_file import resolve_owned_run_id, validate_run_id
+
+
+class _MachineArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> Never:
+        _ = message
+        raise ValueError("invalid command arguments")
 
 
 def _add_common_job_args(parser: argparse.ArgumentParser, *, tmpdir_required: bool = True) -> None:
@@ -70,6 +77,44 @@ def start_main(argv: list[str] | None = None) -> int:
         return daemon.start_daemon(_build_spec(args))
     except (OSError, RuntimeError, ValueError) as exc:
         print(f"BGJOB_ERROR={type(exc).__name__}:{exc}")
+        return 2
+
+
+def adapt_main(argv: list[str] | None = None) -> int:
+    parser = _MachineArgumentParser(prog="cli.py bgjob adapt")
+    _add_common_job_args(parser, tmpdir_required=False)
+    _ = parser.add_argument("--budget-s", required=True, type=int)
+    _ = parser.add_argument("--log-dir", default="")
+    _ = parser.add_argument("--owner-pid", default="")
+    _ = parser.add_argument("--sentinel", action="append", default=[])
+    _ = parser.add_argument("command", nargs=argparse.REMAINDER)
+    try:
+        args = parser.parse_args(argv)
+    except (argparse.ArgumentError, ValueError):
+        print("BGJOB_ERROR=invalid-input")
+        return 2
+    if args.command and args.command[0] == "--":
+        args.command = args.command[1:]
+    error_token = ""
+    if not args.command:
+        error_token = "missing-command"
+    elif args.budget_s <= 0:
+        error_token = "invalid-budget"
+    tmpdir_raw = str(args.tmpdir) or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not error_token and not tmpdir_raw:
+        error_token = "missing-tmpdir"
+    if error_token:
+        print(f"BGJOB_ERROR={error_token}")
+        return 2
+    args.tmpdir = tmpdir_raw
+    args.merge_result_env = ""
+    try:
+        return adapt.start_or_reattach(_build_spec(args))
+    except adapt.AdaptError as exc:
+        print(f"BGJOB_ERROR={exc.token}")
+        return 2
+    except (OSError, RuntimeError, ValueError):
+        print("BGJOB_ERROR=invalid-input")
         return 2
 
 
