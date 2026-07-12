@@ -45,11 +45,11 @@ def test_first_available_drafter_override_and_soft_fail() -> None:
 
 def test_panel_role_metadata_is_separate() -> None:
     review_slots = external_defaults.slot_defaults("review.panel")
-    review_specialists = [slot for slot in review_slots if slot.slot in {"correctness", "edge-cases", "testing"}]
-    assert len(review_specialists) == 6
-    assert len(review_slots) == 6
+    review_specialists = [slot for slot in review_slots if slot.slot in {"correctness", "edge-cases", "testing", "architectural-compliance"}]
+    assert len(review_specialists) == 8
+    assert len(review_slots) == 8
     assert {(slot.slot, slot.tool) for slot in review_specialists} == {
-        (slot, tool) for slot in ("correctness", "edge-cases", "testing") for tool in ("cursor", "codex")
+        (slot, tool) for slot in ("correctness", "edge-cases", "testing", "architectural-compliance") for tool in ("cursor", "codex")
     }
     deleted_auto_slot: str = "plan-fidelity-auto"
     assert not any(slot.slot == deleted_auto_slot for slot in review_slots)

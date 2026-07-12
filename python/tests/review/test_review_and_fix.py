@@ -4754,7 +4754,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         )
         (out_dir / "review-core-gather.env").write_text(f"MODE=diff\nFILE_LIST_FILE={scope_file}\n", encoding="utf-8")
         (out_dir / "review-core-dispatch.env").write_text(
-            "SCOUT_STATUS=na\nDYNAMIC_SLOTS=0\nSTATIC_SLOT_COUNT=3\n",
+            "SCOUT_STATUS=na\nDYNAMIC_SLOTS=0\nSTATIC_SLOT_COUNT=4\n",
             encoding="utf-8",
         )
         voter_paths = []
@@ -4782,7 +4782,7 @@ def test_under_quorum_retry_revotes_only_targeted_items(tmp_path: Path, monkeypa
         logging_util.emit("VOTER_COUNT=3")
         logging_util.emit("SCOUT_STATUS=na")
         logging_util.emit("DYNAMIC_SLOTS=0")
-        logging_util.emit("STATIC_SLOT_COUNT=3")
+        logging_util.emit("STATIC_SLOT_COUNT=4")
         logging_util.emit("EFFECTIVE_ROUND_CAP=2")
         return 0
 

@@ -120,7 +120,7 @@ printf '0\\n' > "$claude.done"
 external_outputs="$external"
 if [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
   external_outputs=""
-  for slot in correctness edge-cases testing; do
+  for slot in correctness edge-cases testing architectural-compliance; do
     file="$tmp/codex-specialist-${slot}-output.txt"
     printf 'external static %s\\n' "$slot" > "$file"
     printf 'STATUS=clean\\n' > "$file.dirty-tree"
@@ -129,7 +129,7 @@ if [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
 fi
 if [[ "${TEST_CLAUDE_STATIC_OUTPUTS:-false}" == "true" ]]; then
   claude_outputs=""
-  for slot in correctness edge-cases testing; do
+  for slot in correctness edge-cases testing architectural-compliance; do
     file="$tmp/cursor-specialist-${slot}-output-phase3.txt"
     printf 'claude static %s\\n' "$slot" > "$file"
     printf '0\\n' > "$file.done"
@@ -161,12 +161,12 @@ printf 'SLOT_COUNT=%s\\n' "$(( ${TEST_STATIC_SLOT_COUNT:-1} + ${TEST_DYNAMIC_SLO
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\n' "$tmp"
 if [[ "${TEST_FULL_STATIC_MANIFEST:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
-  for slot in correctness edge-cases testing; do
+  for slot in correctness edge-cases testing architectural-compliance; do
     printf '{"slot":"%s","tool":"codex","output":"%s/codex-specialist-%s-output.txt","agent":"agents/reviewer-%s.md"}\\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
   done
 elif [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
   : > "$tmp/panel-manifest.ndjson"
-  for slot in correctness edge-cases testing; do
+  for slot in correctness edge-cases testing architectural-compliance; do
     printf '{"slot":"%s","tool":"codex","output":"%s/codex-specialist-%s-output.txt","agent":"agents/reviewer-%s.md"}\\n' "$slot" "$tmp" "$slot" "$slot" >> "$tmp/panel-manifest.ndjson"
   done
 else
@@ -219,6 +219,22 @@ STATUS=ERROR
 REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
 STATUS=ERROR
 
+REVIEWER_FILE=$rtmp/codex-specialist-architectural-compliance-output.txt
+STATUS=ERROR
+
+EOF
+    ;;
+  missing-architectural-compliance)
+    cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
+STATUS=OK
+
 EOF
     ;;
   missing-testing)
@@ -227,6 +243,9 @@ REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
 STATUS=OK
 
 REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-architectural-compliance-output.txt
 STATUS=OK
 
 EOF
@@ -247,6 +266,9 @@ REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
 STATUS=OK
 
 REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-architectural-compliance-output.txt
 STATUS=OK
 
 EOF

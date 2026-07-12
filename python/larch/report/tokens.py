@@ -110,7 +110,9 @@ _PANEL_PROMPT_SIZE_LEGACY_FIELDS = (
     "agent_tokens",
 )
 _PANEL_SLOT_KINDS = frozenset({"specialist", "plan-review", "voter", "aggregator", "implementer"})
-_PANEL_SPECIALIST_SLOT_NAMES = frozenset({"correctness", "edge-cases", "testing", "generalist"})
+_PANEL_SPECIALIST_SLOT_NAMES = frozenset(
+    {"correctness", "edge-cases", "testing", "architectural-compliance", "generalist"}
+)
 _PANEL_ROUND_RE = re.compile(r"^round-([0-9]+)$")
 
 

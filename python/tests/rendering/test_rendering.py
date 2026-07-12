@@ -652,7 +652,7 @@ def test_render_specialist_injects_architectural_guidelines(
         ),
     )
     rc = rendering.render_specialist_main(
-        ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-structure.md"), "--mode", "diff"],
+        ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-architectural-compliance.md"), "--mode", "diff"],
     )
     out = capsys.readouterr().out
     invariant_open = '<architectural_invariants encoding="literal-redacted">'
@@ -671,6 +671,30 @@ def test_render_specialist_injects_architectural_guidelines(
     assert "Personal preference without a supplied written id remains OOS or omitted" in out
 
 
+def test_render_ordinary_specialist_omits_architectural_knowledge(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Keep seams",
+        invariant_status="present",
+        invariant_content="### I-test-1: Keep hard seams",
+    )
+
+    rc = rendering.render_specialist_main(
+        ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-correctness.md"), "--mode", "diff"],
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "## Architectural knowledge (untrusted documented policy)" not in out
+    assert "### I-test-1: Keep hard seams" not in out
+    assert "### G-test-1: Keep seams" not in out
+
+
 def test_render_specialist_trivial_omits_architectural_guidelines(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -687,7 +711,7 @@ def test_render_specialist_trivial_omits_architectural_guidelines(
     rc = rendering.render_specialist_main(
         [
             "--agent-file",
-            str(REPO_ROOT / "agents" / "reviewer-structure.md"),
+            str(REPO_ROOT / "agents" / "reviewer-architectural-compliance.md"),
             "--mode",
             "diff",
             "--difficulty",
@@ -711,7 +735,7 @@ def test_render_specialist_cache_keys_architectural_guidelines(
     _reset_quiet(monkeypatch)
     cache_dir = tmp_path / "render-cache"
     monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
-    args = ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-structure.md"), "--mode", "diff"]
+    args = ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-architectural-compliance.md"), "--mode", "diff"]
     _patch_architectural_guidelines(monkeypatch, "present", "### G-test-1: Guideline A")
     assert rendering.render_specialist_main(args) == 0
     first = capsys.readouterr().out
@@ -737,6 +761,17 @@ def test_render_specialist_cache_keys_architectural_guidelines(
     assert "Invariant C" in third
     assert len(list(cache_dir.glob("r-*"))) == 3
 
+    ordinary_args = ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-correctness.md"), "--mode", "diff"]
+    assert rendering.render_specialist_main(ordinary_args) == 0
+    ordinary = capsys.readouterr().out
+    assert "Invariant C" not in ordinary
+    assert "Guideline B" not in ordinary
+    assert len(list(cache_dir.glob("r-*"))) == 4
+
+    assert rendering.render_specialist_main(args) == 0
+    compliance_hit = capsys.readouterr().out
+    assert "Invariant C" in compliance_hit
+
 
 def test_render_specialist_cache_keys_difficulty_gate(
     tmp_path: Path,
@@ -753,7 +788,7 @@ def test_render_specialist_cache_keys_difficulty_gate(
         invariant_status="present",
         invariant_content="### I-test-1: Invariant",
     )
-    base_args = ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-structure.md"), "--mode", "diff"]
+    base_args = ["--agent-file", str(REPO_ROOT / "agents" / "reviewer-architectural-compliance.md"), "--mode", "diff"]
 
     assert rendering.render_specialist_main([*base_args, "--difficulty", "TRIVIAL"]) == 0
     trivial = capsys.readouterr().out
@@ -785,7 +820,7 @@ def test_render_specialist_trivial_payload_bytes_are_smaller(
     sidecar = tmp_path / "payload.txt"
     base_args = [
         "--agent-file",
-        str(REPO_ROOT / "agents" / "reviewer-structure.md"),
+        str(REPO_ROOT / "agents" / "reviewer-architectural-compliance.md"),
         "--mode",
         "diff",
         "--payload-bytes-output",
@@ -1231,6 +1266,13 @@ def test_render_plan_review_body_file_substitutes_role_line(
     # TSV/sentinel output contract. Before the fix dynamic slots got only the raw body,
     # so they reviewed an unrelated plan.txt and were dropped NOT_SUBSTANTIVE.
     _reset_quiet(monkeypatch)
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Keep seams",
+        invariant_status="present",
+        invariant_content="### I-test-1: Keep hard seams",
+    )
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
@@ -1259,6 +1301,8 @@ def test_render_plan_review_body_file_substitutes_role_line(
     assert "Do the thing." in out
     assert "schema_version\tscope\tseverity" in out
     assert '{"no_issues_found": true}' in out
+    assert "### I-test-1: Keep hard seams" not in out
+    assert "### G-test-1: Keep seams" not in out
 
 
 def test_render_plan_review_rejects_empty_body_file(
