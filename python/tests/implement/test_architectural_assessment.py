@@ -282,7 +282,7 @@ def test_discard_unavailable_coverage_invalidates_only_unavailable(monkeypatch: 
     invalidated.clear()
     monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _meta(config.NOTE_STATE_AUTHORED))
     assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_INVARIANTS, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert invalidated == []
+    assert not invalidated
 
 
 def test_discard_unavailable_coverage_uses_guideline_invalidator(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
