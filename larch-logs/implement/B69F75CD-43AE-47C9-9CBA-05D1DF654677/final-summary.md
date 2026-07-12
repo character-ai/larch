@@ -59,11 +59,25 @@ codex/plan-fidelity-vote     │                                                
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (1):
+  1. The changed SKILL.md embeds a large state-publication implementation in an inline Bash fence, including complex quoting and control flow, rather than keeping logic behind cli.py or a file-backed sc...
+
+## Architectural invariants
+
+No violations identified.
+
+## Architectural guidelines
+
+The changed SKILL.md embeds a large state-publication implementation in an inline Bash fence, including complex quoting and control flow, rather than keeping logic behind cli.py or a file-backed script.
+
 ## /implement run B69F75CD-43AE-47C9-9CBA-05D1DF654677: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 00:35:18
-- **Cost**: 💰 TOTAL ~$20.42: Claude $0.65, Codex-5.6 $13.92, Codex-mini $0.08, Cursor $5.54 (Composer $5.54, Grok $0.00), Claude (subprocess) $0.23  |  Tokens: 24628k
+- **Cost**: 💰 TOTAL ~$21.00: Claude $0.87, Codex-5.6 $14.21, Codex-mini $0.08, Cursor $5.59 (Composer $5.59, Grok $0.00), Claude (subprocess) $0.25  |  Tokens: 25449k
 - **Issue**: #7151: https://github.com/character-ai/larch/issues/7151
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -72,8 +86,8 @@ codex/plan-fidelity-vote     │                                                
 - **Code review**: 5/10 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7168
-- **Exec issues**: 0
-- **Warnings**: 0
+- **Exec issues**: 1
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/B69F75CD-43AE-47C9-9CBA-05D1DF654677/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
