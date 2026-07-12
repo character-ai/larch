@@ -66,33 +66,35 @@ codex/apply                          │                                      �
 ## Exec Issues and Warnings
 Exec Issues (1):
   1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
-Warnings (2):
+Warnings (3):
   1. Step 7a.1 — 3 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/tests/design/test_design_lifecycle.py, python/tests/issue/test_issue_create...
   2. Several changed issue-close and label-mutation paths accept successful gh wrapper results without re-reading the mutated issue or label surface, including close_priors_main, _close_combined_away_is...
+  3. Several changed gh issue-close paths accept a successful mutation without re-reading the issue, including _close_combined_away_issue and close_original_issue.
 
 ## Architectural invariants
 
-No violations identified.
+No invariant violations identified.
 
 ## Architectural guidelines
 
-Several changed issue-close and label-mutation paths accept successful gh wrapper results without re-reading the mutated issue or label surface, including close_priors_main, _close_combined_away_issue, and _apply_priority_label.
+Several changed gh issue-close paths accept a successful mutation without re-reading the issue, including _close_combined_away_issue and close_original_issue.
 
-## /implement run F1BFA841-BF5E-4B97-9424-FEA0531462CC: shipping
+## /implement run F1BFA841-BF5E-4B97-9424-FEA0531462CC: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:11:30
-- **Cost**: 💰 TOTAL ~$33.45: Claude $5.18, Codex-5.6 $9.07, Codex-mini $1.89, Cursor $16.86 (Composer $16.86, Grok $0.00), Claude (subprocess) $0.45  |  Tokens: 66809k
+- **Cost**: 💰 TOTAL ~$34.92: Claude $6.03, Codex-5.6 $9.52, Codex-mini $1.89, Cursor $16.93 (Composer $16.93, Grok $0.00), Claude (subprocess) $0.55  |  Tokens: 69988k
 - **Issue**: #7053: https://github.com/character-ai/larch/issues/7053
+- **PR**: #7164: https://github.com/character-ai/larch/pull/7164
 - **Plan review**: N/A
 - **Plan coverage**: 27/28 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 7/9 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +533/-275, larch-logs +1094/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
-- **Warnings**: 2
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/F1BFA841-BF5E-4B97-9424-FEA0531462CC/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
