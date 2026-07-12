@@ -395,7 +395,7 @@ def _validate_finding(
         raise ScanError(
             "finding qualified_symbol must be a non-empty single-line string when present"
         )
-    metric = _validate_metric(finding.metric)
+    metric = _validate_metric(cast(object, finding.metric))
     return Finding(
         path=path,
         line=line,

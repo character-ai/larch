@@ -169,7 +169,7 @@ def test_missing_root_returns_error(tmp_path: Path) -> None:
     assert code == EXIT_ERROR
     assert out == ""
     assert "does not exist" in err
-    assert runner.calls == []
+    assert not runner.calls
 
 
 def test_non_directory_root_returns_error(tmp_path: Path) -> None:
@@ -179,7 +179,7 @@ def test_non_directory_root_returns_error(tmp_path: Path) -> None:
     code, _out, err = _invoke(_rule(), file_root, runner)
     assert code == EXIT_ERROR
     assert "not a directory" in err
-    assert runner.calls == []
+    assert not runner.calls
 
 
 def test_rev_parse_nonzero_empty_multiline_and_mismatch(tmp_path: Path) -> None:
