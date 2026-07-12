@@ -201,6 +201,8 @@ def _resolve_session_env(*, path: Path, claude_pid: str) -> dict[str, str]:
         )
         if pair is None:
             raise adapt.AdaptError("session-env-malformed")
+        if pair[0] == config.ENV_CLAUDE_PLUGIN_ROOT:
+            continue
         values[pair[0]] = pair[1]
     raw_tmpdir = values.get(config.ENV_DESIGN_TMPDIR, "")
     ok, _message = session_env.validate_design_tmpdir(raw_tmpdir)

@@ -80,10 +80,15 @@ if args[:2] == ["design", "step5c"]:
     if log:
         Path(log).write_text(json.dumps(args) + "\n", encoding="utf-8")
     design_tmpdir = Path(os.environ["DESIGN_TMPDIR"])
+    refusal = os.environ.get("DESIGN_STEP5C_STUB_REFUSAL", "")
+    publish_rc = "4" if refusal else "0"
+    plan_write_ok = "false" if refusal else "true"
+    publish_ok = "false" if refusal else "true"
     (design_tmpdir / ".design-step5c-status.env").write_text(
-        "PLAN_WRITE_OK=true\nPUBLISH_OK=true\nPUBLISH_RC=0\n"
+        f"PLAN_WRITE_OK={plan_write_ok}\nPUBLISH_OK={publish_ok}\nPUBLISH_RC={publish_rc}\n"
         "VALIDATE_STATUS=ok\nFINAL_SUMMARY_PATH=/tmp/final-summary.md\n"
-        "CLEANUP_ELIGIBLE=true\n",
+        f"CLEANUP_ELIGIBLE={'false' if refusal else 'true'}\n"
+        f"PUBLISH_REFUSE_REASON={refusal}\n",
         encoding="utf-8",
     )
     raise SystemExit(int(os.environ.get("DESIGN_STEP5C_STUB_RC", "0")))
@@ -156,5 +161,26 @@ case "$out" in
 esac
 grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'fresh retry result env must contain the new bgjob result'
 pass 'explicit retry replaces the completed result'
+
+for refusal in validator-defects oversize-no-override missing-invariant-assessment; do
+  cat >"$D/bgjob/design-step5c.result.env" <<'ENV'
+BGJOB_RC=7
+STEP=design-step5c
+STALE_RESULT=true
+ENV
+  out=$(CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$D" DESIGN_STEP5C_STUB_REFUSAL="$refusal" LARCH_BGJOB_REGISTRY_ROOT="$TMP/registry" \
+    "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh" --fresh-attempt \
+    --session-env-path "$TMP/source-env.sh" --claude-pid $$)
+  case "$out" in
+    BGJOB_STATUS=STARTED\ STEP=design-step5c\ PGID=*) ;;
+    *) fail "fresh refusal retry must start a replacement bgjob, got: $out" ;;
+  esac
+  grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail "fresh $refusal retry must publish a merged result"
+  grep -Fxq "PUBLISH_REFUSE_REASON=$refusal" "$D/bgjob/design-step5c.result.env" || fail "fresh $refusal retry must replace stale rows with refusal rows"
+  if grep -Fxq 'STALE_RESULT=true' "$D/bgjob/design-step5c.result.env"; then
+    fail "fresh $refusal retry must not retain stale result rows"
+  fi
+done
+pass 'fresh refusal retries replace completed results with merged rows'
 
 printf 'PASS: test-design-step5c.sh\n'

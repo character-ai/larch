@@ -240,6 +240,63 @@ def test_adapt_resolves_tmpdir_from_session_env(
     assert captured[0].tmpdir == tmp_path
 
 
+def test_session_env_cannot_override_validated_plugin_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "session-env.sh"
+    untrusted_root = tmp_path / "untrusted-plugin"
+    untrusted_root.mkdir()
+    _ = source.write_text(
+        f"export DESIGN_TMPDIR={tmp_path}\nexport CLAUDE_PLUGIN_ROOT={untrusted_root}\n",
+        encoding="utf-8",
+    )
+    trusted_root = os.environ[config.ENV_CLAUDE_PLUGIN_ROOT]
+
+    def fake_adapt(spec: model.JobSpec, *, options: adapt.AdaptOptions) -> int:
+        assert spec.tmpdir == tmp_path
+        assert options == adapt.AdaptOptions()
+        assert os.environ[config.ENV_CLAUDE_PLUGIN_ROOT] == trusted_root
+        return 0
+
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", _owner_none)
+    monkeypatch.setattr(cli.adapt, "start_or_reattach", fake_adapt)
+
+    assert cli.adapt_main(
+        [
+            "--step", "demo-step", "--budget-s", "10",
+            "--session-env-path", str(source), "--", "true",
+        ]
+    ) == 0
+
+
+@pytest.mark.parametrize("source_kind", ["wrong-pid", "unexpected-symlink"])
+def test_session_env_resolver_rejects_untrusted_symlink_sources(
+    source_kind: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "session-env-target.sh"
+    _ = target.write_text(f"export DESIGN_TMPDIR={tmp_path}\n", encoding="utf-8")
+    expected = tmp_path / "current-design-env-123.sh"
+    expected.symlink_to(target)
+    unexpected = tmp_path / "current-design-env-456.sh"
+    unexpected.symlink_to(target)
+    monkeypatch.setattr(cli.session_env, "_design_symlink_path", lambda pid: tmp_path / f"current-design-env-{pid}.sh")
+    source = expected if source_kind == "wrong-pid" else unexpected
+    owner_pid = "456" if source_kind == "wrong-pid" else "123"
+
+    assert cli.adapt_main(
+        [
+            "--resolve-session-env", "--session-env-path", str(source),
+            "--owner-pid", owner_pid,
+        ]
+    ) == 2
+
+    assert capsys.readouterr().out == "BGJOB_ERROR=session-env-unsafe\n"
+
+
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
@@ -363,6 +420,48 @@ def test_fresh_launch_clears_requested_regular_path(
     assert not marker.exists()
 
 
+def test_fresh_launch_failure_preserves_completion_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.touch()
+    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: 2)
+
+    with pytest.raises(adapt.AdaptError, match="daemon-start-failed"):
+        _ = adapt.start_or_reattach(
+            spec,
+            options=adapt.AdaptOptions(clear_on_fresh=marker),
+        )
+
+    assert marker.is_file()
+
+
+def test_live_job_preserves_completion_marker_without_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.touch()
+    _ = registry.write_entry(_entry(spec))
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: pytest.fail("live job must reattach"))
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(clear_on_fresh=marker),
+    ) == 0
+
+    assert marker.is_file()
+    assert capsys.readouterr().out == "BGJOB_STATUS=STARTED STEP=demo-step PGID=303\n"
+
+
 def test_explicit_retry_replaces_completed_result(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -379,6 +478,30 @@ def test_explicit_retry_replaces_completed_result(
     ) == 0
     assert len(launches) == 1
     assert not result.exists()
+
+
+def test_explicit_retry_clears_verified_dead_registry_before_relaunch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    old_path = registry.write_entry(_entry(spec))
+    dead = _verdict(live=False, reason="missing-pid")
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(dead))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(dead))
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(replace_completed_result=True),
+    ) == 0
+
+    assert not old_path.exists()
+    assert not result.exists()
+    assert len(launches) == 1
 
 
 def test_explicit_retry_refuses_live_registry(

@@ -296,6 +296,14 @@ def _clear_expired(*, spec: model.JobSpec, snapshot: RegistrySnapshot) -> None:
         raise AdaptError("registry-clear-failed")
 
 
+def _clear_verified_dead_registry(*, spec: model.JobSpec, snapshot: RegistrySnapshot) -> None:
+    """Remove the exact dead row selected for an explicit replacement."""
+    current = _verify_same_snapshot(spec=spec, previous=snapshot)
+    registry.unlink_entry(current.path)
+    if current.path.exists() or current.path.is_symlink():
+        raise AdaptError("registry-clear-failed")
+
+
 def _merge_env_path(*, spec: model.JobSpec) -> Path:
     root = model.bgjob_dir(spec.tmpdir)
     return root / f"{model.validate_slug(spec.step, label='step')}.merge.env"
@@ -444,7 +452,6 @@ def _start_fresh(spec: model.JobSpec, *, options: AdaptOptions) -> int:
         raise AdaptError("registry-replaced")
     if _result_or_none(spec=spec):
         raise AdaptError("result-emitted")
-    _clear_before_fresh(spec=spec, candidate=options.clear_on_fresh)
     launch_spec = _prepare_launch_spec(spec)
     if _result_or_none(spec=spec):
         raise AdaptError("result-emitted")
@@ -459,6 +466,7 @@ def _start_fresh(spec: model.JobSpec, *, options: AdaptOptions) -> int:
         raise AdaptError("daemon-start-exception") from exc
     if rc != 0:
         raise AdaptError("daemon-start-failed")
+    _clear_before_fresh(spec=spec, candidate=options.clear_on_fresh)
     return 0
 
 
@@ -524,7 +532,7 @@ def _replacement_registry_check(*, spec: model.JobSpec, snapshot: RegistrySnapsh
         raise AdaptError("replace-active")
     if not daemon_state.proven_dead or not child_state.proven_dead:
         raise AdaptError("registry-identity-unverifiable")
-    raise AdaptError("registry-dead")
+    _clear_verified_dead_registry(spec=spec, snapshot=snapshot)
 
 
 def _decide_locked(spec: model.JobSpec, *, options: AdaptOptions) -> int:

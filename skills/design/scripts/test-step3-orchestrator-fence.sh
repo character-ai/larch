@@ -101,6 +101,10 @@ grep -Fq 'plan-review normalize-status' "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh missing normalizer handoff'
 grep -Fq -- "--starting-round \"\$STARTING_ROUND\"" "$STEP3_REVIEW_SH" \
   || fail 'design-step3-review.sh missing starting-round forwarding'
+grep -Fq '[ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] && _adapt_args[${#_adapt_args[@]}]=--replace-completed-result' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh must replace only completed results for a planned resume'
+grep -Fq '"$DESIGN_TMPDIR/.completed/step-3"' "$STEP3_REVIEW_SH" \
+  || fail 'design-step3-review.sh must delegate fresh-only marker clearing to bgjob adapt'
 pass 'design-step3-review.sh handoff contract present'
 
 _write_step3_wrapper_inputs() {
@@ -157,6 +161,18 @@ if printf '%s\n' "$_wrapper_out" | grep -Fq 'LOOP_STATUS=complete' \
     pass 'wrapper emits file-first handoff KVs'
 else
     fail "wrapper handoff missing expected KVs: $_wrapper_out"
+fi
+
+echo "=== completed reattach preserves Step 3 completion marker ==="
+D_REATTACH="$TMP/completed-reattach"
+mkdir -p "$D_REATTACH/.completed"
+: >"$D_REATTACH/.completed/step-3"
+_reattach_out=$(invoke_step3_review_wrapper "$D_REATTACH" $'NEXT_ACTION=step3b\nLOOP_STATUS=complete\n' '' 0)
+if printf '%s\n' "$_reattach_out" | grep -Fq 'LOOP_STATUS=complete' \
+  && [[ -f "$D_REATTACH/.completed/step-3" ]]; then
+    pass 'completed reattach leaves the Step 3 completion marker intact'
+else
+    fail "completed reattach must preserve marker (out=$_reattach_out)"
 fi
 
 echo "=== design-step3-review.sh wrapper forwards starting round ==="
