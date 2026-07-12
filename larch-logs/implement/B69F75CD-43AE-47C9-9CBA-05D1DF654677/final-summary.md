@@ -62,8 +62,9 @@ codex/plan-fidelity-vote     │                                                
 ## Exec Issues and Warnings
 Exec Issues (1):
   1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
-Warnings (1):
+Warnings (2):
   1. The changed SKILL.md embeds a large state-publication implementation in an inline Bash fence, including complex quoting and control flow, rather than keeping logic behind cli.py or a file-backed sc...
+  2. The new state-publication Bash fragment embeds substantial control flow, parsing, recovery, and external-command logic in SKILL.md rather than behind cli.py.
 
 ## Architectural invariants
 
@@ -71,23 +72,24 @@ No violations identified.
 
 ## Architectural guidelines
 
-The changed SKILL.md embeds a large state-publication implementation in an inline Bash fence, including complex quoting and control flow, rather than keeping logic behind cli.py or a file-backed script.
+The new state-publication Bash fragment embeds substantial control flow, parsing, recovery, and external-command logic in SKILL.md rather than behind cli.py.
 
-## /implement run B69F75CD-43AE-47C9-9CBA-05D1DF654677: shipping
+## /implement run B69F75CD-43AE-47C9-9CBA-05D1DF654677: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 00:35:18
-- **Cost**: 💰 TOTAL ~$21.00: Claude $0.87, Codex-5.6 $14.21, Codex-mini $0.08, Cursor $5.59 (Composer $5.59, Grok $0.00), Claude (subprocess) $0.25  |  Tokens: 25449k
+- **Cost**: 💰 TOTAL ~$22.03: Claude $1.47, Codex-5.6 $14.53, Codex-mini $0.08, Cursor $5.64 (Composer $5.64, Grok $0.00), Claude (subprocess) $0.31  |  Tokens: 27504k
 - **Issue**: #7151: https://github.com/character-ai/larch/issues/7151
+- **PR**: #7169: https://github.com/character-ai/larch/pull/7169
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 5/10 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +390/-36, larch-logs +1098/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7168
 - **Exec issues**: 1
-- **Warnings**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/B69F75CD-43AE-47C9-9CBA-05D1DF654677/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
