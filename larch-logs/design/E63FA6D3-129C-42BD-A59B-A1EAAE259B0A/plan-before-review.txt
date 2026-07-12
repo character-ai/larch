@@ -1,0 +1,57 @@
+## Approach
+
+Publish the durable state marker through one shared branch, PR, and merge sequence. Use it in both default and filing modes. Keep report generation, issue filing, and `write-state` rollback behavior unchanged.
+
+### UPDATED: skills/learn-from-bugs/SKILL.md
+
+- Replace the direct marker-only commit flow with a shared publication fragment.
+- After `write-state` succeeds:
+  - Validate `STATE_RELPATH` as repository-relative.
+  - Create `chore/learn-from-bugs-state-<date>` in `ANALYSIS_ROOT`.
+  - Commit only `MARKER_REL` with the existing commit message.
+  - Write a small PR body under `RUN_DIR`.
+  - Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr create --body-file ...` from `ANALYSIS_ROOT`, passing the resolved repo, branch, and title.
+  - Parse the documented whole-line `PR_NUMBER`, `PR_URL`, and `PR_STATUS` records. Stop accurately if creation or parsing fails.
+  - Attempt `gh pr merge` with `--admin --merge --auto`.
+  - If the admin merge fails, preserve the open PR and ask the user to merge it manually. Include the PR URL.
+- Invoke this same fragment after successful state writes in default mode, filing mode with no new proposals, and filing mode after successful issue creation.
+- Preserve the marker-only commit rule. Never stage unrelated working-tree changes.
+- Preserve the existing rollback behavior when `write-state` or the marker commit fails.
+- Update prose that currently describes the state as durable immediately after a local commit. Durability now requires a created PR, with merge completion or an explicit manual-merge handoff.
+- Keep pending filing state until the marker PR has been created. Mark it complete only after the merge succeeds or the user receives a valid PR handoff.
+
+#### Edge cases
+
+- Reject detached HEADs, invalid state paths, branch collisions, malformed PR output, or a missing PR number before attempting a merge.
+- Run repository-sensitive Git and PR commands against `ANALYSIS_ROOT`, not the caller’s ambient directory.
+- Treat an existing open PR returned by `cli.py pr create` as valid only when its parsed status and identity are complete.
+- Do not roll back a committed marker after a PR exists. The PR becomes the durable recovery surface.
+- Do not rerun `/issue` when filing succeeded but marker publication needs manual completion.
+
+#### Failure modes
+
+- A branch, commit, push, or PR creation failure stops the workflow and reports the exact stage.
+- An admin merge failure does not claim success or discard the PR. It produces a manual merge request.
+- Unrelated dirty files remain outside the marker commit. The PR helper’s clean-worktree guard must still pass after the isolated commit.
+
+### UPDATED: python/tests/skills/_structure_learn_from_bugs_specialized.py
+
+- Add structural regression checks for the shared publication contract.
+- Assert that branch creation precedes the marker-only commit.
+- Assert that PR creation uses `python/cli.py pr create`, a file-backed body, the resolved repository, and the state branch.
+- Assert that PR output is parsed before `gh pr merge`.
+- Pin the `--admin --merge --auto` attempt and the manual-merge fallback with a PR URL.
+- Assert that default mode and both filing-mode marker paths use the same publication fragment.
+- Retain checks for marker-only staging, root-relative rollback, default-mode Step 5 ordering, and filing-mode pending-state ordering.
+
+## Testing strategy
+
+- Run `make test-learn-from-bugs-structure`.
+- Run Markdown and skill checks scoped to `skills/learn-from-bugs/SKILL.md`, including `markdownlint`, `agnix`, `lint-consecutive-bash`, `lint-bare-grep-probe`, and `lint-skill-md-flag-signature`.
+- Review the fenced Bash for macOS Bash 3.2 compatibility and exact `cli.py pr create` argument support.
+- Confirm the structural test fails against the old direct-commit flow and passes only when all marker-producing paths use the PR flow.
+
+Confidence: medium. The target paths and existing CLI contract are direct evidence. Ordinary uncertainty remains around live GitHub permission and merge responses.
+
+difficulty: HARD
+diff_lines: 120
