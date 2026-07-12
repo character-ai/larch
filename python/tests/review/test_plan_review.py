@@ -1683,6 +1683,13 @@ def test_gate_b_dedup_allows_value_recompute_and_rejects_key_loss(tmp_path: Path
     assert proc.returncode == 1
 
 
+def test_gate_b_snapshot_preserves_legacy_optional_trailer_spellings(tmp_path: Path) -> None:
+    _write_gate_b_plan(tmp_path, "body\ndiff_added: 08\nmechanical_churn: 1\ndiff_lines: 10\n")
+    snapshot = run_cli("plan-review", "gate-b-dedup", "--design-tmpdir", str(tmp_path), "--snapshot-trailers")
+    assert snapshot.returncode == 0, snapshot.stderr
+    assert (tmp_path / ".gate-b-optional-trailer-keys").read_text(encoding="utf-8") == "diff_added\nmechanical_churn\n"
+
+
 def test_persist_retally_tally_error_omits_scope_anchor(tmp_path: Path) -> None:
     _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor body\n", encoding="utf-8")
     stale_anchor = tmp_path / "stale-scope-anchor.txt"

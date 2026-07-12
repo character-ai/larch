@@ -219,7 +219,6 @@ from larch.design.design_step5c import (
     STEP5C_PUBLISH_RESULT_ALLOW_KEYS,
     STEP5C_STATUS_ALLOW_KEYS,
     STEP6_INFO_ICON,
-    _AUTO_COMPOSE_OPTIONAL_TRAILER_RE,
     _auto_compose_plan_md,
     _build_acceptance_section,
     _build_trailer_lines_from_sidecars,

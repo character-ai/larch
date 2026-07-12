@@ -18,6 +18,10 @@ semantic materiality still fires under force mode. `/design`
 writes the plan block via `python/cli.py named-block write --marker plan` and posts matching clarify
 responses.
 
+## Plan grammar ownership
+
+`python/larch/design/plan_grammar.py` owns plan heading and trailer syntax. It accepts level-two and level-three colon or bracket headings for `NEW`, `UPDATED`, `REWRITTEN`, and `MAY_UPDATE`. Its fence-aware iterators ignore heading-like text inside Markdown fences. The module also owns trailer keys, subsets, final contiguous-block parsing, and canonical ordering. `python/larch/issue/issue_wire.py` remains the sole owner of issue-body `larch:plan` markers.
+
 ## Disambiguation: issue-body `larch:plan:*` vs tracking-issue `<!-- larch:plan v1 … -->`
 
 Do **not** confuse this document's paired **issue-body** HTML comment

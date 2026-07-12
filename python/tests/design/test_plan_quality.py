@@ -97,6 +97,19 @@ diff_lines: 1
     assert "not-a-command" not in tsv
 
 
+def test_parse_plan_commands_ignores_headings_inside_fences(tmp_path: Path) -> None:
+    plan = """## Plan
+```markdown
+### NEW: scripts/phantom.sh
+### UPDATED: scripts/also-phantom.sh
+```
+### NEW: scripts/real.sh
+diff_lines: 1
+"""
+    rows = plan_quality.parse_plan_commands(plan_text=plan, repo_root=tmp_path, plugin_root=tmp_path)
+    assert [row.script_path for row in rows if row.row_type == "new_script"] == ["scripts/real.sh"]
+
+
 def test_parse_plan_commands_notes_for_unsafe_shell_forms(tmp_path: Path) -> None:
     plan = """```sh
 scripts/a.sh --x $(date)
@@ -2038,15 +2051,15 @@ def test_check_plan_size_missing_diff_lines_returns_rc2(tmp_path: Path) -> None:
     assert out["PLAN_SIZE_STATUS"] == "missing-diff-lines"
 
 
-def test_check_plan_size_numeric_mechanical_churn_normalizes_true(tmp_path: Path) -> None:
+def test_check_plan_size_ignores_noncanonical_mechanical_churn(tmp_path: Path) -> None:
     (tmp_path / "plan.txt").write_text("body\nmechanical_churn: 35\ndiff_lines: 10\n", encoding="utf-8")
     cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
     assert cp.returncode == 0, cp.stdout
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["MECHANICAL_CHURN"] == "true"
+    assert out["MECHANICAL_CHURN"] == "false"
 
 
-def test_check_plan_size_zero_mechanical_churn_normalizes_false(tmp_path: Path) -> None:
+def test_check_plan_size_ignores_zero_mechanical_churn(tmp_path: Path) -> None:
     (tmp_path / "plan.txt").write_text("body\nmechanical_churn: 0\ndiff_lines: 10\n", encoding="utf-8")
     cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
     assert cp.returncode == 0, cp.stdout
@@ -2054,12 +2067,25 @@ def test_check_plan_size_zero_mechanical_churn_normalizes_false(tmp_path: Path) 
     assert out["MECHANICAL_CHURN"] == "false"
 
 
-def test_check_plan_size_invalid_mechanical_churn_returns_rc2(tmp_path: Path) -> None:
+def test_check_plan_size_ignores_malformed_mechanical_churn(tmp_path: Path) -> None:
     (tmp_path / "plan.txt").write_text("body\nmechanical_churn: TRUE\ndiff_lines: 10\n", encoding="utf-8")
     cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
-    assert cp.returncode == 2, cp.stdout
+    assert cp.returncode == 0, cp.stdout
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
-    assert out["PLAN_SIZE_STATUS"] == "invalid-mechanical-churn"
+    assert out["MECHANICAL_CHURN"] == "false"
+
+
+def test_check_plan_size_requires_terminal_diff_lines(tmp_path: Path) -> None:
+    (tmp_path / "plan.txt").write_text("body\ndiff_lines: 10\ntrailing prose\n", encoding="utf-8")
+    cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    assert cp.returncode == 2, cp.stdout
+    assert "PLAN_SIZE_STATUS=missing-diff-lines" in cp.stdout
+
+
+def test_optional_metadata_uses_strict_terminal_trailers() -> None:
+    meta = plan_quality.parse_optional_metadata("body\ndiff_added: 08\nmechanical_churn: 1\ndiff_lines: 2\n")
+    assert not meta.keys
+    assert meta.metadata_trailer_lines == 0
 
 
 def test_check_plan_size_hard_trigger_fires(tmp_path: Path) -> None:

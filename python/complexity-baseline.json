@@ -303,7 +303,7 @@
     "file": "larch/agents/_drafter.py",
     "code": "PLR0915",
     "qualified_symbol": "parse_drafter_output",
-    "metric": 101
+    "metric": 102
   },
   {
     "file": "larch/agents/_drafter.py",
@@ -951,7 +951,7 @@
     "file": "larch/design/_plan_quality_commands.py",
     "code": "C901",
     "qualified_symbol": "parse_plan_commands",
-    "metric": 23
+    "metric": 27
   },
   {
     "file": "larch/design/_plan_quality_commands.py",
@@ -981,7 +981,7 @@
     "file": "larch/design/_plan_quality_commands.py",
     "code": "PLR0912",
     "qualified_symbol": "parse_plan_commands",
-    "metric": 16
+    "metric": 20
   },
   {
     "file": "larch/design/_plan_quality_commands.py",
@@ -1017,7 +1017,7 @@
     "file": "larch/design/_plan_quality_commands.py",
     "code": "PLR0915",
     "qualified_symbol": "parse_plan_commands",
-    "metric": 69
+    "metric": 80
   },
   {
     "file": "larch/design/_plan_quality_commands.py",
@@ -1844,12 +1844,6 @@
   {
     "file": "larch/design/plan_quality.py",
     "code": "C901",
-    "qualified_symbol": "_extract_file_replacement",
-    "metric": 11
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "C901",
     "qualified_symbol": "_git_status_snapshot",
     "metric": 13
   },
@@ -1983,7 +1977,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0915",
     "qualified_symbol": "check_plan_size_main",
-    "metric": 119
+    "metric": 118
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -2673,7 +2667,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0915",
     "qualified_symbol": "preflight_main",
-    "metric": 97
+    "metric": 98
   },
   {
     "file": "larch/implement/ship.py",
@@ -3729,7 +3723,7 @@
     "file": "larch/issue/issue_wire.py",
     "code": "C901",
     "qualified_symbol": "extract_scope_paths",
-    "metric": 15
+    "metric": 12
   },
   {
     "file": "larch/issue/issue_wire.py",
@@ -3754,12 +3748,6 @@
     "code": "PLR0912",
     "qualified_symbol": "_run_named_block_cli",
     "metric": 13
-  },
-  {
-    "file": "larch/issue/issue_wire.py",
-    "code": "PLR0912",
-    "qualified_symbol": "extract_scope_paths",
-    "metric": 15
   },
   {
     "file": "larch/issue/issue_wire.py",
@@ -5169,7 +5157,7 @@
     "file": "larch/review/plan_review_loop.py",
     "code": "C901",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5181,7 +5169,7 @@
     "file": "larch/review/plan_review_loop.py",
     "code": "PLR0912",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 19
+    "metric": 18
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5205,7 +5193,7 @@
     "file": "larch/review/plan_review_loop.py",
     "code": "PLR0915",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 84
+    "metric": 83
   },
   {
     "file": "larch/review/plan_review_normalize.py",
@@ -6256,12 +6244,6 @@
     "code": "C901",
     "qualified_symbol": "_run_absorbed_continue_tail",
     "metric": 24
-  },
-  {
-    "file": "larch/state/bootstrap.py",
-    "code": "C901",
-    "qualified_symbol": "_strip_plan_provenance_headers",
-    "metric": 11
   },
   {
     "file": "larch/state/bootstrap.py",

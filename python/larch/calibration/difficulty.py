@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import cast
 from larch import io as larch_io
 from larch.core import config
+from larch.design import plan_grammar
 from larch.core import proc
 
 TRIVIAL = config.DIFFICULTY_TIER_TRIVIAL
@@ -32,11 +33,8 @@ FLOOR_MANIFEST = Path(__file__).resolve().parents[3] / "docs" / "difficulty-floo
 
 _TIER_RANK = {tier: rank for rank, tier in enumerate(TIERS)}
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_PLAN_DIFFICULTY_RE = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
 _PLAN_LEGACY_CONFIDENCE_RE = re.compile(r"^confidence: .+$")
-_PLAN_TRAILER_LINE_RE = re.compile(
-    r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator|diff_lines: [0-9]+)$"
-)
+
 
 
 @dataclass(frozen=True)
@@ -538,17 +536,17 @@ def append_escalation(record_path: Path, round_num: int, from_tier: str, to_tier
 
 def trailing_plan_difficulty(text: str) -> str:
     for line in reversed(trailing_plan_metadata_lines(text)):
-        match = _PLAN_DIFFICULTY_RE.fullmatch(line.strip())
-        if match:
-            return match.group(1)
+        match = plan_grammar.match_trailer_line(line.strip())
+        if match is not None and match.key == "difficulty":
+            return match.value
     return ""
 
 
 def _last_plan_difficulty_line(text: str) -> str:
     for line in reversed(text.splitlines()):
-        match = _PLAN_DIFFICULTY_RE.fullmatch(line.strip())
-        if match:
-            return match.group(1)
+        match = plan_grammar.match_trailer_line(line.strip())
+        if match is not None and match.key == "difficulty":
+            return match.value
     return ""
 
 
@@ -558,11 +556,12 @@ def _adjacent_invalid_difficulty(text: str) -> bool:
     idx = span[0] if span is not None else len(lines)
     while idx > 0:
         line = lines[idx - 1].strip()
-        if not line or _PLAN_TRAILER_LINE_RE.fullmatch(line) or _PLAN_LEGACY_CONFIDENCE_RE.fullmatch(line):
+        if not line or plan_grammar.match_trailer_line(line) is not None or _PLAN_LEGACY_CONFIDENCE_RE.fullmatch(line):
             idx -= 1
             continue
         if line.startswith("difficulty:"):
-            return _PLAN_DIFFICULTY_RE.fullmatch(line) is None
+            match = plan_grammar.match_trailer_line(line)
+            return match is None or match.key != "difficulty"
         return False
     return False
 
@@ -614,17 +613,13 @@ def _rating_from_tier(tier: str, *, rationale: str) -> DifficultyRating | None:
 
 
 def _trailing_metadata_span(lines: list[str]) -> tuple[int, int] | None:
+    trailers = plan_grammar.parse_final_trailers("\n".join(lines))
+    if not trailers.matches:
+        return None
     end = len(lines)
     while end > 0 and not lines[end - 1].strip():
         end -= 1
-    if end == 0:
-        return None
-    start = end
-    while start > 0 and _PLAN_TRAILER_LINE_RE.fullmatch(lines[start - 1].rstrip("\n")):
-        start -= 1
-    if start == end:
-        return None
-    return start, end
+    return trailers.start_line - 1, end
 
 
 def trailing_plan_metadata_lines(text: str) -> tuple[str, ...]:

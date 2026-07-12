@@ -28,7 +28,7 @@ from larch.core import config
 from larch.core import external_defaults
 from larch.calibration import difficulty
 from larch.core.ctx import Ctx
-from larch.design import design_pause
+from larch.design import design_pause, plan_grammar
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.issue import issue_wire
 from larch.core.redact import redact_secrets_only
@@ -199,69 +199,28 @@ from larch.design._plan_quality_commands import (  # noqa: E402
 # Optional trailers and plan-size
 
 
-def _metadata_block_line_kind(line: str) -> str:
-    if re.match(r"^diff_added: [0-9]+$", line):
-        return "skip" if re.match(r"^diff_added: 0[89]$", line) else "diff_added"
-    if re.match(r"^diff_deleted: [0-9]+$", line):
-        return "skip" if re.match(r"^diff_deleted: 0[89]$", line) else "diff_deleted"
-    if line.startswith("mechanical_churn:"):
-        return "mechanical_churn"
-    if line == f"oversize_override: {config.OVERSIZE_OVERRIDE_OPERATOR}":
-        return "oversize_override"
-    if line.startswith("difficulty:"):
-        return "difficulty"
-    return ""
-
-
-def _optional_metadata_block(*, lines: list[str], trailer_nr: int) -> list[str]:
-    block: list[str] = []
-    for idx in range(trailer_nr - 2, -1, -1):
-        line = lines[idx]
-        kind = _metadata_block_line_kind(line)
-        if not kind:
-            break
-        if kind == "skip":
-            continue
-        block.append(line)
-    return block
-
-
-def _mechanical_churn_value(line: str) -> str:
-    value = line[len("mechanical_churn: ") :]
-    if value in {"true", "false"}:
-        return value
-    if value.isdigit():
-        return "true" if int(value) > 0 else "false"
-    return "invalid:" + value
-
-
 def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
-    lines = plan_text.splitlines()
-    trailer_nr, _ = _last_nonempty_line(lines)
-    block = _optional_metadata_block(lines=lines, trailer_nr=trailer_nr)
+    trailers = plan_grammar.parse_final_trailers(plan_text, require_diff_lines=True)
     diff_added: str | None = None
     diff_deleted: str | None = None
     mechanical = "false"
     oversize_override: str | None = None
     has_added = has_deleted = has_mech = has_difficulty = has_oversize_override = False
-    for line in reversed(block):
-        kind = _metadata_block_line_kind(line)
-        if kind == "diff_added":
-            value = line[len("diff_added: ") :]
-            diff_added = value
+    for match in trailers.matches:
+        if match.key == "diff_added":
+            diff_added = match.value
             has_added = True
-        elif kind == "diff_deleted":
-            value = line[len("diff_deleted: ") :]
-            diff_deleted = value
+        elif match.key == "diff_deleted":
+            diff_deleted = match.value
             has_deleted = True
-        elif kind == "mechanical_churn":
-            mechanical = _mechanical_churn_value(line)
+        elif match.key == "mechanical_churn":
+            mechanical = str(match.parsed_value).lower()
             has_mech = True
-        elif kind == "oversize_override":
+        elif match.key == "oversize_override":
             oversize_override = config.OVERSIZE_OVERRIDE_OPERATOR
             has_oversize_override = True
-        elif kind == "difficulty":
-            has_difficulty = difficulty.tier_valid(line[len("difficulty: ") :].strip())
+        elif match.key == "difficulty":
+            has_difficulty = True
     keys = tuple(k for k, present in (
         ("difficulty", has_difficulty),
         ("diff_added", has_added),
@@ -278,7 +237,7 @@ def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
         vals.append(f"mechanical_churn={mechanical}")
     if has_oversize_override and oversize_override is not None:
         vals.append(f"oversize_override={oversize_override}")
-    return OptionalMetadata(len(block), diff_added, diff_deleted, mechanical, oversize_override, keys, tuple(vals))
+    return OptionalMetadata(max(0, len(trailers.lines) - 1), diff_added, diff_deleted, mechanical, oversize_override, keys, tuple(vals))
 
 
 
@@ -441,12 +400,11 @@ def _drift_exceeds(*, current: int, baseline: int, multiple: int) -> bool:
 def _plan_counts_from_file(path: Path) -> tuple[int, int] | None:
     if not path.is_file() or path.is_symlink():
         return None
-    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    nr, last = _last_nonempty_line(lines)
-    if not re.match(r"^diff_lines: [0-9]+$", last):
+    text = path.read_text(encoding="utf-8", errors="replace")
+    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
+    if trailers.diff_lines is None:
         return None
-    meta = parse_optional_metadata("\n".join(lines) + "\n")
-    return max(0, nr - 1 - meta.metadata_trailer_lines), int(last[len("diff_lines: ") :])
+    return max(0, trailers.start_line - 1), trailers.diff_lines
 
 
 def _size_trigger_assessment(
@@ -481,7 +439,7 @@ def _size_trigger_assessment(
 
 
 def _firm_heading_paths(text: str) -> list[str]:
-    return issue_wire.extract_scope_paths(plan_text=text, use_fallback=False, include_optional=False)
+    return [heading.path.strip("`") for heading in plan_grammar.iter_firm_headings(text)]
 
 
 def _firm_heading_count(text: str) -> int:
@@ -515,23 +473,15 @@ def _canonical_plan_for_override(*, design_tmpdir: Path, plan_file: str | None) 
 
 
 def _is_override_trailer_region_line(*, stripped: str, trailer: str) -> bool:
-    patterns = (
-        r"diff_added: [0-9]+",
-        r"diff_deleted: [0-9]+",
-    )
-    return (
-        any(re.fullmatch(pattern, stripped) for pattern in patterns)
-        or stripped.startswith("mechanical_churn: ")
-        or stripped.startswith("difficulty: ")
-        or stripped == trailer
-    )
+    if stripped == trailer:
+        return True
+    match = plan_grammar.match_trailer_line(stripped)
+    return match is not None and (match.key == "difficulty" or match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS)
 
 
 def _last_diff_lines_index(lines: list[str]) -> int:
-    for idx in range(len(lines) - 1, -1, -1):
-        if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
-            return idx
-    return -1
+    trailers = plan_grammar.parse_final_trailers("".join(lines), require_diff_lines=True)
+    return trailers.start_line + len(trailers.matches) - 2 if trailers.matches else -1
 
 
 def _override_trailer_start(*, lines: list[str], diff_idx: int, trailer: str) -> int:
@@ -661,18 +611,17 @@ def check_plan_size_main(argv: list[str]) -> int:
         emit_kv(key="PLAN_SIZE_STATUS", value="missing-plan")
         return 2
     text = plan.read_text(encoding="utf-8", errors="replace")
-    lines = text.splitlines()
-    trailer_nr, last = _last_nonempty_line(lines)
-    if not re.match(r"^diff_lines: [0-9]+$", last):
+    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
+    if trailers.diff_lines is None:
         emit_kv(key="PLAN_SIZE_STATUS", value="missing-diff-lines")
         return 2
-    diff_lines = int(last[len("diff_lines: ") :])
+    diff_lines = trailers.diff_lines
     meta = parse_optional_metadata(text)
     if meta.mechanical_churn not in {"true", "false"}:
         emit_kv(key="PLAN_SIZE_STATUS", value="invalid-mechanical-churn")
         return 2
     trusted_oversize_override = _trusted_oversize_override(design_tmpdir=design_tmpdir, plan_text=text)
-    plan_lines = max(0, trailer_nr - 1 - meta.metadata_trailer_lines)
+    plan_lines = max(0, trailers.start_line - 1)
     multiple_text = ctx.str_value(key=config.ENV_LARCH_DESIGN_DRIFT_MULTIPLE, default="2")
     multiple = int(multiple_text) if multiple_text.isdigit() and int(multiple_text) > 0 else 2
     baseline_path = _drift_baseline_path(design_tmpdir)
@@ -1084,7 +1033,7 @@ def _canonical_existing_file(path: Path) -> Path:
 
 
 def _heading_count(path: Path) -> int:
-    return sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if re.match(r"^###[ \t]+(NEW|UPDATED|REWRITTEN|MAY_UPDATE)[ \t]*:", line))
+    return len(list(plan_grammar.iter_plan_headings(path.read_text(encoding="utf-8", errors="replace"))))
 
 
 def _extract_file_replacement(output: str) -> str:
@@ -1092,30 +1041,23 @@ def _extract_file_replacement(output: str) -> str:
     candidate: list[str] = []
     block: list[str] = []
     in_block = False
-    trailer_idx = -1
     def capture() -> None:
         nonlocal candidate
-        if trailer_idx < 0:
-            return
-        start = 0
-        end = trailer_idx + 1
-        local = block[start:end]
+        local = block
         if local and re.match(r"^```([A-Za-z0-9_-]+)?\s*$", local[0]):
             local = local[1:]
             if local and local[-1] == "```":
                 local = local[:-1]
-        candidate = local
+        text = "\n".join(local)
+        candidate = local if plan_grammar.terminal_diff_lines(text) is not None else []
     for line in lines:
         if line == "## Plan":
             if in_block:
                 capture()
             in_block = True
             block = []
-            trailer_idx = -1
         if in_block:
             block.append(line)
-            if re.match(r"^diff_lines:\s*[0-9]+\s*$", line):
-                trailer_idx = len(block) - 1
     if in_block:
         capture()
     return "\n".join(candidate) + ("\n" if candidate else "")

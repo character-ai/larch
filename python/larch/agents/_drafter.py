@@ -15,9 +15,10 @@ import tempfile
 import time
 from collections.abc import Sequence
 from pathlib import Path
+from typing import NoReturn
 
 from larch.core import config
-from larch.design import design_dialectic
+from larch.design import design_dialectic, plan_grammar
 from larch.core import logging_util
 from larch.design import plan_scout
 from larch.core import proc
@@ -422,7 +423,7 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
     db = _positions(lines=lines, marker="LARCH_DIALECTIC_BEGIN")
     de = _positions(lines=lines, marker="LARCH_DIALECTIC_END")
 
-    def fail(message: str) -> None:
+    def fail(message: str) -> NoReturn:
         if scout_tmp is not None:
             with contextlib.suppress(FileNotFoundError):
                 scout_tmp.unlink()
@@ -453,9 +454,10 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
         fail("empty extracted plan body")
     while plan_lines and plan_lines[-1] == "":
         plan_lines.pop()
-    if not plan_lines or not re.match(r"^diff_lines: [0-9][0-9]*$", plan_lines[-1]):
-        fail("missing final diff_lines trailer")
     plan_body = "\n".join(plan_lines) + "\n"
+    diff_lines = plan_grammar.terminal_diff_lines(plan_body)
+    if diff_lines is None:
+        fail("missing final diff_lines trailer")
     if _plan_contains_standalone_scout_manifest(plan_body):
         fail("invalid plan body: standalone scout manifest JSON is not allowed inside plan")
     _write(path=plan_tmp, text=plan_body)
@@ -518,7 +520,7 @@ def parse_drafter_output(*, raw_file: Path, plan_tmp: Path, summary_tmp: Path, s
                         scout_fail_reason = "invalid_archetypes_shape"
     return DrafterParseResult(
         plan_lines=len(plan_lines),
-        diff_lines=int(plan_lines[-1].split(": ", 1)[1]),
+        diff_lines=diff_lines,
         summary_written=summary_written,
         scout_candidate_written=scout_written,
         scout_fail_reason="" if scout_written else scout_fail_reason,

@@ -24,6 +24,7 @@ from larch.core import config, external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.calibration import difficulty
+from larch.design import plan_grammar
 from larch.report.progress_file import validate_run_id
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -861,41 +862,19 @@ def _append_force_bypass(st: BootstrapState) -> bool:
 
 
 _PLAN_PROVENANCE_PREFIXES = ("review_status:", "rounds_completed:", "difficulty:")
-_OPTIONAL_PLAN_SIZE_TRAILER_RE = re.compile(
-    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator)$"
-)
 
 
 def _strip_plan_provenance_headers(text: str) -> str:
     lines = text.splitlines(keepends=True)
-    diff_idx = -1
-    in_fence = False
-    in_fence_by_idx: list[bool] = []
-    for idx, line in enumerate(lines):
-        in_fence_by_idx.append(in_fence)
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-        if re.fullmatch(r"diff_lines: \d+", line.rstrip("\n")):
-            diff_idx = idx
-    if diff_idx < 0 or in_fence_by_idx[diff_idx]:
+    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
+    if not trailers.matches:
         return text
-
-    idx = diff_idx - 1
-    while idx >= 0:
-        stripped = lines[idx].rstrip("\n")
-        if in_fence_by_idx[idx] or not _OPTIONAL_PLAN_SIZE_TRAILER_RE.fullmatch(stripped):
-            break
-        idx -= 1
-
-    remove: set[int] = set()
-    while idx >= 0:
-        stripped = lines[idx].rstrip("\n")
-        if in_fence_by_idx[idx]:
-            break
-        if not any(stripped.startswith(prefix) for prefix in _PLAN_PROVENANCE_PREFIXES):
-            break
-        remove.add(idx)
-        idx -= 1
+    start = trailers.start_line - 1
+    remove = {
+        start + idx
+        for idx, match in enumerate(trailers.matches)
+        if match.key in {"review_status", "rounds_completed", "difficulty"}
+    }
     if not remove:
         return text
     return "".join(line for idx, line in enumerate(lines) if idx not in remove)

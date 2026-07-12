@@ -18,6 +18,7 @@ from larch import io as larch_io
 from collections.abc import Iterable
 
 from larch.core import config
+from larch.design import plan_grammar
 from larch.calibration import difficulty
 from larch.core.ctx import Ctx
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init
@@ -25,7 +26,7 @@ from larch.git.repo_roots import consumer_repo_root
 from larch.state.session_env import validate_design_tmpdir
 
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
-OPTIONAL_KEYS = ("diff_added", "diff_deleted", "mechanical_churn", "oversize_override")
+OPTIONAL_KEYS = plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS
 
 @dataclass(frozen=True)
 class PlanCommandRow:
@@ -470,6 +471,8 @@ def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, 
     files_section = ""
     pending_updated = ""
     in_fence = False
+    fence_mark = ""
+    fence_length = 0
     fence_start = 0
     fence_buf: list[str] = []
     uid_next = [0]
@@ -488,6 +491,29 @@ def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, 
                     _parse_command_segment(rows=rows, source_line=line_no, seg=seg, repo_root=repo, plugin_root=plugin, uid_next=uid_next)
 
     for idx, raw in enumerate(lines, start=1):
+        fence = re.match(r"^[ \t]*(`{3,}|~{3,})", raw)
+        if fence is not None:
+            mark = fence.group(1)
+            if not fence_mark:
+                fence_mark = mark[0]
+                fence_length = len(mark)
+                if re.match(r"^[ \t]*```[ \t]*(bash|sh)[ \t]*$", raw):
+                    in_fence = True
+                    fence_start = idx
+                    fence_buf = []
+            elif mark[0] == fence_mark and len(mark) >= fence_length:
+                if in_fence:
+                    process_fence(start=fence_start, text="\n".join(fence_buf))
+                    in_fence = False
+                    fence_start = 0
+                    fence_buf = []
+                fence_mark = ""
+                fence_length = 0
+            continue
+        if fence_mark:
+            if in_fence:
+                fence_buf.append(raw)
+            continue
         if re.match(r"^###[ \t]+Files[ \t]+to[ \t]+create([ \t]|$)", raw):
             files_section = "create"
             pending_updated = ""
@@ -496,18 +522,17 @@ def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, 
             files_section = "update"
             pending_updated = ""
             continue
+        heading = plan_grammar.match_heading(raw, line_number=idx)
         h3_misc = bool(re.match(r"^###[ \t]+", raw)) and not raw.startswith("####") and not re.match(r"^###[ \t]+Files[ \t]+to[ \t]+(create|update)", raw)
         h2_misc = bool(re.match(r"^##[ \t]+", raw)) and not raw.startswith("###") and not re.match(r"^##[ \t]+Files[ \t]+to[ \t]+(create|update)", raw)
         if h3_misc or h2_misc:
-            br_new = bool(re.match(r"^#{2,3}[ \t]+NEW[ \t]+\[", raw))
-            br_upd = bool(re.match(r"^#{2,3}[ \t]+UPDATED[ \t]+\[", raw))
-            if re.match(r"^#{2,3}[ \t]+NEW:", raw) or br_new:
-                _emit_new_script(rows=rows, path=_bracket_heading_path(raw) if br_new else _heading_path(raw), line=idx)
-            if re.match(r"^#{2,3}[ \t]+UPDATED:", raw) or br_upd:
-                pending_updated = _bracket_heading_path(raw) if br_upd else _heading_path(raw)
-            elif re.match(r"^#{2,3}[ \t]+", raw):
+            if heading is not None and heading.kind == "NEW":
+                _emit_new_script(rows=rows, path=heading.path, line=idx)
+            if heading is not None and heading.kind == "UPDATED":
+                pending_updated = heading.path
+            elif heading is not None or re.match(r"^#{2,3}[ \t]+", raw):
                 pending_updated = ""
-            if not (re.match(r"^#{2,3}[ \t]+(NEW:|UPDATED:)", raw) or br_new or br_upd):
+            if heading is None:
                 files_section = ""
             continue
         if pending_updated and re.match(r"^[ \t]*-[ \t]+Adds[ \t]+flag:", raw):
@@ -524,19 +549,6 @@ def parse_plan_commands(*, plan_text: str, repo_root: str | Path | None = None, 
             flag = re.sub(r"^[ \t]+-[ \t]+Adds[ \t]+flag:[ \t]*", "", raw).strip()
             _emit_updated_flag(rows=rows, path=pending_updated, flag=flag, line=idx)
 
-        if re.match(r"^```[ \t]*(bash|sh)[ \t]*$", raw):
-            in_fence = True
-            fence_start = idx
-            fence_buf = []
-            continue
-        if in_fence and re.match(r"^```[ \t]*$", raw):
-            process_fence(start=fence_start, text="\n".join(fence_buf))
-            in_fence = False
-            fence_start = 0
-            fence_buf = []
-            continue
-        if in_fence:
-            fence_buf.append(raw)
     if in_fence and fence_buf:
         process_fence(start=fence_start, text="\n".join(fence_buf))
     return rows

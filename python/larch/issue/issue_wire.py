@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from larch.git import gh
+from larch.design import plan_grammar
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
@@ -358,38 +359,36 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
 
 
 def extract_scope_paths(*, plan_text: str, use_fallback: bool = True, include_optional: bool = True) -> list[str]:
-    lines = plan_text.splitlines()
-    has_scope_section = any(re.match(r"^##\s+Files to modify(?:/create)?\s*$", line) for line in lines)
+    events = list(plan_grammar.iter_heading_events(plan_text))
+    has_scope_section = any(
+        event.generic_level_two and re.match(r"^##\s+Files to modify(?:/create)?\s*$", event.text)
+        for event in events
+    )
     if not use_fallback and not has_scope_section:
         return []
     in_section = not has_scope_section
     seen: list[str] = []
-    for line in lines:
+    for event in events:
+        line = event.text
         if re.match(r"^##\s+Files to modify(?:/create)?\s*$", line):
             in_section = True
             continue
-        if has_scope_section and in_section and re.match(r"^##\s+", line):
-            break
-        if not in_section:
-            continue
-        match = re.match(r"^###\s+(NEW|UPDATED|REWRITTEN|MAY_UPDATE)\s*:\s*(.+)$", line)
-        if not match:
-            continue
-        if match.group(1) == "MAY_UPDATE" and not include_optional:
-            continue
-        tail = match.group(2)
-        backtick_matches = list(re.finditer(r"`([^`]+)`", tail))
-        if backtick_matches:
-            for pm in backtick_matches:
-                path = pm.group(1).strip()
-                if path and path not in seen:
+        heading = event.heading
+        if in_section and heading is not None:
+            if heading.kind == "MAY_UPDATE" and not include_optional:
+                continue
+            tail = heading.path
+            backtick_matches = list(re.finditer(r"`([^`]+)`", tail))
+            candidates = [match.group(1).strip() for match in backtick_matches]
+            if not candidates:
+                parts = tail.split()
+                candidates = [re.sub(r"\(.*$", "", parts[0]).strip()] if parts else []
+            for path in candidates:
+                if path and not path.startswith("+") and path not in seen:
                     seen.append(path)
-        else:
-            parts = tail.split()
-            if parts:
-                token = re.sub(r"\(.*$", "", parts[0]).strip()
-                if token and not token.startswith("+") and "/" in token and token not in seen:
-                    seen.append(token)
+            continue
+        if has_scope_section and in_section and event.generic_level_two:
+            break
     if seen:
         return seen
     if use_fallback:

@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -15,6 +16,7 @@ from typing import NoReturn, cast
 
 from larch import io as larch_io
 from larch.calibration import difficulty
+from larch.design import plan_grammar
 from larch.core import config
 from larch.implement import main_health
 
@@ -46,6 +48,9 @@ MAIN_HEALTH_KEYS = (
     "MAIN_FAILED_RUN_ID",
     "MAIN_HEALTH_HEAD_SHA",
     "MAIN_HEALTH_DETAIL",
+)
+_RECOGNIZED_TRAILER_PREFIX_RE = re.compile(
+    r"^(review_status|rounds_completed|difficulty|diff_added|diff_deleted|mechanical_churn|oversize_override|diff_lines):"
 )
 
 
@@ -438,30 +443,42 @@ def _write_fallback_plan(
 
 
 def _plan_review_meta_value(*, plan_path: Path, key: str) -> str:
-    lines: list[str] = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    diff_idx = -1
-    for index in range(len(lines) - 1, -1, -1):
-        if lines[index].startswith("diff_lines: ") and lines[index][len("diff_lines: ") :].isdigit():
-            diff_idx = index
-            break
-    if diff_idx < 0:
+    text = plan_path.read_text(encoding="utf-8", errors="replace")
+    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
+    if not trailers.matches:
         return ""
-    start = diff_idx
-    allowed = ("review_status: ", "rounds_completed: ", "difficulty: ", "diff_added: ", "diff_deleted: ", "mechanical_churn: ", "oversize_override: ")
-    for index in range(diff_idx - 1, -1, -1):
-        line = lines[index]
-        if line.startswith(allowed):
-            start = index
-            continue
-        if not line.strip():
-            continue
-        break
-    value = ""
-    prefix = f"{key}: "
-    for line in lines[start:diff_idx]:
-        if line.startswith(prefix):
-            value = line[len(prefix) :]
-    return value
+    match = trailers.get(cast("plan_grammar.TrailerKey", key))
+    return match.value if match is not None else ""
+
+
+def _malformed_terminal_metadata(*, plan_path: Path) -> str:
+    """Return the first malformed recognized trailer adjacent to terminal metadata."""
+    lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    while lines and not lines[-1].strip():
+        lines.pop()
+    if not lines:
+        return ""
+    last = plan_grammar.match_trailer_line(lines[-1])
+    if last is None or last.key != "diff_lines":
+        return ""
+    for line in reversed(lines):
+        if not _RECOGNIZED_TRAILER_PREFIX_RE.match(line):
+            break
+        if plan_grammar.match_trailer_line(line) is None:
+            return line
+    return ""
+
+
+def _refuse_malformed_terminal_metadata(*, plan_path: Path, issue: str) -> None:
+    malformed = _malformed_terminal_metadata(plan_path=plan_path)
+    if not malformed:
+        return
+    key, value = malformed.split(":", 1)
+    rendered = f"{key}={value.strip()}"
+    print(
+        f"**❌ /implement preflight: malformed plan review metadata: `{rendered}`. Re-run /design {issue} before retrying /implement.**"
+    )
+    raise SystemExit(2)
 
 
 def _validate_design_difficulty(*, plan_path: Path, issue: str, force: bool) -> str:
@@ -625,6 +642,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     design_difficulty = ""
     if plan_from_extracted_block and block_present == "true" and plan_path.is_file() and plan_path.stat().st_size > 0:
         try:
+            _refuse_malformed_terminal_metadata(plan_path=plan_path, issue=issue)
             _refuse_unreviewed_plan(plan_path=plan_path, issue=issue)
             design_difficulty = _validate_design_difficulty(plan_path=plan_path, issue=issue, force=args.force)
         except SystemExit as exc:
