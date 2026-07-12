@@ -172,3 +172,129 @@ def test_launcher_uses_exact_read_only_argv(monkeypatch: pytest.MonkeyPatch, tmp
     assert captured["argv"] == list(request.argv)
     assert captured["cwd"] == tmp_path
     assert captured["input"] == "prompt"
+
+
+class _SequenceLauncher:
+    """Launcher stub returning a scripted result sequence, repeating the final entry."""
+
+    def __init__(self, results: list[assessment.LaunchResult]) -> None:
+        self._results = results
+        self.calls = 0
+
+    def launch(self, request: assessment.LaunchRequest) -> assessment.LaunchResult:
+        assert request.argv
+        self.calls += 1
+        return self._results[min(self.calls - 1, len(self._results) - 1)]
+
+
+def _launch_request(tmp_path: Path) -> assessment.LaunchRequest:
+    return assessment.LaunchRequest(argv=("claude",), cwd=tmp_path, prompt="p", evidence_dir=tmp_path)
+
+
+def test_launch_assessment_returns_first_nonempty_result(tmp_path: Path) -> None:
+    launcher = _SequenceLauncher([assessment.LaunchResult(0, '{"schema_version":"1"}', "")])
+    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert launcher.calls == 1
+    assert result.stdout == '{"schema_version":"1"}'
+
+
+def test_launch_assessment_retries_transient_empty_stdout(tmp_path: Path) -> None:
+    launcher = _SequenceLauncher([
+        assessment.LaunchResult(0, "", ""),
+        assessment.LaunchResult(0, "  \n", ""),
+        assessment.LaunchResult(0, '{"schema_version":"1"}', ""),
+    ])
+    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert launcher.calls == 3
+    assert result.stdout == '{"schema_version":"1"}'
+
+
+def test_launch_assessment_caps_empty_stdout_retries(tmp_path: Path) -> None:
+    launcher = _SequenceLauncher([assessment.LaunchResult(0, "", "")])
+    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert launcher.calls == assessment._EMPTY_STDOUT_ATTEMPTS  # pyright: ignore[reportPrivateUsage]
+    assert result.stdout == ""
+
+
+def test_launch_assessment_does_not_retry_nonzero_exit(tmp_path: Path) -> None:
+    launcher = _SequenceLauncher([assessment.LaunchResult(1, "", "boom")])
+    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
+    assert launcher.calls == 1
+    assert result.returncode == 1
+
+
+def _true_kwargs(**_kwargs: object) -> bool:
+    return True
+
+
+def _true_args(*_args: object, **_kwargs: object) -> bool:
+    return True
+
+
+def test_already_handled_refuses_unavailable_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def _unavailable_meta(_tmpdir: Path) -> dict[str, str]:
+        return {"BASE_REF": "origin/main", "NOTE_STATE": config.NOTE_STATE_UNAVAILABLE}
+
+    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _unavailable_meta)
+    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_note_consumable", _true_kwargs)
+    monkeypatch.setattr(assessment, "_outcome_valid", _true_args)
+    handled = assessment._already_handled(  # pyright: ignore[reportPrivateUsage]
+        config.ASSESSMENT_KIND_INVARIANTS, repo_root=tmp_path, implement_tmpdir=tmp_path, head_sha="a" * 40
+    )
+    assert handled is False
+
+
+def test_already_handled_accepts_valid_authored_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    def _authored_meta(_tmpdir: Path) -> dict[str, str]:
+        return {
+            "BASE_REF": "origin/main",
+            "NOTE_STATE": config.NOTE_STATE_AUTHORED,
+            "ASSESSMENT_KIND": config.ASSESSMENT_OUTCOME_CLEAN,
+        }
+
+    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _authored_meta)
+    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_note_consumable", _true_kwargs)
+    monkeypatch.setattr(assessment, "_authored_note_valid", _true_args)
+    monkeypatch.setattr(assessment, "_outcome_valid", _true_args)
+    handled = assessment._already_handled(  # pyright: ignore[reportPrivateUsage]
+        config.ASSESSMENT_KIND_INVARIANTS, repo_root=tmp_path, implement_tmpdir=tmp_path, head_sha="a" * 40
+    )
+    assert handled is True
+
+
+def test_discard_unavailable_coverage_invalidates_only_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invalidated: list[Path] = []
+
+    def _fake_invalidate(tmpdir: Path) -> None:
+        invalidated.append(tmpdir)
+
+    def _meta(state: str) -> object:
+        def _read(_tmpdir: Path) -> dict[str, str]:
+            return {"NOTE_STATE": state}
+        return _read
+
+    monkeypatch.setattr(assessment.architectural_guidelines, "invalidate_invariant_implement_note", _fake_invalidate)
+
+    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _meta(config.NOTE_STATE_UNAVAILABLE))
+    assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_INVARIANTS, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert invalidated == [tmp_path]
+
+    invalidated.clear()
+    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _meta(config.NOTE_STATE_AUTHORED))
+    assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_INVARIANTS, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert invalidated == []
+
+
+def test_discard_unavailable_coverage_uses_guideline_invalidator(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invalidated: list[Path] = []
+
+    def _fake_invalidate(tmpdir: Path) -> None:
+        invalidated.append(tmpdir)
+
+    def _unavailable_meta(_tmpdir: Path) -> dict[str, str]:
+        return {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE}
+
+    monkeypatch.setattr(assessment.architectural_guidelines, "durable_note_metadata", _unavailable_meta)
+    monkeypatch.setattr(assessment.architectural_guidelines, "invalidate_implement_note", _fake_invalidate)
+    assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_GUIDELINES, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert invalidated == [tmp_path]
