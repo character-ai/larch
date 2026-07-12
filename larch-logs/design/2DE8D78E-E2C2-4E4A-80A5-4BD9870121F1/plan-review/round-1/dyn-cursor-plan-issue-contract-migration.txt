@@ -1,0 +1,18 @@
+Reviewing the plan against the codebase: locating `gh.issue_list_read` and all issue-list call sites.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/issue/audit_runs.py:710-716	Preflight concurrency probe must degrade failed issue reads to an empty list	`preflight_main` treats non-zero `gh issue list` as `arr=[]`, so listing failure skips the 5-minute concurrency block and still emits `PREFLIGHT_OK=true`. `gh.issue_list_read` raises `ShipError` instead of returning a non-zero `CommandResult`; an uncaught exception or a generic failure translation could abort preflight or flip `PREFLIGHT_OK=false`, changing live audit concurrency behavior.	In `audit_runs.py` preflight only, catch `ShipError`, coerce to `[]`, and keep the existing cutoff logic; do not route this probe through the same hard-fail `ISSUE_LIST_FAILED` / `_kv_error` translation used by `close_priors_main` and `resolve_prs_main`.
+1	in_scope	minor	correctness	python/larch/issue/analyze_bugs.py:379-381	`analyze_bugs` plan omits dropping the API-only `pull_request` guard in `_issue_from_raw`	Approach says remove obsolete parsing branches; edge cases forbid API-era `pull_request` fixtures. `gh issue list` never returns PR rows, so the guard is dead and keeping snake_case/`pull_request` fallbacks works against the camelCase migration the plan targets.	Remove the `pull_request` check (and other API-only snake_case fallbacks) from `_issue_from_raw`; request explicit camelCase fields via `gh.issue_list_read` and update `python/tests/issue/test_analyze_bugs.py` fixtures accordingly.
+
+## Findings
+
+### 1. correctness — `python/larch/issue/audit_runs.py:710-716`
+
+Preflight concurrency is a **degraded-read** callsite, not a hard-fail one. Today a failed list at line 712 yields `arr=[]`, so the probe does not block and preflight still prints `PREFLIGHT_OK=true`. The plan’s global “catch `ShipError` at command boundaries” guidance is easy to misapply here. Add an explicit preflight-only rule: catch `ShipError`, treat it as `[]`, and preserve current concurrency semantics.
+
+### 2. correctness — `python/larch/issue/analyze_bugs.py:379-401`
+
+The plan replaces the paginated API read but does not call out cleaning `_issue_from_raw`. That helper still filters `pull_request` and accepts API snake_case (`closed_at`, `html_url`, `state_reason`). After migration those branches are obsolete and can mask missing camelCase fields in tests. Drop them and rely on the explicit `gh.issue_list_read` field set.
+
+## Assessment
+
+Otherwise the plan matches the scoped surface: all eight production modules and their tests are covered, `gh.issue_list_read` is the single list authority, limits/labels/search/state are preserved per caller, `_json_documents` deletion is correct, `deps_audit._rows_from_paginated_json` correctly stays for dependency/comment pagination, `voter-calibration.py` exclusion is justified (issue view, not list), and failure-mode guidance for distinct `REASON=` / stderr contracts in `audit_runs` and `combine_issues` is adequate via the shared failure-modes section plus test updates.
