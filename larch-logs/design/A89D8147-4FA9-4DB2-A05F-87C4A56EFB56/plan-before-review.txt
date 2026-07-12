@@ -1,0 +1,96 @@
+## Approach
+
+Use `python/cli.py bgjob adapt` as the sole start-or-reattach authority for `/design` Steps 3, 4, and 5c. Remove local registry inspection, stale cleanup, merge-env creation, and direct `bgjob start` logic. Keep each step’s child argv, budgets, result KVs, resume behavior, and completion markers intact.
+
+## Files to modify/create
+
+### UPDATED: skills/design/scripts/design-step3-review.sh
+
+- Replace the outer Step 3 launcher boilerplate with a thin `bgjob adapt` delegation for `design-step3-review`.
+- Pass the explicit design tmpdir, 21600-second budget, owner identity, and existing loop-child argv.
+- Preserve resume-state validation, pause handling, scope-anchor validation, loop execution, stderr capture, and status normalization in child mode.
+- Write the child’s normalized routing KVs to the merge env supplied by `bgjob adapt`, while retaining `.step3-review-result.env` as the documented compatibility fallback.
+- Remove direct registry liveness checks, stale result deletion, merge-env recreation, temporary argv transport, direct `bgjob start`, and self-reexec launcher logic.
+
+### UPDATED: skills/design/scripts/design-step3b-tail.sh
+
+- Delegate the `design-step4-tail` lifecycle to `bgjob adapt` with its existing 900-second budget and child argv.
+- Preserve FINALIZE, rejected-finding rendering, dialectic Gate C, preview generation, pause handling, and completion markers.
+- Publish `SKIP_APPROVE_REQUESTED_GATEC`, rejected-body paths, preview paths, and the optional dialectic digest through the adapter-provided merge env.
+- Remove the local liveness heredoc, stale cleanup, merge-env recreation, direct start command, and launcher self-reexec path.
+
+### UPDATED: skills/design/scripts/design-step5c.sh
+
+- Replace the Step 5c launcher with a thin `bgjob adapt` delegation using the existing 21600-second budget and forwarded public arguments.
+- Preserve `python/cli.py design step5c` as the child work.
+- Copy the Step 5c status envelope into the adapter-provided merge env so the authoritative bgjob result retains publish, validation, summary, and cleanup KVs.
+- Remove local session rehydration, registry inspection, stale cleanup, merge-env recreation, direct start command, and launcher self-reexec logic.
+
+### UPDATED: skills/design/scripts/test-design-step3-review.sh
+
+- Update static assertions to require `bgjob adapt` and reject the retired local lifecycle helpers.
+- Exercise fresh launch, completed-result reattachment, resume arguments, normalized merge KVs, and fail-closed handling when the child emits no fresh routing envelope.
+- Assert that the common adapter’s completed-result policy replaces wrapper-specific stale-result decisions.
+
+### UPDATED: skills/design/scripts/test-design-step5c.sh
+
+- Update the fake launcher and expectations for the `bgjob adapt` contract.
+- Verify argument forwarding, adapter merge-env publication, fresh STARTED output, and completed-result reattachment without relaunch.
+- Remove expectations tied to Step 5c’s retired wrapper-local stale clearing.
+
+### UPDATED: skills/design/scripts/test-step3-orchestrator-fence.sh
+
+- Keep the Step 3 normalization and starting-round coverage aligned with the child-mode shape after the launcher reduction.
+- Assert that result-env reads remain file-first and preserve non-zero postplan failure routing.
+
+### UPDATED: scripts/test-design-structure.sh
+
+- Add structural pins requiring all three adapters to delegate through `bgjob adapt`.
+- Reject direct `bgjob start`, local registry-liveness heredocs, stale-result deletion, and wrapper-owned merge-env recreation in these adapters.
+- Preserve existing `/design` wait, `BGJOB_RC=0`, result-env, and completion-boundary assertions.
+
+### UPDATED: skills/design/scripts/design-step3-review.md
+
+- Document shared adapter ownership of start, reattach, liveness, stale-state handling, and generic merge publication.
+- Retain the Step 3 child, resume, normalization, and compatibility-sidecar contracts.
+
+### UPDATED: skills/design/scripts/design-step3b-tail.md
+
+- Replace wrapper-local lifecycle claims with the shared `bgjob adapt` policy.
+- Keep the Step 4 child outputs, Gate C preview, pause, and completion contracts explicit.
+
+### UPDATED: skills/design/scripts/design-step5c.md
+
+- Document the thin adapter, shared completed-result policy, and adapter merge env.
+- Preserve the Step 5c Python child and authoritative result-envelope requirements.
+
+## Edge cases
+
+- A valid completed result must emit DONE instead of launching a duplicate child.
+- A live identity-valid job must reattach without wrapper-specific liveness decisions.
+- Unsafe, malformed, expired-live, or identity-unverifiable registry state must fail closed through stable adapter errors.
+- Resume flags and public argv must reach the child unchanged.
+- Child failure must still publish `BGJOB_RC` without allowing stale legacy sidecar KVs to satisfy the current run.
+- Merge-env paths must remain regular, non-symlink files under `DESIGN_TMPDIR`.
+
+## Failure modes
+
+- Missing `DESIGN_TMPDIR` or plugin-root rehydration must return a machine-readable adapter error.
+- Failure to publish required child KVs must prevent normal Step 3, Gate C, or Step 5c continuation.
+- Adapter reattachment must not erase authoritative result envelopes or relaunch terminal work.
+- Child-side merge publication failure must produce a non-zero bgjob result rather than a partial success envelope.
+
+## Testing strategy
+
+- Run `make test-design-step3-review`.
+- Run `make test-design-step5c`.
+- Run `make test-step3-orchestrator-fence`.
+- Run `make test-design-structure`.
+- Run the bgjob adapter unit suite covering reattachment, identity validation, concurrency, and merge publication.
+- Run `make lint` and `make py-test` as required by acceptance.
+
+difficulty: HARD
+diff_added: 180
+diff_deleted: 360
+mechanical_churn: true
+diff_lines: 540
