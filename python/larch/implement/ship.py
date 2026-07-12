@@ -47,7 +47,7 @@ import re
 import traceback
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import cast
 
@@ -109,6 +109,7 @@ from larch.implement.ship_guidelines import (
     clear_invariant_ship_outcome_sidecar,
     load_or_prepare_guidelines_note,
     load_or_prepare_invariants_note,
+    read_unavailable_outcome_detail,
     write_guideline_ship_outcome,
     write_invariant_ship_outcome,
 )
@@ -464,6 +465,9 @@ def _invariants_gate_before_pr(
 ) -> InvariantsGateResult:
     compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
     compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+    unavailable_detail = read_unavailable_outcome_detail(
+        implement_tmpdir=pr_context.tmpdir, kind=config.ASSESSMENT_KIND_INVARIANTS, head_sha=compose_head_sha, base_ref=compose_base_ref
+    )
     clear_invariant_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir)
     invariant_file = architectural_guidelines.read_invariants(repo_root=repo_root)
     if invariant_file.status == "absent":
@@ -481,6 +485,8 @@ def _invariants_gate_before_pr(
             forked_target=pr_context.forked or pr_context.forked_target,
             compose_snapshot_factory=compose_snapshot_factory,
         )
+    if result.note_state == config.NOTE_STATE_UNAVAILABLE and unavailable_detail:
+        result = replace(result, detail=unavailable_detail)
     if result.needs_assessment:
         return result
     if not compose_head_sha and not result.note:
@@ -541,6 +547,9 @@ def _guidelines_gate_before_pr(
 ) -> GuidelinesGateResult:
     compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
     compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+    unavailable_detail = read_unavailable_outcome_detail(
+        implement_tmpdir=pr_context.tmpdir, kind=config.ASSESSMENT_KIND_GUIDELINES, head_sha=compose_head_sha, base_ref=compose_base_ref
+    )
     clear_guideline_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir)
     result = load_or_prepare_guidelines_note(
         implement_tmpdir=pr_context.tmpdir,
@@ -550,6 +559,8 @@ def _guidelines_gate_before_pr(
         forked_target=pr_context.forked or pr_context.forked_target,
         compose_snapshot_factory=compose_snapshot_factory,
     )
+    if result.note_state == config.NOTE_STATE_UNAVAILABLE and unavailable_detail:
+        result = replace(result, detail=unavailable_detail)
     if result.needs_assessment:
         return result
     if not flush_outcome:

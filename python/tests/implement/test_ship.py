@@ -6539,6 +6539,12 @@ def test_invariants_gate_does_not_stall_on_unavailable_outcome(
     # route the transient assessor failure to operator-bail. The real
     # classifier turns an `unavailable` note-state into outcome `dropped` with
     # reason `unavailable`, so no outcome patch is needed.
+    _ = ship_guidelines.write_invariant_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.InvariantsGateResult(detail="launcher exited 1", invariants_status="present", note_state=config.NOTE_STATE_UNAVAILABLE),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
     monkeypatch.setattr(
         ship.architectural_guidelines,
         "read_invariants",
@@ -6564,6 +6570,9 @@ def test_invariants_gate_does_not_stall_on_unavailable_outcome(
     )
 
     assert result.note_state == ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+    assert result.detail == "launcher exited 1"
+    refreshed = json.loads((tmp_path / ship.architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert refreshed["detail"] == "launcher exited 1"
 
 
 def test_invariants_gate_stalls_on_genuine_dropped_outcome(
@@ -6605,6 +6614,12 @@ def test_guidelines_gate_does_not_stall_on_unavailable_outcome(
     # Mirror of the invariant gate test: the real classifier turns an
     # `unavailable` note-state into outcome `dropped` with reason `unavailable`,
     # which the gate must not stall on (issue #7022).
+    _ = ship_guidelines.write_guideline_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.GuidelinesGateResult(detail="empty stdout after 3 attempts", guidelines_status="present", note_state=config.NOTE_STATE_UNAVAILABLE),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
     monkeypatch.setattr(
         ship,
         "load_or_prepare_guidelines_note",
@@ -6625,6 +6640,43 @@ def test_guidelines_gate_does_not_stall_on_unavailable_outcome(
     )
 
     assert result.note_state == ship_guidelines.config.NOTE_STATE_UNAVAILABLE
+    assert result.detail == "empty stdout after 3 attempts"
+    refreshed = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert refreshed["detail"] == "empty stdout after 3 attempts"
+
+
+def test_unavailable_detail_reader_rejects_untrusted_outcomes(tmp_path: Path) -> None:
+    outcome_path = tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
+    _ = ship_guidelines.write_guideline_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.GuidelinesGateResult(detail="trusted diagnostic", guidelines_status="present", note_state=config.NOTE_STATE_UNAVAILABLE),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
+    read_detail = ship_guidelines.read_unavailable_outcome_detail
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == "trusted diagnostic"
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="stale", base_ref="origin/main") == ""
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/release") == ""
+
+    record = json.loads(outcome_path.read_text(encoding="utf-8"))
+    del record["detail"]
+    outcome_path.write_text(json.dumps(record), encoding="utf-8")
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
+    record["detail"] = "wrong reason"
+    record["reason"] = "unknown"
+    outcome_path.write_text(json.dumps(record), encoding="utf-8")
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
+
+    outcome_path.write_text("not json\n", encoding="utf-8")
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
+    outcome_path.unlink()
+    outcome_path.mkdir()
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
+    outcome_path.rmdir()
+    target = tmp_path / "outcome-target.json"
+    target.write_text("{}\n", encoding="utf-8")
+    outcome_path.symlink_to(target)
+    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
 
 
 def test_load_or_prepare_guidelines_note_drops_on_redaction_failure(

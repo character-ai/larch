@@ -132,6 +132,38 @@ def test_kv_get_entrypoint_is_machine_stdout() -> None:
     assert ("kv", "get") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
 
 
+def test_architectural_assessment_sanitizer_dispatches_as_machine_stdout() -> None:
+    mock_main = MagicMock(return_value=0)
+    module = MagicMock(sanitize_detail_main=mock_main)
+    with patch.dict("sys.modules", {"larch.implement.architectural_assessment": module}):
+        rc = cli.main(["architectural-assessment", "sanitize-detail", "--implement-tmpdir", "/tmp/x"])
+
+    assert rc == 0
+    mock_main.assert_called_once_with(["--implement-tmpdir", "/tmp/x"])
+    assert ("architectural-assessment", "sanitize-detail") in cli._MACHINE_STDOUT_KEYS  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "extra_args",
+    [[], ["--implement-tmpdir", "/path/that/does/not/exist"]],
+    ids=["missing-argument", "invalid-tmpdir"],
+)
+def test_architectural_assessment_sanitizer_fails_without_echoing_stdin(extra_args: list[str]) -> None:
+    token = "ghp_" + "x" * 30
+
+    completed = subprocess.run(
+        [sys.executable, str(CLI_PATH), "architectural-assessment", "sanitize-detail", *extra_args],
+        input=token,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert completed.returncode == 2
+    assert token not in completed.stdout
+    assert token not in completed.stderr
+
+
 def test_run_log_validate_run_id_entrypoint_is_machine_stdout() -> None:
     assert cli._REGISTRY[("run-log", "validate-run-id")] == (  # pyright: ignore[reportPrivateUsage]
         "larch.report.run_logs",

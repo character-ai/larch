@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from pathlib import Path
 
@@ -150,6 +151,43 @@ def test_main_preserves_bounded_reauthor_reason(monkeypatch: pytest.MonkeyPatch,
         "ARCHITECTURAL_ASSESSMENT_STATUS=re-author-required",
         "ARCHITECTURAL_ASSESSMENT_RESULTS=guidelines:re-author-required:clean-outcome-prose-mismatch",
     ]
+
+
+def test_sanitize_detail_main_reads_stdin_and_emits_one_safe_line(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    token = "ghp_" + "x" * 30
+    monkeypatch.setattr(assessment.sys, "stdin", io.StringIO(f"first\n{tmp_path}\t{token}"))
+
+    rc = assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)])
+
+    output = capsys.readouterr().out
+    assert rc == config.EXIT_OK
+    assert output.count("\n") == 1
+    assert str(tmp_path) not in output
+    assert token not in output
+    assert output == "first <implement-tmpdir> <REDACTED-TOKEN>\n"
+
+
+@pytest.mark.parametrize("kind", [config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES])
+def test_persist_unavailable_reuses_sanitized_detail_in_receipt_and_outcome(tmp_path: Path, kind: str) -> None:
+    token = "ghp_" + "x" * 30
+    diagnostic = f"launcher failed\n{tmp_path}\t{token} " + "z" * 600
+
+    assessment._persist_unavailable(  # pyright: ignore[reportPrivateUsage]
+        _evidence(kind), repo_root=tmp_path, implement_tmpdir=tmp_path, detail=diagnostic
+    )
+
+    receipt = json.loads((tmp_path / f"architectural-assessment-unavailable-{kind}.json").read_text(encoding="utf-8"))
+    outcome_name = (
+        assessment.architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR
+        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        else assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
+    )
+    outcome = json.loads((tmp_path / outcome_name).read_text(encoding="utf-8"))
+    assert receipt["detail"] == outcome["detail"]
+    assert len(receipt["detail"]) == 500
+    assert "\n" not in receipt["detail"]
+    assert str(tmp_path) not in receipt["detail"]
+    assert token not in receipt["detail"]
 
 
 def test_launcher_uses_exact_read_only_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -175,6 +176,40 @@ def _authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool
 def _bounded_detail(text: str) -> str:
     clean = logging_util.sanitize_diagnostic_line(redact.redact_outbound(text or ""))
     return clean[:500]
+
+
+def read_unavailable_outcome_detail(
+    *, implement_tmpdir: str, kind: str, head_sha: str, base_ref: str
+) -> str:
+    """Read diagnostic detail from a current, valid unavailable outcome."""
+    tmpdir = Path(implement_tmpdir)
+    if kind == config.ASSESSMENT_KIND_INVARIANTS:
+        path = architectural_guidelines.invariant_ship_outcome_path(tmpdir)
+        validator = architectural_guidelines.validate_invariant_ship_outcome_record
+    elif kind == config.ASSESSMENT_KIND_GUIDELINES:
+        path = architectural_guidelines.guideline_ship_outcome_path(tmpdir)
+        validator = architectural_guidelines.validate_guideline_ship_outcome_record
+    else:
+        return ""
+    try:
+        mode: int = path.lstat().st_mode
+        if path.is_symlink() or not stat.S_ISREG(mode):
+            return ""
+        decoded: object = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return ""
+    if validator(decoded) is not None or not isinstance(decoded, dict):
+        return ""
+    record: dict[str, object] = decoded  # type: ignore[assignment]  # reason: isinstance narrowed the JSON object
+    detail = record.get("detail", "")
+    if (
+        record.get("reason") != REASON_UNAVAILABLE
+        or record.get("head_sha") != head_sha
+        or record.get("base_ref") != base_ref
+        or not isinstance(detail, str)
+    ):
+        return ""
+    return _bounded_detail(detail)
 
 
 def _write_json_atomic(*, path: Path, data: dict[str, str]) -> None:

@@ -23,6 +23,7 @@ from larch.agents import _ci_launcher
 from larch.agents import _run_external
 from larch.report import exec_issue_detail
 from larch.implement import implement_dispatch
+from larch.implement import ship_guidelines
 from larch.implement import (
     dispatch_commit_route,
     dispatch_leg,
@@ -816,6 +817,69 @@ def test_ship_route_exit_preserves_combined_assessment_detail(
     assert out == "NEXT_ACTION=assessments\n"
     env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
     assert "DETAIL=invariants,guidelines\n" in env
+
+
+def _write_unavailable_outcome(tmp: Path, kind: str, detail: str) -> None:
+    status_key = "invariants_status" if kind == "invariants" else "guidelines_status"
+    filename = "architectural-invariant-outcome.json" if kind == "invariants" else "architectural-guideline-outcome.json"
+    payload: dict[str, object] = {
+        "schema_version": "1", "phase": "implement", "step": "8", "outcome": "dropped",
+        "reason": ship_guidelines.REASON_UNAVAILABLE, "detail": detail, status_key: "present",
+        "head_sha": "abc123", "base_ref": "origin/main", "assessment_kind": "",
+    }
+    (tmp / filename).write_text(json.dumps(payload), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("kinds", "invariant_detail", "guideline_detail", "expected"),
+    [
+        ("invariants", "launcher exited 1", "", "launcher exited 1"),
+        ("invariants,guidelines", "shared failure", "shared failure", "shared failure"),
+        ("invariants,guidelines", "invariant failure", "guideline failure", "invariants: invariant failure; guidelines: guideline failure"),
+        ("invariants,guidelines", "only current detail", "", "invariants: only current detail"),
+        ("invariants,guidelines", "", "", ""),
+        ("invariants", "hostile\nDETAIL=forged", "", "hostileDETAIL=forged"),
+    ],
+)
+def test_ship_route_exit_adds_validated_unavailable_detail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+    kinds: str, invariant_detail: str, guideline_detail: str, expected: str,
+) -> None:
+    tmp = _session(tmp_path)
+    for kind, detail in (("invariants", invariant_detail), ("guidelines", guideline_detail)):
+        if kind in kinds:
+            _write_unavailable_outcome(tmp, kind, detail)
+    monkeypatch.setattr(dispatch_ship, "validate_materialization", lambda **_kwargs: SimpleNamespace(head_sha="abc123", base_ref="origin/main"))
+
+    exit_rc, out, _err = _route_exit(
+        tmp, capsys, monkeypatch, 3,
+        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-assessment-unavailable", "detail": kinds},
+    )
+
+    assert exit_rc == 0
+    assert out == "NEXT_ACTION=operator-bail\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert f"DETAIL={kinds}\n" in env
+    if expected:
+        assert f"ASSESSMENT_UNAVAILABLE_DETAIL={expected}\n" in env
+    else:
+        assert "ASSESSMENT_UNAVAILABLE_DETAIL=" not in env
+
+
+def test_ship_route_exit_omits_unavailable_detail_for_unrelated_bail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = _session(tmp_path)
+    _write_unavailable_outcome(tmp, "invariants", "must not leak")
+
+    exit_rc, _out, _err = _route_exit(
+        tmp, capsys, monkeypatch, 3,
+        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "unknown", "detail": "invariants"},
+    )
+
+    assert exit_rc == 0
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "ASSESSMENT_UNAVAILABLE_DETAIL=" not in env
 
 
 @pytest.mark.parametrize(

@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -557,17 +558,24 @@ def _write_json_atomic(path: Path, data: dict[str, object]) -> None:
     _write_text_atomic(path, json.dumps(data, sort_keys=True) + "\n")
 
 
-def _write_outcome(kind: str, *, implement_tmpdir: Path, result: AssessmentResult, note_state: str = config.NOTE_STATE_AUTHORED) -> None:
+def _write_outcome(
+    kind: str,
+    *,
+    implement_tmpdir: Path,
+    result: AssessmentResult,
+    note_state: str = config.NOTE_STATE_AUTHORED,
+    detail: str = "",
+) -> None:
     if kind == config.ASSESSMENT_KIND_INVARIANTS:
         gate = ship_guidelines.InvariantsGateResult(
-            note=result.assessment, invariants_status="present", assessment_kind=result.state, note_state=note_state
+            note=result.assessment, detail=detail, invariants_status="present", assessment_kind=result.state, note_state=note_state
         )
         _ = ship_guidelines.write_invariant_ship_outcome(
             implement_tmpdir=str(implement_tmpdir), result=gate, head_sha=result.head_sha, base_ref=result.base_ref
         )
     else:
         gate = ship_guidelines.GuidelinesGateResult(
-            note=result.assessment, guidelines_status="present", assessment_kind=result.state, note_state=note_state
+            note=result.assessment, detail=detail, guidelines_status="present", assessment_kind=result.state, note_state=note_state
         )
         _ = ship_guidelines.write_guideline_ship_outcome(
             implement_tmpdir=str(implement_tmpdir), result=gate, head_sha=result.head_sha, base_ref=result.base_ref
@@ -657,7 +665,13 @@ def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Pat
 
 def _safe_detail(text: str, implement_tmpdir: Path) -> str:
     redacted: str = redact.redact_outbound(text).replace(str(implement_tmpdir), "<implement-tmpdir>")
-    return logging_util.sanitize_diagnostic_line(redacted)[:500]
+    flattened: str = "".join(character if character >= " " and character != "\x7f" else " " for character in redacted)
+    return logging_util.sanitize_diagnostic_line(flattened).strip()[:500]
+
+
+def sanitize_detail(text: str, *, implement_tmpdir: Path) -> str:
+    """Return one bounded diagnostic safe for a line-oriented handoff."""
+    return _safe_detail(text, implement_tmpdir)
 
 
 def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path, detail: str) -> None:
@@ -667,8 +681,11 @@ def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, imp
     architectural_guidelines.write_unavailable_note(
         implement_tmpdir=implement_tmpdir, head_sha=evidence.head_sha, base_ref=evidence.base_ref, invariant=invariant
     )
+    safe_detail: str = sanitize_detail(detail, implement_tmpdir=implement_tmpdir)
     result = AssessmentResult(evidence.kind, "clean", "Architectural assessment unavailable.", (), evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
-    _write_outcome(evidence.kind, implement_tmpdir=implement_tmpdir, result=result, note_state=config.NOTE_STATE_UNAVAILABLE)
+    _write_outcome(
+        evidence.kind, implement_tmpdir=implement_tmpdir, result=result, note_state=config.NOTE_STATE_UNAVAILABLE, detail=safe_detail
+    )
     note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if invariant else architectural_guidelines.durable_note_path(implement_tmpdir)
     outcome_path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir) if invariant else architectural_guidelines.guideline_ship_outcome_path(implement_tmpdir)
     receipt: dict[str, object] = {
@@ -680,7 +697,7 @@ def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, imp
         "knowledge_sha256": evidence.knowledge_sha256,
         "note_sha256": _sha256(_read_regular(note_path, root=implement_tmpdir)),
         "outcome_sha256": _sha256(_read_regular(outcome_path, root=implement_tmpdir)),
-        "detail": _safe_detail(detail, implement_tmpdir),
+        "detail": safe_detail,
     }
     _write_json_atomic(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=evidence.kind), receipt)
 
@@ -862,4 +879,18 @@ def main(argv: list[str] | None = None) -> int:
         f"{config.ASSESSMENT_STATUS_REAUTHOR_REQUIRED if reauthor_required else 'ok'}"
     )
     print(f"ARCHITECTURAL_ASSESSMENT_RESULTS={','.join(statuses)}")
+    return config.EXIT_OK
+
+
+def sanitize_detail_main(argv: list[str] | None = None) -> int:
+    """Sanitize stdin for the Step 8 adapter's diagnostic handoff."""
+    parser = argparse.ArgumentParser(prog="cli.py architectural-assessment sanitize-detail")
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    implement_tmpdir = Path(args.implement_tmpdir)
+    if not implement_tmpdir.is_dir() or implement_tmpdir.is_symlink():
+        print("architectural-assessment sanitize-detail: invalid implement tmpdir", file=sys.stderr)
+        return config.EXIT_USAGE
+    diagnostic: str = sys.stdin.read()
+    print(sanitize_detail(diagnostic, implement_tmpdir=implement_tmpdir))
     return config.EXIT_OK

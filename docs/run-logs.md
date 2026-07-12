@@ -114,6 +114,9 @@ the invariant Step 8 compose-time outcome before guideline handling. It records
 remediation. `architectural-guideline-outcome.json` keeps the existing
 `pinned`, `clean`, or `dropped` guideline contract with stable reason token,
 redacted detail, `head_sha`, `base_ref`, status, and `assessment_kind`.
+Unavailable invariant and guideline outcomes store the redacted, bounded
+launcher diagnostic in `detail`. Historical outcome files may omit `detail` or
+store it as an empty string.
 
 Durable notes record `NOTE_STATE` as `authored`, `deterministic-clean`, or
 `unavailable`. Authored and deterministic-clean notes keep separate
