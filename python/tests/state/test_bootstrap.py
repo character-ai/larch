@@ -658,6 +658,33 @@ def test_phase_plan_materializes_feature_description_via_template_wrapper(tmp_pa
     assert (impl / "feature-description.txt").read_text(encoding="utf-8") == "Feature Title\n\nFeature body\n"
 
 
+def test_phase_plan_issue_view_failure_preserves_stderr_artifact(tmp_path, monkeypatch, capsys) -> None:
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    (preflight / "plan-from-issue.txt").write_text("plan\n", encoding="utf-8")
+    monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+
+    def failed_view(_runner, _issue, _fields, _template, *, repo=None, cwd=None):
+        _ = repo, cwd
+        return CommandResult(("gh",), 1, "", "wrapper stderr\n", 0.01)
+
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", failed_view)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="42", preflight_tmpdir=str(preflight)),
+        implement_tmpdir=str(impl),
+        issue_number_resolved="42",
+    )
+
+    with pytest.raises(bootstrap.BootstrapExit) as exc_info:
+        bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.code == 2
+    assert (impl / "gh-issue-view.stderr.log").read_text(encoding="utf-8") == "wrapper stderr\n"
+    assert "STEP_FAILED=gh-issue-view" in capsys.readouterr().out
+
+
 def test_run_bootstrap_unexpected_exception_emits_structured_failure(monkeypatch, capsys) -> None:
     def boom(_st):
         raise OSError("boom")

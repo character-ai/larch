@@ -207,6 +207,8 @@ def test_preflight_success_emits_kv_and_forwards_repo(
     assert "BYPASS_COUNT=0" in out
     assert "MAIN_CI_STATUS=error" in out
     assert (tmp_path / "main-health.env").is_file()
+    assert (tmp_path / "issue.json").read_text(encoding="utf-8") == '{"title": "[DESIGNED] Work", "body": "body"}'
+    assert (tmp_path / "gh-issue-view.stderr").read_text(encoding="utf-8") == ""
     assert any(call[-2:] == ["--repo", "o/r"] for call in calls if "admission" in call)
     assert any(call[-2:] == ["--repo", "o/r"] for call in calls if "plan-block" in call)
 
@@ -646,3 +648,27 @@ def test_preflight_malformed_issue_json_returns_two(
     out = capsys.readouterr().out
     assert "gh issue view failed" in out
     assert "PLAN_PATH=" not in out
+
+
+def test_preflight_issue_view_failure_preserves_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_run(argv: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if "admission" in argv:
+            _write(handle=kwargs.get("stdout"), text="ADMISSION_RESULT=pass\n")
+        return _fake_completed(argv)
+
+    _stub_issue_view(
+        monkeypatch,
+        payload='{"message":"not found"}',
+        returncode=1,
+        stderr="gh issue view failed\n",
+    )
+    monkeypatch.setattr(preflight.subprocess, "run", fake_run)
+
+    assert preflight.preflight_main(["--issue", "42", "--preflight-tmpdir", str(tmp_path)]) == 2
+    assert (tmp_path / "issue.json").read_text(encoding="utf-8") == '{"message":"not found"}'
+    assert (tmp_path / "gh-issue-view.stderr").read_text(encoding="utf-8") == "gh issue view failed\n"
+    assert "gh issue view failed for issue #42" in capsys.readouterr().out

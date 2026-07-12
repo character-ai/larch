@@ -35,6 +35,7 @@ from larch.design import (
 from larch.design import design_pause
 from larch.design import design_publish
 from larch.core import logging_util
+from larch.core.proc import CommandResult
 from larch.report import progress_file
 from larch.core import proc as proc_module
 from larch.state import session_env
@@ -3314,6 +3315,65 @@ def test_reconcile_post_recovery_comment_pins_design_tmpdir_for_authorization(
         "run_id": "run-1",
         "trusted_root": tmp_path,
     }]
+
+
+@pytest.mark.parametrize(
+    ("close_rc", "view_rc", "view_stdout", "expected"),
+    [
+        (0, 0, '{"state":"CLOSED"}', (True, "reconciled")),
+        (1, 0, '{"state":"CLOSED"}', (False, "gh issue close failed")),
+        (0, 1, "", (False, "gh issue close verification failed")),
+    ],
+)
+def test_reconcile_post_recovery_comment_uses_lifecycle_wrappers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    close_rc: int,
+    view_rc: int,
+    view_stdout: str,
+    expected: tuple[bool, str],
+) -> None:
+    source_env = tmp_path / "source-env.sh"
+    source_env.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, str, str]] = []
+
+    monkeypatch.setattr(design_terminal._session_env_dt, "check_live_mutation_auth", lambda **_kwargs: (True, ""))  # pyright: ignore[reportPrivateUsage]
+
+    def fake_run(_argv: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        stdout = kwargs["stdout"]
+        assert hasattr(stdout, "write")
+        _ = stdout.write(b"redacted comment\n")  # type: ignore[union-attr]
+        return subprocess.CompletedProcess([], 0, "", "")
+
+    def comment(_runner: object, issue: str, body: str, *, repo: str) -> CommandResult:
+        calls.append(("comment", issue, repo))
+        assert body == "redacted comment\n"
+        return CommandResult(("gh",), 0, "", "", 0.01)
+
+    def close(_runner: object, issue: str, *, repo: str | None) -> CommandResult:
+        calls.append(("close", issue, repo or ""))
+        return CommandResult(("gh",), close_rc, "", "", 0.01)
+
+    def view(_runner: object, issue: str, fields: str, *, repo: str | None) -> CommandResult:
+        calls.append(("view", issue, repo or ""))
+        assert fields == "state"
+        return CommandResult(("gh",), view_rc, view_stdout, "", 0.01)
+
+    monkeypatch.setattr(design_terminal.subprocess, "run", fake_run)
+    monkeypatch.setattr(design_terminal.gh, "issue_comment", comment)
+    monkeypatch.setattr(design_terminal.gh, "issue_close", close)
+    monkeypatch.setattr(design_terminal.gh, "issue_view_field_read", view)
+
+    assert design_terminal._reconcile_post_recovery_comment(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path,
+        report_issue="42",
+        repo="owner/repo",
+    ) == expected
+    assert calls[:2] == [("comment", "42", "owner/repo"), ("close", "42", "owner/repo")]
+    assert ("view", "42", "owner/repo") in calls if close_rc == 0 else len(calls) == 2
 
 
 def test_failure_report_reconciles_failed_publish_tail_after_salvage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
