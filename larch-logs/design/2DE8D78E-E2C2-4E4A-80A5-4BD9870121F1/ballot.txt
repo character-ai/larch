@@ -1,0 +1,27 @@
+### FINDING_1: Preserve backlog-nudge failure behavior
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The backlog-nudge path must catch `ShipError` and preserve its existing advisory failure exit and stderr behavior, rather than allowing an uncaught traceback.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `audit_runs.py` plan text, add an explicit backlog-nudge rule: catch `ShipError` (and preserve the existing invalid-JSON stderr) inside `_bugs_backlog_nudge_issue_rows`, return `None`, and keep exit `1` behavior. Extend `test_audit_runs.py` wrapper mocks to assert that path, not only preflight empty-list coercion.
+
+### FINDING_2: Preserve transport versus parse failure contracts
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Concern**: The plan does not define how callers retain distinct transport and parse failure categories, including existing messages and warning codes such as `gh_api_failed` versus `json_invalid`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add a typed read/parse distinction or shared classifier, then map each caller’s existing failure contract explicitly and test both paths
+
+### FINDING_3: Preserve learn-from-bugs fields
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Concern**: The `learn_from_bugs` wrapper must request the fields consumed by `build_digest`; otherwise rows may have empty bodies and silently degrade scan output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add fields=("number","title","body","closedAt","url","state") to the learn_from_bugs plan (mirror combine_issues) and require the same tuple in test_learn_from_bugs wrapper assertions
+
+### FINDING_4: Preserve list-issues zero exit status
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Concern**: `list_issues_main` must translate `ShipError` into `LIST_STATUS=failed` with warnings while retaining its established exit code of `0`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: State that ShipError translation in list_issues_main emits LIST_STATUS=failed plus warnings and returns 0; add an explicit exit-code assertion to the test_issue_create failure rows
