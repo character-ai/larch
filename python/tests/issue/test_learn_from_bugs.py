@@ -1253,7 +1253,8 @@ def test_check_proposals_main_accepts_symlinked_ancestor_out_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A symlinked out-path ancestor (like the /var -> /private/var Mac spelling)
-    is canonicalized instead of refused; artifacts land in the real directory."""
+    is canonicalized instead of refused; artifacts land in the real directory.
+    """
     real = tmp_path / "real"
     real.mkdir()
     alias = tmp_path / "alias"
