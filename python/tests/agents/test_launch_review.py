@@ -1060,7 +1060,8 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
@@ -1112,7 +1113,8 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
@@ -1324,7 +1326,8 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
@@ -1754,7 +1757,8 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
@@ -2109,7 +2113,8 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
     def cleanup_cursor_config_dir(**_kwargs: object) -> None:
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
@@ -2168,7 +2173,8 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
     def cleanup_cursor_config_dir(**_kwargs: object) -> None:
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
