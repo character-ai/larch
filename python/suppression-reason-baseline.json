@@ -3088,20 +3088,6 @@
   },
   {
     "file": "larch/issue/oos_filer.py",
-    "suppression_kind": "pyright-ignore",
-    "text": "pyright: ignore[reportPrivateUsage]",
-    "occurrence": 19,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/issue/oos_filer.py",
-    "suppression_kind": "pyright-ignore",
-    "text": "pyright: ignore[reportPrivateUsage]",
-    "occurrence": 20,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/issue/oos_filer.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportUnknownVariableType=false",
     "occurrence": 1,
@@ -3551,13 +3537,6 @@
   {
     "file": "larch/report/progress_report.py",
     "suppression_kind": "pylint-disable",
-    "text": "pylint: disable=broad-except",
-    "occurrence": 5,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/report/progress_report.py",
-    "suppression_kind": "pylint-disable",
     "text": "pylint: disable=unused-import",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
@@ -3916,13 +3895,6 @@
     "file": "larch/review/batch_report.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportArgumentType=false",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/batch_report.py",
-    "suppression_kind": "ruff-noqa",
-    "text": "ruff: noqa: SIM114, PIE810, PERF401",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
