@@ -784,12 +784,13 @@ def _proposal(
     target: str = "registration:audit-lint",
     status: learn_from_bugs.ProposalStatus = "proposed",
     filed_issue: int | None = None,
+    run_date: str = "2026-07-01T00:00:00Z",
 ) -> learn_from_bugs.Proposal:
     return learn_from_bugs.Proposal(
         id=proposal_id,
         type=proposal_type,
         target=target,
-        run_date="2026-07-01T00:00:00Z",
+        run_date=run_date,
         status=status,
         filed_issue=filed_issue,
     )
@@ -873,14 +874,31 @@ def test_load_proposals_preserves_historical_issue_linkage(tmp_path: Path) -> No
     assert proposals == (_proposal(status="pending", filed_issue=42),)
 
 
-def test_load_proposals_preserves_checked_status_and_historical_date(tmp_path: Path) -> None:
+def test_load_proposals_rejects_checked_history_with_changed_run_date(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "proposals.jsonl"
     first = _proposal(status="orphaned").to_json()
     second = _proposal(status="proposed").to_json()
     second["run_date"] = "2026-07-09T00:00:00Z"
     path.write_text(json.dumps(first) + "\n" + json.dumps(second) + "\n", encoding="utf-8")
 
-    assert learn_from_bugs.load_proposals_jsonl(path, root=tmp_path) == (_proposal(status="orphaned"),)
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="conflicting stable"):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
+
+
+def test_load_proposals_rejects_duplicate_with_changed_run_date(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    path.write_text(
+        json.dumps(_proposal().to_json())
+        + "\n"
+        + json.dumps(_proposal(run_date="2026-07-09T00:00:00Z").to_json())
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="conflicting stable"):
+        learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
 
 
 def test_hook_target_matches_plugin_root_command(tmp_path: Path) -> None:
@@ -892,13 +910,62 @@ def test_hook_target_matches_plugin_root_command(tmp_path: Path) -> None:
     assert learn_from_bugs.check_proposals(RecordingRunner(strict=True), (proposal,), tmp_path, "o/r")[0].status == "adopted"
 
 
+@pytest.mark.parametrize(
+    "command",
+    [
+        "bash ${CLAUDE_PLUGIN_ROOT}/hooks/check.py --strict",
+        "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/check.py --strict",
+    ],
+)
+def test_hook_target_matches_wrapped_or_argument_bearing_command(
+    tmp_path: Path, command: str
+) -> None:
+    hooks_path = tmp_path / "hooks" / "hooks.json"
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(
+        json.dumps({"hooks": [{"command": command}]}), encoding="utf-8"
+    )
+    proposal = _proposal(proposal_type="hook", target="hook:hooks/check.py")
+
+    checked = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), (proposal,), tmp_path, "o/r"
+    )
+
+    assert checked[0].status == "adopted"
+
+
 def test_lint_registration_matches_two_element_cli_key(tmp_path: Path) -> None:
     cli_path = tmp_path / "python" / "larch" / "cli.py"
     cli_path.parent.mkdir(parents=True)
-    cli_path.write_text('("lint", "audit-lint"): ("module", "main"),\n', encoding="utf-8")
+    cli_path.write_text(
+        '_REGISTRY = {("lint", "audit-lint"): ("module", "main")}\n',
+        encoding="utf-8",
+    )
     proposal = _proposal(target="registration:audit-lint")
 
     assert learn_from_bugs.check_proposals(RecordingRunner(strict=True), (proposal,), tmp_path, "o/r")[0].status == "adopted"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        '# ("lint", "audit-lint"): ("module", "main"),\n_REGISTRY = {}\n',
+        '_REGISTRY = {"note": \'("lint", "audit-lint")\'}\n',
+    ],
+)
+def test_lint_registration_ignores_comments_and_strings(
+    tmp_path: Path, source: str
+) -> None:
+    cli_path = tmp_path / "python" / "larch" / "cli.py"
+    cli_path.parent.mkdir(parents=True)
+    cli_path.write_text(source, encoding="utf-8")
+    proposal = _proposal(target="registration:audit-lint")
+
+    checked = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), (proposal,), tmp_path, "o/r"
+    )
+
+    assert checked[0].status == "pending"
 
 
 def test_repository_orphaned_status_remains_orphaned(tmp_path: Path) -> None:
@@ -969,6 +1036,20 @@ def test_reconcile_keeps_stable_fix_target_and_filed_issue() -> None:
     assert learn_from_bugs.reconcile_proposals((historical,), (residual,)) == (
         historical,
     )
+
+
+def test_reconcile_rejects_same_id_with_changed_run_date() -> None:
+    historical = _proposal("fix-one", "fix", "fix:stable-problem", "pending")
+    residual = _proposal(
+        "fix-one",
+        "fix",
+        "fix:stable-problem",
+        "proposed",
+        run_date="2026-07-09T00:00:00Z",
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="conflicting stable"):
+        learn_from_bugs.reconcile_proposals((historical,), (residual,))
 
 
 @pytest.mark.parametrize(
@@ -1100,6 +1181,59 @@ def test_check_proposals_main_does_not_write_outputs_after_failed_issue_check(
 
     assert not proposals_out.exists()
     assert not adoption_out.exists()
+
+
+def test_check_proposals_main_rejects_repository_mismatch(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    learn_from_bugs.write_state(
+        marker,
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/durable",
+            search="x",
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=3,
+            proposals=(_proposal(filed_issue=9),),
+        ),
+    )
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="does not match"):
+        learn_from_bugs.check_proposals_main(
+            [
+                "--root",
+                str(tmp_path),
+                "--repo",
+                "o/caller",
+                "--proposals-out",
+                str(tmp_path / "checked.jsonl"),
+                "--adoption-out",
+                str(tmp_path / "adoption.md"),
+            ]
+        )
+
+
+def test_checked_adoption_becomes_orphaned_after_target_is_removed(
+    tmp_path: Path,
+) -> None:
+    cli_path = tmp_path / "python" / "larch" / "cli.py"
+    cli_path.parent.mkdir(parents=True)
+    cli_path.write_text(
+        '_REGISTRY = {("lint", "audit-lint"): ("module", "main")}\n',
+        encoding="utf-8",
+    )
+    proposal = _proposal(status="pending")
+
+    adopted = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), (proposal,), tmp_path, "o/r"
+    )
+    cli_path.write_text("_REGISTRY = {}\n", encoding="utf-8")
+    orphaned = learn_from_bugs.check_proposals(
+        RecordingRunner(strict=True), adopted, tmp_path, "o/r"
+    )
+
+    assert adopted[0].status == "adopted"
+    assert orphaned[0].status == "orphaned"
 
 
 def test_filed_issue_rejects_unknown_closed_reason() -> None:

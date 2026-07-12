@@ -13,6 +13,7 @@ so the synthesis step reads a small fraction of the raw tokens.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import shlex
@@ -78,6 +79,7 @@ PROPOSAL_TYPES: Final = frozenset(
     {"lint", "invariant", "guideline", "hook", "test", "fix"}
 )
 PROPOSAL_STATUSES: Final = frozenset({"proposed", "adopted", "pending", "orphaned"})
+REGISTRY_KEY_LENGTH: Final = 2
 
 
 class LearnFromBugsError(RuntimeError):
@@ -376,7 +378,11 @@ def load_proposals_jsonl(path: Path, *, root: Path) -> tuple[Proposal, ...]:
             by_id[proposal.id] = proposal
             proposals.append(proposal)
             continue
-        if (prior.type, prior.target) != (proposal.type, proposal.target):
+        if (prior.type, prior.target, prior.run_date) != (
+            proposal.type,
+            proposal.target,
+            proposal.run_date,
+        ):
             raise LearnFromBugsError(
                 f"conflicting stable proposal content for {proposal.id}"
             )
@@ -819,7 +825,31 @@ def _lint_target_adopted(proposal: Proposal, root: Path) -> bool:
     name = proposal.target.removeprefix("registration:")
     cli_path = _safe_relative_path(root, "python/larch/cli.py", (".py",))
     text = cli_path.read_text(encoding="utf-8") if cli_path.is_file() else ""
-    return re.search(rf'\("lint",\s*"{re.escape(name)}"\s*(?:,|\))', text) is not None
+    try:
+        module = ast.parse(text)
+    except SyntaxError:
+        return False
+    for node in module.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
+        if not any(
+            isinstance(target, ast.Name) and target.id == "_REGISTRY"
+            for target in targets
+        ) or not isinstance(node.value, ast.Dict):
+            continue
+        for key in node.value.keys:
+            if not isinstance(key, ast.Tuple) or len(key.elts) != REGISTRY_KEY_LENGTH:
+                continue
+            domain, command = key.elts
+            if (
+                isinstance(domain, ast.Constant)
+                and domain.value == "lint"
+                and isinstance(command, ast.Constant)
+                and command.value == name
+            ):
+                return True
+    return False
 
 
 def _architectural_target_adopted(proposal: Proposal, root: Path) -> bool:
@@ -882,10 +912,13 @@ def _hook_value_matches(value: object, token: str, root: Path, key: str = "") ->
             return value == token
         if key == "command":
             try:
-                command = shlex.split(value)[0] if value.strip() else ""
+                arguments = shlex.split(value) if value.strip() else []
             except ValueError:
-                command = ""
-            return _normalized_hook_command(command, root) == token
+                arguments = []
+            return any(
+                _normalized_hook_command(argument, root) == token
+                for argument in arguments
+            )
     return False
 
 
@@ -1039,7 +1072,11 @@ def reconcile_proposals(
             out.append(residual)
             continue
         historical = out[index]
-        if (historical.type, historical.target) != (residual.type, residual.target):
+        if (historical.type, historical.target, historical.run_date) != (
+            residual.type,
+            residual.target,
+            residual.run_date,
+        ):
             raise LearnFromBugsError(
                 f"conflicting stable proposal content for {residual.id}"
             )
@@ -1071,6 +1108,10 @@ def check_proposals_main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     root = Path(args.root).expanduser().resolve()
     state = _read_existing_state(state_path(root))
+    if state is not None and state.repo != args.repo:
+        raise LearnFromBugsError(
+            "--repo does not match the durable learn-from-bugs state repository"
+        )
     proposals = () if state is None else state.proposals
     checked = check_proposals(_runner(), proposals, root, args.repo)
     proposals_out = Path(args.proposals_out)
