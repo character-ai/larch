@@ -531,7 +531,7 @@ def test_apply_rewrites_only_skips_edges(tmp_path: Path, monkeypatch, capsys) ->
 
 
 def test_apply_rewrite_passes_existing_temporary_body_file_and_cleans_it(monkeypatch) -> None:
-    seen: dict[str, object] = {}
+    seen: dict[str, Any] = {}
 
     def edit_body(_runner: object, issue: str, body_file: str, *, repo: str) -> CommandResult:
         path = Path(body_file)
