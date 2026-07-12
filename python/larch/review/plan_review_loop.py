@@ -16,11 +16,11 @@ from larch.design.plan_quality import sync_oversize_override_authority
 from larch.report.timing import TIMING_VENDOR_MIN_COLS, TimingLedger
 from larch.review import plan_review_round
 from larch.review import plan_review_tally
+from larch.design import plan_grammar
 from larch.review.plan_review_common import (
     _REPO_ROOT,
     MERGE_KEYS,
     NON_NIT_CONTINUE_THRESHOLD,
-    OPTIONAL_TRAILER_KEYS,
     POSTPLAN_EMIT_KEYS,
     STRUCTURAL_DIFF_LINE_THRESHOLD,
     STRUCTURAL_MIN_REVIEW_ROUNDS,
@@ -176,13 +176,13 @@ def emit_plan(argv: Sequence[str]) -> int:
     tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
     plan = tmpdir / "plan.txt"
     text = plan.read_text(encoding="utf-8", errors="replace") if plan.is_file() and not plan.is_symlink() else ""
-    match = re.search(r"(?mi)^diff_lines:\s*([0-9]+)\s*$", text)
-    if not match:
+    diff_lines = plan_grammar.terminal_diff_lines(text)
+    if diff_lines is None:
         _emit_kv(key="EMIT_PLAN_STATUS", value="missing-diff-lines")
         return 1
-    _write_atomic(path=tmpdir / "diff-lines.txt", content=f"{match.group(1)}\n")
+    _write_atomic(path=tmpdir / "diff-lines.txt", content=f"{diff_lines}\n")
     _emit_kv(key="EMIT_PLAN_STATUS", value="ok")
-    _emit_kv(key="DIFF_LINES", value=match.group(1))
+    _emit_kv(key="DIFF_LINES", value=diff_lines)
     return 0
 
 
@@ -347,12 +347,10 @@ def gate_b_finding_line(argv: Sequence[str]) -> int:
 
 
 def _trailer_map(text: str) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        match = re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
-        if match and match.group(1) in OPTIONAL_TRAILER_KEYS:
-            values[match.group(1)] = match.group(2)
-    return values
+    return {
+        match.key: match.value
+        for match in plan_grammar.iter_trailer_lines(text, keys=plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS)
+    }
 
 
 def gate_b_dedup_plan(argv: Sequence[str]) -> int:
@@ -768,9 +766,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     else:
         high_new = sum(1 for block, is_new in zip(blocks, new_flags, strict=True) if is_new and re.search(r"critical|\bhigh\b|data loss|regression|missing required", block, re.IGNORECASE))
     plan_text = (tmpdir / "plan.txt").read_text(encoding="utf-8", errors="replace") if (tmpdir / "plan.txt").is_file() else ""
-    diff_lines = 0
-    for match in re.finditer(r"(?mi)^diff_lines:\s*([0-9]+)\s*$", plan_text):
-        diff_lines = int(match.group(1), 10)
+    diff_lines = plan_grammar.terminal_diff_lines(plan_text) or 0
     structural_large = diff_lines > STRUCTURAL_DIFF_LINE_THRESHOLD or len(plan_text.splitlines()) > STRUCTURAL_PLAN_LINE_THRESHOLD
     cont = False
     reason = "small-clean"

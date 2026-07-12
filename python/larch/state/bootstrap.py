@@ -24,6 +24,7 @@ from larch.core import config, external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.calibration import difficulty
+from larch.design import plan_grammar
 from larch.report.progress_file import validate_run_id
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -861,9 +862,6 @@ def _append_force_bypass(st: BootstrapState) -> bool:
 
 
 _PLAN_PROVENANCE_PREFIXES = ("review_status:", "rounds_completed:", "difficulty:")
-_OPTIONAL_PLAN_SIZE_TRAILER_RE = re.compile(
-    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator)$"
-)
 
 
 def _strip_plan_provenance_headers(text: str) -> str:
@@ -883,7 +881,10 @@ def _strip_plan_provenance_headers(text: str) -> str:
     idx = diff_idx - 1
     while idx >= 0:
         stripped = lines[idx].rstrip("\n")
-        if in_fence_by_idx[idx] or not _OPTIONAL_PLAN_SIZE_TRAILER_RE.fullmatch(stripped):
+        if in_fence_by_idx[idx]:
+            break
+        match = plan_grammar.match_trailer_line(stripped)
+        if match is None or match.key not in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
             break
         idx -= 1
 

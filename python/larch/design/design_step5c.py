@@ -50,7 +50,7 @@ from larch.design.design_terminal import (
     stage_terminal_state_core,
 )
 from larch.design.design_summary import resolve_summary_mode
-from larch.design import plan_quality
+from larch.design import plan_grammar, plan_quality
 
 def step2b5_main(argv: Sequence[str]) -> int:
     try:
@@ -434,26 +434,14 @@ def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
         return 5
 
 
-_AUTO_COMPOSE_OPTIONAL_TRAILER_RE = re.compile(
-    r"^(difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: \d+|diff_deleted: \d+|mechanical_churn: .+|oversize_override: operator)$"
-)
-
-
 def _split_plan_body_and_trailers(lines: list[str]) -> tuple[list[str], list[str]]:
-    """Return (body_lines, trailer_lines) split around the optional+terminal trailer block."""
-    diff_lines_idx = -1
-    for idx in range(len(lines) - 1, -1, -1):
-        if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
-            diff_lines_idx = idx
-            break
-    if diff_lines_idx < 0:
+    """Return body and final contiguous shared trailer block."""
+    text = "".join(lines)
+    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
+    if not trailers.matches:
         return lines, []
-    trailer_start = diff_lines_idx
-    idx = diff_lines_idx - 1
-    while idx >= 0 and _AUTO_COMPOSE_OPTIONAL_TRAILER_RE.fullmatch(lines[idx].rstrip("\n")):
-        trailer_start = idx
-        idx -= 1
-    return lines[:trailer_start], lines[trailer_start:]
+    start = trailers.start_line - 1
+    return lines[:start], lines[start:]
 
 
 def _strip_leading_plan_header(body_lines: list[str]) -> list[str]:
@@ -512,7 +500,8 @@ def _peel_trailing_optional_trailers(body_lines: list[str]) -> tuple[list[str], 
         if not stripped.strip():
             idx -= 1
             continue
-        if _AUTO_COMPOSE_OPTIONAL_TRAILER_RE.fullmatch(stripped):
+        match = plan_grammar.match_trailer_line(stripped)
+        if match is not None and match.key != "diff_lines":
             peeled.insert(0, line if line.endswith("\n") else f"{line}\n")
             idx -= 1
             continue

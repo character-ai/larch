@@ -19,7 +19,7 @@ from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.core import config, external_defaults
 from larch.core.ctx import Ctx
-from larch.design import design_postplan
+from larch.design import plan_grammar, design_postplan
 from larch.issue import issue_wire
 from larch.core import architectural_guidelines
 from larch.git.repo_roots import consumer_repo_root
@@ -408,7 +408,7 @@ def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:
         "- Read discussion-round1.md when present for scope boundaries and strict constraints.",
         "- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.",
         "- Read brainstorm.md when present as additive ideation context for plan drafting.",
-        "- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, ### REWRITTEN:, or ### MAY_UPDATE: (at least one ASCII space after ### before the keyword). Use ### MAY_UPDATE: for conditional work such as prose saying only change if a condition is met. ### NEW:, ### UPDATED:, and ### REWRITTEN: are firm coverage commitments.",
+        f"- {plan_grammar.grammar_prompt()} Use `### MAY_UPDATE:` for conditional work; the other heading kinds are firm coverage commitments.",
         "- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, a whole-line difficulty: <TRIVIAL|MODERATE|HARD> metadata line before optional diff_added/diff_deleted/mechanical_churn/oversize_override trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; oversize_override accepts only operator and belongs immediately above diff_lines.",
         "- The final plan body must place difficulty: <TRIVIAL|MODERATE|HARD> before any optional size trailers and end with a whole-line diff_lines: <N> trailer. When present, oversize_override: operator is the final optional trailer immediately above diff_lines: <N>.",
         "- Optionally write a dialectic candidates block after the plan and before the scout block only when the plan contains a genuine bistable fork that deserves Gate C clarification.",
@@ -748,7 +748,7 @@ def _read_step2b_drafter_result(design_tmpdir: Path, drafter_rc: int) -> Step2bD
     structural_ok = False
     if drafter_rc == 0 and plan_path.is_file() and plan_path.stat().st_size > 0:
         lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
-        structural_ok = bool(lines and lines[-1].startswith("diff_lines: ") and lines[-1].removeprefix("diff_lines: ").isdigit() and "PLAN_WRITTEN=true" in status_text)
+        structural_ok = bool(plan_grammar.terminal_diff_lines("\n".join(lines)) is not None and "PLAN_WRITTEN=true" in status_text)
     return Step2bDrafterResult(plan_lines=plan_lines, status_text=status_text, structural_ok=structural_ok)
 
 
@@ -873,7 +873,7 @@ def _handle_step2b_drafter_success(*, run: Step2bDrafterRun, vendor_result: Step
     design_tmpdir = run.design_tmpdir
     plugin_root = run.plugin_root
     _write_text(path=design_tmpdir / ".step2b-plan-source", text="drafter\n")
-    diff_lines = (design_tmpdir / "plan.txt").read_text(encoding="utf-8", errors="replace").splitlines()[-1].removeprefix("diff_lines: ")
+    diff_lines = plan_grammar.terminal_diff_lines((design_tmpdir / "plan.txt").read_text(encoding="utf-8", errors="replace")) or 0
     _warn_step2b_missing_scout_if_needed(status_text=result.status_text, design_tmpdir=design_tmpdir, plugin_root=plugin_root)
     _print_step2b_plan_review_preview(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
     print(f"✅ 2b: drafter subprocess succeeded (vendor={vendor_result.vendor} plan_lines={result.plan_lines} diff_lines={diff_lines})")

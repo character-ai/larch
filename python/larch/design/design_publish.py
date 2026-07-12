@@ -16,7 +16,7 @@ from larch.report import design_diagram_log
 from larch.calibration import difficulty
 from larch.core import architectural_guidelines, config, proc
 from larch.report import run_logs
-from larch.design import design_step0_env
+from larch.design import design_step0_env, plan_grammar
 from larch.git.repo_roots import consumer_repo_root
 
 
@@ -111,9 +111,6 @@ def _is_repo(value: str) -> bool:
 
 
 _PROVENANCE_META_KEYS = ("review_status", "rounds_completed", "difficulty")
-_OPTIONAL_TRAILER_RE = re.compile(
-    r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|oversize_override: operator)$"
-)
 _TERMINAL_STATUSES_REQUIRING_SENTINEL = frozenset({"complete", "cap-hit"})
 _REASON_TOKEN_RE = re.compile(r"REASON_TOKEN=([^ \t);,]+)")
 
@@ -122,7 +119,8 @@ def _is_trailer_region_line(line: str) -> bool:
     stripped = line.rstrip("\n")
     if any(stripped.startswith(f"{key}: ") for key in _PROVENANCE_META_KEYS):
         return True
-    return bool(_OPTIONAL_TRAILER_RE.fullmatch(stripped))
+    match = plan_grammar.match_trailer_line(stripped)
+    return match is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS
 
 
 def _read_review_round_count(design_tmpdir: Path) -> int:
@@ -351,7 +349,7 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
         optional = [
             line
             for line in lines[trailer_start:]
-            if _OPTIONAL_TRAILER_RE.fullmatch(line.rstrip("\n"))
+            if (match := plan_grammar.match_trailer_line(line.rstrip("\n"))) is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS
         ]
         return "".join(head) + "".join(provenance) + "".join(optional)
     trailer_start = diff_idx
@@ -359,7 +357,7 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
     idx = diff_idx - 1
     while idx >= 0 and _is_trailer_region_line(lines[idx]):
         stripped = lines[idx].rstrip("\n")
-        if _OPTIONAL_TRAILER_RE.fullmatch(stripped):
+        if (match := plan_grammar.match_trailer_line(stripped)) is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
             optional_lines.insert(0, lines[idx])
         trailer_start = idx
         idx -= 1

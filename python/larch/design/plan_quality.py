@@ -28,7 +28,7 @@ from larch.core import config
 from larch.core import external_defaults
 from larch.calibration import difficulty
 from larch.core.ctx import Ctx
-from larch.design import design_pause
+from larch.design import design_pause, plan_grammar
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
 from larch.issue import issue_wire
 from larch.core.redact import redact_secrets_only
@@ -442,11 +442,12 @@ def _plan_counts_from_file(path: Path) -> tuple[int, int] | None:
     if not path.is_file() or path.is_symlink():
         return None
     lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    nr, last = _last_nonempty_line(lines)
-    if not re.match(r"^diff_lines: [0-9]+$", last):
+    nr, _ = _last_nonempty_line(lines)
+    diff_lines = plan_grammar.terminal_diff_lines("\n".join(lines) + "\n")
+    if diff_lines is None:
         return None
     meta = parse_optional_metadata("\n".join(lines) + "\n")
-    return max(0, nr - 1 - meta.metadata_trailer_lines), int(last[len("diff_lines: ") :])
+    return max(0, nr - 1 - meta.metadata_trailer_lines), diff_lines
 
 
 def _size_trigger_assessment(
@@ -481,7 +482,7 @@ def _size_trigger_assessment(
 
 
 def _firm_heading_paths(text: str) -> list[str]:
-    return issue_wire.extract_scope_paths(plan_text=text, use_fallback=False, include_optional=False)
+    return [heading.path.strip("`") for heading in plan_grammar.iter_firm_headings(text)]
 
 
 def _firm_heading_count(text: str) -> int:
@@ -528,10 +529,8 @@ def _is_override_trailer_region_line(*, stripped: str, trailer: str) -> bool:
 
 
 def _last_diff_lines_index(lines: list[str]) -> int:
-    for idx in range(len(lines) - 1, -1, -1):
-        if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
-            return idx
-    return -1
+    trailers = plan_grammar.parse_final_trailers("".join(lines), require_diff_lines=True)
+    return trailers.start_line + len(trailers.matches) - 2 if trailers.matches else -1
 
 
 def _override_trailer_start(*, lines: list[str], diff_idx: int, trailer: str) -> int:

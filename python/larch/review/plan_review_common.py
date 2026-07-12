@@ -13,6 +13,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.calibration import difficulty
+from larch.design import plan_grammar
 from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -63,7 +64,7 @@ POSTPLAN_EMIT_KEYS = {
     "BASELINE_PLAN_LINES",
     "BASELINE_DIFF_LINES",
 }
-OPTIONAL_TRAILER_KEYS = {"diff_added", "diff_deleted", "mechanical_churn", "oversize_override"}
+OPTIONAL_TRAILER_KEYS = frozenset(plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS)
 
 
 def plan_review_round_cap(tier: str = "") -> int:
