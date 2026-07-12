@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import sys
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 from larch.core import config
 
@@ -29,6 +31,25 @@ class TierSelectResult:
 
 class ExternalDefaultError(ValueError):
     """Resolver contract error."""
+
+
+def binary_available(*, name: str, implement_tmpdir: Path, binary: str) -> bool:
+    """Resolve recorded tool availability before consulting the live PATH."""
+    value = os.environ.get(name, "")
+    if value in {"true", "false"}:
+        return value == "true"
+    session_env = implement_tmpdir / "session-env.sh"
+    if session_env.is_file():
+        try:
+            text = session_env.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = ""
+        for raw in text.splitlines():
+            if raw.startswith(f"{name}="):
+                recorded = raw.split("=", 1)[1]
+                if recorded in {"true", "false"}:
+                    return recorded == "true"
+    return shutil.which(binary) is not None
 
 
 def _env_mapping(env: Mapping[str, str] | None) -> Mapping[str, str]:

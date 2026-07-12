@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from larch.core import config
+from larch.core import config, external_defaults
 from larch.implement import architectural_assessment as assessment
 
 
@@ -119,10 +119,45 @@ def test_parse_results_independently_preserves_valid_rows() -> None:
             },
         ],
     }
-    parsed, invalid, detail = assessment._parse_results_independently(json.dumps(payload), [invariant, guideline])  # pyright: ignore[reportPrivateUsage]
+    parsed, invalid = assessment._parse_results_independently(json.dumps(payload), [invariant, guideline])  # pyright: ignore[reportPrivateUsage]
     assert [result.kind for result in parsed] == ["invariants"]
-    assert invalid == {"guidelines"}
-    assert "identity mismatch" in detail
+    assert set(invalid) == {"guidelines"}
+    assert "identity mismatch" in invalid["guidelines"]
+
+
+def test_prompt_evidence_paths_must_stay_under_granted_root(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / "evidence"
+    evidence_dir.mkdir()
+    valid = "contract\n\nREQUESTS_JSON=" + json.dumps([
+        {"diff_path": str(evidence_dir / "diff"), "knowledge_path": str(evidence_dir / "knowledge")}
+    ])
+    assessment._validate_prompt_evidence_paths(valid, evidence_dir=evidence_dir)  # pyright: ignore[reportPrivateUsage]
+    escaped = valid.replace(str(evidence_dir / "diff"), str(tmp_path / "outside"))
+    with pytest.raises(ValueError, match="outside"):
+        assessment._validate_prompt_evidence_paths(escaped, evidence_dir=evidence_dir)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_shared_launcher_sidecars_fail_closed_when_missing_or_inconsistent(tmp_path: Path) -> None:
+    output = tmp_path / "result.txt"
+    _ = output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".meta").write_text(
+        f"TOOL=codex\nOUTPUT_FILE={output}\n",
+        encoding="utf-8",
+    )
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    _ = sidecar.write_text("status ok\n", encoding="utf-8")
+
+    assert assessment._shared_launcher_artifact_error(  # pyright: ignore[reportPrivateUsage]
+        output=output, tool="codex", launcher_exit=0
+    ) == ""
+    _ = output.with_suffix(output.suffix + ".done").write_text("7\n", encoding="utf-8")
+    assert "inconsistent" in assessment._shared_launcher_artifact_error(  # pyright: ignore[reportPrivateUsage]
+        output=output, tool="codex", launcher_exit=0
+    )
+    sidecar.unlink()
+    assert "omitted" in assessment._shared_launcher_artifact_error(  # pyright: ignore[reportPrivateUsage]
+        output=output, tool="codex", launcher_exit=0
+    )
 
 
 def test_main_usage_and_success_stdout_contract(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -222,15 +257,19 @@ def test_launcher_uses_exact_read_only_argv(monkeypatch: pytest.MonkeyPatch, tmp
 
     monkeypatch.setattr(assessment.subprocess, "run", fake_run)
     request = assessment.LaunchRequest(
-        argv=("claude", "--print", "--model", "claude-sonnet-4-6", "--add-dir", str(tmp_path), "--allowedTools", "Read", "--permission-mode", "plan"),
-        cwd=tmp_path,
-        prompt="prompt",
-        evidence_dir=tmp_path,
+        assessment.AssessmentLane("claude", "claude-sonnet-4-6"),
+        tmp_path,
+        "prompt",
+        tmp_path,
+        tmp_path / "result.json",
     )
-    result = assessment.ClaudeLauncher().launch(request)
+    result = assessment.DirectClaudeLauncher().launch(request)
     assert result.returncode == 0
-    assert captured["argv"] == list(request.argv)
-    assert captured["cwd"] == tmp_path
+    assert captured["argv"] == [
+        "claude", "--print", "--model", "claude-sonnet-4-6", "--add-dir", str(tmp_path),
+        "--allowedTools", "Read", "--permission-mode", "plan",
+    ]
+    assert captured["cwd"] == request.evidence_dir
     assert captured["input"] == "prompt"
 
 
@@ -240,52 +279,209 @@ class _SequenceLauncher:
     def __init__(self, results: list[assessment.LaunchResult]) -> None:
         self._results = results
         self.calls = 0
+        self.requests: list[assessment.LaunchRequest] = []
 
     def launch(self, request: assessment.LaunchRequest) -> assessment.LaunchResult:
-        assert request.argv
+        self.requests.append(request)
         self.calls += 1
-        return self._results[min(self.calls - 1, len(self._results) - 1)]
+        result = self._results[min(self.calls - 1, len(self._results) - 1)]
+        if request.lane.tool == "cursor" and result.dirty_tree_path is None:
+            dirty_path = request.output_path.with_suffix(request.output_path.suffix + ".dirty-tree")
+            _ = dirty_path.write_text("STATUS=clean\n", encoding="utf-8")
+            return assessment.LaunchResult(result.returncode, result.stdout, result.stderr, dirty_path)
+        return result
 
 
-def _launch_request(tmp_path: Path) -> assessment.LaunchRequest:
-    return assessment.LaunchRequest(argv=("claude",), cwd=tmp_path, prompt="p", evidence_dir=tmp_path)
+def _payload(evidences: list[assessment.MaterializedEvidence], *, states: dict[str, str] | None = None) -> str:
+    outcomes = states or {}
+    rows: list[dict[str, object]] = []
+    for evidence in evidences:
+        state = outcomes.get(evidence.kind, "clean")
+        rows.append({
+            "kind": evidence.kind,
+            "state": state,
+            "assessment": "No violations identified." if state == "clean" else "G-Py-4 applies.",
+            "identifiers": [] if state == "clean" else ["G-Py-4"],
+            "head_sha": evidence.head_sha,
+            "base_ref": evidence.base_ref,
+            "diff_fingerprint": evidence.diff_fingerprint,
+            "knowledge_sha256": evidence.knowledge_sha256,
+        })
+    return json.dumps({"schema_version": "1", "results": rows})
 
 
-def test_launch_assessment_returns_first_nonempty_result(tmp_path: Path) -> None:
-    launcher = _SequenceLauncher([assessment.LaunchResult(0, '{"schema_version":"1"}', "")])
-    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
-    assert launcher.calls == 1
-    assert result.stdout == '{"schema_version":"1"}'
+def _run_evidence(tmp_path: Path, kind: str = config.ASSESSMENT_KIND_GUIDELINES) -> assessment.MaterializedEvidence:
+    diff = tmp_path / f"{kind}-diff.txt"
+    knowledge = tmp_path / f"{kind}-knowledge.md"
+    _ = diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
+    _ = knowledge.write_text("### G-Py-4: Fail loudly\n" if kind == "guidelines" else "### I-Stale-1: Reject stale inputs\n", encoding="utf-8")
+    base = _evidence(kind)
+    return assessment.MaterializedEvidence(
+        kind, base.head_sha, base.base_ref, diff, diff.read_text(encoding="utf-8"),
+        base.diff_fingerprint, knowledge, assessment._sha256(knowledge.read_text(encoding="utf-8")),  # pyright: ignore[reportPrivateUsage]
+        base.identifiers,
+    )
 
 
-def test_launch_assessment_retries_transient_empty_stdout(tmp_path: Path) -> None:
-    launcher = _SequenceLauncher([
-        assessment.LaunchResult(0, "", ""),
-        assessment.LaunchResult(0, "  \n", ""),
-        assessment.LaunchResult(0, '{"schema_version":"1"}', ""),
-    ])
-    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
-    assert launcher.calls == 3
-    assert result.stdout == '{"schema_version":"1"}'
+def _stub_materialization(monkeypatch: pytest.MonkeyPatch, evidence_by_kind: dict[str, assessment.MaterializedEvidence]) -> None:
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args: next(iter(evidence_by_kind.values())).head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_materialize_current", lambda kind, **_kwargs: evidence_by_kind[kind])  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
 
-def test_launch_assessment_caps_empty_stdout_retries(tmp_path: Path) -> None:
-    launcher = _SequenceLauncher([
-        assessment.LaunchResult(0, "", "first launcher diagnostic"),
-        assessment.LaunchResult(0, "", "second launcher diagnostic"),
-        assessment.LaunchResult(0, "", "final launcher diagnostic"),
-    ])
-    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
-    assert launcher.calls == assessment._EMPTY_STDOUT_ATTEMPTS  # pyright: ignore[reportPrivateUsage]
-    assert result.stdout == ""
-    assert result.stderr == "first launcher diagnostic\nsecond launcher diagnostic\nfinal launcher diagnostic"
+def _ignore_persisted_result(
+    _result: assessment.AssessmentResult,
+    *,
+    repo_root: Path,
+    implement_tmpdir: Path,
+) -> None:
+    _ = (repo_root, implement_tmpdir)
 
 
-def test_launch_assessment_does_not_retry_nonzero_exit(tmp_path: Path) -> None:
-    launcher = _SequenceLauncher([assessment.LaunchResult(1, "", "boom")])
-    result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
-    assert launcher.calls == 1
-    assert result.returncode == 1
+def test_waterfall_advances_once_per_lane_and_stops_after_valid_codex_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    persisted: list[str] = []
+    monkeypatch.setattr(assessment, "_persist_result", lambda result, **_kwargs: persisted.append(result.kind))  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    cursor = _SequenceLauncher([assessment.LaunchResult(0, "", "empty primary")])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
+    claude = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor, "codex": codex, "claude": claude},
+        availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    assert result == ("guidelines:clean",)
+    assert (cursor.calls, codex.calls, claude.calls) == (1, 1, 0)
+    assert persisted == ["guidelines"]
+
+
+def test_waterfall_attempts_each_available_lane_once_in_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
+    order: list[str] = []
+
+    class _OrderedLauncher:
+        def __init__(self, tool: str, result: assessment.LaunchResult) -> None:
+            self.tool = tool
+            self.result = result
+
+        def launch(self, request: assessment.LaunchRequest) -> assessment.LaunchResult:
+            order.append(request.lane.tool)
+            if self.tool == "cursor":
+                dirty = request.output_path.with_suffix(request.output_path.suffix + ".dirty-tree")
+                _ = dirty.write_text("STATUS=clean\n", encoding="utf-8")
+                return assessment.LaunchResult(self.result.returncode, self.result.stdout, self.result.stderr, dirty)
+            return self.result
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={
+            "cursor": _OrderedLauncher("cursor", assessment.LaunchResult(0, "", "cursor empty")),
+            "codex": _OrderedLauncher("codex", assessment.LaunchResult(9, "", "codex failed")),
+            "claude": _OrderedLauncher("claude", assessment.LaunchResult(0, _payload([evidence]), "")),
+        },
+        availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    assert result == ("guidelines:clean",)
+    assert order == ["cursor", "codex", "claude"]
+
+
+def test_recorded_binary_availability_outranks_path_drift(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _ = (tmp_path / "session-env.sh").write_text(
+        "CURSOR_BINARY_FOUND=true\nCODEX_BINARY_FOUND=false\nCLAUDE_BINARY_FOUND=true\n",
+        encoding="utf-8",
+    )
+    for key in (config.ENV_CURSOR_BINARY_FOUND, config.ENV_CODEX_BINARY_FOUND, config.ENV_CLAUDE_BINARY_FOUND):
+        monkeypatch.delenv(key, raising=False)
+    def fake_which(binary: str) -> str | None:
+        return "/bin/tool" if binary == "codex" else None
+
+    monkeypatch.setattr(external_defaults.shutil, "which", fake_which)
+
+    assert assessment._lane_availability(tmp_path) == {  # pyright: ignore[reportPrivateUsage]
+        "cursor": True,
+        "codex": False,
+        "claude": True,
+    }
+
+    monkeypatch.setenv(config.ENV_CURSOR_BINARY_FOUND, "false")
+    assert assessment._lane_availability(tmp_path)["cursor"] is False  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("text", ["STATUS=dirty\n", "STATUS=unknown\n", "broken\n"])
+def test_cursor_dirty_tree_sidecar_must_be_trusted_clean(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "cursor.dirty-tree"
+    _ = path.write_text(text, encoding="utf-8")
+    clean, _detail = assessment._cursor_dirty_tree_clean(path, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert clean is False
+
+
+def test_per_kind_success_removes_kind_from_later_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invariant = _run_evidence(tmp_path, config.ASSESSMENT_KIND_INVARIANTS)
+    guideline = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {invariant.kind: invariant, guideline.kind: guideline})
+    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
+    cursor_payload = json.loads(_payload([invariant, guideline]))
+    cursor_payload["results"][1]["diff_fingerprint"] = "wrong"
+    cursor = _SequenceLauncher([assessment.LaunchResult(0, json.dumps(cursor_payload), "")])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([guideline]), "")])
+
+    result = assessment.run(
+        kinds=[invariant.kind, guideline.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor, "codex": codex},
+        availability={"cursor": True, "codex": True, "claude": False},
+    )
+
+    assert result == ("invariants:clean", "guidelines:clean")
+    assert '"kind":"invariants"' not in codex.requests[0].prompt
+    assert '"kind":"guidelines"' in codex.requests[0].prompt
+
+
+def test_invalid_explicit_outcome_stays_reauthor_required(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    payload = json.loads(_payload([evidence]))
+    payload["results"][0]["state"] = "violation"
+    cursor = _SequenceLauncher([assessment.LaunchResult(0, json.dumps(payload), "")])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor, "codex": codex},
+        availability={"cursor": True, "codex": True, "claude": False},
+    )
+
+    assert result == ("guidelines:re-author-required:invalid-explicit-outcome",)
+    assert (cursor.calls, codex.calls) == (1, 0)
+
+
+def test_full_exhaustion_persists_last_lane_diagnostic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    launchers = {
+        "cursor": _SequenceLauncher([assessment.LaunchResult(1, "", "cursor diagnostic")]),
+        "codex": _SequenceLauncher([assessment.LaunchResult(2, "", "codex diagnostic")]),
+        "claude": _SequenceLauncher([assessment.LaunchResult(3, "", "final Claude diagnostic")]),
+    }
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers=launchers,
+        availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    outcome = json.loads(
+        (tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8")
+    )
+    assert result == ("guidelines:unavailable",)
+    assert outcome["detail"] == "final Claude diagnostic"
 
 
 def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -313,12 +509,13 @@ def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.Mo
     monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     assert assessment.run(
-        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path, launcher=launcher
+        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": launcher}, availability={"cursor": True, "codex": False, "claude": False},
     ) == ("guidelines:unavailable",)
 
     outcome_path = tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
     outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
-    assert launcher.calls == assessment._EMPTY_STDOUT_ATTEMPTS  # pyright: ignore[reportPrivateUsage]
+    assert launcher.calls == 1
     assert outcome["detail"] == "auth failed <implement-tmpdir> <REDACTED-TOKEN>"
 
 
@@ -347,7 +544,8 @@ def test_run_persists_sanitized_stderr_after_nonzero_launcher_exit(monkeypatch: 
     monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     assert assessment.run(
-        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path, launcher=launcher
+        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": launcher}, availability={"cursor": True, "codex": False, "claude": False},
     ) == ("guidelines:unavailable",)
 
     outcome_path = tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR

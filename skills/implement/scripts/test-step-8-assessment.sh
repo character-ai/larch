@@ -36,7 +36,7 @@ helper_text=$(cat "$HELPER")
 assert_contains 'bgjob start' "$helper_text" 'static: foreground wrapper starts bgjob'
 assert_contains 'STEP="implement-step8-assessment"' "$helper_text" 'static: bgjob step slug pinned'
 assert_contains '--budget-s "$BUDGET_S"' "$helper_text" 'static: budget var used on start'
-assert_contains 'BUDGET_S=2100' "$helper_text" 'static: --budget-s 2100 pin via BUDGET_S'
+assert_contains 'BUDGET_S=5700' "$helper_text" 'static: --budget-s 5700 pin via BUDGET_S'
 assert_contains '--bgjob-child' "$helper_text" 'static: bgjob child argv present'
 assert_contains 'architectural-assessment run' "$helper_text" 'static: child invokes Piece 2 CLI'
 assert_contains 'ASSESSMENT_ERROR=active-stale-identity-mismatch' "$helper_text" 'static: active stale mismatch error'
@@ -44,6 +44,10 @@ assert_contains 'max-wait-s 0' "$helper_text" 'static: zero-duration rejoin prob
 assert_contains 'WAIT_CHUNK_S=270' "$helper_text" 'static: blocking wait chunk'
 assert_contains 'normalize_kinds' "$helper_text" 'static: imports Piece 2 normalize_kinds'
 assert_contains 'validate_materialization' "$helper_text" 'static: imports Piece 2 validate_materialization'
+assert_not_contains 'next_untried_tier' "$helper_text" 'static: adapter does not select model lanes'
+assert_not_contains 'CODEX_BINARY_FOUND' "$helper_text" 'static: adapter does not probe Codex availability'
+assert_not_contains 'CURSOR_BINARY_FOUND' "$helper_text" 'static: adapter does not probe Cursor availability'
+assert_not_contains 'CLAUDE_BINARY_FOUND' "$helper_text" 'static: adapter does not probe Claude availability'
 assert_contains 'PYTHONPATH="$CLAUDE_PLUGIN_ROOT/python' "$helper_text" 'static: exports plugin PYTHONPATH'
 assert_contains 'os.fdopen(int(sys.argv[1]), "wb", closefd=False)' "$helper_text" 'static: child writes stderr through inherited descriptor'
 assert_not_contains 'Path(sys.argv[1]).open("wb")' "$helper_text" 'static: child cannot recreate removed stderr path'
@@ -499,7 +503,7 @@ assert_contains 'ASSESSMENT_STATUS=complete' "$FRESH_OUT" 'fresh: terminal compl
 assert_contains 'ASSESSMENT_REQUESTED_KINDS=invariants,guidelines' "$FRESH_OUT" 'fresh: reversed detail order accepts canonical adapter kinds'
 assert_contains 'ASSESSMENT_RESULTS=invariants:clean,guidelines:deterministic-clean' "$FRESH_OUT" 'fresh: multi-kind results'
 assert_contains 'implement-step8-assessment' "$(cat "$IMPL_TMP/bgjob-start-meta.txt")" 'fresh: step slug'
-assert_contains 'BUDGET=2100' "$(cat "$IMPL_TMP/bgjob-start-meta.txt")" 'fresh: budget 2100'
+assert_contains 'BUDGET=5700' "$(cat "$IMPL_TMP/bgjob-start-meta.txt")" 'fresh: budget 5700'
 assert_contains '--bgjob-child' "$(cat "$IMPL_TMP/bgjob-start-argv.txt")" 'fresh: wrapper-child argv'
 assert_contains 'step-8-assessment.sh' "$(cat "$IMPL_TMP/bgjob-start-argv.txt")" 'fresh: child script path'
 if [ -e "$IMPL_TMP/bad-direct-assessment-start.txt" ]; then
@@ -788,7 +792,7 @@ STALE_DONE_RC=$?
 set -e
 assert_rc "$STALE_DONE_RC" 0 'stale-completed: fresh start after clear'
 assert_contains 'ASSESSMENT_STATUS=complete' "$STALE_DONE_OUT" 'stale-completed: new complete'
-assert_contains 'BUDGET=2100' "$(cat "$IMPL_TMP/bgjob-start-meta.txt")" 'stale-completed: started fresh'
+assert_contains 'BUDGET=5700' "$(cat "$IMPL_TMP/bgjob-start-meta.txt")" 'stale-completed: started fresh'
 
 # --- timeout attempt-1 → attempt-2 fail-closed ---
 setup_impl timeout-retry

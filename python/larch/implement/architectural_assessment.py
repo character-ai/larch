@@ -12,18 +12,16 @@ import stat
 import subprocess
 import sys
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final, Protocol, cast
 
-from larch.core import architectural_guidelines, config, logging_util, redact
+from larch.core import architectural_guidelines, config, external_defaults, logging_util, redact
 from larch.implement import ship_guidelines
 
 _AGENT_PROMPT: Final = Path(__file__).parents[3] / "skills/implement/references/architectural-assessment-agent.md"
-_MODEL: Final = "claude-sonnet-4-6"
-_TIMEOUT_SECONDS: Final = 1800
-_EMPTY_STDOUT_ATTEMPTS: Final = 3
+_PY_CLI: Final = Path(__file__).parents[2] / "cli.py"
 _MAX_SANITIZE_DETAIL_BYTES: Final = 8 * 1024
 _MAX_ASSESSMENT_CHARS: Final = 12000
 _UNAVAILABLE_RECEIPT: Final = "architectural-assessment-unavailable-{kind}.json"
@@ -55,13 +53,29 @@ class MaterializedEvidence:
 
 
 @dataclass(frozen=True)
-class LaunchRequest:
-    """Read-only Claude launch request."""
+class AssessmentLane:
+    """One canonical architectural-assessment waterfall lane."""
 
-    argv: tuple[str, ...]
-    cwd: Path
+    tool: str
+    model: str
+
+
+_LANES: Final[dict[str, AssessmentLane]] = {
+    "cursor": AssessmentLane("cursor", config.ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL),
+    "codex": AssessmentLane("codex", config.ARCHITECTURAL_ASSESSMENT_CODEX_MODEL),
+    "claude": AssessmentLane("claude", config.ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL),
+}
+
+
+@dataclass(frozen=True)
+class LaunchRequest:
+    """Read-only assessment lane request."""
+
+    lane: AssessmentLane
+    repo_root: Path
     prompt: str
     evidence_dir: Path
+    output_path: Path
 
 
 @dataclass(frozen=True)
@@ -71,6 +85,7 @@ class LaunchResult:
     returncode: int
     stdout: str
     stderr: str
+    dirty_tree_path: Path | None = None
 
 
 @dataclass(frozen=True)
@@ -113,25 +128,148 @@ class Launcher(Protocol):
         raise NotImplementedError
 
 
-class ClaudeLauncher:
-    """Production read-only Claude launcher."""
+class DirectClaudeLauncher:
+    """Production direct read-only Claude assessment launcher."""
 
     def launch(self, request: LaunchRequest) -> LaunchResult:
+        argv: tuple[str, ...] = (
+            "claude",
+            "--print",
+            "--model",
+            request.lane.model,
+            "--add-dir",
+            str(request.evidence_dir),
+            "--allowedTools",
+            "Read",
+            "--permission-mode",
+            "plan",
+        )
         try:
             completed = subprocess.run(  # lint-subprocess-via-runner: ok dedicated typed external-agent boundary
-                list(request.argv),
-                cwd=request.cwd,
+                list(argv),
+                cwd=request.evidence_dir,
                 input=request.prompt,
                 text=True,
                 capture_output=True,
                 check=False,
-                timeout=_TIMEOUT_SECONDS,
+                timeout=config.ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC,
             )
         except subprocess.TimeoutExpired as exc:
             return LaunchResult(config.EXIT_TIMEOUT, str(exc.stdout or ""), str(exc.stderr or "assessment timed out"))
         except OSError as exc:
             return LaunchResult(config.EXIT_INTERNAL_ERROR, "", str(exc))
         return LaunchResult(completed.returncode, completed.stdout, completed.stderr)
+
+
+class SharedReviewLauncher:
+    """Assessment adapter over the shared Codex/Cursor read-only launcher."""
+
+    def launch(self, request: LaunchRequest) -> LaunchResult:
+        prompt_path = request.output_path.with_suffix(request.output_path.suffix + ".prompt-input")
+        _write_text_atomic(prompt_path, request.prompt)
+        argv: list[str] = [
+            sys.executable,
+            str(_PY_CLI),
+            "agent",
+            "launch-review",
+            "--tool",
+            request.lane.tool,
+            "--output",
+            str(request.output_path),
+            "--timeout",
+            str(config.ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC),
+            "--prompt-file",
+            str(prompt_path),
+            "--assessment-contract",
+            "--assessment-evidence-dir",
+            str(request.evidence_dir),
+            "--assessment-repo-root",
+            str(request.repo_root),
+            "--single-attempt",
+            "--site",
+            "implement Step 8 architectural assessment",
+            "--timing-task-kind",
+            f"{request.lane.tool}-architectural-assessment",
+        ]
+        if request.lane.tool == "cursor":
+            argv.extend(("--cursor-model", request.lane.model))
+        else:
+            argv.extend(("--model-role", "fix", "--default-model", request.lane.model))
+        try:
+            completed = subprocess.run(  # lint-subprocess-via-runner: ok typed shared-launcher adapter
+                argv,
+                cwd=request.repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=config.ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC + 60,
+            )
+        except subprocess.TimeoutExpired as exc:
+            return LaunchResult(config.EXIT_TIMEOUT, "", str(exc.stderr or "shared assessment launcher timed out"))
+        except OSError as exc:
+            return LaunchResult(config.EXIT_INTERNAL_ERROR, "", str(exc))
+        launcher_exit = _parse_launcher_exit(completed.stdout, expected_output=request.output_path)
+        if launcher_exit is None:
+            return LaunchResult(config.EXIT_INTERNAL_ERROR, "", completed.stderr or "malformed shared launcher metadata")
+        artifact_error = _shared_launcher_artifact_error(
+            output=request.output_path,
+            tool=request.lane.tool,
+            launcher_exit=launcher_exit,
+        )
+        if artifact_error:
+            return LaunchResult(config.EXIT_INTERNAL_ERROR, "", artifact_error)
+        raw_output = ""
+        if _regular_file(request.output_path):
+            raw_output = request.output_path.read_text(encoding="utf-8", errors="replace")
+        diagnostics: list[str] = [completed.stderr] if completed.stderr else []
+        for suffix in (".diag", ".sidecar"):
+            path = request.output_path.with_suffix(request.output_path.suffix + suffix)
+            if _regular_file(path):
+                text = path.read_text(encoding="utf-8", errors="replace")
+                if text and text not in diagnostics:
+                    diagnostics.append(text)
+        dirty_tree_path = request.output_path.with_suffix(request.output_path.suffix + ".dirty-tree")
+        return LaunchResult(
+            launcher_exit,
+            raw_output,
+            "\n".join(diagnostics),
+            dirty_tree_path if request.lane.tool == "cursor" else None,
+        )
+
+
+def _parse_launcher_exit(text: str, *, expected_output: Path) -> int | None:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator or key not in {"LAUNCHER_EXIT", "OUTPUT"}:
+            continue
+        if key in values:
+            return None
+        values[key] = value
+    if values.get("OUTPUT") != str(expected_output):
+        return None
+    try:
+        return int(values["LAUNCHER_EXIT"])
+    except (KeyError, ValueError):
+        return None
+
+
+def _shared_launcher_artifact_error(*, output: Path, tool: str, launcher_exit: int) -> str:
+    done = output.with_suffix(output.suffix + ".done")
+    meta = output.with_suffix(output.suffix + ".meta")
+    sidecar = output.with_suffix(output.suffix + ".sidecar")
+    if not all(_regular_file(path) for path in (done, meta, sidecar)):
+        return "shared launcher omitted a required result sidecar"
+    try:
+        done_exit = int(done.read_text(encoding="utf-8", errors="replace").strip())
+        metadata = _read_env_strict(meta, root=output.parent)
+    except (OSError, UnicodeDecodeError, ValueError):
+        return "shared launcher result sidecar is malformed"
+    if done_exit != launcher_exit:
+        return "shared launcher exit metadata is inconsistent"
+    if metadata.get("TOOL") != tool or metadata.get("OUTPUT_FILE") != str(output):
+        return "shared launcher result metadata is inconsistent"
+    return ""
 
 
 def normalize_kinds(raw_kinds: Sequence[str]) -> tuple[str, ...]:
@@ -455,6 +593,27 @@ def _launch_prompt(evidences: Sequence[MaterializedEvidence], copied: dict[str, 
     return _AGENT_PROMPT.read_text(encoding="utf-8") + "\n\nREQUESTS_JSON=" + json.dumps(requests, separators=(",", ":"))
 
 
+def _validate_prompt_evidence_paths(prompt: str, *, evidence_dir: Path) -> None:
+    marker = "\n\nREQUESTS_JSON="
+    _prefix, separator, raw = prompt.rpartition(marker)
+    if not separator:
+        raise ValueError("assessment prompt is missing REQUESTS_JSON")
+    try:
+        requests: object = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("assessment prompt REQUESTS_JSON is malformed") from exc
+    if not isinstance(requests, list) or not requests:
+        raise ValueError("assessment prompt has no requests")
+    for raw_item in cast("list[object]", requests):
+        if not isinstance(raw_item, dict):
+            raise TypeError("assessment prompt request is malformed")
+        item = cast("dict[str, object]", raw_item)
+        for key in ("diff_path", "knowledge_path"):
+            raw_path = item.get(key)
+            if not isinstance(raw_path, str) or not _under(Path(raw_path), evidence_dir):
+                raise ValueError(f"assessment prompt {key} is outside the evidence directory")
+
+
 def _parse_result_row(  # noqa: C901 - strict schema validation checks each independent boundary
     item: object, by_kind: dict[str, MaterializedEvidence], seen: set[str]
 ) -> AssessmentResult:
@@ -515,7 +674,10 @@ def _parse_results(  # type: ignore[reportUnusedFunction]  # reason: internal he
     return tuple(sorted(parsed, key=lambda result: _KIND_ORDER.index(result.kind)))
 
 
-def _parse_results_independently(raw: str, evidences: Sequence[MaterializedEvidence]) -> tuple[tuple[AssessmentResult, ...], set[str], str]:
+def _parse_results_independently(
+    raw: str,
+    evidences: Sequence[MaterializedEvidence],
+) -> tuple[tuple[AssessmentResult, ...], dict[str, str]]:
     """Return valid result rows while isolating malformed or omitted kinds."""
     try:
         decoded: object = json.loads(raw)
@@ -525,24 +687,24 @@ def _parse_results_independently(raw: str, evidences: Sequence[MaterializedEvide
         if not isinstance(rows, list):
             raise TypeError("assessment results must be an array")
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
-        return (), {evidence.kind for evidence in evidences}, str(exc)
+        return (), {evidence.kind: str(exc) for evidence in evidences}
     by_kind = {evidence.kind: evidence for evidence in evidences}
     seen: set[str] = set()
     parsed: list[AssessmentResult] = []
-    invalid: set[str] = set()
-    detail = "assessment result omitted a requested kind"
+    invalid: dict[str, str] = {}
     for item in rows:  # type: ignore[reportUnknownVariableType]  # reason: item is object from json.loads
         kind = str(item.get("kind") or "") if isinstance(item, dict) else ""  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: item is object from json.loads
         try:
             parsed.append(_parse_result_row(item, by_kind, seen))  # type: ignore[reportUnknownArgumentType]  # reason: item is object from json.loads
         except (TypeError, ValueError) as exc:
-            detail = str(exc)
             if kind in by_kind:
-                invalid.add(kind)
+                invalid[kind] = str(exc)
             else:
-                invalid.update(set(by_kind) - seen)
-    invalid.update(set(by_kind) - {result.kind for result in parsed})
-    return tuple(sorted(parsed, key=lambda result: _KIND_ORDER.index(result.kind))), invalid, detail
+                for missing_kind in set(by_kind) - seen:
+                    _ = invalid.setdefault(missing_kind, str(exc))
+    for missing_kind in set(by_kind) - {result.kind for result in parsed}:
+        _ = invalid.setdefault(missing_kind, "assessment result omitted a requested kind")
+    return tuple(sorted(parsed, key=lambda result: _KIND_ORDER.index(result.kind))), invalid
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
@@ -738,122 +900,344 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root:
     )
 
 
-def _launch_assessment(launcher: Launcher, request: LaunchRequest) -> LaunchResult:
-    """Launch the assessment, retrying a transient exit-0 empty stdout before falling back."""
-    launch_result = launcher.launch(request)
-    stderr_parts = [launch_result.stderr] if launch_result.stderr else []
-    for _retry in range(_EMPTY_STDOUT_ATTEMPTS - 1):
-        if launch_result.returncode != 0 or launch_result.stdout.strip():
+def _cursor_dirty_tree_clean(path: Path | None, *, implement_tmpdir: Path) -> tuple[bool, str]:
+    if path is None or not _under(path, implement_tmpdir) or not _regular_file(path):
+        return False, "Cursor dirty-tree sidecar is missing or unsafe"
+    try:
+        values = _read_env_strict(path, root=implement_tmpdir)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        return False, f"Cursor dirty-tree sidecar is malformed: {exc}"
+    status = values.get("STATUS", "")
+    if status != "clean":
+        return False, f"Cursor dirty-tree status is {status or 'missing'}"
+    return True, ""
+
+
+def _production_launchers() -> dict[str, Launcher]:
+    shared = SharedReviewLauncher()
+    return {"cursor": shared, "codex": shared, "claude": DirectClaudeLauncher()}
+
+
+def _lane_availability(implement_tmpdir: Path) -> dict[str, bool]:
+    return {
+        "cursor": external_defaults.binary_available(name=config.ENV_CURSOR_BINARY_FOUND, implement_tmpdir=implement_tmpdir, binary="cursor"),
+        "codex": external_defaults.binary_available(name=config.ENV_CODEX_BINARY_FOUND, implement_tmpdir=implement_tmpdir, binary="codex"),
+        "claude": external_defaults.binary_available(name=config.ENV_CLAUDE_BINARY_FOUND, implement_tmpdir=implement_tmpdir, binary="claude"),
+    }
+
+
+def _persist_authored_results(
+    results: Sequence[AssessmentResult],
+    *,
+    evidence_by_kind: Mapping[str, MaterializedEvidence],
+    statuses: dict[str, str],
+    repo_root: Path,
+    implement_tmpdir: Path,
+) -> None:
+    for result in results:
+        try:
+            _persist_result(result, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
+        except _DeviationLogPending:
+            statuses[result.kind] = "log-pending"
+        except _ReauthorRequired as exc:
+            invalidator = (
+                architectural_guidelines.invalidate_invariant_implement_note
+                if result.kind == config.ASSESSMENT_KIND_INVARIANTS
+                else architectural_guidelines.invalidate_implement_note
+            )
+            invalidator(implement_tmpdir)
+            statuses[result.kind] = _reauthor_status(str(exc))
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            _persist_unavailable(
+                evidence_by_kind[result.kind],
+                repo_root=repo_root,
+                implement_tmpdir=implement_tmpdir,
+                detail=str(exc),
+            )
+            statuses[result.kind] = "unavailable"
+        else:
+            statuses[result.kind] = result.state
+
+
+@dataclass(frozen=True)
+class LaneOutcome:
+    """Parsed output from one attempted assessment lane."""
+
+    results: tuple[AssessmentResult, ...] = ()
+    invalid_details: tuple[tuple[str, str], ...] = ()
+    unavailable_detail: str = ""
+
+
+@dataclass(frozen=True)
+class LaneContext:
+    """Stable paths and adapters shared by every lane attempt."""
+
+    copied: dict[str, tuple[Path, Path]]
+    evidence_dir: Path
+    repo_root: Path
+    implement_tmpdir: Path
+    launchers: Mapping[str, Launcher]
+
+
+def _set_latest_detail(
+    evidences: Sequence[MaterializedEvidence],
+    latest_detail: dict[str, str],
+    detail: str,
+) -> None:
+    for evidence in evidences:
+        latest_detail[evidence.kind] = detail
+
+
+def _lane_output_path(*, tool: str, implement_tmpdir: Path) -> Path:
+    output_path = implement_tmpdir / f"architectural-assessment-{tool}-result.json"
+    if not output_path.exists():
+        return output_path
+    if not _under(output_path, implement_tmpdir) or not _regular_file(output_path):
+        raise OSError(f"unsafe stale {tool} result artifact")
+    output_path.unlink()
+    return output_path
+
+
+def _launch_failure_detail(
+    tool: str,
+    launch_result: LaunchResult,
+    *,
+    implement_tmpdir: Path,
+) -> str:
+    if launch_result.returncode != 0:
+        return launch_result.stderr or f"{tool} launcher exited {launch_result.returncode}"
+    if not launch_result.stdout.strip():
+        return launch_result.stderr or f"{tool} assessment launcher returned empty output"
+    if tool != "cursor":
+        return ""
+    clean, detail = _cursor_dirty_tree_clean(
+        launch_result.dirty_tree_path,
+        implement_tmpdir=implement_tmpdir,
+    )
+    return "" if clean else detail
+
+
+def _attempt_lane(
+    tool: str,
+    unresolved: Sequence[MaterializedEvidence],
+    context: LaneContext,
+) -> LaneOutcome:
+    outcome = LaneOutcome()
+    try:
+        output_path = _lane_output_path(tool=tool, implement_tmpdir=context.implement_tmpdir)
+    except OSError as exc:
+        outcome = LaneOutcome(unavailable_detail=str(exc))
+    else:
+        prompt = _launch_prompt(unresolved, context.copied)
+        _validate_prompt_evidence_paths(prompt, evidence_dir=context.evidence_dir)
+        launcher = context.launchers.get(tool)
+        if launcher is None:
+            outcome = LaneOutcome(unavailable_detail=f"{tool} assessment adapter is unavailable")
+        else:
+            launch_result = launcher.launch(
+                LaunchRequest(_LANES[tool], context.repo_root, prompt, context.evidence_dir, output_path)
+            )
+            failure_detail = _launch_failure_detail(
+                tool,
+                launch_result,
+                implement_tmpdir=context.implement_tmpdir,
+            )
+            if failure_detail:
+                outcome = LaneOutcome(unavailable_detail=failure_detail)
+            else:
+                try:
+                    results, invalid_details = _parse_results_independently(
+                        launch_result.stdout,
+                        unresolved,
+                    )
+                except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                    outcome = LaneOutcome(unavailable_detail=str(exc))
+                else:
+                    outcome = LaneOutcome(tuple(results), tuple(sorted(invalid_details.items())))
+    return outcome
+
+
+def _record_unresolved_lane_rows(
+    unresolved: Sequence[MaterializedEvidence],
+    *,
+    outcome: LaneOutcome,
+    statuses: dict[str, str],
+    latest_detail: dict[str, str],
+) -> list[MaterializedEvidence]:
+    invalid_details: dict[str, str] = dict(outcome.invalid_details)
+    for evidence in unresolved:
+        if evidence.kind in statuses:
+            continue
+        detail = invalid_details.get(
+            evidence.kind,
+            "assessment result omitted a requested kind",
+        )
+        outcome_invalid = evidence.kind in invalid_details and (
+            "state is invalid" in detail or "result fields are invalid" in detail
+        )
+        if outcome_invalid:
+            statuses[evidence.kind] = _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
+        else:
+            latest_detail[evidence.kind] = detail
+    return [evidence for evidence in unresolved if evidence.kind not in statuses]
+
+
+def _run_waterfall(
+    pending: Sequence[MaterializedEvidence],
+    *,
+    repo_root: Path,
+    implement_tmpdir: Path,
+    launchers: Mapping[str, Launcher],
+    availability: Mapping[str, bool],
+) -> dict[str, str]:
+    statuses: dict[str, str] = {}
+    evidence_by_kind: dict[str, MaterializedEvidence] = {evidence.kind: evidence for evidence in pending}
+    evidence_dir, copied = _copy_evidence(pending, implement_tmpdir=implement_tmpdir)
+    _validate_launch_evidence(evidence_dir=evidence_dir, copied=copied)
+    context = LaneContext(copied, evidence_dir, repo_root, implement_tmpdir, launchers)
+    unresolved: list[MaterializedEvidence] = list(pending)
+    attempted: list[str] = []
+    latest_detail: dict[str, str] = {evidence.kind: "no assessment lane was available" for evidence in pending}
+    while unresolved:
+        selection = external_defaults.next_untried_tier(
+            config.ARCHITECTURAL_ASSESSMENT_ROLE,
+            attempted,
+            codex_present=availability.get("codex", False),
+            cursor_present=availability.get("cursor", False),
+            claude_present=availability.get("claude", False),
+        )
+        if selection.action != config.FIXER_TIER_ACTION_SELECTED:
             break
-        launch_result = launcher.launch(request)
-        if launch_result.stderr and launch_result.stderr not in stderr_parts:
-            stderr_parts.append(launch_result.stderr)
-    if stderr_parts:
-        return LaunchResult(launch_result.returncode, launch_result.stdout, "\n".join(stderr_parts))
-    return launch_result
+        tool = selection.selected_tier
+        attempted.append(tool)
+        outcome = _attempt_lane(
+            tool,
+            unresolved,
+            context,
+        )
+        if outcome.unavailable_detail:
+            _set_latest_detail(unresolved, latest_detail, outcome.unavailable_detail)
+            continue
+        _persist_authored_results(
+            outcome.results,
+            evidence_by_kind=evidence_by_kind,
+            statuses=statuses,
+            repo_root=repo_root,
+            implement_tmpdir=implement_tmpdir,
+        )
+        unresolved = _record_unresolved_lane_rows(
+            unresolved,
+            outcome=outcome,
+            statuses=statuses,
+            latest_detail=latest_detail,
+        )
+    for evidence in unresolved:
+        _persist_unavailable(
+            evidence,
+            repo_root=repo_root,
+            implement_tmpdir=implement_tmpdir,
+            detail=latest_detail[evidence.kind],
+        )
+        statuses[evidence.kind] = "unavailable"
+    return statuses
 
 
-def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launcher: Launcher | None = None) -> tuple[str, ...]:  # noqa: C901, PLR0912, PLR0915 - coordinator isolates each assessment lifecycle boundary
+def _prepare_kind(
+    kind: str,
+    *,
+    repo_root: Path,
+    implement_tmpdir: Path,
+    head_sha: str,
+) -> tuple[str, MaterializedEvidence | None]:
+    if _already_handled(
+        kind,
+        repo_root=repo_root,
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+    ):
+        return "handled", None
+    _discard_unavailable_coverage(kind, implement_tmpdir=implement_tmpdir)
+    evidence = _materialize_current(
+        kind,
+        repo_root=repo_root,
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+    )
+    if evidence is None:
+        return _repair_current_outcome(
+            kind,
+            repo_root=repo_root,
+            implement_tmpdir=implement_tmpdir,
+            head_sha=head_sha,
+        ), None
+    if deterministic_out_of_scope(evidence.diff_text):
+        _persist_clean(evidence, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
+        return "deterministic-clean", None
+    return "", evidence
+
+
+def _prepare_pending(
+    normalized: Sequence[str],
+    *,
+    repo_root: Path,
+    implement_tmpdir: Path,
+) -> tuple[dict[str, str], list[MaterializedEvidence]]:
+    for _attempt in range(3):
+        statuses: dict[str, str] = {}
+        pending: list[MaterializedEvidence] = []
+        head_sha = _git_read(repo_root, ["rev-parse", "HEAD"])
+        try:
+            for kind in normalized:
+                status, evidence = _prepare_kind(
+                    kind,
+                    repo_root=repo_root,
+                    implement_tmpdir=implement_tmpdir,
+                    head_sha=head_sha,
+                )
+                if status:
+                    statuses[kind] = status
+                elif evidence is not None:
+                    pending.append(evidence)
+        except _HeadDrift:
+            continue
+        return statuses, pending
+    raise ValueError("HEAD changed repeatedly during architectural assessment setup")
+
+
+def run(
+    *,
+    kinds: Sequence[str],
+    repo_root: Path,
+    implement_tmpdir: Path,
+    launchers: Mapping[str, Launcher] | None = None,
+    availability: Mapping[str, bool] | None = None,
+) -> tuple[str, ...]:
     """Run requested assessments and return ordered per-kind statuses."""
     normalized: tuple[str, ...] = normalize_kinds(kinds)
     root: Path = repo_root.resolve(strict=True)
     tmpdir: Path = implement_tmpdir.resolve(strict=True)
     if root.is_symlink() or tmpdir.is_symlink() or not root.is_dir() or not tmpdir.is_dir():
         raise ValueError("repo root and implement tmpdir must be non-symlink directories")
-    statuses: dict[str, str] = {}
-    pending: list[MaterializedEvidence] = []
-    for _attempt in range(3):
-        head_sha: str = _git_read(root, ["rev-parse", "HEAD"])
-        pending = []
-        drifted = False
-        for kind in normalized:
-            if kind in statuses:
-                continue
-            if _already_handled(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha):
-                statuses[kind] = "handled"
-                continue
-            _discard_unavailable_coverage(kind, implement_tmpdir=tmpdir)
-            evidence = _materialize_current(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha)
-            if evidence is None:
-                try:
-                    statuses[kind] = _repair_current_outcome(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha)
-                except _HeadDrift:
-                    drifted = True
-                    break
-                continue
-            if deterministic_out_of_scope(evidence.diff_text):
-                try:
-                    _persist_clean(evidence, repo_root=root, implement_tmpdir=tmpdir)
-                except _HeadDrift:
-                    drifted = True
-                    break
-                statuses[kind] = "deterministic-clean"
-            else:
-                pending.append(evidence)
-        if drifted:
-            continue
-        break
-    else:
-        raise ValueError("HEAD changed repeatedly during architectural assessment setup")
+    statuses, pending = _prepare_pending(normalized, repo_root=root, implement_tmpdir=tmpdir)
     if pending:
-        evidence_dir, copied = _copy_evidence(pending, implement_tmpdir=tmpdir)
-        prompt: str = _launch_prompt(pending, copied)
-        argv: tuple[str, ...] = (
-            "claude", "--print", "--model", _MODEL,
-            "--add-dir", str(evidence_dir), "--allowedTools", "Read", "--permission-mode", "plan",
-        )
-        _validate_launch_evidence(evidence_dir=evidence_dir, copied=copied)
-        launch_result = _launch_assessment(launcher or ClaudeLauncher(), LaunchRequest(argv, evidence_dir, prompt, evidence_dir))
-        result_path = tmpdir / "architectural-assessment-result.json"
         try:
-            if launch_result.returncode != 0:
-                raise ValueError(launch_result.stderr or f"launcher exited {launch_result.returncode}")
-            _write_text_atomic(result_path, launch_result.stdout)
-            if not launch_result.stdout.strip():
-                raise ValueError(
-                    launch_result.stderr
-                    or f"assessment launcher returned empty stdout after {_EMPTY_STDOUT_ATTEMPTS} attempts"
+            statuses.update(
+                _run_waterfall(
+                    pending,
+                    repo_root=root,
+                    implement_tmpdir=tmpdir,
+                    launchers=launchers if launchers is not None else _production_launchers(),
+                    availability=availability if availability is not None else _lane_availability(tmpdir),
                 )
-            results, invalid_kinds, invalid_detail = _parse_results_independently(_read_regular(result_path, root=tmpdir), pending)
-            for result in results:
-                try:
-                    _persist_result(result, repo_root=root, implement_tmpdir=tmpdir)
-                except _DeviationLogPending:
-                    statuses[result.kind] = "log-pending"
-                except _ReauthorRequired as exc:
-                    invariant: bool = result.kind == config.ASSESSMENT_KIND_INVARIANTS
-                    invalidator = (
-                        architectural_guidelines.invalidate_invariant_implement_note
-                        if invariant
-                        else architectural_guidelines.invalidate_implement_note
-                    )
-                    invalidator(tmpdir)
-                    statuses[result.kind] = _reauthor_status(str(exc))
-                except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-                    _persist_unavailable(next(evidence for evidence in pending if evidence.kind == result.kind), repo_root=root, implement_tmpdir=tmpdir, detail=str(exc))
-                    statuses[result.kind] = "unavailable"
-                else:
-                    statuses[result.kind] = result.state
-            for evidence in pending:
-                if evidence.kind in statuses:
-                    continue
-                detail: str = invalid_detail if evidence.kind in invalid_kinds else "assessment result omitted a requested kind"
-                outcome_invalid: bool = evidence.kind in invalid_kinds and (
-                    "state is invalid" in detail or "result fields are invalid" in detail
-                )
-                if outcome_invalid:
-                    statuses[evidence.kind] = _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
-                    continue
-                _persist_unavailable(evidence, repo_root=root, implement_tmpdir=tmpdir, detail=detail)
-                statuses[evidence.kind] = "unavailable"
+            )
         except _HeadDrift:
-            return run(kinds=normalized, repo_root=root, implement_tmpdir=tmpdir, launcher=launcher)
-        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
-            for evidence in pending:
-                if evidence.kind in statuses:
-                    continue
-                _persist_unavailable(evidence, repo_root=root, implement_tmpdir=tmpdir, detail=str(exc))
-                statuses[evidence.kind] = "unavailable"
+            return run(
+                kinds=normalized,
+                repo_root=root,
+                implement_tmpdir=tmpdir,
+                launchers=launchers,
+                availability=availability,
+            )
     return tuple(f"{kind}:{statuses[kind]}" for kind in normalized)
 
 

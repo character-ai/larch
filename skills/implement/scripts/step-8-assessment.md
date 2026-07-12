@@ -27,10 +27,10 @@ as the direct bgjob command.
 ## Step slug and budget
 
 - Fixed step slug: `implement-step8-assessment`
-- `--budget-s 2100` on every `bgjob start`
-- Rationale: Piece 2’s assessment child timeout is 1800 seconds; the adapter
-  budget adds 300 seconds for daemon startup, merge-result publication, and
-  `bgjob wait` finalization
+- `--budget-s 5700` on every `bgjob start`
+- Rationale: Piece 2 can run three sequential 1800-second model lanes; the
+  adapter budget adds 300 seconds for shared-launcher sidecars, daemon startup,
+  merge-result publication, and `bgjob wait` finalization
 
 ## Normative identity and result contract
 
@@ -150,8 +150,11 @@ success when the child exits non-zero.
 
 ## Ownership boundaries
 
-- Piece 2 owns deterministic skip, authored assessment, persistence, and
-  HEAD-drift handling.
+- Piece 2 owns session-recorded tool availability, the per-kind
+  Cursor→Codex→Claude waterfall, deterministic skip, authored assessment,
+  persistence, and HEAD-drift handling. Each model lane receives one attempt.
+- Adapter attempt 2 repairs a failed child or daemon envelope; it does not retry
+  a model lane or select tools.
 - The adapter never performs foreground or main-agent authoring.
 - The launch-time fingerprint is published as identity and is **not**
   revalidated against post-run materialization files (Piece 2 may refresh

@@ -262,6 +262,104 @@ JSON
     assert "MODEL=sentinel-cursor-model" in token_record
 
 
+def test_cursor_assessment_mode_uses_evidence_workspace_and_verbatim_result(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    evidence = tmp_path / "evidence"
+    repo.mkdir()
+    evidence.mkdir()
+    _init_git_repo(repo)
+    argv_log = tmp_path / "cursor-assessment-argv.txt"
+    payload = '{"schema_version":"1","results":[]}'
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        f"""#!/usr/bin/env bash
+printf '%s\n' "$@" > "{argv_log}"
+cat <<'JSON'
+{{"result":{json.dumps(payload)},"usage":{{"inputTokens":10,"outputTokens":5}}}}
+JSON
+""",
+    )
+    out = tmp_path / "cursor-assessment.txt"
+
+    proc = _run(
+        [
+            "--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT,
+            "--prompt", "ASSESSMENT_PROMPT", "--assessment-contract",
+            "--assessment-evidence-dir", str(evidence), "--assessment-repo-root", str(repo),
+            "--single-attempt", "--cursor-model", "composer-2.5",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
+    )
+
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == payload
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert argv[argv.index("--workspace") + 1] == str(evidence.resolve())
+    assert argv[argv.index("--model") + 1] == "composer-2.5"
+    assert argv[-1] == "ASSESSMENT_PROMPT"
+    assert "STATUS=clean" in out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+
+
+def test_codex_assessment_mode_grants_evidence_and_keeps_repo_workdir(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    evidence = tmp_path / "evidence"
+    repo.mkdir()
+    evidence.mkdir()
+    _init_git_repo(repo)
+    argv_log = tmp_path / "codex-assessment-argv.txt"
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+printf '%s\n' "$@" > "{argv_log}"
+out=""; last=""
+for arg in "$@"; do
+  if [ "$last" = "--output-last-message" ]; then out=$arg; fi
+  last=$arg
+done
+printf '%s' '{{"schema_version":"1","results":[]}}' >"$out"
+""",
+    )
+    out = tmp_path / "codex-assessment.txt"
+
+    proc = _run(
+        [
+            "--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT,
+            "--prompt", "ASSESSMENT_PROMPT", "--assessment-contract",
+            "--assessment-evidence-dir", str(evidence), "--assessment-repo-root", str(repo),
+            "--single-attempt", "--model-role", "fix", "--default-model", "gpt-5.6-terra",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "LARCH_CODEX_FIX_MODEL": "gpt-5.6-terra"},
+    )
+
+    assert proc.returncode == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert argv[argv.index("-C") + 1] == str(repo.resolve())
+    add_dirs = [argv[index + 1] for index, value in enumerate(argv) if value == "--add-dir"]
+    assert str(evidence.resolve()) in add_dirs
+    assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
+    assert argv[-1] == "ASSESSMENT_PROMPT"
+
+
+def test_single_attempt_mode_bypasses_all_shared_retry_classes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def one_failure(**_kwargs: object) -> agents.RunExternalAgentResult:
+        nonlocal calls
+        calls += 1
+        return agents.RunExternalAgentResult(7, tmp_path / "out.txt")
+
+    monkeypatch.setattr(_review_launcher, "_review_run_wrapper_attempt", one_failure)
+    result, auth_attempt, transient_attempt = agents._review_run_with_retries(
+        tool="cursor", output=tmp_path / "out.txt", timeout_seconds=1,
+        cmd=("cursor",), single_attempt=True,
+    )
+
+    assert result.exit_code == 7
+    assert (auth_attempt, transient_attempt, calls) == (1, 1, 1)
+
+
 def test_cursor_plan_review_launch_keeps_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
     bin_dir = _stub_bin(
         tmp_path,
