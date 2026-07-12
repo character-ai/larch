@@ -304,7 +304,7 @@ def test_incomplete_or_malformed_result_does_not_suppress_launch(
 
 
 @pytest.mark.parametrize("unsafe_kind", ["symlink", "directory"])
-def test_unsafe_result_does_not_report_done(
+def test_unsafe_result_fails_closed_without_launch(
     unsafe_kind: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -322,9 +322,10 @@ def test_unsafe_result_does_not_report_done(
     launches: list[model.JobSpec] = []
     monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
 
-    assert adapt.start_or_reattach(spec) == 0
+    with pytest.raises(adapt.AdaptError, match="unsafe-path"):
+        _ = adapt.start_or_reattach(spec)
     assert "BGJOB_STATUS=DONE" not in capsys.readouterr().out
-    assert len(launches) == 1
+    assert not launches
 
 
 def test_live_daemon_and_child_reattach_with_validated_child_pgid(
@@ -348,7 +349,7 @@ def test_live_daemon_and_child_reattach_with_validated_child_pgid(
         (
             _verdict(live=False, reason="missing-pid"),
             _verdict(live=False, reason="missing-pid"),
-            "registry-identity-unverifiable",
+            "registry-dead",
         ),
         (
             _verdict(live=False, reason="identity-probe-timeout"),
@@ -462,13 +463,13 @@ def test_expired_live_registry_fails_closed(
     assert path.is_file()
 
 
-def test_expired_registry_with_missing_pid_fails_closed(
+def test_expired_registry_with_unverifiable_liveness_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     spec = _spec(tmp_path, budget_s=1)
     old_path = registry.write_entry(_entry(spec, start_epoch=1))
-    dead = _verdict(live=False, reason="missing-pid")
+    dead = _verdict(live=False, reason="identity-probe-timeout")
     monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(dead))
     monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(dead))
     launches: list[model.JobSpec] = []
@@ -476,6 +477,43 @@ def test_expired_registry_with_missing_pid_fails_closed(
 
     with pytest.raises(adapt.AdaptError, match="registry-identity-unverifiable"):
         _ = adapt.start_or_reattach(spec)
+    assert old_path.is_file()
+    assert not launches
+
+
+def test_expired_verified_dead_registry_is_removed_and_relaunched_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path, budget_s=1)
+    old_path = registry.write_entry(_entry(spec, start_epoch=1))
+    dead = _verdict(live=False, reason="missing-pid")
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(dead))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(dead))
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    assert adapt.start_or_reattach(spec) == 0
+
+    assert not old_path.exists()
+    assert len(launches) == 1
+
+
+def test_expired_registry_with_identity_mismatch_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path, budget_s=1)
+    old_path = registry.write_entry(_entry(spec, start_epoch=1))
+    mismatched = _verdict(live=False, reason="start-time-mismatch")
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(mismatched))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(mismatched))
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    with pytest.raises(adapt.AdaptError, match="registry-identity-unverifiable"):
+        _ = adapt.start_or_reattach(spec)
+
     assert old_path.is_file()
     assert not launches
 
@@ -790,6 +828,34 @@ def test_forked_daemon_does_not_retain_adapter_lock(
             _ = os.waitpid(child_pid, 0)
 
 
+def test_decision_lock_rejects_swapped_registry_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    registry_root = tmp_path / "registry"
+    registry_root.mkdir()
+    moved_root = tmp_path / "moved-registry"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    original_open = os.open
+
+    def swap_after_open(path: str | bytes | os.PathLike[str] | os.PathLike[bytes], flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
+        fd = original_open(path, flags, mode, dir_fd=dir_fd)
+        if Path(path) == registry_root and dir_fd is None:
+            registry_root.rename(moved_root)
+            registry_root.symlink_to(outside, target_is_directory=True)
+        return fd
+
+    monkeypatch.setattr(adapt.model, "registry_root", lambda: registry_root)
+    monkeypatch.setattr(adapt.os, "open", swap_after_open)
+
+    with pytest.raises(adapt.AdaptError, match="lock-failed"):
+        _ = adapt.start_or_reattach(spec)
+
+    assert not tuple(outside.iterdir())
+
+
 def test_concurrent_adapter_decisions_launch_once(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -841,14 +907,16 @@ def test_merge_env_rows_are_published_after_child_writes(tmp_path: Path) -> None
         command=(
             sys.executable,
             "-c",
-            "import pathlib, sys; pathlib.Path(sys.argv[sys.argv.index('--merge-result-env') + 1]).write_text('CHILD_WRITTEN=ok\\n', encoding='utf-8')",
+            "import pathlib, sys; path = pathlib.Path(sys.argv[sys.argv.index('--merge-result-env') + 1]); path.write_text(path.read_text(encoding='utf-8') + 'CHILD_WRITTEN=ok\\n', encoding='utf-8')",
         ),
     )
     launch_spec = adapt._prepare_launch_spec(spec)
     assert launch_spec.merge_result_env is not None
+    _ = launch_spec.merge_result_env.write_text("PRESEEDED=yes\n", encoding="utf-8")
     _ = subprocess.run(launch_spec.command, check=True)
 
     daemon.write_result(spec=launch_spec, rc="0", elapsed_s=1)
 
     rows = larch_io.read_kvs(model.result_env_path(tmpdir=tmp_path, step=spec.step))
+    assert rows["PRESEEDED"] == "yes"
     assert rows["CHILD_WRITTEN"] == "ok"

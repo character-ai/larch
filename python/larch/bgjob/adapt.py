@@ -15,13 +15,9 @@ from larch.bgjob import daemon, model, registry
 from larch.core import config
 from larch.report.progress_file import validate_run_id
 
-_DEAD_IDENTITY_REASONS = frozenset(
-    {
-        "pgid-mismatch",
-        "start-time-mismatch",
-        "command-mismatch",
-        "expected-command-mismatch",
-    }
+_DEAD_IDENTITY_REASONS = frozenset({"missing-pid"})
+_IDENTITY_MISMATCH_REASONS = frozenset(
+    {"pgid-mismatch", "start-time-mismatch", "command-mismatch", "expected-command-mismatch"}
 )
 _FORK_CLOSE_FDS: set[int] = set()
 
@@ -46,6 +42,7 @@ class RegistrySnapshot:
 class ProcessState:
     live: bool
     proven_dead: bool
+    identity_mismatch: bool
 
 
 def _close_adapter_locks_after_fork() -> None:
@@ -68,38 +65,67 @@ def _stat_fingerprint(path: Path) -> tuple[int, int, int, int] | None:
     return (file_stat.st_dev, file_stat.st_ino, file_stat.st_mtime_ns, file_stat.st_size)
 
 
-def _lock_path(*, run_id: str, step: str) -> Path:
-    root = model.registry_root()
+def _lock_name(*, run_id: str, step: str) -> str:
     run_slug = validate_run_id(run_id)
     step_slug = model.validate_slug(step, label="step")
-    return root / f"{run_slug}-{step_slug}.lock"
+    return f"{run_slug}-{step_slug}.lock"
 
 
-@contextlib.contextmanager
-def _decision_lock(*, run_id: str, step: str) -> Generator[None, None, None]:
-    try:
-        path = _lock_path(run_id=run_id, step=step)
-    except (OSError, ValueError) as exc:
-        raise AdaptError("lock-failed") from exc
+def _directory_open_flags() -> int:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    return flags
+
+
+def _lock_open_flags() -> int:
     flags = os.O_RDWR | os.O_CREAT
     if hasattr(os, "O_CLOEXEC"):
         flags |= os.O_CLOEXEC
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
+    return flags
+
+
+def _open_pinned_lock(*, run_id: str, step: str) -> tuple[int, int]:
+    root = model.registry_root()
+    name = _lock_name(run_id=run_id, step=step)
+    root_fd = os.open(root, _directory_open_flags())
     fd = -1
     try:
-        fd = os.open(path, flags, 0o600)
-        opened_stat = os.fstat(fd)
-        if not stat.S_ISREG(opened_stat.st_mode):
-            raise AdaptError("unsafe-path")
-        os.fchmod(fd, 0o600)
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        path_stat = path.lstat()
-        if (path_stat.st_dev, path_stat.st_ino) != (opened_stat.st_dev, opened_stat.st_ino):
+        opened_root = os.fstat(root_fd)
+        current_root = root.stat(follow_symlinks=False)
+        if (opened_root.st_dev, opened_root.st_ino) != (current_root.st_dev, current_root.st_ino):
             raise AdaptError("lock-failed")
+        fd = os.open(name, _lock_open_flags(), 0o600, dir_fd=root_fd)
+        opened_lock = os.fstat(fd)
+        path_lock = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        if not stat.S_ISREG(opened_lock.st_mode):
+            raise AdaptError("unsafe-path")
+        if (opened_lock.st_dev, opened_lock.st_ino) != (path_lock.st_dev, path_lock.st_ino):
+            raise AdaptError("lock-failed")
+        os.fchmod(fd, 0o600)
+    except Exception:
+        with contextlib.suppress(OSError):
+            os.close(fd)
+        with contextlib.suppress(OSError):
+            os.close(root_fd)
+        raise
+    return root_fd, fd
+
+
+@contextlib.contextmanager
+def _decision_lock(*, run_id: str, step: str) -> Generator[None, None, None]:
+    root_fd = -1
+    fd = -1
+    try:
+        root_fd, fd = _open_pinned_lock(run_id=run_id, step=step)
+        fcntl.flock(fd, fcntl.LOCK_EX)
         _FORK_CLOSE_FDS.add(fd)
         yield
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         raise AdaptError("lock-failed") from exc
     finally:
         _FORK_CLOSE_FDS.discard(fd)
@@ -108,6 +134,9 @@ def _decision_lock(*, run_id: str, step: str) -> Generator[None, None, None]:
                 fcntl.flock(fd, fcntl.LOCK_UN)
             with contextlib.suppress(OSError):
                 os.close(fd)
+        if root_fd >= 0:
+            with contextlib.suppress(OSError):
+                os.close(root_fd)
 
 
 def _read_completed_result(*, spec: model.JobSpec) -> model.ResultEnvRows | None:
@@ -117,26 +146,22 @@ def _read_completed_result(*, spec: model.JobSpec) -> model.ResultEnvRows | None
         path = root / f"{step}{config.BGJOB_RESULT_ENV_SUFFIX}"
     except (OSError, ValueError) as exc:
         raise AdaptError("unsafe-path") from exc
-    result: model.ResultEnvRows | None = None
     try:
-        before = _stat_fingerprint(path)
-    except AdaptError:
-        before = None
-    if before is not None and not path.is_symlink():
-        try:
-            text = larch_io.read_trusted_text(
-                path,
-                root=root,
-                errors="strict",
-                reject_cr=True,
-            )
-            after = _stat_fingerprint(path)
-        except (AdaptError, OSError, UnicodeError, ValueError):
-            text = ""
-            after = None
-        if before == after and text:
-            result = _parse_completed_rows(text=text, step=spec.step)
-    return result
+        present = larch_io.trusted_file_present(path, root=root)
+    except OSError as exc:
+        raise AdaptError("unsafe-path") from exc
+    if not present:
+        return None
+    try:
+        text = larch_io.read_trusted_text(
+            path,
+            root=root,
+            errors="strict",
+            reject_cr=True,
+        )
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise AdaptError("unsafe-path") from exc
+    return _parse_completed_rows(text=text, step=spec.step) if text else None
 
 
 def _parse_completed_rows(*, text: str, step: str) -> model.ResultEnvRows | None:
@@ -226,10 +251,11 @@ def _validate_entry(*, spec: model.JobSpec, entry: model.RegistryEntry) -> None:
 
 def _process_state(verdict: model.LivenessVerdict) -> ProcessState:
     if verdict.live:
-        return ProcessState(live=True, proven_dead=False)
+        return ProcessState(live=True, proven_dead=False, identity_mismatch=False)
     return ProcessState(
         live=False,
         proven_dead=verdict.reason in _DEAD_IDENTITY_REASONS,
+        identity_mismatch=verdict.reason in _IDENTITY_MISMATCH_REASONS,
     )
 
 
@@ -394,7 +420,7 @@ def _handle_active(
         if not child_state.proven_dead:
             raise AdaptError("registry-identity-unverifiable")
         raise AdaptError("registry-dead")
-    if not child_state.live and child_state.proven_dead:
+    if not child_state.live and child_state.identity_mismatch:
         raise AdaptError("registry-identity-unverifiable")
     if _result_or_none(spec=spec):
         return 0
