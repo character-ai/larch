@@ -1,3 +1,4 @@
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false
 """Tests for immutable evidence, safe probes, and triage mutation gates."""
 # pylint: disable=missing-function-docstring,redefined-outer-name,too-many-arguments  # pytest cases and fixtures are self-describing
 

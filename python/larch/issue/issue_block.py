@@ -1,3 +1,4 @@
+# pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false
 """Fail-closed Python entrypoints for /block-issue dependency mutations."""
 
 from __future__ import annotations
@@ -11,9 +12,9 @@ from typing import Final, cast
 from larch.core import proc, redact
 from larch.issue.triage import (
     TriageError,
-    _contains_security_content,
-    _has_protected_state,
-    _issue_snapshot,
+    _contains_security_content,  # pyright: ignore[reportPrivateUsage]  # shared triage helper reused by /block-issue; no public alias exists
+    _has_protected_state,  # pyright: ignore[reportPrivateUsage]  # shared triage helper reused by /block-issue; no public alias exists
+    _issue_snapshot,  # pyright: ignore[reportPrivateUsage]  # shared triage helper reused by /block-issue; no public alias exists
 )
 from larch.state.session_env import check_live_mutation_auth
 

@@ -138,7 +138,7 @@ def _named_values(value: object, *, field: str) -> tuple[str, ...]:
     if not isinstance(value, list):
         return ()
     values: list[str] = []
-    for raw in value:
+    for raw in cast("list[dict[str, object] | str]", value):
         if isinstance(raw, dict) and isinstance(raw.get(field), str):
             values.append(str(raw[field]))
         elif isinstance(raw, str):
@@ -569,19 +569,19 @@ def _close_apply(
 
 def _apply_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="triage apply")
-    parser.add_argument("issue", type=int)
-    parser.add_argument("--repo", required=True)
-    parser.add_argument(
+    _ = parser.add_argument("issue", type=int)
+    _ = parser.add_argument("--repo", required=True)
+    _ = parser.add_argument(
         "--verdict",
         required=True,
         choices=("valid", "already-fixed", "duplicate", "invalid", "inconclusive"),
     )
-    parser.add_argument("--expected-updated-at", required=True)
-    parser.add_argument("--triage-root", required=True)
-    parser.add_argument("--body-file")
-    parser.add_argument("--comment-file")
-    parser.add_argument("--canonical-duplicate", type=int)
-    parser.add_argument("--operator-invoked", action="store_true")
+    _ = parser.add_argument("--expected-updated-at", required=True)
+    _ = parser.add_argument("--triage-root", required=True)
+    _ = parser.add_argument("--body-file")
+    _ = parser.add_argument("--comment-file")
+    _ = parser.add_argument("--canonical-duplicate", type=int)
+    _ = parser.add_argument("--operator-invoked", action="store_true")
     return parser
 
 
@@ -779,10 +779,10 @@ def _resolve_ref(request: InspectRequest, runner: Runner) -> tuple[str, str]:
 
 def _inspect_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="triage inspect")
-    parser.add_argument("--repo-root", default=".")
-    parser.add_argument("--ref", default="refs/heads/main")
-    parser.add_argument("--path")
-    parser.add_argument("--max-bytes", type=int, default=_MAX_EVIDENCE_BYTES)
+    _ = parser.add_argument("--repo-root", default=".")
+    _ = parser.add_argument("--ref", default="refs/heads/main")
+    _ = parser.add_argument("--path")
+    _ = parser.add_argument("--max-bytes", type=int, default=_MAX_EVIDENCE_BYTES)
     return parser
 
 
@@ -836,9 +836,9 @@ def inspect_main(argv: list[str]) -> int:
 
 def _probe_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="triage probe")
-    parser.add_argument("--name", required=True)
-    parser.add_argument("--arg", action="append", default=[])
-    parser.add_argument("--max-bytes", type=int, default=_MAX_PROBE_BYTES)
+    _ = parser.add_argument("--name", required=True)
+    _ = parser.add_argument("--arg", action="append", default=[])
+    _ = parser.add_argument("--max-bytes", type=int, default=_MAX_PROBE_BYTES)
     return parser
 
 
