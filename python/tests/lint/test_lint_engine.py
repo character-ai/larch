@@ -83,13 +83,13 @@ def _write_files(root: Path, files: Mapping[str, str]) -> None:
 
 
 def _git_ok_runner(root: Path, tracked: Sequence[str]) -> RecordingRunner:
-    listing = "\n".join(tracked)
+    listing = "\0".join(tracked)
     if tracked:
-        listing += "\n"
+        listing += "\0"
     return RecordingRunner(
         responses=[
             _ok(("git", "rev-parse", "--show-toplevel"), f"{root.resolve()}\n"),
-            _ok(("git", "ls-files", "--cached"), listing),
+            _ok(("git", "ls-files", "--cached", "-z"), listing),
         ]
     )
 
@@ -242,7 +242,7 @@ def test_discovery_argv_cwd_tracked_only_and_empty(tmp_path: Path) -> None:
     assert out == err == ""
     assert runner.calls == [
         (("git", "rev-parse", "--show-toplevel"), str(tmp_path.resolve())),
-        (("git", "ls-files", "--cached"), str(tmp_path.resolve())),
+        (("git", "ls-files", "--cached", "-z"), str(tmp_path.resolve())),
     ]
 
     empty_runner = _git_ok_runner(tmp_path, [])
@@ -264,25 +264,25 @@ def test_discovery_rejects_nonzero_and_blank_and_unsafe_paths(tmp_path: Path) ->
         RecordingRunner(
             responses=[
                 _ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path.resolve()}\n"),
-                _fail(("git", "ls-files", "--cached"), stderr="ls failed"),
+                _fail(("git", "ls-files", "--cached", "-z"), stderr="ls failed"),
             ]
         ),
         RecordingRunner(
             responses=[
                 _ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path.resolve()}\n"),
-                _ok(("git", "ls-files", "--cached"), "\n"),
+                _ok(("git", "ls-files", "--cached", "-z"), "\0"),
             ]
         ),
         RecordingRunner(
             responses=[
                 _ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path.resolve()}\n"),
-                _ok(("git", "ls-files", "--cached"), "../escape.py\n"),
+                _ok(("git", "ls-files", "--cached", "-z"), "../escape.py\0"),
             ]
         ),
         RecordingRunner(
             responses=[
                 _ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path.resolve()}\n"),
-                _ok(("git", "ls-files", "--cached"), "/tmp/abs.py\n"),
+                _ok(("git", "ls-files", "--cached", "-z"), "/tmp/abs.py\0"),
             ]
         ),
     ]
@@ -291,6 +291,33 @@ def test_discovery_rejects_nonzero_and_blank_and_unsafe_paths(tmp_path: Path) ->
         assert code == EXIT_ERROR
         assert out == ""
         assert err
+
+
+def test_discovery_preserves_whitespace_paths_and_rejects_unterminated_records(
+    tmp_path: Path,
+) -> None:
+    filename = " leading and trailing.py "
+    _write_files(tmp_path, {filename: "x = 1\n"})
+    code, out, err, _ = _run(
+        tmp_path,
+        files={},
+        tracked=[filename],
+        rule=_rule(),
+    )
+    assert code == EXIT_FINDINGS
+    assert out == f"{filename}:1: demo-rule hit\n"
+    assert err == ""
+
+    runner = RecordingRunner(
+        responses=[
+            _ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path.resolve()}\n"),
+            _ok(("git", "ls-files", "--cached", "-z"), "a.py"),
+        ]
+    )
+    code2, out2, err2 = _invoke(_rule(), tmp_path, runner)
+    assert code2 == EXIT_ERROR
+    assert out2 == ""
+    assert "unterminated" in err2
 
 
 def test_requested_paths_filter_and_unmatched_clean(tmp_path: Path) -> None:
@@ -349,6 +376,16 @@ def test_requested_path_rejects_outside_traversal_and_symlink(tmp_path: Path) ->
         assert out == ""
         assert err
 
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"a.py": "x = 1\n"},
+        tracked=["a.py"],
+        paths=["pkg/../a.py"],
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "must not contain '..'" in err
+
 
 def test_discovered_missing_or_non_regular_rejected(tmp_path: Path) -> None:
     _write_files(tmp_path, {"a.py": "x = 1\n"})
@@ -403,6 +440,49 @@ def test_source_loading_utf8_and_undecodable(tmp_path: Path) -> None:
     assert code2 == EXIT_ERROR
     assert out2 == ""
     assert "UTF-8" in err2
+
+
+def test_source_loading_revalidates_and_converts_oserror(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "a.py"
+    outside = tmp_path.parent / "outside.py"
+    _ = outside.write_text("x = 1\n", encoding="utf-8")
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+
+    def swap_after_discovery(_root: Path, _runner: RecordingRunner) -> list[str]:
+        source.unlink()
+        source.symlink_to(outside)
+        return ["a.py"]
+
+    original_discover = lint_engine._discover_tracked_paths
+    monkeypatch.setattr(lint_engine, "_discover_tracked_paths", swap_after_discovery)
+    runner = RecordingRunner(
+        responses=[
+            _ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path.resolve()}\n")
+        ]
+    )
+    code, out, err = _invoke(_rule(), tmp_path, runner)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "symlink" in err
+
+    source.unlink()
+    _ = source.write_text("x = 1\n", encoding="utf-8")
+    monkeypatch.setattr(lint_engine, "_discover_tracked_paths", original_discover)
+
+    def fail_open(_path: Path, _flags: int) -> int:
+        raise OSError("read denied")
+
+    monkeypatch.setattr(lint_engine.os, "open", fail_open)
+    code2, out2, err2, _ = _run(
+        tmp_path,
+        files={},
+        tracked=["a.py"],
+    )
+    assert code2 == EXIT_ERROR
+    assert out2 == ""
+    assert "failed to read" in err2
 
 
 def test_lazy_ast_parses_once_and_non_python_has_no_tree(
@@ -505,6 +585,26 @@ def test_syntax_policy_fail_and_skip(tmp_path: Path) -> None:
     assert out2 == ""
     assert err2 == ""
     assert detect_calls["n"] == 1
+
+
+@pytest.mark.parametrize("lineno", [0, -1, None, 99])
+def test_syntax_error_invalid_line_numbers_fall_back_to_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, lineno: int | None
+) -> None:
+    def invalid_parse(*_args: object, **_kwargs: object) -> ast.AST:
+        error = SyntaxError("broken")
+        error.lineno = lineno
+        raise error
+
+    monkeypatch.setattr(lint_engine.ast, "parse", invalid_parse)
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"a.py": "x = 1\n"},
+        rule=_rule(detect=lambda _source: []),
+    )
+    assert code == EXIT_FINDINGS
+    assert out == f"a.py:1: demo-rule {SYNTAX_FAIL_MESSAGE}\n"
+    assert err == ""
 
 
 def test_suppression_same_line_reason_and_empty_reason_error(tmp_path: Path) -> None:
@@ -652,6 +752,101 @@ def test_detector_and_config_validation(tmp_path: Path) -> None:
     assert "detector raised" in err8
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("message", None), ("qualified_symbol", 3), ("path", 3)],
+)
+def test_detector_fields_must_be_valid_strings(
+    tmp_path: Path, field: str, value: object
+) -> None:
+    def malformed(source: SourceFile) -> list[Finding]:
+        values: dict[str, object] = {
+            "path": source.path,
+            "line": 1,
+            "rule_id": "demo-rule",
+            "message": "hit",
+            "qualified_symbol": None,
+        }
+        values[field] = value
+        return [Finding(**values)]  # type: ignore[arg-type]
+
+    code, out, err, _ = _run(
+        tmp_path, files={"a.py": "x = 1\n"}, rule=_rule(detect=malformed)
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert err
+
+
+def test_detector_rejects_mismatched_rule_id(tmp_path: Path) -> None:
+    def mismatch(source: SourceFile) -> list[Finding]:
+        return [Finding(path=source.path, line=1, rule_id="other", message="hit")]
+
+    code, out, err, _ = _run(
+        tmp_path, files={"a.py": "x = 1\n"}, rule=_rule(detect=mismatch)
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "rule_id" in err
+
+
+@pytest.mark.parametrize(
+    ("rule_id", "suppression_token"),
+    [("demo\nrule", "lint-demo"), ("demo-rule", "lint\ndemo")],
+)
+def test_rule_configuration_rejects_multiline_values(
+    tmp_path: Path, rule_id: str, suppression_token: str
+) -> None:
+    rule = LintRule(
+        rule_id=rule_id,
+        description="demo",
+        detect=lambda _source: [],
+        syntax_policy="fail",
+        suppression_token=suppression_token,
+    )
+    code, out, err = _invoke(rule, tmp_path, _git_ok_runner(tmp_path, []))
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "single-line" in err
+
+
+@pytest.mark.parametrize("symbol", ["name\nother", ""])
+def test_detector_rejects_invalid_qualified_symbol(tmp_path: Path, symbol: str) -> None:
+    def malformed(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="hit",
+                qualified_symbol=symbol,
+            )
+        ]
+
+    code, out, err, _ = _run(
+        tmp_path, files={"a.py": "x = 1\n"}, rule=_rule(detect=malformed)
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "qualified_symbol" in err
+
+
+def test_tokenizer_indentation_error_returns_scan_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def invalid_tokens(_readline: object) -> object:
+        raise IndentationError("unexpected indent")
+
+    monkeypatch.setattr(lint_engine.tokenize, "generate_tokens", invalid_tokens)
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"notes.md": "notes\n"},
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "failed to tokenize" in err
+
+
 def test_no_partial_stdout_when_later_source_fails(tmp_path: Path) -> None:
     def detect(source: SourceFile) -> list[Finding]:
         if source.path == "b.py":
@@ -752,7 +947,7 @@ def test_duplicate_tracked_paths_are_deduped(tmp_path: Path) -> None:
     runner = RecordingRunner(
         responses=[
             _ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path.resolve()}\n"),
-            _ok(("git", "ls-files", "--cached"), "a.py\na.py\n"),
+            _ok(("git", "ls-files", "--cached", "-z"), "a.py\0a.py\0"),
         ]
     )
     code, out, err, _ = _run(

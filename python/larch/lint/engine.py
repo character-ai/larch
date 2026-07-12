@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import ast
 import io
+import os
 import re
+import stat
 import sys
 import tokenize
 from collections.abc import Callable, Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast
@@ -113,8 +116,14 @@ class LintRule:
     suppression_token: str
 
 
-def _is_single_line(value: str) -> bool:
-    return bool(value) and "\n" not in value and "\r" not in value
+def _is_single_line(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and "\n" not in value
+        and "\r" not in value
+        and "\0" not in value
+    )
 
 
 def _validate_rule(rule: LintRule) -> None:
@@ -166,13 +175,15 @@ def _validate_repo_root(root: Path, runner: Runner) -> Path:
 
 
 def _discover_tracked_paths(root: Path, runner: Runner) -> list[str]:
-    result = runner.run(("git", "ls-files", "--cached"), cwd=str(root))
+    result = runner.run(("git", "ls-files", "--cached", "-z"), cwd=str(root))
     if result.returncode != 0:
         raise ScanError(f"git ls-files --cached failed: {_bounded_git_detail(result)}")
     seen: set[str] = set()
     ordered: list[str] = []
-    for raw_line in result.stdout.splitlines():
-        entry = raw_line.strip("\0")
+    if result.stdout and not result.stdout.endswith("\0"):
+        raise ScanError("git ls-files --cached returned an unterminated path record")
+    records = result.stdout.removesuffix("\0").split("\0") if result.stdout else []
+    for entry in records:
         if entry == "":
             raise ScanError("git ls-files --cached returned a blank path record")
         rel = _normalize_repo_relative_path(entry, root=root, label="discovered path")
@@ -184,18 +195,16 @@ def _discover_tracked_paths(root: Path, runner: Runner) -> list[str]:
 
 
 def _normalize_repo_relative_path(raw: str, *, root: Path, label: str) -> str:
-    if not _is_single_line(raw.strip()):
+    if not _is_single_line(raw):
         raise ScanError(f"{label} must be a non-empty single-line path")
-    candidate = raw.strip().replace("\\", "/")
-    while candidate.startswith("./"):
-        candidate = candidate[2:]
+    candidate = raw
     if candidate in {"", "."}:
-        raise ScanError(f"{label} is empty after normalization")
+        raise ScanError(f"{label} must not be empty or current-directory")
     if candidate.startswith("/") or re.match(r"^[A-Za-z]:/", candidate):
         raise ScanError(f"{label} must be repository-relative: {raw}")
     parts = Path(candidate).parts
-    if ".." in parts:
-        raise ScanError(f"{label} must not contain '..': {raw}")
+    if "." in parts or ".." in parts:
+        raise ScanError(f"{label} must not contain '.' or '..': {raw}")
     path_in_repo = root / candidate
     if path_in_repo.is_symlink():
         raise ScanError(f"{label} is a symlink: {raw}")
@@ -213,10 +222,12 @@ def _normalize_repo_relative_path(raw: str, *, root: Path, label: str) -> str:
 
 def _validate_requested_path(raw: str | Path, *, root: Path) -> tuple[str, bool]:
     """Return ``(repo_relative_posix, is_directory)`` for a requested path."""
-    text = str(raw).strip()
+    text = str(raw)
     if not _is_single_line(text):
         raise ScanError(f"requested path must be a non-empty single-line path: {raw!r}")
     path = Path(text)
+    if ".." in path.parts:
+        raise ScanError(f"requested path must not contain '..': {raw}")
     absolute = path.resolve() if path.is_absolute() else (root / path).resolve()
     try:
         relative = absolute.relative_to(root)
@@ -261,10 +272,26 @@ def _filter_tracked_paths(
 
 
 def _load_source(root: Path, rel_path: str) -> SourceFile:
+    rel_path = _normalize_repo_relative_path(
+        rel_path, root=root, label="source path"
+    )
     absolute = root / rel_path
     try:
-        raw = absolute.read_bytes()
+        flags = os.O_RDONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(absolute, flags)
     except OSError as exc:
+        raise ScanError(f"failed to read {rel_path}: {exc}") from exc
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            os.close(descriptor)
+            raise ScanError(f"source path is not a regular file: {rel_path}")
+        with os.fdopen(descriptor, "rb") as handle:
+            raw = handle.read()
+    except OSError as exc:
+        with suppress(OSError):
+            os.close(descriptor)
         raise ScanError(f"failed to read {rel_path}: {exc}") from exc
     try:
         text = raw.decode("utf-8")
@@ -292,6 +319,8 @@ def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
                 comments.setdefault(token.start[0], []).append(token.string)
     except tokenize.TokenError:
         return {}
+    except IndentationError as exc:
+        raise ScanError(f"failed to tokenize {source!r}: {exc}") from exc
     return {line: tuple(values) for line, values in comments.items()}
 
 
