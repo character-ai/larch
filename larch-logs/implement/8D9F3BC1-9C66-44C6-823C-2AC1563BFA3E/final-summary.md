@@ -41,11 +41,19 @@ codex/apply                         │                                     █�
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+Architectural assessment unavailable.
+
+## Architectural guidelines
+
+Architectural assessment unavailable.
+
 ## /implement run 8D9F3BC1-9C66-44C6-823C-2AC1563BFA3E: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:25:22
-- **Cost**: 💰 TOTAL ~$5.72: Claude/GLM-5.2 token $0.45 (estimated $0.03), Codex-5.6 $0.81, Codex-mini $0.63, Cursor $3.96 (Composer $2.68, Grok $1.28), Claude (subprocess) $0.29  |  Tokens: 11527k
+- **Cost**: 💰 TOTAL ~$5.73: Claude/GLM-5.2 token $0.59 (estimated $0.04), Codex-5.6 $0.81, Codex-mini $0.63, Cursor $3.96 (Composer $2.68, Grok $1.28), Claude (subprocess) $0.29  |  Tokens: 11999k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7040: https://github.com/character-ai/larch/issues/7040
 - **Plan review**: N/A
