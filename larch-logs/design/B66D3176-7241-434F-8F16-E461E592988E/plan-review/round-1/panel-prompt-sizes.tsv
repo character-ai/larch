@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	28803	7201	13577	3395	15226	3807		0	0
+design Step 3	phase1	1	dyn-cursor-plan-temporal-analytics-integrity	plan-review	cursor	dyn-cursor-plan-temporal-analytics-integrity.txt	29247	7312	13443	3361	15804	3951		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	28818	7205	13592	3398	15226	3807		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	28794	7199	13568	3392	15226	3807		0	0
+design Step 3	phase1	1	dyn-codex-plan-temporal-analytics-integrity	plan-review	codex	dyn-codex-plan-temporal-analytics-integrity.txt	18573	4644	13155	3289	5418	1355		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	18144	4536	13304	3326	4840	1210		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18129	4533	13289	3323	4840	1210		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	28816	7204	13590	3398	15226	3807		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	18120	4530	13280	3320	4840	1210		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	18142	4536	13302	3326	4840	1210		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	34130	8533	4625	1157	29505	7377	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14151	3538	9155	2289	4996	1249		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14151	3538	9155	2289	4996	1249		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14151	3538	9155	2289	4996	1249		0	0

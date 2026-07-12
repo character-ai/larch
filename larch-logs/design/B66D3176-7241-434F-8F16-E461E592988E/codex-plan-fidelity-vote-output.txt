@@ -1,0 +1,11 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan explicitly hydrates historical ledger metadata and permits only selected issues to create marker edges; extending persistence to unselected issue text is not required by the scoped detector contract.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan already requires a persisted predecessor for each active run, but collision-safe run creation is a robustness concern outside the feature path.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The scope anchor and plan explicitly set churn to three or more fix commits in a trailing seven-day window.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Durable per-candidate reasons exceed the required logged-not-silent contract and duplicate the prior rejected ledger finding.
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Duplicate of the prior neutral scope-reduction finding with no materially new evidence.
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Historical hydration is necessary to make the required in-window ledger analytics usable for legacy rows lacking derived metadata.
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan's durable cap-drop reasons are a concrete audit detail, but removing them is not a necessary scope reduction.

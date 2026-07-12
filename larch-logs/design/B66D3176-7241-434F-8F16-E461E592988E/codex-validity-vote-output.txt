@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan’s mandated churn test explicitly fixes the threshold at three fixes in seven days.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already requires persisted issue-and-reason cap-drop records; a particular sidecar schema is not necessary to deliver the feature.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan requires last-valid-record metadata merging and explicit carry-forward tests; the claimed state mutation is speculative rather than a plan defect.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Duplicate of the prior neutral scope-reduction finding, and the required section does not prohibit supplemental churn detail.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Duplicate of the prior neutral scope-reduction finding, and the required section does not prohibit supplemental churn detail.
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Historical hydration directly supports the required ledger-wide analytics when legacy rows lack coordinator-derived evidence.
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false

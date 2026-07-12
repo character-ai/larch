@@ -1,0 +1,1 @@
+Add coordinator-side, time-windowed bug analytics to `/analyze-bugs`. Extend the additive ledger metadata, route high-risk triage passes to deep verification, persist per-run delta snapshots, expand the report, and cover the full workflow in the existing test module. Keep agent inputs, bundle markdown, stdout KVs, and the cost line unchanged.

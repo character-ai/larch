@@ -1,0 +1,200 @@
+## Plan
+
+Confidence: high
+
+## Approach
+
+1. Add typed analytics models and pure helpers in `python/larch/issue/analyze_bugs.py`.
+   - Add frozen models for coordinator-derived fix metadata, canonical analytics records, directional chain edges, chronic zones, aggregate analytics state, routing candidates, run snapshots, and historical marker-evidence hydration.
+   - Map touched paths to stable zones.
+   - Anchor all trailing windows and snapshot ordering to the manifest `generated_at` value, never wall-clock time.
+   - Detect marker chains from issue titles and stripped issue bodies. Require a case-insensitive required marker and an issue reference.
+   - Define marker-edge direction as `(current_issue, referenced_issue, "marker")`.
+   - Detect file-intersection chains from a newer fix to an earlier fix whose touched-file sets overlap within 14 days. Define direction as `(newer_issue, prior_issue, "file_intersection")`.
+   - Deduplicate chain edges by the full directional identity `(from_issue, to_issue, detector_kind)`; preserve separate marker and file-intersection edges for the same endpoints.
+   - Compute file churn from unique fix commits in the trailing 7 days.
+   - Mark zones chronic when they contain at least three unique bugs in the trailing 14 days, or at least two zone members in the same connected chain component. Build components from the directional edge set as an undirected connectivity graph for this threshold, allowing a component path through issues in other zones but not treating unrelated external edges as sufficient.
+   - Detect baseline extension only for files matching `python/*-baseline.json`.
+   - Sum textual additions from git numstat output. Do not treat binary `-` entries as added lines.
+
+2. Enrich coordinator-owned history without changing agent contracts.
+   - During prefetch, derive fix time, added-line count, marker references, zones, baseline status, and existing touched-file data for every selected manifest issue.
+   - Persist marker evidence as coordinator metadata: normalized marker references plus a stable title/body fingerprint or equivalent provenance value sufficient to identify the text that produced the references.
+   - Keep these values out of verifier bundle markdown and agent JSONL formats.
+   - Extend `LedgerRecord` additively with the derived metadata needed across runs, including marker-reference evidence and metadata versioning or explicit optional fields where needed for compatibility.
+   - Preserve compatibility with existing ledger rows. Treat absent legacy fields as unavailable evidence rather than inventing timestamps, files, references, zones, or marker matches.
+   - Add a coordinator-only metadata upsert pass after prefetch and before routing/reporting. For every manifest-selected issue, append a last-valid-record merge keyed by the existing cache-key semantics so cache-complete issues that skip triage or deep ingest still persist coordinator-derived metadata.
+   - For canonical in-window historical ledger issues that are not selected by the active manifest and lack persisted marker references, perform a bounded, coordinator-only issue-text backfill before marker-edge construction using the existing issue lookup path. Strip the fetched body, derive marker references, and retain the result as in-memory analytics evidence.
+   - Do not infer marker references from issue number, unrelated ledger fields, or another issue’s text. Failed, unavailable, or malformed historical text lookup leaves marker evidence unavailable and produces no marker edge for that issue.
+   - Persist successful historical marker-evidence backfills only after report rendering and validation succeed, using the same coordinator metadata merge behavior as selected-issue metadata. Do not mutate durable metadata after a failed render.
+   - Preserve all coordinator analytics fields through `_ledger_record_from_mapping`, `_upsert_record`, and `_record_json`; verdict ingestion must carry forward existing analytics fields unless that ingest path intentionally refreshes a value.
+   - Continue using last-valid-record behavior for append-only ledger keys and the existing corrupt-line quarantine.
+
+3. Build one deterministic analytics view for routing and reporting.
+   - Retain `load_ledger` for cache-key lookup, upserts, and verdict-ingest behavior, but add a distinct analytics-corpus loader that scans `ledger.jsonl` in valid physical append order.
+   - The analytics-corpus loader must retain every valid row, its append ordinal, and its cache key rather than collapsing records by cache key. Quarantine corrupt rows using the existing behavior without letting them affect append ordering among valid rows.
+   - Add one `build_analytics_view(manifest, ledger, runner)` path that is the sole source for chronic-zone, churn, file-intersection, chain, baseline, promotion, and report data.
+   - Build the corpus from all valid, repository-local ledger records in the manifest-anchored trailing windows, not only `manifest.issues`, then overlay active manifest bundles and their coordinator-derived metadata.
+   - Canonicalize to one analytics record per issue before any aggregate calculation. Prefer an active manifest overlay for the matching cache key; otherwise choose the record with the highest valid `updated_at`, breaking ties by later valid ledger append ordinal.
+   - Define absent, malformed, or legacy `updated_at` values as the same lowest sortable timestamp, so append order deterministically resolves ties rather than selecting arbitrary stale cache-key state.
+   - Do not let multiple cache keys, repeated ledger rows, or re-verifications double-count one issue or pair chains against stale fixes.
+   - Read-only hydrate missing `fix_time`, `touched_files`, and `added_lines` from `fix_sha` while building the view, using the same safe git helpers as prefetch. Missing or malformed probe results remain unavailable evidence.
+   - Before marker-edge construction, perform the bounded historical marker-evidence backfill for canonical in-window corpus records whose persisted marker metadata is absent. Use active manifest title/body data first when available.
+   - Collect successful historical git and marker-evidence hydrations for a coordinator metadata persistence pass only after the report has rendered and validated successfully; do not publish fabricated values or mutate ledger evidence after a failed render.
+   - Use deduplicated issue identities and fix identities so repeated ledger rows cannot inflate zone counts, churn, or chains.
+   - Associate each issue with every zone touched by its canonical fix record.
+   - Permit marker references outside the analytics corpus as directional edges for the selected issue, but only ledger-backed or manifest-backed canonical records contribute zone membership, churn, and connected-component membership.
+   - Expose chronic-zone members, churned files, canonical chain edges, baseline-extending issues, hydrated-evidence status, and marker-evidence availability from this same view.
+
+4. Extend deep-queue routing.
+   - Preserve existing mechanical and triage-doubt candidates.
+   - Require verified triage completion (`_triage_complete(record, refresh=refresh)` or the existing equivalent evidence-token gate) before risk-promoting a `FIXED_CLEAR` or `FIXED_LIKELY` issue.
+   - Promote verified `FIXED_CLEAR` and `FIXED_LIKELY` issues when they are chain-linked, touch a chronic zone, cross from `python/` into `scripts/` or `skills/`, or add more than 300 lines.
+   - Order risk promotions as chain-linked, chronic-zone, cross-language, then size. An issue matching multiple rules enters once with its highest-priority reason.
+   - Place deterministic calibration samples after risk-routed candidates. A calibration candidate already selected by risk routing remains a risk candidate rather than a duplicate sampled row.
+   - Change the coordinator default for `--sample` from zero to three while preserving an explicit `--sample 0`.
+   - Keep `--deep-max`. Persist every dropped candidate with its issue and routing reason, and emit the existing stderr warning rather than silently slicing the queue.
+   - Keep whole-line stdout `KEY=value` names and shapes unchanged.
+
+5. Define evidence tiers and verified-issue membership once.
+   - Derive `DEEP` when a valid deep result supplies the final verdict.
+   - Derive `TRIAGE` when verified triage supplies the final verdict.
+   - Derive `MECH` when a mechanical result supplies the final verdict.
+   - Preserve final-verdict precedence; a deep verdict overrides earlier mechanical or triage evidence.
+   - Define `verified_issues` for snapshots and `Since last run` as active-manifest issue numbers whose current canonical record has a final evidence tier of `MECH`, `TRIAGE`, or `DEEP`, is not pending `NEEDS_DEEP` or untriaged work, and supplies the final verdict under existing verdict-precedence rules.
+   - Use this single predicate for run-state serialization, delta comparison, report rendering, and tests. Do not count partial triage, triage without its required evidence token, mechanical-only intermediate evidence superseded by pending deep work, or records with no final verdict as verified.
+   - Add the tier column to the Issues table without changing final-verdict precedence.
+
+6. Add report sections in the required order.
+   - Render `Chronic zones` with zone, unique bug count, and member issues. Include churned-file detail within this section without creating an extra top-level section.
+   - Render `Fix chains` with directional issue endpoints and detector kind.
+   - Render `Baseline-extending fixes`.
+   - Render `Since last run` with newly selected issues, newly verified issues under the defined final-tier predicate, new canonical directional chain-edge identities, and zones entering or leaving chronic status.
+   - Always render the sample size, sampled failures, and triage false-pass rate, including a zero denominator as `0.00%`.
+   - When chronic zones exist, end the human-readable report with a suggestion to run `/learn-from-bugs` scoped to those zones.
+   - Preserve the whole-line `ANALYZE_BUGS_COST_ESTIMATE=...` line unchanged and keep it as the final machine-readable report line.
+
+7. Persist per-run delta state.
+   - Write `run-state.json` inside each run directory after the report and current snapshot have rendered and validated successfully.
+   - Store repository identity, run identity, manifest-generated timestamp or deterministic run ordering key, selected issues, verified issues under the defined final-tier predicate, chronic zones, and canonical directional chain-edge identities.
+   - Store the verified-issue predicate as an explicit schema/versioned contract or validate it against the current snapshot schema so historical state cannot silently compare incompatible membership definitions.
+   - Find the predecessor as the most recent valid snapshot for the same repository whose deterministic run timestamp or sequence strictly precedes the active run. Exclude the active run and ignore later runs, even when rerendering an older run after newer snapshots exist.
+   - Use the same predecessor for every rerender of a given active run so report text and deltas do not depend on directory enumeration order or subsequently created runs.
+   - Emit an explicit first-run state with empty deltas when no valid earlier snapshot exists.
+   - Validate snapshot shape, repository identity, ordering key, verified-issue membership shape, and edge identity grammar. Fail loudly on malformed coordinator-owned state rather than publishing a false delta.
+   - Atomically write `run-state.json` only after successful report rendering and validation.
+
+## Edge cases
+
+- Map `python/larch/<pkg>/...` to `python/larch/<pkg>`. Map other multi-component paths to their first two meaningful components, while `scripts/...` and `docs/...` remain `scripts` and `docs`. Keep root files stable as their own zones.
+- Count each issue once per zone even when several touched files map to that zone.
+- Canonicalize one analytics record per issue before all analytics, including when multiple cache keys or old fix SHAs exist for that issue.
+- Equal, absent, or legacy-low `updated_at` values must resolve through valid ledger append order, never map iteration order or cache-key order.
+- Ignore missing fix SHAs in commit-time, line-count, churn, and file-intersection calculations.
+- Do not create self-edges when repeated records describe the same issue or commit.
+- Allow marker edges to reference issues outside the selected set or ledger corpus, while limiting aggregate membership evidence to known canonical records.
+- Historical in-window ledger issues with persisted marker references can produce marker edges without being reselected. Historical issues lacking those references may produce them only from successful bounded text backfill; unavailable text produces no marker edge.
+- Preserve separate marker and file-intersection edges when both detectors support the same directional issue pair.
+- Use strict trailing-window boundaries consistently and test fixes exactly 7 or 14 days old.
+- Compute chronic connectedness from chain components, not merely from two zone members each having unrelated external edges.
+- A deep verdict overrides earlier mechanical or triage evidence tiers.
+- A verified issue is an active-manifest issue with a current canonical final `MECH`, `TRIAGE`, or `DEEP` tier that is not pending `NEEDS_DEEP` or incomplete triage; use no other predicate in snapshots or deltas.
+- Risk promotion never bypasses the verified-triage evidence-token gate for `FIXED_CLEAR` or `FIXED_LIKELY` records.
+- An issue matching several promotion rules enters the queue once with its highest-priority reason.
+- A calibration sample already selected by risk routing remains a risk candidate, not a second sampled queue row.
+- Missing optional metadata in legacy ledger rows must not break loading or report rendering.
+- Historical hydration may improve an in-memory analytics view, but unprobeable git or issue-text metadata remains unavailable and cannot be inferred from unrelated records.
+- Edge ordering changes must not change snapshot identities, deltas, or rerendered report text.
+
+## Failure modes
+
+- Git metadata probes can fail or return malformed timestamps or numstat rows. Keep the issue usable for existing verification, omit unsupported analytics, and record no fabricated values.
+- Historical issue-text lookup can fail, return malformed data, or be unavailable. Keep existing verification behavior, omit only unsupported marker edges, and persist no fabricated marker references.
+- Restricting analytics to the active manifest can hide historical chains and chronic activity. Build all aggregates from the canonical in-window ledger corpus plus current manifest overlays.
+- Collapsing ledger rows by cache key loses cross-key and append-order evidence required for deterministic canonical selection. Use the append-order analytics corpus loader before per-issue canonicalization.
+- Repeated ledger rows, multiple cache keys, and re-verifications can inflate zone and churn counts or retain obsolete SHAs unless canonical issue selection occurs before aggregate calculation.
+- Cache-complete issues can otherwise lose metadata because they do not produce a new verdict ingest; the coordinator metadata upsert must cover every selected manifest issue.
+- Verdict upserts can otherwise discard coordinator-derived metadata; carry fields forward through every mapping, merge, and serialization path.
+- Using wall-clock time can change rerendered results. Use the manifest timestamp.
+- Selecting a later snapshot as the predecessor for an older active run can make deltas nondeterministic. Only compare against a valid snapshot that strictly precedes the active run.
+- Leaving verified-issue membership implicit can make `Since last run` unstable across implementation paths. Pin the final-tier, non-pending predicate in snapshot construction, validation, and tests.
+- Updating durable snapshots or historical hydration rows before rendering succeeds can corrupt later deltas or publish incomplete state. Validate and render first, then append metadata and atomically write the snapshot.
+- Queue truncation can hide systemic risk. Persist every dropped candidate and its promotion reason.
+- Report changes can move or alter the cost footer. Pin the exact `ANALYZE_BUGS_COST_ESTIMATE` grammar in the golden test.
+
+## Files to modify/create
+
+### UPDATED: python/larch/issue/analyze_bugs.py
+
+- Add frozen analytics dataclasses for coordinator fix metadata, canonical records, directional chain edges, chronic zones, aggregate state, routing candidates, marker-evidence hydration, and run snapshots.
+- Add pure zone, marker-chain, file-chain, churn, chronic-component, promotion, evidence-tier, verified-issue, canonical-record selection, and delta helpers.
+- Add an append-order analytics-corpus loader that scans valid `ledger.jsonl` rows without replacing the existing cache-key ledger loader used for upsert and ingest paths.
+- Add `build_analytics_view(manifest, ledger, runner)` that unions the in-window repository ledger corpus with active manifest overlays, hydrates missing git metadata and bounded missing historical marker evidence read-only, and supplies routing and reporting from one deterministic state.
+- Canonicalize records per issue by active matching overlay, then valid `updated_at`, then valid ledger append ordinal.
+- Extend ledger parsing and serialization additively, including marker-reference metadata and coordinator metadata carry-forward across `_ledger_record_from_mapping`, `_upsert_record`, and `_record_json`.
+- Add the metadata-only ledger upsert for every prefetched manifest issue, including cache-skipped issues, without changing bundle markdown or agent result formats.
+- Persist successful historical git and marker-evidence hydration only after report validation succeeds.
+- Integrate canonical analytics into deep candidate selection, verified-triage risk gating, cap-drop logging, evidence-tier and verified-issue derivation, report rendering, predecessor-constrained snapshot selection, and run-state persistence.
+- Set the ledger command’s `--sample` default to three while retaining explicit zero support.
+- Preserve existing CLI registrations, stdout KVs, and cost-line text.
+
+### UPDATED: python/tests/issue/test_analyze_bugs.py
+
+- Add table-driven zone mapping coverage, including Python packages, skills, scripts, docs, short paths, and root files.
+- Test marker detection for each required phrase, case variation, stripped bodies, missing references, unrelated text, and directional marker-edge identity.
+- Test historical in-window marker chains for unselected ledger issues with persisted references, successful bounded missing-reference backfill, failed backfill, and deferred persistence only after report validation succeeds.
+- Test file-intersection edges inside and outside the 14-day boundary, newer-to-prior direction, and stable edge identities under input permutation.
+- Test analytics construction from historical in-window ledger records plus active manifest overlays, proving chronic zones, churn, marker chains, file intersections, and risk routing are not limited to current manifest issues.
+- Test the append-order analytics corpus with two cache keys or fix SHAs for one issue, including active-overlay precedence, `updated_at` ordering, equal timestamps, absent legacy timestamps, and append-order tie breaking.
+- Test read-only hydration of missing historic metadata, safe handling of failed probes, and persistence only after successful report validation.
+- Test the three-fixes-in-seven-days churn threshold and deduplication by fix commit.
+- Test both chronic-zone thresholds, including a cross-zone connected path whose in-zone members satisfy the rule and disconnected external edges that do not.
+- Test baseline matching and non-matching nested or unrelated JSON files.
+- Test all four risk-promotion rules, their priority order, deduplication, the verified-triage requirement for each risk source, interaction with existing triage-doubt candidates, sampling order, and dropped-candidate records.
+- Test the default sample value of three and explicit `--sample 0`.
+- Test evidence-tier precedence and the single verified-issue predicate, including pending deep work, incomplete triage, mechanical-only final verdicts, verified triage finals, and deep finals.
+- Test metadata-only upserts for cache-complete selected issues and analytics-field preservation when later triage or deep verdict upserts occur.
+- Test first-run and subsequent snapshot deltas, verified-issue additions under the defined predicate, zone entry and exit, canonical directional new edges, predecessor selection for an older rerender when newer snapshots exist, idempotent rerendering, malformed snapshots, and permuted edge order.
+- Add an inline golden report fixture that exercises the tier column, all four new sections, calibration output, chronic-zone suggestion, cap-drop behavior, verified delta membership, and the unchanged cost footer.
+- Retain existing legacy-ledger, corrupt-ledger, evidence-token, follow-up, and CLI dispatch coverage.
+
+### UPDATED: .claude/skills/analyze-bugs/SKILL.md
+
+- Document that `--sample K` defaults to `3`, including how to disable calibration with `--sample 0`.
+- Document risk-routed deep promotion rules, their priority, and the verified-triage prerequisite for risk promotion.
+- State that `--deep-max` drops are logged with reasons.
+- Describe the evidence-tier column, chronic zones, fix chains, baseline-extending fixes, since-last-run delta, verified-issue meaning, false-pass rate, and `/learn-from-bugs` suggestion.
+- Keep the existing preflight, Task dispatch, agent paths, whole-line KV parsing, report-only behavior, and filing gate unchanged.
+
+## Testing strategy
+
+- Run the focused unit suite:
+  - `python3 -m pytest python/tests/issue/test_analyze_bugs.py -q`
+- Run lint and type checks scoped to the changed Python module and test file through the repository’s configured pre-commit hooks.
+- Run Markdown and skill-specific hooks on `.claude/skills/analyze-bugs/SKILL.md`, including consecutive-fence and skill flag checks.
+- Confirm tests assert that no agent bundle fields or result JSONL fields changed.
+- Confirm analytics tests use historical ledger records outside the active manifest selection.
+- Confirm the analytics-corpus tests preserve valid ledger append order and prove deterministic canonical selection across equal or legacy timestamps.
+- Confirm tests cover historical marker-reference persistence, bounded missing-reference backfill, failed backfill behavior, cache-skipped metadata persistence, and analytics-field carry-forward through verdict upserts.
+- Confirm tests pin the final-tier, non-pending verified-issue predicate for run-state serialization and `Since last run` deltas.
+- Confirm the golden report ends with the exact `ANALYZE_BUGS_COST_ESTIMATE=...` grammar.
+- Confirm repeated report rendering produces the same predecessor, delta, edge identities, and report text for the same run, even after later run snapshots exist.
+
+## Acceptance
+
+- Run the focused unit suite:
+  - `python3 -m pytest python/tests/issue/test_analyze_bugs.py -q`
+- Run lint and type checks scoped to the changed Python module and test file through the repository’s configured pre-commit hooks.
+- Run Markdown and skill-specific hooks on `.claude/skills/analyze-bugs/SKILL.md`, including consecutive-fence and skill flag checks.
+- Confirm tests assert that no agent bundle fields or result JSONL fields changed.
+- Confirm analytics tests use historical ledger records outside the active manifest selection.
+- Confirm the analytics-corpus tests preserve valid ledger append order and prove deterministic canonical selection across equal or legacy timestamps.
+- Confirm tests cover historical marker-reference persistence, bounded missing-reference backfill, failed backfill behavior, cache-skipped metadata persistence, and analytics-field carry-forward through verdict upserts.
+- Confirm tests pin the final-tier, non-pending verified-issue predicate for run-state serialization and `Since last run` deltas.
+- Confirm the golden report ends with the exact `ANALYZE_BUGS_COST_ESTIMATE=...` grammar.
+- Confirm repeated report rendering produces the same predecessor, delta, edge identities, and report text for the same run, even after later run snapshots exist.
+
+review_status: complete
+rounds_completed: 2
+difficulty: HARD
+diff_lines: 1185

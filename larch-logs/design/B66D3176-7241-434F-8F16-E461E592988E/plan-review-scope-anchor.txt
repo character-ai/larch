@@ -1,0 +1,45 @@
+#### Problem
+
+`/analyze-bugs` verifies filed bugs one at a time and renders per-issue green rows. It cannot see the treadmill. A representative run on 2026-07-11 verified 10 issues and reported 9 confirmed-or-likely fixed, zero incomplete, zero regressed. Structural gaps that run exposed:
+
+- Every verdict was a triage-tier verdict (haiku over a capped diff). `deep-queue.jsonl` was empty: nothing routed to the sonnet verifier because routing keys only on triage doubt, and triage was confident.
+- The calibration sample was 0 (`--sample` is opt-in), so the triage false-pass rate is unmeasured in practice.
+- Three of the 10 issues were the same subsystem churning (Step 8 CI fixer: #6931, #6946, #6959) and the report had no way to say so. Chains like #6882 to #6898 to #6955 and #6610 to #6668 are invisible.
+- 28 fix commits extended `python/complexity-baseline.json` between 2026-07-08 and 2026-07-11; the funnel never flags baseline-extending fixes.
+
+The persistent ledger (`~/.cache/larch/analyze-bugs/<repo>/ledger.jsonl`) already stores per-issue verdicts, touched files, and cache keys across runs. Nothing aggregates it.
+
+#### Required design
+
+All changes are coordinator-side (`python/larch/issue/analyze_bugs.py` plus `.claude/skills/analyze-bugs/SKILL.md` docs). No bundle-format or agent-prompt changes in this issue.
+
+1. Zone mapping. Map each `touched_files` entry to a zone: for `python/larch/<pkg>/...` the zone is `python/larch/<pkg>`; otherwise the first two path components (`skills/<name>`, `scripts`, `docs`). Pure function with unit tests.
+2. Chain detection, two detectors:
+   - Marker-based: issue title or stripped body matches `incomplete`, `persists after #N`, `residual`, `regression from`, or `after the #N fix` with an issue reference; record a chain edge to the referenced issue.
+   - File-intersection: a fix commit whose touched files intersect a prior ledger fix's touched files within 14 days; record a chain edge between the two issues.
+3. Fix-churn metric: any file appearing in 3 or more fix commits within a trailing 7-day window.
+4. Chronic zone: a zone with 3 or more ledger bugs in the trailing 14 days, or 2 or more connected by chain edges.
+5. Baseline-extension flag: a fix diff touching any `python/*-baseline.json` sets a per-issue flag.
+6. Risk-routed deep queue. Promote an issue to the deep queue even when triage said `FIXED_CLEAR` or `FIXED_LIKELY` when any of: (a) its fix touched a chronic zone; (b) the fix added more than 300 lines; (c) a chain edge touches the issue; (d) the fix touched both `python/` and `scripts/` or `skills/` in one commit (cross-language contract surface). Priority order: chain-linked, then chronic-zone, then cross-language, then size. Keep the `--deep-max` cap; log dropped candidates instead of truncating silently.
+7. Calibration default: `--sample` defaults to 3; the report always prints the triage false-pass rate.
+8. Report additions, in order: an evidence-tier column in the Issues table (`MECH` / `TRIAGE` / `DEEP`); a `Chronic zones` section (zone, bug count, member issues); a `Fix chains` section (edges with detector kind); a `Baseline-extending fixes` section; a `Since last run` delta block (bugs newly selected, newly verified, new chain edges, zones entering or leaving chronic status). When chronic zones are non-empty, end the report with a suggestion line naming `/learn-from-bugs` scoped to those zones.
+9. Preserve the whole-line `KEY=value` stdout grammar and the `ANALYZE_BUGS_COST_ESTIMATE` line unchanged.
+
+#### Tests
+
+Unit tests in the existing analyze-bugs test module (tree-unique basenames per python/tests convention): zone mapping, both chain detectors, churn metric, chronic-zone threshold, all four promotion rules and their priority order, sample default, delta computation, and a report golden fixture exercising every new section.
+
+#### Non-goals
+
+No new agents, no bundle-format changes, no sweep stage, no runtime execution. Those are sibling `bug-treadmill` issues.
+
+#### Acceptance criteria
+
+1. On a fixture ledger containing a churning zone and a chain, the report renders all four new sections and the tier column.
+2. A triage-clear fix in a chronic zone lands in the deep queue.
+3. `--sample` defaults to 3; false-pass rate always printed.
+4. `.claude/skills/analyze-bugs/SKILL.md` documents the new flags, sections, and routing rules.
+
+#### Backing evidence
+
+142 `[BUG]` issues in 11 days at a steady 8-24/day; origin classification of the last 38: 39% first-exercise failures of new code, 24% residuals of earlier fixes, 1 old-latent. The report that said "9 of 10 fixed" was correct per-issue and useless for the trend. Part of the `bug-treadmill` umbrella; blocks the blast-radius, sweep, and runtime-tier siblings.
