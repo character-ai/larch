@@ -1,0 +1,34 @@
+v1	mark	1783839878	design	design Step 0: session setup	-	-	-	-	-	-	-	-
+v1	mark	1783840891	design	design Step 2b: plan	-	-	-	-	-	-	-	-
+v1	vendor	1783841013	implement	-	codex	codex-plan-draft	1783840894	1783841012	118	step2b-codex-raw.95591.txt	0	complete
+v1	mark	1783841068	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1783841142	implement	-	codex	codex-phase1-codex-plan-innovation	1783841086	1783841141	55	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783841206	implement	-	codex	codex-phase1-codex-plan-arch	1783841086	1783841206	120	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783841215	implement	-	codex	codex-phase1-dyn-codex-plan-vendor-gate-routing	1783841086	1783841215	129	dyn-codex-plan-vendor-gate-routing.txt	0	complete
+v1	vendor	1783841237	implement	-	cursor	cursor-phase1-dyn-cursor-plan-vendor-gate-routing	1783841086	1783841237	151	dyn-cursor-plan-vendor-gate-routing.txt	0	complete
+v1	vendor	1783841237	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783841086	1783841237	151	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783841267	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783841086	1783841263	177	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1783841273	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783841086	1783841270	184	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783841291	implement	-	codex	codex-phase1-codex-plan-requirements	1783841086	1783841290	204	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783841291	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783841086	1783841291	205	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783841296	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783841086	1783841295	209	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783841359	implement	-	codex	codex-phase1-aggregator	1783841321	1783841359	38	aggregator-output.txt	0	complete
+v1	vendor	1783841417	implement	-	codex	codex-phase1-voter-2	1783841373	1783841416	43	codex-plan-fidelity-vote-output.txt	0	complete
+v1	vendor	1783841424	implement	-	codex	codex-phase1-voter-1	1783841373	1783841424	51	codex-validity-vote-output.txt	0	complete
+v1	vendor	1783841433	implement	-	codex	codex-phase1-voter-3	1783841373	1783841433	60	codex-pragmatism-vote-output.txt	0	complete
+v1	vendor	1783841509	implement	-	codex	codex-plan-autofix	1783841434	1783841509	75	codex-output.txt	0	complete
+v1	round	1783841515	design	design Step 3 — plan review	1	1783841083	1783841515	432	0	0	-	1
+v1	vendor	1783841519	design	-	claude	gate-b-apply	1783841509	1783841519	10	gate-b-apply-round-1.out	0	complete
+v1	vendor	1783841647	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783841524	1783841646	122	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783841653	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783841524	1783841652	128	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783841700	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783841524	1783841700	176	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783841713	implement	-	codex	codex-phase1-aggregator	1783841704	1783841713	9	aggregator-output.txt	0	complete
+v1	vendor	1783841743	implement	-	codex	codex-phase1-voter-3	1783841723	1783841743	20	codex-pragmatism-vote-output.txt	0	complete
+v1	vendor	1783841746	implement	-	codex	codex-phase1-voter-1	1783841723	1783841746	23	codex-validity-vote-output.txt	0	complete
+v1	vendor	1783841749	implement	-	codex	codex-phase1-voter-2	1783841723	1783841749	26	codex-plan-fidelity-vote-output.txt	0	complete
+v1	round	1783841751	design	design Step 3 — plan review	2	1783841521	1783841751	230	0	0	-	1
+v1	mark	1783841830	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783841840	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1783841840	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1783842165	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783842181	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-

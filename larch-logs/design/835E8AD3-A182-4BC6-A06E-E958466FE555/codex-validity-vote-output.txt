@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate neutral finding; contract documentation drift is not necessary to deliver the feature.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan explicitly appends the classified upgrade REASON in the Step 2 selection-drift branch.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan requires per-attempt detection and retaining the actionable reason on safety failures.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan explicitly fails closed and states safety-check failures bail rather than continue with Claude.
