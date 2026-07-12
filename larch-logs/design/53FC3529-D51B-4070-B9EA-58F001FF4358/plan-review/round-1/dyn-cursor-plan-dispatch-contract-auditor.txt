@@ -1,0 +1,32 @@
+Reviewing the plan against the current dispatch implementations and voter KV contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/review/plan_review_panel.py:161-168	Shared panel row builders must not use raw SlotDefault.model_role for plan-review Codex slots	Topology-only builders would ignore difficulty.codex_review_model_role_for_archetype and DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES, so HARD arch/innovation rows could get the wrong Codex role and resolved_model versus today	Keep static/generic/dynamic render orchestration in plan_review_panel.py; limit shared builders to attribution helpers and require an injected role resolver (tier + archetype) for design.plan_review_panel Codex rows
+1	in_scope	major	correctness	python/tests/review/test_plan_review_panel.py:544-544	plan_review_panel.py omits the module-level alias contract that agent_voters.py already has	Tests monkeypatch plan_review_panel._parse_rate_retry and _fresh_calibration_stats_file; moving helpers to dispatch_shared without re-exports breaks the unchanged-suite acceptance gate	Match agent_voters.py: add plan_review_panel re-exports/aliases for _parse_rate_retry, _fresh_calibration_stats_file, and any other moved symbols tests patch
+1	in_scope	major	risk-integration	python/larch/agents/agent_voters.py:470-484	Unifying code-review final emit onto voter-status-block changes wire grammar for VOTER_PATHS_FILE	agent_voters always emits VOTER_PATHS_FILE via logging_util.emit_kv; voting.voter_status_block_main omits it when the paths file is missing or zero-length (python/larch/review/voting.py:1364-1365)	Document the code-review paths-file non-empty invariant in the shared emitter contract, or add an explicit family flag so code-review keeps always-emit behavior while plan-review keeps the path gate
+1	in_scope	minor	architecture	python/larch/review/plan_review_panel.py:351-415	[SCOPE-REDUCTION] Plan text over-binds shared panel builders to full static/generic/dynamic orchestration	Dynamic plan rows need scout loading, render subprocesses, per-slot failure warnings, and accounting; folding that into dispatch_shared.py expands piece 1 toward panel orchestration, not dispatch dedup	Restrict shared panel surface to _resolved_model_for_row, manifest attribution, and topology-keyed metadata; leave _static_slot_rows, _generic_plan_codex_row, and _dynamic_slot_rows local with shared attribution calls only
+
+## Findings
+
+### 1. code-quality — `python/larch/review/plan_review_panel.py:161-168`
+
+Plan-review static Codex rows do not take `model_role` from `external_defaults.slot_defaults("design.plan_review_panel")`. They call `difficulty.codex_review_model_role_for_archetype("design.plan_review_panel", slot.archetype, tier)` before `_resolved_model_for_row`. Config slots carry `model_role="default"` for all Codex archetypes (`python/larch/core/config.py:483-494`), while overrides live in `DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES` (`python/larch/core/config.py:331-336`).
+
+The plan only says topology-keyed panel row builders over `slot_defaults()`. That is not enough for plan-review correctness. **Suggested revision:** keep render/subprocess orchestration in `plan_review_panel.py`; share only attribution/resolver helpers and require an injected role resolver for `design.plan_review_panel` Codex rows (tier + archetype).
+
+### 2. correctness — `python/tests/review/test_plan_review_panel.py:544`, `699`
+
+Acceptance requires `python/tests/review/test_plan_review_panel.py` unchanged. Many tests monkeypatch `plan_review_panel._parse_rate_retry` and `plan_review_panel._fresh_calibration_stats_file`. The plan requires module-level aliases only in `agent_voters.py`, not in `plan_review_panel.py`. **Suggested revision:** add the same re-export/alias pattern to `plan_review_panel.py` for every moved private helper tests patch.
+
+### 3. risk-integration — `python/larch/agents/agent_voters.py:470-484` vs `python/larch/review/voting.py:1364-1375`
+
+The plan routes both families through `voting voter-status-block`. Today code-review emits `VOTER_PATHS_FILE` unconditionally (`agent_voters.py:483`). Plan-review gates it on a non-empty paths file (`voting.py:1364-1365`). That is a real wire difference, not just key order. **Suggested revision:** spell out whether code-review keeps always-emit semantics or adopts the gate, and encode it in `test_dispatch_shared.py` plus one `test_agent_voters.py` edge case if the gate applies.
+
+### 4. architecture — plan `UPDATED: python/larch/review/plan_review_panel.py` (dynamic rows)
+
+The plan says shared panel row builders cover static, generic, and dynamic plan reviewers. Dynamic rows (`plan_review_panel.py:351-415`) own scout manifest loading, per-slot `render plan-review` subprocesses, failure warnings, and payload accounting. Pulling that into `dispatch_shared.py` is scope creep for piece 1 and hurts local testability. **Suggested revision:** limit shared panel exports to model attribution and manifest row stamping; keep dynamic/static/generic orchestration in `plan_review_panel.py`.
+
+## Assessment
+
+The plan correctly bounds tally and `snapshot.py` work out of scope, preserves family-local degraded-panel paths (`agent_voters._effective_judges` vs plan-review `voting effective-judges`/`degraded-warning`), keeps parse-rate argv and runner seams family-local, and fixes the real `_resolved_model_for_row` drift (`agent_voters.py:331-349` vs canonical three-arg form in `review_dispatch_panel.py:228-240` and `plan_review_panel.py:252-271`). Topology keys (`review.panel`, `design.plan_review_panel`, `review.voters`, `design.plan_voters`) match `python/larch/core/config.py` and `external_defaults.py`.
+
+The gaps above are fixable without expanding into tally or snapshot-family work. Address items 1–3 before implementation; item 4 keeps the diff aligned with minimum-change intent.

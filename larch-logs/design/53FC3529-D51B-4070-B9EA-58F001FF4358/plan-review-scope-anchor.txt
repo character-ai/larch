@@ -1,0 +1,70 @@
+Partition piece 1 of 3 split from #7002.
+
+**Scope**: Extract one shared panel/voter dispatch layer for both plan-review and code-review. Covers `DispatchState`, slot-row builders parameterized by topology key, model attribution (single `_resolved_model_for_row`), calibration snapshot, the 14 `VOTER_*` final-KV emitter, and parse-rate retry. Touches `python/larch/agents/agent_voters.py`, `python/larch/review/review_dispatch_panel.py`, and both dispatch halves of `python/larch/review/plan_review_panel.py` (panel dispatch and voter dispatch), plus a new shared dispatch module. Highest drift risk: `_resolved_model_for_row` exists in three copies and one has already drifted.
+
+**Firm headings**: python/larch/agents/agent_voters.py, python/larch/review/review_dispatch_panel.py, python/larch/review/plan_review_panel.py
+
+**Acceptance**:
+
+`_resolved_model_for_row` has one definition on the canonical `model_role` signature; both families route through the shared `DispatchState`, slot-row builders, and final-KV emitter; the 14 `VOTER_*` final KVs stay identical; `python/tests/agents/test_agent_voters.py`, `python/tests/agents/test_external_dispatch.py`, `python/tests/review/test_plan_review_panel.py`, and `python/tests/implement/test_implement_dispatch.py` pass unchanged; net line reduction; each drift-convergence change is called out for review.
+
+**Dependencies (from proposal)**: none
+
+```
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Merge plan-review onto code-review machinery
+
+​#### Problem
+
+Plan review was ported beside, not onto, the code-review pipeline, so the two families re-implement the same stages in parallel.
+
+Voter dispatch: `agents/agent_voters.py` (659 lines) vs `review/plan_review_panel.py:682-1268` (~590) define parallel `DispatchState`/`VoterPromptResult`, byte-identical `_feedback_enabled`, ~40-line `_fresh_calibration_stats_file` variants, the same 14 `VOTER_*` final KVs, and the same parse-rate retry. Panel dispatch: `review_dispatch_panel.py` (943) vs `plan_review_panel.py:101-681`; `_resolved_model_for_row` exists in 3 copies (third in agent_voters.py:331) and has already drifted textually past the R0801 radar.
+
+Tally: `review_tally.py` (1,482) and `plan_review_tally.py` (1,056) both drive the shared `voting.py` primitives but each re-implements the per-item vote loop, classification-TSV row writing, score rows, and OOS artifact pooling; `_finding_oos_reroute_marker` is verbatim in both (review_tally.py:662, plan_review_tally.py:62). `snapshot.py` carries a third small twin family (pre-coder :60-845 vs pre-self-review :849-996, differing only in artifact prefix and root).
+
+​#### Goal
+
+A shared panel/voter dispatch layer (DispatchState, slot-row builders parameterized by topology key, model attribution, calibration snapshot, final-KV emitter) plus one per-item tally/adjudication engine over voting.py with family hooks. Both families become configuration plus prompts. Parameterize the snapshot family by (root, prefix).
+
+​#### Size
+
+About 5.4k lines involved; net reduction 1,200-1,800 lines, and voting-policy changes stop being two-site shotgun edits.
+
+​#### Dependencies
+
+Land after the FINDING/OOS block-grammar owner (same files; the merged tally should consume the single parser).
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Create `python/larch/review/dispatch_shared.py` with a single canonical `DispatchState`, `_resolved_model_for_row`, `_fresh_calibration_stats_file`, `_emit_final_kvs`, and parse-rate retry helper.
+- Remove three diverged copies of `_resolved_model_for_row` and two copies of `DispatchState`/`_emit_final_kvs`; both families import from the shared module.
+- Achieve net line reduction; ensure all four acceptance-criterion test suites pass unchanged.
+
+### Non-goals
+- Tally unification (`review_tally.py` / `plan_review_tally.py`) — piece 2.
+- Snapshot family parameterization (`snapshot.py`) — piece 3.
+- Broader `review_dispatch_panel.py` refactor beyond voter dispatch.
+
+### Approach sketch
+- Add `python/larch/review/dispatch_shared.py`: `DispatchState` with `Path` voter paths, `_resolved_model_for_row(tool, model_role, default_model)`, `_fresh_calibration_stats_file(tmpdir)`, `_emit_final_kvs`, `_run_parse_rate_retry`.
+- `agent_voters.py`: delete local duplicates, import from `dispatch_shared`; adapt `str()` casts at boundary.
+- `plan_review_panel.py` (voter half): delete local `DispatchState`, `VoterPromptResult`, `_resolved_model_for_row`, `_fresh_calibration_stats_file`, `_emit_final_kvs`; import from `dispatch_shared`.
+- `review_dispatch_panel.py`: delete local `_resolved_model_for_row`; import from `dispatch_shared`.
+- Add `python/tests/review/test_dispatch_shared.py` covering the shared helpers.
+
+### Surfaces in scope
+- `python/larch/review/dispatch_shared.py` (new)
+- `python/larch/agents/agent_voters.py`
+- `python/larch/review/review_dispatch_panel.py`
+- `python/larch/review/plan_review_panel.py`
+- `python/tests/review/test_dispatch_shared.py` (new)
+
+### Open questions
+- None.

@@ -1,0 +1,99 @@
+## Approach
+
+Create one shared review dispatch module. Move common state and contract logic into it, while keeping prompt rendering, availability policy, warnings, and launch behavior in each owning dispatcher.
+
+Parameterize shared panel and voter row builders with topology keys such as `review.panel`, `design.plan_review_panel`, `review.voters`, and `design.plan_voters`. Preserve each family’s configured slots and model roles.
+
+Converge these known drifts for focused review:
+
+- Use the canonical `_resolved_model_for_row(tool, model_role, default_model)` signature. Remove the code-review voter’s hardcoded vote-role variant.
+- Store voter paths as `Path` in `DispatchState`. Convert them with `str()` only at subprocess, manifest, and KV boundaries.
+- Use `python/cli.py voting voter-status-block` for both final emitters. Preserve the existing 14-key contract, order, path-file gate, and `DISPATCH_OK`.
+- Share calibration snapshot creation while retaining each family’s repository-root resolution and fail-soft behavior.
+- Share parse-rate result validation while retaining family-specific retry arguments, prompt paths, context flags, runner seams, and launch labels.
+
+### NEW: python/larch/review/dispatch_shared.py
+
+- Add the canonical mutable `DispatchState` with `Path` voter fields and shared status defaults.
+- Add the shared prompt-result value type needed by both voter dispatchers.
+- Add topology-keyed panel and voter slot-row builders over `external_defaults.slot_defaults()` and `external_defaults.voter_policies()`.
+- Centralize model attribution in one `_resolved_model_for_row` implementation. Normalize unsupported roles to `default`, preserve explicit default-model selection, and return `unknown` on invalid resolver input.
+- Centralize manifest row attribution so both panel families record the same vendor, role, and resolved-model fields.
+- Add a calibration snapshot helper with an injected runner and family root inputs. Preserve feedback opt-out, same-directory temporary files, atomic replacement, cleanup, and `None` on snapshot failure.
+- Add a parse-rate retry helper that accepts the family-specific argv and runner. Return only `OK` or `NOT_SUBSTANTIVE`; fail closed on a nonzero exit, empty output, or an unknown final status.
+- Add the shared final-KV emitter. Invoke `voting voter-status-block`, forward its stdout unchanged, then emit `DISPATCH_OK`.
+- Keep filesystem and subprocess policy at injected boundaries so existing tests can stub the same runners.
+
+### UPDATED: python/larch/agents/agent_voters.py
+
+- Replace the local `DispatchState`, prompt-result type, calibration snapshot, model resolver, parse-rate validator, final emitter, and duplicated voter row assembly with imports from `dispatch_shared`.
+- Load voter policies through the shared topology-keyed builder using `review.voters`.
+- Pass `model_role="vote"` when resolving code-review voter models. This fixes the drifted two-argument resolver while preserving difficulty-specific default models.
+- Normalize waterfall binding paths to `Path`. Convert paths to strings only when writing manifests, invoking CLI commands, checking `.done` files, writing the paths file, and emitting KVs.
+- Route calibration and parse-rate calls through the shared helpers with the current code-review arguments and `proc.run` seam.
+- Route final output through the shared CLI-backed emitter. Preserve degraded-panel calculation, warning text, dispatch success rules, and output ordering.
+- Retain module-level imported aliases where existing focused tests monkeypatch private helpers.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+- Remove the local `_resolved_model_for_row`.
+- Use shared topology-keyed row and attribution helpers with `review.panel`.
+- Preserve trivial-tier filtering, tool availability checks, configured cursor models, generic-reviewer scheduling, dynamic scout rendering, output paths, weights, and focus areas.
+- Keep code-review-specific prompt and agent-file construction local.
+
+### UPDATED: python/larch/review/plan_review_panel.py
+
+- Remove the local `DispatchState`, prompt-result type, `_resolved_model_for_row`, calibration snapshot, parse-rate result validation, final-KV emitter, and duplicated row attribution logic.
+- Use shared panel row builders with `design.plan_review_panel` for static, generic, and dynamic plan reviewers.
+- Use shared voter policy and manifest-row builders with `design.plan_voters`.
+- Preserve plan-specific prompt rendering, scope anchors, payload accounting, dynamic-render warnings, pruning, the Claude-only retry lane, waterfall timeouts, effective-judge rules, and `VOTER_1_RETRIED`.
+- Pass the existing subprocess and `larch_proc` seams into shared helpers so current tests remain unchanged.
+- Convert canonical `Path` state fields to strings only at command and wire boundaries.
+
+### NEW: python/tests/review/test_dispatch_shared.py
+
+- Test model resolution for cursor, each accepted Codex role, difficulty defaults, invalid roles, and resolver failures.
+- Test that panel and voter row builders consume the supplied topology key and preserve configured slot metadata.
+- Test `DispatchState` path typing and status defaults.
+- Test calibration opt-out, successful atomic replacement, repository log-root forwarding, failed snapshots, empty snapshots, and temporary-file cleanup.
+- Test parse-rate retry handling for valid, empty, unknown, and nonzero results.
+- Test the final emitter’s exact CLI argv, KV order, conditional `VOTER_PATHS_FILE`, and `DISPATCH_OK` output.
+- Add regression assertions for each drift convergence listed above.
+
+## Edge cases
+
+- A voter path may be absent, skipped, failed, empty, or lack a successful `.done` sidecar.
+- A voter paths file may exist but be empty. Preserve the status-block path gate.
+- Tool configuration may omit Codex or Cursor, or use an explicit Cursor model.
+- A model role may be missing or invalid. Resolve it as `default`, not `vote`.
+- Calibration may be disabled, unable to resolve a log root, fail its subprocess, or produce an empty file.
+- Parse-rate retry may return diagnostics before its status. Read the final non-empty line only.
+- Dynamic plan-review rendering may fail for one slot. Preserve its per-slot warning and accounting.
+
+## Failure modes
+
+- Treat calibration failure as unavailable feedback, not dispatch failure.
+- Treat parse-rate subprocess failure or malformed output as `NOT_SUBSTANTIVE`.
+- Preserve partial-waterfall accounting and per-slot failed or skipped states.
+- Do not emit a successful dispatch when no effective judge remains.
+- Do not silently change manifest attribution or the final voter KV grammar.
+- Keep tally unification, snapshot-family parameterization, and broader dispatch redesign out of scope.
+
+## Testing strategy
+
+Run the new focused shared-module tests:
+
+- `python3 -m pytest python/tests/review/test_dispatch_shared.py`
+
+Run all unchanged acceptance suites:
+
+- `python3 -m pytest python/tests/agents/test_agent_voters.py`
+- `python3 -m pytest python/tests/agents/test_external_dispatch.py`
+- `python3 -m pytest python/tests/review/test_plan_review_panel.py`
+- `python3 -m pytest python/tests/implement/test_implement_dispatch.py`
+
+Run lint only for the changed Python files through the repository’s scoped Python lint commands. Confirm the production diff has a net line reduction and grep for remaining definitions of `_resolved_model_for_row`, `DispatchState`, calibration snapshot, parse-rate validation, and the final voter emitter.
+
+difficulty: HARD
+mechanical_churn: false
+diff_lines: 760
