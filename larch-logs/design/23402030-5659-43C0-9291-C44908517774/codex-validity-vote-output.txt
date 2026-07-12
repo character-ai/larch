@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already explicitly preserves duplicate-heading diagnostics and SystemExit behavior.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This repeats a rejected prior finding and the plan already preserves the zero-voter stub contract.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The intended canonical-parser convergence defines the grammar direction; legacy compatibility is not required by scope.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Updating focused regression coverage is within the feature plan; unchanged acceptance means preserved behavior, not immutable test files.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior OOS observation.
