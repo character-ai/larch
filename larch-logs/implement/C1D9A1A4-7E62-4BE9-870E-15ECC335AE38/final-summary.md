@@ -56,10 +56,11 @@ No meaningful deviations identified. The change is a comprehensive class-level f
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:59:01
-- **Cost**: 💰 TOTAL ~$32.12: Claude $11.48, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $8.07  |  Tokens: 63315k
+- **Cost**: 💰 TOTAL ~$36.38: Claude $15.74, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $8.07  |  Tokens: 76308k
 - **Issue**: #7054: https://github.com/character-ai/larch/issues/7054
 - **PR**: #7090: https://github.com/character-ai/larch/pull/7090
 - **Plan review**: N/A
+- **Plan coverage**: 26/32 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/8 accepted
