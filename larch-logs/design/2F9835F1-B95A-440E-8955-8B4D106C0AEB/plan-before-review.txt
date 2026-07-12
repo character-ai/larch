@@ -1,0 +1,150 @@
+## Approach
+
+Extend the existing `/analyze-bugs` coordinator rather than creating a second workflow. Pin each sweep to the synced `origin/main` tip. Enumerate first-parent commits after the saved marker, or from the prior 48 hours on first use.
+
+Exclude log-only and release commits before ranking. Rank chronic-zone commits first, then larger diffs. Sweep at most `--sweep-max` commits and report the omitted count. A successful capped sweep advances the marker to the pinned tip, so skipped commits are an explicit budget omission rather than a deferred queue.
+
+Build one bounded evidence bundle per selected commit. Include the capped diff, touched files, chronic-zone tags, and a minimal bounded scan for consumers of changed Python symbols. Dispatch the finder once per bundle, then dispatch a refuter for each bounded finding. Treat malformed, missing, or incomplete agent output as a failed sweep.
+
+Render surviving findings in `Sweep candidates`. Add them to the existing combined follow-up body. Keep the existing approval gate and invoke `/issue` with dedup enabled.
+
+### UPDATED: python/larch/issue/analyze_bugs.py
+
+- Add frozen sweep domain records for state, commits, bundles, findings, and refutation results.
+- Define local sweep constants for schema version, default limit `20`, 48-hour initial window, diff caps, symbol and consumer caps, and allowed severity and confidence values.
+- Add strict `sweep-state.json` loading beside the repository’s `ledger.jsonl`.
+  - Accept exactly `last_sweep_sha`, `last_sweep_at`, and `schema_version`.
+  - Reject malformed versions, timestamps, and SHAs.
+  - Treat an absent file as a first sweep.
+  - Write with the existing private atomic JSON helper.
+- Implement `sweep_enumeration`.
+  - Pin `origin/main` once.
+  - Use first-parent history from the saved SHA, or a 48-hour marker window on first run.
+  - Fail loudly when a saved marker is not an ancestor of the pinned tip.
+  - Exclude subjects matching `^chore\(larch-logs\)` or `^Release v`.
+  - Exclude commits whose changed paths are all under `larch-logs/`.
+  - Collect diff size, touched paths, zones, and chronic-zone membership using the existing analytics and zone machinery.
+  - Rank chronic-zone commits first, then descending diff size, with a stable SHA or history-order tie-break.
+  - Apply `--sweep-max` and retain the skipped count.
+- Build private per-commit sweep bundles in the active run directory.
+  - Include the pinned merge SHA, subject, touched files, chronic tags, capped diff, and truncation notices.
+  - Extract a bounded set of changed Python definitions and constants.
+  - Use the injected `Runner` for bounded `git grep` consumer discovery, excluding the defining path and recording truncation.
+  - Pass bundle paths to agents instead of inlining repository evidence.
+- Implement strict JSONL parsers.
+  - Require the finder’s exact `merge_sha` and `findings` schema.
+  - Validate selected SHAs, exact keys, enums, bounded strings, repository-relative files, and finding counts.
+  - Reject duplicate merge rows or missing selected merges.
+  - Parse a separate exact refuter contract keyed to the merge and finding index.
+  - Keep only findings whose refuter verdict says the claim survives.
+  - Escape or normalize agent-authored text before Markdown rendering.
+- Implement `sweep_run` phases used by the skill:
+  - Prepare bundles and emit explicit paths, selected count, skipped count, state path, and pinned tip.
+  - Ingest finder JSONL and create a bounded refutation queue.
+  - Ingest refuter JSONL and write a validated sweep result artifact.
+  - Do not update durable sweep state during preparation or either ingest phase.
+- Add `sweep_main(argv) -> int` with positive `--sweep-max` validation and explicit phase/path arguments. Return non-zero on partial, malformed, stale-tip, or unreadable evidence.
+- Extend report rendering when a validated sweep result exists.
+  - Add a `Sweep candidates` table with merge, file, symbol, severity, confidence, and description.
+  - Print selected and skipped counts.
+  - Print a distinct `ANALYZE_BUGS_SWEEP_COST_ESTIMATE=...` line based on bounded finder and refuter inputs using the existing Sonnet rate lookup.
+  - Add surviving candidates to the existing `follow-up-issue.md` without changing the non-sweep report path.
+  - Write `sweep-state.json` last, only after the report, follow-up body, and other sweep artifacts complete successfully.
+  - Advance the state marker to the sweep’s pinned `origin/main` tip and record the completion time.
+- Preserve current behavior when `--sweep` is absent.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("analyze-bugs", "sweep")` to `sweep_main`.
+- Leave the existing prefetch, ledger, and report registrations unchanged.
+
+### NEW: .claude/agents/sweep-bug-finder.md
+
+- Add a Sonnet agent with `Read`, `Grep`, and `Glob`.
+- Define finder and refuter modes in one agent contract.
+- In finder mode:
+  - Require the agent to read the supplied bundle and inspect the synced checkout.
+  - Ask it to assume the commit planted a bug observable within 48 hours.
+  - Target contract breaks, wrong keys or field names, and static logic errors.
+  - Emit only the required strict finder JSONL schema.
+  - Return an empty findings list when no supported defect exists.
+- In refuter mode:
+  - Require an independent read of the cited code and relevant consumers.
+  - Attempt to disprove the candidate rather than repeat the finder’s reasoning.
+  - Emit strict JSONL keyed by merge SHA and finding index with `survives` or `refuted`.
+- Fail closed on unreadable bundles or checkout evidence. Never invent file contents or tool results.
+- Cap findings per merge to keep refuter fan-out bounded.
+
+### UPDATED: .claude/skills/analyze-bugs/SKILL.md
+
+- Add `--sweep` and `--sweep-max N` to the argument hint and flag allowlist.
+- Default `--sweep-max` to `20`; reject invalid values before Task dispatch.
+- Keep the existing clean, synced `main` preflight.
+- Add sweep stages after prefetch establishes the active run directory:
+  - S0 loads state through the sweep CLI.
+  - S1 enumerates and bundles eligible first-parent commits.
+  - S2 dispatches one finder per selected bundle, validates finder results, then dispatches one refuter per finding.
+  - S3 validates refutations and renders the integrated report.
+- Require every selected merge and queued finding to have a valid result before continuing.
+- Stop without updating state after Task failure, malformed JSONL, missing rows, or report failure.
+- Print the selected count, skipped count, and sweep cost estimate.
+- Keep the existing approval prompt. On approval, invoke `/issue` once with the combined follow-up body and do not pass `--no-dedup`.
+- Document `sweep-state.json` beside `ledger.jsonl` and the first-run 48-hour window.
+- Set expectations clearly: static sweep can find contract breaks, wrong field or key names, and logic errors. It cannot establish that main is bug-free or detect timing failures, vendor CLI drift, GitHub-state failures, or other runtime-only defects.
+
+### UPDATED: python/tests/issue/test_analyze_bugs.py
+
+- Add offline first-parent enumeration fixtures covering:
+  - Saved-marker and first-run 48-hour windows.
+  - Flush-subject and release-subject exclusions.
+  - Commits touching only `larch-logs/`.
+  - Two eligible commits in the acceptance history.
+  - A non-ancestor or malformed saved marker.
+- Test strict sweep-state round trips, absent-state defaults, schema rejection, and private atomic replacement.
+- Prove state remains absent or unchanged after:
+  - Finder failure.
+  - Missing or malformed finder rows.
+  - Partial or malformed refuter output.
+  - Report generation failure.
+- Prove a completed sweep advances state to the pinned tip only after report artifacts exist.
+- Test chronic-zone-first and descending-diff prioritization, deterministic ties, `--sweep-max`, and skipped-count output.
+- Test bundle caps, touched paths, chronic tags, changed-symbol extraction, consumer matches, and truncation notices.
+- Add exact finder and refuter JSONL contract tests for unknown keys, bad enums, duplicate rows, foreign SHAs, invalid paths, and empty findings.
+- Add a golden transcript fixture in the test module where a wrong consumer dictionary key is found and survives refutation.
+- Test report output for `Sweep candidates`, the sweep cost line, skipped-count logging, and inclusion in the combined follow-up body.
+- Test that zero findings is distinct from failed agent output.
+- Test `analyze-bugs sweep --help` dispatch.
+- Pin the new agent’s model, tools, strict schemas, read requirement, adversarial finder language, refutation language, and unreadable-evidence fallback.
+
+## Edge cases
+
+- A first sweep with no commits in 48 hours completes with zero findings and records the pinned tip.
+- A later sweep with only excluded commits also completes and advances the marker.
+- A capped sweep reports omitted commits and advances to the pinned tip by design.
+- A force-pushed or unrelated saved marker fails rather than silently widening the window.
+- Empty finder results are valid only when every selected merge has one well-formed row.
+- A finder candidate that the refuter rejects never enters the report or follow-up body.
+- An empty refutation queue is a successful zero-candidate result.
+- Existing non-sweep runs neither read nor write sweep state.
+
+## Failure modes
+
+- Git enumeration, diff, or consumer scans that cannot produce bounded evidence abort the sweep.
+- Malformed agent JSONL, missing merge coverage, or missing refutations abort before report rendering.
+- A stale pinned tip or state identity mismatch aborts rather than mixing evidence from different main revisions.
+- Report or follow-up-body failure leaves the prior sweep marker intact.
+- `/issue` filing failure does not rewrite sweep analysis state because analysis completed before the separately approval-gated mutation.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/issue/test_analyze_bugs.py -q`.
+- Run `python3 python/cli.py lint agent-tool-contract`.
+- Run the changed-file Python lint and type checks through `make py-lint`.
+- Exercise CLI help for the new verb and the existing prefetch, ledger, and report verbs.
+- Verify both sweep-enabled and legacy report fixtures.
+
+difficulty: HARD
+diff_added: 760
+diff_deleted: 20
+mechanical_churn: false
+diff_lines: 780

@@ -1,0 +1,10 @@
+1	s3 is described as rendering the integrated report before legacy ledger and deep stages complete, so combined runs could omit later triage/deep results or produce inconsistent report state.
+1	ranking can fall back to path-only zones or diff size because ledger-derived chronic-zone membership is not explicitly loaded and consulted.
+1	forwarding `--sweep` and `--sweep-max` through prefetch can cause prefetch argument rejection and prevent sweep startup.
+1	without defining the diff against the first parent, merge-specific changes may be omitted from touched-file, size, and symbol evidence.
+1	sweep survivors may appear in the report without creating `follow-up-issue.md`, leaving the approval-gated `/issue` path with nothing to file.
+1	reusing soft-success ledger ingest semantics can allow missing, malformed, rejected, or incomplete finder/refuter output to advance reporting as a false zero-candidate success.
+1	advancing `last_sweep_sha` to the pinned tip while retaining only a skipped count can permanently omit unswept commits.
+2	strict ingestion rejects empty inputs, conflicting with successful zero-commit and zero-finding sweep cases.
+2	the workflow does not require executable python ingestion steps or exact acceptance enforcement, allowing prompt-side validation and partial success.
+2	the refuter queue path, required output keys, per-task inputs, and exact coverage validation are not defined.
