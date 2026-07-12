@@ -36,11 +36,24 @@ codex/apply                          │                                        
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (0):
+
+## Architectural invariants
+
+No violations identified.
+
+## Architectural guidelines
+
+No deviations identified.
+
 ## /implement run BC5660E1-D16E-4F46-A5D2-9E7A0DA2FE12: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 00:39:39
-- **Cost**: 💰 TOTAL ~$13.84: Claude $1.12, Codex-5.6 $1.33, Codex-mini $1.34, Cursor $9.85 (Composer $6.55, Grok $3.30), Claude (subprocess) $0.20  |  Tokens: 29622k
+- **Cost**: 💰 TOTAL ~$14.76: Claude $1.40, Codex-5.6 $1.73, Codex-mini $1.34, Cursor $10.07 (Composer $6.77, Grok $3.30), Claude (subprocess) $0.22  |  Tokens: 31094k
 - **Issue**: #7024: https://github.com/character-ai/larch/issues/7024
 - **Plan review**: N/A
 - **Plan coverage**: 10/10 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -49,7 +62,7 @@ codex/apply                          │                                        
 - **Code review**: 1/4 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 0
+- **Exec issues**: 1
 - **Warnings**: 0
 - **Run logs**: `larch-logs/implement/BC5660E1-D16E-4F46-A5D2-9E7A0DA2FE12/`
 - **Main agent model**: claude-sonnet-4-6
