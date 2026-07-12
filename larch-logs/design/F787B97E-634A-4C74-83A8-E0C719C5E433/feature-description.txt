@@ -1,0 +1,10 @@
+# [FOLLOW-UP] Complete deferred /implement plan work
+
+# Deferred /implement plan inventory
+
+Parent tracking issue: #7023
+
+## Deferred plan inventory
+
+Untouched firm plan paths:
+- `python/tests/support/`

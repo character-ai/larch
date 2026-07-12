@@ -1,0 +1,7 @@
+### FINDING_1:
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/larch/implement/scope_disposition.py:842-844
+- **Concern**: [SCOPE-REDUCTION] Drop the planned _coverage_from_mapping predicate change; reload validation only needs exact firm-path membership once compute_coverage writes canonical touched_paths. Scenario: Issue #7023 fails when nested porcelain/diff paths under a trailing-slash firm directory never credit that directory. Fixed compute_coverage mapping plus directory-aware frozen-fallback porcelain selection fully repair that path and persist touched_paths as firm plan paths. Re-applying descendant matching during reload untouched recompute adds complexity round 1 rejected for this site and does not change outcomes for artifacts this fix writes.
+- **Proposed resolution**: Limit the shared predicate to compute_coverage and _frozen_fallback_touched_paths. Keep _coverage_from_mapping untouched recompute as plan_path not in set(touched_paths) against canonical firm paths. Retain the write-and-reload regression test for fingerprint and companion-file consistency.
