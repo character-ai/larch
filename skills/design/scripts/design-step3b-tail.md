@@ -23,4 +23,4 @@ Bgjob launcher for `/design` Step 4 rejected-findings output and Gate C preview 
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh`.
+Covered by `make test-design-structure`.

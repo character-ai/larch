@@ -20,15 +20,15 @@
 # `skills/<skill>/references/<subdir>/*.md` are NOT scanned; see the sibling
 # contract `scripts/test-references-headers.md` for the scope rule. The flat
 # glob mirrors the legacy assertion (8) scope that formerly lived in
-# `scripts/test-implement-structure.sh` (pre-#308, implement-only) but now
+# `make test-implement-structure` (pre-#308, implement-only) but now
 # applies repo-wide.
 #
 # Relationship to sibling harnesses:
-#   - `scripts/test-implement-structure.sh` owns /implement-specific topology
+#   - `make test-implement-structure` owns /implement-specific topology
 #     (top-level headings, MANDATORY binding, CI-parity enum, no-`see Step N
 #     below|above` invariant) — no longer owns the Consumer/Contract/When-to-
 #     load triplet as of #308.
-#   - `scripts/test-research-structure.sh` retains a STRICTER /research-local
+#   - `make test-research-structure` retains a STRICTER /research-local
 #     check that the triplet appears in the first 20 lines (opens-with), on
 #     top of the global presence check enforced here.
 #

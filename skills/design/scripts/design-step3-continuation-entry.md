@@ -18,4 +18,4 @@ Wrapper for the legacy heuristic Step 3 continuation entry path.
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh` and relevant `/design` script checks.
+Covered by `make test-design-structure` and relevant `/design` script checks.

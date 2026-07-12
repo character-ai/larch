@@ -4348,7 +4348,6 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     assert implement_dispatch.CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS == 32_700_000
 
     root = Path(__file__).resolve().parents[3]
-    structure = (root / "scripts" / "test-implement-structure.sh").read_text(encoding="utf-8")
     skill = (root / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
     run_step_checks = (root / "skills" / "implement" / "scripts" / "run-step-checks.sh").read_text(
         encoding="utf-8"
@@ -4357,8 +4356,9 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
         encoding="utf-8"
     )
     step6_launcher = "skills/implement/scripts/step-6-entry.sh"
-    assert f"(launcher + '{step6_launcher}', 'implement-step6-checks')" in structure
-    assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
+    assert step6_launcher in skill
+    assert "implement-step6-checks" in skill
+    assert "skills/implement/references/self-review.md" in skill
     assert 'BUDGET_S="14700"' in run_step_checks
     assert "step_checks_live_registry_exists" in run_step_checks
     assert "checks-result-identity" in run_step_checks

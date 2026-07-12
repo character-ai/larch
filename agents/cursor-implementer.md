@@ -23,7 +23,7 @@ Cursor lacks Codex's `workspace-write` sandbox. The dispatcher asserts `HEAD == 
 
 ## Shared guardrails
 
-The section below, Inputs through Style, is generated from the Cursor implementer template; `scripts/test-implement-structure.sh` assertion (24) enforces the structure.
+The section below, Inputs through Style, is generated from the Cursor implementer template; `make test-implement-structure` assertion (24) enforces the structure.
 
 ## Inputs you always receive
 

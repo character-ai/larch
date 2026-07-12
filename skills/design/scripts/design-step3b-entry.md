@@ -30,4 +30,4 @@ Wrapper for `/design` Step 3b finalize mode and Step 5b.5 diagram entry mode. Fi
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh` and relevant `/design` script checks.
+Covered by `make test-design-structure` and relevant `/design` script checks.

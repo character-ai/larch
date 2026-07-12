@@ -44,4 +44,4 @@ result env writes, and failure routing.
 Wrapper delegation and argv validation are covered by
 `skills/design/scripts/test-design-clarify.sh`. Phase behavior is covered by
 `python/test_clarify.py`. Structural pins live in
-`scripts/test-design-structure.sh`.
+`make test-design-structure`.

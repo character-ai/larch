@@ -31,4 +31,4 @@ Normal continuation requires `BGJOB_RC=0` plus the required checks/resume KVs in
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `scripts/test-implement-structure.sh`, and `python/tests/implement/test_implement_dispatch.py` when this contract or argv changes.
+Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, and `python/tests/implement/test_implement_dispatch.py` when this contract or argv changes.

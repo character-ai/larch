@@ -111,4 +111,4 @@ Shell-wrapper cases previously housed in `test-write-final-report.sh` moved to t
 
 ## Edit in sync
 
-Update `skills/implement/SKILL.md`, `scripts/test-implement-structure.sh`, `scripts/test-implement-timing-rehydration.sh`, `scripts/test-implement-fence-shape.sh`, `scripts/test-render-cost-line-callsites.sh`, `skills/implement/scripts/test-write-final-report.sh`, `agent-lint.toml`, `python/migrated-scripts.tsv`, and `docs/linting.md` when this contract changes.
+Update `skills/implement/SKILL.md`, `make test-implement-structure`, `scripts/test-implement-timing-rehydration.sh`, `scripts/test-implement-fence-shape.sh`, `scripts/test-render-cost-line-callsites.sh`, `skills/implement/scripts/test-write-final-report.sh`, `agent-lint.toml`, `python/migrated-scripts.tsv`, and `docs/linting.md` when this contract changes.

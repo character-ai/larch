@@ -22,4 +22,4 @@ Legacy/manual compatibility wrapper for `/design` Step 5b.5 architecture-diagram
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh` and relevant `/design` script checks.
+Covered by `make test-design-structure` and relevant `/design` script checks.

@@ -188,7 +188,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-rout
 - §2: replace capture/re-capture sentences at folded sites with composite one-liners.
 - §4: site-split-only normative prose; delete global `run-step-checks.sh` re-capture mandate.
 
-### UPDATED: scripts/test-implement-structure.sh
+### UPDATED: make test-implement-structure
 
 - Replace folded standalone needles with three composite verb invocations.
 - Keep Step 3 `run-step-checks.sh --site step3`.
@@ -230,7 +230,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-rout
 
 - `python3 -m pytest python/test_implement_dispatch.py -q`
 - `python3 -m pytest python/test_cli.py -q`
-- `bash scripts/test-implement-structure.sh`
+- `make test-implement-structure`
 - `bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh`
 - `bash scripts/test-implement-fence-shape.sh`
 - `make lint && make py-lint && make py-test`
@@ -241,7 +241,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-rout
 - `commit-route` extended with `--emit-next-action false`; child-only surface tested.
 - `SKILL.md` Step 5 self-review, Step 5 MAV/coder handoff, and Step 6/7 each replaced with one composite background fence.
 - `step5-review-branches.md` and `checks-repair-loop.md` reference targets updated.
-- All static harnesses pass: `test-implement-structure.sh`, `test-implement-relevant-checks-anti-halt.sh`, `test-implement-fence-shape.sh`.
+- All static harnesses pass: `make test-implement-structure`, `test-implement-relevant-checks-anti-halt.sh`, `test-implement-fence-shape.sh`.
 - `make lint`, `make py-lint`, `make py-test` all pass.
 
 diff_lines: 960
