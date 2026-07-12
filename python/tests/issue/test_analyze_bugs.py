@@ -943,8 +943,8 @@ def test_marker_evidence_requires_phrase_and_reference() -> None:
 
     assert references == (12,)
     assert len(fingerprint) == 64
-    assert no_phrase == ()
-    assert no_reference == ()
+    assert not no_phrase
+    assert not no_reference
 
 
 def test_analytics_detects_churn_chronic_chains_and_baseline(tmp_path: Path) -> None:
@@ -1009,7 +1009,7 @@ def test_risk_routing_priority_and_verified_triage_gate(tmp_path: Path) -> None:
     )
 
     assert candidates[0]["source"] == "chain-linked"
-    assert blocked == []
+    assert not blocked
 
 
 def test_report_renders_analytics_and_stable_delta(tmp_path: Path, monkeypatch: object) -> None:
@@ -1109,7 +1109,7 @@ def test_external_marker_reference_does_not_make_zone_chronic(tmp_path: Path) ->
 
     view = analyze_bugs.build_analytics_view(manifest={"generated_at": now}, bundles=bundles, ledger_path=tmp_path / "ledger.jsonl")
 
-    assert view.chronic_zones == ()
+    assert not view.chronic_zones
 
 
 def test_historical_marker_backfill_is_deferred_until_report_success(tmp_path: Path, monkeypatch: object) -> None:
