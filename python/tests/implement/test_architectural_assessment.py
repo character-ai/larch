@@ -270,10 +270,15 @@ def test_launch_assessment_retries_transient_empty_stdout(tmp_path: Path) -> Non
 
 
 def test_launch_assessment_caps_empty_stdout_retries(tmp_path: Path) -> None:
-    launcher = _SequenceLauncher([assessment.LaunchResult(0, "", "")])
+    launcher = _SequenceLauncher([
+        assessment.LaunchResult(0, "", "first launcher diagnostic"),
+        assessment.LaunchResult(0, "", "second launcher diagnostic"),
+        assessment.LaunchResult(0, "", "final launcher diagnostic"),
+    ])
     result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
     assert launcher.calls == assessment._EMPTY_STDOUT_ATTEMPTS  # pyright: ignore[reportPrivateUsage]
     assert result.stdout == ""
+    assert result.stderr == "first launcher diagnostic\nsecond launcher diagnostic\nfinal launcher diagnostic"
 
 
 def test_launch_assessment_does_not_retry_nonzero_exit(tmp_path: Path) -> None:
@@ -315,6 +320,40 @@ def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.Mo
     outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
     assert launcher.calls == assessment._EMPTY_STDOUT_ATTEMPTS  # pyright: ignore[reportPrivateUsage]
     assert outcome["detail"] == "auth failed <implement-tmpdir> <REDACTED-TOKEN>"
+
+
+def test_run_persists_sanitized_stderr_after_nonzero_launcher_exit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    diff = tmp_path / "diff.txt"
+    knowledge = tmp_path / "guidelines.md"
+    diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
+    knowledge.write_text("# G-Py-4\n", encoding="utf-8")
+    evidence = assessment.MaterializedEvidence(
+        kind=config.ASSESSMENT_KIND_GUIDELINES,
+        head_sha="a" * 40,
+        base_ref="origin/main",
+        diff_path=diff,
+        diff_text=diff.read_text(encoding="utf-8"),
+        diff_fingerprint="b" * 64,
+        knowledge_path=knowledge,
+        knowledge_sha256=assessment._sha256(knowledge.read_text(encoding="utf-8")),  # pyright: ignore[reportPrivateUsage]
+        identifiers=frozenset({"G-Py-4"}),
+    )
+    token = "ghp_" + "x" * 30
+    launcher = _SequenceLauncher([assessment.LaunchResult(1, "", f"launcher failed {tmp_path} {token}")])
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)
+    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)
+    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)
+
+    assert assessment.run(
+        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path, launcher=launcher
+    ) == ("guidelines:unavailable",)
+
+    outcome_path = tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
+    outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
+    assert launcher.calls == 1
+    assert outcome["detail"] == "launcher failed <implement-tmpdir> <REDACTED-TOKEN>"
 
 
 def _true_kwargs(**_kwargs: object) -> bool:

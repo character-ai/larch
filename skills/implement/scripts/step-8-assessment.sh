@@ -717,17 +717,18 @@ run_child() {
   trap 'exit 143' TERM
   raw_stderr=$(mktemp "$IMPLEMENT_TMPDIR/architectural-assessment-stderr.XXXXXX") || exit 2
   chmod 0600 "$raw_stderr" 2>/dev/null || true
+  exec 3>"$raw_stderr" || exit 2
   exec 4<"$raw_stderr" || exit 2
   set +e
-  out=$(python3 - "$raw_stderr" "${cmd[@]}" <<'PY'
+  out=$(python3 - 3 "${cmd[@]}" <<'PY'
+import os
 import subprocess
 import sys
-from pathlib import Path
 
 limit = 8 * 1024
 written = 0
 truncated = False
-with Path(sys.argv[1]).open("wb") as raw:
+with os.fdopen(int(sys.argv[1]), "wb", closefd=False) as raw:
     process = subprocess.Popen(sys.argv[2:], stderr=subprocess.PIPE)
     assert process.stderr is not None
     while chunk := process.stderr.read(4096):

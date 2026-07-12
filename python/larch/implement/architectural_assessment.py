@@ -741,10 +741,15 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root:
 def _launch_assessment(launcher: Launcher, request: LaunchRequest) -> LaunchResult:
     """Launch the assessment, retrying a transient exit-0 empty stdout before falling back."""
     launch_result = launcher.launch(request)
+    stderr_parts = [launch_result.stderr] if launch_result.stderr else []
     for _retry in range(_EMPTY_STDOUT_ATTEMPTS - 1):
         if launch_result.returncode != 0 or launch_result.stdout.strip():
             break
         launch_result = launcher.launch(request)
+        if launch_result.stderr and launch_result.stderr not in stderr_parts:
+            stderr_parts.append(launch_result.stderr)
+    if stderr_parts:
+        return LaunchResult(launch_result.returncode, launch_result.stdout, "\n".join(stderr_parts))
     return launch_result
 
 
