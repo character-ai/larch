@@ -61,11 +61,19 @@ codex/apply              │                              ███████�
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+No violations identified. The gate detection reads independently computed evidence (Codex CLI diagnostic output) rather than self-declared metadata from the gated entity, satisfying I-Gate-1. The probe cache identity binds results to model hash and auth mode, and _read_codex_gate_detail validates age, stamp freshness, identity, and message content before reuse, satisfying I-Stale-1. No pause/resume artifact sets are affected (I-Pause-1 clean). The gate detail is stored in tmpdir only and never committed to larch-logs/ (I-Commit-1 clean). The claude_fallback path emits a terminal status only after the tree state is verified (I-Outcome-1 clean). No panel slot accounting is affected (I-Slot-1 clean). No machine-ingested agent verdict paths are changed (I-Agent-1 clean).
+
+## Architectural guidelines
+
+No deviations identified. New CodexGateDetail and CodexProbeResult use frozen=True dataclasses (G-Py-1). CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC is defined as Final in config.py (G-Cfg-1). _write_codex_gate_detail uses larch_io.atomic_write with nofollow=True and mode=0o600 (G-IO-1). The gate detail file reader rejects symlinks and checks is_file() before read (G-Sec-4). The lock context manager uses O_NOFOLLOW and verifies S_ISREG (G-Sec-4). The model string is validated against _CTRL_RE and _SAFE_CODEX_MODEL_RE before embedding in the emitted REASON/CODEX_PROBE_DETAIL KV values, preventing newline injection (G-IO-2). All callers of _run_one_codex_probe (now returning CodexProbeResult instead of int) are updated in production code and tests (G-Wire-1, G-Wire-3). skills/implement/SKILL.md and skills/status/SKILL.md are updated to consume the new REASON and CODEX_PROBE_DETAIL KVs in the same change (G-Wire-1). Comprehensive tests cover the gate detection, cache identity, TTL handoff, mutation fail-closed, and near-miss cases (G-Fix-2). The change sweeps probe, dispatch_step2, degraded_tools_result, status_check_main, and both skill files rather than fixing a single site (G-Fix-1).
+
 ## /implement run 9F8D6992-ACD1-4B21-9156-EF36E6D3D6E0: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:57:06
-- **Cost**: 💰 TOTAL ~$23.67: Claude $1.39, Codex-5.6 $16.79, Codex-mini $0.05, Cursor $4.21 (Composer $4.21, Grok $0.00), Claude (subprocess) $1.23  |  Tokens: 29176k
+- **Cost**: 💰 TOTAL ~$23.98: Claude $1.70, Codex-5.6 $16.79, Codex-mini $0.05, Cursor $4.21 (Composer $4.21, Grok $0.00), Claude (subprocess) $1.23  |  Tokens: 30078k
 - **Issue**: #7072: https://github.com/character-ai/larch/issues/7072
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
