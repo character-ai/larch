@@ -720,14 +720,16 @@ def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:
 
 def test_list_issues_filters_archival(monkeypatch: Any, capsys: Any) -> None:
     payload = [
-        {"number": 1, "title": "Keep\tTitle", "state": "open", "html_url": "u1"},
-        {"number": 2, "title": "Research spike", "state": "open", "html_url": "u2"},
-        {"number": 3, "title": "Closed", "state": "closed", "closed_at": "2099-01-01T00:00:00Z", "html_url": "u3"},
-        {"number": 4, "title": "PR", "state": "open", "pull_request": {}, "html_url": "u4"},
+        {"number": 1, "title": "Keep\tTitle", "state": "OPEN", "url": "u1"},
+        {"number": 2, "title": "Research spike", "state": "OPEN", "url": "u2"},
+        {"number": 3, "title": "Closed", "state": "CLOSED", "closedAt": "2099-01-01T00:00:00Z", "url": "u3"},
+        {"number": 4, "title": "Other", "state": "OPEN", "url": "u4"},
     ]
+    calls: list[list[str]] = []
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "api", "--paginate"]:
+        calls.append(list(argv))
+        if argv[:3] == ["gh", "issue", "list"]:
             return _result(argv, stdout=json.dumps(payload))
         return _result(argv, stdout="o/r\n")
 
@@ -736,9 +738,12 @@ def test_list_issues_filters_archival(monkeypatch: Any, capsys: Any) -> None:
     out = capsys.readouterr().out
     assert "LIST_STATUS=ok" in out
     assert "1\tKeep Title\topen\tu1" in out
-    assert "2\t" not in out
     assert "3\tClosed\tclosed\tu3" in out
-    assert "4\t" not in out
+    assert "4\tOther\topen\tu4" in out
+    assert "Research" not in out
+    assert calls[0][:3] == ["gh", "issue", "list"]
+    assert calls[0][calls[0].index("--limit") + 1] == "100000"
+    assert calls[0][calls[0].index("--json") + 1] == "number,title,state,closedAt,url"
 
 
 def test_parse_input_write_failure_returns_one(tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:

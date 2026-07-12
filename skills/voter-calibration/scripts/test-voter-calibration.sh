@@ -370,7 +370,9 @@ cat > "$bulk_load_bin/gh" <<'SH'
 #!/bin/sh
 case " $* " in
   *" issue list "* )
-    printf '%s\n' '["bad", "bad", {"number": 1, "title": "ok", "body": ""}]'
+    # issue_list_read discards non-object rows; use malformed objects so
+    # load_issues still exercises its bulk-load failure path.
+    printf '%s\n' '[{"number": "bad", "title": "bad", "body": ""}, {"number": 0, "title": "bad", "body": ""}]'
     exit 0
     ;;
   *" issue view "* )

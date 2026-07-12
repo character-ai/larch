@@ -1,5 +1,5 @@
-# ruff: noqa: TC002,FLY002,FBT003
-# pyright: reportUnusedCallResult=false, reportArgumentType=false
+# ruff: noqa: FLY002, FBT003
+# pyright: reportUnusedCallResult=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
 import json
@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.errors import ShipError
 from larch.issue import rejected_analysis as ra
 from larch.report import run_log_corpus
 from larch.review import voting
@@ -313,3 +314,42 @@ def test_classification_paths_are_lexical(tmp_path: Path) -> None:
     paths = run_log_corpus.classification_tsv_paths("implement", run, round_sort="lexical")
     assert [path.parent.name for path in paths] == ["round-10", "round-2"]
     assert ra._round_from_path(paths[0]) == "10"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_query_open_issues_uses_shared_wrapper(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: dict[str, object] = {}
+
+    def fake_resolve(_runner, *, cwd=None):
+        seen["cwd"] = cwd
+        return "o/r"
+
+    def fake_list(_runner, *, repo, state, fields, limit, **_kwargs):
+        seen["repo"] = repo
+        seen["state"] = state
+        seen["fields"] = tuple(fields)
+        seen["limit"] = limit
+        return [
+            {"number": 1, "title": "open", "body": "b", "url": "https://github.com/o/r/issues/1", "state": "OPEN"},
+            {"number": 2, "title": "closed-ish", "body": "b", "url": "u2", "state": "CLOSED"},
+            "skip",
+        ]
+
+    monkeypatch.setattr(ra.gh, "resolve_repo", fake_resolve)
+    monkeypatch.setattr(ra.gh, "issue_list_read", fake_list)
+    issues = ra._query_open_issues(object(), repo_root=tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert [issue.number for issue in issues] == ["1"]
+    assert issues[0].url == "https://github.com/o/r/issues/1"
+    assert seen == {
+        "cwd": str(tmp_path),
+        "repo": "o/r",
+        "state": "open",
+        "fields": ("number", "title", "body", "url", "state"),
+        "limit": 100000,
+    }
+
+
+def test_query_open_issues_translates_ship_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(ra.gh, "resolve_repo", lambda *_a, **_k: "o/r")  # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(ra.gh, "issue_list_read", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("boom")))  # pyright: ignore[reportUnknownLambdaType]
+    with pytest.raises(ra.RejectedAnalysisError, match="open issue snapshot failed"):
+        ra._query_open_issues(object(), repo_root=tmp_path)  # pyright: ignore[reportPrivateUsage]

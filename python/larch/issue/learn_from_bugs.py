@@ -31,6 +31,8 @@ from larch.core.architectural_guidelines import (
     INVARIANT_HEADING_RE,
 )
 from larch.core.proc import ProcRunner, Runner
+from larch.errors import ShipError
+from larch.git import gh
 from larch.issue import issue_wire
 from larch.issue.analyze_bugs import resolve_repo
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
@@ -924,43 +926,33 @@ def build_digest(issue: Mapping[str, object]) -> BugDigest:
 # --- Issue listing (through the Runner seam) --------------------------------
 
 
-def _issue_list_argv(*, search: str, state: str, limit: int, repo: str) -> list[str]:
-    return [
-        "gh",
-        "issue",
-        "list",
-        "--repo",
-        repo,
-        "--search",
-        search,
-        "--state",
-        state,
-        "--limit",
-        str(limit),
-        "--json",
-        "number,title,body,closedAt,url,state",
-    ]
+_LEARN_ISSUE_LIST_FIELDS: Final = (
+    "number",
+    "title",
+    "body",
+    "closedAt",
+    "url",
+    "state",
+)
 
 
 def list_issues(
     runner: Runner, *, search: str, state: str, limit: int, repo: str
 ) -> list[dict[str, object]]:
-    result = runner.run(
-        _issue_list_argv(search=search, state=state, limit=limit, repo=repo)
-    )
-    if result.returncode != 0:
-        raise LearnFromBugsError(
-            f"gh issue list failed: {(result.stderr or result.stdout).strip()}"
-        )
     try:
-        parsed = json.loads(result.stdout or "[]")
-    except json.JSONDecodeError as exc:
-        raise LearnFromBugsError(f"gh issue list returned invalid JSON: {exc}") from exc
-    if not isinstance(parsed, list):
-        raise LearnFromBugsError("gh issue list did not return a JSON array")
+        parsed = gh.issue_list_read(
+            runner,
+            repo=repo,
+            state=state,
+            fields=_LEARN_ISSUE_LIST_FIELDS,
+            search=search,
+            limit=limit,
+        )
+    except ShipError as exc:
+        raise LearnFromBugsError(f"gh issue list failed: {exc}") from exc
     return [
         cast("dict[str, object]", row)
-        for row in cast("list[object]", parsed)
+        for row in parsed
         if isinstance(row, dict)
     ]
 

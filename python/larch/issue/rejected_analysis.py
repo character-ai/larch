@@ -24,6 +24,7 @@ from typing import Any, Literal
 
 from larch import io as larch_io
 from larch.core import logging_util, proc
+from larch.errors import ShipError
 
 from larch.git import gh
 from larch.issue import issue_wire
@@ -938,22 +939,28 @@ def _query_open_issues(runner: proc.Runner, *, repo_root: Path) -> list[OpenIssu
     repo = gh.resolve_repo(runner, cwd=str(repo_root))
     if not repo:
         raise RejectedAnalysisError("open issue snapshot failed: cannot resolve repository")
-    result = gh.api_read(runner, ["--paginate", f"repos/{repo}/issues?state=open&per_page=100"])
-    if result.returncode != 0:
-        raise RejectedAnalysisError("open issue snapshot failed")
-    rows = [row for row in gh.loads_json_paginated_list(result.stdout) if isinstance(row, Mapping)]
+    try:
+        listed = gh.issue_list_read(
+            runner,
+            repo=repo,
+            state="open",
+            fields=("number", "title", "body", "url", "state"),
+            limit=100000,
+        )
+    except ShipError as exc:
+        raise RejectedAnalysisError("open issue snapshot failed") from exc
     issues: list[OpenIssue] = []
-    for item in rows:
-        if item.get("pull_request") is not None:
+    for item in listed:
+        if not isinstance(item, Mapping):
             continue
-        if str(item.get("state") or "").lower() != "open":
+        if str(item.get("state") or "").casefold() != "open":
             continue
         issues.append(
             OpenIssue(
                 number=str(item.get("number") or ""),
                 title=str(item.get("title") or ""),
                 body=str(item.get("body") or ""),
-                url=str(item.get("html_url") or item.get("url") or ""),
+                url=str(item.get("url") or ""),
             )
         )
     return issues

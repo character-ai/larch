@@ -16,7 +16,10 @@ from larch.core.proc import CommandResult
 class Runner:
     def __init__(self, stdout: str):
         self.stdout = stdout
+        self.calls: list[list[str]] = []
+
     def run(self, argv, **_kwargs):
+        self.calls.append(list(argv))
         if argv[:3] == ["gh", "issue", "list"]:
             return CommandResult(tuple(argv), 0, self.stdout, "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
@@ -31,8 +34,13 @@ def test_fetch_filters_busy_titles(monkeypatch, capsys):
         {"number":5,"title":"[LOCKED] not now"},
         {"number":6,"title":"[LOCKED]Do not combine"},
     ]
-    monkeypatch.setattr(combine_issues.proc, "run", Runner(json.dumps(issues)).run)
+    runner = Runner(json.dumps(issues))
+    monkeypatch.setattr(combine_issues.proc, "run", runner.run)
     assert combine_issues.fetch_main(["--repo", "o/r"]) == 0
+    assert runner.calls == [[
+        "gh", "issue", "list", "--repo", "o/r", "--state", "open", "--json",
+        "number,title,body,labels", "--limit", "200",
+    ]]
     out = dict(line.split("=",1) for line in capsys.readouterr().out.splitlines())
     assert out["COUNT"] == "2"
     issues_file = Path(out["ISSUES_FILE"])
@@ -963,25 +971,24 @@ def test_close_stale_warning_redacts_failed_close_stderr(monkeypatch, capsys):
     assert "PARTIAL=true" in captured.out
 
 
-def test_list_open_uses_paginated_api_and_filters_pulls_and_closed(monkeypatch, capsys):
+def test_list_open_uses_issue_list_read_and_filters_closed(monkeypatch, capsys):
     class OpenRunner:
         def __init__(self):
             self.calls = []
         def run(self, argv, **_kwargs):
             self.calls.append(list(argv))
-            rows1 = [
-                {"number": 1, "title": "open", "state": "open", "body": "b", "labels": []},
-                {"number": 2, "title": "pr", "state": "open", "pull_request": {}},
+            rows = [
+                {"number": 1, "title": "open", "state": "OPEN", "body": "b", "labels": []},
+                {"number": 3, "title": "research archival", "state": "OPEN", "body": "", "labels": []},
+                {"number": 4, "title": "closed", "state": "CLOSED", "body": "", "labels": []},
             ]
-            rows2 = [
-                {"number": 3, "title": "research archival", "state": "open"},
-                {"number": 4, "title": "closed", "state": "closed"},
-            ]
-            return CommandResult(tuple(argv), 0, json.dumps(rows1) + json.dumps(rows2), "", 0.01)
+            return CommandResult(tuple(argv), 0, json.dumps(rows), "", 0.01)
     runner = OpenRunner()
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
     assert combine_issues.list_open_main(["--repo", "o/r"]) == 0
-    assert runner.calls == [["gh", "api", "--paginate", "repos/o/r/issues?state=open&per_page=100"]]
+    assert runner.calls[0][:4] == ["gh", "issue", "list", "--repo"]
+    assert runner.calls[0][runner.calls[0].index("--limit") + 1] == "100000"
+    assert runner.calls[0][runner.calls[0].index("--json") + 1] == "number,title,state,labels,body"
     payload = json.loads(capsys.readouterr().out)
     assert [row["number"] for row in payload["issues"]] == [1, 3]
 

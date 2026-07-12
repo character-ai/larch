@@ -79,14 +79,15 @@ def test_display_grouping_and_mutable_regular_prefixes() -> None:
 
 def test_fetch_filters_and_merges_existing_deps_and_writes_untrusted_corpus(tmp_path: Path, monkeypatch) -> None:
     issues = [
-        {"number": 1, "title": "Regular", "state": "open", "body": "body"},
-        {"number": 2, "title": "[DESIGNING] Design", "state": "open", "body": "body"},
-        {"number": 3, "title": "Closed", "state": "closed", "body": "body"},
-        {"number": 4, "title": "PR", "state": "open", "pull_request": {}, "body": "body"},
+        {"number": 1, "title": "Regular", "state": "OPEN", "body": "body", "labels": []},
+        {"number": 2, "title": "[DESIGNING] Design", "state": "OPEN", "body": "body", "labels": []},
+        {"number": 3, "title": "Closed", "state": "CLOSED", "body": "body", "labels": []},
     ]
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        assert argv[:3] == ["gh", "api", "--paginate"]
+        assert argv[:3] == ["gh", "issue", "list"]
+        assert argv[argv.index("--limit") + 1] == "100000"
+        assert argv[argv.index("--json") + 1] == "number,title,state,labels,body"
         return result(argv, stdout=json.dumps(issues))
 
     def blocked_by(_runner: object, issue: str, *, repo: str, cwd: str | None = None) -> CommandResult:

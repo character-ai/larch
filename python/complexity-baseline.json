@@ -3165,7 +3165,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "close_priors_main",
-    "metric": 13
+    "metric": 12
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3183,7 +3183,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3214,12 +3214,6 @@
     "code": "PLR0911",
     "qualified_symbol": "_scan_required.cond",
     "metric": 10
-  },
-  {
-    "file": "larch/issue/audit_runs.py",
-    "code": "PLR0911",
-    "qualified_symbol": "close_priors_main",
-    "metric": 7
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3591,7 +3585,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "list_issues_main",
-    "metric": 19
+    "metric": 17
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -3663,7 +3657,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "list_issues_main",
-    "metric": 19
+    "metric": 18
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -3700,12 +3694,6 @@
     "code": "PLR0915",
     "qualified_symbol": "fetch_issue_details_main",
     "metric": 85
-  },
-  {
-    "file": "larch/issue/issue_create.py",
-    "code": "PLR0915",
-    "qualified_symbol": "list_issues_main",
-    "metric": 52
   },
   {
     "file": "larch/issue/issue_query.py",

@@ -269,6 +269,11 @@ def test_bugs_backlog_nudge_uses_scan_started_at_when_present(
     monkeypatch.setattr(audit_runs.proc, "run", fake_run)
 
     assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
+    assert calls[0] == [
+        "gh", "issue", "list", "--repo", "o/r", "--state", "closed", "--json",
+        "number,title,closedAt", "--search", "[BUG] in:title closed:>2026-07-09T01:00:00Z",
+        "--limit", "100000",
+    ]
     assert any("closed:>2026-07-09T01:00:00Z" in token for token in calls[0])
 
 
@@ -919,7 +924,7 @@ def cr(argv: tuple[str, ...], stdout: str = "", stderr: str = "", rc: int = 0) -
 
 def test_close_priors_reports_transport_failure_before_json_parse(monkeypatch, capsys):
     runner = AuditRunner({
-        ("gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title"): cr(("gh",), stdout="not json", stderr="network down", rc=1),
+        ("gh","issue","list","--repo","o/r","--state","open","--json","number,title","--label","audit-report","--limit","100000"): cr(("gh",), stdout="not json", stderr="network down", rc=1),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r","--operator-invoked"]) == 1
@@ -930,7 +935,7 @@ def test_close_priors_reports_transport_failure_before_json_parse(monkeypatch, c
 
 def test_close_priors_reports_malformed_success_json(monkeypatch, capsys):
     runner = AuditRunner({
-        ("gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title"): cr(("gh",), stdout="not json", rc=0),
+        ("gh","issue","list","--repo","o/r","--state","open","--json","number,title","--label","audit-report","--limit","100000"): cr(("gh",), stdout="not json", rc=0),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     assert audit_runs.close_priors_main(["--skill","implement","--new-issue-number","9","--repo","o/r","--operator-invoked"]) == 1
@@ -939,7 +944,7 @@ def test_close_priors_reports_malformed_success_json(monkeypatch, capsys):
 
 def test_close_priors_body_file_failure_fallback(monkeypatch, capsys):
     runner = AuditRunner({
-        ("gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title"): cr(("gh",), stdout="[]"),
+        ("gh","issue","list","--repo","o/r","--state","open","--json","number,title","--label","audit-report","--limit","100000"): cr(("gh",), stdout="[]"),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     def fail_named_temp(*_args, **_kwargs):
@@ -976,7 +981,7 @@ def test_close_priors_reports_partial_success(monkeypatch, capsys):
 
 def test_resolve_prs_reports_issue_list_failure(monkeypatch, capsys):
     runner = AuditRunner({
-        ("gh","issue","list","--state","all","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title,createdAt"): cr(("gh",), stderr="auth", rc=1),
+        ("gh","issue","list","--repo","o/r","--state","all","--json","number,title,createdAt","--label","audit-report","--limit","100000"): cr(("gh",), stderr="auth", rc=1),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     assert audit_runs.resolve_prs_main(["--skill","implement","--repo","o/r"]) == 0
@@ -986,7 +991,7 @@ def test_resolve_prs_reports_issue_list_failure(monkeypatch, capsys):
 
 def test_resolve_prs_stdout_key_order_on_error(monkeypatch, capsys):
     runner = AuditRunner({
-        ("gh","issue","list","--state","all","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title,createdAt"): cr(("gh",), stderr="auth", rc=1),
+        ("gh","issue","list","--repo","o/r","--state","all","--json","number,title,createdAt","--label","audit-report","--limit","100000"): cr(("gh",), stderr="auth", rc=1),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     assert audit_runs.resolve_prs_main(["--skill","implement","--repo","o/r"]) == 0
@@ -1004,7 +1009,7 @@ def test_resolve_prs_unknown_argv_exits_one_stderr_only(capsys):
 def test_resolve_prs_reports_issue_view_failure(monkeypatch, capsys):
     prior = json.dumps([{"number": 12, "title": "[Implement Run Logs Audit 2026 Report]", "createdAt": "2026-01-01T00:00:00Z"}])
     runner = AuditRunner({
-        ("gh","issue","list","--state","all","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title,createdAt"): cr(("gh",), stdout=prior),
+        ("gh","issue","list","--repo","o/r","--state","all","--json","number,title,createdAt","--label","audit-report","--limit","100000"): cr(("gh",), stdout=prior),
         ("gh","issue","view","12","--json","body","--repo","o/r"): cr(("gh",), stderr="boom", rc=1),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
@@ -1016,7 +1021,7 @@ def test_resolve_prs_ignores_audited_range_outside_frontmatter(monkeypatch, caps
     prior = json.dumps([{"number": 12, "title": "[Implement Run Logs Audit 2026 Report]", "createdAt": "2026-01-01T00:00:00Z"}])
     body = json.dumps({"body": "---\ntitle: report\n---\n\n```yaml\naudited_pr_range:\n  last: 99\n```\n"})
     runner = AuditRunner({
-        ("gh","issue","list","--state","all","--limit","100000","--label","audit-report","--repo","o/r","--json","number,title,createdAt"): cr(("gh",), stdout=prior),
+        ("gh","issue","list","--repo","o/r","--state","all","--json","number,title,createdAt","--label","audit-report","--limit","100000"): cr(("gh",), stdout=prior),
         ("gh","issue","view","12","--json","body","--repo","o/r"): cr(("gh",), stdout=body),
     })
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
@@ -1047,7 +1052,7 @@ def test_preflight_redacts_remote_url_identity_failure(monkeypatch, capsys):
         ("git","status","--porcelain"): cr(("git",), stdout=""),
         ("git","config","--get","remote.origin.url"): cr(("git",), stdout="https://ghp_secret123@not-github.invalid/o/r.git\n"),
         ("gh","repo","view","o/r","--json","url"): cr(("gh",), stdout='{"url":""}\n'),
-        ("gh","issue","list","--state","all","--label","audit-report","--repo","o/r","--json","number,createdAt","--limit","50"): cr(("gh",), stdout="[]\n"),
+        ("gh","issue","list","--repo","o/r","--state","all","--json","number,createdAt","--label","audit-report","--limit","50"): cr(("gh",), stdout="[]\n"),
     }
     monkeypatch.setattr(audit_runs.proc, "run", AuditRunner(responses).run)
     assert audit_runs.preflight_main(["--skill","implement","--repo","o/r"]) == 0
@@ -1095,6 +1100,28 @@ def test_preflight_allow_concurrent_skips_recent_audit_probe(monkeypatch, capsys
     monkeypatch.setattr(audit_runs.proc, "run", runner.run)
     assert audit_runs.preflight_main(["--skill","implement","--repo","o/r","--allow-concurrent"]) == 0
     assert "PREFLIGHT_OK=true" in capsys.readouterr().out
+
+
+def test_preflight_issue_list_failure_degrades_to_empty_probe(monkeypatch, capsys):
+    responses = {
+        ("git","fetch","origin","main"): cr(("git",)),
+        ("git","branch","--show-current"): cr(("git",), stdout="feature\n"),
+        ("git","rev-parse","--verify","main^{commit}"): cr(("git",), stdout="aaa\n"),
+        ("git","rev-parse","--verify","origin/main^{commit}"): cr(("git",), stdout="aaa\n"),
+        ("git","status","--porcelain"): cr(("git",), stdout=""),
+        ("git","config","--get","remote.origin.url"): cr(("git",), stdout="https://github.com/o/r.git\n"),
+        ("gh","repo","view","o/r","--json","url"): cr(("gh",), stdout='{"url":"https://github.com/o/r"}\n'),
+        ("gh","issue","list","--repo","o/r","--state","all","--json","number,createdAt","--label","audit-report","--limit","50"): cr(("gh",), stderr="boom", rc=1),
+    }
+    monkeypatch.setattr(audit_runs.proc, "run", AuditRunner(responses).run)
+    assert audit_runs.preflight_main(["--skill","implement","--repo","o/r"]) == 0
+    assert "PREFLIGHT_OK=true" in capsys.readouterr().out
+
+
+def test_audit_runs_no_longer_needs_private_gh_suppression() -> None:
+    source = Path(audit_runs.__file__).read_text(encoding="utf-8")
+    assert "gh._gh" not in source
+    assert "SLF001" not in source
 
 
 def test_map_runs_matches_parent_issue_number_exactly(monkeypatch, tmp_path: Path, capsys):

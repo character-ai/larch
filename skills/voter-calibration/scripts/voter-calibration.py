@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -616,6 +617,8 @@ def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed
             return _realized_outcomes_skip(f"filed_issue_details_unavailable:{type(exc).__name__}")
         issues = [dict(value) for value in details.values() if isinstance(value, Mapping)]
     else:
+        if shutil.which("gh") is None:
+            return _realized_outcomes_skip("gh_unavailable")
         dump_path = ""
         try:
             with tempfile.NamedTemporaryFile(prefix="voter-calibration-issues-", suffix=".json", delete=False) as handle:

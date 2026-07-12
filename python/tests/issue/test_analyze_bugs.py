@@ -7,6 +7,8 @@ import json
 from pathlib import Path
 from typing import cast
 
+import pytest
+
 from larch.core.proc import CommandResult
 from larch.issue import analyze_bugs
 from test_support import RecordingRunner, run_cli
@@ -101,17 +103,24 @@ def _single_manifest_issue(run_dir: Path, *, issue: int = 1, cache_key: str = "k
     return cast("dict[str, object]", raw_issues[0])
 
 
-def test_fetch_filters_bug_prefix_and_uses_paginated_gh_api() -> None:
-    page1 = [_issue(number, f"refactor {number}", body="body") for number in range(1, 101)]
-    page1[0]["pull_request"] = {"url": "https://github.com/o/r/pull/1"}
-    page2 = [_issue(number, f"refactor {number}", state="CLOSED", reason="COMPLETED") for number in range(101, 200)]
-    page2.append(_issue(200, "[BUG] newest", state="CLOSED", reason="COMPLETED"))
-    runner = RecordingRunner(responses=[_result(json.dumps(page1) + json.dumps(page2))], strict=True)
+def test_fetch_filters_bug_prefix_and_uses_issue_list_read() -> None:
+    issues = [_issue(number, f"refactor {number}", body="body") for number in range(1, 5)]
+    issues.append(_issue(200, "[BUG] newest", state="CLOSED", reason="COMPLETED"))
+    runner = RecordingRunner(responses=[_result(json.dumps(issues))], strict=True)
 
     selected, _corpus = analyze_bugs.fetch_bug_issues(runner, repo="o/r", count=1)
 
     assert [issue.number for issue in selected] == [200]
-    assert runner.calls == [["gh", "api", "--paginate", "repos/o/r/issues?state=all&per_page=100"]]
+    assert runner.calls[0][:4] == ["gh", "issue", "list", "--repo"]
+    assert "--limit" in runner.calls[0]
+    assert runner.calls[0][runner.calls[0].index("--limit") + 1] == "100000"
+    assert "closedByPullRequestsReferences" in runner.calls[0][runner.calls[0].index("--json") + 1]
+
+
+def test_fetch_translates_ship_error_to_analyze_bugs_error() -> None:
+    runner = RecordingRunner(responses=[_result(rc=1, stderr="auth boom")], strict=True)
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="gh issue list failed"):
+        analyze_bugs.fetch_bug_issues(runner, repo="o/r", count=1)
 
 
 def test_fetch_normalizes_lifecycle_prefixes_and_bug_case() -> None:

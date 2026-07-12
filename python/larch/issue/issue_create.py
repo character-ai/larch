@@ -17,6 +17,7 @@ from collections.abc import Callable
 from larch.core import config
 from larch.core import proc
 from larch.design.plan_grammar import balanced_fence_line_indices
+from larch.errors import ShipError
 from larch.git import gh
 from larch.core.redact import redact_secrets_outbound
 from larch.state import session_env as _session_env
@@ -764,21 +765,6 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
     return _blocked_failure(client=client, blocker=blocker, message=f"all 3 attempts failed: {last_error}")
 
 
-def _json_documents(text: str) -> list[object]:
-    decoder = json.JSONDecoder()
-    docs: list[object] = []
-    index = 0
-    while index < len(text):
-        while index < len(text) and text[index].isspace():
-            index += 1
-        if index >= len(text):
-            break
-        doc, end = decoder.raw_decode(text, index)
-        docs.append(doc)
-        index = end
-    return docs
-
-
 def _title_archival(title: str) -> bool:
     value = title.lstrip().lower()
     return value.startswith(("research ", "[research] ", "investigate ", "[investigate] ")) or re.match(r"^\[.*report\] ", value) is not None
@@ -809,39 +795,41 @@ def list_issues_main(argv: list[str]) -> int:
             emit_kv(key="LIST_STATUS", value="failed")
             warn("WARN: failed to resolve repository name via 'gh repo view'")
             return 0
-    result = _gh_read(["gh", "api", "--paginate", f"repos/{repo}/issues?state=all&per_page=100"])
-    if result.returncode != 0:
-        emit_kv(key="LIST_STATUS", value="failed")
-        warn(f"WARN: gh api --paginate failed for repo {repo} (network, auth, or rate limit)")
-        return 0
     try:
-        docs = _json_documents(result.stdout)
-    except json.JSONDecodeError:
+        listed = gh.issue_list_read(
+            proc,
+            repo=repo,
+            state="all",
+            fields=("number", "title", "state", "closedAt", "url"),
+            limit=100000,
+        )
+    except ShipError as exc:
         emit_kv(key="LIST_STATUS", value="failed")
-        warn("WARN: jq failed to parse gh api output")
+        reason = str(exc)
+        if "JSON parse failed" in reason:
+            warn("WARN: jq failed to parse gh api output")
+        else:
+            warn(f"WARN: gh api --paginate failed for repo {repo} (network, auth, or rate limit)")
         return 0
     cutoff = _dt.datetime.now().astimezone().date() - _dt.timedelta(days=int(closed_window))
     rows: list[str] = []
-    for doc in docs:
-        if not isinstance(doc, list):
+    for issue in listed:
+        if not isinstance(issue, dict):
             continue
-        for issue in doc:
-            if not isinstance(issue, dict) or issue.get("pull_request") is not None:
+        state = str(issue.get("state") or "").casefold()
+        if state == "closed":
+            if int(closed_window) == 0:
                 continue
-            state = str(issue.get("state") or "")
-            if state == "closed":
-                if int(closed_window) == 0:
-                    continue
-                closed_at = str(issue.get("closed_at") or "")[:10]
-                if not closed_at or closed_at < cutoff.isoformat():
-                    continue
-            elif state != "open":
+            closed_at = str(issue.get("closedAt") or "")[:10]
+            if not closed_at or closed_at < cutoff.isoformat():
                 continue
-            title = str(issue.get("title") or "")
-            if _title_archival(title):
-                continue
-            clean_title = title.replace("\t", " ").replace("\n", " ").replace("\r", " ")
-            rows.append(f"{issue.get('number')}\t{clean_title}\t{state}\t{issue.get('html_url') or issue.get('url') or ''}")
+        elif state != "open":
+            continue
+        title = str(issue.get("title") or "")
+        if _title_archival(title):
+            continue
+        clean_title = title.replace("\t", " ").replace("\n", " ").replace("\r", " ")
+        rows.append(f"{issue.get('number')}\t{clean_title}\t{state}\t{issue.get('url') or ''}")
     emit_kv(key="LIST_STATUS", value="ok")
     for row in rows:
         print(row)
