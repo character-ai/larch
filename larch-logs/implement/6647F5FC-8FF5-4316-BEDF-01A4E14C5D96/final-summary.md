@@ -35,11 +35,19 @@ codex/validity-vote                    │                                    �
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+No invariant violations identified. The changes introduce directory-descendant coverage mapping (_firm_path_covered_by, _map_touched_to_firm_paths) and apply it consistently across _frozen_fallback_touched_paths, compute_coverage, and _coverage_from_mapping. Coverage fingerprinting and staleness guards (I-Stale-1) are not modified; diff fingerprints and HEAD_SHA checks remain in place. No gate-disarm, pause-snapshot, run-log flush, slot-drop, or ship-lifecycle logic is affected.
+
+## Architectural guidelines
+
+No guideline deviations identified. The fix applies _firm_path_covered_by at all three coverage-matching sites (_frozen_fallback_touched_paths, compute_coverage, _coverage_from_mapping), consistent with G-Fix-1. Two new test cases (test_live_coverage_maps_directory_descendant_to_firm_path, test_frozen_fallback_keeps_raw_descendant_for_provenance) provide offline reproduction of the directory-descendant behavior, satisfying G-Fix-2. New helpers are typed with explicit signatures and return types (G-Py-2, G-Py-9). The persisted touched_paths field continues to store firm path spellings and remains backward-compatible with prior exact-path artifacts under the updated _coverage_from_mapping reader (G-Wire-2). No new wire literals, CLI surfaces, or I/O paths are introduced.
+
 ## /implement run 6647F5FC-8FF5-4316-BEDF-01A4E14C5D96: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:14:08
-- **Cost**: 💰 TOTAL ~$7.00: Claude $0.63, Codex-5.6 $0.89, Codex-mini $0.54, Cursor $4.69 (Composer $3.50, Grok $1.19), Claude (subprocess) $0.25  |  Tokens: 12841k
+- **Cost**: 💰 TOTAL ~$7.14: Claude $0.77, Codex-5.6 $0.89, Codex-mini $0.54, Cursor $4.69 (Composer $3.50, Grok $1.19), Claude (subprocess) $0.25  |  Tokens: 13231k
 - **Issue**: #7083: https://github.com/character-ai/larch/issues/7083
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
