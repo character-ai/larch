@@ -351,3 +351,44 @@ def test_keep_file_retains_difficulty_rating() -> None:
     assert keep(filename="difficulty-rating.json", skill="implement")
     assert keep(filename="difficulty-rating.json", skill="design")
     assert keep(filename="difficulty-rating.json", skill="review")
+
+
+def test_resolve_run_date_ignores_updated_at_and_run_manifest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _repo(tmp_path)
+    updated_only = repo / "larch-logs" / "implement" / "updated-only"
+    updated_only.mkdir(parents=True)
+    (updated_only / "manifest.json").write_text('{"updated_at":"2019-01-01T00:00:00Z"}\n', encoding="utf-8")
+    (updated_only / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    alt_only = repo / "larch-logs" / "implement" / "alt-only"
+    alt_only.mkdir(parents=True)
+    (alt_only / "run-manifest.json").write_text('{"started_at":"2019-01-01T00:00:00Z"}\n', encoding="utf-8")
+    (alt_only / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    calls: list[tuple[str, ...]] = []
+
+    def fake_git(repo_root: Path, *args: str) -> CommandResult:
+        del repo_root
+        calls.append(args)
+        return CommandResult(
+            argv=("git", *args),
+            returncode=0,
+            stdout="2020-06-01T00:00:00Z\n",
+            stderr="",
+            duration=0.0,
+        )
+
+    monkeypatch.setattr(gc_run_logs, "_git", fake_git)
+    assert gc_run_logs._resolve_run_date(repo_root=repo, run_dir=updated_only) == "2020-06-01T00:00:00Z"  # pyright: ignore[reportPrivateUsage]
+    assert gc_run_logs._resolve_run_date(repo_root=repo, run_dir=alt_only) == "2020-06-01T00:00:00Z"  # pyright: ignore[reportPrivateUsage]
+    assert calls
+
+
+def test_iter_run_dirs_skips_symlinks(tmp_path: Path) -> None:
+    logs = tmp_path / "larch-logs"
+    real = logs / "implement" / "run-real"
+    real.mkdir(parents=True)
+    linked = logs / "implement" / "run-link"
+    linked.symlink_to(real)
+    dirs = gc_run_logs._iter_run_dirs(logs_root=logs, skill="implement")  # pyright: ignore[reportPrivateUsage]
+    assert [path.name for path in dirs] == ["run-real"]

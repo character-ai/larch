@@ -421,6 +421,31 @@ PY
 PASS=$((PASS + 1))
 echo "  ok: malformed JSONL skips self-review tally fallback"
 
+echo "== design corpus policy skips links and keeps nested layouts stable =="
+POLICY_FIX=$(mktemp -d "${TMPDIR:-/tmp}/fluff-policy-XXXXXX")
+POLICY_DESIGN="$POLICY_FIX/larch-logs/design"
+mkdir -p "$POLICY_DESIGN/RUN-NESTED/extra/round-1" "$POLICY_DESIGN/RUN-MANIFEST-ONLY"
+printf '{"started_at":"2026-05-21T00:00:00Z","larch_version":"49.0.0"}\n' > "$POLICY_DESIGN/RUN-NESTED/manifest.json"
+printf '{"started_at":"2026-05-21T00:00:00Z","larch_version":"49.0.0"}\n' > "$POLICY_DESIGN/RUN-MANIFEST-ONLY/manifest.json"
+printf 'finding_id\tvoting_result\nFINDING_1\taccepted\n' > "$POLICY_DESIGN/RUN-NESTED/extra/round-1/findings-classification.tsv"
+ln -s "$POLICY_DESIGN/RUN-NESTED" "$POLICY_DESIGN/RUN-LINK"
+python3 - "$ANALYZER" "$POLICY_DESIGN" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+
+spec = importlib.util.spec_from_file_location("fluff_analysis", sys.argv[1])
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+design = Path(sys.argv[2])
+runs = mod._enumerate_design_run_dirs(str(design), None, None)
+paths = mod.run_log_corpus.discover_design_classification_paths(design)
+assert [Path(run).name for run, _manifest in runs] == ["RUN-MANIFEST-ONLY", "RUN-NESTED"], runs
+assert len(paths) == 1 and paths[0].parent.name == "round-1", paths
+PY
+rm -rf "$POLICY_FIX"
+PASS=$((PASS + 1))
+echo "  ok: design corpus policy is stable for manifest-only, linked, and nested runs"
+
 echo "== missing log root exits 2 =="
 set +e
 python3 "$ANALYZER" --log-root "$FIX/does-not-exist" >/dev/null 2>&1

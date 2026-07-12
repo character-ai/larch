@@ -1657,3 +1657,19 @@ def test_close_priors_without_operator_invoked_is_refused(monkeypatch: pytest.Mo
 
 
 # pyright: reportOperatorIssue=false
+
+
+def test_map_runs_skips_symlinked_candidate_dirs(monkeypatch, tmp_path: Path, capsys):
+    root = tmp_path / "larch-logs" / "implement"
+    right = root / "right"
+    right.mkdir(parents=True)
+    (right / "parent-issue.md").write_text("ISSUE_NUMBER=12\n", encoding="utf-8")
+    (right / "manifest.json").write_text('{"started_at":"2026-01-01T00:00:00+00:00","larch_version":"1.2.3"}\n', encoding="utf-8")
+    linked = root / "linked"
+    linked.symlink_to(right)
+    runner = AuditRunner({
+        ("gh","pr","view","5","--repo","o/r","--json","body"): cr(("gh",), stdout='{"body":"Closes #12"}\n'),
+    })
+    monkeypatch.setattr(audit_runs.proc, "run", runner.run)
+    assert audit_runs.map_runs_main(["--skill","implement","--pr-list","5","--repo","o/r","--log-root",str(root)]) == 0
+    assert capsys.readouterr().out.splitlines()[0] == "5\tright\t2026-01-01T00:00:00+00:00\t1.2.3\t12"

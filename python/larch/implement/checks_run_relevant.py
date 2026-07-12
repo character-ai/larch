@@ -24,6 +24,7 @@ from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
+from larch.report import run_log_corpus
 from larch.report.tokens import (
     CHECKS_DIGEST_SIZE_BASENAME,
     _CHECKS_DIGEST_SIZE_FIELDS,  # pyright: ignore[reportPrivateUsage]
@@ -380,18 +381,11 @@ def _checks_digest_run_artifact(canonical_tmp: Path) -> Path | None:
         return None
     candidates: list[Path] = []
     for skill in ("implement", "review"):
-        skill_root = root / skill
-        if not skill_root.is_dir() or skill_root.is_symlink():
-            continue
-        try:
-            with os.scandir(skill_root) as entries:
-                candidates.extend(
-                    Path(entry.path) / CHECKS_DIGEST_SIZE_BASENAME
-                    for entry in entries
-                    if entry.is_dir(follow_symlinks=False)
-                )
-        except OSError:
-            continue
+        for run_dir in run_log_corpus.safe_child_run_dirs(root / skill):
+            candidate = run_dir / CHECKS_DIGEST_SIZE_BASENAME
+            if candidate.is_symlink() or (candidate.exists() and not candidate.is_file()):
+                continue
+            candidates.append(candidate)
     return candidates[0] if len(candidates) == 1 else None
 
 

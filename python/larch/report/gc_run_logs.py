@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shutil
 import subprocess
@@ -15,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from larch.core import logging_util
+from larch.report import run_log_corpus
 
 SKILLS = ("design", "implement", "review")
 COMMON_KEEP = {"manifest.json", "final-summary.md", "difficulty-rating.json", "gc-slimmed"}
@@ -71,18 +71,13 @@ def _repo_root() -> Path | None:
     return Path(result.stdout.strip())
 
 
-def _parse_started_at(manifest: Path) -> str:
-    try:
-        parsed: object = json.loads(manifest.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, json.JSONDecodeError):
-        return ""
-    if isinstance(parsed, dict) and isinstance(parsed.get("started_at"), str):
-        return str(parsed["started_at"])
-    return ""
-
-
 def _resolve_run_date(*, repo_root: Path, run_dir: Path) -> str:
-    started_at = _parse_started_at(run_dir / "manifest.json")
+    started_at = run_log_corpus.run_started_at(
+        run_dir,
+        allow_updated_at_fallback=False,
+        continue_on_empty=False,
+        manifest_candidates=("manifest.json",),
+    )
     if started_at:
         return started_at
     result = _git(repo_root, "log", "--diff-filter=A", "--format=%aI", "--", f"{run_dir}/")
@@ -94,16 +89,7 @@ def _resolve_run_date(*, repo_root: Path, run_dir: Path) -> str:
 
 
 def _iter_run_dirs(*, logs_root: Path, skill: str) -> list[Path]:
-    skill_dir = logs_root / skill
-    if not skill_dir.is_dir():
-        return []
-    dirs: list[Path] = []
-    try:
-        with os.scandir(skill_dir) as entries:
-            dirs.extend(Path(entry.path) for entry in entries if entry.is_dir(follow_symlinks=False))
-    except OSError:
-        return []
-    return sorted(dirs)
+    return run_log_corpus.safe_child_run_dirs(logs_root / skill)
 
 
 def _is_under(*, path: Path, root: Path) -> bool:
@@ -114,19 +100,8 @@ def _is_under(*, path: Path, root: Path) -> bool:
     return True
 
 
-def _has_escape_symlink(*, path: Path, logs_root: Path) -> bool:
-    if not _is_under(path=path, root=logs_root):
-        return True
-    try:
-        for root, dirs, files in os.walk(path, followlinks=False):
-            root_path = Path(root)
-            for name in list(dirs) + files:
-                child = root_path / name
-                if child.is_symlink() and not _is_under(path=child, root=logs_root):
-                    return True
-    except OSError:
-        return True
-    return False
+def _has_escape_symlink(*, path: Path, contain_root: Path) -> bool:
+    return run_log_corpus.validated_run_has_escape_symlink(path, contain_root=contain_root)
 
 
 def _keep_file(*, filename: str, skill: str) -> bool:
@@ -139,16 +114,7 @@ def _keep_file(*, filename: str, skill: str) -> bool:
 
 
 def _dir_bytes(path: Path) -> int:
-    total = 0
-    for root, dirs, files in os.walk(path, followlinks=False):
-        dirs[:] = [name for name in dirs if not (Path(root) / name).is_symlink()]
-        for name in files:
-            child = Path(root) / name
-            try:
-                total += child.stat().st_size
-            except OSError:
-                continue
-    return total
+    return run_log_corpus.validated_run_dir_bytes(path)
 
 
 def _plan(*, repo_root: Path, logs_root: Path, older_than: int, delete: bool = False) -> tuple[Counters, list[PlannedDir], str]:
@@ -190,7 +156,7 @@ def _plan(*, repo_root: Path, logs_root: Path, older_than: int, delete: bool = F
                 is_recent = run_date >= cutoff_dt
             if is_recent:
                 continue
-            if _has_escape_symlink(path=run_dir, logs_root=logs_root):
+            if _has_escape_symlink(path=run_dir, contain_root=logs_root / skill):
                 counters.skipped += 1
                 _err(f"  skip (escape-symlink): {skill}/{run_name}")
                 continue
@@ -228,8 +194,8 @@ def _slim_dir(*, logs_root: Path, item: PlannedDir) -> int:
             _remove_tree(path)
         elif entry.is_file(follow_symlinks=False) and not _keep_file(filename=path.name, skill=item.skill):
             path.unlink()
-    (item.path / "gc-slimmed").write_text(item.run_date + "\n", encoding="utf-8")
     after = _dir_bytes(item.path)
+    (item.path / "gc-slimmed").write_text(item.run_date + "\n", encoding="utf-8")
     return max(0, before - after)
 
 

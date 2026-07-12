@@ -10,6 +10,7 @@ from typing import NoReturn
 
 import pytest
 
+from larch.issue import _oos
 from larch.issue import oos
 from larch.issue import oos_priority
 
@@ -404,3 +405,18 @@ def test_oos_serialize_cli_validation_exit_2(tmp_path: Path) -> None:
     for args in cases:
         result = _run_cli(args)
         assert result.returncode == 2
+
+
+def test_iter_filed_oos_records_skips_symlinked_run_dirs(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs"
+    run = log_root / "design" / "run-real"
+    run.mkdir(parents=True)
+    _ = (run / "oos-issues-created.md").write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/o/r/issues/77\n",
+        encoding="utf-8",
+    )
+    linked = log_root / "design" / "run-link"
+    linked.symlink_to(run)
+    records = _oos.iter_filed_oos_records(log_root)
+    assert [record.get("run_id") for record in records] == ["run-real"]
+    assert all(record.get("run_id") != "run-link" for record in records)

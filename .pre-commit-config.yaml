@@ -309,6 +309,13 @@ repos:
         pass_filenames: false
         files: ^larch-logs/
 
+      - id: lint-run-log-walkers
+        name: Reject raw committed run-log corpus walkers
+        entry: python3 python/cli.py lint run-log-walkers
+        language: system
+        pass_filenames: false
+        files: ^(python/.*\.py|skills/fluff-analysis/scripts/fluff-analysis\.py|skills/voter-calibration/scripts/voter-calibration\.py)$
+
       - id: lint-keyword-only
         name: Lint keyword-only arg enforcement in python/
         entry: python3 python/cli.py lint keyword-only

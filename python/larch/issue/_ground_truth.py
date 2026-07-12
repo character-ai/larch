@@ -39,6 +39,7 @@ from larch.issue._util import (
     issue_text,
     parse_iso,
 )
+from larch.report import run_log_corpus
 from larch.review import voting
 
 
@@ -230,14 +231,17 @@ def _safe_read_text(path: Path) -> str:
 
 def _ground_truth_discover_classifiers(log_root: Path) -> list[tuple[str, Path]]:
     paths: list[tuple[str, Path]] = []
-    for path in sorted(log_root.glob("design/*/plan-review/round-*/findings-classification.tsv")):
-        paths.append(("design", path))
-    for path in sorted(log_root.glob("implement/*/round-*/findings-classification.tsv")):
-        paths.append(("code-review", path))
-    for path in sorted(log_root.glob("review/*/review-findings-classification-round-*.tsv")):
-        text = _safe_read_text(path)
-        if voting.classification_tsv_schema_supported(text, panel_kind="code-review"):
-            paths.append(("code-review", path))
+    for skill, path in run_log_corpus.discover_classifications(
+        log_root,
+        skills=("design", "implement", "review"),
+        round_sort="numeric",
+    ):
+        panel_kind = "design" if skill == "design" else "code-review"
+        if skill == "review":
+            text = _safe_read_text(path)
+            if not voting.classification_tsv_schema_supported(text, panel_kind="code-review"):
+                continue
+        paths.append((panel_kind, path))
     return paths
 
 
@@ -251,60 +255,37 @@ def _ground_truth_run_dir(path: Path, *, panel_kind: str) -> Path:
 
 
 def _ground_truth_round_num(path: Path) -> int:
-    for part in reversed(path.parts):
-        match = re.fullmatch(r"round-(\d+)", part)
-        if match:
-            return int(match.group(1))
-    match = re.search(r"round-(\d+)", path.name)
-    return int(match.group(1)) if match else 0
+    round_num = run_log_corpus.round_num_from_path(path)
+    return 0 if round_num is None else round_num
 
 
 def _ground_truth_run_started_at(run_dir: Path) -> datetime | None:
-    for name in ("manifest.json", "run-manifest.json"):
-        path = run_dir / name
-        if not path.is_file():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(data, Mapping):
-            return parse_iso(str(data.get("started_at") or data.get("updated_at") or ""))
-    return None
+    return parse_iso(
+        run_log_corpus.run_started_at(
+            run_dir,
+            allow_updated_at_fallback=True,
+            continue_on_empty=False,
+        )
+    )
 
 
 def _ground_truth_run_started_at_strict(run_dir: Path) -> datetime | None:
-    for name in ("manifest.json", "run-manifest.json"):
-        path = run_dir / name
-        if not path.is_file():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(data, Mapping):
-            started_at = parse_iso(str(data.get("started_at") or ""))
-            if started_at is not None:
-                return started_at
-    return None
+    return parse_iso(
+        run_log_corpus.run_started_at(
+            run_dir,
+            allow_updated_at_fallback=False,
+            continue_on_empty=True,
+        )
+    )
 
 
 def _ground_truth_run_larch_version(run_dir: Path) -> str | None:
-    for name in ("manifest.json", "run-manifest.json"):
-        path = run_dir / name
-        if not path.is_file():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(data, Mapping):
-            version = data.get("larch_version")
-            if not version:
-                continue
-            text = str(version).strip()
-            if _ground_truth_version_tuple(text) is not None:
-                return text
+    version = run_log_corpus.larch_version(run_dir, continue_on_empty=True)
+    if not version:
+        return None
+    text = version.strip()
+    if _ground_truth_version_tuple(text) is not None:
+        return text
     return None
 
 
@@ -375,20 +356,13 @@ def _enforce_ground_truth_verdict_capstone_minima(
 
 
 def _ground_truth_run_ended_at(run_dir: Path) -> datetime | None:
-    for name in ("manifest.json", "run-manifest.json"):
-        path = run_dir / name
-        if not path.is_file():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        if isinstance(data, Mapping):
-            ended = parse_iso(str(data.get("ended_at") or data.get("completed_at") or ""))
-            if ended:
-                return ended
-            return parse_iso(str(data.get("updated_at") or ""))
-    return None
+    return parse_iso(
+        run_log_corpus.run_ended_at(
+            run_dir,
+            continue_on_empty=False,
+            manifest_candidates=("manifest.json",),
+        )
+    )
 
 
 def _run_has_round_local_jsonl(run_dir: Path) -> bool:
@@ -1265,9 +1239,10 @@ def _ground_truth_gc_slimmed_fallback(log_root: Path, *, seen_gc: frozenset[Path
     if not log_root.exists():
         return 0
     count = 0
-    for run_dir in list((log_root / "implement").glob("*")) + list((log_root / "design").glob("*")) + list((log_root / "review").glob("*")):
-        if run_dir.is_dir() and run_dir not in seen_gc and (run_dir / "gc-slimmed").exists():
-            count += 1
+    for skill in ("implement", "design", "review"):
+        for run_dir in run_log_corpus.safe_child_run_dirs(log_root / skill):
+            if run_dir not in seen_gc and (run_dir / "gc-slimmed").exists():
+                count += 1
     return count
 
 

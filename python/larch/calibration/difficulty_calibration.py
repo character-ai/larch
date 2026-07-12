@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import re
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
@@ -16,6 +15,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.calibration import difficulty
+from larch.report import run_log_corpus
 from larch.report.report_tokens_cost import display_rates
 from larch.report.report_tokens_models import safe_int
 from larch.review import voting
@@ -214,56 +214,33 @@ def _read_json(path: Path, state: AnalyzerState, counter: str) -> object | None:
 
 
 def _safe_child_run_dirs(log_base: Path, state: AnalyzerState) -> list[Path]:
-    dirs: list[Path] = []
-    try:
-        resolved_base = log_base.resolve(strict=True)
-    except OSError:
-        state.bump("missing_skill_roots")
-        return []
-    try:
-        children = sorted(log_base.glob("*"))
-    except OSError:
-        state.bump("unreadable_skill_roots")
-        return []
-    for path in children:
-        if path.is_symlink():
+    def _on_warning(warning: run_log_corpus.WalkWarning) -> None:
+        if warning.kind is run_log_corpus.WalkWarningKind.ROOT_MISSING:
+            state.bump("missing_skill_roots")
+        elif warning.kind is run_log_corpus.WalkWarningKind.ROOT_UNREADABLE:
+            state.bump("unreadable_skill_roots")
+        else:
             state.bump("unsafe_run_dirs")
-            continue
-        if not path.is_dir():
-            continue
-        try:
-            resolved = path.resolve(strict=True)
-        except OSError:
-            state.bump("unsafe_run_dirs")
-            continue
-        if resolved != resolved_base and resolved_base not in resolved.parents:
-            state.bump("unsafe_run_dirs")
-            continue
-        dirs.append(path)
-    return dirs
+
+    return run_log_corpus.safe_child_run_dirs(log_base, on_warning=_on_warning)
 
 
 def _round_num_from_path(path: Path) -> int:
-    for part in reversed(path.parts):
-        match = re.fullmatch(r"round-(\d+)", part)
-        if match:
-            return int(match.group(1))
-    match = re.search(r"round-(\d+)", path.name)
-    return int(match.group(1)) if match else 0
+    round_num = run_log_corpus.round_num_from_path(path)
+    return 0 if round_num is None else round_num
 
 
 def _classification_paths(skill: str, run_dir: Path) -> tuple[Path, ...]:
+    tsvs = tuple(run_log_corpus.classification_tsv_paths(skill, run_dir, round_sort="numeric"))
     if skill == "implement":
-        tsvs = tuple(sorted(run_dir.glob("round-*/findings-classification.tsv"), key=_round_num_from_path))
         return tsvs or ((run_dir / "review-findings-full.jsonl",) if (run_dir / "review-findings-full.jsonl").is_file() else ())
     if skill == "review":
-        tsvs = tuple(sorted(run_dir.glob("review-findings-classification-round-*.tsv"), key=_round_num_from_path))
         if tsvs:
             return tsvs
         if (run_dir / "review-findings.ndjson").is_file():
             return (run_dir / "review-findings.ndjson",)
         return ((run_dir / "review-findings-full.jsonl",) if (run_dir / "review-findings-full.jsonl").is_file() else ())
-    return tuple(sorted((run_dir / "plan-review").glob("round-*/findings-classification.tsv"), key=_round_num_from_path))
+    return tsvs
 
 
 def _has_known_source(skill: str, run_dir: Path) -> bool:

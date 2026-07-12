@@ -27,6 +27,7 @@ from larch.core import logging_util, proc
 
 from larch.git import gh
 from larch.issue import issue_wire
+from larch.report import run_log_corpus
 from larch.review import voting
 from larch.review.review_types import parse_canonical_heading
 
@@ -294,13 +295,11 @@ def _parse_iso(value: str) -> datetime | None:
 
 
 def _run_started_at(run_dir: Path) -> str:
-    for name in ("manifest.json", "run-manifest.json"):
-        data = _json_loads(_read_text(run_dir / name))
-        if isinstance(data, Mapping):
-            value = data.get("started_at") or data.get("updated_at") or ""
-            if isinstance(value, str):
-                return value
-    return ""
+    return run_log_corpus.run_started_at(
+        run_dir,
+        allow_updated_at_fallback=True,
+        continue_on_empty=False,
+    )
 
 
 def _within_days(started_at: str, days: int) -> bool:  # lint-keyword-only: ok stable helper API
@@ -660,12 +659,8 @@ def _iter_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def _round_from_path(path: Path) -> str:
-    for part in reversed(path.parts):
-        match = re.fullmatch(r"round-(\d+)", part)
-        if match:
-            return match.group(1)
-    match = re.search(r"round-(\d+)", path.name)
-    return match.group(1) if match else ""
+    round_num = run_log_corpus.round_num_from_path(path)
+    return "" if round_num is None else str(round_num)
 
 
 def _run_has_multiple_rounds(run_dir: Path) -> bool:
@@ -816,10 +811,10 @@ def _join_run_findings(*, run_dir: Path, source_skill: str, repo_root: Path) -> 
     started_at = _run_started_at(run_dir)
     run_id = run_dir.name
     jsonl_by_round = _implement_jsonl_records(run_dir) if source_skill == "implement" else _review_jsonl_records(run_dir)
-    tsv_paths = (
-        sorted(run_dir.glob("round-*/findings-classification.tsv"))
-        if source_skill == "implement"
-        else sorted(run_dir.glob("review-findings-classification-round-*.tsv"))
+    tsv_paths = run_log_corpus.classification_tsv_paths(
+        source_skill,
+        run_dir,
+        round_sort="lexical",
     )
     findings: list[RejectedFinding] = []
     drops: list[LedgerEntry] = []
@@ -1013,10 +1008,8 @@ def prepare(
     all_findings: list[RejectedFinding] = []
     ledger_entries: list[LedgerEntry] = []
     runs_seen = 0
-    for source, pattern in (("implement", "implement/*"), ("review", "review/*")):
-        for run_dir in sorted(logs.glob(pattern)):
-            if not run_dir.is_dir():
-                continue
+    for source in ("implement", "review"):
+        for run_dir in run_log_corpus.safe_child_run_dirs(logs / source):
             started = _run_started_at(run_dir)
             if not _within_days(started, days):
                 continue

@@ -39,6 +39,7 @@ from larch.issue.rejected_analysis import (  # noqa: E402
     _records_by_round_and_token,
 )
 from larch.implement.ship_guidelines import GUIDELINE_SHIP_REASON_TOKENS  # noqa: E402
+from larch.report import run_log_corpus  # noqa: E402
 from larch.review.self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------
@@ -93,20 +94,20 @@ def read_text(path):
 
 
 def manifest_started(run_dir):
-    try:
-        data = json.loads(read_text(os.path.join(run_dir, "manifest.json")) or "{}")
-        return data.get("started_at")
-    except (ValueError, TypeError):
-        return None
+    return run_log_corpus.run_started_at(
+        Path(run_dir),
+        allow_updated_at_fallback=False,
+        continue_on_empty=False,
+        manifest_candidates=("manifest.json",),
+    ) or None
 
 
 def manifest_larch_version(run_dir):
-    try:
-        data = json.loads(read_text(os.path.join(run_dir, "manifest.json")) or "{}")
-    except (ValueError, TypeError):
-        return ""
-    value = data.get("larch_version", "")
-    return value if isinstance(value, str) else ""
+    return run_log_corpus.larch_version(
+        Path(run_dir),
+        continue_on_empty=False,
+        manifest_candidates=("manifest.json",),
+    )
 
 
 def tools_from(label):
@@ -356,8 +357,8 @@ def _reviewer_claimed_tier(body_severity, *, corpus):
 
 
 def _round_from_path(path):
-    match = re.search(r"round-(\d+)", str(path).replace(os.sep, "/"))
-    return match.group(1) if match else ""
+    round_num = run_log_corpus.round_num_from_path(Path(path))
+    return "" if round_num is None else str(round_num)
 
 
 def _run_has_multiple_rounds(run_dir):
@@ -411,7 +412,8 @@ def _impl_fn_rows_from_run(run_dir, jsonl_records, *, cutoff=None, since_version
     multi_round = _run_has_multiple_rounds(run_dir)
     allow_unscoped = not multi_round and not _run_has_round_local_jsonl(run_dir)
     rows = []
-    for tsv in sorted(glob.glob(os.path.join(run_dir, "round-*", "findings-classification.tsv"))):
+    for tsv in run_log_corpus.classification_tsv_paths("implement", Path(run_dir), round_sort="lexical"):
+        tsv = str(tsv)
         round_num = _round_from_path(tsv)
         for fid, trow in parse_impl_tsv(read_text(tsv)).items():
             verdict = (trow.get("voting_result") or "").strip().lower()
@@ -447,9 +449,8 @@ def _impl_fn_rows_from_run(run_dir, jsonl_records, *, cutoff=None, since_version
 def build_impl_fn_rows(log_root, *, cutoff=None, since_version=None):
     rows = []
     impl_root = os.path.join(log_root, "implement")
-    for run_dir in sorted(glob.glob(os.path.join(impl_root, "*"))):
-        if not os.path.isdir(run_dir):
-            continue
+    for run_path in run_log_corpus.safe_child_run_dirs(Path(impl_root)):
+        run_dir = str(run_path)
         rows.extend(_impl_fn_rows_from_run(run_dir, _impl_jsonl_records_by_round(run_dir), cutoff=cutoff, since_version=since_version))
     return rows
 
@@ -482,7 +483,8 @@ def _extract_one_implement_run(args):
     period = period_of_version(since_version, larch_version) if since_version is not None else period_of(cutoff, started_at=started)
     fallback_records = _self_review_tally_records(run_dir, run_id, larch_version, period)
     round_tsv = {}
-    for tsv in glob.glob(os.path.join(run_dir, "round-*", "findings-classification.tsv")):
+    for tsv_path in run_log_corpus.classification_tsv_paths("implement", Path(run_dir), round_sort="lexical"):
+        tsv = str(tsv_path)
         match = re.search(r"round-(\d+)", tsv)
         round_tsv[match.group(1) if match else ""] = parse_impl_tsv(read_text(tsv))
     malformed_jsonl = False
@@ -569,7 +571,7 @@ def _self_review_tally_records(run_dir, run_id, larch_version, period):
 
 
 def _extract_implement(impl_root, cutoff, since_version=None):
-    run_dirs = sorted(glob.glob(os.path.join(impl_root, "*")))
+    run_dirs = [str(path) for path in run_log_corpus.safe_child_run_dirs(Path(impl_root))]
     if not run_dirs:
         return []
     jobs = [(run_dir, cutoff, since_version) for run_dir in run_dirs]
@@ -637,7 +639,7 @@ def _extract_one_design_tsv(args):
 
 
 def _extract_design(design_root, cutoff, since_version=None):
-    tsvs = sorted(glob.glob(os.path.join(design_root, "*", "**", "findings-classification.tsv"), recursive=True))
+    tsvs = [str(path) for path in run_log_corpus.discover_design_classification_paths(Path(design_root))]
     if not tsvs:
         return []
     jobs = [(tsv, design_root, cutoff, since_version) for tsv in tsvs]
@@ -660,28 +662,16 @@ def _parse_started_at(raw):
         return None
 
 
-def _design_run_manifest(run_dir):
-    try:
-        data = json.loads(read_text(os.path.join(run_dir, "manifest.json")) or "{}")
-    except (ValueError, TypeError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
 def _enumerate_design_run_dirs(design_root, cutoff, since_version):
     if not os.path.isdir(design_root):
         return []
     run_dirs = []
-    for run_dir in sorted(glob.glob(os.path.join(design_root, "*"))):
-        if not os.path.isdir(run_dir):
-            continue
-        manifest = _design_run_manifest(run_dir)
-        if manifest is None:
-            continue
-        started_at = manifest.get("started_at")
-        larch_version = manifest.get("larch_version", "")
+    for run_path in run_log_corpus.safe_child_run_dirs(Path(design_root)):
+        run_dir = str(run_path)
+        started_at = manifest_started(run_dir)
+        larch_version = manifest_larch_version(run_dir)
         if since_version is not None:
-            parsed = parse_larch_version(larch_version if isinstance(larch_version, str) else "")
+            parsed = parse_larch_version(larch_version)
             if parsed is None or parsed < since_version:
                 continue
         elif cutoff is not None:
@@ -692,7 +682,7 @@ def _enumerate_design_run_dirs(design_root, cutoff, since_version):
                 started = started.replace(tzinfo=datetime.timezone.utc)
             if started < cutoff:
                 continue
-        run_dirs.append((run_dir, manifest))
+        run_dirs.append((run_dir, {"started_at": started_at or "", "larch_version": larch_version}))
     return run_dirs
 
 
@@ -748,9 +738,8 @@ def _enumerate_implement_run_dirs(implement_root, cutoff, since_version):
     if not os.path.isdir(implement_root):
         return []
     run_dirs = []
-    for run_dir in sorted(glob.glob(os.path.join(implement_root, "*"))):
-        if not os.path.isdir(run_dir):
-            continue
+    for run_path in run_log_corpus.safe_child_run_dirs(Path(implement_root)):
+        run_dir = str(run_path)
         try:
             manifest = json.loads(read_text(os.path.join(run_dir, "manifest.json")) or "{}")
         except (ValueError, TypeError):

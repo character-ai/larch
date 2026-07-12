@@ -21,6 +21,7 @@ from larch.issue._util import (
     issue_number,
     parse_iso,
 )
+from larch.report import run_log_corpus
 from larch.review import voting
 from larch.review.review_types import parse_blocks
 
@@ -925,12 +926,9 @@ def iter_filed_oos_records(log_root: Path) -> list[dict[str, Any]]:
     if not log_root.exists():
         return []
     records: list[dict[str, Any]] = []
-    for run_dir in sorted((log_root / "implement").glob("*")) if (log_root / "implement").is_dir() else []:
-        if run_dir.is_dir():
-            records.extend(_join_implement_run_records(run_dir, log_root=log_root))
-    for run_dir in sorted((log_root / "design").glob("*")) if (log_root / "design").is_dir() else []:
-        if not run_dir.is_dir():
-            continue
+    for run_dir in run_log_corpus.safe_child_run_dirs(log_root / "implement"):
+        records.extend(_join_implement_run_records(run_dir, log_root=log_root))
+    for run_dir in run_log_corpus.safe_child_run_dirs(log_root / "design"):
         accepted = run_dir / "oos-accepted-design.md"
         created_records = _parse_oos_issues_created(
             run_dir / "oos-issues-created.md",
