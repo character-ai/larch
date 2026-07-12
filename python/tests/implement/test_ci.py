@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -826,7 +827,7 @@ def _init_repo(repo: Path) -> str:
     return _run_git(repo, "rev-parse", "HEAD").stdout.strip()
 
 
-def _lane_identity(repo: Path, impl: Path) -> Any:
+def _lane_identity(repo: Path, impl: Path) -> ci.ci_fixer_lane.LaneIdentity:
     handoff = impl / "ci-fixer"
     handoff.mkdir(parents=True, exist_ok=True)
     impl.mkdir(parents=True, exist_ok=True)
@@ -935,3 +936,317 @@ def test_salvage_returns_none_when_tree_unchanged(
     assert ci.ci_fixer_lane._salvage_uncommitted_fixer_edits(
         identity, runner=proc, baseline=baseline
     ) is None
+
+
+def _crash_identity(
+    repo: Path,
+    impl: Path,
+    *,
+    run_id: str = "42",
+    tier: str = "codex",
+    attempt: int = 1,
+    starting_head: str | None = None,
+) -> ci.ci_fixer_lane.CrashFinalizeIdentity:
+    handoff = impl / "ci-fixer"
+    bgjob = impl / "bgjob"
+    handoff.mkdir(parents=True, exist_ok=True)
+    bgjob.mkdir(parents=True, exist_ok=True)
+    head = starting_head or _run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    fingerprint = "b" * 64
+    step = ci.ci_fixer_lane._identity_step(
+        identity=("ci", run_id, attempt, tier, head, fingerprint)
+    )
+    lineage = ci.ci_fixer_lane._expected_lineage_path(
+        handoff_dir=handoff.resolve(), mode="ci", run_id=run_id
+    )
+    return ci.ci_fixer_lane.CrashFinalizeIdentity(
+        mode="ci",
+        repo_root=repo.resolve(),
+        implement_tmpdir=impl.resolve(),
+        handoff_dir=handoff.resolve(),
+        run_id=run_id,
+        tier=tier,
+        attempt=attempt,
+        starting_head=head,
+        input_fingerprint=fingerprint,
+        step=step,
+        lineage=lineage,
+        bgjob_rc="1",
+        bgjob_elapsed_s="12",
+    )
+
+
+def _all_tools() -> ci.ci_fixer_lane.ToolAvailability:
+    return ci.ci_fixer_lane.ToolAvailability(codex=True, cursor=True, claude=True)
+
+
+def test_fixer_rounds_preserve_valid_foreign_lineage(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    first = _lane_identity(repo, impl)
+    rounds = first.handoff_dir / config.CI_FIXER_ROUNDS_FILE
+    rounds.write_text(
+        f"1\tcodex\t41\t{head}\t{'a' * 64}\tretry-next-tool\t{head}\n",
+        encoding="utf-8",
+    )
+    second = replace(
+        first,
+        run_id="42",
+        tier="cursor",
+        result_env=impl.resolve() / "bgjob" / "second.merge.env",
+    )
+    result = ci.ci_fixer_lane._persist(
+        second,
+        ci.ci_fixer_lane.LaneResult("retry-next-tool", "no progress", head),
+        ci.ci_fixer_lane.EvidenceState(second.handoff_dir / "failure.md", "distilled", "c" * 64),
+        runner=proc,
+    )
+
+    assert result.result == "retry-next-tool"
+    rows = rounds.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 2
+    assert rows[0].split("\t")[2] == "41"
+    assert rows[1].split("\t")[2] == "42"
+
+
+def test_fixer_rounds_reject_duplicate_attempt_within_run(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    rounds = identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE
+    rounds.write_text(
+        f"1\tcodex\t42\t{head}\t{'a' * 64}\tretry-next-tool\t{head}\n"
+        f"1\tcursor\t42\t{head}\t{'b' * 64}\tretry-next-tool\t{head}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="duplicate identity"):
+        ci.ci_fixer_lane._read_rounds(rounds)
+
+
+def test_fixer_lane_recovery_persists_with_foreign_round(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    handoff = impl / "ci-fixer"
+    handoff.mkdir(parents=True)
+    fingerprint = "b" * 64
+    step = ci.ci_fixer_lane._identity_step(
+        identity=("ci", "42", 1, "codex", head, fingerprint)
+    )
+    rounds = handoff / config.CI_FIXER_ROUNDS_FILE
+    rounds.write_text(
+        f"1\tcodex\t41\t{head}\t{'a' * 64}\tretry-next-tool\t{head}\n",
+        encoding="utf-8",
+    )
+
+    def fail_after_identity(*_args: object, **_kwargs: object) -> Any:
+        raise ci.ci_fixer_lane.LaneClosedError("post-identity failure")
+
+    monkeypatch.setattr(ci.ci_fixer_lane, "_collect_evidence", fail_after_identity)
+    rc = ci.ci_fixer_lane.main([
+        "--repo-root", str(repo.resolve()), "--implement-tmpdir", str(impl.resolve()),
+        "--handoff-dir", str(handoff.resolve()), "--repo", "o/r", "--run-id", "42",
+        "--tier", "codex", "--attempt", "1", "--starting-head", head,
+        "--input-fingerprint", fingerprint,
+        "--bgjob-result-env", str(impl.resolve() / "bgjob" / f"{step}.merge.env"),
+    ], runner=proc)
+
+    assert rc == 0
+    assert "STATUS=closed" in capsys.readouterr().out
+    assert "RESULT=operator-bail" in (handoff / config.CI_FIXER_STATUS_FILE).read_text(
+        encoding="utf-8"
+    )
+    assert len(rounds.read_text(encoding="utf-8").splitlines()) == 2
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        ("1\tcodex\t42\thead\tfingerprint\tresult",),
+        ("zero\tcodex\t42\t" + "a" * 40 + "\t" + "b" * 64 + "\tretry-next-tool\t" + "a" * 40,),
+        ("1\tbogus\t42\t" + "a" * 40 + "\t" + "b" * 64 + "\tretry-next-tool\t" + "a" * 40,),
+    ],
+)
+def test_fixer_rounds_reject_malformed_foreign_rows(
+    tmp_path: Path, row: tuple[str]
+) -> None:
+    impl = tmp_path / "impl"
+    handoff = impl / "ci-fixer"
+    handoff.mkdir(parents=True)
+    rounds = handoff / config.CI_FIXER_ROUNDS_FILE
+    rounds.write_text(row[0] + "\n", encoding="utf-8")
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="malformed"):
+        ci.ci_fixer_lane._read_rounds(rounds)
+
+
+def test_crashed_lane_records_once_and_retries_next_tier(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+    bgjob = identity.implement_tmpdir / "bgjob"
+    (bgjob / f"{identity.step}.stdout.log").write_text("stdout context\n", encoding="utf-8")
+    (bgjob / f"{identity.step}.stderr.log").write_text("stderr context\n", encoding="utf-8")
+
+    first = ci.ci_fixer_lane.finalize_crashed_lane(
+        identity, runner=proc, availability=_all_tools()
+    )
+    second = ci.ci_fixer_lane.finalize_crashed_lane(
+        identity, runner=proc, availability=_all_tools()
+    )
+
+    assert first.result == second.result == "retry-next-tool"
+    assert len(identity.lineage.read_text(encoding="utf-8").splitlines()) == 1
+    issues = (identity.implement_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert issues.count("larch:ci-fixer-crash:") == 1
+    assert "stdout context" in issues
+    assert "stderr context" in issues
+
+
+def test_crash_identity_rejects_successful_bgjob_result(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+    launch = identity.handoff_dir / f"launch-{identity.step}.env"
+    launch.write_text(
+        f"MODE={identity.mode}\nRUN_ID={identity.run_id}\n"
+        f"STARTING_HEAD={identity.starting_head}\n"
+        f"INPUT_FINGERPRINT={identity.input_fingerprint}\nTIER={identity.tier}\n"
+        f"ATTEMPT={identity.attempt}\nSTEP={identity.step}\nLINEAGE={identity.lineage}\n",
+        encoding="utf-8",
+    )
+    result_env = identity.implement_tmpdir / "bgjob" / f"{identity.step}.result.env"
+    result_env.write_text(
+        f"BGJOB_RC=0\nBGJOB_ELAPSED_S=1\nSTEP={identity.step}\n", encoding="utf-8"
+    )
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="not a crashed-lane"):
+        ci.ci_fixer_lane._validate_crash_identity(
+            repo_root_raw=str(identity.repo_root),
+            implement_tmpdir_raw=str(identity.implement_tmpdir),
+            handoff_dir_raw=str(identity.handoff_dir),
+            step=identity.step,
+            runner=proc,
+        )
+
+
+def test_crashed_final_tier_bails_without_lineage_advance(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    head = _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl", tier="claude", attempt=3)
+    identity.lineage.write_text(
+        f"1\tcodex\t{head}\t{'a' * 64}\tretry-next-tool\t{head}\n"
+        f"2\tcursor\t{head}\t{'b' * 64}\tretry-next-tool\t{head}\n",
+        encoding="utf-8",
+    )
+
+    result = ci.ci_fixer_lane.finalize_crashed_lane(
+        identity, runner=proc, availability=_all_tools()
+    )
+
+    assert result.result == "operator-bail"
+    assert len(identity.lineage.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_crashed_lane_validated_salvage_commit_reships(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl", starting_head=starting_head)
+    (repo / "tracked.txt").write_text("salvaged\n", encoding="utf-8")
+    _run_git(repo, "add", "tracked.txt")
+    _run_git(repo, "commit", "-m", "Apply CI fixer working-tree edits (codex)")
+
+    result = ci.ci_fixer_lane.finalize_crashed_lane(
+        identity, runner=proc, availability=_all_tools()
+    )
+
+    assert result.result == "reship"
+    assert not identity.lineage.exists()
+
+
+def test_crashed_lane_dirty_or_unverified_head_bails(tmp_path: Path) -> None:
+    dirty_repo = tmp_path / "dirty-repo"
+    dirty_head = _init_repo(dirty_repo)
+    dirty = _crash_identity(
+        dirty_repo, tmp_path / "dirty-impl", starting_head=dirty_head
+    )
+    (dirty_repo / "tracked.txt").write_text("dirty\n", encoding="utf-8")
+    dirty_result = ci.ci_fixer_lane.finalize_crashed_lane(
+        dirty, runner=proc, availability=_all_tools()
+    )
+    assert dirty_result.reason == "crashed-lane-worktree-drift"
+    unknown_repo = tmp_path / "unknown-repo"
+    starting_head = _init_repo(unknown_repo)
+    (unknown_repo / "tracked.txt").write_text("unknown commit\n", encoding="utf-8")
+    _run_git(unknown_repo, "add", "tracked.txt")
+    _run_git(unknown_repo, "commit", "-m", "unrelated commit")
+    unknown = _crash_identity(
+        unknown_repo, tmp_path / "unknown-impl", starting_head=starting_head
+    )
+
+    unknown_result = ci.ci_fixer_lane.finalize_crashed_lane(
+        unknown, runner=proc, availability=_all_tools()
+    )
+
+    assert unknown_result.reason == "crashed-lane-head-unverified"
+    assert not unknown.lineage.exists()
+
+
+def test_crash_diagnostic_redacts_and_caps_combined_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+    monkeypatch.setattr(config, "BGJOB_LOG_TAIL_BYTES", 500)
+    secret = "sk-test123456789012345678901234567890123456789012345678"
+    bgjob = identity.implement_tmpdir / "bgjob"
+    payload = ("x" * 4000) + f" {identity.implement_tmpdir} {secret}"
+    (bgjob / f"{identity.step}.stdout.log").write_text(payload, encoding="utf-8")
+    (bgjob / f"{identity.step}.stderr.log").write_text(payload, encoding="utf-8")
+
+    diagnostic = ci.ci_fixer_lane._crash_diagnostic(identity)
+
+    assert len(diagnostic.encode("utf-8")) <= 500
+    assert secret not in diagnostic
+    assert str(identity.implement_tmpdir) not in diagnostic
+    assert "Stdout tail" in diagnostic
+    assert "Stderr tail" in diagnostic
+
+
+def test_crash_diagnostic_failure_prevents_lineage_advance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+
+    def fail_append(**_kwargs: object) -> None:
+        raise OSError("append failed")
+
+    monkeypatch.setattr(ci.ci_fixer_lane.run_log_batch, "append_execution_issue", fail_append)
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="persistence failed"):
+        ci.ci_fixer_lane.finalize_crashed_lane(
+            identity, runner=proc, availability=_all_tools()
+        )
+    assert not identity.lineage.exists()
+
+
+def test_crashed_lane_conflicting_duplicate_identity_fails_closed(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    head = _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl")
+    identity.lineage.write_text(
+        f"1\tcodex\t{head}\t{'b' * 64}\toperator-bail\t{head}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="conflicts"):
+        ci.ci_fixer_lane.finalize_crashed_lane(
+            identity, runner=proc, availability=_all_tools()
+        )
