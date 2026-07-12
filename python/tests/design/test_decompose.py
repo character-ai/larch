@@ -12,6 +12,7 @@ import pytest
 
 from larch.core import proc
 from larch.design import decompose
+from larch.issue import issue_wire
 
 
 def _design_tmp(tmp_path: Path) -> Path:
@@ -38,6 +39,51 @@ def test_prepare_happy_path_multi_blocker_and_neutralizes_feature(tmp_path: Path
     batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
     assert "#123" in batch
     assert "\u200b### embedded heading" in batch
+
+
+def test_prepare_plan_stub_delegates_to_compose_named_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    d = _design_tmp(tmp_path)
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n"
+        "- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n"
+        "- Acceptance: verify api\n- Dependencies: none\n",
+        encoding="utf-8",
+    )
+    calls: list[dict[str, str]] = []
+    real_compose = issue_wire.compose_named_block
+    expected_inner = (
+        "## Plan\n\n"
+        "(needs /design — operator runs `/design` on this filed piece "
+        "and reaches Gate C approval before `[DESIGNED]` or `/implement`.)\n"
+    )
+
+    def _spy(*, marker: str, inner: str) -> str:
+        calls.append({"marker": marker, "inner": inner})
+        return real_compose(marker=marker, inner=inner)
+
+    monkeypatch.setattr(decompose.issue_wire, "compose_named_block", _spy)
+    status, witness = decompose.prepare_partition_issues(
+        design_tmpdir=d, partition_file=partition, issue_number="123"
+    )
+    assert (status, witness) == ("ok", "")
+    assert calls == [
+        {"marker": "plan", "inner": expected_inner},
+        {"marker": "plan", "inner": expected_inner},
+    ]
+    expected_block = issue_wire.compose_named_block(
+        marker="plan",
+        inner=expected_inner,
+    )
+    batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+    assert f"```\n{expected_block}```\n" in batch
+    assert "(needs /design — operator runs `/design` on this filed piece" in batch
+    assert expected_block.endswith("<!-- larch:plan:end -->\n")
+    assert "\n\n<!-- larch:plan:end -->" not in expected_block
 
 
 def test_prepare_rejects_duplicate_declared_dependency(tmp_path: Path) -> None:

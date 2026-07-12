@@ -263,6 +263,85 @@ def test_design_route_merges_flags_for_already_planned(tmp_path: Path) -> None:
     assert merged["approve_requested"] is True
 
 
+def _design_route(
+    tmp_path: Path,
+    *,
+    body_text: str,
+    has_clarify_label: str = "false",
+) -> subprocess.CompletedProcess[str]:
+    body = tmp_path / "issue-body.md"
+    _ = body.write_text(body_text, encoding="utf-8")
+    run_params = tmp_path / "run-params.json"
+    _ = run_params.write_text(
+        '{"partition_requested": false, "brainstorm_requested": false, '
+        '"approve_requested": false, "skip_approve_requested": false}\n',
+        encoding="utf-8",
+    )
+    return subprocess.run(
+        [
+            sys.executable,
+            str(CLI),
+            "design",
+            "route",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--issue",
+            "42",
+            "--issue-title",
+            "Feature request",
+            "--issue-body-file",
+            str(body),
+            "--has-clarify-label",
+            has_clarify_label,
+            "--claude-pid",
+            "123",
+            "--session-id",
+            "run-1",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def test_design_route_whitespace_tolerant_plan_is_already_planned(tmp_path: Path) -> None:
+    result = _design_route(
+        tmp_path,
+        body_text="x\n  <!--   larch:plan:start   -->  \nplan\n  <!--   larch:plan:end   -->\n",
+    )
+    assert result.returncode == 0
+    assert "ROUTE=already-planned" in result.stdout
+
+
+def test_design_route_empty_valid_plan_block_is_already_planned(tmp_path: Path) -> None:
+    result = _design_route(
+        tmp_path,
+        body_text="x\n<!-- larch:plan:start -->\n<!-- larch:plan:end -->\n",
+    )
+    assert result.returncode == 0
+    assert "ROUTE=already-planned" in result.stdout
+
+
+@pytest.mark.parametrize(
+    "body_text",
+    [
+        "x\n<!-- larch:plan:start -->\nplan only\n",
+        "x\n<!-- larch:plan:\nstart -->\nplan\n<!-- larch:plan:end -->\n",
+        "x\n<!-- larch:plan:end -->\nplan\n<!-- larch:plan:start -->\n",
+        "x\n<!-- larch:plan:start -->\nfirst\n<!-- larch:plan:end -->\n<!-- larch:plan:start -->\nsecond\n<!-- larch:plan:end -->\n",
+        "x\n<!-- LARCH:PLAN:START -->\nplan\n<!-- LARCH:PLAN:END -->\n",
+        "x\nsee <!-- larch:plan:start --> in prose\nand <!-- larch:plan:end --> too\n",
+    ],
+)
+def test_design_route_malformed_plan_is_not_already_planned(
+    tmp_path: Path, body_text: str
+) -> None:
+    result = _design_route(tmp_path, body_text=body_text)
+    assert result.returncode == 0
+    assert "ROUTE=already-planned" not in result.stdout
+    assert "ROUTE=proceed" in result.stdout
+
+
 def test_design_driver_emit_plan_is_rerunnable(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
