@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import io
+import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -189,6 +190,7 @@ def test_rev_parse_nonzero_empty_multiline_and_mismatch(tmp_path: Path) -> None:
         ),
         ([_ok(("git", "rev-parse", "--show-toplevel"), "")], "malformed"),
         ([_ok(("git", "rev-parse", "--show-toplevel"), "/a\n/b\n")], "malformed"),
+        ([_ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path}\0\n")], "malformed"),
         (
             [
                 _ok(
@@ -208,6 +210,17 @@ def test_rev_parse_nonzero_empty_multiline_and_mismatch(tmp_path: Path) -> None:
         assert runner.calls == [
             (("git", "rev-parse", "--show-toplevel"), str(tmp_path.resolve()))
         ]
+
+
+def test_rev_parse_preserves_significant_trailing_root_whitespace(tmp_path: Path) -> None:
+    root = tmp_path / "repo "
+    root.mkdir()
+    runner = _git_ok_runner(root, [])
+
+    code, out, err = _invoke(_rule(), root, runner)
+
+    assert code == EXIT_CLEAN
+    assert out == err == ""
 
 
 def test_nested_worktree_directory_rejected(tmp_path: Path) -> None:
@@ -387,6 +400,21 @@ def test_requested_path_rejects_outside_traversal_and_symlink(tmp_path: Path) ->
     assert "must not contain '..'" in err
 
 
+def test_requested_path_rejects_absolute_path_inside_repository(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"a.py": "x = 1\n"},
+        tracked=["a.py"],
+        paths=[str(tmp_path / "a.py")],
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "repository-relative" in err
+
+
 def test_discovered_missing_or_non_regular_rejected(tmp_path: Path) -> None:
     _write_files(tmp_path, {"a.py": "x = 1\n"})
     (tmp_path / "dir_entry").mkdir()
@@ -483,6 +511,36 @@ def test_source_loading_revalidates_and_converts_oserror(
     assert code2 == EXIT_ERROR
     assert out2 == ""
     assert "failed to read" in err2
+
+
+def test_source_loading_rejects_intermediate_symlink_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_files(tmp_path, {"pkg/a.py": "x = 1\n"})
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    _ = (outside / "a.py").write_text("outside = 1\n", encoding="utf-8")
+    real_open = os.open
+
+    def swap_parent(
+        path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
+        flags: int,
+        mode: int = 0o777,
+        *,
+        dir_fd: int | None = None,
+    ) -> int:
+        raw_path = os.fspath(path)
+        if isinstance(raw_path, str) and Path(raw_path) == tmp_path and dir_fd is None:
+            (tmp_path / "pkg").rename(tmp_path / "pkg-original")
+            (tmp_path / "pkg").symlink_to(outside, target_is_directory=True)
+        if dir_fd is None:
+            return real_open(path, flags, mode)
+        return real_open(path, flags, mode, dir_fd=dir_fd)
+
+    monkeypatch.setattr(lint_engine.os, "open", swap_parent)
+
+    with pytest.raises(lint_engine.ScanError, match=r"failed to read pkg/a\.py"):
+        lint_engine._load_source(tmp_path, "pkg/a.py")
 
 
 def test_lazy_ast_parses_once_and_non_python_has_no_tree(
@@ -845,6 +903,7 @@ def test_tokenizer_indentation_error_returns_scan_error(
     assert code == EXIT_ERROR
     assert out == ""
     assert "failed to tokenize" in err
+    assert "notes" not in err
 
 
 def test_no_partial_stdout_when_later_source_fails(tmp_path: Path) -> None:

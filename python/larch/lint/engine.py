@@ -163,8 +163,8 @@ def _validate_repo_root(root: Path, runner: Runner) -> Path:
         raise ScanError(
             f"git rev-parse --show-toplevel failed: {_bounded_git_detail(result)}"
         )
-    raw = result.stdout.strip()
-    if not raw or "\n" in raw or "\r" in raw:
+    raw = result.stdout.removesuffix("\n")
+    if not raw or "\0" in raw or "\n" in raw or "\r" in raw:
         raise ScanError("git rev-parse --show-toplevel returned malformed output")
     reported = Path(raw).resolve()
     if reported != resolved:
@@ -226,6 +226,8 @@ def _validate_requested_path(raw: str | Path, *, root: Path) -> tuple[str, bool]
     if not _is_single_line(text):
         raise ScanError(f"requested path must be a non-empty single-line path: {raw!r}")
     path = Path(text)
+    if path.is_absolute() or re.match(r"^[A-Za-z]:/", text):
+        raise ScanError(f"requested path must be repository-relative: {raw}")
     if ".." in path.parts:
         raise ScanError(f"requested path must not contain '..': {raw}")
     absolute = path.resolve() if path.is_absolute() else (root / path).resolve()
@@ -275,12 +277,21 @@ def _load_source(root: Path, rel_path: str) -> SourceFile:
     rel_path = _normalize_repo_relative_path(
         rel_path, root=root, label="source path"
     )
-    absolute = root / rel_path
     try:
         flags = os.O_RDONLY
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
-        descriptor = os.open(absolute, flags)
+        directory_flags = flags | getattr(os, "O_DIRECTORY", 0)
+        descriptor = os.open(root, directory_flags)
+        try:
+            for part in Path(rel_path).parts[:-1]:
+                next_descriptor = os.open(part, directory_flags, dir_fd=descriptor)
+                os.close(descriptor)
+                descriptor = next_descriptor
+            file_descriptor = os.open(Path(rel_path).name, flags, dir_fd=descriptor)
+        finally:
+            os.close(descriptor)
+        descriptor = file_descriptor
     except OSError as exc:
         raise ScanError(f"failed to read {rel_path}: {exc}") from exc
     try:
@@ -320,7 +331,7 @@ def _comment_tokens_by_line(source: str) -> dict[int, tuple[str, ...]]:
     except tokenize.TokenError:
         return {}
     except IndentationError as exc:
-        raise ScanError(f"failed to tokenize {source!r}: {exc}") from exc
+        raise ScanError("failed to tokenize source: indentation error") from exc
     return {line: tuple(values) for line, values in comments.items()}
 
 
