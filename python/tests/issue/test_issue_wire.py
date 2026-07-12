@@ -500,6 +500,19 @@ def test_extract_scope_paths_and_cli_errors(tmp_path: Path, capsys: pytest.Captu
     assert "plan file not found" in capsys.readouterr().err
 
 
+def test_extract_scope_paths_ignores_fenced_sections_and_keeps_root_paths() -> None:
+    plan = """```md
+## Files to modify/create
+### UPDATED: hidden.py
+```
+## Files to modify/create
+## UPDATED [README.md]
+### NEW: Makefile
+## Acceptance
+"""
+    assert issue_wire.extract_scope_paths(plan_text=plan) == ["README.md", "Makefile"]
+
+
 def test_title_eligibility_and_insert_signal_marker() -> None:
     assert issue_wire.title_lifecycle_reject_marker("  [implementing] x") == "[IMPLEMENTING]"
     assert issue_wire.title_lifecycle_reject_marker("[STALLED] x") is None

@@ -359,13 +359,16 @@ def plan_block_strip_body_main(argv: list[str]) -> int:
 
 
 def extract_scope_paths(*, plan_text: str, use_fallback: bool = True, include_optional: bool = True) -> list[str]:
-    lines = plan_text.splitlines()
-    has_scope_section = any(re.match(r"^##\s+Files to modify(?:/create)?\s*$", line) for line in lines)
+    events = list(plan_grammar.iter_heading_events(plan_text))
+    has_scope_section = any(
+        event.generic_level_two and re.match(r"^##\s+Files to modify(?:/create)?\s*$", event.text)
+        for event in events
+    )
     if not use_fallback and not has_scope_section:
         return []
     in_section = not has_scope_section
     seen: list[str] = []
-    for event in plan_grammar.iter_heading_events(plan_text):
+    for event in events:
         line = event.text
         if re.match(r"^##\s+Files to modify(?:/create)?\s*$", line):
             in_section = True
@@ -381,7 +384,7 @@ def extract_scope_paths(*, plan_text: str, use_fallback: bool = True, include_op
                 parts = tail.split()
                 candidates = [re.sub(r"\(.*$", "", parts[0]).strip()] if parts else []
             for path in candidates:
-                if path and not path.startswith("+") and "/" in path and path not in seen:
+                if path and not path.startswith("+") and path not in seen:
                     seen.append(path)
             continue
         if has_scope_section and in_section and event.generic_level_two:

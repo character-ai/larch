@@ -26,6 +26,11 @@ def test_fenced_headings_and_boundaries_are_ignored() -> None:
     assert [event.text for event in events if event.generic_level_two] == ["## Files to modify/create", "## Stop"]
 
 
+def test_shorter_fence_does_not_close_a_longer_fence() -> None:
+    text = "````md\n```\n## NEW: hidden.py\n````\n## NEW: shown.py\n"
+    assert [heading.path for heading in plan_grammar.iter_plan_headings(text)] == ["shown.py"]
+
+
 def test_registry_and_subsets() -> None:
     assert plan_grammar.TRAILER_KEYS == (
         "review_status", "rounds_completed", "difficulty", "diff_added", "diff_deleted",

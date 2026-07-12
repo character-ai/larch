@@ -501,7 +501,7 @@ def _peel_trailing_optional_trailers(body_lines: list[str]) -> tuple[list[str], 
             idx -= 1
             continue
         match = plan_grammar.match_trailer_line(stripped)
-        if match is not None and match.key != "diff_lines":
+        if match is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
             peeled.insert(0, line if line.endswith("\n") else f"{line}\n")
             idx -= 1
             continue

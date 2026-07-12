@@ -117,14 +117,17 @@ def match_heading(line: str, *, line_number: int = 0) -> HeadingMatch | None:
 def iter_heading_events(text: str) -> Iterator[HeadingEvent]:
     """Yield non-fenced heading events, with recognized headings taking precedence."""
     fence_mark = ""
+    fence_length = 0
     for line_number, line in enumerate(text.splitlines(), start=1):
         fence = _FENCE_RE.match(line)
         if fence is not None:
             mark = fence.group("mark")
             if not fence_mark:
                 fence_mark = mark[0]
-            elif mark[0] == fence_mark:
+                fence_length = len(mark)
+            elif mark[0] == fence_mark and len(mark) >= fence_length:
                 fence_mark = ""
+                fence_length = 0
             continue
         if fence_mark:
             continue

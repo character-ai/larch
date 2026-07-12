@@ -439,29 +439,24 @@ def _write_fallback_plan(
 
 
 def _plan_review_meta_value(*, plan_path: Path, key: str) -> str:
-    lines: list[str] = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    diff_idx = -1
-    for index in range(len(lines) - 1, -1, -1):
-        if lines[index].startswith("diff_lines: ") and lines[index][len("diff_lines: ") :].isdigit():
-            diff_idx = index
-            break
-    if diff_idx < 0:
+    lines = plan_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if plan_grammar.terminal_diff_lines("\n".join(lines) + "\n") is None:
         return ""
+    diff_idx = next(index for index in range(len(lines) - 1, -1, -1) if plan_grammar.match_trailer_line(lines[index]) is not None and plan_grammar.match_trailer_line(lines[index]).key == "diff_lines")
     start = diff_idx
-    allowed = tuple(f"{trailer_key}: " for trailer_key in plan_grammar.TRAILER_KEYS if trailer_key != "diff_lines")
     for index in range(diff_idx - 1, -1, -1):
         line = lines[index]
-        if line.startswith(allowed):
+        if plan_grammar.match_trailer_line(line) is not None:
             start = index
             continue
         if not line.strip():
             continue
         break
     value = ""
-    prefix = f"{key}: "
     for line in lines[start:diff_idx]:
-        if line.startswith(prefix):
-            value = line[len(prefix) :]
+        match = plan_grammar.match_trailer_line(line)
+        if match is not None and match.key == key:
+            value = match.value
     return value
 
 

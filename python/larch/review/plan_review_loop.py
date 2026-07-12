@@ -347,10 +347,17 @@ def gate_b_finding_line(argv: Sequence[str]) -> int:
 
 
 def _trailer_map(text: str) -> dict[str, str]:
-    return {
-        match.key: match.value
-        for match in plan_grammar.iter_trailer_lines(text, keys=plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS)
-    }
+    """Preserve Gate B's legacy whole-document snapshot compatibility.
+
+    Terminal consumers use ``plan_grammar``. Gate B snapshots historically
+    accepted loose optional-trailer spellings anywhere in the document.
+    """
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        match = re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
+        if match is not None and match.group(1) in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
+            values[match.group(1)] = match.group(2)
+    return values
 
 
 def gate_b_dedup_plan(argv: Sequence[str]) -> int:
