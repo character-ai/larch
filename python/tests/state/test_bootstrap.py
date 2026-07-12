@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core.proc import CommandResult
 from larch.state import bootstrap
 
 from test_support import (
@@ -493,8 +494,6 @@ def test_plan_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
 
     def fake_view(_runner, issue, fields, template, *, repo=None, cwd=None):
         _ = issue, fields, template, repo, cwd
-        from larch.core.proc import CommandResult
-
         return CommandResult(("gh",), 0, "Title\n\nBody\n", "", 0.01)
 
     monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_view)
@@ -540,8 +539,6 @@ def test_plan_materialization_strips_only_terminal_design_provenance(tmp_path, m
 
     def fake_view(_runner, issue, fields, template, *, repo=None, cwd=None):
         _ = issue, fields, template, repo, cwd
-        from larch.core.proc import CommandResult
-
         return CommandResult(("gh",), 0, "Title\n\nBody\n", "", 0.01)
 
     monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_view)
@@ -619,8 +616,6 @@ def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> 
 
 
 def test_phase_plan_materializes_feature_description_via_template_wrapper(tmp_path, monkeypatch) -> None:
-    from larch.core.proc import CommandResult
-
     preflight = tmp_path / "preflight"
     impl = tmp_path / "impl"
     preflight.mkdir()

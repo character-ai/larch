@@ -447,7 +447,7 @@ def test_preflight_force_missing_designed_prefix_bypass(
         if "admission" in argv:
             _write(handle=stdout, text="ADMISSION_RESULT=missing-designed-prefix\nTITLE=Needs design\n")
             return _fake_completed(argv, 5)
-        elif "plan-block" in argv:
+        if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
             out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 8\n", encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")

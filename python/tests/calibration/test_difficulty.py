@@ -1,3 +1,4 @@
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
 import json
@@ -6,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from larch.calibration import difficulty
+from larch.core.proc import CommandResult
 from larch.design import plan_grammar
 
 
@@ -396,8 +398,6 @@ def test_resolve_step2_effective_difficulty_invalid_inputs_fail_closed(tmp_path:
 
 
 def test_sync_labels_uses_wrapper_remove_and_add(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    from larch.core.proc import CommandResult
-
     remove_calls: list[tuple[str, str, str | None]] = []
     add_calls: list[tuple[str, str, str | None]] = []
 
@@ -426,8 +426,6 @@ def test_sync_labels_uses_wrapper_remove_and_add(monkeypatch: pytest.MonkeyPatch
 
 
 def test_sync_labels_add_failure_returns_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    from larch.core.proc import CommandResult
-
     monkeypatch.setattr(
         difficulty.gh,
         "issue_label_remove",

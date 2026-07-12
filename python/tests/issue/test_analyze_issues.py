@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core.proc import CommandResult
 from larch.issue import analyze_issues
 from larch.issue import _ground_truth as gt
 from larch.issue import _oos
@@ -1614,9 +1615,6 @@ def _write_cap_rollup_ambiguous_fixture(log_root: Path, rel: str) -> Path:
 
 
 def test_ground_truth_calibration_incentive_ignores_fetch_failed_stub_when_bulk_missing(monkeypatch) -> None:
-    from larch.core.proc import CommandResult
-    from larch.issue import _oos
-
     incentive = _closed_incentive_issue()
     filed_issue_details = {
         analyze_issues.GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER: {
