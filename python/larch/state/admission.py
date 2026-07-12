@@ -64,12 +64,8 @@ def _resolve_repo() -> str | None:
 
 
 def _gh_issue_view(*, issue: int, repo: str) -> tuple[int, str]:
-    argv = ["gh", "issue", "view", str(issue), "--repo", repo, "--json", "title,state,labels"]
-    first = _run(argv)
-    if first.returncode == 0:
-        return 0, first.stdout
-    second = _run(argv)
-    return second.returncode, second.stdout
+    result = gh.issue_view_field_read(proc, str(issue), "title,state,labels", repo=repo)
+    return result.returncode, result.stdout
 
 
 def _git_fetch_origin_main() -> subprocess.CompletedProcess[str]:

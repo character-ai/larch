@@ -393,3 +393,59 @@ def test_resolve_step2_effective_difficulty_invalid_inputs_fail_closed(tmp_path:
     _ = (tmp_path / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=also-unknown\n", encoding="utf-8")
 
     assert difficulty.resolve_step2_effective_difficulty(tmp_path) == ""
+
+
+def test_sync_labels_uses_wrapper_remove_and_add(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    from larch.core.proc import CommandResult
+
+    remove_calls: list[tuple[str, str, str | None]] = []
+    add_calls: list[tuple[str, str, str | None]] = []
+
+    def fake_remove(_runner: object, issue: str, label: str, *, repo: str | None = None, **_kwargs: object) -> CommandResult:
+        remove_calls.append((issue, label, repo))
+        return CommandResult(("gh",), 0, "", "", 0.01)
+
+    def fake_add(_runner: object, issue: str, label: str, *, repo: str | None = None, **_kwargs: object) -> CommandResult:
+        add_calls.append((issue, label, repo))
+        return CommandResult(("gh",), 0, "", "", 0.01)
+
+    def fake_proc_run(argv: list[str] | tuple[str, ...], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(difficulty.gh, "issue_label_remove", fake_remove)
+    monkeypatch.setattr(difficulty.gh, "issue_label_add", fake_add)
+    monkeypatch.setattr(difficulty.proc, "run", fake_proc_run)
+
+    rc = difficulty.sync_labels_main(["--issue", "9", "--tier", "HARD", "--repo", "o/r"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=ok" in out
+    assert "LABEL=difficulty:hard" in out
+    assert all(repo == "o/r" for _issue, _label, repo in remove_calls)
+    assert add_calls == [("9", "difficulty:hard", "o/r")]
+
+
+def test_sync_labels_add_failure_returns_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    from larch.core.proc import CommandResult
+
+    monkeypatch.setattr(
+        difficulty.gh,
+        "issue_label_remove",
+        lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01),
+    )
+    monkeypatch.setattr(
+        difficulty.gh,
+        "issue_label_add",
+        lambda *_a, **_k: CommandResult(("gh",), 1, "", "add failed", 0.01),
+    )
+    monkeypatch.setattr(
+        difficulty.proc,
+        "run",
+        lambda argv, **_k: CommandResult(tuple(argv), 0, "", "", 0.01),
+    )
+
+    rc = difficulty.sync_labels_main(["--issue", "9", "--tier", "MODERATE"])
+    assert rc == 1
+    out = capsys.readouterr().out
+    assert "STATUS=error" in out
+    assert "ERROR=label-add-failed" in out

@@ -7,6 +7,7 @@ import sys
 
 import pytest
 
+from larch.core.proc import CommandResult
 from larch.state import admission
 
 
@@ -329,19 +330,21 @@ def test_preflight_rebase_failure_aborts(monkeypatch, capsys) -> None:
 
 
 def test_gate_missing_gh_returns_admission_error(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(admission, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 127, "", "missing gh\n"))  # pyright: ignore[reportPrivateUsage]
+    def fake_proc_run(argv, **_kwargs):
+        return CommandResult(tuple(argv), 127, "", "missing gh\n", 0.01)
+
+    monkeypatch.setattr(admission.proc, "run", fake_proc_run)
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
     assert "ADMISSION_ERROR=gh issue view failed" in capsys.readouterr().out
 
 
 def test_gate_gh_failure_does_not_echo_stderr(monkeypatch, capsys) -> None:
-    def fake_run(argv, *, env=None):
-        _ = env
-        if argv[:3] == ["gh", "issue", "view"]:
-            return subprocess.CompletedProcess(argv, 1, "", "token ghp_secret\n")
-        return subprocess.CompletedProcess(argv, 0, "", "")
+    def fake_proc_run(argv, **_kwargs):
+        if list(argv)[:3] == ["gh", "issue", "view"]:
+            return CommandResult(tuple(argv), 1, "", "token ghp_secret\n", 0.01)
+        return CommandResult(tuple(argv), 0, "", "", 0.01)
 
-    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission.proc, "run", fake_proc_run)
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
     out = capsys.readouterr().out
     assert "ADMISSION_ERROR=gh issue view failed" in out
@@ -352,31 +355,15 @@ def test_gate_gh_failure_does_not_echo_stderr(monkeypatch, capsys) -> None:
 def test_gate_resume_still_fails_closed_on_gh_failure(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=7\nRUN_ID=\n", encoding="utf-8")
-    monkeypatch.setattr(admission, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, "", "gh auth token\n"))  # pyright: ignore[reportPrivateUsage]
+
+    def fake_proc_run(argv, **_kwargs):
+        return CommandResult(tuple(argv), 1, "", "gh auth token\n", 0.01)
+
+    monkeypatch.setattr(admission.proc, "run", fake_proc_run)
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
     out = capsys.readouterr().out
     assert "ADMISSION_ERROR=gh issue view failed" in out
     assert "auth token" not in out
-
-
-def test_gh_issue_view_retries_once(monkeypatch) -> None:
-    calls: list[list[str]] = []
-
-    def fake_run(argv, *, env=None):
-        _ = env
-        calls.append(list(argv))
-        if len(calls) == 1:
-            return subprocess.CompletedProcess(argv, 1, "", "temporary\n")
-        return subprocess.CompletedProcess(argv, 0, '{"title":"ok"}\n', "")
-
-    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
-    rc, raw = admission._gh_issue_view(issue=7, repo="owner/repo")  # pyright: ignore[reportPrivateUsage]
-    assert rc == 0
-    assert raw == '{"title":"ok"}\n'
-    assert calls == [
-        ["gh", "issue", "view", "7", "--repo", "owner/repo", "--json", "title,state,labels"],
-        ["gh", "issue", "view", "7", "--repo", "owner/repo", "--json", "title,state,labels"],
-    ]
 
 
 @pytest.mark.parametrize(

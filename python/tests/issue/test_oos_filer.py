@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from larch.core import config
+from larch.core.proc import CommandResult
 from larch.issue import file_oos
 from larch.issue import issue_create
 from larch.issue import oos_filer
@@ -19,6 +20,28 @@ from larch.issue import oos_filer
 
 def _cp(args: list[str], stdout: str = "", stderr: str = "", rc: int = 0) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(args, rc, stdout, stderr)
+
+def _stub_priority_label_add(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fail: bool = False,
+    fail_once: bool = False,
+) -> list[tuple[str, str, str]]:
+    """Stub wrapper-backed priority label application; keep _run_gh for label create."""
+    calls: list[tuple[str, str, str]] = []
+    attempts = 0
+
+    def fake_label_add(_runner: object, number: str, label: str, *, repo: str | None = None, **_kwargs: object) -> CommandResult:
+        nonlocal attempts
+        attempts += 1
+        calls.append((number, label, repo or ""))
+        if fail or (fail_once and attempts == 1):
+            return CommandResult(("gh", "issue", "edit", number), 1, "", "edit failed", 0.01)
+        return CommandResult(("gh", "issue", "edit", number), 0, "", "", 0.01)
+
+    monkeypatch.setattr(oos_filer.gh, "issue_label_add", fake_label_add)
+    return calls
+
 
 
 class FakeCli:
@@ -1039,13 +1062,14 @@ def test_high_risk_oos_provisions_and_applies_correctness_label(
         return _cp(args)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    label_calls = _stub_priority_label_add(monkeypatch)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 0
     create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
     assert any("--label" in call and "oos-correctness" in call for call in create_calls)
     assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
-    assert any(call[:4] == ["gh", "issue", "edit", "101"] and "oos-correctness" in call for call in gh_calls)
+    assert label_calls == [("101", "oos-correctness", "owner/repo")]
 
 
 def test_non_high_risk_oos_does_not_touch_priority_label(
@@ -1088,11 +1112,12 @@ def test_later_regression_duplicate_ors_priority_into_retained_block(
         return _cp(args)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    label_calls = _stub_priority_label_add(monkeypatch)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 0
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
-    assert any(call[:4] == ["gh", "issue", "edit", "101"] for call in gh_calls)
+    assert ("101", "oos-correctness", "owner/repo") in label_calls
 
 
 def test_priority_provision_failure_still_files_non_priority_survivor(
@@ -1149,11 +1174,12 @@ def test_filed_url_high_risk_duplicate_backfills_label_on_rerun(
         return _cp(args)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    label_calls = _stub_priority_label_add(monkeypatch)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 0
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
-    assert any(call[:4] == ["gh", "issue", "edit", "77"] for call in gh_calls)
+    assert ("77", "oos-correctness", "owner/repo") in label_calls
 
 
 def test_priority_label_partial_failure_preserves_cosmetic_survivor(
@@ -1168,16 +1194,9 @@ def test_priority_label_partial_failure_preserves_cosmetic_survivor(
         "### OOS_2: Cosmetic\n- **Description**: Safe.\n",
     )
     fake = FakeCli(tmp_path)
-    label_calls = 0
     cleanup_calls: list[list[str]] = []
 
     def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
-        nonlocal label_calls
-        if args[:2] == ["gh", "label"]:
-            return _cp(args)
-        label_calls += 1
-        if label_calls == 1:
-            return _cp(args, stderr="edit failed", rc=1)
         return _cp(args)
 
     original_run_cli = fake.__call__
@@ -1188,6 +1207,7 @@ def test_priority_label_partial_failure_preserves_cosmetic_survivor(
         return original_run_cli(args, input_text=input_text)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    _stub_priority_label_add(monkeypatch, fail_once=True)
     monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
@@ -1227,12 +1247,13 @@ def test_cap_rollup_high_risk_receives_correctness_label(
         return _cp(args)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    label_calls = _stub_priority_label_add(monkeypatch)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 0
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
     assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
-    assert any(call[:4] == ["gh", "issue", "edit", "101"] for call in gh_calls)
+    assert ("101", "oos-correctness", "owner/repo") in label_calls
 
 
 def test_multipart_priority_label_failure_stops_later_parts(
@@ -1251,16 +1272,12 @@ def test_multipart_priority_label_failure_stops_later_parts(
         "https://github.com/owner/repo/issues/301",
         "https://github.com/owner/repo/issues/302",
     ]
-    label_calls = 0
 
     def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
-        nonlocal label_calls
-        if args[:2] == ["gh", "label"]:
-            return _cp(args)
-        label_calls += 1
-        return _cp(args, stderr="edit failed", rc=1)
+        return _cp(args)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    _stub_priority_label_add(monkeypatch, fail=True)
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
@@ -1292,11 +1309,10 @@ def test_duplicate_high_risk_label_failure_still_persisted_for_retry(
     fake.duplicate = True
 
     def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
-        if args[:2] == ["gh", "label"]:
-            return _cp(args)
-        return _cp(args, stderr="edit failed", rc=1)
+        return _cp(args)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    _stub_priority_label_add(monkeypatch, fail=True)
     monkeypatch.setattr(oos_filer, "_run_cli", fake)
     monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
     monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
@@ -1372,12 +1388,13 @@ def test_sentinel_only_rerun_backfills_high_risk_after_recovery_snapshot(
         return _cp(args)
 
     monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    label_calls = _stub_priority_label_add(monkeypatch)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
 
     assert rc == 0
     assert (tmp_path / "oos-accepted-main-agent.md").is_file()
     assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
-    assert any(call[:4] == ["gh", "issue", "edit", "77"] for call in gh_calls)
+    assert ("77", "oos-correctness", "owner/repo") in label_calls
 
 
 def test_cmd_file_refuses_without_valid_session_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -21,6 +21,8 @@ from larch.issue._util import (
     issue_number,
     parse_iso,
 )
+from larch.core import proc
+from larch.git import gh
 from larch.report import run_log_corpus
 from larch.review import voting
 from larch.review.review_types import parse_blocks
@@ -777,12 +779,7 @@ def _fetch_filed_oos_issue_details( *,repo: str, issue_numbers: set[int]) -> dic
     details: dict[int, dict[str, Any]] = {}
     fields = "number,title,body,state,url,closedAt,stateReason,labels,closedByPullRequestsReferences,comments"
     for number in sorted(issue_numbers):
-        result = subprocess.run(  # lint-subprocess-via-runner: ok mirrors existing gh issue view helper in this module
-            ["gh", "issue", "view", str(number), "--repo", repo, "--json", fields],
-            text=True,
-            capture_output=True,
-            check=False,
-        )
+        result = gh.issue_view_field_read(proc, str(number), fields, repo=repo)
         if result.returncode != 0:
             details[number] = {"number": number, "__fetch_failed__": True, "__fetch_error__": (result.stderr or result.stdout or "gh issue view failed")[:500]}
             continue
@@ -848,20 +845,11 @@ def _incentive_issue_from_sources(
 
 
 def _incentive_issue_from_gh(*, repo: str) -> Mapping[str, Any] | None:
-    result = subprocess.run(  # lint-subprocess-via-runner: ok mirrors existing gh issue view helper in this module
-        [
-            "gh",
-            "issue",
-            "view",
-            str(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER),
-            "--repo",
-            repo,
-            "--json",
-            "state,stateReason,closedByPullRequestsReferences",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
+    result = gh.issue_view_field_read(
+        proc,
+        str(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER),
+        "state,stateReason,closedByPullRequestsReferences",
+        repo=repo,
     )
     if result.returncode != 0:
         return None

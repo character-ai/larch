@@ -50,11 +50,3 @@ def label_create_argv(*, repo: str = "") -> list[str]:
     if repo:
         argv.extend(["--repo", repo])
     return argv
-
-
-def label_edit_argv(issue_number: str, *, repo: str = "") -> list[str]:
-    """Return argv for applying the high-risk OOS label to an issue."""
-    argv = ["gh", "issue", "edit", issue_number, "--add-label", OOS_CORRECTNESS_LABEL]
-    if repo:
-        argv.extend(["--repo", repo])
-    return argv

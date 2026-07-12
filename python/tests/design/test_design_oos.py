@@ -1027,19 +1027,26 @@ def test_design_annotate_labels_only_high_risk_url_with_repo(
 ) -> None:
     stdout_file = _write_design_priority_fixture(tmp_path)
     gh_calls: list[list[str]] = []
+    label_calls: list[tuple[str, str, str]] = []
 
     def fake_gh(*, repo: str, argv: list[str]) -> subprocess.CompletedProcess[str]:
         gh_calls.append([*argv, "--repo", repo])
         return subprocess.CompletedProcess(argv, 0, "", "")
 
+    def fake_label_add(
+        _runner: object, number: str, label: str, *, repo: str
+    ) -> subprocess.CompletedProcess[str]:
+        label_calls.append((number, label, repo))
+        return subprocess.CompletedProcess([], 0, "", "")
+
     monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
+    monkeypatch.setattr(design_oos.gh, "issue_label_add", fake_label_add)
 
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
 
     assert rc == 0
     assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
-    edit_calls = [call for call in gh_calls if call[:3] == ["gh", "issue", "edit"]]
-    assert edit_calls == [["gh", "issue", "edit", "101", "--add-label", "oos-correctness", "--repo", "acme/repo"]]
+    assert label_calls == [("101", "oos-correctness", "acme/repo")]
     assert not (tmp_path / ".oos-priority-label-pending").exists()
 
 
@@ -1056,12 +1063,17 @@ def test_design_annotate_label_failure_preserves_pending_retry_state(
 
     def fake_gh(*, repo: str, argv: list[str]) -> subprocess.CompletedProcess[str]:
         _ = repo
-        if argv[:2] == ["gh", "label"]:
-            return subprocess.CompletedProcess(argv, 0, "", "")
-        return subprocess.CompletedProcess(argv, 1, "", "edit failed")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_label_add(
+        _runner: object, _number: str, _label: str, *, repo: str
+    ) -> subprocess.CompletedProcess[str]:
+        _ = repo
+        return subprocess.CompletedProcess([], 1, "", "edit failed")
 
     monkeypatch.setattr(design_oos, "_cross_session_cache_path", fake_cache)
     monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
+    monkeypatch.setattr(design_oos.gh, "issue_label_add", fake_label_add)
 
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
     captured = capsys.readouterr()

@@ -603,7 +603,7 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
                 break
         if not prior_num:
             return _kv_error(f"no prior audit-report issue found for --skill={args.skill}")
-        body_res = proc.run(["gh", "issue", "view", prior_num, "--repo", args.repo, "--json", "body"])
+        body_res = gh.issue_view_field_read(proc, prior_num, "body", repo=args.repo)
         body = ""
         if body_res.returncode != 0:
             return _kv_error(f"gh issue view failed for prior audit-report #{prior_num}")
@@ -1307,7 +1307,7 @@ def close_priors_main(argv: list[str] | None = None) -> int:
             num=str(issue.get("number") or "")
             if num==args.new_issue_number or not match_audit_report_title(skill=args.skill,title=str(issue.get("title") or "")): continue
             if proc.run(["gh","issue","comment",num,"--repo",args.repo,"--body-file",str(body)]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue comment failed"); continue
-            if proc.run(["gh","issue","close",num,"--repo",args.repo]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue close failed"); continue
+            if gh.issue_close(proc, num, repo=args.repo).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue close failed"); continue
             print(f"CLOSED_NUMBER={num}")
     finally:
         if body is not None:

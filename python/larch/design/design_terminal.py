@@ -579,31 +579,18 @@ def _reconcile_post_recovery_comment(*, design_tmpdir: Path, report_issue: str, 
     if redact_rc != 0 or not redacted.is_file() or redacted.stat().st_size == 0:
         return False, "redact-secrets failed"
     comment_sent = design_tmpdir / "design-failure-reconcile-comment.sent"
+    runner = proc.ProcRunner()
     if not comment_sent.is_file():
-        runner = proc.ProcRunner()
         body_text = redacted.read_text(encoding="utf-8", errors="replace")
         comment_result = gh.issue_comment(runner, report_issue, body_text, repo=repo)
         comment_rc = comment_result.returncode
         if comment_rc != 0:
             return False, "gh issue comment failed"
         comment_sent.touch()
-    close_argv = ["gh", "issue", "close", report_issue]
-    if repo:
-        close_argv.extend(["--repo", repo])
-    close_result = proc.run(
-        close_argv,
-        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-    )
-    close_rc = close_result.returncode
-    if close_rc != 0:
+    close_result = gh.issue_close(runner, report_issue, repo=repo or None)
+    if close_result.returncode != 0:
         return False, "gh issue close failed"
-    view_argv = ["gh", "issue", "view", report_issue, "--json", "state"]
-    if repo:
-        view_argv.extend(["--repo", repo])
-    view = proc.run(
-        view_argv,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-    )
+    view = gh.issue_view_field_read(runner, report_issue, "state", repo=repo or None)
     if view.returncode != 0 or '"CLOSED"' not in (view.stdout or ""):
         return False, "gh issue close verification failed"
     comment_sent.unlink(missing_ok=True)

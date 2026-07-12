@@ -107,8 +107,6 @@ class ApplyRunner:
         self.calls.append(list(argv))
         if argv[:3] == ["gh", "issue", "create"]:
             return CommandResult(tuple(argv), 0, "https://github.com/o/r/issues/99\n", "", 0.01)
-        if argv[:3] == ["gh", "issue", "close"] and argv[3] == "1" and sum(c[:4] == ["gh", "issue", "close", "1"] for c in self.calls) == 1:
-            return CommandResult(tuple(argv), 1, "", "temporary error", 0.01)
         if argv[:3] == ["gh", "issue", "close"]:
             return CommandResult(tuple(argv), 0, "", "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
@@ -146,18 +144,18 @@ def test_apply_create_parse_failure_withholds_gh_output(monkeypatch, tmp_path: P
     assert "secret-token" not in err
 
 
-def test_apply_create_and_close_wire_retries(monkeypatch, tmp_path: Path, capsys):
+def test_apply_create_and_close_one_attempt_per_mutation(monkeypatch, tmp_path: Path, capsys):
     body = tmp_path / "body.md"
     body.write_text("Combined body\n", encoding="utf-8")
     runner = ApplyRunner()
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
-    monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.apply_main(["--repo", "o/r", "--title", "T", "--body-file", str(body), "--source-issues", "1,2"]) == 0
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
     assert out["DRY_RUN"] == "false"
     assert out["COMBINED_ISSUE"] == "99"
     assert out["CLOSED_ISSUES"] == "2"
-    assert sum(c[:4] == ["gh", "issue", "close", "1"] for c in runner.calls) == 2
+    assert sum(c[:4] == ["gh", "issue", "close", "1"] for c in runner.calls) == 1
+    assert sum(c[:4] == ["gh", "issue", "close", "2"] for c in runner.calls) == 1
 
 
 def test_apply_close_warning_redacts_failed_close_stderr(monkeypatch, tmp_path: Path, capsys):
@@ -172,7 +170,6 @@ def test_apply_close_warning_redacts_failed_close_stderr(monkeypatch, tmp_path: 
     body = tmp_path / "body.md"
     body.write_text("Combined body\n", encoding="utf-8")
     monkeypatch.setattr(combine_issues.proc, "run", CloseFailRunner().run)
-    monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.apply_main(["--repo", "o/r", "--title", "T", "--body-file", str(body), "--source-issues", "1"]) == 0
     captured = capsys.readouterr()
     assert "WARNING=Failed to close #1:" in captured.err
@@ -795,7 +792,6 @@ def test_close_sources_reuses_close_comment_and_counts(monkeypatch, capsys):
     runner = ApplyRunner()
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
     monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)
-    monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1,2"]) == 0
     out = capsys.readouterr().out
     assert "CLOSED_ISSUES=2" in out
@@ -804,7 +800,7 @@ def test_close_sources_reuses_close_comment_and_counts(monkeypatch, capsys):
     assert close_calls[0][:7] == ["gh", "issue", "close", "1", "--repo", "o/r", "--comment"]
     assert "Combined into #99" in close_calls[0][7]
     assert "larch:combined-away source=#1 target=#99" in close_calls[0][7]
-    assert len(close_calls) == 3
+    assert len(close_calls) == 2
 
 
 def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
@@ -845,7 +841,6 @@ def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):
 
     monkeypatch.setattr(combine_issues.proc, "run", CloseSourcesFailRunner().run)
     monkeypatch.setattr(combine_issues, "_source_close_skip_reason", lambda **_kw: None)
-    monkeypatch.setattr(combine_issues.time, "sleep", lambda _seconds: None)
     assert combine_issues.close_sources_main(["--repo", "o/r", "--combined-issue", "99", "--source-issues", "1"]) == 0
     captured = capsys.readouterr()
     assert "WARNING=Failed to close #1:" in captured.err

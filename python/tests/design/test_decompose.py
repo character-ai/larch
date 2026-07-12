@@ -258,7 +258,9 @@ def test_close_original_redacts_and_preserves_comment_sentinel_on_close_failure(
     status = decompose.close_original_issue(design_tmpdir=d, original_issue="99", repo="o/r")
     assert status == "failed"
     assert (dec / ".decompose-close-comment-posted").exists()
-    assert "--body-file" in log.read_text(encoding="utf-8")
+    log_text = log.read_text(encoding="utf-8")
+    assert "--body-file" in log_text
+    assert log_text.count("issue close") == 1
 
 
 def test_dispatch_panel_and_aggregate_with_stub_waterfall(tmp_path: Path, monkeypatch) -> None:

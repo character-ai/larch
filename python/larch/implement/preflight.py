@@ -17,7 +17,8 @@ from typing import NoReturn, cast
 from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.design import plan_grammar
-from larch.core import config
+from larch.core import config, proc
+from larch.git import gh
 from larch.implement import main_health
 
 LIFECYCLE_PREFIXES = (
@@ -569,15 +570,18 @@ def preflight_main(argv: list[str] | None = None) -> int:
 
     issue_json_path = preflight_tmpdir / "issue.json"
     gh_stderr = preflight_tmpdir / "gh-issue-view.stderr"
-    gh_argv = ["gh", "issue", "view", issue, "--json", "body,labels,number,title,state"]
-    if repo:
-        gh_argv.extend(["--repo", repo])
-    gh_rc = _run_capture(argv=gh_argv, stdout_path=issue_json_path, stderr_path=gh_stderr, env=env)
-    if gh_rc != 0:
-        with gh_stderr.open("a", encoding="utf-8") as err, issue_json_path.open("w", encoding="utf-8") as out:
-            completed = subprocess.run(gh_argv, stdout=out, stderr=err, text=True, env=env, check=False)
-        gh_rc = completed.returncode
-    if gh_rc != 0:
+    view_result = gh.issue_view_field_read(
+        proc,
+        issue,
+        "body,labels,number,title,state",
+        repo=repo or None,
+    )
+    try:
+        issue_json_path.write_text(view_result.stdout, encoding="utf-8")
+        gh_stderr.write_text(view_result.stderr, encoding="utf-8")
+    except OSError:
+        return _preflight_write_failure("cannot write issue view artifacts.")
+    if view_result.returncode != 0:
         print(f"**❌ /implement preflight: gh issue view failed for issue #{issue}.**")
         return 2
 

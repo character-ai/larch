@@ -1614,6 +1614,9 @@ def _write_cap_rollup_ambiguous_fixture(log_root: Path, rel: str) -> Path:
 
 
 def test_ground_truth_calibration_incentive_ignores_fetch_failed_stub_when_bulk_missing(monkeypatch) -> None:
+    from larch.core.proc import CommandResult
+    from larch.issue import _oos
+
     incentive = _closed_incentive_issue()
     filed_issue_details = {
         analyze_issues.GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER: {
@@ -1622,19 +1625,21 @@ def test_ground_truth_calibration_incentive_ignores_fetch_failed_stub_when_bulk_
         }
     }
 
-    def fake_run(_argv, **_kwargs):
-        class Result:
-            returncode = 0
-            stdout = json.dumps({
+    def fake_view(_runner, issue, fields, *, repo=None, cwd=None):
+        _ = issue, fields, repo, cwd
+        return CommandResult(
+            ("gh",),
+            0,
+            json.dumps({
                 "state": incentive["state"],
                 "stateReason": incentive["stateReason"],
                 "closedByPullRequestsReferences": incentive["closedByPullRequestsReferences"],
-            })
-            stderr = ""
+            }),
+            "",
+            0.01,
+        )
 
-        return Result()
-
-    monkeypatch.setattr(analyze_issues.subprocess, "run", fake_run)
+    monkeypatch.setattr(_oos.gh, "issue_view_field_read", fake_view)
     shipped, reason = analyze_issues._ground_truth_calibration_incentive_shipped(
         issues=[],
         filed_issue_details=filed_issue_details,

@@ -490,7 +490,14 @@ def test_plan_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
     (preflight / "plan-from-issue.txt").write_text("plan", encoding="utf-8")
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda st: setattr(st, "implement_bail_reason", "run-flags-persist-failed") or False)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "Title\n\nBody\n", ""))  # pyright: ignore[reportPrivateUsage]
+
+    def fake_view(_runner, issue, fields, template, *, repo=None, cwd=None):
+        _ = issue, fields, template, repo, cwd
+        from larch.core.proc import CommandResult
+
+        return CommandResult(("gh",), 0, "Title\n\nBody\n", "", 0.01)
+
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_view)
 
     def dirty_checkpoint() -> list[str]:
         raise AssertionError("dirty checkpoint should not run after run flag persistence failure")
@@ -530,7 +537,14 @@ def test_plan_materialization_strips_only_terminal_design_provenance(tmp_path, m
     monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "Title\n\nBody\n", ""))  # pyright: ignore[reportPrivateUsage]
+
+    def fake_view(_runner, issue, fields, template, *, repo=None, cwd=None):
+        _ = issue, fields, template, repo, cwd
+        from larch.core.proc import CommandResult
+
+        return CommandResult(("gh",), 0, "Title\n\nBody\n", "", 0.01)
+
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_view)
 
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", preflight_tmpdir=str(preflight)),
@@ -602,6 +616,51 @@ def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> 
     assert exc_info.value.code == 2
     assert st.implement_bail_reason == ""
     assert not any(call[:3] == ["gh", "issue", "view"] for call in calls)
+
+
+def test_phase_plan_materializes_feature_description_via_template_wrapper(tmp_path, monkeypatch) -> None:
+    from larch.core.proc import CommandResult
+
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    (preflight / "plan-from-issue.txt").write_text("plan body\ndiff_lines: 1\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_view(_runner, issue, fields, template, *, repo=None, cwd=None):
+        captured["issue"] = issue
+        captured["fields"] = fields
+        captured["template"] = template
+        captured["repo"] = repo
+        _ = cwd
+        return CommandResult(("gh",), 0, "Feature Title\n\nFeature body\n", "", 0.01)
+
+    monkeypatch.setattr(bootstrap.gh, "issue_view_template_read", fake_view)
+    monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(bootstrap.dirty_tree, "checkpoint", lambda: ["STATUS=clean", "MODE=checkpoint"])
+    monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "BRANCH=feature\n", ""))  # pyright: ignore[reportPrivateUsage]
+
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(
+            up_to_phase="plan",
+            issue_number="42",
+            forked_target="true",
+            upstream_repo="upstream/repo",
+            preflight_tmpdir=str(preflight),
+        ),
+        implement_tmpdir=str(impl),
+        issue_number_resolved="42",
+        is_user_branch="true",
+    )
+    bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
+
+    assert captured["issue"] == "42"
+    assert captured["fields"] == "title,body"
+    assert captured["template"] == "{{.title}}\n\n{{.body}}"
+    assert captured["repo"] == "upstream/repo"
+    assert (impl / "feature-description.txt").read_text(encoding="utf-8") == "Feature Title\n\nFeature body\n"
 
 
 def test_run_bootstrap_unexpected_exception_emits_structured_failure(monkeypatch, capsys) -> None:
