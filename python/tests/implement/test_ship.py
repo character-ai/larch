@@ -6630,8 +6630,8 @@ def test_waived_assessment_resume_preserves_counters_and_flushes_audit_before_pr
         "_guidelines_gate_before_pr",
         lambda **_k: ship.GuidelinesGateResult(note_state=config.NOTE_STATE_UNAVAILABLE),
     )
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", flush_after_waiver)
-    monkeypatch.setattr(ship, "_write_ship_state", capture_write_state)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", flush_after_waiver)  # lint-monkeypatch-binding: ok ship calls its imported binding directly
+    monkeypatch.setattr(ship, "_write_ship_state", capture_write_state)  # lint-monkeypatch-binding: ok ship calls its imported binding directly
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(
         ship.pr,
