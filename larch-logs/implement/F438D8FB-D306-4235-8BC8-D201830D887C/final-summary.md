@@ -70,24 +70,25 @@ Exec Issues (3):
   1. lint-fix tier=claude category=authentication-preflight; Verification complete. Both signals the checks harness uses now pass on the edited file:
   2. pyright CLI: `0 errors, 0 warnings, 0 informations`: (was the sole failure — `reportUnusedFunction` on `_is_trailer_region_line:118`)
   3. ruff CLI: `All checks passed!`
-Warnings (3):
+Warnings (4):
   1. Step 7a.1 — 9 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/tests/design/test_plan_quality.py, python/tests/calibration/test_difficulty...
   2. One G-Cfg-3 deviation: `_RECOGNIZED_TRAILER_PREFIX_RE` in `python/larch/implement/preflight.py` (added in this diff at line ~962) manually re-lists all eight trailer key names (`review_status|round...
   3. G-Md-3 deviation: plan_grammar.iter_heading_events (plan_grammar.py lines 574-597) re-derives fence-state tracking using local fence_mark/fence_length variables rather than reusing the _balanced_fe...
+  4. G-Cfg-3 deviation: _RECOGNIZED_TRAILER_PREFIX_RE in python/larch/implement/preflight.py (added ~line 1095) manually re-lists all eight trailer key names (review_status, rounds_completed, difficulty...
 
 ## Architectural invariants
 
-No invariant violations identified. The change centralizes plan heading and trailer grammar into plan_grammar.py. No gate disarm inputs are weakened or expanded (I-Gate-1 is strengthened: mechanical_churn accepts only 'true'/'false' so a drafter can no longer self-report a numeric churn value to relax the size trigger). Fingerprint and stale-result validation paths are untouched (I-Stale-1). Run-log flush, outcome labels, panel slot accounting, agent evidence contracts, and ship recovery routes are outside the diff surface.
+No violations identified. The change centralizes plan heading and trailer grammar in plan_grammar.py and migrates all consumers. Trailer parsing is made stricter (diff_lines must be terminal), which tightens rather than loosens size gates. The oversize_override gate still requires the operator value and is unaffected. Malformed mechanical_churn now silently defaults to false (no churn) rather than being normalized from numeric—this tightens I-Gate-1 compliance by preventing a drafter-authored non-canonical value from softening the size trigger. The new _refuse_malformed_terminal_metadata preflight check adds a hard reject for malformed provenance trailers, which further closes gate integrity. No changes to run-log flush, committed artifact fields, outcome labels, panel slot accounting, agent verdict machinery, or ship/recovery routes.
 
 ## Architectural guidelines
 
-G-Md-3 deviation: plan_grammar.iter_heading_events (plan_grammar.py lines 574-597) re-derives fence-state tracking using local fence_mark/fence_length variables rather than reusing the _balanced_fence_line_indices helper from python/larch/issue/issue_create.py as G-Md-3 explicitly requires. The spirit of G-Md-3 is satisfied (fenced headings are correctly suppressed, including the stronger length-matched fence closing), and importing issue_create from plan_grammar would invert the established import direction (issue_wire already imports plan_grammar), so the architectural justification is clear. All other guideline surfaces are aligned: G-Wire-1 and G-Wire-3 are honoured by the full consumer sweep with the Gate B legacy path explicitly preserved and documented; G-Py-1 is followed with frozen dataclasses HeadingMatch, HeadingEvent, TrailerMatch, PlanTrailers; G-Py-3 is followed with HeadingKind and TrailerKey Literal types; G-Py-11 is followed with reason-bearing type: ignore suppressions; G-Cfg-3 is strengthened by making every writer and selector consume the same HEADING_KINDS and TRAILER_KEYS constants.
+G-Cfg-3 deviation: _RECOGNIZED_TRAILER_PREFIX_RE in python/larch/implement/preflight.py (added ~line 1095) manually re-lists all eight trailer key names (review_status, rounds_completed, difficulty, diff_added, diff_deleted, mechanical_churn, oversize_override, diff_lines) instead of deriving the alternation from plan_grammar.TRAILER_KEYS, which is already imported in the same file. The whole point of this change is to establish plan_grammar.TRAILER_KEYS as the single registry for trailer keys; this regex re-derives the same set by hand. If a new key is ever added to TRAILER_KEYS, the prefix scanner in _malformed_terminal_metadata will silently fail to recognize it, causing the break-on-unrecognized-prefix loop to exit early and miss genuinely malformed adjacent lines or report a clean result incorrectly. The fix is: _RECOGNIZED_TRAILER_PREFIX_RE = re.compile(r'^(?:' + '|'.join(plan_grammar.TRAILER_KEYS) + r'):').
 
 ## /implement run F438D8FB-D306-4235-8BC8-D201830D887C: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:52:32
-- **Cost**: 💰 TOTAL ~$27.19: Claude $2.19, Codex-5.6 $13.00, Codex-mini $0.12, Cursor $9.65 (Composer $9.65, Grok $0.00), Claude (subprocess) $2.23  |  Tokens: 39981k
+- **Cost**: 💰 TOTAL ~$28.61: Claude $3.57, Codex-5.6 $13.00, Codex-mini $0.12, Cursor $9.65 (Composer $9.65, Grok $0.00), Claude (subprocess) $2.27  |  Tokens: 43806k
 - **Issue**: #7000: https://github.com/character-ai/larch/issues/7000
 - **PR**: #7048: https://github.com/character-ai/larch/pull/7048
 - **Plan review**: N/A
@@ -95,10 +96,10 @@ G-Md-3 deviation: plan_grammar.iter_heading_events (plan_grammar.py lines 574-59
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 24/24 accepted
-- **Lines (PR diff)**: code +607/-299, larch-logs +1394/-0
+- **Lines (PR diff)**: code +619/-325, larch-logs +1407/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7047
 - **Exec issues**: 3
-- **Warnings**: 3
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/F438D8FB-D306-4235-8BC8-D201830D887C/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
