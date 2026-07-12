@@ -46,7 +46,7 @@ Override keeps the existing warning and caller-specific continuation. No Split-p
 
 ## 4. File and annotate
 
-On valid Partition acceptance, invoke `/larch:issue` in batch mode with `$DESIGN_TMPDIR/decompose/partition-input.txt` and `--intra-batch-deps-file "$DESIGN_TMPDIR/decompose/partition-deps.tsv"`. Keep dedup enabled. Pass `--context-file "$DESIGN_TMPDIR/source-env.sh"` to nested issue creation.
+On valid Partition acceptance, invoke `/larch:issue` in batch mode with `$DESIGN_TMPDIR/decompose/partition-input.txt` and `--no-dep-llm`. Keep dedup enabled. Pass `--context-file "$DESIGN_TMPDIR/source-env.sh"` to nested issue creation. Supply `--intra-batch-deps-file "$DESIGN_TMPDIR/decompose/partition-deps.tsv"` only when that TSV is non-empty; declared edges are authoritative and independent pieces must remain independent.
 
 Capture stdout and run:
 
@@ -80,7 +80,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose close-original \
   --repo "$REPO"
 ```
 
-`close-original` revalidates the migration sentinel and live postcondition before comment or close. Any partial filing, denied authorization, stale state, or verification failure preserves the original issue and tmpdir.
+`close-original` revalidates the migration sentinel and live postcondition, including every declared intra-piece edge, before comment or close. Any partial filing, denied authorization, stale state, or verification failure preserves the original issue and tmpdir. On resume after filing, if migration is absent, incomplete, or stale, rerun `migrate-deps` before `close-original`.
 
 For Step 5c size refusal, accepted Partition is terminal. Export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block, and exit `0`. Do not rerun Step 5c or continue against the closed original. Only Override reruns `design-step5c.sh`.
 

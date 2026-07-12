@@ -393,22 +393,31 @@ def annotate_partition_issues(*, design_tmpdir: Path, issue_stdout_file: Path) -
     for m in re.finditer(r"^ISSUE_([0-9]+)_URL=(.+)\s*$", text, re.MULTILINE):
         urls[int(m.group(1))] = m.group(2).strip()
 
+    input_file = dec / "partition-input.txt"
+    expected_pieces = len(re.findall(r"(?m)^###\s+", input_file.read_text(encoding="utf-8"))) if input_file.is_file() and not input_file.is_symlink() else 0
+    complete_mapping = (
+        expected_pieces >= MIN_PARTITION_PIECES
+        and set(urls) == set(range(1, expected_pieces + 1))
+        and created.isdigit()
+        and int(created) == expected_pieces
+    )
+
     if sent.is_file():
         prev = sent.read_text(encoding="utf-8")
-        if prev.strip() and filed.is_file() and failed_n == 0:
+        if prev.strip() and filed.is_file() and failed_n == 0 and complete_mapping:
             ok = all(f"PARTITION_FILE_MAP\t{i}\t{url}" in prev for i, url in sorted(urls.items()))
             try:
                 created_n = int(created)
             except ValueError:
                 created_n = 0
-            if ok and created_n == len(urls):
+            if ok and created_n == expected_pieces:
                 return
 
     lines = ["# Partition filing record", "", f"- **ISSUES_CREATED**: {created}", f"- **ISSUES_FAILED**: {failed}", ""]
     for i in sorted(urls):
         lines.extend([f"## Piece {i}", f"- **Filed URL**: {urls[i]}", ""])
     filed.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    if failed_n == 0:
+    if failed_n == 0 and complete_mapping:
         with sent.open("w", encoding="utf-8") as handle:
             for i in sorted(urls):
                 _ = handle.write(f"PARTITION_FILE_MAP\t{i}\t{urls[i]}\n")
@@ -573,6 +582,36 @@ def _migration_postcondition(migration: DependencyMigration) -> bool:
     return all(not _edge_present(edge, repo=migration.repo) for edge in (*migration.incoming, *migration.outgoing))
 
 
+def _intra_piece_postcondition(*, design_tmpdir: Path, pieces: tuple[FiledPiece, ...]) -> bool:
+    return all(_edge_present(edge, repo=pieces[0].repo) for edge in _intra_piece_edges(design_tmpdir, pieces))
+
+
+def _live_original_edges_match_migration(migration: DependencyMigration) -> bool:
+    incoming_numbers, blocking_numbers = _read_dependencies(issue=migration.original_issue, repo=migration.repo)
+    live_incoming = {DependencyEdge(blocked=migration.original_issue, blocker=number) for number in incoming_numbers}
+    live_outgoing = {DependencyEdge(blocked=number, blocker=migration.original_issue) for number in blocking_numbers}
+    expected_incoming = set(migration.incoming)
+    expected_outgoing = set(migration.outgoing)
+    if not live_incoming <= expected_incoming or not live_outgoing <= expected_outgoing:
+        return False
+    for edge in expected_incoming - live_incoming:
+        if any(not _edge_present(DependencyEdge(blocked=piece.issue, blocker=edge.blocker), repo=migration.repo) for piece in migration.pieces):
+            return False
+    for edge in expected_outgoing - live_outgoing:
+        if any(not _edge_present(DependencyEdge(blocked=edge.blocked, blocker=piece.issue), repo=migration.repo) for piece in migration.pieces):
+            return False
+    return True
+
+
+def _record_migration_failure(design_tmpdir: Path, *, phase: str, detail: str) -> str:
+    output_file = design_tmpdir / "decompose" / "migration-failure.txt"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(f"phase={phase}\n{detail}\n", encoding="utf-8")
+    _emit_kv(key="DECOMPOSE_DEPS_PHASE", value=phase)
+    _append_failure(design_tmpdir, site="design decompose migrate-deps", tool=phase, exit_code=1, output_file=output_file)
+    return "failed"
+
+
 def _apply_migration(migration: DependencyMigration) -> bool:
     for edge in _replacement_edges(migration):
         if not _edge_present(edge, repo=migration.repo) and (not _run_dependency_mutation(remove=False, blocked=edge.blocked, blocker=edge.blocker, repo=migration.repo) or not _edge_present(edge, repo=migration.repo)):
@@ -595,35 +634,39 @@ def migrate_dependencies(*, design_tmpdir: Path, original_issue: str, repo: str)
                 run_id = line.partition("=")[2].strip().strip("'\"")
     authorized, reason = session_env.check_live_mutation_auth(context_file=source_env, operator_mode=False, run_id=run_id, trusted_root=design_tmpdir)
     if not authorized:
-        _emit_kv(key="DECOMPOSE_DEPS_PHASE", value="authorization")
+        _record_migration_failure(design_tmpdir, phase="authorization", detail=reason)
         _emit_kv(key="DECOMPOSE_DEPS_AUTH_REASON", value=reason)
         return "authorization-denied"
-    pieces = _filed_pieces(design_tmpdir, repo=repo)
-    manifest_path = design_tmpdir / "decompose" / "dependency-migration.json"
-    if manifest_path.is_file():
-        migration = _load_migration(manifest_path)
-        if migration.original_issue != int(original_issue) or migration.repo != repo or migration.pieces != pieces:
-            raise UsageError("migrate-deps: persisted migration does not match filed mapping")
-    else:
-        incoming_numbers, blocking_numbers = _read_dependencies(issue=int(original_issue), repo=repo)
-        migration = DependencyMigration(
-            original_issue=int(original_issue),
-            repo=repo,
-            pieces=pieces,
-            incoming=tuple(DependencyEdge(blocked=int(original_issue), blocker=number) for number in incoming_numbers),
-            outgoing=tuple(DependencyEdge(blocked=number, blocker=int(original_issue)) for number in blocking_numbers),
-        )
-        _write_migration(manifest_path, migration)
-    intra_piece_edges = _intra_piece_edges(design_tmpdir, pieces)
-    sentinel = design_tmpdir / ".decompose-deps-migrated"
-    ready = not any(not _edge_present(edge, repo=repo) for edge in intra_piece_edges)
-    if ready and sentinel.is_file() and _migration_postcondition(migration):
+    try:
+        pieces = _filed_pieces(design_tmpdir, repo=repo)
+        manifest_path = design_tmpdir / "decompose" / "dependency-migration.json"
+        if manifest_path.is_file():
+            migration = _load_migration(manifest_path)
+            if migration.original_issue != int(original_issue) or migration.repo != repo or migration.pieces != pieces:
+                raise UsageError("migrate-deps: persisted migration does not match filed mapping")
+            if not _live_original_edges_match_migration(migration):
+                return _record_migration_failure(design_tmpdir, phase="live-dependency-drift", detail="original dependency graph changed")
+        else:
+            incoming_numbers, blocking_numbers = _read_dependencies(issue=int(original_issue), repo=repo)
+            migration = DependencyMigration(
+                original_issue=int(original_issue), repo=repo, pieces=pieces,
+                incoming=tuple(DependencyEdge(blocked=int(original_issue), blocker=number) for number in incoming_numbers),
+                outgoing=tuple(DependencyEdge(blocked=number, blocker=int(original_issue)) for number in blocking_numbers),
+            )
+            _write_migration(manifest_path, migration)
+        sentinel = design_tmpdir / ".decompose-deps-migrated"
+        ready = _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces)
+        if ready and sentinel.is_file() and _migration_postcondition(migration):
+            return "ok"
+        sentinel.unlink(missing_ok=True)
+        if not ready or not _apply_migration(migration):
+            return _record_migration_failure(design_tmpdir, phase="migration", detail="dependency mutation or verification failed")
+        if not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces):
+            return _record_migration_failure(design_tmpdir, phase="intra-piece-postcondition", detail="declared piece dependency missing")
+        sentinel.touch()
         return "ok"
-    sentinel.unlink(missing_ok=True)
-    if not ready or not _apply_migration(migration):
-        return "failed"
-    sentinel.touch()
-    return "ok"
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        return _record_migration_failure(design_tmpdir, phase="dependency-read", detail=str(exc))
 
 def close_original_issue(*, design_tmpdir: Path, original_issue: str, repo: str) -> str:
     if (design_tmpdir / ".decompose-original-closed").is_file():
@@ -633,7 +676,7 @@ def close_original_issue(*, design_tmpdir: Path, original_issue: str, repo: str)
     if not (design_tmpdir / ".decompose-deps-migrated").is_file() or not migration_path.is_file():
         raise UsageError("close-original: dependency migration is not complete")
     migration = _load_migration(migration_path)
-    if migration.original_issue != int(original_issue) or migration.repo != repo or not _migration_postcondition(migration):
+    if migration.original_issue != int(original_issue) or migration.repo != repo or not _migration_postcondition(migration) or not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=migration.pieces):
         raise UsageError("close-original: dependency migration postcondition failed")
     filed = dec / "partition-filed.md"
     if not filed.is_file():

@@ -88,6 +88,8 @@ step1e_line="$(grep -F -n -e '<!-- step:1e: Discussion Mode Gate (Gate A) -->' "
 [ "$gate_a_read_line" -gt "$step1e_line" ] || fail 'Gate A slice must remain absent from the default pre-plan path'
 not_contains "$FINALIZE_STEP5_MD" '## /design auto error reporting' 'green finalize must exclude failure reporting'
 contains "$FINALIZE_STEP5_FAILURES_MD" '## /design auto error reporting' 'failure slice must own error reporting'
+contains "$ROOT/skills/design/references/discussion-rounds.md" 'enter the unified **Split-path** directly' 'Step 1c sprawl must enter the unified Split-path directly'
+not_contains "$ROOT/skills/design/references/discussion-rounds.md" 'exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"**' 'Step 1c sprawl must not ask a preliminary Split/Cancel question'
 
 extract_stdout_keys_block() {
   awk '

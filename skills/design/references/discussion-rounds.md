@@ -24,7 +24,7 @@ Consider asking about:
 **Guidelines**:
 - Ask when scope, requirements, or done criteria are uncertain. Suppress only when the feature is fully unambiguous; one extra clarification is cheaper than planning from the wrong interpretation.
 - Batch 1-4 questions into one `AskUserQuestion` call instead of multiple sequential calls.
-- **Semantic sprawl heuristic (best-effort)**: if clarifying answers reveal several distinct sub-features or cross-cutting infrastructure changes, the orchestrator MAY fire one extra `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no Continue, because no plan exists yet). On **Cancel**: export `SUMMARY_OUTCOME=cancelled-sprawl`, run the Final summary block from `SKILL.md` (`### Final summary block`) through Read/cache, print `**ℹ /design cancelled by operator (Step 1c sprawl heuristic).**`, emit the cached final summary as terminal plain chat, exit **0**, and preserve `$DESIGN_TMPDIR`. On **Split**: run the **Split-path** procedure in `SKILL.md` (decomposition panel stub until #2672). Semantic only: when uncertain, do not fire. At most **once** per Step 1c invocation.
+- **Semantic sprawl heuristic (best-effort)**: if clarifying answers reveal several distinct sub-features or cross-cutting infrastructure changes, enter the unified **Split-path** directly. Its single question owns Partition, Override, and Other/chat; Other/chat exits the structured path, so do not offer a preliminary Split/Cancel question. Semantic only: when uncertain, do not fire. At most **once** per Step 1c invocation.
 - If the feature is clear, proceed to Step 1d.
 
 After the user responds, carry those answers through all later steps.
