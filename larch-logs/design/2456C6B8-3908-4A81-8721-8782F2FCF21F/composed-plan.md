@@ -1,0 +1,50 @@
+## Plan
+
+## Approach
+
+Add one test-only ownership ratchet. Keep production code unchanged.
+
+### NEW: python/tests/issue/test_plan_marker_ownership.py
+
+- Scan runtime Python sources under `python/larch/`.
+- Exclude tests, fixtures, caches, and `issue_wire.py`, the grammar owner.
+- Fail when another source string hardcodes `larch:plan:start` or `larch:plan:end`.
+- Use AST call inspection to verify:
+  - `decompose.py` calls `issue_wire.compose_named_block`.
+  - `design_router.py` calls `issue_wire.parse_named_block`.
+  - `learn_from_bugs.py` calls `issue_wire.named_block_marker_re`.
+- Report offending paths and missing helper calls in assertion output.
+
+## Edge cases
+
+- Do not flag versioned tracking markers such as `<!-- larch:plan v1 ... -->`.
+- Do not include test fixtures that intentionally contain marker examples.
+- Do not cover `design-pause` markers or heading-based plan boundary heuristics.
+
+## Failure modes
+
+- The guard fails if a consumer restores a private marker literal.
+- The guard fails if a named consumer stops calling its assigned shared helper, even when no literal remains.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/issue/test_plan_marker_ownership.py -q`.
+- Run changed-file Ruff, Pylint, and Pyright checks.
+- Confirm the test fails when a temporary fixture contains a forbidden plan block marker or omits a required helper call.
+
+## Issue disposition
+
+After the guard lands, comment on #7047 that #7095 completed the unification and the new test prevents regression. Then close #7047 as fixed by #7095.
+
+Confidence: high.
+
+## Acceptance
+
+- Run `python3 -m pytest python/tests/issue/test_plan_marker_ownership.py -q`.
+- Run changed-file Ruff, Pylint, and Pyright checks.
+- Confirm the test fails when a temporary fixture contains a forbidden plan block marker or omits a required helper call.
+
+review_status: complete
+rounds_completed: 1
+difficulty: TRIVIAL
+diff_lines: 65

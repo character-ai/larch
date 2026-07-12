@@ -1,0 +1,17 @@
+### FINDING_1: Validate plan-marker arguments in ownership checks
+- **Reviewer(s)**: Codex-Arch, Cursor-Pragmatic, Codex-Pragmatic, Codex-Requirements
+- **Severity**: major
+- **Concern**: AST checks verify helper usage but not marker or kind arguments, allowing incorrect calls to pass while breaking plan handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Require marker="plan", plus kind="start" for named_block_marker_re, at the relevant call sites.
+  - From Cursor-Pragmatic: Require keyword marker=plan on parse_named_block and compose_named_block calls and kind=start on named_block_marker_re in the three named consumers
+  - From Codex-Pragmatic: Require marker="plan" for all three calls, plus kind="start" for named_block_marker_re 1. [correctness] `python/tests/issue/test_plan_marker_ownership.py:10-13`: The AST checks should validate the arguments, not only the callee names. Otherwise an incorrect helper call still satisfies the ratchet and breaks plan handling. Require the exact `plan` marker, and `kind="start"` for `named_block_marker_re`.
+  - From Codex-Requirements: Verify marker="plan" for all three calls and kind="start" for named_block_marker_re 1. **Correctness**: Require the AST checks to validate the helper arguments, not only the callee names.
+
+### FINDING_2: Restrict marker scans to code literals
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: minor
+- **Concern**: Whole-file substring scans can falsely flag comments, docstrings, or quoted documentation instead of detecting runtime marker ownership.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Walk each module AST and flag only `ast.Constant`/`ast.JoinedStr` nodes (or equivalent) whose decoded value contains `larch:plan:start` or `larch:plan:end`; keep `issue_wire.py` excluded.
+  - From Cursor-Pragmatic: Scan only AST string constants (or strip comments before substring scan) so documentation examples do not trip the guard

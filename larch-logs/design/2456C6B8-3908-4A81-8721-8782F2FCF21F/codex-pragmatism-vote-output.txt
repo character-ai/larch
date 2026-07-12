@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Argument checks would strengthen the ratchet but are not required by the scoped helper-ownership guard.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Comment-only literals could be false positives, but the specified source-level hardcode scan remains sufficient for this guard.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The scope anchor explicitly requires closing #7047 once the guard lands.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The new regression guard is an explicit scoped deliverable.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The issue disposition is explicitly included in the approved direction.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Test placement is a stylistic preference, not a filing-worthy out-of-scope issue.
