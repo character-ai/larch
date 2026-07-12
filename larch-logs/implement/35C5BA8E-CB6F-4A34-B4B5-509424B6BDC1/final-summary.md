@@ -66,17 +66,9 @@ Warnings (2):
   1. G-Wire-1 deviation: the non-crash finalize success path in ci_fixer_lane.py renames its machine-consumed output token from STATUS=complete to STATUS=closed, but the new test test_fixer_lane_main_pe...
   2. One deviation identified under G-Wire-1. The diff changes the machine-consumed status token emitted by the normal (non-crash) lane path in ci_fixer_lane.main() from STATUS=complete to STATUS=closed...
 
-## Architectural invariants
+## /implement run 35C5BA8E-CB6F-4A34-B4B5-509424B6BDC1: stalled
 
-No violations identified. Crash finalization validates identity from independently-written envelopes (I-Gate-1 clean). Persisted step results are consumed against the inputs that produced them: the step slug is derived from mode/run_id/attempt/tier/starting_head/fingerprint, and both the bgjob result envelope and the lineage row are cross-checked against those fields before acting (I-Stale-1 clean). Crash diagnostic persistence failures raise LaneClosedError and block tier advancement rather than emitting a silent status value (I-Flush-1 clean). Crash diagnostic content is embedded verbatim, not stored as a tmpdir path pointer (I-Commit-1 clean). The crash finalization route emits reship/retry-next-tool/operator-bail through the existing Step 8 gates that carry the merged/closed PR guard (I-Ship-1 clean).
-
-## Architectural guidelines
-
-One deviation identified under G-Wire-1. The diff changes the machine-consumed status token emitted by the normal (non-crash) lane path in ci_fixer_lane.main() from STATUS=complete to STATUS=closed (python/larch/implement/ci_fixer_lane.py). The newly added test test_fixer_lane_main_persists_run_b_after_valid_run_a (python/tests/implement/test_ci.py) exercises this exact code path via the normal main() flow with a successful codex launcher and asserts the old token: assert "STATUS=complete\nRESULT=retry-next-tool" in capsys.readouterr().out. Because the producer now emits STATUS=closed, this assertion will be False and the test will fail. G-Wire-1 requires that every consumer of a changed machine-consumed grammar be updated in the same change; this consumer was not updated. The companion test test_fixer_lane_recovery_persists_with_foreign_round correctly asserts STATUS=closed, confirming the new value is intentional and the omission in test_fixer_lane_main_persists_run_b_after_valid_run_a is an oversight.
-
-## /implement run 35C5BA8E-CB6F-4A34-B4B5-509424B6BDC1: pr-created
-
-- **Outcome**: ✅ DONE
+- **Outcome**: ❌ STALLED
 - **Duration**: 00:56:29
 - **Cost**: 💰 TOTAL ~$26.09: Claude $2.56, Codex-5.6 $17.51, Codex-mini $0.07, Cursor $5.64 (Composer $5.64, Grok $0.00), Claude (subprocess) $0.31  |  Tokens: 35917k
 - **Issue**: #7066: https://github.com/character-ai/larch/issues/7066
@@ -86,7 +78,7 @@ One deviation identified under G-Wire-1. The diff changes the machine-consumed s
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 6/15 accepted
-- **Lines (PR diff)**: code +1061/-25, larch-logs +1204/-0
+- **Lines (PR diff)**: code +1061/-25, larch-logs +1213/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7088
 - **Exec issues**: 0
 - **Warnings**: 2
