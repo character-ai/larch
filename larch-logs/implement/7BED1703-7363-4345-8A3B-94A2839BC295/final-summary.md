@@ -63,11 +63,19 @@ codex/apply                      │                                  ███�
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+No violations found. The adapter correctly validates process identity (pid, pgid, start_time, command_signature) before emitting PGID via _validate_entry and liveness checks (I-Stale-1, I-Agent-1 not triggered). The bgjob result env is consumed only after validating STEP identity against the live spec. No gate disarming, pause-snapshot, run-log, panel-slot, or ship-lifecycle invariants are touched by this diff.
+
+## Architectural guidelines
+
+No meaningful deviations found. The diff follows G-Py-1 (RegistrySnapshot and ProcessState use frozen=True dataclasses), G-IO-1 (all wire-file reads/writes go through larch_io helpers: trusted_file_present, read_trusted_text, trusted_atomic_write, read_kvs, parse_kv), G-Sec-4 (symlink and containment checks at every path-consuming site: lstat+S_ISREG in _stat_fingerprint, O_NOFOLLOW+inode match in _open_pinned_lock, is_symlink guards in _prepare_launch_spec and _rehydrate_plugin_root, delegated to read_trusted_text with root in _merge_rows), G-Sec-5 (identity validated before PGID is emitted), G-CLI-1 (adapt_main is a module-level argv->int registered in the cli.py table and in _MACHINE_STDOUT_KEYS), and G-Idem-1 (the decision lock plus repeated result-present checks make the adapter safe to re-run). The registry.py relaxation removing the log_dir.relative_to(tmpdir) constraint is additive and covered by a new round-trip test.
+
 ## /implement run 7BED1703-7363-4345-8A3B-94A2839BC295: shipping
 
 - **Outcome**: shipping
 - **Duration**: 02:16:57
-- **Cost**: 💰 TOTAL ~$29.60: Claude $7.14, Codex-5.6 $13.56, Codex-mini $0.07, Cursor $8.32 (Composer $8.32, Grok $0.00), Claude (subprocess) $0.51  |  Tokens: 45620k
+- **Cost**: 💰 TOTAL ~$30.09: Claude $7.63, Codex-5.6 $13.56, Codex-mini $0.07, Cursor $8.32 (Composer $8.32, Grok $0.00), Claude (subprocess) $0.51  |  Tokens: 47147k
 - **Issue**: #7034: https://github.com/character-ai/larch/issues/7034
 - **Plan review**: N/A
 - **Plan coverage**: 4/4 firm headings; band: advisory; disposition: none; todos_left: 0
