@@ -76,6 +76,19 @@ comma-separated `kind:state` tokens in normalized kind order. Allowed states
 include `deterministic-clean`, `handled`, `clean`, `deviation`, `violation`,
 `log-pending`, and `unavailable`.
 
+### `ASSESSMENT_CHILD_DETAIL`
+
+Optional diagnostic captured from the terminal assessment child. The adapter
+passes child stderr on stdin to
+`python3 python/cli.py architectural-assessment sanitize-detail --implement-tmpdir "$IMPLEMENT_TMPDIR"`.
+That command emits exactly one redacted, newline-free value, bounded to 500
+characters, and no other stdout rows. A sanitizer failure fails closed.
+
+Raw child stderr is never written to a merge-result value or committed
+artifact. The adapter removes its mode-0600 raw file on normal completion,
+malformed child output, sanitizer or merge-write failure, shell error, and
+signal exits.
+
 ### Required adapter/bgjob KVs
 
 - `STEP=implement-step8-assessment`
@@ -85,6 +98,7 @@ include `deterministic-clean`, `handled`, `clean`, `deviation`, `violation`,
 - `ASSESSMENT_STATUS`
 - `ASSESSMENT_ATTEMPT`
 - `ASSESSMENT_RESULTS` when `ASSESSMENT_STATUS=complete`
+- Optional `ASSESSMENT_CHILD_DETAIL` when the terminal child emitted stderr
 
 Daemon-reserved keys (`BGJOB_PID`, `BGJOB_OWNER_PID`, `BGJOB_STATUS`,
 `BGJOB_RC`, `BGJOB_ELAPSED_S`, `STEP`, and other keys owned by

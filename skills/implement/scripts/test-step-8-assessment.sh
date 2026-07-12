@@ -25,6 +25,11 @@ assert_rc() {
   local a=$1 e=$2 l=$3
   if [ "$a" -eq "$e" ]; then pass "$l"; else fail "$l (expected rc=$e got rc=$a)"; fi
 }
+assert_no_raw_stderr() {
+  local dir=$1 label=$2 found
+  found=$(find "$dir" -maxdepth 1 -name 'architectural-assessment-stderr.*' -print -quit)
+  if [ -z "$found" ]; then pass "$label"; else fail "$label (found: $found)"; fi
+}
 
 # --- static pins ---
 helper_text=$(cat "$HELPER")
@@ -40,6 +45,8 @@ assert_contains 'WAIT_CHUNK_S=270' "$helper_text" 'static: blocking wait chunk'
 assert_contains 'normalize_kinds' "$helper_text" 'static: imports Piece 2 normalize_kinds'
 assert_contains 'validate_materialization' "$helper_text" 'static: imports Piece 2 validate_materialization'
 assert_contains 'PYTHONPATH="$CLAUDE_PLUGIN_ROOT/python' "$helper_text" 'static: exports plugin PYTHONPATH'
+assert_contains 'os.fdopen(int(sys.argv[1]), "wb", closefd=False)' "$helper_text" 'static: child writes stderr through inherited descriptor'
+assert_not_contains 'Path(sys.argv[1]).open("wb")' "$helper_text" 'static: child cannot recreate removed stderr path'
 assert_not_contains 'declare -A' "$helper_text" 'static: no associative arrays'
 assert_not_contains 'nameref' "$helper_text" 'static: no namerefs'
 assert_not_contains 'mapfile' "$helper_text" 'static: no mapfile'
@@ -255,6 +262,7 @@ def bgjob_start(argv: list[str]) -> int:
                 "ASSESSMENT_STATUS",
                 "ASSESSMENT_ATTEMPT",
                 "ASSESSMENT_RESULTS",
+                "ASSESSMENT_CHILD_DETAIL",
             ):
                 if key in rows:
                     body.append(f"{key}={rows[key]}")
@@ -323,12 +331,41 @@ def assessment_run(argv: list[str]) -> int:
     _log("assessment-run-argv.txt", "\n".join(argv) + "\n---\n")
     (_impl() / "assessment-run-called.txt").write_text("yes\n", encoding="utf-8")
     canned = _impl() / ".test-assessment-stdout"
+    stderr = _impl() / ".test-assessment-stderr"
+    if stderr.is_file():
+        sys.stderr.write(stderr.read_text(encoding="utf-8"))
+    stderr_bytes = _impl() / ".test-assessment-stderr-bytes"
+    if stderr_bytes.is_file():
+        sys.stderr.buffer.write(b"x" * int(stderr_bytes.read_text(encoding="utf-8").strip()))
+    sleep_for = _impl() / ".test-assessment-sleep"
+    if sleep_for.is_file():
+        import time
+        time.sleep(float(sleep_for.read_text(encoding="utf-8").strip()))
+    if (_impl() / ".test-corrupt-merge").is_file():
+        merge = _impl() / "bgjob" / "implement-step8-assessment.merge.env"
+        merge.unlink(missing_ok=True)
+        merge.mkdir()
     if canned.is_file():
         sys.stdout.write(canned.read_text(encoding="utf-8"))
         rc_file = _impl() / ".test-assessment-rc"
         return int(rc_file.read_text(encoding="utf-8").strip()) if rc_file.is_file() else 0
     print("ARCHITECTURAL_ASSESSMENT_STATUS=ok")
     print("ARCHITECTURAL_ASSESSMENT_RESULTS=guidelines:deterministic-clean")
+    return 0
+
+
+def sanitize_detail(argv: list[str]) -> int:
+    if (_impl() / ".test-sanitizer-fail").is_file():
+        print("sanitizer failed", file=sys.stderr)
+        return 1
+    import re
+
+    text = sys.stdin.read()
+    (_impl() / ".test-sanitizer-input-size").write_text(str(len(text.encode("utf-8"))), encoding="utf-8")
+    text = text.replace(os.environ["IMPLEMENT_TMPDIR"], "<implement-tmpdir>")
+    text = text.replace(str(_impl()), "<implement-tmpdir>")
+    text = re.sub(r"ghp_[A-Za-z0-9_]{20,}", "<REDACTED-TOKEN>", text)
+    print(text.replace("\r", " ").replace("\n", " ").strip()[:500])
     return 0
 
 
@@ -339,6 +376,8 @@ def main(argv: list[str]) -> int:
         return bgjob_wait(argv)
     if len(argv) >= 2 and argv[0] == "architectural-assessment" and argv[1] == "run":
         return assessment_run(argv)
+    if len(argv) >= 2 and argv[0] == "architectural-assessment" and argv[1] == "sanitize-detail":
+        return sanitize_detail(argv)
     print(f"stub cli: unhandled {argv}", file=sys.stderr)
     return 2
 
@@ -473,6 +512,115 @@ if [ -f "$IMPL_TMP/assessment-run-called.txt" ]; then
 else
   fail 'fresh: assessment run not invoked from child'
 fi
+
+# --- child stderr is sanitized, forwarded, and removed ---
+setup_impl child-detail
+printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
+printf 'ARCHITECTURAL_ASSESSMENT_STATUS=ok\nARCHITECTURAL_ASSESSMENT_RESULTS=invariants:clean,guidelines:clean\n' \
+  >"$IMPL_TMP/.test-assessment-stdout"
+TOKEN="ghp_""abcdefghijklmnopqrstuvwxyz1234"
+printf 'launcher failed\n%s %s %0600d\n' "$IMPL_TMP" "$TOKEN" 0 >"$IMPL_TMP/.test-assessment-stderr"
+set +e
+CHILD_DETAIL_OUT=$(run_helper 2>"$TMP_ROOT/child-detail.err")
+CHILD_DETAIL_RC=$?
+set -e
+assert_rc "$CHILD_DETAIL_RC" 0 'child-detail: successful assessment exits 0'
+assert_contains 'ASSESSMENT_CHILD_DETAIL=launcher failed <implement-tmpdir> <REDACTED-TOKEN>' "$CHILD_DETAIL_OUT" 'child-detail: forwards sanitized stderr'
+assert_not_contains "$TOKEN" "$CHILD_DETAIL_OUT" 'child-detail: secret does not escape'
+assert_not_contains "$IMPL_TMP" "$CHILD_DETAIL_OUT" 'child-detail: tmpdir does not escape'
+assert_no_raw_stderr "$IMPL_TMP" 'child-detail: raw stderr removed after success'
+
+# --- child stderr capture remains bounded while draining ---
+setup_impl child-detail-bounded
+printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
+printf 'ARCHITECTURAL_ASSESSMENT_STATUS=ok\nARCHITECTURAL_ASSESSMENT_RESULTS=invariants:clean,guidelines:clean\n' \
+  >"$IMPL_TMP/.test-assessment-stdout"
+printf '20000\n' >"$IMPL_TMP/.test-assessment-stderr-bytes"
+set +e
+BOUNDED_DETAIL_OUT=$(run_helper 2>"$TMP_ROOT/child-detail-bounded.err")
+BOUNDED_DETAIL_RC=$?
+set -e
+assert_rc "$BOUNDED_DETAIL_RC" 0 'child-detail-bounded: successful assessment exits 0'
+SANITIZER_INPUT_SIZE=$(cat "$IMPL_TMP/.test-sanitizer-input-size")
+if [ "$SANITIZER_INPUT_SIZE" -le 8220 ]; then
+  pass 'child-detail-bounded: sanitizer receives bounded stderr'
+else
+  fail "child-detail-bounded: sanitizer received $SANITIZER_INPUT_SIZE bytes"
+fi
+assert_contains 'ASSESSMENT_CHILD_DETAIL=' "$BOUNDED_DETAIL_OUT" 'child-detail-bounded: retains diagnostic prefix'
+assert_no_raw_stderr "$IMPL_TMP" 'child-detail-bounded: raw stderr removed'
+
+# --- malformed output preserves sanitized terminal detail ---
+setup_impl malformed-child-detail
+printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
+printf 'malformed stdout\n' >"$IMPL_TMP/.test-assessment-stdout"
+printf 'parse failed\nsecond line\n' >"$IMPL_TMP/.test-assessment-stderr"
+set +e
+MALFORMED_DETAIL_OUT=$(run_helper 2>"$TMP_ROOT/malformed-child-detail.err")
+MALFORMED_DETAIL_RC=$?
+set -e
+assert_rc "$MALFORMED_DETAIL_RC" 0 'malformed-child-detail: adapter publishes fail-closed'
+assert_contains 'ASSESSMENT_STATUS=fail-closed' "$MALFORMED_DETAIL_OUT" 'malformed-child-detail: fail-closed status'
+assert_contains 'ASSESSMENT_CHILD_DETAIL=parse failed second line' "$MALFORMED_DETAIL_OUT" 'malformed-child-detail: diagnostic preserved'
+assert_no_raw_stderr "$IMPL_TMP" 'malformed-child-detail: raw stderr removed'
+
+# --- sanitizer failure forwards nothing and still removes raw stderr ---
+setup_impl sanitizer-failure
+printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
+printf 'yes\n' >"$IMPL_TMP/.test-sanitizer-fail"
+printf 'must remain raw only\n' >"$IMPL_TMP/.test-assessment-stderr"
+set +e
+SANITIZER_FAIL_OUT=$(run_helper 2>"$TMP_ROOT/sanitizer-failure.err")
+SANITIZER_FAIL_RC=$?
+set -e
+assert_rc "$SANITIZER_FAIL_RC" 0 'sanitizer-failure: adapter publishes fail-closed'
+assert_not_contains 'must remain raw only' "$SANITIZER_FAIL_OUT" 'sanitizer-failure: raw stderr not forwarded'
+assert_no_raw_stderr "$IMPL_TMP" 'sanitizer-failure: raw stderr removed'
+
+# --- merge-result write failure still removes raw stderr ---
+setup_impl merge-write-failure
+printf 'yes\n' >"$IMPL_TMP/.test-corrupt-merge"
+printf 'write failed diagnostic\n' >"$IMPL_TMP/.test-assessment-stderr"
+MERGE_PATH="$IMPL_TMP/bgjob/implement-step8-assessment.merge.env"
+cat >"$MERGE_PATH" <<ENV
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$(expected_fingerprint)
+ASSESSMENT_ATTEMPT=1
+ENV
+set +e
+run_helper --bgjob-child --merge-result-env "$MERGE_PATH" >"$TMP_ROOT/merge-write-failure.out" 2>"$TMP_ROOT/merge-write-failure.err"
+MERGE_FAIL_RC=$?
+set -e
+assert_rc "$MERGE_FAIL_RC" 2 'merge-write-failure: child fails closed'
+assert_no_raw_stderr "$IMPL_TMP" 'merge-write-failure: raw stderr removed'
+
+# --- signal interruption preserves the signal status and removes raw stderr ---
+setup_impl child-signal
+MERGE_PATH="$IMPL_TMP/bgjob/implement-step8-assessment.merge.env"
+cat >"$MERGE_PATH" <<ENV
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$(expected_fingerprint)
+ASSESSMENT_ATTEMPT=1
+ENV
+printf '0.5\n' >"$IMPL_TMP/.test-assessment-sleep"
+PATH="$STUB_BIN:$PATH" \
+  IMPLEMENT_TMPDIR="$IMPL_TMP" \
+  CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
+  bash "$HELPER_UNDER_TEST" --bgjob-child --merge-result-env "$MERGE_PATH" >"$TMP_ROOT/child-signal.out" 2>"$TMP_ROOT/child-signal.err" &
+CHILD_SIGNAL_PID=$!
+for _ in $(seq 1 50); do
+  if find "$IMPL_TMP" -maxdepth 1 -name 'architectural-assessment-stderr.*' -print -quit | grep -q .; then
+    break
+  fi
+  sleep 0.01
+done
+set +e
+kill -TERM "$CHILD_SIGNAL_PID"
+wait "$CHILD_SIGNAL_PID"
+CHILD_SIGNAL_RC=$?
+set -e
+assert_rc "$CHILD_SIGNAL_RC" 143 'child-signal: preserves TERM exit status'
+assert_no_raw_stderr "$IMPL_TMP" 'child-signal: raw stderr removed'
 
 # --- fresh re-author terminal ---
 setup_impl fresh-reauthor

@@ -10,6 +10,7 @@ import re
 import shutil
 import stat
 import subprocess
+import sys
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ _AGENT_PROMPT: Final = Path(__file__).parents[3] / "skills/implement/references/
 _MODEL: Final = "claude-sonnet-4-6"
 _TIMEOUT_SECONDS: Final = 1800
 _EMPTY_STDOUT_ATTEMPTS: Final = 3
+_MAX_SANITIZE_DETAIL_BYTES: Final = 8 * 1024
 _MAX_ASSESSMENT_CHARS: Final = 12000
 _UNAVAILABLE_RECEIPT: Final = "architectural-assessment-unavailable-{kind}.json"
 _KIND_ORDER: Final = (config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES)
@@ -557,17 +559,24 @@ def _write_json_atomic(path: Path, data: dict[str, object]) -> None:
     _write_text_atomic(path, json.dumps(data, sort_keys=True) + "\n")
 
 
-def _write_outcome(kind: str, *, implement_tmpdir: Path, result: AssessmentResult, note_state: str = config.NOTE_STATE_AUTHORED) -> None:
+def _write_outcome(
+    kind: str,
+    *,
+    implement_tmpdir: Path,
+    result: AssessmentResult,
+    note_state: str = config.NOTE_STATE_AUTHORED,
+    detail: str = "",
+) -> None:
     if kind == config.ASSESSMENT_KIND_INVARIANTS:
         gate = ship_guidelines.InvariantsGateResult(
-            note=result.assessment, invariants_status="present", assessment_kind=result.state, note_state=note_state
+            note=result.assessment, detail=detail, invariants_status="present", assessment_kind=result.state, note_state=note_state
         )
         _ = ship_guidelines.write_invariant_ship_outcome(
             implement_tmpdir=str(implement_tmpdir), result=gate, head_sha=result.head_sha, base_ref=result.base_ref
         )
     else:
         gate = ship_guidelines.GuidelinesGateResult(
-            note=result.assessment, guidelines_status="present", assessment_kind=result.state, note_state=note_state
+            note=result.assessment, detail=detail, guidelines_status="present", assessment_kind=result.state, note_state=note_state
         )
         _ = ship_guidelines.write_guideline_ship_outcome(
             implement_tmpdir=str(implement_tmpdir), result=gate, head_sha=result.head_sha, base_ref=result.base_ref
@@ -657,7 +666,13 @@ def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Pat
 
 def _safe_detail(text: str, implement_tmpdir: Path) -> str:
     redacted: str = redact.redact_outbound(text).replace(str(implement_tmpdir), "<implement-tmpdir>")
-    return logging_util.sanitize_diagnostic_line(redacted)[:500]
+    flattened: str = "".join(character if character >= " " and character != "\x7f" else " " for character in redacted)
+    return logging_util.sanitize_diagnostic_line(flattened).strip()[:500]
+
+
+def sanitize_detail(text: str, *, implement_tmpdir: Path) -> str:
+    """Return one bounded diagnostic safe for a line-oriented handoff."""
+    return _safe_detail(text, implement_tmpdir)
 
 
 def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path, detail: str) -> None:
@@ -667,8 +682,11 @@ def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, imp
     architectural_guidelines.write_unavailable_note(
         implement_tmpdir=implement_tmpdir, head_sha=evidence.head_sha, base_ref=evidence.base_ref, invariant=invariant
     )
+    safe_detail: str = sanitize_detail(detail, implement_tmpdir=implement_tmpdir)
     result = AssessmentResult(evidence.kind, "clean", "Architectural assessment unavailable.", (), evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
-    _write_outcome(evidence.kind, implement_tmpdir=implement_tmpdir, result=result, note_state=config.NOTE_STATE_UNAVAILABLE)
+    _write_outcome(
+        evidence.kind, implement_tmpdir=implement_tmpdir, result=result, note_state=config.NOTE_STATE_UNAVAILABLE, detail=safe_detail
+    )
     note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if invariant else architectural_guidelines.durable_note_path(implement_tmpdir)
     outcome_path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir) if invariant else architectural_guidelines.guideline_ship_outcome_path(implement_tmpdir)
     receipt: dict[str, object] = {
@@ -680,7 +698,7 @@ def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, imp
         "knowledge_sha256": evidence.knowledge_sha256,
         "note_sha256": _sha256(_read_regular(note_path, root=implement_tmpdir)),
         "outcome_sha256": _sha256(_read_regular(outcome_path, root=implement_tmpdir)),
-        "detail": _safe_detail(detail, implement_tmpdir),
+        "detail": safe_detail,
     }
     _write_json_atomic(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=evidence.kind), receipt)
 
@@ -723,10 +741,15 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root:
 def _launch_assessment(launcher: Launcher, request: LaunchRequest) -> LaunchResult:
     """Launch the assessment, retrying a transient exit-0 empty stdout before falling back."""
     launch_result = launcher.launch(request)
+    stderr_parts = [launch_result.stderr] if launch_result.stderr else []
     for _retry in range(_EMPTY_STDOUT_ATTEMPTS - 1):
         if launch_result.returncode != 0 or launch_result.stdout.strip():
             break
         launch_result = launcher.launch(request)
+        if launch_result.stderr and launch_result.stderr not in stderr_parts:
+            stderr_parts.append(launch_result.stderr)
+    if stderr_parts:
+        return LaunchResult(launch_result.returncode, launch_result.stdout, "\n".join(stderr_parts))
     return launch_result
 
 
@@ -787,7 +810,10 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
                 raise ValueError(launch_result.stderr or f"launcher exited {launch_result.returncode}")
             _write_text_atomic(result_path, launch_result.stdout)
             if not launch_result.stdout.strip():
-                raise ValueError(f"assessment launcher returned empty stdout after {_EMPTY_STDOUT_ATTEMPTS} attempts")
+                raise ValueError(
+                    launch_result.stderr
+                    or f"assessment launcher returned empty stdout after {_EMPTY_STDOUT_ATTEMPTS} attempts"
+                )
             results, invalid_kinds, invalid_detail = _parse_results_independently(_read_regular(result_path, root=tmpdir), pending)
             for result in results:
                 try:
@@ -862,4 +888,21 @@ def main(argv: list[str] | None = None) -> int:
         f"{config.ASSESSMENT_STATUS_REAUTHOR_REQUIRED if reauthor_required else 'ok'}"
     )
     print(f"ARCHITECTURAL_ASSESSMENT_RESULTS={','.join(statuses)}")
+    return config.EXIT_OK
+
+
+def sanitize_detail_main(argv: list[str] | None = None) -> int:
+    """Sanitize stdin for the Step 8 adapter's diagnostic handoff."""
+    parser = argparse.ArgumentParser(prog="cli.py architectural-assessment sanitize-detail")
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    args = parser.parse_args(argv)
+    implement_tmpdir = Path(args.implement_tmpdir)
+    if not implement_tmpdir.is_dir() or implement_tmpdir.is_symlink():
+        print("architectural-assessment sanitize-detail: invalid implement tmpdir", file=sys.stderr)
+        return config.EXIT_USAGE
+    stdin_bytes = getattr(sys.stdin, "buffer", sys.stdin)
+    diagnostic = stdin_bytes.read(_MAX_SANITIZE_DETAIL_BYTES)
+    if isinstance(diagnostic, bytes):
+        diagnostic = diagnostic.decode("utf-8", errors="replace")
+    print(sanitize_detail(diagnostic, implement_tmpdir=implement_tmpdir))
     return config.EXIT_OK

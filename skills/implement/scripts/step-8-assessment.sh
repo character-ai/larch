@@ -486,6 +486,7 @@ load_terminal_envelope() {
     TERM_STATUS=$(read_env_key ASSESSMENT_STATUS "$result_env")
     TERM_ATTEMPT=$(read_env_key ASSESSMENT_ATTEMPT "$result_env")
     TERM_RESULTS=$(read_env_key ASSESSMENT_RESULTS "$result_env")
+    TERM_CHILD_DETAIL=$(read_env_key ASSESSMENT_CHILD_DETAIL "$result_env")
   else
     TERM_STEP=$(extract_kv STEP "$wait_out")
     TERM_KINDS=$(extract_kv ASSESSMENT_REQUESTED_KINDS "$wait_out")
@@ -493,6 +494,7 @@ load_terminal_envelope() {
     TERM_STATUS=$(extract_kv ASSESSMENT_STATUS "$wait_out")
     TERM_ATTEMPT=$(extract_kv ASSESSMENT_ATTEMPT "$wait_out")
     TERM_RESULTS=$(extract_kv ASSESSMENT_RESULTS "$wait_out")
+    TERM_CHILD_DETAIL=$(extract_kv ASSESSMENT_CHILD_DETAIL "$wait_out")
   fi
   [ -n "$TERM_STEP" ] || TERM_STEP=$(extract_kv STEP "$wait_out")
 }
@@ -516,6 +518,10 @@ emit_terminal_stdout() {
     results=$(read_env_key ASSESSMENT_RESULTS "$result_env")
     if [ -n "$results" ]; then
       printf 'ASSESSMENT_RESULTS=%s\n' "$results"
+    fi
+    child_detail=$(read_env_key ASSESSMENT_CHILD_DETAIL "$result_env")
+    if [ -n "$child_detail" ]; then
+      printf 'ASSESSMENT_CHILD_DETAIL=%s\n' "$child_detail"
     fi
     return 0
   fi
@@ -629,14 +635,25 @@ run_wait_validate_path() {
 publish_fail_closed_terminal() {
   local attempt=${1:-2}
   local rc=${TERM_BGJOB_RC:-}
-  local merge_env result_env
+  local merge_env result_env child_detail
   merge_env=$(merge_env_path)
   result_env=$(result_env_path)
-  write_merge_kvs "$merge_env" \
-    ASSESSMENT_REQUESTED_KINDS "$ASSESSMENT_REQUESTED_KINDS" \
-    ASSESSMENT_COVERED_FINGERPRINT "$ASSESSMENT_COVERED_FINGERPRINT" \
-    ASSESSMENT_ATTEMPT "$attempt" \
-    ASSESSMENT_STATUS "fail-closed"
+  child_detail=${TERM_CHILD_DETAIL:-}
+  [ -n "$child_detail" ] || child_detail=$(read_env_key ASSESSMENT_CHILD_DETAIL "$merge_env")
+  if [ -n "$child_detail" ]; then
+    write_merge_kvs "$merge_env" \
+      ASSESSMENT_REQUESTED_KINDS "$ASSESSMENT_REQUESTED_KINDS" \
+      ASSESSMENT_COVERED_FINGERPRINT "$ASSESSMENT_COVERED_FINGERPRINT" \
+      ASSESSMENT_ATTEMPT "$attempt" \
+      ASSESSMENT_STATUS "fail-closed" \
+      ASSESSMENT_CHILD_DETAIL "$child_detail"
+  else
+    write_merge_kvs "$merge_env" \
+      ASSESSMENT_REQUESTED_KINDS "$ASSESSMENT_REQUESTED_KINDS" \
+      ASSESSMENT_COVERED_FINGERPRINT "$ASSESSMENT_COVERED_FINGERPRINT" \
+      ASSESSMENT_ATTEMPT "$attempt" \
+      ASSESSMENT_STATUS "fail-closed"
+  fi
   # Ensure result env carries fail-closed when daemon left incomplete rows.
   if [ -f "$result_env" ] && [ ! -L "$result_env" ]; then
     local existing_rc
@@ -651,6 +668,9 @@ publish_fail_closed_terminal() {
     printf 'ASSESSMENT_COVERED_FINGERPRINT=%s\n' "$ASSESSMENT_COVERED_FINGERPRINT"
     printf 'ASSESSMENT_STATUS=fail-closed\n'
     printf 'ASSESSMENT_ATTEMPT=%s\n' "$attempt"
+    if [ -n "$child_detail" ]; then
+      printf 'ASSESSMENT_CHILD_DETAIL=%s\n' "$child_detail"
+    fi
   } >"${result_env}.tmp" || die "failed writing fail-closed result"
   chmod 0600 "${result_env}.tmp" 2>/dev/null || true
   mv -f "${result_env}.tmp" "$result_env"
@@ -662,6 +682,7 @@ publish_fail_closed_terminal() {
 
 run_child() {
   local kinds_csv attempt fp out status envelope_status results line status_seen results_seen
+  local raw_stderr child_detail child_rc sanitize_rc seeded_status old_ifs
   [ -n "$MERGE_RESULT_ENV" ] || die "--merge-result-env is required in child mode"
   safe_regular_path_under_tmpdir "$MERGE_RESULT_ENV" || die "unsafe merge-result-env"
   kinds_csv=$(read_env_key ASSESSMENT_REQUESTED_KINDS "$MERGE_RESULT_ENV")
@@ -683,10 +704,74 @@ run_child() {
   for kind in "$@"; do
     cmd+=(--kind "$kind")
   done
+  raw_stderr=""
+  # shellcheck disable=SC2329 # invoked indirectly by EXIT and signal traps
+  cleanup_child_stderr() {
+    exec 3>&- || true
+    exec 4<&- || true
+    [ -z "$raw_stderr" ] || rm -f "$raw_stderr" 2>/dev/null || true
+  }
+  trap cleanup_child_stderr EXIT
+  trap 'exit 129' HUP
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  raw_stderr=$(mktemp "$IMPLEMENT_TMPDIR/architectural-assessment-stderr.XXXXXX") || exit 2
+  chmod 0600 "$raw_stderr" 2>/dev/null || true
+  exec 3>"$raw_stderr" || exit 2
+  exec 4<"$raw_stderr" || exit 2
   set +e
-  out=$("${cmd[@]}")
+  out=$(python3 - 3 "${cmd[@]}" <<'PY'
+import os
+import subprocess
+import sys
+
+limit = 8 * 1024
+written = 0
+truncated = False
+with os.fdopen(int(sys.argv[1]), "wb", closefd=False) as raw:
+    process = subprocess.Popen(sys.argv[2:], stderr=subprocess.PIPE)
+    assert process.stderr is not None
+    while chunk := process.stderr.read(4096):
+        remaining = limit - written
+        if remaining > 0:
+            kept = chunk[:remaining]
+            raw.write(kept)
+            written += len(kept)
+        if len(chunk) > remaining:
+            truncated = True
+    if truncated:
+        raw.write(b"\n[stderr truncated]\n")
+raise SystemExit(process.wait())
+PY
+  )
   child_rc=$?
   set -e
+  rm -f "$raw_stderr" || exit 2
+  set +e
+  child_detail=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" architectural-assessment sanitize-detail \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" <&4)
+  sanitize_rc=$?
+  set -e
+  exec 4<&-
+  [ "$sanitize_rc" -eq 0 ] || exit 1
+  reject_nl "$child_detail" || exit 1
+  seeded_status=$(read_env_key ASSESSMENT_STATUS "$MERGE_RESULT_ENV")
+  if [ -n "$child_detail" ]; then
+    if [ -n "$seeded_status" ]; then
+      write_merge_kvs "$MERGE_RESULT_ENV" \
+        ASSESSMENT_REQUESTED_KINDS "$kinds_csv" \
+        ASSESSMENT_COVERED_FINGERPRINT "$fp" \
+        ASSESSMENT_ATTEMPT "$attempt" \
+        ASSESSMENT_STATUS "$seeded_status" \
+        ASSESSMENT_CHILD_DETAIL "$child_detail"
+    else
+      write_merge_kvs "$MERGE_RESULT_ENV" \
+        ASSESSMENT_REQUESTED_KINDS "$kinds_csv" \
+        ASSESSMENT_COVERED_FINGERPRINT "$fp" \
+        ASSESSMENT_ATTEMPT "$attempt" \
+        ASSESSMENT_CHILD_DETAIL "$child_detail"
+    fi
+  fi
   status=""
   results=""
   status_seen=false
@@ -719,12 +804,22 @@ EOF
     printf 'step-8-assessment.sh: ASSESSMENT_RESULTS coverage mismatch\n' >&2
     exit 1
   }
-  write_merge_kvs "$MERGE_RESULT_ENV" \
-    ASSESSMENT_REQUESTED_KINDS "$kinds_csv" \
-    ASSESSMENT_COVERED_FINGERPRINT "$fp" \
-    ASSESSMENT_ATTEMPT "$attempt" \
-    ASSESSMENT_STATUS "$envelope_status" \
-    ASSESSMENT_RESULTS "$results"
+  if [ -n "$child_detail" ]; then
+    write_merge_kvs "$MERGE_RESULT_ENV" \
+      ASSESSMENT_REQUESTED_KINDS "$kinds_csv" \
+      ASSESSMENT_COVERED_FINGERPRINT "$fp" \
+      ASSESSMENT_ATTEMPT "$attempt" \
+      ASSESSMENT_STATUS "$envelope_status" \
+      ASSESSMENT_RESULTS "$results" \
+      ASSESSMENT_CHILD_DETAIL "$child_detail"
+  else
+    write_merge_kvs "$MERGE_RESULT_ENV" \
+      ASSESSMENT_REQUESTED_KINDS "$kinds_csv" \
+      ASSESSMENT_COVERED_FINGERPRINT "$fp" \
+      ASSESSMENT_ATTEMPT "$attempt" \
+      ASSESSMENT_STATUS "$envelope_status" \
+      ASSESSMENT_RESULTS "$results"
+  fi
   exit 0
 }
 

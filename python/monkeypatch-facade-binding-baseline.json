@@ -4690,6 +4690,15 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_ship_route_exit_adds_validated_unavailable_detail",
+    "facade_module": "larch.implement.dispatch_ship",
+    "attribute": "validate_materialization",
+    "defining_module": "larch.implement.architectural_assessment",
+    "occurrence": 1,
+    "reason": "test targets the consumer module imported binding, which is the runtime lookup site"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_ship_route_exit_fourth_transient_seeds_stall",
     "facade_module": "larch.implement.dispatch_ship",
     "attribute": "_run_cli_capture",
