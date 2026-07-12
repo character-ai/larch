@@ -108,16 +108,16 @@ def _safe_rows(rows: list[tuple[str, object]]) -> list[tuple[str, str]]:
 
 
 def _merge_rows(path: Path | None) -> list[tuple[str, str]]:
-    if path is None or path.is_symlink() or not path.is_file():
+    if path is None:
         return []
     try:
-        text = larch_io.read_text(path, reject_cr=True)
-    except (OSError, UnicodeError):
+        text = larch_io.read_trusted_text(path, root=path.parent, reject_cr=True)
+    except (OSError, UnicodeError, ValueError):
         return []
     reserved = {config.BGJOB_RC_KEY, config.BGJOB_ELAPSED_KEY, "STEP"}
     merged = {
         key: value
-        for key, value in larch_io.read_kvs(path, reject_symlink=True, on_error_default=True, reject_cr=True).items()
+        for key, value in larch_io.parse_kv(text).items()
         if key and key not in reserved
     }
     for line in text.splitlines():

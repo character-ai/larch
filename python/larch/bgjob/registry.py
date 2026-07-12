@@ -70,10 +70,6 @@ def _dirs_from_rows(rows: dict[str, str]) -> tuple[Path, Path] | None:
     log_dir = _resolved_dir(rows["LOG_DIR"])
     if tmpdir is None or log_dir is None:
         return None
-    try:
-        _ = log_dir.relative_to(tmpdir)
-    except ValueError:
-        return None
     return tmpdir, log_dir
 
 
