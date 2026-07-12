@@ -1,0 +1,16 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Both cited design files are already listed for update.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires specialized equivalents for assertions not faithfully represented by pins.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The plan explicitly requires preserving implement proximity windows.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The general parity and specialized-test requirements already cover non-equivalent legacy checks.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Executable assertions are explicitly retained as named tests where generalization weakens coverage.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- `skills/implement/scripts/step-5-review.md` is already listed for update.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- This is stale prose, not necessary migration functionality.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The retained Make target is not a retired harness path.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan already requires removal of all tracked retired full-path references.
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Bounded cross-file support is an explicit scope-anchor acceptance requirement.
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- This duplicates a prior neutral scope-reduction observation.
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- This duplicates a prior neutral scope-reduction observation.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Duplicate of the prior OOS observation.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of the prior OOS observation.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of the prior OOS observation.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of the prior OOS observation.

@@ -1,0 +1,16 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Both cited design documents are already in the update list.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan already requires faithful migration of every legacy assertion and non-equivalent specialized checks.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan explicitly requires preserving implement proximity windows and stable equivalents.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan already requires preserving legacy grep/awk semantics and specialized non-equivalent assertions.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Every legacy assertion must map to a pin or specialized test, including executable behavior.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- `skills/implement/scripts/step-5-review.md` is already listed for update.
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- This is a duplicate of the prior OOS observation.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The document names the retained Make target, not a retired full harness path that retired-script lint rejects.
+FINDING_9: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- This duplicates the prior OOS observation and is covered by the plan’s retired-literal requirement.
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The scope anchor explicitly requires bounded cross-file support, and this duplicates a rejected finding.
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- This duplicates a prior neutral finding without material new evidence.
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- This duplicates a prior neutral finding without material new evidence.
+OOS_1: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior OOS observation.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior OOS observation.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Duplicate of a prior neutral finding.
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior OOS observation.
