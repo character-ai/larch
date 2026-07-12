@@ -455,6 +455,34 @@ def test_write_state_cli_creates_parent_and_prints_kv(tmp_path: Path, capsys: py
     assert out["HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED"] == "0"
 
 
+def test_write_state_cli_rejects_invalid_existing_marker(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    marker.parent.mkdir(parents=True)
+    marker.write_text('{"schema_version": 99}\n', encoding="utf-8")
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="invalid or unsupported"):
+        learn_from_bugs.write_state_main([
+            "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
+            "--selected-count", "0", "--highest-closed-issue-number-scanned", "0",
+            "--run-date", "2026-07-09T12:00:00Z", "--scan-started-at", "2026-07-09T11:00:00Z",
+        ])
+
+
+def test_write_state_cli_requires_proposals_file_for_existing_history(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    learn_from_bugs.write_state(marker, learn_from_bugs.LearnFromBugsState(
+        run_date="2026-07-09T12:00:00Z", repo="o/r", search="x", state="closed",
+        selected_count=1, highest_closed_issue_number_scanned=3, proposals=(_proposal(status="pending"),),
+    ))
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="--proposals-file"):
+        learn_from_bugs.write_state_main([
+            "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
+            "--selected-count", "0", "--highest-closed-issue-number-scanned", "0",
+            "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
+        ])
+
+
 def test_read_state_cli_reports_missing_without_crashing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert learn_from_bugs.read_state_main(["--root", str(tmp_path)]) == 0
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
@@ -842,7 +870,41 @@ def test_load_proposals_preserves_historical_issue_linkage(tmp_path: Path) -> No
 
     proposals = learn_from_bugs.load_proposals_jsonl(path, root=tmp_path)
 
-    assert proposals == (_proposal(status="proposed", filed_issue=42),)
+    assert proposals == (_proposal(status="pending", filed_issue=42),)
+
+
+def test_load_proposals_preserves_checked_status_and_historical_date(tmp_path: Path) -> None:
+    path = tmp_path / "proposals.jsonl"
+    first = _proposal(status="orphaned").to_json()
+    second = _proposal(status="proposed").to_json()
+    second["run_date"] = "2026-07-09T00:00:00Z"
+    path.write_text(json.dumps(first) + "\n" + json.dumps(second) + "\n", encoding="utf-8")
+
+    assert learn_from_bugs.load_proposals_jsonl(path, root=tmp_path) == (_proposal(status="orphaned"),)
+
+
+def test_hook_target_matches_plugin_root_command(tmp_path: Path) -> None:
+    hooks_path = tmp_path / "hooks" / "hooks.json"
+    hooks_path.parent.mkdir()
+    hooks_path.write_text(json.dumps({"hooks": [{"command": "${CLAUDE_PLUGIN_ROOT}/hooks/check.py"}]}), encoding="utf-8")
+    proposal = _proposal(proposal_type="hook", target="hook:hooks/check.py")
+
+    assert learn_from_bugs.check_proposals(RecordingRunner(strict=True), (proposal,), tmp_path, "o/r")[0].status == "adopted"
+
+
+def test_lint_registration_matches_two_element_cli_key(tmp_path: Path) -> None:
+    cli_path = tmp_path / "python" / "larch" / "cli.py"
+    cli_path.parent.mkdir(parents=True)
+    cli_path.write_text('("lint", "audit-lint"): ("module", "main"),\n', encoding="utf-8")
+    proposal = _proposal(target="registration:audit-lint")
+
+    assert learn_from_bugs.check_proposals(RecordingRunner(strict=True), (proposal,), tmp_path, "o/r")[0].status == "adopted"
+
+
+def test_repository_orphaned_status_remains_orphaned(tmp_path: Path) -> None:
+    proposal = _proposal(status="orphaned")
+
+    assert learn_from_bugs.check_proposals(RecordingRunner(strict=True), (proposal,), tmp_path, "o/r")[0].status == "orphaned"
 
 
 def test_repository_checks_ignore_fenced_architectural_heading(tmp_path: Path) -> None:
@@ -1054,4 +1116,13 @@ def test_filed_issue_rejects_unknown_closed_reason() -> None:
     )
 
     with pytest.raises(learn_from_bugs.LearnFromBugsError, match="closed issue reason"):
+        learn_from_bugs.check_proposals(runner, (proposal,), Path.cwd(), "o/r")
+
+
+@pytest.mark.parametrize("stdout", ["not JSON", "[]"])
+def test_filed_issue_rejects_malformed_json_response(stdout: str) -> None:
+    proposal = _proposal(filed_issue=9)
+    runner = RecordingRunner(responses=[_result(stdout)], strict=True)
+
+    with pytest.raises(learn_from_bugs.LearnFromBugsError):
         learn_from_bugs.check_proposals(runner, (proposal,), Path.cwd(), "o/r")

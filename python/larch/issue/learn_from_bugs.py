@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -375,11 +376,7 @@ def load_proposals_jsonl(path: Path, *, root: Path) -> tuple[Proposal, ...]:
             by_id[proposal.id] = proposal
             proposals.append(proposal)
             continue
-        if (prior.type, prior.target, prior.run_date) != (
-            proposal.type,
-            proposal.target,
-            proposal.run_date,
-        ):
+        if (prior.type, prior.target) != (proposal.type, proposal.target):
             raise LearnFromBugsError(
                 f"conflicting stable proposal content for {proposal.id}"
             )
@@ -394,7 +391,7 @@ def load_proposals_jsonl(path: Path, *, root: Path) -> tuple[Proposal, ...]:
             type=prior.type,
             target=prior.target,
             run_date=prior.run_date,
-            status=proposal.status,
+            status=prior.status if prior.status != "proposed" else proposal.status,
             filed_issue=proposal.filed_issue or prior.filed_issue,
         )
         by_id[proposal.id] = merged
@@ -458,6 +455,19 @@ def read_state(path: Path) -> LearnFromBugsState | None:
     except (OSError, UnicodeError, json.JSONDecodeError):
         return None
     return _state_from_json(payload)
+
+
+def _read_existing_state(path: Path) -> LearnFromBugsState | None:
+    """Read a missing state marker as absent and reject every unusable marker."""
+    try:
+        larch_io.assert_no_symlink_path_or_ancestors(path)
+        exists = path.exists()
+    except OSError as exc:
+        raise LearnFromBugsError(f"cannot inspect state marker: {exc}") from exc
+    state = read_state(path)
+    if exists and state is None:
+        raise LearnFromBugsError("existing state marker is invalid or unsupported")
+    return state
 
 
 def write_state(path: Path, state: LearnFromBugsState) -> None:
@@ -809,7 +819,7 @@ def _lint_target_adopted(proposal: Proposal, root: Path) -> bool:
     name = proposal.target.removeprefix("registration:")
     cli_path = _safe_relative_path(root, "python/larch/cli.py", (".py",))
     text = cli_path.read_text(encoding="utf-8") if cli_path.is_file() else ""
-    return re.search(rf'\("lint",\s*"{re.escape(name)}"\s*,', text) is not None
+    return re.search(rf'\("lint",\s*"{re.escape(name)}"\s*(?:,|\))', text) is not None
 
 
 def _architectural_target_adopted(proposal: Proposal, root: Path) -> bool:
@@ -846,23 +856,37 @@ def _test_target_adopted(proposal: Proposal, root: Path) -> bool:
     )
 
 
-def _hook_value_matches(value: object, token: str, key: str = "") -> bool:
+def _normalized_hook_command(command: str, root: Path) -> str:
+    for prefix in ("${CLAUDE_PLUGIN_ROOT}/", "$CLAUDE_PLUGIN_ROOT/"):
+        if command.startswith(prefix):
+            command = command.removeprefix(prefix)
+            break
+    command_path = Path(command)
+    try:
+        return command_path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return command_path.as_posix()
+
+
+def _hook_value_matches(value: object, token: str, root: Path, key: str = "") -> bool:
     if isinstance(value, dict):
         return any(
-            _hook_value_matches(item, token, str(name)) for name, item in value.items()  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType, reportUnknownLambdaType]  # reason: dict.items() yields Unknown in recursive type checker
+            _hook_value_matches(item, token, root, str(name)) for name, item in value.items()  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType, reportUnknownLambdaType]  # reason: dict.items() yields Unknown in recursive type checker
         )
     if isinstance(value, list):
         return any(
-            _hook_value_matches(item, token, key) for item in value  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType]  # reason: list iteration yields Unknown in recursive type checker
+            _hook_value_matches(item, token, root, key) for item in value  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType]  # reason: list iteration yields Unknown in recursive type checker
         )
-    if not isinstance(value, str):
-        return False
-    if key == "matcher":
-        return value == token
-    if key != "command":
-        return False
-    command = value.strip().split()[0] if value.strip() else ""
-    return command == token or Path(command).as_posix() == token
+    if isinstance(value, str):
+        if key == "matcher":
+            return value == token
+        if key == "command":
+            try:
+                command = shlex.split(value)[0] if value.strip() else ""
+            except ValueError:
+                command = ""
+            return _normalized_hook_command(command, root) == token
+    return False
 
 
 def _hook_target_adopted(proposal: Proposal, root: Path) -> bool:
@@ -873,7 +897,9 @@ def _hook_target_adopted(proposal: Proposal, root: Path) -> bool:
         hooks_payload = json.loads(hooks_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise LearnFromBugsError(f"invalid hooks configuration: {exc}") from exc
-    return _hook_value_matches(hooks_payload, proposal.target.removeprefix("hook:"))
+    return _hook_value_matches(
+        hooks_payload, proposal.target.removeprefix("hook:"), root
+    )
 
 
 def _repository_target_adopted(proposal: Proposal, root: Path) -> bool:
@@ -907,11 +933,17 @@ def _filed_issue_status(
     )
     if result.returncode != 0:
         raise LearnFromBugsError(result.stderr.strip() or "gh issue view failed")
-    payload = cast("dict[str, object]", json.loads(result.stdout))
-    if not isinstance(payload.get("number"), int) or payload.get("number") != proposal.filed_issue:  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: payload.get() on dict[str, object] yields Unknown
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        raise LearnFromBugsError(f"gh issue view returned invalid JSON: {exc}") from exc
+    if not isinstance(payload, dict):
         raise LearnFromBugsError("gh issue view returned mismatched issue data")
-    state = str(payload.get("state") or "").upper()  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: payload.get() on dict[str, object] yields Unknown
-    reason = str(payload.get("stateReason") or "").upper()  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: payload.get() on dict[str, object] yields Unknown
+    typed = cast("dict[str, object]", payload)
+    if not isinstance(typed.get("number"), int) or typed.get("number") != proposal.filed_issue:  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: typed.get() on dict[str, object] yields Unknown
+        raise LearnFromBugsError("gh issue view returned mismatched issue data")
+    state = str(typed.get("state") or "").upper()  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: typed.get() on dict[str, object] yields Unknown
+    reason = str(typed.get("stateReason") or "").upper()  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: typed.get() on dict[str, object] yields Unknown
     if state == "OPEN":
         return "pending"
     if state != "CLOSED":
@@ -936,7 +968,7 @@ def check_proposals(
             adopted = _repository_target_adopted(proposal, root)
             if adopted:
                 status = "adopted"
-            elif proposal.status == "adopted":
+            elif proposal.status in {"adopted", "orphaned"}:
                 status = "orphaned"
             else:
                 status = "pending"
@@ -1007,11 +1039,7 @@ def reconcile_proposals(
             out.append(residual)
             continue
         historical = out[index]
-        if (historical.type, historical.target, historical.run_date) != (
-            residual.type,
-            residual.target,
-            residual.run_date,
-        ):
+        if (historical.type, historical.target) != (residual.type, residual.target):
             raise LearnFromBugsError(
                 f"conflicting stable proposal content for {residual.id}"
             )
@@ -1042,7 +1070,7 @@ def check_proposals_main(argv: list[str]) -> int:
     parser.add_argument("--adoption-out", required=True)
     args = parser.parse_args(argv)
     root = Path(args.root).expanduser().resolve()
-    state = read_state(state_path(root))
+    state = _read_existing_state(state_path(root))
     proposals = () if state is None else state.proposals
     checked = check_proposals(_runner(), proposals, root, args.repo)
     proposals_out = Path(args.proposals_out)
@@ -1126,11 +1154,13 @@ def write_state_main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     root = Path(args.root).expanduser().resolve()
     path = state_path(root)
-    proposals = (
-        load_proposals_jsonl(Path(args.proposals_file), root=root)
-        if args.proposals_file
-        else ()
-    )
+    existing = _read_existing_state(path)
+    if args.proposals_file:
+        proposals = load_proposals_jsonl(Path(args.proposals_file), root=root)
+    elif existing is not None and existing.proposals:
+        raise LearnFromBugsError("--proposals-file is required to preserve proposal history")
+    else:
+        proposals = ()
     state = LearnFromBugsState(
         run_date=args.run_date,
         scan_started_at=args.scan_started_at,
