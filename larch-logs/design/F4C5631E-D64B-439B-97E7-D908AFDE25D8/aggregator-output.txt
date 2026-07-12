@@ -1,0 +1,34 @@
+### FINDING_1: Define valid completed-result detection
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: The State-1 DONE short-circuit does not define what makes a result environment valid. An empty or incomplete result file can cause `adapt` to emit `BGJOB_STATUS=DONE` without `BGJOB_RC`, skipping a fresh launch even when the registry entry is dead or fail-closed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Pin completed-result detection to the same regular-file/symlink checks as wait plus required keys (`BGJOB_RC` and matching `STEP`) before any DONE return. Treat empty or incomplete files as absent and continue the locked state machine.
+
+### FINDING_2: Strip the leading `--` in `adapt_main`
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: minor
+- **Concern**: `adapt_main` does not explicitly require the same leading `--` child-argument stripping contract as `start_main`. Without it, orchestration calls can forward `["--", ...]` to `Popen`, causing startup failure or incorrect argv.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In adapt_main, mirror start_main exactly: if `args.command` is non-empty and first token is `--`, drop it before missing-command validation and before handing argv to adapt.
+
+### FINDING_3: Preserve DONE result-row output parity
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: The DONE branch may emit only `BGJOB_STATUS=DONE` instead of the complete result-environment rows emitted by `wait_once`. Callers that parse `BGJOB_RC` or merged custom keys would then receive incomplete output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Reuse the same emission helper as `wait_once` (or call into it): print `BGJOB_STATUS=DONE` followed by all readable result-env KVs on exit 0. Extend `python/tests/bgjob/test_bgjob_adapt.py` to assert `BGJOB_RC` and at least one merged custom key, mirroring `test_wait_done_prints_result_rows`.
+
+### FINDING_4: Make the per-step adapter lock blocking
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Concern**: The plan requires lock serialization but does not specify blocking behavior. A non-blocking lock can make concurrent callers fail instead of waiting, and may permit duplicate daemon starts before the registry row becomes visible.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Use blocking `fcntl.flock(..., LOCK_EX)` for the per-run-and-step lock (same posture as `python/larch/report/progress_file.py:413`). Hold it through the final result check and launch decision, then release before `start_daemon` via fork-safe close or `FD_CLOEXEC`. Document blocking semantics in `adapt.py` and keep the concurrent second-caller test.
+
+### FINDING_5: Populate `JobSpec.merge_result_env`
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: major
+- **Concern**: The adapter-owned merge-env path is specified for child-argv construction but may not be assigned to the `JobSpec` passed to the daemon. If the field remains unset, `daemon.write_result` will omit accumulated merge rows from the completed result.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Explicitly assign the validated adapter merge-env path to `JobSpec.merge_result_env` before calling `daemon.start_daemon`, and test the resulting DONE output with preseeded and child-written merge rows.
