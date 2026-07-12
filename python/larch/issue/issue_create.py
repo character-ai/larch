@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 from larch.core import config
 from larch.core import proc
+from larch.git import gh
 from larch.core.redact import redact_secrets_outbound
 from larch.state import session_env as _session_env
 
@@ -367,10 +368,7 @@ def _parse_create_args(argv: list[str]) -> tuple[dict[str, object], str | None]:
 
 
 def _resolve_repo() -> str:
-    result = _gh_read(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
-    if result.returncode != 0:
-        return ""
-    return result.stdout.strip()
+    return gh.resolve_repo(proc) or ""
 
 
 def _valid_labels(repo: str, labels: list[str], *, dry_run: bool) -> list[str]:

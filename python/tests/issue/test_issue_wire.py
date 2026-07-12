@@ -219,6 +219,8 @@ class FailingRepoRunner(IssueRunner):
         self.calls.append(args)
         if args[:3] == ["gh", "repo", "view"]:
             return CommandResult(tuple(args), 1, "", "no repo", 0.01)
+        if args[:3] == ["git", "remote", "get-url"]:
+            return CommandResult(tuple(args), 1, "", "no origin", 0.01)
         raise AssertionError(f"unexpected call: {args}")
 
 
@@ -241,14 +243,59 @@ class FailingIssueViewRunner(IssueRunner):
         raise AssertionError(f"unexpected call: {args}")
 
 
-def test_write_cli_no_repo_failure_has_no_origin_fallback(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_write_cli_no_repo_unresolved_after_origin_fallback(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     content = tmp_path / "content.md"
     _ = content.write_text("body", encoding="utf-8")
     runner = FailingRepoRunner("")
     _ = monkeypatch.setattr(issue_wire, "proc", runner)
     assert issue_wire.named_block_write_main(["--marker", "plan", "--issue", "9", "--content-file", str(content)]) == 2
     assert capsys.readouterr().out == "FAILED=true\nERROR=could not determine repo\n"
-    assert all(call[:2] != ["git", "remote"] for call in runner.calls)
+    assert any(call[:3] == ["git", "remote", "get-url"] for call in runner.calls)
+
+
+def test_write_cli_origin_fallback_succeeds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    content = tmp_path / "content.md"
+    _ = content.write_text("body", encoding="utf-8")
+
+    class OriginFallbackRunner(IssueRunner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,  # pylint: disable=unused-argument
+            cwd: str | None = None,  # pylint: disable=unused-argument
+            env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
+            check: bool = False,  # pylint: disable=unused-argument
+            stdout: int | None = None,  # pylint: disable=unused-argument
+            stderr: int | None = None,  # pylint: disable=unused-argument
+        ) -> CommandResult:
+            args = list(argv)
+            self.calls.append(args)
+            if args[:3] == ["gh", "repo", "view"]:
+                return CommandResult(tuple(args), 1, "", "no repo", 0.01)
+            if args[:3] == ["git", "remote", "get-url"]:
+                return CommandResult(
+                    tuple(args), 0, "git@github.com:owner/repo.git\n", "", 0.01
+                )
+            return super().run(
+                argv,
+                timeout=timeout,
+                cwd=cwd,
+                env=env,
+                check=check,
+                stdout=stdout,
+                stderr=stderr,
+            )
+
+    runner = OriginFallbackRunner("")
+    _ = monkeypatch.setattr(issue_wire, "proc", runner)
+    assert issue_wire.named_block_write_main(["--marker", "plan", "--issue", "9", "--content-file", str(content)]) == 0
+    assert "WRITTEN=true" in capsys.readouterr().out
+    assert any(call[:3] == ["git", "remote", "get-url"] for call in runner.calls)
 
 
 def test_plan_block_read_gh_failure_does_not_emit_invalid_repo(

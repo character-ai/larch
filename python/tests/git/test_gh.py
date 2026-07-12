@@ -97,7 +97,7 @@ def test_retry_read_applies_default_and_explicit_timeouts() -> None:
     default_runner = TimeoutRecordingRunner(
         responses=[CommandResult(("gh", "repo", "view"), 0, "o/r\n", "", 0.01)],
     )
-    assert gh.resolve_repo_gh_only(default_runner) == "o/r"
+    assert gh.resolve_repo(default_runner) == "o/r"
     assert default_runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC]
 
     explicit_runner = TimeoutRecordingRunner(
@@ -1587,3 +1587,147 @@ def test_pr_edit_body_file_manifest_only_todos_block(
 
     assert result.exit_code == config.EXIT_NEEDS_USER_INPUT
     assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []
+
+
+def test_resolve_repo_detailed_valid_primary() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "repo", "view"), 0, "owner/repo\n", "", 0.01)],
+    )
+    detailed = gh.resolve_repo_detailed(runner)
+    assert detailed.status == "valid"
+    assert detailed.source == "gh"
+    assert detailed.candidate == "owner/repo"
+    assert detailed.primary_failure is None
+    assert detailed.repo == "owner/repo"
+    runner2 = RecordingRunner(
+        responses=[CommandResult(("gh", "repo", "view"), 0, "owner/repo\n", "", 0.01)],
+    )
+    assert gh.resolve_repo(runner2) == "owner/repo"
+
+
+def test_resolve_repo_detailed_origin_fallback_and_cwd() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 1, "", "boom", 0.01),
+            CommandResult(
+                ("git", "remote", "get-url", "origin"),
+                0,
+                "git@github.com:acme/project.git\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    detailed = gh.resolve_repo_detailed(runner, cwd="/tmp/work")
+    assert detailed.status == "valid"
+    assert detailed.source == "origin"
+    assert detailed.candidate == "acme/project"
+    assert detailed.primary_failure is not None
+    assert detailed.primary_failure.kind == "nonzero"
+    assert detailed.primary_failure.stderr == "boom"
+    assert runner.calls[0] == [
+        "gh",
+        "repo",
+        "view",
+        "--json",
+        "nameWithOwner",
+        "--jq",
+        ".nameWithOwner",
+    ]
+    assert runner.calls[1] == ["git", "remote", "get-url", "origin"]
+
+
+def test_resolve_repo_detailed_missing_gh_falls_back_to_origin() -> None:
+    class MissingGhRunner(RecordingRunner):
+        def run(self, argv, **kwargs):  # type: ignore[no-untyped-def]
+            if argv and argv[0] == "gh":
+                raise FileNotFoundError("gh")
+            return super().run(argv, **kwargs)
+
+    runner = MissingGhRunner(
+        responses=[
+            CommandResult(
+                ("git", "remote", "get-url", "origin"),
+                0,
+                "https://github.com/acme/project.git\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    detailed = gh.resolve_repo_detailed(runner)
+    assert detailed.status == "valid"
+    assert detailed.source == "origin"
+    assert detailed.candidate == "acme/project"
+    assert detailed.primary_failure is not None
+    assert detailed.primary_failure.kind == "oserror"
+    assert "gh" in detailed.primary_failure.detail
+
+
+def test_resolve_repo_detailed_unresolved() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 1, "", "nope", 0.01),
+            CommandResult(("git", "remote", "get-url", "origin"), 1, "", "", 0.01),
+        ],
+    )
+    detailed = gh.resolve_repo_detailed(runner)
+    assert detailed.status == "absent"
+    assert detailed.source == "none"
+    assert detailed.candidate == ""
+    assert detailed.repo is None
+    assert detailed.primary_failure is not None
+    assert detailed.primary_failure.kind == "nonzero"
+
+
+def test_resolve_repo_detailed_invalid_primary() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 0, "not a slug\n", "", 0.01),
+            CommandResult(("git", "remote", "get-url", "origin"), 1, "", "", 0.01),
+        ],
+    )
+    detailed = gh.resolve_repo_detailed(runner)
+    assert detailed.status == "invalid"
+    assert detailed.source == "gh"
+    assert detailed.candidate == "not a slug"
+    assert detailed.repo is None
+
+
+def test_resolve_repo_detailed_malformed_origin_preserved() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 1, "", "fail", 0.01),
+            CommandResult(
+                ("git", "remote", "get-url", "origin"),
+                0,
+                "git@github.com:!!!/@@@\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    detailed = gh.resolve_repo_detailed(runner)
+    assert detailed.status == "invalid"
+    assert detailed.source == "origin"
+    assert detailed.candidate == "!!!/@@@"
+    assert detailed.repo is None
+
+
+def test_resolve_repo_detailed_invalid_primary_valid_origin() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 0, "bad..slug\n", "", 0.01),
+            CommandResult(
+                ("git", "remote", "get-url", "origin"),
+                0,
+                "git@github.com:good/slug.git\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    detailed = gh.resolve_repo_detailed(runner)
+    assert detailed.status == "valid"
+    assert detailed.source == "origin"
+    assert detailed.candidate == "good/slug"

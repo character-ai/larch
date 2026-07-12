@@ -439,3 +439,107 @@ def test_scan_does_not_enumerate_empty_or_issue_less_manifest(tmp_path: Path, ca
     err = capsys.readouterr().err
     assert "empty and lacks numeric issue_number" in err
     assert "lacks numeric issue_number" in err
+
+
+def test_scan_origin_fallback_suppresses_primary_failure_diagnostic(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_run(tmp_path, skill="implement")
+
+    @dataclass
+    class FallbackRunner(Runner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            self.calls.append(list(argv))
+            if list(argv)[:2] == ["git", "rev-parse"]:
+                return CommandResult(tuple(argv), 0, str(self.root), "", 0.01)
+            if list(argv)[:3] == ["gh", "repo", "view"]:
+                return CommandResult(tuple(argv), 1, "", "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaa", 0.01)
+            if list(argv)[:3] == ["git", "remote", "get-url"]:
+                return CommandResult(tuple(argv), 0, "git@github.com:o/r.git\n", "", 0.01)
+            return CommandResult(tuple(argv), 1, "", "unexpected", 0.01)
+
+    result = scan(FallbackRunner(tmp_path), skill="implement")
+    assert result.repo_slug == "o/r"
+    assert result.records[0].url == "https://github.com/o/r/issues/1"
+    err = capsys.readouterr().err
+    assert "could not resolve GitHub repo" not in err
+    assert "ghp_" not in err
+
+
+def test_scan_unresolved_redacts_nonzero_primary_stderr(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_run(tmp_path, skill="implement")
+    secret = "ghp_" + "b" * 25
+
+    @dataclass
+    class FailRunner(Runner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            self.calls.append(list(argv))
+            if list(argv)[:2] == ["git", "rev-parse"]:
+                return CommandResult(tuple(argv), 0, str(self.root), "", 0.01)
+            if list(argv)[:3] == ["gh", "repo", "view"]:
+                return CommandResult(tuple(argv), 1, "", secret, 0.01)
+            if list(argv)[:3] == ["git", "remote", "get-url"]:
+                return CommandResult(tuple(argv), 1, "", "", 0.01)
+            return CommandResult(tuple(argv), 1, "", "unexpected", 0.01)
+
+    result = scan(FailRunner(tmp_path), skill="implement")
+    assert result.repo_slug is None
+    err = capsys.readouterr().err
+    assert "could not resolve GitHub repo owner/name" in err
+    assert secret not in err
+
+
+def test_scan_unresolved_oserror_primary_diagnostic(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_run(tmp_path, skill="implement")
+
+    @dataclass
+    class MissingGhRunner(Runner):
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            self.calls.append(list(argv))
+            if list(argv)[:2] == ["git", "rev-parse"]:
+                return CommandResult(tuple(argv), 0, str(self.root), "", 0.01)
+            if list(argv)[:3] == ["gh", "repo", "view"]:
+                raise FileNotFoundError("gh binary missing")
+            if list(argv)[:3] == ["git", "remote", "get-url"]:
+                return CommandResult(tuple(argv), 1, "", "", 0.01)
+            return CommandResult(tuple(argv), 1, "", "unexpected", 0.01)
+
+    result = scan(MissingGhRunner(tmp_path), skill="implement")
+    assert result.repo_slug is None
+    err = capsys.readouterr().err
+    assert "could not resolve GitHub repo owner/name" in err
+    assert "gh binary missing" in err or "FileNotFoundError" in err or "gh" in err

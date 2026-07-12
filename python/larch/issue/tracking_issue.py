@@ -185,7 +185,7 @@ def _resolve_repo_or_fail(runner: Runner, repo: str | None, *, cwd: str | None =
         if not gh.validate_repo_slug(repo):
             raise CliFailure("invalid repo: expected OWNER/REPO", 1)
         return repo
-    resolved = gh.resolve_repo_gh_only(runner, cwd=cwd)
+    resolved = gh.resolve_repo(runner, cwd=cwd)
     if not resolved:
         raise CliFailure("could not determine repo", 2)
     return resolved

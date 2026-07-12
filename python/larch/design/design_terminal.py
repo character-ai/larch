@@ -847,13 +847,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         def file_issue_after_dedup() -> str:
             repo = ns.repo
             if not repo:
-                gh_out = subprocess.run(  # lint-subprocess-via-runner: ok current-repo gh lookup is a blocking stdout capture mirroring the tier-a filing helpers
-                    ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                )
-                repo = gh_out.stdout.strip() if gh_out.returncode == 0 else ""
+                repo = gh.resolve_repo(proc) or ""
             fallback_reason = ""
             if not repo:
                 fallback_reason = "tier-a-current-repo-unresolved"

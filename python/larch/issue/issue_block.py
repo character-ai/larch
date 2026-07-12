@@ -68,10 +68,7 @@ def _flat(text: str) -> str:
 
 
 def _repo() -> str:
-    result = proc.run(
-        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]
-    )
-    return result.stdout.strip() if result.returncode == 0 else ""
+    return gh.resolve_repo(proc) or ""
 
 
 def _parse_args(  # pylint: disable=too-many-branches  # each branch validates one CLI token class

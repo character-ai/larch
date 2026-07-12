@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from larch.core import proc
+from larch.git import gh
 from larch.issue._ground_truth import (
     GroundTruthEvidence,
     GroundTruthMetric,
@@ -268,14 +270,7 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
 
 
 def _detect_repo() -> str:
-    res = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"], capture_output=True, text=True, check=False)
-    if res.returncode == 0 and res.stdout.strip():
-        return res.stdout.strip()
-    remote = subprocess.run(["git", "config", "--get", "remote.origin.url"], capture_output=True, text=True, check=False).stdout.strip()
-    repo = re.sub(r"^git@[^:]+:", "", remote)
-    repo = re.sub(r"^https?://[^/]+/", "", repo)
-    repo = re.sub(r"\.git$", "", repo)
-    return repo
+    return gh.resolve_repo(proc) or ""
 
 
 def run_main(argv: Sequence[str] | None = None) -> int:

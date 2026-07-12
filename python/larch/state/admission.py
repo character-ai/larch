@@ -15,7 +15,9 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import logging_util
+from larch.core import proc
 from larch.core import retry
+from larch.git import gh
 
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _PROBE_ERROR_EXIT = 2
@@ -58,10 +60,7 @@ def _has_report_prefix(title: str) -> bool:
 
 
 def _resolve_repo() -> str | None:
-    result = _run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
+    return gh.resolve_repo(proc)
 
 
 def _gh_issue_view(*, issue: int, repo: str) -> tuple[int, str]:

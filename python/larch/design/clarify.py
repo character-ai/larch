@@ -120,13 +120,12 @@ def _resolve_repo_for_clarify(
         if not gh.validate_repo_slug(repo):
             raise _ClarifyValidationError("invalid-repo")
         return repo
-    result = gh.repo_name_with_owner_read(runner, cwd=cwd)
-    candidate = result.stdout.strip() if result.returncode == 0 else ""
-    if not candidate:
-        raise _ClarifyRepoResolutionError
-    if not gh.validate_repo_slug(candidate):
+    detailed = gh.resolve_repo_detailed(runner, cwd=cwd)
+    if detailed.status == "valid":
+        return detailed.candidate
+    if detailed.status == "invalid":
         raise _ClarifyValidationError("invalid-repo")
-    return candidate
+    raise _ClarifyRepoResolutionError
 
 
 def _kv_safe_text(text: str) -> str:

@@ -63,7 +63,7 @@ def _resolve_repo(*, repo_arg: str, source_env: Path) -> str:
     from_source = _source_env_get(path=source_env, key="REPO")
     if from_source:
         return from_source
-    return gh.resolve_repo_gh_only(proc) or ""
+    return gh.resolve_repo(proc) or ""
 
 
 def _determine_step(*, design_tmpdir: Path, plugin_root: Path) -> str:

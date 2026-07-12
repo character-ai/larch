@@ -17,6 +17,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from larch.core import config
+from larch.core import proc
+from larch.git import gh
 from larch.issue import title_match
 from larch.state import session_env as _session_env_report
 from larch.state._tokens import (
@@ -808,8 +810,7 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
         emit(key="STALL_RECOVERY_REPORT_STATUS", value="lookup-failed-open")
         emit(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", value="helper-missing")
         return 0
-    repo_proc = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], text=True, capture_output=True, check=False)  # noqa: S607
-    repo = repo_proc.stdout.strip()
+    repo = gh.resolve_repo(proc) or ""
     if not repo:
         emit(key="STALL_RECOVERY_REPORT_STATUS", value="lookup-failed-open")
         emit(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", value="current-repo-unresolved")
