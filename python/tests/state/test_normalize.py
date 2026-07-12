@@ -64,8 +64,9 @@ def test_merge_with_bail_overlay_stays_bailed_until_cleared(tmp_path: Path) -> N
     )
 
 
-def test_merge_stays_stalled_until_disk_and_memory_stall_are_cleared(
+def test_merge_stays_stalled_until_disk_and_explicit_memory_stall_are_cleared(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     (tmp_path / "ship-pr-state.sh").write_text(
         "PHASE=done\nMERGE_RESULT=merged\nSTALL_TRACKING=true\nEXIT_CODE=4\n",
@@ -84,6 +85,13 @@ def test_merge_stays_stalled_until_disk_and_memory_stall_are_cleared(
         "PHASE=done\nMERGE_RESULT=merged\nSTALL_TRACKING=false\nEXIT_CODE=0\n",
         encoding="utf-8",
     )
+    monkeypatch.setenv("STALL_TRACKING", "true")
+    args.in_memory_stall_tracking = ""
+    assert (
+        stall_recovery.normalized_outcome_values(args)["IMPLEMENT_NORMALIZED_OUTCOME"]
+        == "merged"
+    )
+    args.in_memory_stall_tracking = "true"
     assert (
         stall_recovery.normalized_outcome_values(args)["IMPLEMENT_NORMALIZED_OUTCOME"]
         == "stalled"

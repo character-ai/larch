@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 import pytest
 
 from larch.core import config
@@ -6576,6 +6576,96 @@ def test_combined_assessment_result_full_waiver_proceeds(tmp_path: Path) -> None
         ship.architectural_guidelines.guideline_ship_outcome_path(tmp_path),
     ):
         assert json.loads(path.read_text(encoding="utf-8"))["operator_waived"] is True
+
+
+def test_waived_assessment_resume_preserves_counters_and_flushes_audit_before_pr_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_assessment_waiver(tmp_path, kinds=["invariants", "guidelines"])
+    _write_unavailable_assessment_sidecars(tmp_path)
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=assessments\nBRANCH_NAME=feature\nREPO=o/r\nRUN_ID=run-abc\n"
+        "MERGE=false\nDRAFT=false\nITERATION=3\nREBASE_COUNT=2\n"
+        "FIX_ATTEMPTS=1\nTRANSIENT_RETRIES=4\n",
+        encoding="utf-8",
+    )
+    counters_at_pr_create: dict[str, int] = {}
+    flushes: list[tuple[bool, bool]] = []
+    original_write_state = ship._write_ship_state  # pyright: ignore[reportPrivateUsage]
+
+    def capture_write_state(ctx: RunContext, **kwargs: Any) -> None:
+        phase = kwargs.get("phase")
+        original_write_state(ctx, **kwargs)
+        if phase == "pr-create":
+            counters_at_pr_create.update(
+                {
+                    key.lower(): int(run_logs.read_state_kv(state_file=str(state_file), key=key))
+                    for key in ("ITERATION", "REBASE_COUNT", "FIX_ATTEMPTS", "TRANSIENT_RETRIES")
+                }
+            )
+
+    def flush_after_waiver(**_kwargs: object) -> run_logs.RefreshSkip:
+        sidecars = (
+            ship.architectural_guidelines.invariant_ship_outcome_path(tmp_path),
+            ship.architectural_guidelines.guideline_ship_outcome_path(tmp_path),
+        )
+        flushes.append(
+            (
+                bool(json.loads(sidecars[0].read_text(encoding="utf-8"))["operator_waived"]),
+                bool(json.loads(sidecars[1].read_text(encoding="utf-8"))["operator_waived"]),
+            )
+        )
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feature")
+    monkeypatch.setattr(
+        ship,
+        "_invariants_gate_before_pr",
+        lambda **_k: ship.InvariantsGateResult(note_state=config.NOTE_STATE_UNAVAILABLE),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_guidelines_gate_before_pr",
+        lambda **_k: ship.GuidelinesGateResult(note_state=config.NOTE_STATE_UNAVAILABLE),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", flush_after_waiver)
+    monkeypatch.setattr(ship, "_write_ship_state", capture_write_state)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 12, "url": "https://example.test/pr/12", "status": "created"})(),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_complete_pr_created_without_merge",
+        lambda **_k: ship.ShipResult(Outcome.OK),
+    )
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    result = ship.run_ship(
+        _ctx(
+            tmp_path,
+            state_file=str(state_file),
+            branch="feature",
+            branch_name="feature",
+            repo="o/r",
+            merge=False,
+        ),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert counters_at_pr_create == {
+        "iteration": 3,
+        "rebase_count": 2,
+        "fix_attempts": 1,
+        "transient_retries": 4,
+    }
+    assert flushes == [(True, True)]
 
 
 def test_combined_assessment_result_partial_waiver_keeps_unwaived_kind(

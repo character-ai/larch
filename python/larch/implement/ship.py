@@ -328,6 +328,7 @@ def _flush_guideline_outcome_before_pr(
     ctx: RunContext,
     cwd: str,
     resume: ResumePlan,
+    require_invariant_match: bool = False,
 ) -> None:
     step = "pr-create-guideline-outcome-refresh"
     try:
@@ -357,7 +358,14 @@ def _flush_guideline_outcome_before_pr(
     if refresh.reason == config.REFRESH_SKIP_RUN_LOG_INCOMPLETE:
         _breadcrumb(step="warning", detail=f"guideline outcome refresh skipped: {reason}")
         return
-    if refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY and _committed_guideline_outcome_matches(ctx=ctx, cwd=cwd):
+    if (
+        refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY
+        and _committed_guideline_outcome_matches(ctx=ctx, cwd=cwd)
+        and (
+            not require_invariant_match
+            or _committed_invariant_outcome_matches(ctx=ctx, cwd=cwd)
+        )
+    ):
         _breadcrumb(step="warning", detail="guideline outcome refresh skipped: volatile-only with matching committed artifact")
         return
     _breadcrumb(step="warning", detail=f"guideline outcome refresh skipped: {reason}")
@@ -754,7 +762,19 @@ def _compose_assessment_gate_before_pr(
         compose_snapshot_factory=compose_snapshot_factory,
     )
     gates = _AssessmentGatePair(invariants=invariants_gate, guidelines=guidelines_gate)
-    return gates, _combined_assessment_result(gates=gates, pr_context=pr_context)
+    assessment_result = _combined_assessment_result(gates=gates, pr_context=pr_context)
+    # A waiver mutates the assessment sidecar after each gate's initial flush.
+    # Refresh it before PR creation so the committed audit artifact records the
+    # operator decision.
+    if assessment_result is None and load_assessment_waiver(pr_context.tmpdir):
+        _flush_guideline_outcome_before_pr(
+            runner=runner,
+            ctx=pr_context,
+            cwd=repo_root,
+            resume=resume,
+            require_invariant_match=True,
+        )
+    return gates, assessment_result
 
 
 def _refresh_guidelines_gate_after_rebase(

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from larch.core import config
 from larch.errors import ShipError
 from larch.git.gh import PullRequest
 from larch.implement import ship_recovery
+from larch.report import final_report
+from larch.state import stall_recovery
 
 
 def _session(
@@ -288,6 +291,113 @@ def test_reconcile_repository_mismatch_refuses_probe(
     assert called is False
 
 
+def test_reconcile_rejects_merged_payload_for_different_requested_pr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _session(tmp_path)
+    _manifest(tmp_path)
+    monkeypatch.setattr(
+        ship_recovery.gh, "pr_view", lambda *_args, **_kwargs: _merged_pr(number=7050)
+    )
+
+    rc = ship_recovery.reconcile_manual_merge_main(
+        ["--implement-tmpdir", str(tmp_path), "--pr", "7049"],
+    )
+
+    assert rc == 1
+    assert capsys.readouterr().out == "RECONCILE_STATUS=failed\nERROR=pr-identity-mismatch\n"
+    assert not (tmp_path / "post-merge-sentinel").exists()
+
+
+def test_reconcile_rejects_merged_payload_for_different_repository(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _session(tmp_path)
+    _manifest(tmp_path)
+    monkeypatch.setattr(
+        ship_recovery.gh,
+        "pr_view",
+        lambda *_args, **_kwargs: PullRequest(
+            7049,
+            "https://github.com/other/repo/pull/7049",
+            "MERGED",
+            "feat",
+            "2026-07-12T00:00:00Z",
+        ),
+    )
+
+    rc = ship_recovery.reconcile_manual_merge_main(
+        ["--implement-tmpdir", str(tmp_path), "--pr", "7049"],
+    )
+
+    assert rc == 1
+    assert capsys.readouterr().out == "RECONCILE_STATUS=failed\nERROR=pr-identity-mismatch\n"
+
+
+def test_reconcile_rejects_mismatched_persisted_run_identity_before_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _session(tmp_path)
+    (tmp_path / "ship-pr-state.sh").write_text("RUN_ID=OTHER\nREPO=owner/repo\n", encoding="utf-8")
+    called = False
+
+    def unexpected_probe(*_args: object, **_kwargs: object) -> PullRequest:
+        nonlocal called
+        called = True
+        return _merged_pr()
+
+    monkeypatch.setattr(ship_recovery.gh, "pr_view", unexpected_probe)
+
+    rc = ship_recovery.reconcile_manual_merge_main(
+        ["--implement-tmpdir", str(tmp_path), "--pr", "7049"],
+    )
+
+    assert rc == 1
+    assert capsys.readouterr().out == "RECONCILE_STATUS=failed\nERROR=run-id-mismatch\n"
+    assert called is False
+
+
+def test_reconcile_rejects_mismatched_manifest_run_identity_before_probe(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _session(tmp_path)
+    _manifest(tmp_path).write_text('{"run_id":"OTHER"}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        ship_recovery.gh,
+        "pr_view",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("probe must not run")),
+    )
+
+    rc = ship_recovery.reconcile_manual_merge_main(
+        ["--implement-tmpdir", str(tmp_path), "--pr", "7049"],
+    )
+
+    assert rc == 1
+    assert capsys.readouterr().out == "RECONCILE_STATUS=failed\nERROR=manifest-run-mismatch\n"
+
+
+def test_reconcile_refuses_symlinked_ship_state_before_writing(tmp_path: Path) -> None:
+    _session(tmp_path)
+    target = tmp_path / "outside-state.sh"
+    target.write_text("KEEP=outside\n", encoding="utf-8")
+    (tmp_path / "ship-pr-state.sh").symlink_to(target)
+
+    rc = ship_recovery.reconcile_manual_merge_main(
+        ["--implement-tmpdir", str(tmp_path), "--pr", "7049"],
+    )
+
+    assert rc == 1
+    assert target.read_text(encoding="utf-8") == "KEEP=outside\n"
+
+
 def test_reconcile_rerun_converges(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -343,3 +453,36 @@ def test_reconcile_fails_post_read_when_partial_clear_leaves_overlay(
         capsys.readouterr().out
         == "RECONCILE_STATUS=failed\nERROR=bail-overlay-remains\n"
     )
+
+
+def test_bd267d84_operator_waiver_manual_merge_replay_writes_merged_final_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _session(tmp_path)
+    manifest = _manifest(tmp_path)
+    (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=RUN-123\n", encoding="utf-8")
+    (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
+    assert ship_recovery.waive_assessment_main(
+        ["--implement-tmpdir", str(tmp_path), "--kinds", "invariants,guidelines"]
+    ) == 0
+    monkeypatch.setattr(
+        ship_recovery.gh, "pr_view", lambda *_args, **_kwargs: _merged_pr()
+    )
+
+    assert ship_recovery.reconcile_manual_merge_main(
+        ["--implement-tmpdir", str(tmp_path), "--pr", "7049"]
+    ) == 0
+    values = stall_recovery.normalized_outcome_values(
+        argparse.Namespace(
+            implement_tmpdir=str(tmp_path), in_memory_stall_tracking="false"
+        )
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert values["IMPLEMENT_NORMALIZED_OUTCOME"] == "merged"
+    assert json.loads(manifest.read_text(encoding="utf-8"))["status"] == "done"
+    assert json.loads(manifest.read_text(encoding="utf-8"))["pr_number"] == 7049
+    assert rc == 0
+    assert err == ""
+    assert "merged" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")

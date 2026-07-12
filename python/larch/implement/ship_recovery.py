@@ -11,11 +11,9 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.core import config, proc
-from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.git import gh
-from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state  # pyright: ignore[reportPrivateUsage] # internal ship-state helpers reused within the larch.implement package
-from larch.outcomes import Outcome
+from larch.implement.ship_state import _tmpdir_under_allowed_root  # pyright: ignore[reportPrivateUsage] # internal ship-state helpers reused within the larch.implement package
 
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _REPO_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
@@ -134,41 +132,6 @@ def waive_assessment_main(argv: list[str] | None = None) -> int:
     return config.EXIT_OK
 
 
-def _merged_state(
-    *, tmpdir: Path, pr: gh.PullRequest, repo: str, run_id: str
-) -> RunContext:
-    ship = _read_layer(tmpdir=tmpdir, name="ship-pr-state.sh")
-    session = _read_layer(tmpdir=tmpdir, name="session-env.sh", required=True)
-    source = (
-        session
-        | ship
-        | {
-            "IMPLEMENT_TMPDIR": str(tmpdir),
-            "SHIP_PR_STATE_FILE": str(tmpdir / "ship-pr-state.sh"),
-            "RUN_ID": run_id,
-            "LARCH_RUN_ID": run_id,
-            "REPO": repo,
-            "PR_NUMBER": str(pr.number),
-            "PR_URL": pr.url,
-            "PR_CLOSED": "true",
-            "MERGE_RESULT": config.MERGE_RESULT_MERGED,
-            "STALL_TRACKING": "false",
-            "STALL_STEP": "",
-            "BAIL_NEEDS_USER_INPUT": "false",
-            "FINAL_BAIL_REASON": "",
-        }
-    )
-    return RunContext.from_env(env=source).with_(
-        pr_number=pr.number,
-        pr_url=pr.url,
-        pr_closed=True,
-        merge_result=config.MERGE_RESULT_MERGED,
-        stall_tracking=False,
-        stall_step="",
-        bail_needs_user_input=False,
-    )
-
-
 def _write_terminal_layer(
     *, tmpdir: Path, name: str, updates: Mapping[str, str]
 ) -> None:
@@ -182,8 +145,30 @@ def _write_terminal_layer(
     )
 
 
+def _validate_run_identity(
+    *, run_id: str, layers: tuple[dict[str, str], ...]
+) -> None:
+    for layer in layers:
+        for key in ("RUN_ID", "LARCH_RUN_ID"):
+            value = layer.get(key, "").strip()
+            if value and (not _RUN_ID_RE.fullmatch(value) or value != run_id):
+                raise ValueError("run-id-mismatch")
+
+
 def _manifest_path(*, tmpdir: Path, run_id: str) -> Path:
     return tmpdir / "larch-logs" / "implement" / run_id / "manifest.json"
+
+
+def _validate_manifest_run_identity(*, tmpdir: Path, run_id: str) -> None:
+    path = _manifest_path(tmpdir=tmpdir, run_id=run_id)
+    if not larch_io.trusted_file_present(path, root=tmpdir):
+        return
+    raw = json.loads(larch_io.read_trusted_text(path, root=tmpdir, reject_cr=True))
+    if not isinstance(raw, dict):
+        raise TypeError("manifest-invalid")
+    data = cast("dict[str, object]", raw)
+    if data.get("run_id", run_id) != run_id:
+        raise ValueError("manifest-run-mismatch")
 
 
 def _write_manifest(*, tmpdir: Path, run_id: str, pr_number: int) -> None:
@@ -245,6 +230,10 @@ def _verify_reconciliation(
         _read_layer(tmpdir=tmpdir, name="finalize-state.sh", required=True),
         _read_layer(tmpdir=tmpdir, name="session-env.sh", required=True),
     )
+    try:
+        _validate_run_identity(run_id=run_id, layers=layers)
+    except ValueError:
+        return "run-id-mismatch"
     if not _verify_no_bail_overlay(*layers):
         return "bail-overlay-remains"
     layers_match = all(
@@ -289,6 +278,8 @@ def _merged_pr(*, number: int, repo: str) -> gh.PullRequest:
         raise ValueError("pr-probe-failed") from exc
     if pr.state.upper() != "MERGED" or not pr.merged_at:
         raise ValueError("pr-not-merged")
+    if pr.number != number or pr.url != f"https://github.com/{repo}/pull/{number}":
+        raise ValueError("pr-identity-mismatch")
     return pr
 
 
@@ -308,6 +299,8 @@ def reconcile_manual_merge_main(argv: list[str] | None = None) -> int:
             _read_layer(tmpdir=tmpdir, name="finalize-state.sh"),
             _read_layer(tmpdir=tmpdir, name="session-env.sh", required=True),
         )
+        _validate_run_identity(run_id=run_id, layers=layers)
+        _validate_manifest_run_identity(tmpdir=tmpdir, run_id=run_id)
         persisted_repos = {
             layer.get("REPO", "") for layer in layers if layer.get("REPO", "")
         }
@@ -317,8 +310,6 @@ def reconcile_manual_merge_main(argv: list[str] | None = None) -> int:
         if any(saved != repo for saved in persisted_repos):
             raise ValueError("repository-mismatch")
         pr = _merged_pr(number=args.pr, repo=repo)
-        ctx = _merged_state(tmpdir=tmpdir, pr=pr, repo=repo, run_id=run_id)
-        _write_ship_state(ctx, phase="done", terminal_outcome=Outcome.OK)
         updates = {
             "PHASE": "done",
             "PR_CLOSED": "true",
@@ -326,9 +317,19 @@ def reconcile_manual_merge_main(argv: list[str] | None = None) -> int:
             "PR_URL": pr.url,
             "MERGE_RESULT": config.MERGE_RESULT_MERGED,
             "REPO": repo,
+            "RUN_ID": run_id,
         }
+        _write_terminal_layer(
+            tmpdir=tmpdir,
+            name="ship-pr-state.sh",
+            updates=updates | {"IMPLEMENT_TMPDIR": str(tmpdir)},
+        )
         _write_terminal_layer(tmpdir=tmpdir, name="finalize-state.sh", updates=updates)
-        _write_terminal_layer(tmpdir=tmpdir, name="session-env.sh", updates=updates)
+        _write_terminal_layer(
+            tmpdir=tmpdir,
+            name="session-env.sh",
+            updates=updates | {"LARCH_RUN_ID": run_id},
+        )
         larch_io.trusted_atomic_write(
             tmpdir / "post-merge-sentinel", "MERGE_RESULT=merged\n", root=tmpdir
         )

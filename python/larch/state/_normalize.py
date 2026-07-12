@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import os
 import re
 import sys
 from collections.abc import Mapping
@@ -206,7 +205,7 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     ses = _read_state_file(tmpdir / "session-env.sh")
     seed = _read_state_file(tmpdir / "ship-seed-input.env")
     classification = _read_state_file(tmpdir / _DEFAULT_CLASSIFICATION_FILE)
-    memory_stall = getattr(args, "in_memory_stall_tracking", "") or os.environ.get("STALL_TRACKING", "false")
+    memory_stall = getattr(args, "in_memory_stall_tracking", "") or "false"
     ship_stall = ship.get("STALL_TRACKING", "false")
     fin_stall = fin.get("STALL_TRACKING", "false")
     effective_fin_stall = fin_eff.get("STALL_TRACKING", "false")
