@@ -7,8 +7,6 @@ import argparse
 import json
 import os
 import shutil
-import subprocess
-import sys
 import threading
 import time
 from pathlib import Path
@@ -53,91 +51,8 @@ def _tmp_impl(tmp_path: Path) -> Path:
     return impl
 
 
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
-
-
 def _arg_value(argv: list[str], flag: str) -> str:
     return argv[argv.index(flag) + 1]
-
-
-def _write_python3_capture_shim(shim_path: Path) -> None:
-    shim_path.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-if [ -z "${REAL_PYTHON3:-}" ]; then
-  printf '%s\n' 'python3 shim: REAL_PYTHON3 is required' >&2
-  exit 127
-fi
-if [ "${2:-}" = "review-and-fix" ] && [ "${3:-}" = "step5" ]; then
-  : "${CAPTURE_ARGV_FILE:?CAPTURE_ARGV_FILE required}"
-  printf '%s\n' "$@" >"$CAPTURE_ARGV_FILE"
-  printf '%s\n' 'STEP5_REVIEW_STATUS=complete' 'STALL_TRACKING=false' 'STALL_REASON=' 'ROUNDS_COMPLETED=1' 'FINAL_ROUND_NUM=1' 'FINAL_REVIEW_AND_FIX_STATUS=complete' 'CODER_STATUS=' 'FILES_CHANGED_HINT=' 'EFFECTIVE_ROUND_CAP=2'
-  exit 0
-fi
-if [ "${STEP5_COMMIT_ROUTE_STALL:-false}" = "true" ] && [ "${2:-}" = "implement" ] && [ "${3:-}" = "commit-route" ] && [ "${4:-}" = "--site" ] && [ "${5:-}" = "step5-resume-handoff" ]; then
-  printf '%s\n' 'COMMITTED=false' 'SHA=' 'ERROR=no review delta paths' 'COMMIT_OUTCOME=failed' 'NEXT_ACTION=stall'
-  exit 0
-fi
-exec "$REAL_PYTHON3" "$@"
-""",
-        encoding="utf-8",
-    )
-    shim_path.chmod(0o755)
-
-
-def _run_step5_shell_wrapper(
-    tmp_path: Path,
-    *,
-    wrapper_name: str,
-    wrapper_args: list[str],
-    include_run_flags: bool,
-    commit_route_stall: bool = False,
-) -> tuple[Path, list[str], subprocess.CompletedProcess[str]]:
-    repo_root = _repo_root()
-    impl = tmp_path / "impl"
-    impl.mkdir()
-    (impl / "session-env.sh").write_text(
-        f"RUN_ID=run-1\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\nLARCH_CLAUDE_PLUGIN_ROOT={repo_root}\n",
-        encoding="utf-8",
-    )
-    (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
-    (impl / "feature-description.txt").write_text("feature\n", encoding="utf-8")
-    if include_run_flags:
-        (impl / "run-flags.sh").write_text("DIFFICULTY_OVERRIDE=HARD\n", encoding="utf-8")
-
-    shim_bin = tmp_path / "bin"
-    shim_bin.mkdir()
-    capture_file = tmp_path / "captured-argv.txt"
-    _write_python3_capture_shim(shim_bin / "python3")
-
-    env = {
-        "CAPTURE_ARGV_FILE": str(capture_file),
-        "CLAUDE_PLUGIN_ROOT": str(repo_root),
-        "IMPLEMENT_TMPDIR": str(impl),
-        "LARCH_QUIET_DISABLE": "1",
-        "PATH": f"{shim_bin}{os.pathsep}{os.environ.get('PATH', '')}",
-        "REAL_PYTHON3": sys.executable,
-    }
-    for key in ("HOME", "PYTHONPATH", "TMPDIR", "USER"):
-        if key in os.environ:
-            env[key] = os.environ[key]
-    if commit_route_stall:
-        env["STEP5_COMMIT_ROUTE_STALL"] = "true"
-
-    effective_args = list(wrapper_args)
-    if wrapper_name == "step-5-resume.sh" and "--bgjob-child" in effective_args and "--merge-result-env" not in effective_args:
-        effective_args.extend(["--merge-result-env", str(tmp_path / "step5-resume.merge.env")])
-    result = subprocess.run(
-        [str(repo_root / "skills" / "implement" / "scripts" / wrapper_name), *effective_args],
-        cwd=repo_root,
-        env=env,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    argv = capture_file.read_text(encoding="utf-8").splitlines() if capture_file.exists() else []
-    return impl, argv, result
 
 
 def _fix_applied_round_result(impl: Path, *, round_num: int = 1) -> review_and_fix.RoundResult:
@@ -511,12 +426,12 @@ def test_dynamic_archetypes_rejects_over_cap_env(monkeypatch, tmp_path):
         review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl)
 
 
-def test_step5_shell_exports_validated_dynamic_cap_before_python_call() -> None:
-    text = (Path(__file__).resolve().parents[3] / "skills/implement/scripts/step-5-review.sh").read_text(encoding="utf-8")
-    validation = 'case "$dynamic_archetypes_cap" in [0-1])'
-    export = 'export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"'
-    banner = "dynamic-archetypes cap=%s"
-    python_call = "--starting-round 1"
+def test_step5_python_exports_validated_dynamic_cap_before_python_call() -> None:
+    text = (Path(__file__).resolve().parents[3] / "python/larch/implement/dispatch_commit_route.py").read_text(encoding="utf-8")
+    validation = 'if dynamic_cap not in {"0", "1"}:'
+    export = 'os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = dynamic_cap'
+    banner = "dynamic-archetypes cap={dynamic_cap}"
+    python_call = '"--starting-round",\n        "1",'
     assert validation in text
     assert export in text
     assert text.index(validation) < text.index(export) < text.index(banner) < text.index(python_call)
@@ -628,63 +543,6 @@ def test_step5_normalize_status_failure_sets_stall_tracking_true(
     assert rc == 2
     assert "STALL_TRACKING=true" in out
     assert f"STALL_REASON={expected_reason}" in out
-
-
-@MARK_STEP5
-@pytest.mark.parametrize(
-    ("wrapper_name", "wrapper_args", "expected_starting_round", "include_run_flags"),
-    [
-        pytest.param("step-5-review.sh", ["--bgjob-child"], "1", True, id="review-difficulty-override"),
-        pytest.param("step-5-review.sh", ["--bgjob-child"], "1", False, id="review-no-override"),
-        pytest.param("step-5-resume.sh", ["--bgjob-child", "--final-round-num", "2"], "3", True, id="resume-difficulty-override"),
-        pytest.param("step-5-resume.sh", ["--bgjob-child", "--final-round-num", "2"], "3", False, id="resume-no-override"),
-    ],
-)
-def test_step5_shell_wrappers_forward_difficulty_override(
-    tmp_path: Path,
-    wrapper_name: str,
-    wrapper_args: list[str],
-    expected_starting_round: str,
-    include_run_flags: bool,
-) -> None:
-    impl, argv, result = _run_step5_shell_wrapper(
-        tmp_path,
-        wrapper_name=wrapper_name,
-        wrapper_args=wrapper_args,
-        include_run_flags=include_run_flags,
-    )
-
-    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    assert argv, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    assert Path(argv[0]).as_posix().endswith("/python/cli.py")
-    assert argv[1:3] == ["review-and-fix", "step5"]
-    assert _arg_value(argv, "--implement-tmpdir") == str(impl)
-    assert _arg_value(argv, "--mode") == "loop"
-    assert _arg_value(argv, "--starting-round") == expected_starting_round
-    assert "--new-process-group" not in argv
-    assert "--orphan-timeout-s" not in argv
-    if include_run_flags:
-        assert _arg_value(argv, "--difficulty") == "HARD"
-    else:
-        assert "--difficulty" not in argv
-
-
-@MARK_STEP5
-def test_step5_shell_ready_to_commit_stall_exits_zero_without_review_loop(
-    tmp_path: Path,
-) -> None:
-    _impl, argv, result = _run_step5_shell_wrapper(
-        tmp_path,
-        wrapper_name="step-5-resume.sh",
-        wrapper_args=["--bgjob-child", "--final-round-num", "2", "--ready-to-commit"],
-        include_run_flags=False,
-        commit_route_stall=True,
-    )
-
-    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-    assert result.stdout.count("NEXT_ACTION=stall") == 1
-    assert "COMMIT_OUTCOME=failed" in result.stdout
-    assert argv == []
 
 
 @MARK_DISPATCH

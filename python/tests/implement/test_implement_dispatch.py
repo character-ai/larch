@@ -16,6 +16,8 @@ from typing import Any, cast
 
 import pytest
 
+from larch import io as larch_io
+from larch.bgjob import model as bgjob_model
 from larch.cli import _REGISTRY
 
 from larch.agents import agents
@@ -88,12 +90,14 @@ def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, mo
 
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
 
-    assert dispatch_commit_route.run_step_checks_main(["--site", "step5"]) == 0
+    args = SimpleNamespace(site="step5", commit_site="", rebase_checkpoint_4r=False, forked_target="false")
+    assert dispatch_commit_route._run_step_checks_worker(args, tmp, plugin_root) == 0
 
 
 @pytest.fixture(autouse=True)
 def quiet_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
     logging_util.reset_quiet_state()
 
 
@@ -150,30 +154,6 @@ def _write_step2_baseline(tmpdir: Path) -> None:
     ),
     [
         (
-            "step3",
-            Path("skills/implement/scripts/run-step-checks.sh"),
-            'STEP="implement-step3-checks"',
-            '--step "$STEP"',
-        ),
-        (
-            "step5",
-            Path("skills/implement/scripts/step-5-review.sh"),
-            "implement-step5-review",
-            "--step implement-step5-review",
-        ),
-        (
-            "step5-resume",
-            Path("skills/implement/scripts/step-5-resume.sh"),
-            'STEP="implement-step5-resume"',
-            '--step "$STEP"',
-        ),
-        (
-            "step6",
-            Path("skills/implement/scripts/step-6-entry.sh"),
-            'STEP="implement-step6-checks"',
-            '--step "$STEP"',
-        ),
-        (
             "step8",
             Path("skills/implement/scripts/step-8-ship.sh"),
             'STEP="implement-step8-ship"',
@@ -197,6 +177,93 @@ def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
     assert '--owner-pid "${LARCH_CLAUDE_PID:-$PPID}"' in source
     assert '--merge-result-env "$MERGE_RESULT_ENV"' in source
     assert "--sentinel" not in source
+
+
+@pytest.mark.parametrize(
+    ("script_name", "verb"),
+    [
+        ("run-step-checks.sh", "run-step-checks"),
+        ("step-5-review.sh", "step-5-review"),
+        ("step-5-resume.sh", "step-5-resume"),
+        ("step-6-entry.sh", "step-6-entry"),
+    ],
+)
+def test_converted_bgjob_launchers_are_thin_wrappers(script_name: str, verb: str) -> None:
+    root = Path(__file__).resolve().parents[3]
+    source = (root / "skills" / "implement" / "scripts" / script_name).read_text(encoding="utf-8")
+    assert f'implement {verb} "$@"' in source
+    assert "bgjob start" not in source
+    assert "registry" not in source
+
+
+def test_bgjob_contract_unification_step5_review_uses_custom_merge_spec(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    captured: list[bgjob_model.JobSpec] = []
+
+    def fake_start(spec: bgjob_model.JobSpec) -> int:
+        captured.append(spec)
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route.bgjob_adapt, "start_or_reattach", fake_start)
+
+    assert dispatch_commit_route.step5_review_main([]) == 0
+    assert captured[0].merge_result_env == tmp_path / ".step5-review-result.env"
+    assert captured[0].command[-2:] == ("implement", "step-5-review")
+
+
+def test_bgjob_contract_unification_review_and_resume_classifiers_are_distinct(
+    tmp_path: Path,
+) -> None:
+    bgjob = tmp_path / "bgjob"
+    bgjob.mkdir()
+    review = bgjob / "implement-step5-review.result.env"
+    rows = {
+        "STEP5_REVIEW_STATUS": "stall",
+        "STALL_TRACKING": "true",
+        "STALL_REASON": "review-stall",
+        "ROUNDS_COMPLETED": "1",
+        "FINAL_ROUND_NUM": "1",
+        "FINAL_REVIEW_AND_FIX_STATUS": "stall",
+        "CODER_STATUS": "failed",
+        "FILES_CHANGED_HINT": "false",
+        "EFFECTIVE_ROUND_CAP": "2",
+        "BGJOB_RC": "1",
+        "STEP": "implement-step5-review",
+    }
+    larch_io.write_kvs(path=review, values=list(rows.items()))
+
+    assert dispatch_commit_route.step5_canonical_result_env_state(tmpdir=tmp_path) == "stall"
+    assert dispatch_commit_route.step5_resume_result_env_state(tmpdir=tmp_path) == "absent"
+
+
+def test_bgjob_contract_unification_resume_child_publishes_all_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    merge = tmp_path / "bgjob" / "implement-step5-resume.merge.env"
+    merge.parent.mkdir()
+
+    def fake_worker(_args: object, _tmpdir: Path) -> int:
+        print("STEP5_REVIEW_STATUS=complete")
+        print("NEXT_ACTION=continue")
+        print("COMMIT_OUTCOME=ok")
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route, "_step5_resume_worker", fake_worker)
+
+    assert dispatch_commit_route.step5_resume_main([
+        "--final-round-num", "2",
+        "--bgjob-child",
+        "--merge-result-env", str(merge),
+    ]) == 0
+    assert merge.read_text(encoding="utf-8") == capsys.readouterr().out
 
 
 def test_resolve_implement_rater_model_prefers_codex_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -337,6 +404,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "normalize-coder-scout")] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("larch.implement.implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-6-entry")] == ("larch.implement.implement_dispatch", "step6_entry_main")
+    assert _REGISTRY[("implement", "step-8-ci-fixer")] == ("larch.implement.ci_fixer_adapter", "main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("larch.implement.implement_dispatch", "step8_ship_main")
     assert _REGISTRY[("implement", "step-18-gate-finalize")] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
     assert _REGISTRY[("implement", "run-step-checks")] == ("larch.implement.implement_dispatch", "run_step_checks_main")
@@ -3867,6 +3935,16 @@ def _mock_step6_check_changes(
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fake_capture)
 
 
+def _step6_worker_main(argv: list[str]) -> int:
+    forked_target = argv[argv.index("--forked-target") + 1] if "--forked-target" in argv else "false"
+    force_checks = argv[argv.index("--force-checks") + 1] if "--force-checks" in argv else "false"
+    args = SimpleNamespace(forked_target=forked_target, force_checks=force_checks)
+    return dispatch_commit_route._step6_entry_worker(
+        args,
+        Path(os.environ["IMPLEMENT_TMPDIR"]),
+    )
+
+
 def test_step6_entry_skip_relays_degradation_kvs_and_does_not_run_composite(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3885,7 +3963,7 @@ def test_step6_entry_skip_relays_degradation_kvs_and_does_not_run_composite(
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fail_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fail_composite)
 
-    rc = implement_dispatch.step6_entry_main([])
+    rc = _step6_worker_main([])
 
     captured = capsys.readouterr()
     assert rc == 0
@@ -3912,7 +3990,7 @@ def test_step6_entry_check_changes_uses_pinned_baselines(
         calls=calls,
     )
 
-    assert implement_dispatch.step6_entry_main([]) == 0
+    assert _step6_worker_main([]) == 0
     assert calls == [[
         "review-and-fix",
         "check-changes",
@@ -3945,7 +4023,7 @@ def test_step6_entry_files_changed_runs_fixed_composite_with_forked_target(
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
-    rc = implement_dispatch.step6_entry_main(["--forked-target", "true"])
+    rc = _step6_worker_main(["--forked-target", "true"])
 
     out = capsys.readouterr().out
     assert rc == 0
@@ -3984,7 +4062,7 @@ def test_step6_entry_checks_failed_relay_keeps_redacted_log_after_leading_change
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
-    rc = implement_dispatch.step6_entry_main([])
+    rc = _step6_worker_main([])
 
     lines = capsys.readouterr().out.splitlines()
     assert rc == 0
@@ -4023,7 +4101,7 @@ def test_step6_entry_relays_composite_stall_and_rebase_routing(
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
-    rc = implement_dispatch.step6_entry_main([])
+    rc = _step6_worker_main([])
 
     out = capsys.readouterr().out
     assert rc == 0
@@ -4056,7 +4134,7 @@ def test_step6_entry_malformed_files_changed_seeds_stall(
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fail_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fail_composite)
 
-    rc = implement_dispatch.step6_entry_main([])
+    rc = _step6_worker_main([])
 
     assert rc == 0
     assert "NEXT_ACTION=stall\n" in capsys.readouterr().out
@@ -4078,7 +4156,7 @@ def test_step6_entry_check_changes_nonzero_seed_failure_returns_nonzero_without_
     monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(dispatch_commit_route, "_seed_durable_stall_state", lambda *_args, **_kwargs: False)
 
-    rc = implement_dispatch.step6_entry_main([])
+    rc = _step6_worker_main([])
 
     assert rc == 1
     assert "NEXT_ACTION=" not in capsys.readouterr().out
@@ -4103,7 +4181,7 @@ def test_step6_entry_composite_seed_failed_output_does_not_fabricate_next_action
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
-    rc = implement_dispatch.step6_entry_main([])
+    rc = _step6_worker_main([])
 
     out = capsys.readouterr().out
     assert rc == 1
@@ -4132,7 +4210,7 @@ def test_step6_entry_force_checks_skips_change_gate_and_never_emits_skip(
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
     monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
-    rc = implement_dispatch.step6_entry_main(["--force-checks", "true"])
+    rc = _step6_worker_main(["--force-checks", "true"])
 
     out = capsys.readouterr().out
     assert rc == 0
@@ -5946,12 +6024,27 @@ def _setup_step5_resume(
     return resume_calls
 
 
+def _step5_resume_worker_main(argv: list[str]) -> int:
+    round_num = argv[argv.index("--final-round-num") + 1]
+    if not round_num.isdigit() or "--record-only" in argv:
+        return dispatch_commit_route.step5_resume_main(argv)
+    args = SimpleNamespace(
+        final_round_num=round_num,
+        checks_site="",
+        ready_to_commit="--ready-to-commit" in argv,
+    )
+    return dispatch_commit_route._step5_resume_worker(
+        args,
+        Path(os.environ["IMPLEMENT_TMPDIR"]),
+    )
+
+
 def test_step5_resume_registry() -> None:
     assert _REGISTRY[("implement", "step-5-resume")] == ("larch.implement.implement_dispatch", "step5_resume_main")
 
 
 def test_step5_resume_non_numeric_round_rejected(capsys: pytest.CaptureFixture[str]) -> None:
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "abc"])
+    rc = _step5_resume_worker_main(["--final-round-num", "abc"])
     assert rc == 2
     assert "must be numeric" in capsys.readouterr().err
 
@@ -5960,7 +6053,7 @@ def test_step5_resume_commit_ok_relays_and_resumes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK)
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    rc = _step5_resume_worker_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "COMMIT_OUTCOME=ok" in out
@@ -5975,7 +6068,7 @@ def test_step5_resume_commit_noop_resumes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_NOOP)
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "4", "--ready-to-commit"])
+    rc = _step5_resume_worker_main(["--final-round-num", "4", "--ready-to-commit"])
     assert rc == 0
     assert "COMMIT_OUTCOME=noop" in capsys.readouterr().out
     assert len(resume_calls) == 1
@@ -5985,7 +6078,7 @@ def test_step5_resume_commit_stall_returns_zero_and_relays(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_STALL, route_rc=0)
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    rc = _step5_resume_worker_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 0
     out = capsys.readouterr().out
     assert "COMMIT_OUTCOME=failed" in out
@@ -5997,7 +6090,7 @@ def test_step5_resume_absent_outcome_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout="COMMITTED=false\n", route_rc=0)
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "1", "--ready-to-commit"])
+    rc = _step5_resume_worker_main(["--final-round-num", "1", "--ready-to-commit"])
     assert rc == 1
     assert not resume_calls
 
@@ -6008,7 +6101,7 @@ def test_step5_resume_duplicate_next_action_fails_closed(
     resume_calls = _setup_step5_resume(
         tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK + "NEXT_ACTION=continue\n"
     )
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    rc = _step5_resume_worker_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 1
     out = capsys.readouterr().out
     assert out.count("NEXT_ACTION=continue") == 2
@@ -6019,7 +6112,7 @@ def test_step5_resume_continue_with_nonzero_route_rc_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK, route_rc=1)
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    rc = _step5_resume_worker_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 1
     out = capsys.readouterr().out
     assert out.count("NEXT_ACTION=continue") == 1
@@ -6031,7 +6124,7 @@ def test_step5_resume_invalid_next_action_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_COMMIT_OK + "NEXT_ACTION=bogus\n")
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--ready-to-commit"])
+    rc = _step5_resume_worker_main(["--final-round-num", "2", "--ready-to-commit"])
     assert rc == 1
     assert "NEXT_ACTION=bogus" in capsys.readouterr().out
     assert not resume_calls
@@ -6041,7 +6134,7 @@ def test_step5_resume_record_only_skips_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK)
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2", "--record-only"])
+    rc = _step5_resume_worker_main(["--final-round-num", "2", "--record-only"])
     assert rc == 0
     assert not resume_calls
     assert "COMMIT_OUTCOME" not in capsys.readouterr().out
@@ -6051,7 +6144,7 @@ def test_step5_resume_without_commit_flag_resumes_without_commit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout=_STEP5_ROUTE_OK)
-    rc = implement_dispatch.step5_resume_main(["--final-round-num", "2"])
+    rc = _step5_resume_worker_main(["--final-round-num", "2"])
     assert rc == 0
     assert len(resume_calls) == 1
     assert "COMMIT_OUTCOME" not in capsys.readouterr().out
@@ -6860,6 +6953,10 @@ def test_normalize_coder_scout_caps_to_one_archetype(tmp_path: Path) -> None:
     assert [item["name"] for item in manifest["archetypes"]] == ["arch"]
 
 
+def _step5_review_worker_main() -> int:
+    return dispatch_commit_route._step5_review_worker(Path(os.environ["IMPLEMENT_TMPDIR"]))
+
+
 def test_step5_review_main_defaults_dynamic_cap_to_one(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6876,12 +6973,12 @@ def test_step5_review_main_defaults_dynamic_cap_to_one(
         return 0
 
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_forward)
-    rc = implement_dispatch.step5_review_main([])
-    out = capsys.readouterr().out
+    rc = _step5_review_worker_main()
+    captured = capsys.readouterr()
     assert rc == 0
     assert os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] == "1"
-    assert "up to 2 rounds" in out
-    assert "dynamic-archetypes cap=1" in out
+    assert "fixed tier cap 2" in captured.err
+    assert "dynamic-archetypes cap=1" in captured.err
     assert calls == [["review-and-fix", "step5", "--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"]]
 
 
@@ -6896,7 +6993,7 @@ def test_step5_review_main_accepts_dynamic_boundary_values(
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", value)
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", lambda _argv: 0)
-    assert implement_dispatch.step5_review_main([]) == 0
+    assert _step5_review_worker_main() == 0
     assert os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] == value
 
 
@@ -6913,7 +7010,7 @@ def test_step5_review_main_rejects_over_cap_dynamic_values(
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
     forward_calls: list[Sequence[str]] = []
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", lambda argv: forward_calls.append(argv) or 0)
-    rc = implement_dispatch.step5_review_main([])
+    rc = _step5_review_worker_main()
     captured = capsys.readouterr()
     assert rc == 2
     assert "dynamic_archetypes_cap is non-integer or out of range" in captured.err
@@ -8437,19 +8534,18 @@ def test_resolve_implement_rater_model_moderate_codex_fallback_stays_sol(
     assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE] == "gpt-5.6-sol"
 
 
-def test_active_ci_fixer_wrapper_has_bgjob_start_contract_and_skill_wiring() -> None:
+def test_active_ci_fixer_wrapper_delegates_typed_adapter_and_skill_wiring() -> None:
     root: Path = Path(__file__).resolve().parents[3]
     wrapper = root / "skills/implement/scripts/step-8-ci-fixer.sh"
     harness = root / "skills/implement/scripts/test-step-8-ci-fixer.sh"
     assert wrapper.is_file()
     source = wrapper.read_text(encoding="utf-8")
-    assert "ci fixer-lane" in source
-    assert "bgjob start" in source
-    assert "bgjob wait" not in source
-    assert "--merge-result-env" in source
-    assert "--bgjob-result-env" in source
-    assert "distilled-failure.md" not in source
-    assert "gh " not in source
+    assert 'implement step-8-ci-fixer "$@"' in source
+    assert "bgjob start" not in source
+    adapter = (root / "python/larch/implement/ci_fixer_adapter.py").read_text(encoding="utf-8")
+    assert "ci_fixer_lane.main" in adapter
+    assert "adapt.start_or_reattach" in adapter
+    assert '"--bgjob-result-env"' in adapter
     assert harness.is_file()
     assert "step-8-ci-fixer.sh" in (root / "skills/implement/SKILL.md").read_text(encoding="utf-8")
     for path in (root / "skills/implement/scripts/step-8-ship.sh", root / "python/larch/implement/ship.py"):

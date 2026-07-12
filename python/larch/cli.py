@@ -157,6 +157,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("implement", "step-5-resume"): ("larch.implement.implement_dispatch", "step5_resume_main"),
     ("implement", "step-6-entry"): ("larch.implement.implement_dispatch", "step6_entry_main"),
     ("implement", "step-8-python-guard"): ("larch.implement.implement_dispatch", "step8_python_guard_main"),
+    ("implement", "step-8-ci-fixer"): ("larch.implement.ci_fixer_adapter", "main"),
     ("implement", "step-8-seed-initial"): ("larch.implement.implement_dispatch", "step8_seed_initial_main"),
     ("implement", "step-8-ship"): ("larch.implement.implement_dispatch", "step8_ship_main"),
     ("implement", "step-8-oos-checkpoint"): ("larch.implement.implement_dispatch", "step8_oos_checkpoint_main"),

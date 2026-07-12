@@ -28,6 +28,7 @@ class JobSpec:
     owner: OwnerIdentity
     sentinel_paths: tuple[Path, ...] = ()
     merge_result_env: Path | None = None
+    initial_merge_rows: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -121,6 +122,50 @@ def result_env_path(*, tmpdir: Path, step: str) -> Path:
     slug = validate_slug(step, label="step")
     root = bgjob_dir(tmpdir)
     return ensure_under(root / f"{slug}{config.BGJOB_RESULT_ENV_SUFFIX}", root, label="result env")
+
+
+def validate_merge_result_env(*, path: Path, tmpdir: Path) -> Path:
+    """Validate a caller-selected merge env beneath the owned session tmpdir."""
+    root = checked_dir(tmpdir, label="tmpdir")
+    if not path.is_absolute():
+        msg = f"merge result env must be absolute: {path}"
+        raise ValueError(msg)
+    resolved = ensure_under(path, root, label="merge result env")
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        msg = f"merge result env must be a regular file: {path}"
+        raise ValueError(msg)
+    parent = path.parent
+    while parent != root:
+        if parent.is_symlink() or not parent.is_dir():
+            msg = f"merge result env parent is unsafe: {parent}"
+            raise ValueError(msg)
+        parent = parent.parent
+    return resolved
+
+
+def validate_initial_merge_rows(
+    rows: tuple[tuple[str, str], ...],
+) -> tuple[tuple[str, str], ...]:
+    """Validate unique line-oriented rows written before child launch."""
+    validated: list[tuple[str, str]] = []
+    seen: set[str] = set()
+    reserved = {config.BGJOB_RC_KEY, config.BGJOB_ELAPSED_KEY, "STEP"}
+    for key, value in rows:
+        if (
+            re.fullmatch(r"[A-Z][A-Z0-9_]*", key) is None
+            or key in seen
+            or key in reserved
+        ):
+            msg = f"invalid initial merge row key: {key!r}"
+            raise ValueError(msg)
+        seen.add(key)
+        validated.append(
+            (
+                key,
+                reject_line_value(value, label=f"initial merge row {key}"),
+            )
+        )
+    return tuple(validated)
 
 
 def log_paths(*, tmpdir: Path, log_dir: Path | None, step: str) -> tuple[Path, Path, Path]:

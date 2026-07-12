@@ -275,22 +275,13 @@ def test_fixer_lane_budget_reserves_a_full_timeout_per_configured_tier() -> None
         )
 
 
-def test_step8_ci_fixer_shell_snippet_reads_canonical_tier_fields() -> None:
-    """Guard the shell-embedded tier-selection print against dataclass drift.
-
-    skills/implement/scripts/step-8-ci-fixer.sh prints the TierSelectResult
-    fields with an inline ``python3 - <<PY`` snippet. When that snippet read
-    the stale names ``result.tier``/``result.reason`` it raised AttributeError
-    and routed every PR CI failure to operator-bail (issue #6946). A rename on
-    either side must trip this test instead of silently regressing at runtime.
-    """
-    script = (
+def test_step8_ci_fixer_adapter_reads_canonical_tier_fields() -> None:
+    """Guard the typed CI-fixer tier selection against dataclass drift."""
+    source = (
         Path(__file__).resolve().parents[3]
-        / "skills/implement/scripts/step-8-ci-fixer.sh"
+        / "python/larch/implement/ci_fixer_adapter.py"
     ).read_text(encoding="utf-8")
-    print_lines = [line for line in script.splitlines() if "result.action" in line]
-    assert len(print_lines) == 1
-    referenced = set(re.findall(r"result\.([a-z_]+)", print_lines[0]))
+    referenced = set(re.findall(r"selected\.([a-z_]+)", source))
     valid = {f.name for f in dataclasses.fields(external_defaults.TierSelectResult)}
-    assert referenced == {"action", "selected_tier", "failure_reason"}
+    assert referenced == {"action", "selected_tier"}
     assert referenced <= valid
