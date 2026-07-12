@@ -292,7 +292,7 @@ def test_write_cli_origin_fallback_succeeds(
             )
 
     runner = OriginFallbackRunner("")
-    _ = monkeypatch.setattr(issue_wire, "proc", runner)
+    _ = monkeypatch.setattr(issue_wire, "proc", runner)  # lint-monkeypatch-binding: ok isolates ambient repository resolution
     assert issue_wire.named_block_write_main(["--marker", "plan", "--issue", "9", "--content-file", str(content)]) == 0
     assert "WRITTEN=true" in capsys.readouterr().out
     assert any(call[:3] == ["git", "remote", "get-url"] for call in runner.calls)

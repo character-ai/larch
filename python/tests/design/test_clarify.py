@@ -236,7 +236,7 @@ def test_invalid_ambient_gh_candidate_cli_fails(
             _result(rc=1, stderr="no origin"),
         ]
     )
-    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify, "proc", runner)  # lint-monkeypatch-binding: ok isolates ambient repository resolution
     monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
     rc = clarify.clarify_state_main(["--issue", "7"])
     out = capsys.readouterr().out
@@ -253,7 +253,7 @@ def test_malformed_origin_candidate_cli_fails(
             _result(stdout="git@github.com:!!!/@@@\n"),
         ]
     )
-    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify, "proc", runner)  # lint-monkeypatch-binding: ok isolates ambient repository resolution
     monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
     rc = clarify.clarify_state_main(["--issue", "7"])
     out = capsys.readouterr().out
@@ -271,7 +271,7 @@ def test_origin_fallback_resolves_when_gh_fails(
             _result(stdout="[]"),
         ]
     )
-    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(clarify, "proc", runner)  # lint-monkeypatch-binding: ok isolates ambient repository resolution
     monkeypatch.setattr(clarify.logging_util, "quiet_init", lambda **_: None)
     rc = clarify.clarify_state_main(["--issue", "7"])
     assert rc == 0

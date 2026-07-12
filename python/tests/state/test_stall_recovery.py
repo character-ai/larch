@@ -2480,6 +2480,7 @@ def test_dedup_tier_a_report_normalizes_helper_output(
         return True, "session"
 
     monkeypatch.setattr(_sr_report._session_env_report, "check_live_mutation_auth", allow_mutation)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_sr_report.gh, "resolve_repo", lambda _runner: "owner/repo")
     monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
 
