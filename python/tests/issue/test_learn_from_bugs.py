@@ -136,6 +136,31 @@ def test_diagnostic_prefix_cuts_at_plan_marker() -> None:
     assert "Root cause analysis" in prefix
 
 
+def test_diagnostic_prefix_uses_shared_marker_recognizer() -> None:
+    body = (
+        "## Summary\n\nKeep this.\n\n"
+        "  <!--   larch:plan:start   -->  \n"
+        "## Plan\nDrop this.\n"
+    )
+    prefix = learn_from_bugs.diagnostic_prefix(body)
+    assert prefix == "## Summary\n\nKeep this.\n\n"
+    assert "Drop this." not in prefix
+
+    # Case/partial/split forms must not act as marker boundaries; omit heading
+    # fallbacks from these bodies so only the shared recognizer is under test.
+    case_variant = "## Summary\n\nKeep.\n\n<!-- LARCH:PLAN:START -->\nDrop if matched.\n"
+    assert learn_from_bugs.diagnostic_prefix(case_variant) == case_variant
+
+    partial_prose = "## Summary\n\nSee <!-- larch:plan:start in prose\n"
+    assert learn_from_bugs.diagnostic_prefix(partial_prose) == partial_prose
+
+    split_line = "## Summary\n\nKeep.\n\n<!-- larch:plan:\nstart -->\nDrop if matched.\n"
+    assert learn_from_bugs.diagnostic_prefix(split_line) == split_line
+
+    heading_fallback = "## Summary\n\nKeep.\n\n## Plan\nDrop.\n"
+    assert learn_from_bugs.diagnostic_prefix(heading_fallback) == "## Summary\n\nKeep.\n\n"
+
+
 def test_build_digest_structured_keeps_signal_sections() -> None:
     digest = learn_from_bugs.build_digest(_issue(10, "[DONE] [BUG] widget", STRUCTURED_BODY))
     assert digest.structured is True

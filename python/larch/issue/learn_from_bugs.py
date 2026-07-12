@@ -31,6 +31,7 @@ from larch.core.architectural_guidelines import (
     INVARIANT_HEADING_RE,
 )
 from larch.core.proc import ProcRunner, Runner
+from larch.issue import issue_wire
 from larch.issue.analyze_bugs import resolve_repo
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
 
@@ -63,7 +64,7 @@ WANT_SECTIONS: Final = (
 # Earliest match marks where the appended /design plan begins; everything before
 # it is the diagnostic report we mine.
 _BOUNDARY_PATTERNS: Final = (
-    re.compile(r"<!--\s*larch:plan:start", re.IGNORECASE),
+    issue_wire.named_block_marker_re(marker="plan", kind="start"),
     re.compile(r"^##\s+Plan\s*$", re.IGNORECASE | re.MULTILINE),
     re.compile(r"^##\s+Approach\s*$", re.IGNORECASE | re.MULTILINE),
     re.compile(

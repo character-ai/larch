@@ -52,12 +52,21 @@ class _DiagnosticArgumentParser(argparse.ArgumentParser):
             logging_util.diagnostic(message)
 
 
-def _marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
-    return re.compile(rf"^\s*<!--\s+larch:{re.escape(marker)}:{kind}\s+-->\s*$")
+def named_block_marker_re(*, marker: str, kind: str) -> re.Pattern[str]:
+    r"""Compile a case-sensitive, line-anchored named-block marker pattern.
+
+    Optional whitespace is horizontal only (``[ \t]``), never ``\s``, so a
+    marker token split across physical lines cannot match. ``re.MULTILINE`` lets
+    callers ``.search()`` a full issue body.
+    """
+    return re.compile(
+        rf"^[ \t]*<!--[ \t]+larch:{re.escape(marker)}:{kind}[ \t]+-->[ \t]*$",
+        re.MULTILINE,
+    )
 
 
 def _line_is_marker(*, line: str, marker: str, kind: str) -> bool:
-    return _marker_re(marker=marker, kind=kind).match(line.rstrip("\n")) is not None
+    return named_block_marker_re(marker=marker, kind=kind).match(line.rstrip("\r\n")) is not None
 
 
 @dataclass(frozen=True)

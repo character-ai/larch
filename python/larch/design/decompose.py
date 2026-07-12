@@ -355,11 +355,15 @@ def prepare_partition_issues(
             f"**Acceptance**:\n\n{acceptance_text}\n\n"
             f"**Dependencies (from proposal)**: {dep_lines[i]}\n\n"
             "```\n"
-            "<!-- larch:plan:start -->\n"
-            "## Plan\n\n"
-            "(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)\n\n"
-            "<!-- larch:plan:end -->\n"
-            "```\n\n"
+            + issue_wire.compose_named_block(
+                marker="plan",
+                inner=(
+                    "## Plan\n\n"
+                    "(needs /design — operator runs `/design` on this filed piece "
+                    "and reaches Gate C approval before `[DESIGNED]` or `/implement`.)\n"
+                ),
+            )
+            + "```\n\n"
             f"**Original feature context (excerpt)**:\n\n{feat[:4000]}\n"
         )
         lines.append(_neutralize_markdown_h3_line_starts(body_text))

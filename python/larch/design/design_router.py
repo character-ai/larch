@@ -9,6 +9,8 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from larch import io as larch_io
+from larch.issue import issue_wire
+
 
 def _usage() -> None:
     print(
@@ -125,7 +127,8 @@ def route_main(argv: Sequence[str]) -> int:
             if title_kv.get("BRAINSTORM", ["false"])[-1] == "true":
                 brainstorm_prefix = "true"
             has_clarify = required["--has-clarify-label"] == "true"
-            has_plan = "<!-- larch:plan:start -->" in body and "<!-- larch:plan:end -->" in body
+            plan_inner, _malformed = issue_wire.parse_named_block(body=body, marker="plan")
+            has_plan = plan_inner is not None
             if has_clarify:
                 route = "clarify"
             elif has_plan:
