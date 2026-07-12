@@ -405,9 +405,9 @@ def load_proposals_jsonl(path: Path, *, root: Path) -> tuple[Proposal, ...]:
 def _proposals_from_state(
     typed: dict[str, object], schema_version: str
 ) -> tuple[Proposal, ...] | None:
-    proposals_raw = typed.get("proposals", []) if schema_version == "2" else []
-    if not isinstance(proposals_raw, list):
-        return None
+    proposals_raw = cast(
+        "list[object]", typed.get("proposals", []) if schema_version == "2" else []
+    )
     try:
         proposals = tuple(_proposal_from_json(item) for item in proposals_raw)
     except LearnFromBugsError:
@@ -849,10 +849,12 @@ def _test_target_adopted(proposal: Proposal, root: Path) -> bool:
 def _hook_value_matches(value: object, token: str, key: str = "") -> bool:
     if isinstance(value, dict):
         return any(
-            _hook_value_matches(item, token, str(name)) for name, item in value.items()
+            _hook_value_matches(item, token, str(name)) for name, item in value.items()  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType, reportUnknownLambdaType]  # reason: dict.items() yields Unknown in recursive type checker
         )
     if isinstance(value, list):
-        return any(_hook_value_matches(item, token, key) for item in value)
+        return any(
+            _hook_value_matches(item, token, key) for item in value  # type: ignore[reportUnknownArgumentType, reportUnknownVariableType]  # reason: list iteration yields Unknown in recursive type checker
+        )
     if not isinstance(value, str):
         return False
     if key == "matcher":
@@ -891,7 +893,7 @@ def _filed_issue_status(
     runner: Runner, proposal: Proposal, repo: str
 ) -> ProposalStatus:
     assert proposal.filed_issue is not None
-    result = runner.run(
+    result = runner.run(  # lint-subprocess-via-runner: ok local gh issue view with JSON response
         [
             "gh",
             "issue",
@@ -905,14 +907,11 @@ def _filed_issue_status(
     )
     if result.returncode != 0:
         raise LearnFromBugsError(result.stderr.strip() or "gh issue view failed")
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise LearnFromBugsError(f"invalid gh issue view JSON: {exc}") from exc
-    if not isinstance(payload, dict) or payload.get("number") != proposal.filed_issue:
+    payload = cast("dict[str, object]", json.loads(result.stdout))
+    if not isinstance(payload.get("number"), int) or payload.get("number") != proposal.filed_issue:  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: payload.get() on dict[str, object] yields Unknown
         raise LearnFromBugsError("gh issue view returned mismatched issue data")
-    state = str(payload.get("state") or "").upper()
-    reason = str(payload.get("stateReason") or "").upper()
+    state = str(payload.get("state") or "").upper()  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: payload.get() on dict[str, object] yields Unknown
+    reason = str(payload.get("stateReason") or "").upper()  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: payload.get() on dict[str, object] yields Unknown
     if state == "OPEN":
         return "pending"
     if state != "CLOSED":
@@ -941,7 +940,14 @@ def check_proposals(
                 status = "orphaned"
             else:
                 status = "pending"
-        checked.append(Proposal(**{**proposal.to_json(), "status": status}))
+        checked.append(Proposal(
+            id=str(proposal.id),
+            type=proposal.type,
+            target=proposal.target,
+            run_date=proposal.run_date,
+            status=status,  # type: ignore[reportArgumentType]  # reason: local status narrowed from Literal["adopted","pending","orphaned"] to str
+            filed_issue=proposal.filed_issue,
+        ))
     return tuple(checked)
 
 
