@@ -1,0 +1,102 @@
+## Approach
+
+Confirm blocked Piece 1 is present before implementation. Build one deterministic test-session factory with canonical defaults and explicit overrides. Use it only for normal session setup. Keep raw file writes when file shape is the behavior under test.
+
+## Files to modify/create
+
+### NEW: python/tests/support/session.py
+
+- Add typed helpers:
+  - `write_session_env` for deterministic `KEY=value` files.
+  - `seed_plan`, `seed_feature_description`, and `seed_run_params`.
+  - `make_implement_tmpdir` and `make_design_tmpdir`.
+- Seed production-shaped defaults for `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CLAUDE_PLUGIN_ROOT`, `LARCH_CLAUDE_PLUGIN_ROOT`, and `REPO_ROOT`.
+- Derive plugin and repository roots from `test_support`’s repository contract rather than `parents[N]` at call sites.
+- Let callers replace defaults without producing duplicate keys. Reject newline-bearing keys or values.
+- Emit schema-v3 `run-params.json` defaults matching `write_run_params_main`.
+- Return created directories or file paths so callers can pass them directly to production functions.
+- Keep builders side-effect-free outside the caller-provided pytest temporary directory.
+
+### NEW: python/tests/__init__.py
+
+- Add the empty package marker required for `tests.support.session` imports.
+- Do not add another flat `python/test_*.py` module.
+
+### UPDATED: python/test_support.py
+
+- Import and re-export the session builders and seed helpers from `tests.support.session`.
+- Preserve the flat `test_support` import path used across existing tests.
+- Avoid duplicating repository-root or session-default constants between the two modules.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Import the shared helpers from `test_support`.
+- Remove the private `_session` builder.
+- Replace its 192 call sites with `make_implement_tmpdir`.
+- Convert ordinary `session-env.sh` replacements and model-option additions to `write_session_env` overrides.
+- Preserve each test’s intended missing-key or altered-tool-state behavior. Do not let canonical defaults mask dispatch fallback cases.
+- Remove migrated plugin-root `parents[N]` derivations where the shared baseline supplies the same value.
+
+### UPDATED: python/tests/state/test_session_env.py
+
+- Use `make_design_tmpdir`, `write_session_env`, and seed helpers for normal design-session setup.
+- Reuse the schema-v3 run-params seed where tests need valid persisted parameters.
+- Retain direct writes for parser, carriage-return injection, duplicate-key, symlink, missing-key, and production-writer tests. Those byte shapes are test inputs, not fixture duplication.
+- Keep production `write-env` and `write-design-env` assertions independent from the helper implementation.
+
+### UPDATED: python/tests/state/test_bootstrap.py
+
+- Replace repeated `plan.txt` and `feature-description.txt` pairs with seed helpers or `make_implement_tmpdir`.
+- Use `write_session_env` for ordinary bootstrap and resume state.
+- Preserve narrow raw fixtures that intentionally omit keys, use symlinks, test precedence, or contain legacy routing values.
+- Keep bootstrap behavior and production session contracts unchanged.
+
+### UPDATED: python/tests/state/test_closeout.py
+
+- Use `write_session_env` for ordinary run-id setup.
+- Keep parametrized raw session, ship, and finalize state text where the test verifies source precedence or missing values.
+- Preserve closeout subprocess stubs and assertions.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+- Refactor `_write_minimal_state` and normal plan-coverage setups to use the shared session writer with per-test overrides.
+- Replace scattered canonical `REPO_ROOT`, `REPO`, and `MODE` session files without changing report inputs.
+- Retain direct malformed or deliberately incomplete artifacts where failure handling depends on exact absence or corruption.
+
+## Edge cases
+
+- An override must replace a baseline key exactly once.
+- Builders must preserve trailing newlines and deterministic ordering.
+- Tests for missing keys must not receive those keys from canonical defaults.
+- Tests for malformed, duplicate, injected, or symlinked wire files must continue constructing raw fixtures.
+- Repeated parameterized tests must receive isolated directories and dictionaries.
+- Paths containing spaces must remain valid test values.
+- Piece 1 rebase conflicts must be resolved through its shared support API, without expanding this piece into CLI or runner migration.
+
+## Failure modes
+
+- Over-broad migration could make negative tests pass against unintended defaults.
+- Divergent plugin-root keys could hide differences between design and implement consumers.
+- Importing `tests.support.session` without the package marker could resolve an unrelated installed `tests` package.
+- A helper that appends instead of replacing overrides could change first-match `KEY=value` behavior.
+- A stale run-params shape could drift from production schema v3.
+
+## Testing strategy
+
+- Run the focused suites:
+  - `python/tests/support/test_foundation.py`
+  - `python/tests/implement/test_implement_dispatch.py`
+  - `python/tests/state/test_session_env.py`
+  - `python/tests/state/test_bootstrap.py`
+  - `python/tests/state/test_closeout.py`
+  - `python/tests/report/test_final_report.py`
+- Add coverage through migrated consumers for default keys, overrides, seed contents, isolated directories, and returned paths.
+- Run Ruff, Pylint, and Pyright against only the changed Python files.
+- Run the flat-test lint to confirm `python/test_support.py` remains the sole root exemption.
+- Check duplicate-code findings across the changed test set to confirm `_session` and repeated seed blocks were removed.
+
+difficulty: MODERATE
+diff_added: 290
+diff_deleted: 390
+mechanical_churn: true
+diff_lines: 680

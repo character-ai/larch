@@ -1,0 +1,1 @@
+Add shared session and tmpdir test builders, re-export them through `test_support.py`, and migrate the five approved test suites. Preserve bespoke wire fixtures that test malformed, missing, duplicate, or precedence behavior.
