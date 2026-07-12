@@ -2084,7 +2084,7 @@ def test_check_plan_size_requires_terminal_diff_lines(tmp_path: Path) -> None:
 
 def test_optional_metadata_uses_strict_terminal_trailers() -> None:
     meta = plan_quality.parse_optional_metadata("body\ndiff_added: 08\nmechanical_churn: 1\ndiff_lines: 2\n")
-    assert meta.keys == ()
+    assert not meta.keys
     assert meta.metadata_trailer_lines == 0
 
 
