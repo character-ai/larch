@@ -643,7 +643,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     if launcher_status == "cap_hit":
         return st.emit_bailed("cap_hit")
     gate_detail = _codex_gate_after_launch(st=st, launcher_capture=launcher_capture)
-    if gate_detail is not None:
+    if gate_detail is not None and not _manifest_complete_salvageable(st.manifest_path):
         return _codex_gate_dispatch_result(st=st, detail=gate_detail)
     if (wrapper_rc != 0 or manifest_written != "true" or launcher_exit != "0") and manifest_written != "true":
         dirty = _git_stdout(repo_root, "status", "--porcelain")

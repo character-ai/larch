@@ -1373,7 +1373,7 @@ def test_check_reviewers_positive_and_negative_stamp_rules(monkeypatch: pytest.M
     _ = stamp.write_text("true\n", encoding="utf-8")
     assert agents.check_reviewers(skip_cursor_probe=True, env=env).codex_present is True
     _ = stamp.write_text("false\n", encoding="utf-8")
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: 1)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: agents.CodexProbeResult(1))
     assert agents.check_reviewers(skip_cursor_probe=True, env=env).codex_present is False
     assert agents.check_reviewers(skip_cursor_probe=True, env={**env, "LARCH_PROBE_NEGATIVE_TTL_SECONDS": "60"}).codex_present is False
 
@@ -1396,10 +1396,10 @@ def test_check_reviewers_expired_stamp_misses_and_auth_retry(
     agents.os.utime(stamp, (old, old))
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return 2 if calls == 1 else 0
+        return agents.CodexProbeResult(2 if calls == 1 else 0)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1529,9 +1529,9 @@ def test_check_reviewers_invalid_env_normalization(
     codex.chmod(0o755)
     seen_timeouts: list[int] = []
 
-    def fake_probe(timeout: int) -> int:
+    def fake_probe(timeout: int) -> agents.CodexProbeResult:
         seen_timeouts.append(timeout)
-        return 0 if len(seen_timeouts) == 3 else 1
+        return agents.CodexProbeResult(0 if len(seen_timeouts) == 3 else 1)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1560,10 +1560,10 @@ def test_check_reviewers_transient_failure_retries_until_exhausted(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return 1
+        return agents.CodexProbeResult(1)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1591,10 +1591,10 @@ def test_check_reviewers_transient_failure_retries_until_success(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return 0 if calls == 2 else 1
+        return agents.CodexProbeResult(0 if calls == 2 else 1)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1620,10 +1620,10 @@ def test_check_reviewers_transient_failure_zero_budget_one_shot(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return 1
+        return agents.CodexProbeResult(1)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1650,10 +1650,10 @@ def test_check_reviewers_probe_no_retry_rc_one_shot(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return agents._PROBE_NO_RETRY_RC
+        return agents.CodexProbeResult(agents._PROBE_NO_RETRY_RC)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1675,10 +1675,10 @@ def test_check_reviewers_codex_timeout_one_shot_by_default(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return config.EXIT_TIMEOUT
+        return agents.CodexProbeResult(config.EXIT_TIMEOUT)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1701,10 +1701,10 @@ def test_check_reviewers_codex_timeout_retry_can_succeed(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return 0 if calls == 2 else config.EXIT_TIMEOUT
+        return agents.CodexProbeResult(0 if calls == 2 else config.EXIT_TIMEOUT)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1771,10 +1771,10 @@ def test_check_reviewers_invalid_timeout_retry_env_is_one_shot(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return config.EXIT_TIMEOUT
+        return agents.CodexProbeResult(config.EXIT_TIMEOUT)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1802,8 +1802,8 @@ def test_check_reviewers_timeout_budget_is_independent(
     codex.chmod(0o755)
     rcs = [config.EXIT_TIMEOUT, agents._AUTH_RETRY_RC, config.EXIT_TIMEOUT, 1, 0]
 
-    def fake_probe(_timeout: int) -> int:
-        return rcs.pop(0)
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
+        return agents.CodexProbeResult(rcs.pop(0))
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1833,10 +1833,10 @@ def test_check_reviewers_health_gate_unset_probe_retries_one_shot(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return 1
+        return agents.CodexProbeResult(1)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1863,10 +1863,10 @@ def test_check_reviewers_health_gate_explicit_probe_retries_override(
     codex.chmod(0o755)
     calls = 0
 
-    def fake_probe(_timeout: int) -> int:
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
         nonlocal calls
         calls += 1
-        return 1
+        return agents.CodexProbeResult(1)
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -1894,8 +1894,8 @@ def test_check_reviewers_auth_and_transient_budgets_are_independent(
     codex.chmod(0o755)
     rcs = [1, agents._AUTH_RETRY_RC, 1, 0]
 
-    def fake_probe(_timeout: int) -> int:
-        return rcs.pop(0)
+    def fake_probe(_timeout: int) -> agents.CodexProbeResult:
+        return agents.CodexProbeResult(rcs.pop(0))
 
     monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
@@ -2121,7 +2121,7 @@ def test_check_reviewers_probe_temp_home_cleanup(
     codex = bin_dir / "codex"
     _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     codex.chmod(0o755)
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: 0)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: agents.CodexProbeResult(0))
     agents.check_reviewers(
         skip_cursor_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -6116,11 +6116,51 @@ def test_check_reviewers_cached_negative_reloads_and_healthy_probe_clears_gate_d
     assert agents.check_reviewers(skip_cursor_probe=True, env=cached_env).codex_gate_detail == detail
     assert calls == 1
 
-    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: 0)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: agents.CodexProbeResult(0))
     healthy_env = {**cached_env, "LARCH_PROBE_TTL_SECONDS": "0"}
     assert agents.check_reviewers(skip_cursor_probe=True, env=healthy_env).codex_present is True
     with _auth._temporary_environ(healthy_env):  # pylint: disable=protected-access
         assert _auth._current_codex_gate_detail() is None  # pylint: disable=protected-access
+
+
+def test_read_codex_gate_detail_rejects_expired_mismatched_and_malformed_handoffs(tmp_path: Path) -> None:
+    env = {"TMPDIR": str(tmp_path), "USER": "gate-detail-user"}
+    detail = agents.CodexGateDetail(
+        model=config.CODEX_REVIEW_MODEL_DEFAULT,
+        signal="newer-codex-required",
+        message=f"codex CLI too old for {config.CODEX_REVIEW_MODEL_DEFAULT}; run `npm install -g @openai/codex@latest`",
+    )
+    with _auth._temporary_environ(env):  # pylint: disable=protected-access
+        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
+        path = _auth._codex_gate_detail_path(identity)  # pylint: disable=protected-access
+        _auth._write_codex_gate_detail(identity=identity, detail=detail)  # pylint: disable=protected-access
+        old = time.time() - 120
+        os.utime(path, (old, old))
+        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
+
+        _ = path.write_text(json.dumps({"schema_version": 1, "identity": "other", "model": detail.model, "signal": detail.signal, "message": detail.message}), encoding="utf-8")
+        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
+
+        _ = path.write_text("{", encoding="utf-8")
+        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
+
+        _ = path.write_bytes(b"\xff")
+        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
+
+
+def test_read_codex_gate_detail_rejects_stale_record_after_clear_failure(tmp_path: Path) -> None:
+    env = {"TMPDIR": str(tmp_path), "USER": "gate-detail-user"}
+    detail = agents.CodexGateDetail(
+        model=config.CODEX_REVIEW_MODEL_DEFAULT,
+        signal="newer-codex-required",
+        message=f"codex CLI too old for {config.CODEX_REVIEW_MODEL_DEFAULT}; run `npm install -g @openai/codex@latest`",
+    )
+    with _auth._temporary_environ(env):  # pylint: disable=protected-access
+        identity = _auth._codex_probe_identity(config.CODEX_REVIEW_MODEL_DEFAULT)  # pylint: disable=protected-access
+        _auth._write_codex_gate_detail(identity=identity, detail=detail)  # pylint: disable=protected-access
+        stamp = _auth._probe_stamp_path(identity)  # pylint: disable=protected-access
+        _auth._write_probe_stamp(stamp=stamp, value=True)  # pylint: disable=protected-access
+        assert _auth._read_codex_gate_detail(identity=identity, max_age=60) is None  # pylint: disable=protected-access
 
 
 def test_parse_drafter_output_extracts_dialectic_without_promoting(tmp_path: Path) -> None:

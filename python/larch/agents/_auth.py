@@ -303,11 +303,15 @@ def _read_codex_gate_detail(*, identity: str, max_age: int) -> CodexGateDetail |
     try:
         if path.is_symlink() or not path.is_file():
             return None
-        age = time.time() - path.stat().st_mtime
+        detail_stat = path.stat()
+        age = time.time() - detail_stat.st_mtime
         if age < 0 or age > max_age:
             return None
+        stamp = _probe_stamp_path(identity)
+        if stamp.is_file() and not stamp.is_symlink() and detail_stat.st_mtime_ns < stamp.stat().st_mtime_ns:
+            return None
         payload: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
     return _parse_codex_gate_detail(payload=payload, identity=identity)
 
