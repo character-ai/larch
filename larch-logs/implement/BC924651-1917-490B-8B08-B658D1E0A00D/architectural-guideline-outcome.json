@@ -1,1 +1,1 @@
-{"assessment_kind":"clean","base_ref":"origin/main","detail":"","guidelines_status":"present","head_sha":"6b9c69de1f824bc3c1c392c3537041b070fe460f","operator_waived":false,"outcome":"clean","phase":"implement","reason":"clean-note","schema_version":"1","step":"8"}
+{"assessment_kind":"","base_ref":"origin/main","detail":"Expecting value: line 1 column 1 (char 0)","guidelines_status":"present","head_sha":"51e50f230842ebfd15ceba75dd9af7438b116989","operator_waived":false,"outcome":"dropped","phase":"implement","reason":"unavailable","schema_version":"1","step":"8"}

@@ -65,11 +65,19 @@ Exec Issues (0):
 Warnings (1):
   1. G-Cfg-1: reconcile_manual_merge_main emits RECONCILE_STATUS=ok and RECONCILE_STATUS=failed as hardcoded string literals (4 call sites) without corresponding Final constants in config.py. The parall...
 
+## Architectural invariants
+
+Architectural assessment unavailable.
+
+## Architectural guidelines
+
+Architectural assessment unavailable.
+
 ## /implement run BC924651-1917-490B-8B08-B658D1E0A00D: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 01:29:49
-- **Cost**: 💰 TOTAL ~$38.74: Claude $13.69, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.58  |  Tokens: 68510k
+- **Cost**: 💰 TOTAL ~$39.99: Claude $14.91, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.61  |  Tokens: 72245k
 - **Issue**: #7059: https://github.com/character-ai/larch/issues/7059
 - **PR**: #7091: https://github.com/character-ai/larch/pull/7091
 - **Plan review**: N/A
@@ -77,7 +85,7 @@ Warnings (1):
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/15 accepted
-- **Lines (PR diff)**: code +1565/-52, larch-logs +1399/-3
+- **Lines (PR diff)**: code +1565/-52, larch-logs +1404/-3
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
