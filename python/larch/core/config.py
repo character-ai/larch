@@ -874,6 +874,10 @@ CI_FIXER_DISTILLED_FAILURE_FILE: Final = "distilled-failure.md"
 CI_FIXER_STATUS_FILE: Final = "fixer-status.env"
 CI_FIXER_ROUNDS_FILE: Final = "fixer-rounds.tsv"
 CI_FIXER_BAIL_FILE: Final = "fixer-bail.md"
+# Persisted failing-job signature for cross-cycle no-progress detection. Keyed
+# stably by mode+repo (one PR per implement session), NOT by the failed CI run
+# id, so it survives the reship that triggers a fresh CI run (#7122).
+CI_FIXER_SIGNATURE_FILE: Final = "fixer-signature"
 CI_FIX_ROLE: Final = "fix"
 CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "lint",

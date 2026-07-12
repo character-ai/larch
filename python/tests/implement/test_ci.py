@@ -871,6 +871,11 @@ def test_fixer_lane_dispatch_salvages_uncommitted_fixer_edit(
     (impl / "failure.md").write_text("distilled failure\n", encoding="utf-8")
     monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
     monkeypatch.delenv("SHIP_PR_STATE_FILE", raising=False)
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "read_failed_jobs",
+        lambda *_args, **_kwargs: ((), "error"),
+    )
 
     def editing_launcher(_argv: list[str] | None) -> int:
         # CI fixer prompt forbids committing: edit the working tree only.
@@ -892,12 +897,19 @@ def test_fixer_lane_dispatch_salvages_uncommitted_fixer_edit(
     assert _run_git(repo, "status", "--porcelain").stdout == ""
 
 
-def test_fixer_lane_dispatch_accepts_lane_bound_direct_head_change(tmp_path: Path) -> None:
+def test_fixer_lane_dispatch_accepts_lane_bound_direct_head_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)
     impl = tmp_path / "impl"
     identity = _lane_identity(repo, impl)
     evidence = ci.ci_fixer_lane.EvidenceState(impl / "failure.md", "distilled", "c" * 64)
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "read_failed_jobs",
+        lambda *_args, **_kwargs: ((), "error"),
+    )
 
     def committing_launcher(_argv: list[str] | None) -> int:
         (repo / "tracked.txt").write_text("fixed directly\n", encoding="utf-8")
@@ -953,14 +965,20 @@ def test_fixer_lane_dispatch_rejects_unverified_uncommitted_salvage(
         (repo / "tracked.txt").write_text(f"{provenance}\n", encoding="utf-8")
         return 0
 
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "read_failed_jobs",
+        lambda *_args, **_kwargs: ((), "error"),
+    )
+
     def malformed_salvage(
         salvage_identity: ci.ci_fixer_lane.LaneIdentity,
         *,
         runner: proc.Runner,
-        baseline: dict[str, str] | None,
+        delta: tuple[str, ...],
     ) -> str:
         assert runner is proc
-        assert baseline == {}
+        assert "tracked.txt" in delta
         _run_git(repo, "add", "tracked.txt")
         _run_git(
             repo,
@@ -970,9 +988,7 @@ def test_fixer_lane_dispatch_rejects_unverified_uncommitted_salvage(
         )
         return _run_git(repo, "rev-parse", "HEAD").stdout.strip()
 
-    monkeypatch.setattr(
-        ci.ci_fixer_lane, "_salvage_uncommitted_fixer_edits", malformed_salvage
-    )
+    monkeypatch.setattr(ci.ci_fixer_lane, "_commit_salvage", malformed_salvage)
     with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="provenance is unverified"):
         ci.ci_fixer_lane._dispatch(
             identity, evidence, runner=proc, launchers={"codex": editing_launcher}
@@ -995,6 +1011,12 @@ def test_fixer_lane_dispatch_salvage_provenance_verification_failure_raises(
     def editing_launcher(_argv: list[str] | None) -> int:
         (repo / "tracked.txt").write_text("valid edit\n", encoding="utf-8")
         return 0
+
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "read_failed_jobs",
+        lambda *_args, **_kwargs: ((), "error"),
+    )
 
     def reject_provenance(
         _identity: ci.ci_fixer_lane.LaneIdentity | ci.ci_fixer_lane.CrashFinalizeIdentity,
@@ -1089,9 +1111,9 @@ def test_salvage_commits_only_fixer_delta_leaving_preexisting_dirty_files(
     # Fixer edits a different, unrelated file.
     (repo / "tracked.txt").write_text("fixer edit\n", encoding="utf-8")
 
-    new_head = ci.ci_fixer_lane._salvage_uncommitted_fixer_edits(
-        identity, runner=proc, baseline=baseline
-    )
+    delta = ci.ci_fixer_lane._salvage_delta(identity, runner=proc, baseline=baseline)
+    assert delta
+    new_head = ci.ci_fixer_lane._commit_salvage(identity, runner=proc, delta=delta)
 
     assert new_head is not None
     committed_files = _run_git(repo, "diff", "--name-only", "HEAD~1..HEAD").stdout.split()
@@ -1112,9 +1134,7 @@ def test_salvage_returns_none_when_tree_unchanged(
     baseline = ci.ci_fixer_lane._dirty_fingerprints(runner=proc, cwd=identity.repo_root)
     assert baseline == {}
 
-    assert ci.ci_fixer_lane._salvage_uncommitted_fixer_edits(
-        identity, runner=proc, baseline=baseline
-    ) is None
+    assert not ci.ci_fixer_lane._salvage_delta(identity, runner=proc, baseline=baseline)
 
 
 def _crash_identity(
