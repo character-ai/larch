@@ -1859,7 +1859,9 @@ def validate_repo_slug(value: str) -> bool:
         return False
     if value.startswith(("--", "/")) or "../" in value or "\\" in value:
         return False
-    return _REPO_RE.fullmatch(value) is not None
+    return _REPO_RE.fullmatch(value) is not None and not any(
+        part in {".", ".."} for part in value.split("/")
+    )
 
 
 def remote_repo(
@@ -1957,8 +1959,6 @@ def _origin_repo_candidate(
     if parsed and validate_repo_slug(parsed):
         return parsed, True
     raw = _raw_remote_path_candidate(url) or url
-    if validate_repo_slug(raw):
-        return raw, True
     return raw, False
 
 

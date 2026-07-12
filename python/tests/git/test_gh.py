@@ -1714,6 +1714,54 @@ def test_resolve_repo_detailed_malformed_origin_preserved() -> None:
     assert detailed.repo is None
 
 
+@pytest.mark.parametrize(
+    ("remote_url", "candidate"),
+    [
+        ("git@gitlab.com:acme/project.git\n", "acme/project"),
+        ("ssh://git@code.example.test/acme/project.git\n", "acme/project"),
+    ],
+)
+def test_resolve_repo_detailed_non_github_origin_is_invalid(
+    remote_url: str, candidate: str
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 1, "", "fail", 0.01),
+            CommandResult(
+                ("git", "remote", "get-url", "origin"),
+                0,
+                remote_url,
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    detailed = gh.resolve_repo_detailed(runner)
+
+    assert detailed.status == "invalid"
+    assert detailed.source == "origin"
+    assert detailed.candidate == candidate
+    assert detailed.repo is None
+
+
+@pytest.mark.parametrize("candidate", ["owner/.", "owner/.."])
+def test_resolve_repo_detailed_rejects_dot_slug_components(candidate: str) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "repo", "view"), 0, f"{candidate}\n", "", 0.01),
+            CommandResult(("git", "remote", "get-url", "origin"), 1, "", "", 0.01),
+        ],
+    )
+
+    detailed = gh.resolve_repo_detailed(runner)
+
+    assert detailed.status == "invalid"
+    assert detailed.source == "gh"
+    assert detailed.candidate == candidate
+    assert detailed.repo is None
+
+
 def test_resolve_repo_detailed_invalid_primary_valid_origin() -> None:
     runner = RecordingRunner(
         responses=[
