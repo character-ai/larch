@@ -647,6 +647,51 @@ def _run_cursor_probes(*, max_auth_retries: int, max_transient_retries: int, max
         _cursor_probe_cleanup_private_config_dir(setup)
 
 
+@dataclass(frozen=True)
+class _ProbeRetryLimits:
+    auth: int
+    transient: int
+    timeout: int
+
+
+def _check_codex_reviewer(
+    *,
+    ttl: int,
+    negative_ttl: int,
+    retry_limits: _ProbeRetryLimits,
+    timeout: int,
+) -> tuple[bool, bool, CodexGateDetail | None]:
+    try:
+        codex_review_model = _resolved_codex_review_model()
+    except ValueError:
+        codex_review_model = "unknown"
+    codex_identity = _codex_probe_identity(codex_review_model)
+    stamp = _probe_stamp_path(codex_identity)
+    max_gate_age = max(negative_ttl, config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC)
+    cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
+    if cached is not None:
+        gate_detail = _read_codex_gate_detail(identity=codex_identity, max_age=max_gate_age) if not cached else None
+        return cached, False, gate_detail
+
+    with _codex_probe_update_lock(codex_identity):
+        cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
+        if cached is not None:
+            gate_detail = _read_codex_gate_detail(identity=codex_identity, max_age=max_gate_age) if not cached else None
+            return cached, False, gate_detail
+        codex_present, codex_probe_timed_out, codex_gate_detail = _run_codex_probes(
+            max_auth_retries=retry_limits.auth,
+            max_transient_retries=retry_limits.transient,
+            max_timeout_retries=retry_limits.timeout,
+            timeout=timeout,
+        )
+        _write_probe_stamp(stamp=stamp, value=codex_present)
+        if codex_gate_detail is None:
+            _clear_codex_gate_detail(codex_identity)
+        else:
+            _write_codex_gate_detail(identity=codex_identity, detail=codex_gate_detail)
+        return codex_present, codex_probe_timed_out, codex_gate_detail
+
+
 def check_reviewers(
     *,
     skip_codex_probe: bool = False,
@@ -689,42 +734,16 @@ def check_reviewers(
                 _write_probe_stamp(stamp=_probe_stamp_path("cursor"), value=cursor_present)
 
         if codex_binary_found and not skip_codex_probe:
-            try:
-                codex_review_model = _resolved_codex_review_model()
-            except ValueError:
-                codex_review_model = "unknown"
-            codex_identity = _codex_probe_identity(codex_review_model)
-            stamp = _probe_stamp_path(codex_identity)
-            cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
-            if cached is not None:
-                codex_present = cached
-                if not cached:
-                    codex_gate_detail = _read_codex_gate_detail(
-                        identity=codex_identity,
-                        max_age=max(negative_ttl, config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC),
-                    )
-            else:
-                with _codex_probe_update_lock(codex_identity):
-                    cached = _read_fresh_probe_stamp(stamp=stamp, ttl=ttl, negative_ttl=negative_ttl)
-                    if cached is not None:
-                        codex_present = cached
-                        if not cached:
-                            codex_gate_detail = _read_codex_gate_detail(
-                                identity=codex_identity,
-                                max_age=max(negative_ttl, config.CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC),
-                            )
-                    else:
-                        codex_present, codex_probe_timed_out, codex_gate_detail = _run_codex_probes(
-                            max_auth_retries=max_auth_retries,
-                            max_transient_retries=max_transient_retries,
-                            max_timeout_retries=max_timeout_retries,
-                            timeout=timeout,
-                        )
-                        _write_probe_stamp(stamp=stamp, value=codex_present)
-                        if codex_gate_detail is None:
-                            _clear_codex_gate_detail(codex_identity)
-                        else:
-                            _write_codex_gate_detail(identity=codex_identity, detail=codex_gate_detail)
+            codex_present, codex_probe_timed_out, codex_gate_detail = _check_codex_reviewer(
+                ttl=ttl,
+                negative_ttl=negative_ttl,
+                retry_limits=_ProbeRetryLimits(
+                    auth=max_auth_retries,
+                    transient=max_transient_retries,
+                    timeout=max_timeout_retries,
+                ),
+                timeout=timeout,
+            )
 
         return CheckReviewersResult(
             codex_binary_found=codex_binary_found,

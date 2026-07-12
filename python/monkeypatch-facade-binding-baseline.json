@@ -64,6 +64,15 @@
   },
   {
     "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_codex_probe_uses_review_role_and_stops_on_gate",
+    "facade_module": "larch.agents._auth",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "test targets the consumer module imported binding, which is the runtime lookup site"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
     "qualified_symbol": "test_cursor_auth_non_darwin_skips_keychain_lock",
     "facade_module": "larch.agents._auth",
     "attribute": "external_startup_lock_acquire",
@@ -4834,6 +4843,24 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_codex_cli_gate_clean_tree_falls_back_without_retry",
+    "facade_module": "larch.implement.implement_dispatch",
+    "attribute": "_run_launcher",
+    "defining_module": "larch.implement.dispatch_step2",
+    "occurrence": 1,
+    "reason": "test targets the consumer module imported binding, which is the runtime lookup site"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_codex_cli_gate_mutation_fails_closed",
+    "facade_module": "larch.implement.implement_dispatch",
+    "attribute": "_run_launcher",
+    "defining_module": "larch.implement.dispatch_step2",
+    "occurrence": 1,
+    "reason": "test targets the consumer module imported binding, which is the runtime lookup site"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_step2_dispatch_codex_nonzero_exit_does_not_salvage_non_complete",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_run_launcher",
@@ -4885,6 +4912,15 @@
     "defining_module": "larch.implement.dispatch_step2",
     "occurrence": 1,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_codex_runtime_failure_retries_then_bails",
+    "facade_module": "larch.implement.implement_dispatch",
+    "attribute": "_run_launcher",
+    "defining_module": "larch.implement.dispatch_step2",
+    "occurrence": 1,
+    "reason": "test targets the consumer module imported binding, which is the runtime lookup site"
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
