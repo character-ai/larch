@@ -64,14 +64,6 @@ Exec Issues (1):
   1. Step 5: Code review hit the 2-round cap (HARD tier) without fully converging. The final round applied fixes (FINAL_REVIEW_AND_FIX_STATUS=fix-applied, CODER_STATUS=applied). Proceeding.
 Warnings (0):
 
-## Architectural invariants
-
-No violations identified. The new multi-lane waterfall correctly enforces I-Agent-1: DirectClaudeLauncher passes --allowedTools Read and --permission-mode plan, and the SharedReviewLauncher uses --assessment-contract to configure Codex and Cursor as read-only assessment agents that receive only the validated evidence directory. I-Stale-1 is respected: assessment results carry head_sha, base_ref, diff_fingerprint, and knowledge_sha256 identity fields that are validated before persistence by _parse_result_row. I-Gate-1 is respected: the Cursor dirty-tree check in _cursor_dirty_tree_clean is independently computed from the git snapshot taken before the agent ran, not from agent self-reported metadata.
-
-## Architectural guidelines
-
-No deviations identified. G-Cfg-1 is satisfied: all new tunables (ARCHITECTURAL_ASSESSMENT_ROLE, ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC, ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL, ARCHITECTURAL_ASSESSMENT_CODEX_MODEL, ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL, ENV_CLAUDE_BINARY_FOUND) are defined as Final in config.py and consumed by reference; the hardcoded model_reasoning_effort string in the assessment Codex path is a single-call-site private construction matching the deviation allowance. G-IO-1 is satisfied: _write_text_atomic now delegates to larch_io.trusted_atomic_write; shared-launcher sidecars use _read_env_strict for KEY=value wire files. G-Sec-4 is satisfied: _lane_output_path rejects symlinks and checks containment; _cursor_dirty_tree_clean validates path under implement_tmpdir; _validate_prompt_evidence_paths confirms REQUESTS_JSON paths are confined to the evidence directory. G-Py-1 is satisfied: LaneOutcome, LaneContext, and AssessmentLane are frozen dataclasses. G-Wire-3 is satisfied: _review_write_preflight_bundle gains the .sidecar write and existing tests are updated to assert its presence. G-Md-2 is satisfied: ClaudeLauncher→DirectClaudeLauncher rename is swept in the test file.
-
 ## /implement run 25E51482-9DA4-4EB9-BA4A-82535482E0D8: pr-created
 
 - **Outcome**: ✅ DONE
