@@ -1,0 +1,111 @@
+Auditing the plan against heading and trailer consumers across the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/design/design_lifecycle.py:218-229	Step 5c trailer helpers are imported from design_step5c but design_lifecycle.py is not listed to repoint them	After design_step5c drops _AUTO_COMPOSE_OPTIONAL_TRAILER_RE and related split/peel helpers, design_lifecycle.py still imports those private symbols and Step 5c compose paths break	Add ### UPDATED: python/larch/design/design_lifecycle.py to import compose/split/peel helpers from plan_grammar (or plan_quality public wrappers) instead of design_step5c privates
+1	in_scope	major	architecture	python/larch/review/plan_review_common.py:66	python/larch/review/plan_review_loop.py:349-355	Gate B keeps a private OPTIONAL_TRAILER_KEYS set and _trailer_map scanner outside the migration file list	Post-migration grep still finds a second trailer-key owner; gate-b snapshot/dedup can drift when keys are added only to plan_grammar	Add ### UPDATED: python/larch/review/plan_review_common.py and ### UPDATED: python/larch/review/plan_review_loop.py to import a documented size-only subset from plan_grammar and replace _trailer_map with shared parsing
+1	in_scope	major	correctness	python/larch/issue/issue_wire.py:375	extract_scope_paths keeps a ###-only colon heading regex while the plan unifies ##/### and bracket forms elsewhere	Firm-heading counts, dispatch coverage, dirty-tree scope, and scope disposition still miss accepted ## and bracket headings after other consumers migrate	Add ### UPDATED: python/larch/issue/issue_wire.py (or a single shared helper) delegating heading detection in extract_scope_paths to plan_grammar section iteration; keep marker ownership in issue_wire
+1	in_scope	major	correctness	python/larch/implement/preflight.py:451-457	Preflight trailer scan tolerates blank lines inside the final metadata window; parse_optional_metadata does not	python/larch/design/plan_quality.py:216-222	Replacing _plan_review_meta_value with the shared contiguous-block parser would drop review_status/difficulty separated from size trailers by blank lines, breaking existing accepted plans	In preflight.py keep policy-local scanning (or a plan_grammar lenient final-region accessor with blank-skip); use shared parser only where contiguous-block semantics match today
+1	in_scope	major	risk-integration	python/larch/review/plan_review_loop.py:349-355	Gate B _trailer_map matches optional size keys on any plan line, not only the terminal contiguous trailer block	Shared contiguous-block parsing would stop snapshotting body-embedded diff_added/mechanical_churn lines that today's gate-b dedup still treats as present	When repointing gate-b, either preserve whole-file key collection explicitly or document and test the intentional contiguous-only behavior change
+
+## Findings
+
+### 1. `design_lifecycle.py` import surface omitted (correctness)
+
+`design_lifecycle.py` still imports private Step 5c trailer helpers (`_AUTO_COMPOSE_OPTIONAL_TRAILER_RE`, `_split_plan_body_and_trailers`, peel/sidecar builders) from `design_step5c.py`:
+
+```218:229:python/larch/design/design_lifecycle.py
+from larch.design.design_step5c import (
+    STEP5C_PUBLISH_RESULT_ALLOW_KEYS,
+    STEP5C_STATUS_ALLOW_KEYS,
+    STEP6_INFO_ICON,
+    _AUTO_COMPOSE_OPTIONAL_TRAILER_RE,
+    _auto_compose_plan_md,
+    _build_acceptance_section,
+    _build_trailer_lines_from_sidecars,
+    _optional_trailer_lines_from_values_file,
+    _peel_trailing_optional_trailers,
+    _read_diff_lines_sidecar,
+    _split_plan_body_and_trailers,
+```
+
+The plan updates `design_step5c.py` but not `design_lifecycle.py`. Removing those privates from Step 5c without a lifecycle repoint breaks compose paths that `test_design_lifecycle.py` already covers.
+
+**Suggested revision:** Add `### UPDATED: python/larch/design/design_lifecycle.py` to import the shared compose/split/peel APIs from `plan_grammar` (or thin public wrappers), not from `design_step5c` privates.
+
+### 2. Gate B trailer owner left out of migration (architecture)
+
+Gate B still owns a separate four-key set and a whole-file scanner:
+
+```66:66:python/larch/review/plan_review_common.py
+OPTIONAL_TRAILER_KEYS = {"diff_added", "diff_deleted", "mechanical_churn", "oversize_override"}
+```
+
+```349:355:python/larch/review/plan_review_loop.py
+def _trailer_map(text: str) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        match = re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
+        if match and match.group(1) in OPTIONAL_TRAILER_KEYS:
+            values[match.group(1)] = match.group(2)
+    return values
+```
+
+That conflicts with the stated goal of one registry owning trailer-key recognition and with the post-migration grep cleanup. Importing the full eight-key registry here would also widen gate-b snapshots to provenance keys the current contract excludes.
+
+**Suggested revision:** Add updates for `plan_review_common.py` and `plan_review_loop.py`; import a documented size-only subset from `plan_grammar`, not the full registry.
+
+### 3. `issue_wire.extract_scope_paths` heading grammar not unified (correctness)
+
+Scope extraction still accepts only `###` colon headings:
+
+```375:375:python/larch/issue/issue_wire.py
+        match = re.match(r"^###\s+(NEW|UPDATED|REWRITTEN|MAY_UPDATE)\s*:\s*(.+)$", line)
+```
+
+The plan promises `##`/`###` and bracket forms everywhere headings matter. Even after `plan_quality.py` switches heading counts to shared helpers, `dispatch_step2.py`, `dirty_tree.py`, and `scope_disposition.py` still call `issue_wire.extract_scope_paths` directly, so accepted alternate heading forms would not drive coverage or scope checks.
+
+**Suggested revision:** Add `### UPDATED: python/larch/issue/issue_wire.py` to delegate heading detection to `plan_grammar` inside `extract_scope_paths` (markers stay in `issue_wire`).
+
+### 4. Preflight blank-line tolerance vs contiguous trailer parsing (correctness)
+
+Preflight walks backward from `diff_lines:` and skips blank lines when extending the metadata window:
+
+```451:457:python/larch/implement/preflight.py
+    for index in range(diff_idx - 1, -1, -1):
+        line = lines[index]
+        if line.startswith(allowed):
+            start = index
+            continue
+        if not line.strip():
+            continue
+        break
+```
+
+Shared optional-metadata parsing stops at the first non-trailer line, including blanks:
+
+```216:222:python/larch/design/plan_quality.py
+    for idx in range(trailer_nr - 2, -1, -1):
+        line = lines[idx]
+        kind = _metadata_block_line_kind(line)
+        if not kind:
+            break
+```
+
+The plan says to replace preflight’s local scan with shared trailer parsing. That would change behavior for plans where provenance and size trailers are separated by blank lines.
+
+**Suggested revision:** In the preflight update, keep policy-local lenient final-region lookup (blank-tolerant) for `review_status` / `rounds_completed` / `difficulty`, and use the shared parser only where contiguous-block semantics are intended.
+
+### 5. Gate B whole-file trailer scan vs contiguous-block contract (risk-integration)
+
+Gate B’s `_trailer_map` collects optional size keys from any line in the plan, not only the terminal contiguous block (see finding 2). The plan’s edge cases require contiguous final metadata. Naively switching gate-b to the shared contiguous parser would stop treating body-embedded `diff_added:` / `mechanical_churn:` lines as present for snapshot/dedup, changing behavior that `test_plan_review.py` exercises today.
+
+**Suggested revision:** When repointing gate-b, either preserve explicit whole-file collection for the size-only subset or document and test the intentional shift to contiguous-block-only semantics.
+
+---
+
+## Out of scope (tracked follow-ups)
+
+**[OUT_OF_SCOPE]** `python/tests/review/test_plan_review.py` — no explicit plan entry for gate-b trailer tests; likely satisfied if `plan_review_loop.py` is migrated, but worth a quick pass after implementation.
+
+**[OUT_OF_SCOPE]** `python/larch/implement/dispatch_step2.py:331` and `python/larch/state/dirty_tree.py:226` — direct `extract_scope_paths` call sites; no separate edits needed if `issue_wire.py` delegates heading matching to `plan_grammar`.
+
+**[OUT_OF_SCOPE]** `OPTIONAL_KEYS` in `_plan_quality_commands.py:28` appears unused today; replacing it is cleanup, not required for the migration to function once the shared registry lands.
