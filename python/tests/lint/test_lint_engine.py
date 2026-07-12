@@ -483,7 +483,7 @@ def test_source_loading_revalidates_and_converts_oserror(
         source.symlink_to(outside)
         return ["a.py"]
 
-    original_discover = lint_engine._discover_tracked_paths
+    original_discover = lint_engine._discover_tracked_paths  # type: ignore[reportPrivateUsage]
     monkeypatch.setattr(lint_engine, "_discover_tracked_paths", swap_after_discovery)
     runner = RecordingRunner(
         responses=[
@@ -531,7 +531,7 @@ def test_source_loading_rejects_intermediate_symlink_swap(
     ) -> int:
         raw_path = os.fspath(path)
         if isinstance(raw_path, str) and Path(raw_path) == tmp_path and dir_fd is None:
-            (tmp_path / "pkg").rename(tmp_path / "pkg-original")
+            _ = (tmp_path / "pkg").rename(tmp_path / "pkg-original")
             (tmp_path / "pkg").symlink_to(outside, target_is_directory=True)
         if dir_fd is None:
             return real_open(path, flags, mode)
@@ -540,7 +540,7 @@ def test_source_loading_rejects_intermediate_symlink_swap(
     monkeypatch.setattr(lint_engine.os, "open", swap_parent)
 
     with pytest.raises(lint_engine.ScanError, match=r"failed to read pkg/a\.py"):
-        lint_engine._load_source(tmp_path, "pkg/a.py")
+        lint_engine._load_source(tmp_path, "pkg/a.py")  # type: ignore[reportUnusedCallResult, reportPrivateUsage]
 
 
 def test_lazy_ast_parses_once_and_non_python_has_no_tree(
