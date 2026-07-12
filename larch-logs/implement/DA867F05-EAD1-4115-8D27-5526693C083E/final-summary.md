@@ -70,17 +70,17 @@ Warnings (1):
 
 ## Architectural invariants
 
-No invariant violations. The new read_unavailable_outcome_detail function in ship_guidelines.py validates head_sha and base_ref before consuming a persisted outcome's detail field, directly satisfying I-Stale-1. The sanitizer explicitly replaces implement-tmpdir paths with <implement-tmpdir> before any egress, satisfying I-Commit-1. Gate logic is unchanged and no gate is disarmed by data authored by the gated entity (I-Gate-1). No committed outcome labels for in-flight runs are modified (I-Outcome-1). All other invariants are unaffected by the changed code.
+Architectural assessment unavailable.
 
 ## Architectural guidelines
 
-G-Py-9: Two locals derived from Mapping[str, object] value lookups are unannotated, matching the guideline's anti-pattern example. In ship_guidelines.py:read_unavailable_outcome_detail, `detail = record.get("detail", "")` where record is dict[str, object] gives pyright an inferred type of object rather than the programmer's intended str; an explicit annotation and cast after the isinstance guard would conform. In dispatch_ship.py:_assessment_unavailable_kinds, `raw_kinds = payload.get("detail")` similarly infers object | None from Mapping[str, object] with no annotation, and `kinds = normalize_kinds(raw_kinds.split(","))` is also unannotated. The isinstance checks downstream correctly narrow the values before use, so there is no functional defect, but the missing annotations hide intent in exactly the way G-Py-9 identifies. All other guidelines checked (G-Sec-3, G-Sec-4, G-IO-2, G-Wire-1, G-Wire-2, G-Wire-3, G-Fix-2, G-Py-4, G-Py-8, G-Py-11, G-Idem-4, G-Gate-1) are satisfied by the changed code.
+Architectural assessment unavailable.
 
 ## /implement run DA867F05-EAD1-4115-8D27-5526693C083E: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 01:27:19
-- **Cost**: 💰 TOTAL ~$44.76: Claude $7.65, Codex-5.6 $26.19, Codex-mini $0.06, Cursor $8.76 (Composer $8.76, Grok $0.00), Claude (subprocess) $2.10  |  Tokens: 61265k
+- **Cost**: 💰 TOTAL ~$48.56: Claude $10.64, Codex-5.6 $26.19, Codex-mini $0.06, Cursor $8.76 (Composer $8.76, Grok $0.00), Claude (subprocess) $2.91  |  Tokens: 66276k
 - **Issue**: #7057: https://github.com/character-ai/larch/issues/7057
 - **PR**: #7094: https://github.com/character-ai/larch/pull/7094
 - **Plan review**: N/A
@@ -88,7 +88,7 @@ G-Py-9: Two locals derived from Mapping[str, object] value lookups are unannotat
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 9/17 accepted
-- **Lines (PR diff)**: code +725/-30, larch-logs +1238/-0
+- **Lines (PR diff)**: code +725/-30, larch-logs +1244/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 1
