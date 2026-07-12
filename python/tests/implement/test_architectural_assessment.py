@@ -149,6 +149,40 @@ def test_parse_results_independently_rejects_unknown_extra_row() -> None:
     assert set(invalid) == {"guidelines"}
 
 
+def test_strip_json_fence_unwraps_optional_markdown_fence() -> None:
+    payload = '{"schema_version": "1", "results": []}'
+    assert assessment._strip_json_fence(f"```json\n{payload}\n```") == payload  # pyright: ignore[reportPrivateUsage]
+    assert assessment._strip_json_fence(f"```\n{payload}\n```") == payload  # pyright: ignore[reportPrivateUsage]
+    assert assessment._strip_json_fence(f"```json\n{payload}\n```\ntrailing note") == payload  # pyright: ignore[reportPrivateUsage]
+    assert assessment._strip_json_fence(payload) == payload  # pyright: ignore[reportPrivateUsage]
+    assert assessment._strip_json_fence("prose, not a fence") == "prose, not a fence"  # pyright: ignore[reportPrivateUsage]
+
+
+def test_parse_results_accepts_markdown_fenced_envelope() -> None:
+    invariant = _evidence(config.ASSESSMENT_KIND_INVARIANTS)
+    guideline = _evidence()
+    fenced = "```json\n" + _payload([invariant, guideline]) + "\n```"
+    parsed = assessment._parse_results(fenced, [guideline, invariant])  # pyright: ignore[reportPrivateUsage]
+    assert [row.kind for row in parsed] == ["invariants", "guidelines"]
+
+
+def test_parse_results_independently_accepts_fenced_json_with_trailing_prose() -> None:
+    evidence = _evidence()
+    fenced = "```json\n" + _payload([evidence]) + "\n```\nThat completes the review."
+    parsed, invalid = assessment._parse_results_independently(fenced, [evidence])  # pyright: ignore[reportPrivateUsage]
+    assert [row.kind for row in parsed] == ["guidelines"]
+    assert not invalid
+
+
+def test_parse_results_independently_rejects_unfenced_prose() -> None:
+    evidence = _evidence()
+    parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
+        "Here is my assessment: everything looks clean.", [evidence]
+    )
+    assert not parsed
+    assert set(invalid) == {"guidelines"}
+
+
 def test_prompt_evidence_paths_must_stay_under_granted_root(tmp_path: Path) -> None:
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
@@ -439,6 +473,23 @@ def test_waterfall_retries_invalid_json_then_stops_on_valid_deviation(monkeypatc
 
     assert result == ("guidelines:deviation",)
     assert (cursor.calls, codex.calls, claude.calls) == (1, 1, 0)
+
+
+def test_waterfall_accepts_markdown_fenced_clean_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
+    fenced = "```json\n" + _payload([evidence]) + "\n```"
+    cursor = _SequenceLauncher([assessment.LaunchResult(0, fenced, "")])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor},
+        availability={"cursor": True, "codex": False, "claude": False},
+    )
+
+    assert result == ("guidelines:clean",)
+    assert cursor.calls == 1
 
 
 def test_waterfall_persists_unavailable_when_all_lanes_are_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
