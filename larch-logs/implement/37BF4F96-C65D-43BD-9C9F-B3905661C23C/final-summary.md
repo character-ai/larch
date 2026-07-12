@@ -64,19 +64,28 @@ codex/apply                               │                                 �
 
 **Reviewer slot failures**: 0
 
-## /implement run 37BF4F96-C65D-43BD-9C9F-B3905661C23C: shipping
+## Architectural invariants
 
-- **Outcome**: shipping
+Architectural assessment unavailable.
+
+## Architectural guidelines
+
+Architectural assessment unavailable.
+
+## /implement run 37BF4F96-C65D-43BD-9C9F-B3905661C23C: pr-created
+
+- **Outcome**: ✅ DONE
 - **Duration**: 00:35:30
-- **Cost**: 💰 TOTAL ~$12.82: Claude/GLM-5.2 token $2.98 (estimated $0.20), Codex-5.6 $4.88, Codex-mini $0.81, Cursor $6.52 (Composer $4.06, Grok $2.46), Claude (subprocess) $0.41  |  Tokens: 26212k
+- **Cost**: 💰 TOTAL ~$12.88: Claude/GLM-5.2 token $3.93 (estimated $0.26), Codex-5.6 $4.88, Codex-mini $0.81, Cursor $6.52 (Composer $4.06, Grok $2.46), Claude (subprocess) $0.41  |  Tokens: 29746k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7019: https://github.com/character-ai/larch/issues/7019
+- **PR**: #7110: https://github.com/character-ai/larch/pull/7110
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 14/20 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1546/-0, larch-logs +1344/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
