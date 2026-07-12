@@ -1,0 +1,134 @@
+## Approach
+
+- Route parent mode through `larch.bgjob.adapt.start_or_reattach`.
+- Keep each existing step name, budget, child argv, stdout grammar, and exit behavior.
+- Parse `--bgjob-child` and `--merge-result-env` in Python. Capture child output and atomically publish the merge env through `larch.io`.
+- Preserve checks input identity validation before execution and before publication. Reject or clear stale results before calling the generic adapter.
+- Keep `step-5-resume --record-only` synchronous.
+- Port CI-fixer selection, launch, finalization, and lineage logic into a dedicated Python CLI entrypoint.
+- Leave `/design`, `step-8-assessment.sh`, and `step-8-ship.sh` unchanged.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/dispatch_commit_route.py
+
+- Extend `step5_review_main`, `step5_resume_main`, `step6_entry_main`, and `run_step_checks_main` with parent and child modes.
+- Build validated `JobSpec` values with the current CLI executable, stable step slug, existing budget, owner identity, and original public arguments.
+- Let `bgjob adapt` own locking, registry validation, liveness policy, merge-env creation, and start-or-reattach output.
+- Preserve Step 5 difficulty overrides, telemetry, banners, round timing, commit routing, checks relay output, and `--record-only`.
+- For Step 6 and relevant checks, compute the launch identity from the persisted repository root. Pass it to child mode, validate it before work and publication, and include identity rows in the merge result.
+- Validate completed results before reuse. Clear stale identity-bound results only when safe, and fail closed on unsafe files or live-job identity disagreement.
+
+### NEW: python/larch/implement/ci_fixer_adapter.py
+
+- Port `step-8-ci-fixer.sh` start and finalize behavior into typed Python functions.
+- Preserve route parsing, run selection, tier waterfall, attempt numbering, step hashing, launch envelopes, invariant evidence, crash recovery, salvage checks, lineage deduplication, final-HEAD validation, and operator-bail reason tokens.
+- Use `larch.io` for trusted reads and atomic writes. Keep all paths confined beneath `IMPLEMENT_TMPDIR`.
+- Launch the dynamic fixer step through `bgjob adapt` while retaining the existing `ci fixer-lane` child command and result grammar.
+
+### UPDATED: python/larch/cli.py
+
+- Register the CI-fixer adapter verb used by the thin wrapper.
+- Keep the existing implement verb registrations and machine-readable exit contract stable.
+
+### REWRITTEN: skills/implement/scripts/step-5-review.sh
+
+- Replace the embedded protocol with the strict-mode, plugin-root, `exec python3 ... implement step-5-review "$@"` wrapper shape used by `step-7a.sh`.
+
+### REWRITTEN: skills/implement/scripts/step-5-resume.sh
+
+- Replace the embedded protocol with a thin delegation to `implement step-5-resume`.
+
+### REWRITTEN: skills/implement/scripts/step-6-entry.sh
+
+- Replace the embedded protocol and identity heredocs with a thin delegation to `implement step-6-entry`.
+
+### REWRITTEN: skills/implement/scripts/run-step-checks.sh
+
+- Replace the embedded protocol and identity heredocs with a thin delegation to `implement run-step-checks`.
+
+### REWRITTEN: skills/implement/scripts/step-8-ci-fixer.sh
+
+- Replace inline Python and shell orchestration with a thin delegation to the new CI-fixer adapter verb.
+
+### UPDATED: skills/implement/scripts/test-step-5-review.sh
+
+- Replace shell-internal assertions with wrapper-shape and Python adapter contract coverage.
+- Cover fresh launch, completed reuse, live reattachment, stale or unsafe result refusal, child execution, difficulty forwarding, and exact machine output.
+
+### UPDATED: skills/implement/scripts/test-step-5-review.md
+
+- Attribute lifecycle and liveness behavior to `bgjob adapt` and child work to the Python implement verb.
+
+### UPDATED: skills/implement/scripts/test-step-8-ci-fixer.sh
+
+- Exercise the Python adapter through the thin wrapper.
+- Retain coverage for hostile env files, unsafe paths, tier exhaustion, crash recording, salvage provenance, lineage idempotency, missing results, and final-HEAD drift.
+
+### UPDATED: python/tests/implement/test_step_6_entry.py
+
+- Move identity-aware rejoin tests from Bash internals to the Python parent and child modes.
+- Preserve stale-result, matching-result, skip-to-7a, and pre-check drift cases.
+
+### UPDATED: python/tests/implement/test_run_step_checks.py
+
+- Test step selection, budgets, identity seeding, live reattachment, stale clearing, unsafe merge envs, child validation, and self-review routing through the Python adapter.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Replace source-string assertions for removed Bash logic with behavioral tests for `JobSpec` construction and child dispatch.
+- Preserve Step 5 resume, Step 6 composite, timeout-budget, and CI-fixer wiring coverage.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+- Update Step 5 tests to invoke the Python child contract behind the thin wrappers.
+- Preserve difficulty override, starting-round, banner, and commit-stall assertions.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+- Remove pins that require registry helpers, heredocs, stale-clear commands, or child logic in Bash.
+- Require all five scripts to match the thin-wrapper structure and require the Python verbs to own their former behavior.
+
+### UPDATED: scripts/test-implement-timing-rehydration.sh
+
+- Repoint timing and rehydration assertions from `step-5-resume.sh` internals to the Python implementation.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+- Recompute the affected `EXPECTED_OLD` / `EXPECTED_NEW` fence counts and retain exact launcher-shape validation.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Update Step 5, Step 6, checks, and CI-fixer prose to identify `bgjob adapt` as the lifecycle owner.
+- Keep existing wrapper invocations and wait instructions unchanged.
+
+## Edge cases
+
+- A completed checks result belongs to an older `HEAD` or worktree fingerprint.
+- A live registry row exists before its merge env contains the launch identity.
+- The daemon is live while the child has exited and publication is still pending.
+- A result, merge env, handoff directory, or lineage file is a symlink or non-regular file.
+- Step 5 returns a reusable completion versus a retryable stall.
+- `step-5-resume --record-only` must not launch a daemon.
+- CI-fixer finalization is repeated after lineage was already recorded.
+- The repository changes between child validation, checks, and result publication.
+
+## Failure modes
+
+- Fail closed with stable machine tokens on invalid arguments, missing tmpdir state, unsafe paths, registry identity mismatch, or unverifiable process identity.
+- Do not launch a duplicate job when live-job input identity cannot be proven.
+- Publish identity-integrity failure rows when checks inputs drift.
+- Preserve operator-bail output for CI-fixer routing and validation failures.
+- Never reuse a stale result or partially written merge envelope.
+
+## Testing strategy
+
+- Run focused Python tests for bgjob adapters, dispatch, Step 5 review, Step 6, relevant checks, and CI-fixer behavior.
+- Run `skills/implement/scripts/test-step-5-review.sh` and `skills/implement/scripts/test-step-8-ci-fixer.sh`.
+- Run `make test-implement-structure`, `make test-implement-timing-rehydration`, `make test-implement-fence-shape`, `make test-implement-anti-halt`, and `make test-implement-relevant-checks-anti-halt`.
+- Run Bash syntax and shell lint checks for the rewritten wrappers.
+- Run `make lint` and `make py-test`.
+
+difficulty: HARD
+oversize_override: operator
+diff_lines: 3400
