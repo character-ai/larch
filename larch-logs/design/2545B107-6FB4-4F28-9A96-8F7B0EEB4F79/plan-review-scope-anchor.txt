@@ -1,0 +1,61 @@
+Partition piece 1 of 5 split from #7003.
+
+**Scope**: Extend `python/test_support.py` with `ok()` / `completed()` one-liners for `CommandResult` and `subprocess.CompletedProcess`, a second `RecordingRunner` variant (strict queue vs default), and a single `repo_root()` / re-export of existing `ROOT`/`CLI`; add `python/tests/support/` package (empty or thin re-export) plus `python/tests/support/test_foundation.py`. Optionally repoint 3–5 already-`test_support` consumers (`test_review_pipeline.py`, `test_plan_review.py`, etc.) off local `parents[N]` / duplicate `run_cli`—no wire or session migrations yet.
+
+**Firm headings**: ### NEW: python/tests/support/, ### UPDATED: python/test_support.py, Approach, Testing strategy
+
+**Acceptance**:
+
+`make py-test` and `make py-lint-checks-fast` pass; new factories have unit tests; `lint_flat_tests` still passes (only `python/test_support.py` at `python/` root); no R0801 regressions from this piece alone.
+
+**Dependencies (from panel)**: none
+
+```
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] pytest wire-fixture factories + session builders
+
+​#### Problem
+
+Only 44 of 198 test files import the shared support modules (verified); the rest re-inline infrastructure below the R0801 8-line radar. Wire literals: finding blocks appear 726 times across 29 files, vote lines 220 across 15, panel-manifest slot JSON 170 across 13, plan bodies written 383 times across 32 files. Session plumbing: 33 files hand-write `session-env.sh` with divergent baseline envs; `test_implement_dispatch.py` calls its private `_session` builder 148 times; plugin-root derivation via `parents[N]` appears 215 times across 67 files. Fakes: 822 inline `CommandResult(...)` constructions across 59 files, 603 inline `CompletedProcess`, ~36 local Fake/Stub classes re-solving RecordingRunner. Plus 990 asserts pinning exact human-facing prose across 119 files and 243 redundant `LARCH_QUIET_DISABLE` re-sets that the root conftest already owns.
+
+​#### Goal
+
+A wire-fixture factory module (make_finding, vote_lines, slot_manifest, plan_body, result-env writers) plus session/design-dir builders and 2-3 RecordingRunner variants with `ok()`/`completed()` one-line factories, hosted in `test_support.py`/a sibling (respecting lint_flat_tests). Migrate the big-5 files mechanically; adopt a convention of asserting stable tokens rather than prose. A wire-format change becomes a 1-file edit instead of ~29.
+
+​#### Size
+
+Net reduction 4,000-6,000 lines; the drift-resistance gain matters more than the line count.
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `ok()`, `completed()` factory functions and `RecordingRunner` class-method constructors to `test_support.py`.
+- Add `repo_root()` function that returns the repo root path.
+- Create `python/tests/support/` package with `test_foundation.py` unit tests for the new functions.
+
+### Non-goals
+- Consumer file migration (3-5 files): deferred to later pieces.
+- Wire/session fixture factories, plan-body helpers, or vote-line factories: not in this piece.
+- R0801 deduplication across existing test files: no cross-file changes.
+
+### Approach sketch
+- Add `ok(argv, stdout="")` and `completed(argv, stdout="")` as standalone factories in `test_support.py`.
+- Add `RecordingRunner.strict_queue(*responses)` and `RecordingRunner.default_queue(default=None)` as class methods.
+- Add `repo_root()` returning existing `ROOT` constant.
+- Create `python/tests/support/__init__.py` with a docstring only (empty package sentinel).
+- Create `python/tests/support/test_foundation.py` covering all new functions and class methods.
+
+### Surfaces in scope
+- `python/test_support.py`
+- `python/tests/support/` (new directory)
+- `python/tests/support/__init__.py`
+- `python/tests/support/test_foundation.py`
+
+### Open questions
+- None.
