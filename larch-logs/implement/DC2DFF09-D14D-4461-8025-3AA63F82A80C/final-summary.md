@@ -32,11 +32,19 @@ codex/apply              │                                                 █
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+No violations identified. The diff adds a test file that guards shared ownership of plan-block marker grammar. The test infrastructure does not touch runtime systems covered by the invariants (gates, pause/resume, run-log flush, panel orchestration, agent contracts, or ship lifecycle).
+
+## Architectural guidelines
+
+No deviations identified. The test file follows Python coding practices: uses Final for constants, annotates all locals (paths: list[Path], violations: list[str], relative: str), uses pathlib for paths, writes via path.write_text to controlled tmpdir locations, and structures tests with clear helper functions. The hardcoded PLAN_MARKERS tuple is intentional for the ownership guard test that validates hardcoded marker detection.
+
 ## /implement run DC2DFF09-D14D-4461-8025-3AA63F82A80C: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:21:23
-- **Cost**: 💰 TOTAL ~$3.08: Claude/GLM-5.2 token $0.79 (estimated $0.05), Codex-5.6 $0.98, Codex-mini $0.27, Cursor $1.64 (Composer $1.64, Grok $0.00), Claude (subprocess) $0.14  |  Tokens: 7214k
+- **Cost**: 💰 TOTAL ~$3.09: Claude/GLM-5.2 token $0.91 (estimated $0.06), Codex-5.6 $0.98, Codex-mini $0.27, Cursor $1.64 (Composer $1.64, Grok $0.00), Claude (subprocess) $0.14  |  Tokens: 7655k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7047: https://github.com/character-ai/larch/issues/7047
 - **Plan review**: N/A
