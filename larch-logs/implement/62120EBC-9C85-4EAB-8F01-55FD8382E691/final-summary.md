@@ -37,9 +37,10 @@ codex/apply              │                                                   �
 ## Exec Issues and Warnings
 Exec Issues (1):
   1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
-Warnings (2):
+Warnings (3):
   1. Step 7a.1 — 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: scripts/test-review-structure.sh
   2. The new architectural-compliance slot is re-listed independently in config, pipeline, token classification, and scout reservation code rather than deriving selectors from one shared constant. This...
+  3. The changed README and documentation repeatedly hardcode the panel cardinality as “four static specialists,” while the count is owned by runtime configuration/topology and may drift when the panel...
 
 ## Architectural invariants
 
@@ -47,23 +48,24 @@ No invariant violations identified.
 
 ## Architectural guidelines
 
-The new architectural-compliance slot is re-listed independently in config, pipeline, token classification, and scout reservation code rather than deriving selectors from one shared constant. This can drift when the panel shape changes again.
+The changed README and documentation repeatedly hardcode the panel cardinality as “four static specialists,” while the count is owned by runtime configuration/topology and may drift when the panel changes.
 
-## /implement run 62120EBC-9C85-4EAB-8F01-55FD8382E691: shipping
+## /implement run 62120EBC-9C85-4EAB-8F01-55FD8382E691: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 00:41:13
-- **Cost**: 💰 TOTAL ~$27.34: Claude $1.15, Codex-5.6 $20.96, Codex-mini $0.02, Cursor $4.74 (Composer $4.74, Grok $0.00), Claude (subprocess) $0.47  |  Tokens: 40854k
+- **Cost**: 💰 TOTAL ~$29.01: Claude $1.82, Codex-5.6 $21.60, Codex-mini $0.02, Cursor $5.04 (Composer $5.04, Grok $0.00), Claude (subprocess) $0.53  |  Tokens: 43861k
 - **Issue**: #7018: https://github.com/character-ai/larch/issues/7018
+- **PR**: #7170: https://github.com/character-ai/larch/pull/7170
 - **Plan review**: N/A
 - **Plan coverage**: 29/30 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 2/7 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +430/-98, larch-logs +745/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
-- **Warnings**: 2
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/62120EBC-9C85-4EAB-8F01-55FD8382E691/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
