@@ -1,0 +1,4 @@
+1	a newly added lint module could claim `legacy` with `source_issue: 0`, bypassing justification and commissioning requirements.
+1	merely requiring field names permits `host: new module` or `cheaper alternative: none` without the required explanations.
+1	the structure harness does not pin default-mode step 5 approval for proposals over 400 lines or filing-mode split-before-filing behavior.
+1	python treats json booleans as integers, so `source_issue: true` could satisfy a positive-integer check.
