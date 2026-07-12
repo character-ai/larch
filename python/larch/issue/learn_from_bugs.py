@@ -17,7 +17,8 @@ import ast
 import json
 import re
 import shlex
-from collections.abc import Mapping
+import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -36,6 +37,9 @@ from larch.issue.title_match import BUG_PREFIX, bug_title_match
 DEFAULT_SEARCH: Final = f"{BUG_PREFIX} in:title"
 DEFAULT_STATE: Final = "closed"
 DEFAULT_LIMIT: Final = 50
+
+OriginKind = Literal["regression", "new-code", "spec-gap", "unknown"]
+ORIGIN_KINDS: Final[tuple[OriginKind, ...]] = ("regression", "new-code", "spec-gap", "unknown")
 
 # Per-section char caps for the compact digest.
 SUMMARY_CAP: Final = 600
@@ -80,6 +84,35 @@ PROPOSAL_TYPES: Final = frozenset(
 )
 PROPOSAL_STATUSES: Final = frozenset({"proposed", "adopted", "pending", "orphaned"})
 REGISTRY_KEY_LENGTH: Final = 2
+
+# Origin extraction: referenced residual markers (first match in source order wins).
+# Supported PR spacing: "PR #N" and "PR#N" only.
+_ORIGIN_REF_PATTERNS: Final = (
+    re.compile(r"introduced\s+by\s+PR\s*#(\d+)", re.IGNORECASE),
+    re.compile(r"introduced\s+by\s+#(\d+)", re.IGNORECASE),
+    re.compile(r"incomplete\s+fix\s+of\s+#(\d+)", re.IGNORECASE),
+    re.compile(r"persists\s+after\s+#(\d+)", re.IGNORECASE),
+    re.compile(r"residual\s+of\s+#(\d+)", re.IGNORECASE),
+)
+_BARE_REGRESSION_RE: Final = re.compile(r"\bregression\b", re.IGNORECASE)
+_SPEC_GAP_PHRASES: Final = ("never designed", "was never told", "no handling for")
+_NEW_CODE_PHRASES: Final = ("first time this path ran", "newly added")
+
+PROSE_ONLY_MARKER: Final = "prose-only prevention: unlikely to stick"
+_PROSE_ONLY_CITATIONS: Final = ("#6746", "#6747")
+_MECHANICAL_ALT_RE: Final = re.compile(
+    r"\b(?:lint|hook|invariant(?:[-\s]?test)?)\b|no mechanical alternative",
+    re.IGNORECASE,
+)
+_SECTION2_HEADING_RE: Final = re.compile(
+    r"^#{1,6}\s+.*root-cause clusters.*$|^\d+\.\s+\*\*Root-cause clusters\.\*\*",
+    re.IGNORECASE | re.MULTILINE,
+)
+_NEXT_TOP_SECTION_RE: Final = re.compile(
+    r"^#{1,3}\s+\d*\.?\s*(?:\*\*)?(?:Already covered|Proposed mechanical|Proposed architectural|"
+    r"Proposed guideline|Proposed regression|Issues to file|Scope and cost)",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 class LearnFromBugsError(RuntimeError):
@@ -139,6 +172,17 @@ class LearnFromBugsState:
 
 
 @dataclass(frozen=True)
+class Origin:
+    """Best-effort bug origin classification for a digest record."""
+
+    kind: OriginKind
+    ref: int | None = None
+
+    def to_json(self) -> dict[str, object]:
+        return {"kind": self.kind, "ref": self.ref}
+
+
+@dataclass(frozen=True)
 class BugDigest:
     number: int
     title: str
@@ -148,6 +192,7 @@ class BugDigest:
     structured: bool
     prefix_chars: int
     sections: Mapping[str, str]
+    origin: Origin
 
     def to_json(self) -> dict[str, object]:
         return {
@@ -159,6 +204,7 @@ class BugDigest:
             "structured": self.structured,
             "prefix_chars": self.prefix_chars,
             "sections": dict(self.sections),
+            "origin": self.origin.to_json(),
         }
 
 
@@ -566,8 +612,8 @@ def _fenced_line_indices(lines: list[str]) -> set[int]:
     return fenced
 
 
-def _split_sections(prefix: str) -> dict[str, str]:
-    """Split a diagnostic prefix into heading-named sections, ignoring fenced headings."""
+def _iter_diagnostic_sections(prefix: str) -> list[tuple[str, str]]:
+    """Yield ``(normalized_heading, body)`` in document order; duplicates preserved."""
     positioned = _lines_with_starts(prefix)
     lines = [line for _, line in positioned]
     fenced = _fenced_line_indices(lines)
@@ -581,11 +627,20 @@ def _split_sections(prefix: str) -> dict[str, str]:
             continue
         name = match.group(1).replace("`", "").strip().lower()
         heads.append((name, line_start, line_start + match.end()))
-    out: dict[str, str] = {}
+    out: list[tuple[str, str]] = []
     for index, (name, _match_start, content_start) in enumerate(heads):
         end = heads[index + 1][1] if index + 1 < len(heads) else len(prefix)
-        out[name] = prefix[content_start:end].strip()
+        out.append((name, prefix[content_start:end].strip()))
     return out
+
+
+def _split_sections(prefix: str) -> dict[str, str]:
+    """Split a diagnostic prefix into heading-named sections, ignoring fenced headings.
+
+    Duplicate headings collapse to the last body (digest retention path). Origin
+    extraction uses :func:`_iter_diagnostic_sections` to preserve duplicates.
+    """
+    return dict(_iter_diagnostic_sections(prefix))
 
 
 def _squeeze(text: str, cap: int) -> str:
@@ -610,12 +665,228 @@ def _pick_sections(prefix: str) -> tuple[dict[str, str], bool]:
     return {"_freeform": _squeeze(prefix, FREEFORM_CAP)}, False
 
 
+def _has_structured_want_sections(ordered: Sequence[tuple[str, str]]) -> bool:
+    """True when ``_pick_sections`` would retain at least one WANT heading."""
+    names = {name for name, _body in ordered}
+    return any(want in names for want, _cap in WANT_SECTIONS)
+
+
+def _origin_source_texts(*, title: str, prefix: str) -> list[str]:
+    """Return unsqueezed origin-scan texts in stable title-then-body order."""
+    ordered = _iter_diagnostic_sections(prefix)
+    sources: list[str] = [title]
+    sources.extend(body for name, body in ordered if name.startswith("root cause"))
+    # `_title_only`: title only; never scan the empty value text.
+    if not _has_structured_want_sections(ordered) and len(prefix.strip()) >= TITLE_ONLY_PREFIX_MAX:
+        sources.append(prefix)
+    return sources
+
+
+def _first_referenced_origin(text: str) -> tuple[int, int] | None:
+    """Return ``(match_start, issue_ref)`` for the earliest referenced marker."""
+    best: tuple[int, int] | None = None
+    for pattern in _ORIGIN_REF_PATTERNS:
+        match = pattern.search(text)
+        if match is None:
+            continue
+        start = match.start()
+        ref = int(match.group(1))
+        if best is None or start < best[0]:
+            best = (start, ref)
+    return best
+
+
+def _first_referenced_across_sources(sources: Sequence[str]) -> int | None:
+    """Return the first referenced issue number in title-then-body source order."""
+    best_ref: tuple[int, int, int] | None = None  # (source_index, match_start, ref)
+    for source_index, source in enumerate(sources):
+        referenced = _first_referenced_origin(source)
+        if referenced is None:
+            continue
+        match_start, ref = referenced
+        if best_ref is None or (source_index, match_start) < (best_ref[0], best_ref[1]):
+            best_ref = (source_index, match_start, ref)
+    return None if best_ref is None else best_ref[2]
+
+
+def _phrase_in_sources(sources: Sequence[str], phrases: Sequence[str]) -> bool:
+    for source in sources:
+        lowered = source.lower()
+        if any(phrase in lowered for phrase in phrases):
+            return True
+    return False
+
+
+def classify_origin(*, title: str, body: str) -> Origin:
+    """Classify origin from title plus unsqueezed diagnostic allowlist bodies.
+
+    Precedence is global across sources: any referenced marker (first in
+    title-then-body order) beats bare ``regression``, which beats ``spec-gap``
+    phrases, which beat ``new-code`` phrases, which default to ``unknown``.
+    """
+    prefix = diagnostic_prefix(body)
+    normalized_title = _DONE_PREFIX_RE.sub("", title)
+    sources = _origin_source_texts(title=normalized_title, prefix=prefix)
+
+    ref = _first_referenced_across_sources(sources)
+    if ref is not None:
+        return Origin(kind="regression", ref=ref)
+    if any(_BARE_REGRESSION_RE.search(source) for source in sources):
+        return Origin(kind="regression", ref=None)
+    if _phrase_in_sources(sources, _SPEC_GAP_PHRASES):
+        return Origin(kind="spec-gap", ref=None)
+    if _phrase_in_sources(sources, _NEW_CODE_PHRASES):
+        return Origin(kind="new-code", ref=None)
+    return Origin(kind="unknown", ref=None)
+
+
+def parse_zones(zones_csv: str) -> tuple[str, ...]:
+    """Split and trim a comma-separated zone list; reject empties."""
+    if not zones_csv.strip():
+        raise LearnFromBugsError("--zones requires at least one non-empty zone name")
+    zones: list[str] = []
+    for part in zones_csv.split(","):
+        name = part.strip()
+        if not name:
+            raise LearnFromBugsError("--zones contains an empty zone name")
+        zones.append(name)
+    return tuple(zones)
+
+
+def render_zones_search(zones: Sequence[str]) -> str:
+    """Render the topical OR-group GitHub query for zone names."""
+    if not zones:
+        raise LearnFromBugsError("--zones requires at least one non-empty zone name")
+    joined = " OR ".join(zones)
+    return f"[BUG] ({joined}) in:title,body"
+
+
+def resolve_zone_search(
+    zones_csv: str,
+    *,
+    has_explicit_search: bool = False,
+    has_verbal_search: bool = False,
+) -> str:
+    """Resolve ``--zones`` into a search query; reject multi-source combinations."""
+    if has_explicit_search:
+        raise LearnFromBugsError("--zones cannot be combined with --search")
+    if has_verbal_search:
+        raise LearnFromBugsError("--zones cannot be combined with verbal search text")
+    return render_zones_search(parse_zones(zones_csv))
+
+
+def _pct_one_decimal(count: int, total: int) -> str:
+    if total <= 0:
+        return "0.0"
+    return f"{(count * 100) / total:.1f}"
+
+
+def render_origin_headline(digests: Sequence[BugDigest]) -> str:
+    """Render the mandatory Section 2 origin-distribution headline block."""
+    selected = len(digests)
+    counts: dict[OriginKind, int] = dict.fromkeys(ORIGIN_KINDS, 0)
+    chains: list[str] = []
+    suspect_chains: list[str] = []
+    for digest in digests:
+        counts[digest.origin.kind] = counts[digest.origin.kind] + 1
+        if digest.origin.kind != "regression" or digest.origin.ref is None:
+            continue
+        chain = f"#{digest.origin.ref} -> #{digest.number}"
+        if digest.origin.ref == digest.number:
+            suspect_chains.append(f"{chain} (suspect: self-reference)")
+        else:
+            chains.append(chain)
+
+    lines: list[str] = [
+        f"#### Origin distribution (selected={selected})",
+    ]
+    for kind in ORIGIN_KINDS:
+        count = counts[kind]
+        lines.append(f"- {kind}: {count} ({_pct_one_decimal(count, selected)}%)")
+    lines.append("#### Referenced regression chains")
+    if chains or suspect_chains:
+        lines.extend(f"- {item}" for item in chains)
+        lines.extend(f"- {item}" for item in suspect_chains)
+    else:
+        lines.append("(none)")
+    regression_count = counts["regression"]
+    lines.append("#### Regression ratio")
+    if selected == 0:
+        lines.append("n/a (0/0)")
+    else:
+        lines.append(
+            f"{regression_count}/{selected} ({_pct_one_decimal(regression_count, selected)}%)"
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _section2_body(report: str) -> str:
+    section_match = _SECTION2_HEADING_RE.search(report)
+    if section_match is None:
+        raise LearnFromBugsError("report missing Root-cause clusters section heading")
+    section_body = report[section_match.end() :]
+    next_section = _NEXT_TOP_SECTION_RE.search(section_body)
+    if next_section is not None:
+        return section_body[: next_section.start()]
+    return section_body
+
+
+def _require_headline_first(section_body: str, headline: str) -> None:
+    needle = headline.strip()
+    if not needle:
+        raise LearnFromBugsError("origin headline is empty")
+    headline_pos = section_body.find(needle)
+    if headline_pos < 0:
+        needle = needle.rstrip("\n")
+        headline_pos = section_body.find(needle)
+    if headline_pos < 0:
+        raise LearnFromBugsError(
+            "generated origin headline must appear verbatim as the first block in Section 2"
+        )
+    if section_body[:headline_pos].strip():
+        raise LearnFromBugsError(
+            "generated origin headline must appear before cluster rows in Section 2"
+        )
+
+
+def _validate_prose_only_markers(report: str) -> None:
+    start = 0
+    while True:
+        idx = report.find(PROSE_ONLY_MARKER, start)
+        if idx < 0:
+            return
+        window_start = max(0, idx - 400)
+        window_end = min(len(report), idx + len(PROSE_ONLY_MARKER) + 800)
+        window = report[window_start:window_end]
+        for citation in _PROSE_ONLY_CITATIONS:
+            if citation not in window:
+                raise LearnFromBugsError(
+                    f"prose-only marker requires citation {citation} near the marker"
+                )
+        if _MECHANICAL_ALT_RE.search(window) is None:
+            raise LearnFromBugsError(
+                "prose-only marker requires a named lint, hook, or invariant-test "
+                "alternative, or an explicit no-mechanical-alternative statement"
+            )
+        start = idx + len(PROSE_ONLY_MARKER)
+
+
+def validate_report_contract(*, report: str, expected_headline: str) -> None:
+    """Validate Step 4 report grammar for the generated headline and prose-only markers.
+
+    Raises ``LearnFromBugsError`` on the first contract defect.
+    """
+    _require_headline_first(_section2_body(report), expected_headline)
+    _validate_prose_only_markers(report)
+
+
 def build_digest(issue: Mapping[str, object]) -> BugDigest:
     """Compress one raw issue row (from ``gh issue list --json``) to a digest."""
     body = str(issue.get("body") or "")
     prefix = diagnostic_prefix(body)
-    sections, structured = _pick_sections(prefix)
     title = _DONE_PREFIX_RE.sub("", str(issue.get("title") or ""))
+    origin = classify_origin(title=title, body=body)
+    sections, structured = _pick_sections(prefix)
     closed_at = str(issue.get("closedAt") or issue.get("closed_at") or "")[:10]
     number_raw = issue.get("number")
     number = (
@@ -632,6 +903,7 @@ def build_digest(issue: Mapping[str, object]) -> BugDigest:
         structured=structured,
         prefix_chars=len(prefix),
         sections=sections,
+        origin=origin,
     )
 
 
@@ -748,14 +1020,17 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
     coverage_path.write_text(
         json.dumps(coverage.to_json(), indent=2) + "\n", encoding="utf-8"
     )
-    digest_chars = sum(
-        len(json.dumps(digest.to_json()["sections"])) for digest in digests
-    )
+    headline = render_origin_headline(digests)
+    headline_path = out_dir / "origin-headline.md"
+    headline_path.write_text(headline, encoding="utf-8")
+    # Measure the full serialized digest payload the model reads, including origin.
+    digest_chars = sum(len(json.dumps(digest.to_json())) for digest in digests)
     structured = sum(1 for digest in digests if digest.structured)
     return {
         "RUN_DIR": str(out_dir),
         "DIGEST_PATH": str(digest_path),
         "COVERAGE_INDEX_PATH": str(coverage_path),
+        "ORIGIN_HEADLINE_PATH": str(headline_path),
         "REPO": repo,
         "SEARCH": request.search,
         "STATE": request.state,
@@ -1224,4 +1499,57 @@ def write_state_main(argv: list[str]) -> int:
             "PROPOSAL_COUNT": len(state.proposals),
         }
     )
+    return 0
+
+
+def resolve_zones_main(argv: list[str]) -> int:
+    """Emit ``RESOLVED_SEARCH=<query>`` for a valid ``--zones`` value."""
+    parser = argparse.ArgumentParser(prog="learn-from-bugs resolve-zones", allow_abbrev=False)
+    parser.add_argument("--zones", required=True)
+    parser.add_argument(
+        "--has-explicit-search",
+        action="store_true",
+        help="Set when --search was also present; forces a multi-source rejection.",
+    )
+    parser.add_argument(
+        "--has-verbal-search",
+        action="store_true",
+        help="Set when verbal search text was also present; forces a multi-source rejection.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        query = resolve_zone_search(
+            args.zones,
+            has_explicit_search=bool(args.has_explicit_search),
+            has_verbal_search=bool(args.has_verbal_search),
+        )
+    except LearnFromBugsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    _print_kv({"RESOLVED_SEARCH": query})
+    return 0
+
+
+def validate_report_main(argv: list[str]) -> int:
+    """Validate a Step 4 report against the prepared origin headline."""
+    parser = argparse.ArgumentParser(prog="learn-from-bugs validate-report", allow_abbrev=False)
+    parser.add_argument("--report", required=True)
+    parser.add_argument("--headline", required=True)
+    args = parser.parse_args(argv)
+    report_path = Path(args.report)
+    headline_path = Path(args.headline)
+    if not report_path.is_file():
+        print(f"report not found: {report_path}", file=sys.stderr)
+        return 2
+    if not headline_path.is_file():
+        print(f"headline not found: {headline_path}", file=sys.stderr)
+        return 2
+    report = report_path.read_text(encoding="utf-8", errors="replace")
+    headline = headline_path.read_text(encoding="utf-8", errors="replace")
+    try:
+        validate_report_contract(report=report, expected_headline=headline)
+    except LearnFromBugsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    _print_kv({"REPORT_CONTRACT": "pass"})
     return 0
