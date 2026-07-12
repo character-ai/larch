@@ -31,6 +31,8 @@ _DIFF_HEADER_RE: Final = re.compile(r"^diff --git a/(\S+) b/(\S+)$")
 _IDENTIFIER_RE: Final = re.compile(r"^#{1,6}\s+((?:I|G)-[A-Za-z0-9-]+-\d+):", re.MULTILINE)
 _COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _BASE_REF_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+_FENCE_OPEN_RE: Final = re.compile(r"^`{3,}[A-Za-z0-9]*$")
+_FENCE_CLOSE_RE: Final = re.compile(r"^`{3,}$")
 _REAUTHOR_REASONS: Final[frozenset[str]] = frozenset({
     config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME,
     config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH,
@@ -651,11 +653,30 @@ def _parse_result_row(  # noqa: C901 - strict schema validation checks each inde
     return AssessmentResult(kind, state, assessment, identifiers, evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
 
 
+def _strip_json_fence(raw: str) -> str:
+    """Strip one optional Markdown code fence wrapping a JSON payload.
+
+    A launcher may enclose its JSON envelope in a Markdown code fence: an
+    opening triple-backtick line (optionally tagged json) and a closing
+    triple-backtick line. Drop the leading fence line and the matching closing
+    fence line, plus any trailing prose after it, so json.loads sees the
+    enclosed payload. Input without a leading fence line is returned unchanged,
+    so non-fenced prose and truncated objects still fail closed in the caller.
+    """
+    lines = raw.strip().splitlines()
+    if not lines or _FENCE_OPEN_RE.fullmatch(lines[0].strip()) is None:
+        return raw
+    for index, line in enumerate(lines[1:], start=1):
+        if _FENCE_CLOSE_RE.fullmatch(line.strip()) is not None:
+            return "\n".join(lines[1:index]).strip()
+    return raw
+
+
 def _parse_results(  # type: ignore[reportUnusedFunction]  # reason: internal helper
     raw: str, evidences: Sequence[MaterializedEvidence]
 ) -> tuple[AssessmentResult, ...]:
     try:
-        decoded: object = json.loads(raw)
+        decoded: object = json.loads(_strip_json_fence(raw))
     except json.JSONDecodeError as exc:
         raise ValueError("assessment output is not exactly one JSON object") from exc
     if not isinstance(decoded, dict):
@@ -699,7 +720,7 @@ def _parse_results_independently(
 ) -> tuple[tuple[AssessmentResult, ...], dict[str, str]]:
     """Return valid result rows while isolating malformed or omitted kinds."""
     try:
-        decoded: object = json.loads(raw)
+        decoded: object = json.loads(_strip_json_fence(raw))
         if not isinstance(decoded, dict) or set(cast("dict[str, object]", decoded).keys()) != {"schema_version", "results"} or str(decoded.get("schema_version")) != "1":  # type: ignore[reportUnknownArgumentType, reportUnknownMemberType]  # reason: decoded is object from json.loads
             raise ValueError("assessment output envelope is invalid")
         rows = decoded.get("results")  # type: ignore[reportUnknownMemberType]  # reason: decoded is object from json.loads
