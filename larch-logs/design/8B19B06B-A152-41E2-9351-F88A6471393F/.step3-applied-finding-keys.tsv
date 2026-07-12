@@ -1,0 +1,14 @@
+1	the python `step5_resume_main` surface does not preserve the `--checks-site` composite route exposed by the existing bash launcher, so step 5 resume can run the wrong child workflow.
+1	`bgjob adapt` uses its generic merge environment while step 5 review-and-fix writes to `.step5-review-result.env`; without an explicit bridge, the daemon can publish an empty or incomplete result envelope.
+1	`run_step_checks_main` does not preserve the existing commit-site, checkpoint, and forked-target composite arguments, so step 3 and step 5 checks can lose required routing.
+1	`bgjob adapt` appends `--bgjob-child --merge-result-env`, but the retained ci-fixer lane accepts neither flag, causing delegated ci-fixer children to terminate with argument-parsing errors.
+1	checks parents seed `checks_input_*` identity rows before launch, but adapt truncates the merge environment during launch preparation, preventing live rejoin from proving identity.
+1	generic adapt reuse validates only `bgjob_rc` and `step`, while step 5 requires canonical complete/stall envelopes, required handoff keys, and stale-result clearing. partial or stale results could be emitted as terminal success.
+1	existing step 5 recovery requires both child and daemon liveness and unlinks partial/dead state, while adapt uses a different daemon-oriented policy and can return hard errors instead of fresh-starting.
+1	the thin-wrapper rewrite removes inline tier-selection snippets that an existing test reads directly, so `make py-test` can fail despite correct runtime behavior.
+1	completed-result reuse can cause a repeated ci-fixer `--start` to emit `bgjob_status=done` instead of the required `started` envelope, halting the caller before finalization.
+2	step 5 review and resume have different reuse and stale-result semantics, but the plan does not preserve separate classifiers. sharing one classifier could reject valid resume results or reuse stale review stalls.
+2	`jobspec` is defined in `python/larch/bgjob/model.py`, but the plan does not list that file while requiring `initial_merge_rows` and caller-owned merge-path data. without the typed model update, dispatch cannot reliably pass atomic identity seeds through `adapt`.
+2	changes to caller-selected merge paths and atomic initial rows are not reflected in the firm test file list, leaving truncation, seed preservation, and child publication behavior insufficiently specified.
+2	the plan does not specify how resume, checks, and step 6 child modes capture and atomically publish worker stdout into their distinct merge-result environments. without that contract, `bgjob wait` can miss `next_action`, review status, checks relays, or commit-route rows.
+2	seeding `checks_input_*` rows alone does not satisfy the child identity contract; step 6 and checks child commands also need the required repository, launch-head, fingerprint, schema, and original-argument flags.

@@ -1,0 +1,102 @@
+Reviewing the plan against current adapter contracts, `bgjob adapt`, and CI-fixer behavior.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/bgjob/adapt.py:291-313	Plan omits adapt changes for Step 5 merge path	bgjob adapt always creates bgjob/{step}.merge.env but review-and-fix writes .step5-review-result.env (review_and_fix.py:137-320) and step-5-review.sh:219-222 passes that path to bgjob start; daemon merges spec.merge_result_env so publication can miss Step 5 KVs	Add ### UPDATED: python/larch/bgjob/adapt.py to honor JobSpec.merge_result_env when set (defaulting to .step5-review-result.env for implement-step5-review) or document equivalent wiring in dispatch_commit_route.py
+1	in_scope	major	correctness	python/larch/bgjob/adapt.py:309	skills/implement/scripts/step-6-entry.sh:327-335	skills/implement/scripts/run-step-checks.sh:378-386	Identity pre-seed is wiped at launch	adapt._prepare_launch_spec atomically truncates merge env to empty; Step 6 and run-step-checks seed CHECKS_INPUT_* before start so live rejoin classify_live_seed can return matching; without seed live rejoin fails closed (checks_result_identity.py:224-232)	Extend adapt or JobSpec to write launch identity rows during prepare (under the decision lock) before daemon start, and port the seed-then-start ordering from the Bash parents
+1	in_scope	major	risk-integration	python/larch/bgjob/adapt.py:167-184	skills/implement/scripts/step-5-review.sh:88-132	Generic adapt completion reuse is weaker than Step 5 contract	adapt._parse_completed_rows accepts any BGJOB_RC+STEP; Step 5 requires STEP5_REVIEW_STATUS plus eight handoff keys and distinct complete vs stall reuse/clear rules (step-5-review.md:11-12)	Require step5_review parent mode to run step5_canonical_result_env_state (or Python equivalent) before start_or_reattach and preserve stall clearing when registry is live but envelope is non-complete
+1	in_scope	major	risk-integration	skills/implement/scripts/step-5-review.sh:75-76	python/larch/bgjob/adapt.py:405-429	Step 5 liveness gate differs from bgjob adapt policy	Step 5 treats registry live only when child AND daemon are live; adapt reattaches when daemon is live even if child is not, and unlinks expired rows differently	Reconcile with acceptance behave identically: either document intentional unification in the plan or add Step-5-specific pre-adapt registry normalization that preserves AND semantics
+1	in_scope	major	correctness	skills/implement/scripts/step-8-ci-fixer.sh:152	python/larch/implement/ci_fixer_lane.py:949-1013	Successful finalize is not lineage-idempotent	--finalize always appends a lineage row; repeated finalize on the same step inflates attempt accounting on the next --start (step-8-ci-fixer.sh:195); crash path has dedup in ci_fixer_lane but success path does not	In ci_fixer_adapter.py require successful finalize to skip append when an identical attempt row already exists (plan edge case: repeated finalization after lineage recorded)
+
+## Findings
+
+### 1. Step 5 merge-env path mismatch (correctness)
+
+The plan routes parent mode through `bgjob adapt`, but `adapt._prepare_launch_spec` always sets merge env to `bgjob/{step}.merge.env`:
+
+```291:313:python/larch/bgjob/adapt.py
+def _merge_env_path(*, spec: model.JobSpec) -> Path:
+    root = model.bgjob_dir(spec.tmpdir)
+    return root / f"{model.validate_slug(spec.step, label='step')}.merge.env"
+
+
+def _prepare_launch_spec(spec: model.JobSpec) -> model.JobSpec:
+    ...
+    merge_env = _merge_env_path(spec=spec)
+    ...
+    larch_io.trusted_atomic_write(path=merge_env, text="", root=root, mode=0o600)
+    command = (*spec.command, "--bgjob-child", "--merge-result-env", str(merge_env))
+```
+
+Step 5 today uses a different merge file, and `review-and-fix` writes only there:
+
+```219:222:skills/implement/scripts/step-5-review.sh
+MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/.step5-review-result.env"
+...
+: >"$MERGE_RESULT_ENV"
+```
+
+```137:320:python/larch/review/review_and_fix.py
+_STEP5_REVIEW_RESULT_ENV = ".step5-review-result.env"
+...
+    return tmpdir / _STEP5_REVIEW_RESULT_ENV
+```
+
+The plan does not list `adapt.py` or `review_and_fix.py` as updates. Without an explicit merge-path contract, daemon publication can miss Step 5 KVs and break the grammar in `step-5-review.md`.
+
+### 2. Checks identity pre-seed vs adapt truncate (correctness)
+
+Step 6 and `run-step-checks` seed `CHECKS_INPUT_*` into merge env before `bgjob start`:
+
+```327:335:skills/implement/scripts/step-6-entry.sh
+MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
+{
+    printf '%s\n' "CHECKS_INPUT_HEAD_SHA=${LAUNCH_HEAD}"
+    ...
+} >"$MERGE_RESULT_ENV_TMP"
+...
+mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV"
+```
+
+`adapt` truncates that file to empty on every fresh launch (`adapt.py:309`). Live rejoin calls `classify_live_seed`; an empty merge env yields `incomplete` / `missing-identity` (`checks_result_identity.py:224-232`), and parents fail closed when `STATE != matching` (`step-6-entry.sh:283-286`). The plan names the edge case but does not say how identity seeding survives `start_or_reattach`.
+
+### 3. Step 5 canonical result reuse (risk-integration)
+
+Generic adapt reuse only checks `BGJOB_RC` and `STEP` (`adapt.py:167-184`). Step 5 requires a richer envelope and stall semantics:
+
+```88:132:skills/implement/scripts/step-5-review.sh
+required_keys = {
+    "STEP5_REVIEW_STATUS",
+    ...
+}
+...
+if rows.get("BGJOB_RC") == "0" and status == "complete" and required_keys.issubset(rows):
+    print("complete")
+...
+if status == "stall" and required_keys.issubset(rows):
+    print("stall")
+```
+
+The plan says “validate completed results before reuse” but does not require porting this classifier before calling adapt. A partial result env could be emitted as `BGJOB_STATUS=DONE`.
+
+### 4. Step 5 liveness AND vs adapt daemon policy (risk-integration)
+
+Step 5 registry probe requires both processes live:
+
+```75:76:skills/implement/scripts/step-5-review.sh
+    if registry.child_liveness(entry).live and registry.daemon_liveness(entry).live:
+```
+
+`adapt` reattaches when the daemon is live (`adapt.py:415-429`), even if the child is not. That conflicts with acceptance “behave identically” unless the plan documents this as an intentional policy change.
+
+### 5. CI-fixer successful finalize lineage (correctness)
+
+Successful `--finalize` always appends a lineage row:
+
+```152:152:skills/implement/scripts/step-8-ci-fixer.sh
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$ATTEMPT" ... >>"$LINEAGE"
+```
+
+The next `--start` derives `ATTEMPT` from lineage row count (`step-8-ci-fixer.sh:195`). Repeated finalize on the same step can double-count. Crash finalization has dedup in `ci_fixer_lane.py:949-1013`; the plan’s “lineage deduplication” should cover the successful path explicitly in `ci_fixer_adapter.py`.
+
+---
+
+[OUT_OF_SCOPE] `skills/implement/scripts/step-5-review.md` is the authoritative Step 5 KV contract but is not in the plan’s file list; updating it alongside the Python port would reduce contract drift during review.
