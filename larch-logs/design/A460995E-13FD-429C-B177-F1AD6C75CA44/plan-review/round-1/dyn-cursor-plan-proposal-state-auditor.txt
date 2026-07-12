@@ -1,0 +1,44 @@
+Reviewing the plan against the current codebase: I'll read the existing learn-from-bugs implementation and related contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	skills/learn-from-bugs/SKILL.md:108-142	Default-mode marker write still runs before proposal reconciliation and omits --proposals-file	Step 4 still commits write-state immediately after printing the report; reconciled proposals JSONL is built later in the planned flow, so new residuals and checked statuses never reach the marker and adoption history is lost on the default path	Relocate the default-mode write-state/git commit --only block to after reconciled proposals JSONL is assembled; pass --proposals-file; forbid marker commit before Step 4 reconciliation completes
+1	in_scope	major	correctness	python/larch/issue/learn_from_bugs.py:check_proposals	Filed-issue adoption treats any CLOSED issue as completed	Plan lists adopted only for closed completed issues, but does not require stateReason==COMPLETED; CLOSED with empty NOT_PLANNED DUPLICATE or other reasons would be marked adopted and inflate adoption rate	Map filed_issue transitions explicitly: OPEN to pending; CLOSED+COMPLETED to adopted; CLOSED+NOT_PLANNED to orphaned; all other CLOSED or missing stateReason fail closed or stay pending; add injected-runner tests for non-COMPLETED closed reasons
+1	in_scope	major	correctness	skills/learn-from-bugs/SKILL.md:filing-mode	Filing mode lacks deterministic dedup issue-number mapping	/issue emits ISSUE_i_DUPLICATE and ISSUE_i_DUPLICATE_OF_NUMBER without ISSUE_i_NUMBER; plan only names ISSUE_N_NUMBER so deduped batch items leave filed_issue null and block marker advance or drop filing history	Parse per-item DUPLICATE and DUPLICATE_OF_NUMBER from /issue stdout; when DUPLICATE attach DUPLICATE_OF_NUMBER to every proposal in that batch item; treat unmapped dedup items as failed mapping and do not write-state
+1	in_scope	major	correctness	skills/learn-from-bugs/SKILL.md:36-67,121	Marker and adoption paths split ANALYSIS_ROOT versus $PWD	Prepare and planned check-proposals scan ANALYSIS_ROOT but write-state uses --root $PWD; with --root PATH the marker and adoption checks target different trees so proposals and repo evidence diverge	Use ANALYSIS_ROOT consistently for check-proposals read-state and write-state --root and git commit --only path resolution
+1	in_scope	minor	correctness	python/larch/issue/learn_from_bugs.py:hook-check	Hook adoption target matching is undefined against hooks.json shape	hooks.json entries are matcher plus command script paths, not stable names; substring-free matching is required but the plan does not define the proposal target grammar or match key so hook proposals may never adopt or may false-match	Document hook proposal target format in schema v2 docs and implement matching by exact hooks.json command path or matcher token with fixture tests for present and absent
+1	in_scope	minor	security	python/larch/issue/learn_from_bugs.py:check_proposals	Untrusted proposal targets lack root confinement	Plan treats prior proposals as untrusted but adoption checks read repository targets from marker JSON without requiring resolved paths stay under root; a crafted target could probe outside the checkout	Resolve every repository-backed target relative to root, reject .. escapes and absolute paths before reads, and test rejection of traversal targets
+
+### 1. [correctness] Default-mode marker timing (`skills/learn-from-bugs/SKILL.md:108-142`)
+
+The planned flow builds a reconciled proposals JSONL after the adoption section and new residuals are known, then passes it to `write-state`. The existing default-mode subsection still writes and commits the marker immediately after printing the report, with no `--proposals-file`. On the default path, checked statuses and new `proposed` entries would not persist, which breaks the core feature.
+
+**Suggested revision:** Move the `write-state` / `git commit --only` fences to the end of Step 4, after reconciled JSONL exists, and require `--proposals-file` in both default and filing marker paths.
+
+### 2. [correctness] Filed-issue `stateReason` granularity (`python/larch/issue/learn_from_bugs.py` — planned `check_proposals`)
+
+The approach says a closed completed issue is `adopted` and closed not planned is `orphaned`, but it does not require `stateReason==COMPLETED` before adopting. Elsewhere the repo already treats `NOT_PLANNED` specially (`python/larch/issue/analyze_bugs.py:512-513`). A bare `CLOSED` issue with empty, `DUPLICATE`, or other reasons could be misclassified as adopted.
+
+**Suggested revision:** Adopt only on `CLOSED` + `COMPLETED`; orphan on `NOT_PLANNED`; keep `pending` or fail closed for other closed reasons and missing `stateReason`.
+
+### 3. [correctness] Filing-mode dedup mapping (`skills/learn-from-bugs/SKILL.md` — filing mode; `skills/issue/SKILL.md:334-346`)
+
+The plan parses `ISSUE_N_NUMBER` but `/issue` dedup rows emit `ISSUE_i_DUPLICATE=true` and `ISSUE_i_DUPLICATE_OF_NUMBER` instead of a created number. Without explicit mapping, deduped batch items cannot attach `filed_issue`, which triggers the plan's own "do not advance on ambiguous mapping" rule and loses filing history.
+
+**Suggested revision:** For each batch index `i`, accept `ISSUE_i_NUMBER` or, when `ISSUE_i_DUPLICATE=true`, bind `filed_issue` from `ISSUE_i_DUPLICATE_OF_NUMBER` for all proposals in that batch item.
+
+### 4. [correctness] `ANALYSIS_ROOT` vs `$PWD` (`skills/learn-from-bugs/SKILL.md:36-67,121`)
+
+`ANALYSIS_ROOT` drives prepare and the planned adoption checks, but `write-state` still uses `--root "$PWD"`. When the operator passes `--root PATH` for a foreign checkout, adoption evidence and marker persistence target different trees.
+
+**Suggested revision:** Bind `--root "$ANALYSIS_ROOT"` for `check-proposals`, `write-state`, and marker commit/rollback fences.
+
+### 5. [correctness] Hook target contract (`python/larch/issue/learn_from_bugs.py` — planned hook check; `hooks/hooks.json:1-34`)
+
+`hooks/hooks.json` stores matcher plus command paths, not named hook IDs. The plan requires parsing the file and matching a "named hook entry" without defining what the proposal `target` field contains.
+
+**Suggested revision:** Specify hook `target` as command script path or matcher string and match against parsed hook entries; cover with present/absent fixture trees.
+
+### 6. [security] Root-confined target reads (`python/larch/issue/learn_from_bugs.py` — planned `check_proposals`)
+
+The SKILL delta treats prior proposal content as untrusted, but the Python plan does not require repository targets to resolve under `root` before reads.
+
+**Suggested revision:** Reject absolute paths and `..` escapes when resolving lint, invariant, guideline, test, and hook targets from marker JSON.
