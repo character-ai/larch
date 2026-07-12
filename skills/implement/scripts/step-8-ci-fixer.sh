@@ -150,6 +150,13 @@ PY
   LIVE_HEAD=$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null) || fail invalid-live-head
   [ "$FINAL_HEAD" = "$LIVE_HEAD" ] || fail final-head-drift
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$ATTEMPT" "$TIER" "$STARTING_HEAD" "$INPUT_FINGERPRINT" "$(printf '%s\n' "$OUT" | sed -n 's/^RESULT=//p')" "$(printf '%s\n' "$OUT" | sed -n 's/^FINAL_HEAD=//p')" >>"$LINEAGE"
+  RESULT_VAL=$(printf '%s\n' "$OUT" | sed -n 's/^RESULT=//p')
+  if [ "$RESULT_VAL" = "reship" ]; then
+    # Push the lane-owned salvage commit before ship re-entry so a later terminal
+    # exit (e.g. an architectural assessment gate) cannot strand the fix locally
+    # and leave PR CI looking at the pre-fixer diff. Fail closed on push failure. See #7113.
+    ( cd "$REPO_ROOT" && python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push branch ) >/dev/null 2>&1 || fail fixer-reship-push-failed
+  fi
   printf '%s\n' "$OUT"
   exit 0
 fi

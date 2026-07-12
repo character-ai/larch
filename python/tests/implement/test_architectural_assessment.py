@@ -390,15 +390,22 @@ class _SequenceLauncher:
         return result
 
 
-def _payload(evidences: list[assessment.MaterializedEvidence], *, states: dict[str, str] | None = None) -> str:
+def _payload(
+    evidences: list[assessment.MaterializedEvidence],
+    *,
+    states: dict[str, str] | None = None,
+    assessments: dict[str, str] | None = None,
+) -> str:
     outcomes = states or {}
+    texts = assessments or {}
     rows: list[dict[str, object]] = []
     for evidence in evidences:
         state = outcomes.get(evidence.kind, "clean")
+        default_text = "No violations identified." if state == "clean" else "An architectural requirement applies."
         rows.append({
             "kind": evidence.kind,
             "state": state,
-            "assessment": "No violations identified." if state == "clean" else "An architectural requirement applies.",
+            "assessment": texts.get(evidence.kind, default_text),
             "identifiers": [] if state == "clean" else sorted(evidence.identifiers),
             "head_sha": evidence.head_sha,
             "base_ref": evidence.base_ref,
@@ -535,6 +542,80 @@ def test_waterfall_attempts_each_available_lane_once_in_order(monkeypatch: pytes
 
     assert result == ("guidelines:clean",)
     assert order == ["cursor", "codex", "claude"]
+
+
+def _persist_rejecting_clean_prose_with_identifier(
+    result: assessment.AssessmentResult, *, repo_root: Path, implement_tmpdir: Path
+) -> None:
+    """Mirror the real validator: clean prose citing a G-*/I-* ID is a clean-mismatch."""
+    _ = (repo_root, implement_tmpdir)
+    if result.state == "clean" and ("G-" in result.assessment or "I-" in result.assessment):
+        raise assessment._ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_waterfall_retries_clean_outcome_prose_mismatch_then_succeeds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
+    # First launch affirms clean but cites a G-* identifier (clean-mismatch); the
+    # retry drops the identifier and passes the validator.
+    cursor = _SequenceLauncher([
+        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
+        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "No deviations identified."}), ""),
+    ])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor}, availability={"cursor": True, "codex": False, "claude": False},
+    )
+
+    assert result == ("guidelines:clean",)
+    assert cursor.calls == 2
+    # The retry launch carried the tightened clean-prose constraint.
+    assert assessment._CLEAN_PROSE_CONSTRAINT in cursor.requests[-1].prompt  # pyright: ignore[reportPrivateUsage]
+    assert assessment._CLEAN_PROSE_CONSTRAINT not in cursor.requests[0].prompt  # pyright: ignore[reportPrivateUsage]
+
+
+def test_waterfall_caps_clean_outcome_retry_at_one_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
+    # Both the original attempt and the retry cite a G-* identifier, so the retry
+    # also mismatches and the run terminates with re-author-required (capped at one retry).
+    cursor = _SequenceLauncher([
+        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
+        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Still clean per G-Py-4."}), ""),
+    ])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor}, availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    assert result == ("guidelines:re-author-required:clean-outcome-prose-mismatch",)
+    # One original attempt plus one capped retry; later lanes do not re-attempt a reauthor-marked kind.
+    assert cursor.calls == 2
+
+
+def test_waterfall_does_not_retry_non_clean_mismatch_reauthor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+
+    def persist(_result: assessment.AssessmentResult, *, repo_root: Path, implement_tmpdir: Path) -> None:
+        _ = (repo_root, implement_tmpdir)
+        raise assessment._ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setattr(assessment, "_persist_result", persist)
+    cursor = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor}, availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    # A non-clean-mismatch reauthor reason is terminal: no retry, lane called once.
+    assert result == (f"guidelines:{assessment._reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)}",)  # pyright: ignore[reportPrivateUsage]
+    assert cursor.calls == 1
 
 
 def test_recorded_binary_availability_outranks_path_drift(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
