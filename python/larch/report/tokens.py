@@ -2552,9 +2552,11 @@ def _iter_panel_prompt_size_files(repo: Path) -> list[Path]:
     paths: list[Path] = []
     for skill in ("design", "implement", "review"):
         for run_dir in run_log_corpus.safe_child_run_dirs(root / skill):
-            for path in run_log_corpus.iter_validated_run_files(run_dir, name=PANEL_PROMPT_SIZE_BASENAME):
-                if path.is_file() and not path.is_symlink() and _panel_context_from_tsv(path, repo) is not None:
-                    paths.append(path)
+            paths.extend(
+                path
+                for path in run_log_corpus.iter_validated_run_files(run_dir, name=PANEL_PROMPT_SIZE_BASENAME)
+                if path.is_file() and not path.is_symlink() and _panel_context_from_tsv(path, repo) is not None
+            )
     return sorted(paths)
 
 

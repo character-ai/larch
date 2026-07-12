@@ -206,7 +206,7 @@ def test_validated_run_escape_and_bytes(tmp_path: Path) -> None:
     assert run_log_corpus.validated_run_has_escape_symlink(run_dir, contain_root=logs) is True
     assert run_log_corpus.validated_run_dir_bytes(run_dir) >= 3
     with pytest.raises(ValueError, match="could not resolve run directory"):
-        list(run_log_corpus.iter_validated_run_walk(tmp_path / "missing-run"))
+        _ = list(run_log_corpus.iter_validated_run_walk(tmp_path / "missing-run"))
 
 
 def test_safe_child_run_dirs_enumeration_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

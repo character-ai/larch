@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from larch.issue import rejected_analysis as ra
+from larch.report import run_log_corpus
 from larch.review import voting
 
 
@@ -291,8 +292,6 @@ def test_run_started_at_updated_at_and_first_valid_stop(tmp_path: Path) -> None:
 
 
 def test_classification_paths_are_lexical(tmp_path: Path) -> None:
-    from larch.report import run_log_corpus
-
     run = tmp_path / "run"
     for round_num in (10, 2):
         round_dir = run / f"round-{round_num}"

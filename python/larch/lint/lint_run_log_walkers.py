@@ -74,11 +74,10 @@ def _repo_root_from_module() -> Path:
 
 
 def _tracked_python_relpaths(root: Path) -> list[str]:
-    proc = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z", "--", "python", *SKILL_SCANNERS],
+    proc = subprocess.run(  # lint-subprocess-via-runner: ok lint utility calls git directly to enumerate tracked files; no proc.Runner needed
+        ["git", "-C", str(root), "ls-files", "-z", "--", "python", *SKILL_SCANNERS],  # noqa: S607 - lint tool calls git to enumerate tracked files; partial path is intentional
         check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
     )
     if proc.returncode != 0:
         raise RuntimeError(f"git ls-files failed: {proc.stderr.decode(errors='replace')}")
@@ -191,14 +190,13 @@ class _Walker(ast.NodeVisitor):
                 value = _const_str(elt)
                 if value in MANIFEST_NAMES:
                     names.update(_iter_loop_targets(node.target))
-        elif isinstance(iter_node, ast.Call) and _call_name(iter_node) in {"tuple", "list"}:
-            if iter_node.args:
-                first = iter_node.args[0]
-                if isinstance(first, (ast.Tuple, ast.List)):
-                    for elt in first.elts:
-                        value = _const_str(elt)
-                        if value in MANIFEST_NAMES:
-                            names.update(_iter_loop_targets(node.target))
+        elif isinstance(iter_node, ast.Call) and _call_name(iter_node) in {"tuple", "list"} and iter_node.args:
+            first = iter_node.args[0]
+            if isinstance(first, (ast.Tuple, ast.List)):
+                for elt in first.elts:
+                    value = _const_str(elt)
+                    if value in MANIFEST_NAMES:
+                        names.update(_iter_loop_targets(node.target))
         if names and self._loop_uses_both_manifests(node):
             self._add(
                 node,
@@ -213,7 +211,7 @@ class _Walker(ast.NodeVisitor):
             value = _const_str(child)
             if value in MANIFEST_NAMES:
                 seen.add(value)
-        return MANIFEST_NAMES <= seen
+        return seen >= MANIFEST_NAMES
 
     def visit_Call(self, node: ast.Call) -> None:
         name = _call_name(node)
@@ -221,20 +219,18 @@ class _Walker(ast.NodeVisitor):
             self._check_glob_call(node, name)
         elif name == "walk":
             root = _attr_root_name(node.func)
-            if root == "os" or (isinstance(node.func, ast.Attribute) and _looks_like_corpus_receiver(node.func.value)):
-                if self._walk_looks_like_corpus(node):
-                    self._add(
-                        node,
-                        "raw-walk",
-                        "use run_log_corpus.safe_child_run_dirs / validated-run helpers instead of os.walk on corpus roots",
-                    )
-        elif name == "scandir":
-            if self._walk_looks_like_corpus(node):
+            if (root == "os" or (isinstance(node.func, ast.Attribute) and _looks_like_corpus_receiver(node.func.value))) and self._walk_looks_like_corpus(node):
                 self._add(
                     node,
-                    "raw-scandir",
-                    "use run_log_corpus.safe_child_run_dirs instead of os.scandir on corpus roots",
+                    "raw-walk",
+                    "use run_log_corpus.safe_child_run_dirs / validated-run helpers instead of os.walk on corpus roots",
                 )
+        elif name == "scandir" and self._walk_looks_like_corpus(node):
+            self._add(
+                node,
+                "raw-scandir",
+                "use run_log_corpus.safe_child_run_dirs instead of os.scandir on corpus roots",
+            )
         self.generic_visit(node)
 
     def _check_glob_call(self, node: ast.Call, name: str) -> None:

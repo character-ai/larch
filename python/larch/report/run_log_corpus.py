@@ -7,7 +7,7 @@ import os
 import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -19,7 +19,7 @@ _ROUND_DIR_RE = re.compile(r"^round-(\d+)$")
 _ROUND_IN_NAME_RE = re.compile(r"round-(\d+)")
 
 
-class WalkWarningKind(str, Enum):
+class WalkWarningKind(StrEnum):
     """Structured warning kinds for ``safe_child_run_dirs`` callers."""
 
     ROOT_MISSING = "root_missing"
@@ -370,8 +370,10 @@ def discover_classifications(
     for skill in skills:
         skill_root = log_root / skill
         for run_dir in safe_child_run_dirs(skill_root, warn=warn, on_warning=on_warning):
-            for path in classification_tsv_paths(skill, run_dir, round_sort=round_sort):
-                rows.append((skill, path))
+            rows.extend(
+                (skill, path)
+                for path in classification_tsv_paths(skill, run_dir, round_sort=round_sort)
+            )
     return rows
 
 
@@ -388,8 +390,7 @@ def discover_design_classification_paths(
     """
     paths: list[Path] = []
     for run_dir in safe_child_run_dirs(design_root, warn=warn, on_warning=on_warning):
-        for path in iter_validated_run_files(run_dir, name="findings-classification.tsv"):
-            paths.append(path)
+        paths.extend(iter_validated_run_files(run_dir, name="findings-classification.tsv"))
     return sorted(paths)
 
 
@@ -429,7 +430,7 @@ def iter_validated_run_walk(
     def _under_contain(path: Path) -> bool:
         try:
             resolved = path.resolve(strict=False)
-            resolved.relative_to(resolved_contain)
+            _ = resolved.relative_to(resolved_contain)
         except (OSError, ValueError):
             return False
         return True
@@ -472,7 +473,7 @@ def validated_run_has_escape_symlink(run_dir: Path, *, contain_root: Path) -> bo
 
     def _under_contain(path: Path) -> bool:
         try:
-            path.resolve(strict=False).relative_to(resolved_contain)
+            _ = path.resolve(strict=False).relative_to(resolved_contain)
         except (OSError, ValueError):
             return False
         return True

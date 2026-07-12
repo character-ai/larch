@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from larch.issue import analyze_issues
+from larch.issue import _ground_truth as gt
 from larch.issue import _oos
 from larch.rendering import render_chart
 
@@ -2165,8 +2166,6 @@ def test_build_analyze_report_includes_high_risk_oos_backlog(tmp_path: Path) -> 
 
 
 def test_ground_truth_metadata_helpers_preserve_policies(tmp_path: Path) -> None:
-    from larch.issue import _ground_truth as gt
-
     run = tmp_path / "run"
     run.mkdir()
     (run / "manifest.json").write_text(json.dumps({"updated_at": "2026-02-01T00:00:00Z"}), encoding="utf-8")
@@ -2196,8 +2195,6 @@ def test_ground_truth_metadata_helpers_preserve_policies(tmp_path: Path) -> None
 
 
 def test_ground_truth_gc_slimmed_fallback_skips_symlinks(tmp_path: Path) -> None:
-    from larch.issue import _ground_truth as gt
-
     log_root = tmp_path / "larch-logs"
     real = log_root / "implement" / "run-real"
     real.mkdir(parents=True)
@@ -2208,8 +2205,6 @@ def test_ground_truth_gc_slimmed_fallback_skips_symlinks(tmp_path: Path) -> None
 
 
 def test_ground_truth_discover_skips_symlinked_runs(tmp_path: Path) -> None:
-    from larch.issue import _ground_truth as gt
-
     log_root = tmp_path / "larch-logs"
     real = log_root / "implement" / "run-real" / "round-1"
     real.mkdir(parents=True)

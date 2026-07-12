@@ -1700,7 +1700,7 @@ def test_iter_panel_and_checks_digest_skip_symlinked_run_dirs(
     monkeypatch.setattr(
         tokens,
         "_panel_context_from_tsv",
-        lambda path, repo: ("implement", "r1"),
+        lambda _path, _repo: ("implement", "r1"),  # pyright: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     )
     panels = tokens._iter_panel_prompt_size_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
     digests = tokens._iter_checks_digest_size_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
