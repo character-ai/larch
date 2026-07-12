@@ -1356,6 +1356,11 @@ def _plan_review_plan_directive(*, vendor: str, plan_file: Path) -> str:
     )
 
 
+def _plan_review_architectural_guidelines(*, is_static_arch: bool, difficulty_value: str) -> tuple[str, int]:
+    section = _architectural_guidelines_review_section(difficulty_value=difficulty_value) if is_static_arch else ""
+    return "\n".join(_section_lines(section)), _byte_len(section)
+
+
 def render_plan_review_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="render plan-review", add_help=False)
     parser.add_argument("--archetype")
@@ -1420,15 +1425,11 @@ def render_plan_review_main(argv: list[str]) -> int:
         ledger_section = _plan_ledger_section(path_value=args.findings_ledger_file, design_tmpdir=str(design_tmpdir), role="reviewer")
         if ledger_section:
             payload_bytes += _byte_len(ledger_section)
-        is_static_arch = not args.body_file and args.archetype == "arch"
-        architectural_guidelines_section = (
-            _architectural_guidelines_review_section(difficulty_value=args.difficulty)
-            if is_static_arch
-            else ""
+        architectural_guidelines_prompt, architectural_guidelines_payload_bytes = _plan_review_architectural_guidelines(
+            is_static_arch=not args.body_file and args.archetype == "arch",
+            difficulty_value=args.difficulty,
         )
-        if architectural_guidelines_section:
-            payload_bytes += _byte_len(architectural_guidelines_section)
-        architectural_guidelines_prompt = "\n".join(_section_lines(architectural_guidelines_section)) if architectural_guidelines_section else ""
+        payload_bytes += architectural_guidelines_payload_bytes
         if args.vendor == "cursor":
             payload_bytes += _file_payload_bytes(plan_file)
         plan_directive = _plan_review_plan_directive(vendor=args.vendor, plan_file=plan_file)
