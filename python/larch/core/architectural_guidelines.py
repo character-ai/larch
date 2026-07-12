@@ -2215,8 +2215,6 @@ def _write_compose_assessment_main(argv: list[str], *, kind: AssessmentKind) -> 
             implement_tmpdir = Path(args.implement_tmpdir)
             if not assessment_path.is_absolute():
                 assessment_path = implement_tmpdir / assessment_path
-            elif assessment_path != implement_tmpdir and implement_tmpdir not in assessment_path.parents:
-                assessment_path = implement_tmpdir / str(assessment_path).lstrip("/")
             assessment_text = _read_regular_text_no_follow(assessment_path)
         else:
             assessment_text = str(args.assessment_text or "")

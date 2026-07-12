@@ -91,6 +91,8 @@ def test_assessment_kind_descriptors_cover_distinct_lifecycle_contracts() -> Non
     assert INVARIANTS.design_requires_nonempty is True
     assert GUIDELINES.ship_present_empty is False
     assert INVARIANTS.ship_present_empty is True
+    assert GUIDELINES.flush_outcome is True
+    assert INVARIANTS.flush_outcome is False
 
 
 def test_assessment_kind_entry_policies_preserve_the_kind_specific_bodies() -> None:
@@ -1681,6 +1683,39 @@ def test_write_compose_assessment_rejects_head_drift(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="HEAD changed after compose materialization"):
         ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo, outcome="clean")
+
+
+@pytest.mark.parametrize(
+    ("kind", "main"),
+    [
+        (GUIDELINES, ag.write_compose_assessment_main),
+        (INVARIANTS, ag.invariants_write_compose_assessment_main),
+    ],
+)
+def test_write_compose_assessment_main_reads_absolute_assessment_file_verbatim(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: AssessmentKind,
+    main: object,
+) -> None:
+    implement_tmpdir = tmp_path / "implement"
+    assessment_file = tmp_path / "assessment.md"
+    assessment_file.write_text("Assessment from direct caller\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+
+    def fake_write_compose_assessment(**kwargs: object) -> None:
+        captured.update(kwargs)
+
+    monkeypatch.setattr(ag, "_write_compose_assessment", fake_write_compose_assessment)
+
+    assert callable(main)
+    assert main([
+        "--implement-tmpdir", str(implement_tmpdir),
+        "--assessment-file", str(assessment_file),
+    ]) == 0
+
+    assert captured["assessment_text"] == "Assessment from direct caller\n"
+    assert captured["kind"] is kind
 
 
 def test_prepare_absent_emits_status_without_diff(

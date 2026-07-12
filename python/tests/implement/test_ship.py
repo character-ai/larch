@@ -6807,6 +6807,68 @@ def test_invariants_gate_does_not_stall_on_unavailable_outcome(
     assert refreshed["detail"] == "launcher exited 1"
 
 
+@pytest.mark.parametrize(
+    ("kind", "gate_result", "writer_name", "expected_flushes"),
+    [
+        (
+            ship.GUIDELINES,
+            ship.GuidelinesGateResult(guidelines_status="absent"),
+            "write_guideline_ship_outcome",
+            1,
+        ),
+        (
+            ship.INVARIANTS,
+            ship.InvariantsGateResult(invariants_status="absent"),
+            "write_invariant_ship_outcome",
+            0,
+        ),
+    ],
+)
+def test_assessment_gate_flushes_only_guideline_outcomes_before_pr_creation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: ship.AssessmentKind,
+    gate_result: ship.GuidelinesGateResult | ship.InvariantsGateResult,
+    writer_name: str,
+    expected_flushes: int,
+) -> None:
+    flushes: list[str] = []
+    writes: list[str] = []
+
+    if kind.is_invariant:
+        monkeypatch.setattr(
+            ship.architectural_guidelines,
+            "read_invariants",
+            lambda **_kwargs: _present_invariants_file(tmp_path),
+        )
+        monkeypatch.setattr(ship, "load_or_prepare_invariants_note", lambda **_kwargs: gate_result)
+    else:
+        monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", lambda **_kwargs: gate_result)
+
+    def fake_writer(**_kwargs: object) -> None:
+        writes.append(kind.key)
+
+    monkeypatch.setattr(ship, writer_name, fake_writer)
+    monkeypatch.setattr(
+        ship,
+        "_flush_guideline_outcome_before_pr",
+        lambda **_kwargs: flushes.append(kind.key),
+    )
+
+    result = ship._assessment_gate_before_pr(
+        runner=RecordingRunner(),
+        pr_context=_ctx(tmp_path),
+        repo_root=str(tmp_path),
+        base_ref="main",
+        resume=_pre_pr_resume_plan(),
+        kind=kind,
+    )
+
+    assert result is gate_result
+    assert writes == [kind.key]
+    assert len(flushes) == expected_flushes
+
+
 def test_invariants_gate_stalls_on_genuine_dropped_outcome(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
