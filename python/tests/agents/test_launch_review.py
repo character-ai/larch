@@ -295,6 +295,7 @@ JSON
     assert proc.returncode == 0
     assert out.read_text(encoding="utf-8") == payload
     argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert argv[argv.index("--mode") + 1] == "ask"
     assert argv[argv.index("--workspace") + 1] == str(evidence.resolve())
     assert argv[argv.index("--model") + 1] == "composer-2.5"
     assert argv[-1] == "ASSESSMENT_PROMPT"
@@ -335,6 +336,7 @@ printf '%s' '{{"schema_version":"1","results":[]}}' >"$out"
 
     assert proc.returncode == 0
     argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert argv[argv.index("--sandbox") + 1] == "read-only"
     assert argv[argv.index("-C") + 1] == str(repo.resolve())
     add_dirs = [argv[index + 1] for index, value in enumerate(argv) if value == "--add-dir"]
     assert str(evidence.resolve()) in add_dirs
@@ -1003,6 +1005,7 @@ def test_cursor_auth_preflight_writes_preflight_bundle(tmp_path: Path, monkeypat
     diag = out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
     assert "STATUS=FAILED" in diag
     assert "cursor-auth-preflight" in diag
+    assert "cursor-auth-preflight" in out.with_suffix(out.suffix + ".sidecar").read_text(encoding="utf-8")
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=unknown" in dirty
     assert "preflight-short-circuit-no-agent-ran" in dirty
@@ -1404,6 +1407,7 @@ def test_codex_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: P
     assert "model-args-preflight-no-agent-ran" in dirty
     assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
     assert "model-args failed" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+    assert "model-args failed" in out.with_suffix(out.suffix + ".sidecar").read_text(encoding="utf-8")
 
 
 def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1428,6 +1432,7 @@ def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: 
     assert "model-args-preflight-no-agent-ran" in dirty
     assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
     assert "load_model_args failed" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+    assert "load_model_args failed" in out.with_suffix(out.suffix + ".sidecar").read_text(encoding="utf-8")
     assert out.with_suffix(out.suffix + ".prompt").read_text(encoding="utf-8") == "hi"
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert "OUTER_LAUNCHER=agent launch-review" in meta

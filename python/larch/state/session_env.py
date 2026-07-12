@@ -48,6 +48,7 @@ WRITE_ENV_KEYS = frozenset({
     "REPO_UNAVAILABLE",
     "FORKED_TARGET",
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
+    "CLAUDE_BINARY_FOUND",
     "CODEX_BINARY_FOUND",
     "CURSOR_BINARY_FOUND",
     "LARCH_AUTO_MODE",
@@ -119,6 +120,7 @@ RESTORE_FINALIZE_DEFAULTS = {
 CALLER_ENV_KEYS = frozenset({
     "REPO",
     "REPO_UNAVAILABLE",
+    "CLAUDE_BINARY_FOUND",
     "CODEX_BINARY_FOUND",
     "CURSOR_BINARY_FOUND",
     "LARCH_TOKEN_SESSION_ID",
@@ -138,6 +140,7 @@ COMMON_DESIGN_ENV_DEFAULTS: dict[str, str] = {
     "ISSUE_TITLE": "",
     "HAS_CLARIFY_LABEL": "false",
     "REPO": "",
+    "CLAUDE_BINARY_FOUND": "",
     "CODEX_BINARY_FOUND": "",
     "CURSOR_BINARY_FOUND": "",
     "IMPLEMENT_TMPDIR": "",
@@ -216,6 +219,8 @@ def finalize_wrapper_env(merged: dict[str, str]) -> dict[str, str]:
     environment, and return it. Shared tail of the design and validator wrapper
     env resolvers.
     """
+    if not merged.get("CLAUDE_BINARY_FOUND"):
+        merged["CLAUDE_BINARY_FOUND"] = "true" if shutil.which("claude") else "false"
     if not merged.get("CODEX_BINARY_FOUND"):
         merged["CODEX_BINARY_FOUND"] = "true" if shutil.which("codex") else "false"
     if not merged.get("CURSOR_BINARY_FOUND"):
@@ -744,6 +749,7 @@ def write_env_main(argv: list[str]) -> int:
     parser.add_argument("--cursor-present", default="")
     parser.add_argument("--codex-available", default="")
     parser.add_argument("--cursor-available", default="")
+    parser.add_argument("--claude-binary-found", default="")
     parser.add_argument("--codex-binary-found", default="")
     parser.add_argument("--cursor-binary-found", default="")
     parser.add_argument("--auto-mode", default="")
@@ -774,7 +780,7 @@ def write_env_main(argv: list[str]) -> int:
             return 0
         if args.repo_unavailable is None:
             raise ValueError("Missing required arguments: --output, --repo-unavailable")
-        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "codex_binary_found", "cursor_binary_found", "auto_mode", "live_mutation_ok"):
+        for flag in ("codex_present", "cursor_present", "codex_available", "cursor_available", "claude_binary_found", "codex_binary_found", "cursor_binary_found", "auto_mode", "live_mutation_ok"):
             value = getattr(args, flag)
             if value:
                 _parse_bool_arg(value=value, flag=f"--{flag.replace('_', '-')}")
@@ -802,6 +808,8 @@ def write_env_main(argv: list[str]) -> int:
             "FORKED_TARGET": args.forked_target,
             "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": _external_timeout(),
         }
+        if args.claude_binary_found:
+            data["CLAUDE_BINARY_FOUND"] = args.claude_binary_found
         if args.codex_binary_found:
             data["CODEX_BINARY_FOUND"] = args.codex_binary_found
         if args.cursor_binary_found:
@@ -1788,8 +1796,11 @@ def setup_main(argv: list[str]) -> int:
         _emit_kv(key="REPO_UNAVAILABLE", value=repo_unavailable)
     final_codex = ""
     final_cursor = ""
+    final_claude_bin = caller.get("CLAUDE_BINARY_FOUND", "")
     final_codex_bin = caller.get("CODEX_BINARY_FOUND", "")
     final_cursor_bin = caller.get("CURSOR_BINARY_FOUND", "")
+    if final_claude_bin not in _BOOL:
+        final_claude_bin = "true" if shutil.which("claude") else "false"
     if args.check_reviewers:
         # agents.check_reviewers is a real module-level function (see agents.py);
         # a newer pyright misresolves this cross-module attribute while the
@@ -1815,6 +1826,7 @@ def setup_main(argv: list[str]) -> int:
             _emit_kv(key="CODEX_BINARY_FOUND", value=final_codex_bin)
         if final_cursor_bin in _BOOL:
             _emit_kv(key="CURSOR_BINARY_FOUND", value=final_cursor_bin)
+    _emit_kv(key="CLAUDE_BINARY_FOUND", value=final_claude_bin)
     if caller.get("LARCH_TOKEN_SESSION_ID"):
         _emit_kv(key="LARCH_TOKEN_SESSION_ID", value=caller["LARCH_TOKEN_SESSION_ID"])
     if caller.get("LARCH_CLAUDE_SOURCE_FILE"):
@@ -1827,6 +1839,8 @@ def setup_main(argv: list[str]) -> int:
             wargs.extend(["--codex-present", final_codex])
         if final_cursor:
             wargs.extend(["--cursor-present", final_cursor])
+        if final_claude_bin:
+            wargs.extend(["--claude-binary-found", final_claude_bin])
         if final_codex_bin:
             wargs.extend(["--codex-binary-found", final_codex_bin])
         if final_cursor_bin:

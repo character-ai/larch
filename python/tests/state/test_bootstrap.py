@@ -74,6 +74,7 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
         repo="owner/repo",
         repo_unavailable="false",
         session_id="sid",
+        claude_binary_found="true",
     )
     bootstrap._write_base_session_env(st)  # pyright: ignore[reportPrivateUsage]
     write_env = next(call for call in calls if call[:2] == ("session", "write-env") and "--plugin-root-only" not in call)
@@ -82,6 +83,7 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
     assert "--dynamic-archetypes" in write_env
     assert "1" in write_env
     assert "--auto-mode" in write_env
+    assert write_env[write_env.index("--claude-binary-found") + 1] == "true"
 
 
 def test_write_claude_source_snapshot_does_not_inject_larch_session_id(tmp_path, monkeypatch) -> None:

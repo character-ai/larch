@@ -8,7 +8,20 @@ IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 export IMPLEMENT_TMPDIR
 
 STEP="implement-step8-assessment"
-BUDGET_S=5700
+# Reserve a full waterfall and one complete retry. Codex and Cursor each need
+# their shared-launcher grace period beyond the lane timeout on both attempts.
+LANE_BUDGET_S=$(PYTHONPATH="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
+from larch.core import config, external_defaults
+print(external_defaults.fixer_lane_budget_sec(config.ARCHITECTURAL_ASSESSMENT_ROLE))
+PY
+)
+EXTERNAL_LANE_GRACE_S=60
+EXTERNAL_LANE_COUNT=$(PYTHONPATH="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - <<'PY'
+from larch.core import config, external_defaults
+print(sum(tool in {"codex", "cursor"} for tool in external_defaults.tool_order(config.ARCHITECTURAL_ASSESSMENT_ROLE)))
+PY
+)
+BUDGET_S=$((2 * (LANE_BUDGET_S + EXTERNAL_LANE_COUNT * EXTERNAL_LANE_GRACE_S)))
 WAIT_CHUNK_S=270
 BGJOB_CHILD=false
 MERGE_RESULT_ENV=""

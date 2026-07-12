@@ -795,6 +795,7 @@ def _review_write_preflight_bundle(
 ) -> None:
     _write(path=output, text="")
     _write(path=output.with_suffix(output.suffix + ".diag"), text=f"STATUS=FAILED\nFAILURE_REASON={failure_reason}\n")
+    _write(path=output.with_suffix(output.suffix + ".sidecar"), text=f"{failure_reason}\n")
     meta = output.with_suffix(output.suffix + ".meta")
     _write(
         path=meta,

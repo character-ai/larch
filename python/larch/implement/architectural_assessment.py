@@ -674,6 +674,24 @@ def _parse_results(  # type: ignore[reportUnusedFunction]  # reason: internal he
     return tuple(sorted(parsed, key=lambda result: _KIND_ORDER.index(result.kind)))
 
 
+def _record_invalid_result_row(
+    *,
+    kind: str,
+    by_kind: Mapping[str, MaterializedEvidence],
+    parsed: dict[str, AssessmentResult],
+    invalid: dict[str, str],
+    detail: str,
+) -> None:
+    """Keep malformed rows unresolved, including valid rows they invalidate."""
+    if kind in by_kind:
+        invalid[kind] = detail
+        _ = parsed.pop(kind, None)
+        return
+    parsed.clear()
+    for expected_kind in by_kind:
+        _ = invalid.setdefault(expected_kind, detail)
+
+
 def _parse_results_independently(
     raw: str,
     evidences: Sequence[MaterializedEvidence],
@@ -690,21 +708,26 @@ def _parse_results_independently(
         return (), {evidence.kind: str(exc) for evidence in evidences}
     by_kind = {evidence.kind: evidence for evidence in evidences}
     seen: set[str] = set()
-    parsed: list[AssessmentResult] = []
+    parsed: dict[str, AssessmentResult] = {}
     invalid: dict[str, str] = {}
     for item in rows:  # type: ignore[reportUnknownVariableType]  # reason: item is object from json.loads
         kind = str(item.get("kind") or "") if isinstance(item, dict) else ""  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: item is object from json.loads
         try:
-            parsed.append(_parse_result_row(item, by_kind, seen))  # type: ignore[reportUnknownArgumentType]  # reason: item is object from json.loads
+            result = _parse_result_row(item, by_kind, seen)  # type: ignore[reportUnknownArgumentType]  # reason: item is object from json.loads
         except (TypeError, ValueError) as exc:
-            if kind in by_kind:
-                invalid[kind] = str(exc)
-            else:
-                for missing_kind in set(by_kind) - seen:
-                    _ = invalid.setdefault(missing_kind, str(exc))
-    for missing_kind in set(by_kind) - {result.kind for result in parsed}:
+            _record_invalid_result_row(
+                kind=kind,
+                by_kind=by_kind,
+                parsed=parsed,
+                invalid=invalid,
+                detail=str(exc),
+            )
+        else:
+            if result.kind not in invalid:
+                parsed[result.kind] = result
+    for missing_kind in set(by_kind) - set(parsed):
         _ = invalid.setdefault(missing_kind, "assessment result omitted a requested kind")
-    return tuple(sorted(parsed, key=lambda result: _KIND_ORDER.index(result.kind))), invalid
+    return tuple(sorted(parsed.values(), key=lambda result: _KIND_ORDER.index(result.kind))), invalid
 
 
 def _write_text_atomic(path: Path, text: str) -> None:

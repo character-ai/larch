@@ -125,6 +125,30 @@ def test_parse_results_independently_preserves_valid_rows() -> None:
     assert "identity mismatch" in invalid["guidelines"]
 
 
+def test_parse_results_independently_discards_valid_row_after_malformed_duplicate() -> None:
+    evidence = _evidence()
+    valid = json.loads(_payload([evidence]))["results"][0]
+    malformed = dict(valid)
+    malformed["state"] = "deviation"
+    parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
+        json.dumps({"schema_version": "1", "results": [valid, malformed]}), [evidence]
+    )
+    assert parsed == ()
+    assert set(invalid) == {"guidelines"}
+
+
+def test_parse_results_independently_rejects_unknown_extra_row() -> None:
+    evidence = _evidence()
+    valid = json.loads(_payload([evidence]))["results"][0]
+    extra = dict(valid)
+    extra["kind"] = "unexpected"
+    parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
+        json.dumps({"schema_version": "1", "results": [valid, extra]}), [evidence]
+    )
+    assert parsed == ()
+    assert set(invalid) == {"guidelines"}
+
+
 def test_prompt_evidence_paths_must_stay_under_granted_root(tmp_path: Path) -> None:
     evidence_dir = tmp_path / "evidence"
     evidence_dir.mkdir()
@@ -158,6 +182,30 @@ def test_shared_launcher_sidecars_fail_closed_when_missing_or_inconsistent(tmp_p
     assert "omitted" in assessment._shared_launcher_artifact_error(  # pyright: ignore[reportPrivateUsage]
         output=output, tool="codex", launcher_exit=0
     )
+
+
+def test_shared_launcher_preflight_sidecar_surfaces_operator_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    output = tmp_path / "result.json"
+    reason = "codex auth setup failed"
+
+    def fake_run(_argv: list[str], **_kwargs: object) -> object:
+        _ = output.with_suffix(output.suffix + ".done").write_text("1\n", encoding="utf-8")
+        _ = output.with_suffix(output.suffix + ".meta").write_text(
+            f"TOOL=codex\nOUTPUT_FILE={output}\n", encoding="utf-8"
+        )
+        _ = output.with_suffix(output.suffix + ".sidecar").write_text(reason + "\n", encoding="utf-8")
+        _ = output.with_suffix(output.suffix + ".diag").write_text(
+            f"STATUS=FAILED\nFAILURE_REASON={reason}\n", encoding="utf-8"
+        )
+        return type("Completed", (), {"stdout": f"LAUNCHER_EXIT=1\nOUTPUT={output}\n", "stderr": "", "returncode": 0})()
+
+    monkeypatch.setattr(assessment.subprocess, "run", fake_run)
+    request = assessment.LaunchRequest(assessment._LANES["codex"], tmp_path, "prompt", tmp_path, output)  # pyright: ignore[reportPrivateUsage]
+    result = assessment.SharedReviewLauncher().launch(request)
+
+    detail = assessment._launch_failure_detail("codex", result, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+    assert reason in detail
+    assert "omitted a required result sidecar" not in detail
 
 
 def test_main_usage_and_success_stdout_contract(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
@@ -357,7 +405,36 @@ def test_waterfall_advances_once_per_lane_and_stops_after_valid_codex_result(mon
 
     assert result == ("guidelines:clean",)
     assert (cursor.calls, codex.calls, claude.calls) == (1, 1, 0)
-    assert persisted == ["guidelines"]
+
+
+def test_waterfall_retries_invalid_json_then_stops_on_valid_deviation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
+    cursor = _SequenceLauncher([assessment.LaunchResult(0, "not-json", "")])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], states={"guidelines": "deviation"}), "")])
+    claude = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor, "codex": codex, "claude": claude},
+        availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    assert result == ("guidelines:deviation",)
+    assert (cursor.calls, codex.calls, claude.calls) == (1, 1, 0)
+
+
+def test_waterfall_persists_unavailable_when_all_lanes_are_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={}, availability={"cursor": False, "codex": False, "claude": False},
+    )
+
+    assert result == ("guidelines:unavailable",)
 
 
 def test_waterfall_attempts_each_available_lane_once_in_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -482,6 +559,33 @@ def test_full_exhaustion_persists_last_lane_diagnostic(monkeypatch: pytest.Monke
     )
     assert result == ("guidelines:unavailable",)
     assert outcome["detail"] == "final Claude diagnostic"
+
+
+def test_head_drift_during_persistence_rematerializes_and_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    preparations = 0
+    waterfall_calls = 0
+
+    def prepare(*_args: object, **_kwargs: object) -> tuple[dict[str, str], list[assessment.MaterializedEvidence]]:
+        nonlocal preparations
+        preparations += 1
+        return {}, [evidence]
+
+    def waterfall(*_args: object, **_kwargs: object) -> dict[str, str]:
+        nonlocal waterfall_calls
+        waterfall_calls += 1
+        if waterfall_calls == 1:
+            raise assessment._HeadDrift("post-CI-fix persistence changed HEAD")  # pyright: ignore[reportPrivateUsage]
+        return {evidence.kind: "clean"}
+
+    monkeypatch.setattr(assessment, "_prepare_pending", prepare)
+    monkeypatch.setattr(assessment, "_run_waterfall", waterfall)
+
+    assert assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={}, availability={},
+    ) == ("guidelines:clean",)
+    assert (preparations, waterfall_calls) == (2, 2)
 
 
 def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
