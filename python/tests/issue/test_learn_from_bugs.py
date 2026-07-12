@@ -778,6 +778,7 @@ def test_prepare_main_rejects_abbreviated_search_flag(
             ]
         )
 
+
 def _proposal(
     proposal_id: str = "add-audit-lint",
     proposal_type: learn_from_bugs.ProposalType = "lint",
@@ -1260,3 +1261,350 @@ def test_filed_issue_rejects_malformed_json_response(stdout: str) -> None:
 
     with pytest.raises(learn_from_bugs.LearnFromBugsError):
         learn_from_bugs.check_proposals(runner, (proposal,), Path.cwd(), "o/r")
+
+
+# --- Origin classification ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "ref"),
+    [
+        ("introduced by #42", 42),
+        ("INTRODUCED BY #7", 7),
+        ("introduced by PR #99", 99),
+        ("introduced by PR#88", 88),
+        ("introduced by pr #12", 12),
+        ("incomplete fix of #55", 55),
+        ("Incomplete Fix Of #55", 55),
+        ("persists after #100", 100),
+        ("residual of #3", 3),
+    ],
+)
+def test_origin_referenced_marker_families(text: str, ref: int) -> None:
+    body = f"## Root cause\n\n{text}\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="regression", ref=ref)
+
+
+def test_origin_bare_regression_has_null_ref() -> None:
+    body = "## Root cause\n\nThis is a regression in the flush path.\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="regression", ref=None)
+
+
+def test_origin_no_marker_is_unknown() -> None:
+    body = "## Root cause\n\nA plain logic error with no residual language.\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    ["never designed", "was never told", "no handling for"],
+)
+def test_origin_spec_gap_phrases(phrase: str) -> None:
+    body = f"## Root cause\n\nThe feature {phrase} this case.\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="spec-gap", ref=None)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    ["first time this path ran", "newly added"],
+)
+def test_origin_new_code_phrases(phrase: str) -> None:
+    body = f"## Root cause\n\nThe {phrase} code path failed.\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="new-code", ref=None)
+
+
+def test_origin_referenced_marker_beats_heuristic_phrase() -> None:
+    body = "## Root cause\n\npersists after #9 and was never designed for this.\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="regression", ref=9)
+
+
+def test_origin_title_marker_classifies() -> None:
+    origin = learn_from_bugs.classify_origin(
+        title="[BUG] residual of #44 in ship",
+        body="## Root cause\n\nNo body marker.\n",
+    )
+    assert origin == learn_from_bugs.Origin(kind="regression", ref=44)
+
+
+def test_origin_scans_past_root_cause_cap() -> None:
+    body = "## Root cause\n\n" + ("A" * (learn_from_bugs.ROOT_CAUSE_CAP + 40)) + "\npersists after #77\n"
+    digest = learn_from_bugs.build_digest(_issue(2, "[BUG] late", body))
+    assert digest.origin == learn_from_bugs.Origin(kind="regression", ref=77)
+    assert "persists after" not in digest.sections["root cause"]
+
+
+def test_origin_scans_past_freeform_cap() -> None:
+    body = ("B" * (learn_from_bugs.FREEFORM_CAP + 40)) + "\npersists after #66\n"
+    digest = learn_from_bugs.build_digest(_issue(3, "[BUG] late freeform", body))
+    assert digest.origin == learn_from_bugs.Origin(kind="regression", ref=66)
+    assert digest.structured is False
+
+
+def test_origin_repeated_root_cause_first_marker_wins() -> None:
+    body = (
+        "## Root cause\n\npersists after #11\n\n"
+        "## Root cause\n\npersists after #22\n"
+    )
+    origin = learn_from_bugs.classify_origin(title="[BUG] dup", body=body)
+    assert origin == learn_from_bugs.Origin(kind="regression", ref=11)
+
+
+def test_origin_ignores_marker_in_summary_only() -> None:
+    body = (
+        "## Summary\n\npersists after #5\n\n"
+        "## Root cause\n\nNo residual language here.\n\n"
+        "## Suggested fix(es)\n\nFix it.\n"
+    )
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+
+
+def test_origin_ignores_marker_in_suggested_fix_only() -> None:
+    body = (
+        "## Summary\n\nBroke.\n\n"
+        "## Root cause\n\nOrdinary failure.\n\n"
+        "## Suggested fix(es)\n\nThis was introduced by #9.\n"
+    )
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+
+
+def test_origin_title_only_ignores_plan_body_markers() -> None:
+    body = (
+        "<!-- larch:plan:start -->\n"
+        "## Plan\n"
+        "## Approach\n"
+        "persists after #123\n"
+        "never designed\n"
+    )
+    digest = learn_from_bugs.build_digest(_issue(12, "[BUG] plan-only", body))
+    assert digest.sections == {"_title_only": ""}
+    assert digest.origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+
+
+def test_origin_freeform_referenced_marker() -> None:
+    body = "Something broke; persists after #81 in the flush path.\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] freeform", body=body)
+    assert origin == learn_from_bugs.Origin(kind="regression", ref=81)
+
+
+def test_origin_ignores_marker_after_plan_boundary() -> None:
+    body = (
+        "## Root cause\n\nOrdinary failure.\n\n"
+        "<!-- larch:plan:start -->\n"
+        "## Plan\n"
+        "## Approach\n"
+        "persists after #999\n"
+    )
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+
+
+def test_build_digest_json_includes_origin() -> None:
+    digest = learn_from_bugs.build_digest(
+        _issue(10, "[DONE] [BUG] widget", STRUCTURED_BODY)
+    )
+    payload = digest.to_json()
+    assert payload["origin"] == {"kind": "unknown", "ref": None}
+    assert digest.title == "[BUG] widget"
+
+
+# --- Zones ------------------------------------------------------------------
+
+
+def test_resolve_zones_design_implement_or_group() -> None:
+    assert learn_from_bugs.resolve_zone_search("design,implement") == (
+        "[BUG] (design OR implement) in:title,body"
+    )
+
+
+def test_resolve_zones_trims_whitespace() -> None:
+    assert learn_from_bugs.resolve_zone_search("  design , implement  ") == (
+        "[BUG] (design OR implement) in:title,body"
+    )
+
+
+def test_resolve_zones_rejects_empty() -> None:
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="non-empty"):
+        learn_from_bugs.resolve_zone_search("   ")
+
+
+def test_resolve_zones_rejects_empty_element() -> None:
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="empty zone"):
+        learn_from_bugs.resolve_zone_search("design,,implement")
+
+
+def test_resolve_zones_rejects_explicit_search_conflict() -> None:
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="--search"):
+        learn_from_bugs.resolve_zone_search("design", has_explicit_search=True)
+
+
+def test_resolve_zones_rejects_verbal_search_conflict() -> None:
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="verbal"):
+        learn_from_bugs.resolve_zone_search("design", has_verbal_search=True)
+
+
+def test_resolve_zones_preserves_shell_metacharacters() -> None:
+    query = learn_from_bugs.resolve_zone_search("design$(boom),impl;rm")
+    assert query == "[BUG] (design$(boom) OR impl;rm) in:title,body"
+
+
+def test_resolve_zones_main_emits_resolved_search(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = learn_from_bugs.resolve_zones_main(["--zones", "design,implement"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert out.strip() == "RESOLVED_SEARCH=[BUG] (design OR implement) in:title,body"
+
+
+# --- Origin headline + report contract --------------------------------------
+
+
+def _digest_with_origin(
+    number: int,
+    *,
+    kind: learn_from_bugs.OriginKind,
+    ref: int | None = None,
+    title: str = "[BUG] x",
+) -> learn_from_bugs.BugDigest:
+    return learn_from_bugs.BugDigest(
+        number=number,
+        title=title,
+        closed_at="2026-07-01",
+        url=f"https://github.com/o/r/issues/{number}",
+        state="CLOSED",
+        structured=True,
+        prefix_chars=10,
+        sections={"summary": "x"},
+        origin=learn_from_bugs.Origin(kind=kind, ref=ref),
+    )
+
+
+def test_render_origin_headline_counts_chains_ratio_and_self_chain() -> None:
+    digests = [
+        _digest_with_origin(200, kind="regression", ref=100),
+        _digest_with_origin(50, kind="regression", ref=None),  # bare: ratio only
+        _digest_with_origin(42, kind="regression", ref=42),  # self
+        _digest_with_origin(3, kind="new-code"),
+        _digest_with_origin(4, kind="spec-gap"),
+        _digest_with_origin(5, kind="unknown"),
+        _digest_with_origin(6, kind="unknown"),
+        _digest_with_origin(7, kind="unknown"),
+    ]
+    headline = learn_from_bugs.render_origin_headline(digests)
+    assert "selected=8" in headline
+    assert "- regression: 3 (37.5%)" in headline
+    assert "- new-code: 1 (12.5%)" in headline
+    assert "- spec-gap: 1 (12.5%)" in headline
+    assert "- unknown: 3 (37.5%)" in headline
+    assert "#100 -> #200" in headline
+    assert "#42 -> #42 (suspect: self-reference)" in headline
+    assert "#50 ->" not in headline  # bare omitted from chains
+    assert "3/8 (37.5%)" in headline
+
+
+def test_render_origin_headline_zero_selected() -> None:
+    headline = learn_from_bugs.render_origin_headline([])
+    assert "selected=0" in headline
+    assert "- regression: 0 (0.0%)" in headline
+    assert "(none)" in headline
+    assert "n/a (0/0)" in headline
+
+
+def test_validate_report_contract_accepts_valid_report() -> None:
+    digests = [_digest_with_origin(200, kind="regression", ref=100)]
+    headline = learn_from_bugs.render_origin_headline(digests)
+    report = (
+        "## 1. Scope and cost\n\ncost\n\n"
+        "## 2. Root-cause clusters\n\n"
+        f"{headline}\n"
+        "### Cluster: parsers\n"
+        "Mechanism: duplicated contracts; single-sourcing is the class fix.\n\n"
+        "## 3. Already covered (dedup)\n\nnone\n\n"
+        "## 6. Proposed guideline entries\n\n"
+        f"Marker: {learn_from_bugs.PROSE_ONLY_MARKER}. "
+        "Cites #6746 and #6747. Nearest mechanical alternative: lint agent-tool-contract.\n"
+    )
+    learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
+
+
+def test_validate_report_contract_rejects_headline_after_clusters() -> None:
+    digests = [_digest_with_origin(200, kind="regression", ref=100)]
+    headline = learn_from_bugs.render_origin_headline(digests)
+    report = (
+        "## 2. Root-cause clusters\n\n"
+        "### Cluster: first\n"
+        "rows before headline\n\n"
+        f"{headline}\n"
+    )
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="before cluster"):
+        learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
+
+
+def test_validate_report_contract_rejects_reversed_chain() -> None:
+    digests = [_digest_with_origin(200, kind="regression", ref=100)]
+    headline = learn_from_bugs.render_origin_headline(digests)
+    altered = headline.replace("#100 -> #200", "#200 -> #100")
+    report = f"## 2. Root-cause clusters\n\n{altered}\n"
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="verbatim"):
+        learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
+
+
+def test_validate_report_contract_rejects_prose_only_missing_citation() -> None:
+    digests = [_digest_with_origin(1, kind="unknown")]
+    headline = learn_from_bugs.render_origin_headline(digests)
+    report = (
+        f"## 2. Root-cause clusters\n\n{headline}\n"
+        f"## 6. Proposed guideline entries\n\n{learn_from_bugs.PROSE_ONLY_MARKER} "
+        "cites #6746 only. Nearest lint: lint-foo.\n"
+    )
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="#6747"):
+        learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
+
+
+def test_validate_report_contract_rejects_prose_only_missing_mechanical_alt() -> None:
+    digests = [_digest_with_origin(1, kind="unknown")]
+    headline = learn_from_bugs.render_origin_headline(digests)
+    report = (
+        f"## 2. Root-cause clusters\n\n{headline}\n"
+        f"## 6. Proposed guideline entries\n\n{learn_from_bugs.PROSE_ONLY_MARKER} "
+        "cites #6746 and #6747 without naming any alternative.\n"
+    )
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="mechanical"):
+        learn_from_bugs.validate_report_contract(report=report, expected_headline=headline)
+
+
+def test_run_prepare_writes_origin_headline_and_digest_origin(tmp_path: Path) -> None:
+    body = (
+        "## Summary\n\nBroke.\n\n"
+        "## Root cause analysis\n\npersists after #100\n\n"
+        "## Suggested fix(es)\n\nFix.\n"
+    )
+    rows = [_issue(200, "[BUG] residual", body)]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    out_dir = tmp_path / "run"
+    request = learn_from_bugs.PrepareRequest(
+        search="[BUG] in:title",
+        search_explicit=False,
+        state="closed",
+        limit=10,
+        repo_explicit="o/r",
+        out_dir=out_dir,
+        root=tmp_path,
+    )
+    stats = learn_from_bugs.run_prepare(runner, request)
+    assert "ORIGIN_HEADLINE_PATH" in stats
+    headline = Path(str(stats["ORIGIN_HEADLINE_PATH"])).read_text(encoding="utf-8")
+    assert "#100 -> #200" in headline
+    assert "1/1 (100.0%)" in headline
+    first = json.loads((out_dir / "digest.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert first["origin"] == {"kind": "regression", "ref": 100}
+    # DIGEST_CHARS measures full serialized digest including origin.
+    assert int(str(stats["DIGEST_CHARS"])) == len(json.dumps(first))
