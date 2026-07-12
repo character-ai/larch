@@ -1,0 +1,34 @@
+Reviewing the plan against the Runner contract, typing rules, and existing lint patterns in the repo.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	architecture	python/larch/lint/engine.py	Frozen SourceFile lazy AST cache has no specified implementation pattern	Plan requires a frozen SourceFile with a lazy cached AST (Approach 6-7, engine.py bullet) but gives no cache mechanism. functools.cached_property and post-init assignment both fail on frozen dataclasses; an ad hoc fix will likely break under python/pyrightconfig.json strict mode or violate G-Py-1.	Name one pattern in engine.py: e.g. a private mutable slot field (field(default_factory=..., repr=False, compare=False)) or a small unfrozen holder stored in a frozen field; document that only the slot mutates while path/text/lines stay immutable; add a test that repeated .ast access parses once.
+1	in_scope	minor	correctness	python/tests/lint/test_lint_engine.py	Unmatched requested paths have no specified outcome	Tests list unmatched valid paths but Approach 4-5 and Edge cases define empty-directory clean scans only, not a requested file/dir that survives validation yet matches zero tracked files after git ls-files --cached filtering. Two implementers can ship different exit codes and both claim plan compliance.	Pick and document one rule in Approach/Edge cases (recommend exit 2 with stderr before any stdout) and pin it in test_lint_engine.py alongside the empty-directory clean-0 case.
+1	in_scope	minor	correctness	python/larch/lint/engine.py	Duplicate-finding collapse policy is left open	Edge cases require defining whether identical findings collapse but Approach 10 only sorts accepted findings; deterministic stdout is an acceptance criterion. Shuffled detector output plus ambiguous dedupe can yield divergent renders across runs.	State one policy in Approach (recommend stable sort only, no dedupe, unless collapse is required) and add the matching assertion in the deterministic-rendering test.
+1	out_of_scope	minor	architecture	python/larch/lint/engine.py	Discovery calls runner.run directly instead of a typed git read helper	G-Py-7 prefers typed git wrappers over raw runner.run at call sites. Piece 1 can still be correct with a private discovery helper.	A typed git_ls_files_cached_read(root, runner) wrapper can land in a later engine refactor without blocking the scan-only slice.
+
+## Findings
+
+### 1. architecture — `python/larch/lint/engine.py` (planned)
+
+The plan draws a clear boundary for lazy AST parsing (Approach 6-7) and says the frozen `SourceFile` model must not be weakened, but it never says how to cache inside a frozen dataclass. In this repo, `python/pyrightconfig.json` uses `"typeCheckingMode": "strict"`, and there is no existing lazy-cache-on-frozen pattern to copy. Without an explicit slot/holder design, implementation is likely to hit `FrozenInstanceError` or lean on untyped workarounds.
+
+**Suggested revision:** Specify the mutable-slot pattern in the `engine.py` plan bullets and keep the existing lazy-AST tests.
+
+### 2. correctness — `python/tests/lint/test_lint_engine.py` (planned)
+
+Path containment and filtering boundaries are otherwise well staged (git discovery first, then validate/filter, then load). The gap is operator-supplied `paths` that are syntactically valid but match nothing in the tracked set after filtering. The test list names this case; the approach does not.
+
+**Suggested revision:** Document exit `2` vs clean `0` for unmatched requested paths and encode it in tests.
+
+### 3. correctness — `python/larch/lint/engine.py` (planned)
+
+Buffered output and “errors win over findings” (Approach 11-12, Failure modes) align with existing lint exit semantics (`0` / `1` / `2`) seen in modules like `lint_common.py` and tests such as `test_lint_agent_tool_contract.py` (findings on stdout, empty stderr on exit `1`). The duplicate-finding edge case is the remaining determinism hole.
+
+**Suggested revision:** Close the dedupe vs sort-only decision in Approach before implementation.
+
+## Assessment (boundaries the plan gets right)
+
+- **Discovery vs containment vs load:** Steps 2-5 separate injected `git ls-files --cached` discovery, path normalization/containment, and strict UTF-8 loading. That matches `Runner` / `CommandResult` in `python/larch/core/proc.py` (lines 14-35) and G-Py-7 injection.
+- **Lazy AST vs syntax policy vs detect:** Parse-on-access, `fail`/`skip`, then detector validation before suppression, is a coherent pipeline order.
+- **Partial stdout / repo writes:** Buffer-then-emit plus explicit tests for no partial stdout on later validation failure and no repository mutation match the scan-only contract and NEVER-style side-effect isolation.
+- **Runner test fake:** A recording fake with argv/cwd capture matches patterns in `python/tests/implement/test_ci_monitor.py` (lines 46-80); the protocol surface is `run(argv, *, cwd, env, check, ...)` → `CommandResult`.
+- **Minimum-change scope:** Two new files, no CLI registration, no baseline/write mode, and no edits to existing lint entry points keep piece 1 appropriately narrow versus the parent #6988 vision.
