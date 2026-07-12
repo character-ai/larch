@@ -25,12 +25,10 @@ scripts/resolve-upstream-larch-repo.sh
 scripts/sessionstart-health.sh
 scripts/sleep-seconds.sh
 scripts/sweep-design-logs.sh
-scripts/test-alias-structure.sh
 scripts/test-anti-halt-banners.sh
 scripts/test-anti-improvised-wakeup.sh
 scripts/test-audit-edit-write.sh
 scripts/test-block-submodule-edit.sh
-scripts/test-bug-structure.sh
 scripts/test-cache-key-discipline.sh
 scripts/test-cache-root-validation.sh
 scripts/test-check-stale-plugin.sh
@@ -38,7 +36,6 @@ scripts/test-check-topology-rule-paths.sh
 scripts/test-compose-plan-goals-test.sh
 scripts/test-deny-edit-write.sh
 scripts/test-design-multi-round-integration.sh
-scripts/test-design-structure.sh
 scripts/test-effort-prose.sh
 scripts/test-external-tool-registry.sh
 scripts/test-file-failure-report-cross-repo.sh
@@ -54,9 +51,7 @@ scripts/test-implement-positional-issue.sh
 scripts/test-implement-rebase-macro.sh
 scripts/test-implement-step2-routing.sh
 scripts/test-implement-step8-exit3-first-fixer.sh
-scripts/test-implement-structure.sh
 scripts/test-implement-timing-rehydration.sh
-scripts/test-learn-from-bugs-structure.sh
 scripts/test-legacy-title-prefix-literals-scope.sh
 scripts/test-lint-awk-multibyte-regex.sh
 scripts/test-lint-bare-grep-probe.sh
@@ -72,9 +67,7 @@ scripts/test-quick-mode-docs-sync.sh
 scripts/test-read-result-env.sh
 scripts/test-references-headers.sh
 scripts/test-render-cost-line-callsites.sh
-scripts/test-research-structure.sh
 scripts/test-resolve-upstream-larch-repo.sh
-scripts/test-review-structure.sh
 scripts/test-sessionstart-health.sh
 scripts/test-subskill-anchors.sh
 scripts/test-token-vendor-scrapers.sh

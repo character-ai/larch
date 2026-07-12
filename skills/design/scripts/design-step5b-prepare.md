@@ -32,4 +32,4 @@ Thin launcher-compat wrapper for the `/design` Step 5b prepare block.
 
 ## Harness
 
-Covered by `python/test_design_oos.py`, `python/test_design_cli_ports.py`, and `scripts/test-design-structure.sh`.
+Covered by `python/test_design_oos.py`, `python/test_design_cli_ports.py`, and `make test-design-structure`.

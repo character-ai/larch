@@ -1211,10 +1211,10 @@ index 31395f810..4de917d0d 100755
              continue
          parts.append(stripped)
          commands.append(' '.join(parts))
-diff --git a/scripts/test-implement-structure.md b/scripts/test-implement-structure.md
+diff --git a/python/tests/skills/test_skill_structure.py b/python/tests/skills/test_skill_structure.py
 index 9efbf78e0..ff675fdf2 100644
---- a/scripts/test-implement-structure.md
-+++ b/scripts/test-implement-structure.md
+--- a/python/tests/skills/test_skill_structure.py
++++ b/python/tests/skills/test_skill_structure.py
 @@ -1,35 +1,35 @@
  # test-implement-structure.sh
  
@@ -1252,10 +1252,10 @@ index 9efbf78e0..ff675fdf2 100644
  - `/implement` Step 17 and Step 18b point to `skills/shared/final-summary-emit.md` instead of restating the marker extraction algorithm.
  - Step 17 binds captured foreground `python/cli.py implement step-16-17` wrapper stdout as its source.
  - Step 18b binds captured foreground `step-18.sh --phase finalize` wrapper stdout as its source.
-diff --git a/scripts/test-implement-structure.sh b/scripts/test-implement-structure.sh
+diff --git a/make test-implement-structure b/make test-implement-structure
 index 8d2675266..1a11ac4af 100755
---- a/scripts/test-implement-structure.sh
-+++ b/scripts/test-implement-structure.sh
+--- a/make test-implement-structure
++++ b/make test-implement-structure
 @@ -88,47 +88,45 @@ require(skill, '`--force` and `-f` both set `force_requested=true`', 'SKILL -f a
  require(skill, '`--force` / `-f` and `--draft` together', 'SKILL -f draft mutex wording')
  require('skills/im/SKILL.md', '`--force`, `-f`', 'im SKILL forwards -f alias')

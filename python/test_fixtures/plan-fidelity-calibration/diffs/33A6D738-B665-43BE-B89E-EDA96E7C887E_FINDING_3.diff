@@ -447,10 +447,10 @@ index 9341d9a6d..7fda6c68b 100755
 -print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + --forked-target calls)')
 +print('PASS: test-implement-rebase-macro.sh (routing reference + absorbed 1.r + folded 7.r + --forked-target calls)')
  PY
-diff --git a/scripts/test-implement-structure.sh b/scripts/test-implement-structure.sh
+diff --git a/make test-implement-structure b/make test-implement-structure
 index 5643a7b31..3aa68c3a5 100755
---- a/scripts/test-implement-structure.sh
-+++ b/scripts/test-implement-structure.sh
+--- a/make test-implement-structure
++++ b/make test-implement-structure
 @@ -94,41 +94,41 @@ require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=cleanup', 'bootstrap refusal
  require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=step2', 'bootstrap invoke emits step2 directive')
  require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=degraded-prompt', 'bootstrap invoke emits degraded directive')

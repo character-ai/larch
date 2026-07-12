@@ -172,7 +172,7 @@ allowed_exts = {
     '.json', '.jsonl', '.yaml', '.yml', '.toml', '.ini', '.cfg', '.conf',
     '.tsv', '.csv',
 }
-# Classifier examples pinned by scripts/test-design-structure.sh: ### NEW:, ### UPDATED:, ### REWRITTEN:, ### MAY_UPDATE:.
+# Classifier examples pinned by make test-design-structure: ### NEW:, ### UPDATED:, ### REWRITTEN:, ### MAY_UPDATE:.
 # Backtick normalization strips one surrounding pair before extension and SKILL.md checks.
 heading_re = re.compile(r'^###[ \t]+(NEW|UPDATED|REWRITTEN|MAY_UPDATE)[ \t]*:(.*)$')
 

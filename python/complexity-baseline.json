@@ -3723,7 +3723,7 @@
     "file": "larch/issue/issue_wire.py",
     "code": "C901",
     "qualified_symbol": "extract_scope_paths",
-    "metric": 12
+    "metric": 11
   },
   {
     "file": "larch/issue/issue_wire.py",
@@ -6688,5 +6688,131 @@
     "code": "PLR0915",
     "qualified_symbol": "main",
     "metric": 111
+  },
+  {
+    "file": "tests/skills/_structure_alias_specialized.py",
+    "code": "C901",
+    "qualified_symbol": "run",
+    "metric": 19
+  },
+  {
+    "file": "tests/skills/_structure_alias_specialized.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run",
+    "metric": 18
+  },
+  {
+    "file": "tests/skills/_structure_bug_specialized.py",
+    "code": "C901",
+    "qualified_symbol": "run",
+    "metric": 18
+  },
+  {
+    "file": "tests/skills/_structure_bug_specialized.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run",
+    "metric": 17
+  },
+  {
+    "file": "tests/skills/_structure_design_specialized.py",
+    "code": "C901",
+    "qualified_symbol": "run",
+    "metric": 69
+  },
+  {
+    "file": "tests/skills/_structure_design_specialized.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run",
+    "metric": 57
+  },
+  {
+    "file": "tests/skills/_structure_design_specialized.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run",
+    "metric": 160
+  },
+  {
+    "file": "tests/skills/_structure_implement_specialized.py",
+    "code": "C901",
+    "qualified_symbol": "run",
+    "metric": 125
+  },
+  {
+    "file": "tests/skills/_structure_implement_specialized.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run",
+    "metric": 119
+  },
+  {
+    "file": "tests/skills/_structure_implement_specialized.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run",
+    "metric": 584
+  },
+  {
+    "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
+    "code": "C901",
+    "qualified_symbol": "run",
+    "metric": 86
+  },
+  {
+    "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run",
+    "metric": 85
+  },
+  {
+    "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run",
+    "metric": 172
+  },
+  {
+    "file": "tests/skills/_structure_research_specialized.py",
+    "code": "C901",
+    "qualified_symbol": "run",
+    "metric": 45
+  },
+  {
+    "file": "tests/skills/_structure_research_specialized.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run",
+    "metric": 38
+  },
+  {
+    "file": "tests/skills/_structure_research_specialized.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run",
+    "metric": 90
+  },
+  {
+    "file": "tests/skills/_structure_review_specialized.py",
+    "code": "C901",
+    "qualified_symbol": "run",
+    "metric": 55
+  },
+  {
+    "file": "tests/skills/_structure_review_specialized.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run",
+    "metric": 48
+  },
+  {
+    "file": "tests/skills/_structure_review_specialized.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run",
+    "metric": 120
+  },
+  {
+    "file": "tests/skills/skill_structure_pins.py",
+    "code": "C901",
+    "qualified_symbol": "validate_pin_table",
+    "metric": 25
+  },
+  {
+    "file": "tests/skills/skill_structure_pins.py",
+    "code": "PLR0912",
+    "qualified_symbol": "validate_pin_table",
+    "metric": 24
   }
 ]

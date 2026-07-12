@@ -21,4 +21,4 @@ Offline harness for `step-18.sh`.
 
 ## Edit in sync
 
-Update this harness with `step-18.sh`, `step-18.md`, `skills/implement/SKILL.md`, `scripts/test-implement-structure.sh`, `scripts/test-implement-timing-rehydration.sh`, and `scripts/test-render-cost-line-callsites.sh`.
+Update this harness with `step-18.sh`, `step-18.md`, `skills/implement/SKILL.md`, `make test-implement-structure`, `scripts/test-implement-timing-rehydration.sh`, and `scripts/test-render-cost-line-callsites.sh`.

@@ -25,7 +25,7 @@ None — standalone offline test. Referenced by `make lint` via the `test-implem
 - The test creates its own sandbox under `/tmp` and cleans it up via `trap`.
 - The awk extractor replicated here must stay in sync with `implement-finalize::read_state`.
 - The case-glob replicated here must stay in sync with `implement-finalize::verify_cleanup_target`.
-- Edit in sync with: `python3 python/cli.py implement-finalize` (when `read_state` or `verify_cleanup_target` changes), `scripts/test-implement-structure.sh` assertion `(31e)` / `(31g)`, and `skills/implement/SKILL.md` Steps 13.5 / 14.
+- Edit in sync with: `python3 python/cli.py implement-finalize` (when `read_state` or `verify_cleanup_target` changes), `make test-implement-structure` assertion `(31e)` / `(31g)`, and `skills/implement/SKILL.md` Steps 13.5 / 14.
 
 ## Makefile wiring
 

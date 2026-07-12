@@ -37,7 +37,7 @@ Foreground bgjob launcher for the `/design` Step 3 plan-review loop, with an int
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh`, `skills/design/scripts/test-design-step3-review.sh`, and relevant `/design` script checks.
+Covered by `make test-design-structure`, `skills/design/scripts/test-design-step3-review.sh`, and relevant `/design` script checks.
 
 ## KV-only postplan failure
 

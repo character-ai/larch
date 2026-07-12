@@ -147,7 +147,7 @@ suppress = [
 # scripts/test-subskill-anchors.md (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
 #
-# scripts/test-implement-structure.sh is the structural regression harness
+# make test-implement-structure is the structural regression harness
 # for skills/implement/SKILL.md and skills/implement/references/ invariants
 # (closes #234). Companion to scripts/test-implement-rebase-macro.sh: the
 # macro harness owns Rebase Checkpoint Macro placement/registry mechanics,
@@ -158,7 +158,7 @@ suppress = [
 # Contract/When-to-load header-triplet invariant moved out of this harness
 # as of #308 — see scripts/test-references-headers.sh below. It is
 # referenced only from Makefile (test-implement-structure target) and
-# scripts/test-implement-structure.md (sibling contract), matching the
+# python/tests/skills/test_skill_structure.py (sibling contract), matching the
 # same Makefile-only pattern as the other test-* harnesses above.
 #
 # scripts/test-references-headers.sh is the cross-skill structural
@@ -168,10 +168,11 @@ suppress = [
 # **Consumer**:, **Contract**:, and **When to load**: headers matched as
 # anchored line-start patterns (to avoid false-passes on prose or fenced-
 # code examples). Owns the triplet invariant formerly held by
-# test-implement-structure.sh assertion (8). Companion to
-# test-implement-structure.sh (/implement-specific topology) and
-# test-research-structure.sh (stricter /research-local first-20-lines
-# tightening layered on top of this global presence check). Referenced
+# make test-implement-structure assertion (8). Companion to
+# make test-implement-structure (python/tests/skills/test_skill_structure.py,
+# /implement-specific topology) and make test-research-structure (stricter
+# /research-local first-20-lines tightening layered on top of this global
+# presence check). Referenced
 # only from Makefile (test-references-headers target) and
 # scripts/test-references-headers.md (sibling contract), matching the
 # same Makefile-only pattern as the other test-* harnesses above.
@@ -203,11 +204,11 @@ suppress = [
 # scripts/test-implement-step2-routing.md (sibling contract); matches the
 # Makefile-only pattern as the other test-* harnesses above.
 #
-# scripts/test-research-structure.sh is the structural regression harness
+# make test-research-structure is the structural regression harness
 # for skills/research/SKILL.md and skills/research/references/ invariants
 # (2-reference progressive-disclosure topology introduced by the /research
-# refactor). Companion to scripts/test-design-structure.sh and
-# scripts/test-implement-structure.sh: this harness owns the /research
+# refactor). Companion to make test-design-structure and
+# make test-implement-structure: this harness owns the /research
 # MANDATORY ↔ reference-file binding (research-phase.md, validation-phase.md),
 # the reciprocal "Do NOT load" guards on each MANDATORY line, the
 # Consumer/Contract/When-to-load reference header triplet, the
@@ -215,25 +216,25 @@ suppress = [
 # the same `grep -F "RESEARCH_PROMPT"` substring also matches the four angle
 # prompt names ARCH/EDGE/EXT/SEC), and the validation XML wrapper tag pins. It is
 # referenced only from Makefile (test-research-structure target) and
-# scripts/test-research-structure.md (sibling contract), matching the same
+# python/tests/skills/test_skill_structure.py (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
 #
-# scripts/test-review-structure.sh is the structural regression harness for
+# make test-review-structure is the structural regression harness for
 # skills/review/SKILL.md and skills/review/references/ invariants (closes
-# #306). Companion to scripts/test-design-structure.sh,
-# scripts/test-implement-structure.sh, and scripts/test-research-structure.sh:
+# #306). Companion to make test-design-structure,
+# make test-implement-structure, and make test-research-structure:
 # this harness owns the /review MANDATORY ↔ reference-file binding
 # (bidirectional orphan detection via filesystem enumeration; baseline pair
 # domain-rules.md and voting.md), the CI-parity focus-area enum check
 # mirroring the agent-sync UNQUOTED_FILES loop, the anti-halt banner and
 # micro-reminder substring pins (intentional overlap with
 # scripts/test-anti-halt-banners.sh for single-file fail locality, matching
-# the test-implement-structure.sh precedent), and the /review native
+# the make test-implement-structure precedent), and the /review native
 # 2-line reference header schema (**Consumer**: and **Binding convention**:
 # in the first 20 lines — deliberately NOT the /implement
 # Consumer/Contract/When-to-load triplet). It is referenced only from
 # Makefile (test-review-structure target) and
-# scripts/test-review-structure.md (sibling contract), matching the same
+# python/tests/skills/test_skill_structure.py (sibling contract), matching the same
 # Makefile-only pattern as the other test-* harnesses above.
 #
 # scripts/test-python/cli.py render reviewer is the regression harness for
@@ -809,28 +810,12 @@ exclude = [
   # sibling block below). Same Makefile-only pattern as the other test-*
   # harnesses above.
   "python/test_alias_skill.py",
-  # scripts/test-alias-structure.sh is the structural regression test for
-  # skills/alias/SKILL.md (companion to the helper-script harness above).
-  # Pins the prompt-side contract that target-dir resolution flows through
-  # a single $TARGET_DIR variable threaded through Steps 2/3/4. Referenced
-  # only from Makefile (test-alias-structure target) and the sibling
-  # scripts/test-alias-structure.md. Same Makefile-only pattern.
-  "scripts/test-alias-structure.sh",
-  # scripts/test-bug-structure.sh is the structural regression test for
-  # skills/bug/SKILL.md --urgent parsing and title-prefix delegation.
-  # Referenced only from Makefile (test-bug-structure target) and the
-  # sibling scripts/test-bug-structure.md. Same Makefile-only pattern.
-  "scripts/test-bug-structure.sh",
-  # scripts/test-learn-from-bugs-structure.sh is the structural regression
-  # harness for skills/learn-from-bugs/SKILL.md --file/-s filing, regression
-  # tests, residual partition, and durable filing retry ordering. Referenced
-  # only from Makefile (test-learn-from-bugs-structure target). Same
-  # Makefile-only pattern as other test-*-structure.sh harnesses.
-  "scripts/test-learn-from-bugs-structure.sh",
   # scripts/test-triage-structure.sh is the Makefile-only structural harness
   # for skills/triage/SKILL.md. Same dead-script false-positive pattern.
   "scripts/test-triage-structure.sh",
-  "scripts/test-design-structure.sh",
+  # python/tests/skills/test_skill_structure.py owns alias/bug/design/implement/
+  # learn-from-bugs/research/review structure pins (formerly seven Bash harnesses).
+  "python/tests/skills/test_skill_structure.py",
   # python/tests/design/test_design_lifecycle.py is a Makefile-only harness for
   # python/design_lifecycle.py (/design Step 0b lifecycle port);
   # the test covers reentry guard and router flag recovery.
@@ -872,7 +857,6 @@ exclude = [
   # for python/cli.py push rebase's fork-mode lease snapshot (issue #2322).
   # as other test-* harnesses.
   # harness for python/cli.py push rebase's --no-push fetch transient-retry path.
-  "scripts/test-implement-structure.sh",
   # scripts/test-implement-step8-exit3-first-fixer.sh — structural pins for the
   # first-fixer-non-health autonomous CI-fix path in skills/implement/SKILL.md.
   # Makefile test-implement-step8-exit3-first-fixer target; sibling contract
@@ -923,8 +907,6 @@ exclude = [
   "scripts/test-extinct-notification-stack.sh",
   "scripts/test-orchestrator-scope-sync.sh",
   "scripts/test-quick-mode-docs-sync.sh",
-  "scripts/test-research-structure.sh",
-  "scripts/test-review-structure.sh",
   "scripts/test-python/cli.py render reviewer",
   # python/test_design_lifecycle.py covers step0b router flag recovery
   # (ported from the retired shell harness).
@@ -1052,13 +1034,11 @@ exclude = [
   "python/test_agents.py",
   "scripts/test-flush-vendor-failure-diagnostics.md",
   "python/session_env.py (session restore-finalize-state)",
-  # python/test_alias_skill.py and scripts/test-alias-structure.md
+  # python/test_alias_skill.py and python/tests/skills/test_skill_structure.py
   # are the sibling contracts for the two alias-rework regression harnesses
   # added alongside python/cli.py alias resolve-target. Same harness-
   # sibling-not-cited-from-SKILL.md pattern as other Makefile-only harness .md files.
   "python/test_alias_skill.py",
-  "scripts/test-alias-structure.md",
-  "scripts/test-bug-structure.md",
   "scripts/test-triage-structure.md",
   # python/test_design_*.py files below are pytest harnesses for
   # Makefile-only regression targets after the /design Python migration.

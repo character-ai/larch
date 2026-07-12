@@ -8,10 +8,10 @@ index e0bf34960..0751007b6 100644
  	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-references-headers.sh
  
  test-research-structure:
- 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-research-structure.sh
+ 	python3 python/cli.py timing harness-mark --label $@ -- bash make test-research-structure
  
  test-review-structure:
- 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-review-structure.sh
+ 	python3 python/cli.py timing harness-mark --label $@ -- bash make test-review-structure
  
  test-gather-context:
  	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/test_review_pipeline.py -k gather_context
@@ -156,7 +156,7 @@ index 461c16024..faaa7c6e6 100644
  
  ## Shared guardrails
  
- The section below — Inputs, Resume protocol, Manifest checklist, "What you do NOT do", and Style — is generated from the Cursor implementer template; `scripts/test-implement-structure.sh` assertion (24) enforces the expected structure.
+ The section below — Inputs, Resume protocol, Manifest checklist, "What you do NOT do", and Style — is generated from the Cursor implementer template; `make test-implement-structure` assertion (24) enforces the expected structure.
  
  ## Inputs you always receive
  

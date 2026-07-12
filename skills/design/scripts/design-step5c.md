@@ -22,4 +22,4 @@ Bgjob launcher for the `/design` Step 5c Python entrypoint.
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh`, `skills/design/scripts/test-design-step5c.sh`, and `python/test_design_lifecycle.py`.
+Covered by `make test-design-structure`, `skills/design/scripts/test-design-step5c.sh`, and `python/test_design_lifecycle.py`.

@@ -1,1 +1,18 @@
-[]
+[
+  {
+    "file": "tests/skills/_structure_design_specialized.py",
+    "reason": "Skill-structure specialized port for make test-design-structure; intentionally spawns python3 cli.py/bash subprocesses to exercise real CLI and script behavior under pytest."
+  },
+  {
+    "file": "tests/skills/_structure_implement_specialized.py",
+    "reason": "Skill-structure specialized port for make test-implement-structure; intentionally spawns python3 cli.py subprocesses to exercise real CLI behavior under pytest."
+  },
+  {
+    "file": "tests/skills/_structure_research_specialized.py",
+    "reason": "Skill-structure specialized port for make test-research-structure; intentionally spawns python3 cli.py subprocesses to exercise real CLI behavior under pytest."
+  },
+  {
+    "file": "tests/skills/_structure_review_specialized.py",
+    "reason": "Skill-structure specialized port for make test-review-structure; intentionally spawns python3 cli.py subprocesses to exercise real CLI behavior under pytest."
+  }
+]

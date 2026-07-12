@@ -346,13 +346,13 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: test-write-final-report test-voter-calibration test-design-step3-review test-step-8-ship test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-research-structure test-lint-no-raw-stderr-after-quiet-init test-implement-structure test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-bug-structure test-learn-from-bugs-structure test-triage-structure test-effort-prose
+test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-implement-review-token-propagation test-sessionstart test-step-5-review test-cache-root-validation test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt
 
-test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-design-structure test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts
+test-harnesses-4: test-extinct-notification-stack test-gate-b-apply-mode test-step3-orchestrator-fence test-hook-anti-read-poll test-fluff-analysis test-token-vendor-scrapers test-cleanup-sessionstart test-bgjob test-flush-vendor-failure-diagnostics test-implement-fence-shape test-plan-adequacy-audit test-implement-step2-routing test-sessionstart-statusline test-implement-rebase-macro test-brainstorm-prompts
 
-test-harnesses-5: test-step3-review-cap test-findings-classification test-step-18 test-design-step3-entry test-file-failure-report-cross-repo test-check-topology-rule-paths test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-review-structure test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-alias-structure test-anti-halt test-implement-cleanup-roundtrip
+test-harnesses-5: test-step3-review-cap test-findings-classification test-step-18 test-design-step3-entry test-file-failure-report-cross-repo test-check-topology-rule-paths test-external-tool-registry test-pipe-sigpipe-safety test-block-submodule test-pause-skill test-quick-mode-docs-sync test-audit-edit-write test-step-8-oos-checkpoint test-anti-halt test-implement-cleanup-roundtrip
 
 test-pipe-sigpipe-safety:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-pipe-sigpipe-safety.sh
@@ -617,16 +617,16 @@ test-orchestrator-scope-sync:
 
 
 test-alias-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-alias-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'alias_structure' -q
 
 test-bug-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-bug-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'bug_structure' -q
 
 test-learn-from-bugs-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-learn-from-bugs-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'learn_from_bugs_structure' -q
 
 test-design-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-design-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'design_structure_pin or design_structure_specialized' -q
 
 test-design-pause-resume:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_pause.py
@@ -809,7 +809,7 @@ test-implement-step2-routing:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-step2-routing.sh
 
 test-implement-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-implement-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'implement_structure' -q
 
 test-step-5-review:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-step-5-review.sh
@@ -1003,14 +1003,14 @@ test-references-headers:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-references-headers.sh
 
 test-research-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-research-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'research_structure' -q
 
 .PHONY: test-triage-structure
 test-triage-structure:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-triage-structure.sh
 
 test-review-structure:
-	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-review-structure.sh
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/skills/test_skill_structure.py -k 'review_structure' -q
 
 test-gather-context:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest -q python/tests/review/test_review_pipeline.py -k gather_context
