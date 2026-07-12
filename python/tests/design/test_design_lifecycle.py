@@ -21,6 +21,7 @@ import pytest
 from larch.core import config
 from larch.design import design_dialectic
 from larch.design import design_lifecycle
+from larch.design import plan_grammar
 from larch.design import (
     design_session,
     design_step0,
@@ -4773,6 +4774,35 @@ def test_step5c_auto_compose_preserves_optional_trailers(tmp_path: Path) -> None
     assert "mechanical_churn: false" in composed
     assert "oversize_override: operator" in composed
     assert "diff_lines: 7" in composed
+
+
+def test_step5c_auto_compose_preserves_full_shared_trailer_registry(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    trailer_block = "\n".join(
+        plan_grammar.compose_trailer_lines(
+            {
+                "review_status": "complete",
+                "rounds_completed": 2,
+                "difficulty": "MODERATE",
+                "diff_added": 10,
+                "diff_deleted": 3,
+                "mechanical_churn": False,
+                "oversize_override": "operator",
+                "diff_lines": 42,
+            }
+        )
+    )
+    (design / "plan.txt").write_text(
+        f"## Approach\n\nBody.\n\n## Testing strategy\n\nRun tests.\n\n{trailer_block}\n",
+        encoding="utf-8",
+    )
+    design_lifecycle._auto_compose_plan_md(design)  # pyright: ignore[reportPrivateUsage]
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    composed_trailers = plan_grammar.parse_final_trailers(composed, require_diff_lines=True)
+    assert composed_trailers.lines == tuple(trailer_block.splitlines())
+    assert [match.key for match in composed_trailers.matches] == list(plan_grammar.TRAILER_KEYS)
+    assert composed_trailers.diff_lines == 42
 
 
 def test_step5c_core_auto_composes_when_composed_plan_missing(

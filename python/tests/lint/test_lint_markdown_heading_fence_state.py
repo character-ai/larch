@@ -185,7 +185,7 @@ def test_fence_guard_must_reference_active_loop_value(tmp_path: Path) -> None:
     path.parent.mkdir(parents=True)
     _ = path.write_text(
         "import re\n"
-        "from larch.issue.issue_create import _balanced_fence_line_indices\n"
+        "from larch.design.plan_grammar import _balanced_fence_line_indices\n"
         "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
         "def parse(text: str) -> None:\n"
         "    lines = text.splitlines()\n"
@@ -206,7 +206,7 @@ def test_boolean_fence_guard_and_subscript_line_are_compliant(tmp_path: Path) ->
     path.parent.mkdir(parents=True)
     _ = path.write_text(
         "import re\n"
-        "from larch.issue.issue_create import _balanced_fence_line_indices\n"
+        "from larch.design.plan_grammar import _balanced_fence_line_indices\n"
         "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
         "def parse(text: str) -> None:\n"
         "    lines = text.splitlines()\n"
@@ -228,7 +228,7 @@ def test_function_local_fence_helper_import_is_compliant(tmp_path: Path) -> None
         "import re\n"
         "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
         "def parse(text: str) -> None:\n"
-        "    from larch.issue.issue_create import _balanced_fence_line_indices\n"
+        "    from larch.design.plan_grammar import _balanced_fence_line_indices\n"
         "    lines = text.splitlines()\n"
         "    fenced = _balanced_fence_line_indices(lines)\n"
         "    for index, line in enumerate(lines):\n"

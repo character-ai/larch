@@ -759,6 +759,24 @@ def test_issue_cap_ignores_fenced_heading_like_text_in_description(tmp_path: Pat
     assert out.read_text(encoding="utf-8") == src.read_text(encoding="utf-8")
 
 
+def test_validate_issue_cap_excludes_fenced_oos_headings_under_shared_helper() -> None:
+    text = (
+        "### OOS_1: Real\n"
+        "- **Description**: Before fence\n"
+        "```markdown\n"
+        "### OOS_99: Fenced phantom\n"
+        "```\n"
+        "- **Phase**: implement\n"
+        "### OOS_2: Also real\n"
+        "- **Description**: After\n"
+        "~~~\n"
+        "### OOS_88: Tilde phantom\n"
+        "~~~\n"
+    )
+    items = file_oos._validate_issue_cap_input(text)  # pyright: ignore[reportPrivateUsage]
+    assert [item.title for item in items] == ["Real", "Also real"]
+
+
 def test_issue_cap_non_oos_input_rejected(tmp_path: Path) -> None:
     src = make_issue_cap_input(tmp_path, "non-oos")
     _ = src.write_text("### Generic first\nBody one\n### Generic second\nBody two\n", encoding="utf-8")

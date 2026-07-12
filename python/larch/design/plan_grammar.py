@@ -50,9 +50,36 @@ TRAILER_LINE_RE: Final[re.Pattern[str]] = re.compile(
     r"^(?P<key>review_status|rounds_completed|difficulty|diff_added|diff_deleted|mechanical_churn|oversize_override|diff_lines): (?P<value>[^\r\n]+)$"
 )
 _GENERIC_LEVEL_TWO_RE: Final[re.Pattern[str]] = re.compile(r"^##(?:[ \t]+|$)(?!#)")
-_FENCE_RE: Final[re.Pattern[str]] = re.compile(r"^[ \t]*(?P<mark>`{3,}|~{3,})")
+_FENCE_MARKER_RE: Final[re.Pattern[str]] = re.compile(r"^(`{3,}|~{3,})(.*)$")
 _SIZE_INTEGER_RE: Final[re.Pattern[str]] = re.compile(r"(?:0[0-7]*|[1-9][0-9]*)")
 _DIGITS_RE: Final[re.Pattern[str]] = re.compile(r"[0-9]+")
+
+
+def _balanced_fence_line_indices(lines: list[str]) -> set[int]:
+    """Return 0-based indices of lines strictly inside balanced code fences.
+
+    An unmatched opener does not fence later lines, so headings after a truncated
+    fence remain visible. A closer must use the same marker character, be at least
+    as long as the opener, and carry only a whitespace suffix.
+    """
+    fenced_lines: set[int] = set()
+    stack: list[tuple[int, str, int]] = []
+    for index, line in enumerate(lines):
+        match = _FENCE_MARKER_RE.match(line.strip())
+        if match is None:
+            continue
+        marker = match.group(1)
+        marker_char = marker[0]
+        marker_len = len(marker)
+        suffix = match.group(2)
+        if not stack:
+            stack.append((index, marker_char, marker_len))
+            continue
+        top_index, top_char, top_len = stack[-1]
+        if marker_char == top_char and marker_len >= top_len and suffix.strip() == "":
+            _ = stack.pop()
+            fenced_lines.update(range(top_index + 1, index))
+    return fenced_lines
 
 
 @dataclass(frozen=True)
@@ -116,20 +143,11 @@ def match_heading(line: str, *, line_number: int = 0) -> HeadingMatch | None:
 
 def iter_heading_events(text: str) -> Iterator[HeadingEvent]:
     """Yield non-fenced heading events, with recognized headings taking precedence."""
-    fence_mark = ""
-    fence_length = 0
-    for line_number, line in enumerate(text.splitlines(), start=1):
-        fence = _FENCE_RE.match(line)
-        if fence is not None:
-            mark = fence.group("mark")
-            if not fence_mark:
-                fence_mark = mark[0]
-                fence_length = len(mark)
-            elif mark[0] == fence_mark and len(mark) >= fence_length:
-                fence_mark = ""
-                fence_length = 0
-            continue
-        if fence_mark:
+    lines = text.splitlines()
+    fenced_lines = _balanced_fence_line_indices(lines)
+    for line_number, line in enumerate(lines, start=1):
+        index = line_number - 1
+        if index in fenced_lines or _FENCE_MARKER_RE.match(line.strip()) is not None:
             continue
         heading = match_heading(line, line_number=line_number)
         yield HeadingEvent(
