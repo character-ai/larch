@@ -176,20 +176,6 @@
   },
   {
     "file": "larch/agents/agent_voters.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: SLF001",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/agents/agent_voters.py",
-    "suppression_kind": "pyright-ignore",
-    "text": "pyright: ignore[reportPrivateUsage]",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/agents/agent_voters.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false",
     "occurrence": 1,
@@ -4637,20 +4623,6 @@
     "file": "larch/review/plan_review_panel.py",
     "suppression_kind": "noqa",
     "text": "noqa: C901,PLR0912,PLR0915,RUF100",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/plan_review_panel.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: SLF001",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/review/plan_review_panel.py",
-    "suppression_kind": "pyright-ignore",
-    "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
