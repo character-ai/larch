@@ -1,0 +1,110 @@
+## Approach
+
+1. Route every size-triggered or explicit partition request directly into one inline Split-path. Remove the earlier `rc=12` approval prompt.
+2. Have the main agent inspect the current plan, or the feature and discussion artifacts when no plan exists. It must produce a concrete, risk-minimizing partition without subagents.
+3. Use the existing partition Markdown schema. Order pieces so risky shared foundations land first. Include scope, firm headings, acceptance criteria, dependencies, and size estimates.
+4. Run `decompose prepare` before prompting. If validation finds missing metadata, bad references, or a cycle, repair the proposal inline and rerun validation. Do not ask the operator to resolve internal partition details.
+5. Present one `AskUserQuestion` containing:
+   - Partition into the listed pieces.
+   - Override the size guardrail, with the existing warning.
+   - Other or chat, which exits the structured partition path without another `AskUserQuestion`.
+6. If the operator accepts, retain the current `/larch:issue` batch filing and annotation mechanics.
+7. After annotation succeeds, run a new `decompose migrate-deps` verb:
+   - Resolve the filed issue numbers from the annotation record.
+   - Read both dependency directions for the original issue.
+   - Verify the intra-piece relationships represented by `partition-deps.tsv`.
+   - Recreate each original incoming and outgoing dependency against the new pieces through the canonical blocked-by command path.
+   - Treat duplicate relationships as successful idempotent state.
+   - Verify the resulting relationships from GitHub before removing the corresponding relationships involving the original issue.
+   - Write a completion sentinel only after every replacement and removal verifies.
+8. Close the original issue only after filing, annotation, intra-piece verification, and dependency migration all succeed.
+9. Keep the existing panel-dispatch and aggregate Python infrastructure. It remains available but is no longer part of this Split-path.
+
+## Dependency migration semantics
+
+- If the original issue is blocked by an existing issue, each new piece inherits that blocker.
+- If the original issue blocks an existing issue, that existing issue becomes blocked by each new piece.
+- Add and verify replacement edges before removing original edges. This preserves a conservative dependency barrier during migration.
+- Re-entry must converge after partial success. Re-read live relationships, skip verified edges, and retry only missing work.
+- A dependency read, write, removal, or verification failure must preserve the original issue and the design tmpdir for retry.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/decompose-panel.md
+
+- Replace the panel dispatch, proposal selection, aggregation, unanimous-no-split, and repeated repair prompts with the inline main-agent partition procedure.
+- Define the single-question contract and its partition, override, and other/chat outcomes.
+- Require pre-prompt `decompose prepare` validation so cycles and metadata defects never create follow-up operator questions.
+- Preserve the current batch filing and annotation steps.
+- Add the post-annotation `decompose migrate-deps` step before `close-original`.
+- Document migration status handling, idempotent re-entry, fail-closed behavior, and the dependency-migration completion sentinel.
+- Update terminal outcomes so no branch in partition processing issues a second `AskUserQuestion`.
+
+### UPDATED: skills/design/SKILL.md
+
+- Remove the standalone `_postplan_rc=12` question.
+- Route `_postplan_rc=12` and `_postplan_rc=13` directly to the unified Split-path.
+- Update Split-path references from the three-stage panel flow to the single inline proposal gate.
+- Preserve oversize override handling, Step 2b completion markers, and continuation to Step 3.
+- State that the main agent computes the scheme without subagents.
+
+### UPDATED: python/larch/design/decompose.py
+
+- Add typed helpers to parse filed issue numbers, read the original issue’s blocked-by and blocking relations, and derive the replacement edge set.
+- Add migration logic that invokes the canonical blocked-by command path for new relationships.
+- Re-read each relationship after mutation instead of trusting command success alone.
+- Remove original relationships only after all replacement edges verify.
+- Make duplicate and partially migrated states idempotent.
+- Emit stable `KEY=value` status rows for success and failure without exposing helper output.
+- Record external command failures through the existing execution-issues path.
+- Write a `.decompose-deps-migrated` sentinel only after the complete graph postcondition verifies.
+- Leave panel dispatch and aggregation functions intact.
+
+### UPDATED: python/larch/cli.py
+
+- Register `decompose migrate-deps` with the new module-level CLI entrypoint.
+
+### UPDATED: python/tests/design/test_decompose.py
+
+- Add fixtures for incoming, outgoing, bidirectional, multiple, duplicate, and empty original dependency graphs.
+- Verify every filed piece inherits incoming blockers and replaces the original as a blocker of outgoing clients.
+- Verify intra-piece dependency relationships are checked against `partition-deps.tsv`.
+- Verify replacement edges are added before original edges are removed.
+- Verify read, add, verification, and removal failures do not write the completion sentinel and do not permit original-issue closure.
+- Verify successful re-entry skips completed mutations and converges after partial migration.
+- Verify malformed filed URLs, missing issue mappings, and inconsistent piece counts fail closed.
+- Verify the CLI emits the documented status rows and exit codes.
+- Retain existing panel and aggregate tests because their infrastructure is not being removed.
+
+## Edge cases
+
+- A feature-only partition has no `plan.txt`. The main agent must use the feature description and optional discussion artifact while still supplying explicit piece metadata.
+- A one-piece proposal is not a partition. Recompute it inline or route to override without another question.
+- The original issue may have no dependency relations. Mark migration complete after verifying intra-piece edges.
+- GitHub may report an edge already present. Verify it and continue.
+- Filing may partially succeed. Do not migrate dependencies or close the original until annotation records a complete batch.
+- Filed issue URLs may use unexpected repositories or malformed issue numbers. Reject them before mutation.
+- Existing relationships may change during migration. Re-read before removal and fail closed when the live graph no longer matches the migration assumptions.
+- An operator’s Other or chat response may supply custom direction. Exit the structured flow without launching another `AskUserQuestion`.
+
+## Failure modes
+
+- If inline partition validation cannot produce a valid acyclic scheme, terminate the Split-path with a recorded failure instead of asking the operator partition-detail questions.
+- If issue filing or annotation is incomplete, preserve existing partial-filing behavior and do not touch the original dependency graph.
+- If any replacement edge cannot be added or verified, leave all original edges intact.
+- If replacement edges verify but an original edge cannot be removed, preserve the migration state for idempotent retry and do not close the original issue.
+- If the migration sentinel exists but live postconditions no longer hold, reject the stale result and rerun migration rather than trusting the sentinel alone.
+
+## Testing strategy
+
+- Run the focused Python test module `python/tests/design/test_decompose.py`.
+- Run changed-file Python lint and type checks for `python/larch/design/decompose.py`, `python/larch/cli.py`, and the test module.
+- Run the repository’s changed-skill Markdown and prompt-contract checks for `skills/design/SKILL.md` and `skills/design/references/decompose-panel.md`.
+- Manually trace both `_postplan_rc=12` and explicit `--partition` routing to confirm each path reaches exactly one `AskUserQuestion`.
+- Exercise a stubbed end-to-end partition with incoming and outgoing original dependencies. Confirm filing, annotation, replacement-edge verification, original-edge removal, and original closure occur in that order.
+
+difficulty: HARD
+diff_added: 330
+diff_deleted: 210
+mechanical_churn: false
+diff_lines: 540

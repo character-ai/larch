@@ -1,0 +1,51 @@
+Reviewing the plan against current decompose, split-path, and dependency-migration code paths.
+Checking how the filing step passes intra-batch deps and whether close-original gates exist elsewhere.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	skills/design/references/step2b5-rc-handling.md:20-21	Retained hard-trigger still prompts before Split-path	Plan removes the rc=12 prompt and adds one inline partition question, but step2b5-rc-handling.md still requires hard-trigger callers to offer Split / Override / Cancel before Split-path. Retained Step 2b.5, Gate A gate-a-hard-size, and postplan-rc12 paths can still ask twice.	Add skills/design/references/step2b5-rc-handling.md to firm UPDATED files. Route hard-trigger like partition-split: enter Split-path immediately; let the single decompose-panel question own partition, override, and cancel.
+1	in_scope	major	correctness	python/larch/git/gh.py:1462-1487	Plan requires removing original dependency edges but no delete helper exists	migrate-deps must verify replacements then remove original incoming/outgoing edges. gh.py exposes only issue_blocked_by_read and issue_blocking_read; issue_create.py add_blocked_by_main POSTs at line 771. Nothing implements DELETE for dependencies/blocked_by.	MExtend decompose.py plan with a remove-blocked-by helper (likely gh DELETE on dependencies/blocked_by/{id} after read), wire it through migrate-deps, and add failure tests before close-original runs.
+1	in_scope	major	correctness	skills/design/references/decompose-panel.md:13-15	Resume-close skips dependency migration	Current resume-close reruns close-original when .decompose-issues-filed exists. Plan inserts migrate-deps between annotate and close but does not update section 0. A retry after filing can close the original while external edges still point at it.	Update section 0: if .decompose-issues-filed exists and .decompose-deps-migrated is absent, run migrate-deps before close-original; never resume-close without migration success.
+1	in_scope	major	correctness	python/larch/design/decompose.py:436-442	close-original is not gated on dependency migration	Plan step 8 closes only after filing, annotation, intra-piece verification, and dependency migration succeed. close_original_main today requires only partition-filed.md and writes .decompose-original-closed without checking any migration sentinel.	Require .decompose-deps-migrated (and live re-verify when stale) inside close_original_main or decompose-panel close step; fail closed if migration is incomplete.
+1	in_scope	minor	risk-integration	skills/design/references/decompose-panel.md:172-176	Rewrite may drop intra-batch-deps wiring from filing	Partition intra-piece edges are created only when /larch:issue receives --intra-batch-deps-file from partition-deps.tsv. Section 7b documents batch mode but not those flags; a panel-to-inline rewrite can drop them while migrate-deps only verifies.	Keep an explicit 7b contract: pass --intra-batch-deps-file "$DESIGN_TMPDIR/decompose/partition-deps.tsv" and --no-dep-llm on every partition filing invoke.
+
+## Findings
+
+### 1. [correctness] Retained hard-trigger still prompts before Split-path
+**Location:** `skills/design/references/step2b5-rc-handling.md:20-21`
+
+The plan removes the standalone `_postplan_rc=12` prompt and adds one inline partition question, but `step2b5-rc-handling.md` still tells `hard-trigger` callers to offer Split / Override / Cancel before Split-path. Retained Step 2b.5 fences, `SETTLE_NEXT_ACTION=gate-a-hard-size`, and drafter `postplan-rc12-split` paths can therefore still produce two structured questions. That conflicts with the binding scope requirement of exactly one operator question.
+
+**Suggested revision:** Add `skills/design/references/step2b5-rc-handling.md` to the firm `UPDATED` set and route `hard-trigger` the same way as `partition-split`: enter Split-path immediately and let the single decompose-panel question own partition, override, and cancel.
+
+### 2. [correctness] Plan requires edge removal but no delete helper exists
+**Location:** `python/larch/git/gh.py:1462-1487`, `python/larch/issue/issue_create.py:771`
+
+The plan’s migration semantics require adding and verifying replacement edges, then removing original incoming and outgoing relationships. The repo today can read dependencies (`issue_blocked_by_read`, `issue_blocking_read`) and add them (`add_blocked_by_main` POST). There is no remove/delete helper for GitHub dependency edges. `migrate-deps` cannot complete the specified migration without new removal code.
+
+**Suggested revision:** Extend the `decompose.py` plan with a remove-blocked-by helper (likely `gh` DELETE on `dependencies/blocked_by/{id}` after a read), wire it through `migrate-deps`, and add tests for removal failure before `close-original`.
+
+### 3. [correctness] Resume-close bypasses dependency migration
+**Location:** `skills/design/references/decompose-panel.md:13-15`
+
+Current §0 resume-close skips re-filing and reruns `close-original` when `.decompose-issues-filed` exists. The plan inserts `migrate-deps` between annotate and close but does not update §0 re-entry. After a partial run that filed pieces but failed migration, a retry can close the original while external dependency edges still reference it.
+
+**Suggested revision:** Update §0 so that when `.decompose-issues-filed` exists and `.decompose-deps-migrated` is absent, the flow runs `migrate-deps` before any `close-original` attempt.
+
+### 4. [correctness] `close-original` is not gated on migration completion
+**Location:** `python/larch/design/decompose.py:436-442`
+
+Plan step 8 says close only after filing, annotation, intra-piece verification, and dependency migration all succeed. `close_original_main` today only requires `partition-filed.md` and writes `.decompose-original-closed`. The plan’s `decompose.py` bullets mention the migration sentinel but do not require it as a precondition for close.
+
+**Suggested revision:** Gate `close-original` on a present, live-verified `.decompose-deps-migrated` sentinel; reject stale sentinels per the plan’s failure-mode note.
+
+### 5. [risk-integration] Inline rewrite may drop intra-batch dependency filing
+**Location:** `skills/design/references/decompose-panel.md:172-176`
+
+Intra-piece edges are created during `/larch:issue` batch filing via `--intra-batch-deps-file` pointing at `partition-deps.tsv`. §7b says “batch mode” but does not list those flags. When the panel flow is replaced with inline partition prose, the orchestrator can lose that wiring while `migrate-deps` only verifies intra-piece edges. Filing would succeed without the intended blocker chain.
+
+**Suggested revision:** In the rewritten decompose-panel §7b, explicitly require `--intra-batch-deps-file "$DESIGN_TMPDIR/decompose/partition-deps.tsv"` and `--no-dep-llm` on every partition filing invoke.
+
+---
+
+**Retained infrastructure compatibility:** The plan correctly leaves `panel-dispatch`, `aggregate`, and existing tests intact while moving Split-path orchestration inline. `prepare`, `annotate`, and `close-original` contracts in `python/larch/design/decompose.py` remain compatible with the proposed flow once migration gating and resume semantics are added.
+
+**What the plan already covers well:** Inline repair on `decompose prepare` failures (avoiding cycle/metadata follow-up questions), add-before-remove migration ordering, live re-read/idempotent re-entry, stale migration sentinel rejection, and partial-filing guards via `annotate_partition_issues` (`decompose.py:389-394`).
