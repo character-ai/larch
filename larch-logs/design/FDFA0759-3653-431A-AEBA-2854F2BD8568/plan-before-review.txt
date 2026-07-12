@@ -1,0 +1,193 @@
+## Approach
+
+1. Replace each local GitHub repository lookup with `gh.resolve_repo`.
+2. Preserve explicit `--repo` precedence, slug validation, return types, and caller-specific errors.
+3. Keep named wrappers that provide a test seam or domain-specific failure mapping. Remove dead or redundant wrappers.
+4. Add `proc` and `gh` imports where modules currently call `subprocess.run` directly for repository discovery.
+5. Confirm that no in-scope raw `gh repo view --json nameWithOwner` construction remains.
+6. Leave `gh.resolve_repo`, filesystem path resolvers, and multi-field repository queries unchanged.
+7. Treat already-compliant sites such as `design_step0.resolve_repo` and `combine_issues._resolve_repo` as audited no-op surfaces.
+
+## Files to modify/create
+
+### UPDATED: python/larch/design/clarify.py
+
+- Change `_resolve_repo_for_clarify` to call `gh.resolve_repo(runner, cwd=cwd)`.
+- Keep explicit repository validation before resolution.
+- Preserve `_ClarifyRepoResolutionError` when resolution returns no repository.
+- Preserve `_ClarifyValidationError` for an invalid explicit repository or any invalid resolved value.
+
+### UPDATED: python/larch/design/design_pause.py
+
+- Change `_resolve_repo` from `gh.resolve_repo_gh_only` to `gh.resolve_repo`.
+- Keep the precedence order: CLI argument, persisted `REPO`, then ambient repository resolution.
+- Preserve the empty-string result when resolution fails.
+
+### UPDATED: python/larch/design/design_terminal.py
+
+- Replace the nested raw `gh repo view` subprocess call in `file_issue_after_dedup` with `gh.resolve_repo(proc)`.
+- Preserve the `tier-a-current-repo-unresolved` fallback reason and all later filing behavior.
+- Leave unrelated subprocess calls intact.
+
+### UPDATED: python/larch/state/admission.py
+
+- Import `proc` and `gh`.
+- Make `_resolve_repo` return `gh.resolve_repo(proc)`.
+- Preserve explicit `--repo` precedence and the current unresolved-repository admission result.
+- Do not change `_run`, which remains the subprocess seam for unrelated admission commands.
+
+### UPDATED: python/larch/state/_report.py
+
+- Import `proc` and `gh`.
+- Replace the raw repository lookup in the stall-recovery report path with `gh.resolve_repo(proc)`.
+- Preserve `lookup-failed-open` and `current-repo-unresolved` when no repository can be resolved.
+- Leave the external report helper invocation unchanged.
+
+### UPDATED: python/larch/issue/combine_issues.py
+
+- Delete the unused `_repo` function and its duplicate JSON parsing logic.
+- Keep `_resolve_repo` as the explicit-repository-or-`gh.resolve_repo(proc)` seam used by the command paths.
+- Remove imports that become unused after deleting the dead function.
+
+### UPDATED: python/larch/issue/issue_block.py
+
+- Import `gh`.
+- Change `_repo` to return `gh.resolve_repo(proc) or ""`.
+- Preserve the existing positive issue validation, slug validation, and unresolved-repository error text.
+
+### UPDATED: python/larch/issue/issue_create.py
+
+- Import `gh`.
+- Change `_resolve_repo` to return `gh.resolve_repo(proc) or ""`.
+- Remove `_resolve_repo_for_fetch` if no test or caller requires that redundant wrapper, and call `_resolve_repo` directly from issue fetching.
+- Preserve each caller's existing empty-repository handling and output grammar.
+
+### UPDATED: python/larch/issue/analyze_bugs.py
+
+- Change `resolve_repo` to call `gh.resolve_repo(runner)` when no explicit repository was supplied.
+- Preserve explicit repository precedence.
+- Preserve `AnalyzeBugsError` and its current operator guidance when resolution fails.
+- Remove parsing and error branches that duplicate canonical slug validation.
+
+### UPDATED: python/larch/issue/analyze_issues.py
+
+- Import `proc` and `gh`.
+- Keep `_detect_repo` as a stable test seam, but implement it as `gh.resolve_repo(proc) or ""`.
+- Remove the local Git remote parsing fallback because `gh.resolve_repo` owns that behavior.
+- Keep offline report behavior when repository resolution returns an empty string.
+
+### UPDATED: python/larch/issue/tracking_issue.py
+
+- Change `_resolve_repo_or_fail` from `gh.resolve_repo_gh_only` to `gh.resolve_repo`.
+- Preserve explicit repository validation and the existing `CliFailure` messages and exit codes.
+- Pass `cwd` through to canonical resolution.
+
+### UPDATED: python/tests/design/test_clarify.py
+
+- Update repository-resolution assertions to target the canonical helper contract rather than treating local argv construction as the behavior under test.
+- Cover successful canonical resolution, unresolved resolution, and preservation of explicit repository validation.
+- Add or adjust coverage for Git remote fallback only where needed to prove the call site accepts the canonical result.
+
+### UPDATED: python/tests/design/test_design_pause.py
+
+- Update `_resolve_repo` coverage to patch or fake `gh.resolve_repo`.
+- Verify CLI and persisted repository values still bypass ambient resolution.
+- Verify canonical fallback and empty-result behavior.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+- Adjust terminal failure-report fixtures that currently model the raw repository subprocess call.
+- Verify a canonical resolved repository reaches the existing cross-repository filing helper.
+- Verify an unresolved repository retains the existing Tier A fallback reason.
+
+### UPDATED: python/tests/state/test_admission.py
+
+- Patch `gh.resolve_repo` for admission paths that omit `--repo`.
+- Verify explicit repositories bypass discovery.
+- Preserve coverage for unresolved repository admission failures without coupling the test to raw `gh` argv.
+
+### UPDATED: python/tests/state/test_stall_recovery.py
+
+- Replace raw repository subprocess expectations with a `gh.resolve_repo` seam.
+- Verify resolved and unresolved paths retain their current status and fallback `KEY=value` output.
+- Keep helper subprocess assertions focused on the filing helper itself.
+
+### UPDATED: python/tests/issue/test_combine_issues.py
+
+- Remove stale fake responses that exist only for the deleted `_repo` JSON parser.
+- Add or retain focused coverage that `_resolve_repo` honors an explicit value and delegates missing values to `gh.resolve_repo`.
+- Keep existing combine workflow tests independent of canonical resolver internals.
+
+### UPDATED: python/tests/issue/test_issue_block.py
+
+- Update repository discovery setup to patch or fake `gh.resolve_repo`.
+- Verify unresolved discovery still emits the current error and stops before GraphQL lookup.
+- Verify explicit `--repo` bypasses discovery.
+
+### UPDATED: python/tests/issue/test_issue_create.py
+
+- Update tests that patch `_gh_read` or `_resolve_repo_for_fetch` solely for repository discovery.
+- Patch `gh.resolve_repo` or the retained `_resolve_repo` seam instead.
+- Verify create, list, fetch, and close paths retain their existing unresolved-repository output.
+- Remove test references to `_resolve_repo_for_fetch` if the wrapper is deleted.
+
+### UPDATED: python/tests/issue/test_analyze_bugs.py
+
+- Change repository lookup fixtures from JSON output to the plain slug contract returned by `gh.resolve_repo`.
+- Verify explicit repository precedence.
+- Verify resolution failure still raises `AnalyzeBugsError`.
+- Include a canonical fallback case without retesting all resolver parsing already covered by `python/tests/git/test_gh.py`.
+
+### UPDATED: python/tests/issue/test_analyze_issues.py
+
+- Keep tests that monkeypatch `_detect_repo`, since the named seam remains.
+- Add focused coverage that `_detect_repo` delegates to `gh.resolve_repo` and maps `None` to an empty string.
+- Preserve offline execution coverage when no repository is available.
+
+### UPDATED: python/tests/issue/test_tracking_issue.py
+
+- Add or adjust focused tests for `_resolve_repo_or_fail`.
+- Verify explicit valid and invalid repositories retain current behavior.
+- Verify canonical fallback success and unresolved `CliFailure` behavior, including the current exit code.
+- Verify `cwd` reaches `gh.resolve_repo`.
+
+## Edge cases
+
+- `gh repo view` can fail while the `origin` remote still identifies a valid GitHub repository. In-scope callers must now accept that canonical fallback.
+- `gh.resolve_repo` may return `None` for missing, malformed, or non-GitHub remotes. Each caller must retain its current empty-result or exception contract.
+- Explicit repository arguments must continue to outrank ambient discovery.
+- Callers that validate explicit slugs must not weaken that validation.
+- Repository resolution with a caller-provided `cwd` must pass that directory through unchanged.
+- Offline analysis must continue when repository enrichment is optional.
+- Removing `_resolve_repo_for_fetch` must not break monkeypatch seams or external imports. Keep it if a targeted search finds a live consumer.
+
+## Failure modes
+
+- A caller may accidentally expose `None` where its public contract expects `""`.
+- Replacing `subprocess.run` may bypass an existing test double and cause tests to invoke the real `gh` executable.
+- Adding Git remote fallback may change a former failure into success. Tests must distinguish this intended canonical behavior from error-contract regressions.
+- Removing a wrapper that is patched by tests or imported elsewhere may break a stable seam. Search all repository references before deletion.
+- Unused imports or suppressions may remain after deleting direct subprocess and JSON parsing code.
+
+## Testing strategy
+
+1. Run focused tests for all changed modules:
+   - `python/tests/design/test_clarify.py`
+   - `python/tests/design/test_design_pause.py`
+   - `python/tests/design/test_design_lifecycle.py`
+   - `python/tests/state/test_admission.py`
+   - `python/tests/state/test_stall_recovery.py`
+   - `python/tests/issue/test_combine_issues.py`
+   - `python/tests/issue/test_issue_block.py`
+   - `python/tests/issue/test_issue_create.py`
+   - `python/tests/issue/test_analyze_bugs.py`
+   - `python/tests/issue/test_analyze_issues.py`
+   - `python/tests/issue/test_tracking_issue.py`
+2. Run `python/tests/git/test_gh.py` to confirm the shared resolver's direct `gh`, remote fallback, validation, and `cwd` contracts remain intact.
+3. Run scoped Python lint and type checks on the changed files through the repository's changed-file validation flow.
+4. Search `python/larch/` for raw `["gh", "repo", "view", "--json", "nameWithOwner"]` constructions and confirm no in-scope literal remains.
+5. Search for `repo_name_with_owner_read` and `resolve_repo_gh_only` in the named in-scope modules and confirm they no longer implement general repository resolution.
+6. Confirm excluded multi-field queries and filesystem path resolvers remain unchanged.
+
+difficulty: MODERATE
+diff_lines: 260

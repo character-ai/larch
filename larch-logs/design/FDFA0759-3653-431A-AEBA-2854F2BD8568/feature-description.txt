@@ -1,0 +1,17 @@
+# contract-unification [FEATURE] unify repo-resolution copies onto gh.resolve_repo
+
+#### Problem
+
+Repo resolution is defined 11 times, and 9 more sites build raw `["gh", "repo", "view", "--json", "nameWithOwner"]` argv despite `gh.resolve_repo` (gh.py:1901) already existing.
+
+#### Goal
+
+Repoint the 11 repo-resolution copies and the 9 `repo view --json nameWithOwner` sites to `gh.resolve_repo`. Delete the duplicated resolution logic.
+
+#### Scope
+
+The ~20 repo-resolution / `repo view` sites (enumerate from the parent-issue audit at first `/design`), plus their tests.
+
+#### Dependencies
+
+Independent of the wrapper-add issue — `gh.resolve_repo` already exists, so this is pure repointing and can proceed in parallel. Blocks the adoption-lint issue (these `["gh", ...]` literals must be cleared before the hard ban can pass).
