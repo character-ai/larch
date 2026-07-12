@@ -1487,6 +1487,118 @@ def issue_blocking_read(
     )
 
 
+def issue_list_read(
+    runner: Runner,
+    *,
+    repo: str,
+    state: str,
+    fields: Sequence[str],
+    labels: Sequence[str] = (),
+    search: str | None = None,
+    limit: int | None = None,
+    cwd: str | None = None,
+) -> list[object]:
+    """List issues through ``gh issue list`` with shared read/parse policy.
+
+    Does not emit ``--paginate`` (unsupported by ``gh issue list``). Callers that
+    need larger result sets pass an explicit ``limit``.
+    """
+    argv: list[str] = [
+        "issue",
+        "list",
+        "--repo",
+        repo,
+        "--state",
+        state,
+        "--json",
+        ",".join(fields),
+    ]
+    for label in labels:
+        argv.extend(["--label", label])
+    if search:
+        argv.extend(["--search", search])
+    if limit is not None:
+        argv.extend(["--limit", str(limit)])
+    result = _retry_read(runner, argv, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    return loads_json_paginated_list(result.stdout)
+
+
+def issue_close(
+    runner: Runner,
+    issue: int | str,
+    *,
+    repo: str | None = None,
+    reason: str | None = None,
+    comment: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Close an issue with one ``gh`` call; no mutation retries."""
+    argv = ["issue", "close", str(issue)]
+    if repo:
+        argv.extend(["--repo", repo])
+    if reason:
+        argv.extend(["--reason", reason])
+    if comment:
+        argv.extend(["--comment", _redact_gh_scalar(comment)])
+    return _gh(runner, argv, cwd=cwd)
+
+
+def issue_view_read(
+    runner: Runner,
+    issue: int | str,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Plain ``gh issue view`` read (no ``--json`` / ``--template``)."""
+    argv = ["issue", "view", str(issue)]
+    if repo is not None:
+        argv.extend(["--repo", repo])
+    return _retry_read(runner, argv, cwd=cwd)
+
+
+def issue_view_template_read(
+    runner: Runner,
+    issue: int | str,
+    fields: str,
+    template: str,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Templated ``gh issue view`` read with ``--json`` and ``--template``."""
+    argv = [
+        "issue",
+        "view",
+        str(issue),
+        "--json",
+        fields,
+        "--template",
+        template,
+    ]
+    if repo is not None:
+        argv.extend(["--repo", repo])
+    return _retry_read(runner, argv, cwd=cwd)
+
+
+def issue_edit_body_file(
+    runner: Runner,
+    issue: int | str,
+    body_file: str | Path,
+    *,
+    repo: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Edit an issue body from a caller-owned path; no file lifecycle or retries."""
+    argv = ["issue", "edit", str(issue)]
+    if repo is not None:
+        argv.extend(["--repo", repo])
+    argv.extend(["--body-file", str(body_file)])
+    return _gh(runner, argv, cwd=cwd)
+
+
 def _issue_view_read(
     runner: Runner,
     issue: str,
@@ -1699,15 +1811,15 @@ def issue_label_add(
     issue: str,
     label: str,
     *,
-    repo: str,
+    repo: str | None = None,
     cwd: str | None = None,
 ) -> CommandResult:
     def attempt() -> tuple[CommandResult, int, str]:
-        result = _gh(
-            runner,
-            ["issue", "edit", issue, "--repo", repo, "--add-label", label],
-            cwd=cwd,
-        )
+        argv = ["issue", "edit", issue]
+        if repo is not None:
+            argv.extend(["--repo", repo])
+        argv.extend(["--add-label", label])
+        result = _gh(runner, argv, cwd=cwd)
         return result, result.returncode, _combined(result)
 
     return with_transient_retry(attempt).value
@@ -1718,15 +1830,15 @@ def issue_label_remove(
     issue: str,
     label: str,
     *,
-    repo: str,
+    repo: str | None = None,
     cwd: str | None = None,
 ) -> CommandResult:
     def attempt() -> tuple[CommandResult, int, str]:
-        result = _gh(
-            runner,
-            ["issue", "edit", issue, "--repo", repo, "--remove-label", label],
-            cwd=cwd,
-        )
+        argv = ["issue", "edit", issue]
+        if repo is not None:
+            argv.extend(["--repo", repo])
+        argv.extend(["--remove-label", label])
+        result = _gh(runner, argv, cwd=cwd)
         return result, result.returncode, _combined(result)
 
     return with_transient_retry(attempt).value
@@ -1962,9 +2074,7 @@ def _origin_repo_candidate(
     return raw, False
 
 
-def resolve_repo_detailed(
-    runner: Runner, *, cwd: str | None = None
-) -> RepoResolution:
+def resolve_repo_detailed(runner: Runner, *, cwd: str | None = None) -> RepoResolution:
     """Canonical ambient repository discovery with full candidate state."""
     primary_failure: RepoPrimaryFailure | None = None
     primary_invalid = ""

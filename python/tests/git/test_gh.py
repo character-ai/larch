@@ -27,9 +27,14 @@ def _empty_timeouts() -> list[float | None]:
     return []
 
 
+def _empty_cwds() -> list[str | None]:
+    return []
+
+
 @dataclass
 class TimeoutRecordingRunner(RecordingRunner):
     timeouts: list[float | None] = field(default_factory=_empty_timeouts)
+    cwds: list[str | None] = field(default_factory=_empty_cwds)
 
     def run(
         self,
@@ -43,6 +48,7 @@ class TimeoutRecordingRunner(RecordingRunner):
         stderr: int | None = None,
     ) -> CommandResult:
         self.timeouts.append(timeout)
+        self.cwds.append(cwd)
         return super().run(
             argv,
             timeout=timeout,
@@ -1779,3 +1785,476 @@ def test_resolve_repo_detailed_invalid_primary_valid_origin() -> None:
     assert detailed.status == "valid"
     assert detailed.source == "origin"
     assert detailed.candidate == "good/slug"
+
+
+def test_issue_list_read_builds_argv_preserving_field_and_label_order() -> None:
+    runner = TimeoutRecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "issue", "list"),
+                0,
+                '[{"number":1},{"number":2}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    rows = gh.issue_list_read(
+        runner,
+        repo="o/r",
+        state="open",
+        fields=("number", "title", "labels"),
+        labels=("bug", "prio"),
+        search="is:issue",
+        limit=200,
+        cwd="/tmp/work",
+    )
+    assert rows == [{"number": 1}, {"number": 2}]
+    assert runner.calls == [
+        [
+            "gh",
+            "issue",
+            "list",
+            "--repo",
+            "o/r",
+            "--state",
+            "open",
+            "--json",
+            "number,title,labels",
+            "--label",
+            "bug",
+            "--label",
+            "prio",
+            "--search",
+            "is:issue",
+            "--limit",
+            "200",
+        ]
+    ]
+    assert runner.cwds == ["/tmp/work"]
+    assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC]
+    assert "--paginate" not in runner.calls[0]
+
+
+def test_issue_list_read_omits_empty_search_and_preserves_zero_limit() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "list"), 0, "[]", "", 0.01),
+        ],
+    )
+    assert (
+        gh.issue_list_read(
+            runner,
+            repo="o/r",
+            state="all",
+            fields=("number",),
+            search="",
+            limit=0,
+        )
+        == []
+    )
+    assert runner.calls[0] == [
+        "gh",
+        "issue",
+        "list",
+        "--repo",
+        "o/r",
+        "--state",
+        "all",
+        "--json",
+        "number",
+        "--limit",
+        "0",
+    ]
+
+
+def test_issue_list_read_emits_limit_zero_and_high_volume() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "issue", "list"), 0, "[]", "", 0.01),
+        ],
+    )
+    _ = gh.issue_list_read(
+        runner, repo="o/r", state="open", fields=("number",), limit=0
+    )
+    _ = gh.issue_list_read(
+        runner, repo="o/r", state="open", fields=("number",), limit=100000
+    )
+    assert runner.calls[0][-2:] == ["--limit", "0"]
+    assert runner.calls[1][-2:] == ["--limit", "100000"]
+
+
+def test_issue_list_read_accepts_concatenated_json_arrays() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "issue", "list"),
+                0,
+                '[{"number":1}][{"number":2}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    assert gh.issue_list_read(runner, repo="o/r", state="open", fields=("number",)) == [
+        {"number": 1},
+        {"number": 2},
+    ]
+
+
+def test_issue_list_read_empty_output_returns_empty_list() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "list"), 0, "", "", 0.01)],
+    )
+    assert (
+        gh.issue_list_read(runner, repo="o/r", state="open", fields=("number",)) == []
+    )
+
+
+@pytest.mark.parametrize(
+    "stdout",
+    ['{"number":1}', "1", "null", "{", '[{"number":1'],
+)
+def test_issue_list_read_rejects_non_array_or_malformed_json(stdout: str) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "list"), 0, stdout, "", 0.01)],
+    )
+    with pytest.raises(ShipError):
+        _ = gh.issue_list_read(runner, repo="o/r", state="open", fields=("number",))
+
+
+def test_issue_list_read_raises_ship_error_on_ordinary_failure() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "list"), 1, "", "not found", 0.01),
+        ],
+    )
+    with pytest.raises(ShipError):
+        _ = gh.issue_list_read(runner, repo="o/r", state="open", fields=("number",))
+
+
+def test_issue_list_read_retries_transient_then_succeeds() -> None:
+    transient = CommandResult(
+        ("gh", "issue", "list"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(
+        ("gh", "issue", "list"),
+        0,
+        '[{"number":9}]',
+        "",
+        0.01,
+    )
+    runner = RecordingRunner(responses=[transient, success])
+    assert gh.issue_list_read(runner, repo="o/r", state="open", fields=("number",)) == [
+        {"number": 9}
+    ]
+    assert len(runner.calls) == 2
+
+
+def test_issue_list_read_exhausts_transient_retries() -> None:
+    transient = CommandResult(
+        ("gh", "issue", "list"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    runner = RecordingRunner(
+        responses=[transient] * config.TRANSIENT_RETRY_MAX_ATTEMPTS,
+    )
+    with pytest.raises(TransientNetworkError) as exc_info:
+        _ = gh.issue_list_read(runner, repo="o/r", state="open", fields=("number",))
+    assert exc_info.value.result is transient
+    assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
+def test_issue_view_read_plain_argv_and_timeout() -> None:
+    runner = TimeoutRecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "view", "42"), 0, "plain body", "", 0.01),
+            CommandResult(("gh", "issue", "view", "7"), 0, "with repo", "", 0.01),
+        ],
+    )
+    result = gh.issue_view_read(runner, 42, cwd="/work")
+    assert result.stdout == "plain body"
+    assert runner.calls[0] == ["gh", "issue", "view", "42"]
+    assert "--json" not in runner.calls[0]
+    assert "--template" not in runner.calls[0]
+    assert runner.cwds[0] == "/work"
+
+    _ = gh.issue_view_read(runner, 7, repo="o/r")
+    assert runner.calls[1] == ["gh", "issue", "view", "7", "--repo", "o/r"]
+    assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC] * 2
+
+
+def test_issue_view_read_retries_transient_and_returns_final_result() -> None:
+    transient = CommandResult(
+        ("gh", "issue", "view", "1"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(("gh", "issue", "view", "1"), 0, "ok", "", 0.01)
+    runner = RecordingRunner(responses=[transient, success])
+    result = gh.issue_view_read(runner, "1")
+    assert result.returncode == 0
+    assert result.stdout == "ok"
+    assert len(runner.calls) == 2
+
+    exhaust = RecordingRunner(
+        responses=[transient] * config.TRANSIENT_RETRY_MAX_ATTEMPTS,
+    )
+    last = gh.issue_view_read(exhaust, "1")
+    assert last.returncode == 1
+    assert len(exhaust.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
+def test_issue_view_template_read_builds_argv_and_retries() -> None:
+    transient = CommandResult(
+        ("gh", "issue", "view", "3"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(("gh", "issue", "view", "3"), 0, "templated", "", 0.01)
+    runner = TimeoutRecordingRunner(
+        responses=[
+            success,
+            transient,
+            success,
+        ],
+    )
+    result = gh.issue_view_template_read(
+        runner,
+        3,
+        "title,body",
+        "{{.title}}",
+        repo="o/r",
+        cwd="/tmp/x",
+    )
+    assert result.stdout == "templated"
+    assert runner.calls[0] == [
+        "gh",
+        "issue",
+        "view",
+        "3",
+        "--json",
+        "title,body",
+        "--template",
+        "{{.title}}",
+        "--repo",
+        "o/r",
+    ]
+    assert runner.cwds[0] == "/tmp/x"
+    assert runner.timeouts[0] == config.CI_STATUS_QUERY_TIMEOUT_SEC
+
+    retried = gh.issue_view_template_read(runner, "3", "number", "{{.number}}")
+    assert retried.stdout == "templated"
+    assert runner.calls[1] == [
+        "gh",
+        "issue",
+        "view",
+        "3",
+        "--json",
+        "number",
+        "--template",
+        "{{.number}}",
+    ]
+    assert len(runner.calls) == 3
+
+
+def test_issue_close_builds_optional_argv_and_returns_failures() -> None:
+    runner = TimeoutRecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "close", "9"), 0, "", "", 0.01),
+            CommandResult(("gh", "issue", "close", "11"), 0, "", "", 0.01),
+            CommandResult(
+                ("gh", "issue", "close", "12"),
+                1,
+                "",
+                "fatal: Could not resolve host",
+                0.01,
+            ),
+        ],
+    )
+    assert gh.issue_close(runner, 9).returncode == 0
+    assert runner.calls[0] == ["gh", "issue", "close", "9"]
+
+    assert (
+        gh.issue_close(
+            runner,
+            11,
+            repo="o/r",
+            reason="completed",
+            comment="done",
+            cwd="/work",
+        ).returncode
+        == 0
+    )
+    assert runner.calls[1] == [
+        "gh",
+        "issue",
+        "close",
+        "11",
+        "--repo",
+        "o/r",
+        "--reason",
+        "completed",
+        "--comment",
+        "done",
+    ]
+    assert runner.cwds[1] == "/work"
+
+    failed = gh.issue_close(runner, "12")
+    assert failed.returncode == 1
+    assert "Could not resolve host" in failed.stderr
+    assert len(runner.calls) == 3
+
+
+def test_issue_close_omits_empty_repo_and_redacts_comment() -> None:
+    token = "ghp_" + "a" * 36
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "close", "11"), 0, "", "", 0.01),
+        ],
+    )
+    assert (
+        gh.issue_close(
+            runner, 11, repo="", reason="", comment=f"done {token}"
+        ).returncode
+        == 0
+    )
+    assert runner.calls[0] == [
+        "gh",
+        "issue",
+        "close",
+        "11",
+        "--comment",
+        "done <REDACTED-TOKEN>",
+    ]
+
+
+def test_issue_edit_body_file_passes_caller_path_without_retry() -> None:
+    body_path = Path("/caller/owned/body.md")
+    runner = TimeoutRecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "edit", "5"), 0, "", "", 0.01),
+            CommandResult(("gh", "issue", "edit", "6"), 0, "", "", 0.01),
+            CommandResult(
+                ("gh", "issue", "edit", "7"),
+                1,
+                "",
+                "fatal: Could not resolve host",
+                0.01,
+            ),
+        ],
+    )
+    assert gh.issue_edit_body_file(runner, 5, body_path).returncode == 0
+    assert runner.calls[0] == [
+        "gh",
+        "issue",
+        "edit",
+        "5",
+        "--body-file",
+        "/caller/owned/body.md",
+    ]
+
+    assert (
+        gh.issue_edit_body_file(
+            runner, "6", body_path, repo="o/r", cwd="/work"
+        ).returncode
+        == 0
+    )
+    assert runner.calls[1] == [
+        "gh",
+        "issue",
+        "edit",
+        "6",
+        "--repo",
+        "o/r",
+        "--body-file",
+        "/caller/owned/body.md",
+    ]
+    assert runner.cwds[1] == "/work"
+
+    failed = gh.issue_edit_body_file(runner, 7, str(body_path))
+    assert failed.returncode == 1
+    assert len(runner.calls) == 3
+
+
+def test_issue_label_add_remove_optional_repo_and_retry() -> None:
+    transient = CommandResult(
+        ("gh", "issue", "edit", "1"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(("gh", "issue", "edit", "1"), 0, "", "", 0.01)
+    runner = RecordingRunner(
+        responses=[
+            success,
+            success,
+            success,
+            success,
+            transient,
+            success,
+            transient,
+            success,
+        ],
+    )
+
+    assert gh.issue_label_add(runner, "1", "bug", repo="o/r").returncode == 0
+    assert runner.calls[0] == [
+        "gh",
+        "issue",
+        "edit",
+        "1",
+        "--repo",
+        "o/r",
+        "--add-label",
+        "bug",
+    ]
+    assert gh.issue_label_remove(runner, "1", "bug", repo="o/r").returncode == 0
+    assert runner.calls[1] == [
+        "gh",
+        "issue",
+        "edit",
+        "1",
+        "--repo",
+        "o/r",
+        "--remove-label",
+        "bug",
+    ]
+
+    assert gh.issue_label_add(runner, "1", "bug").returncode == 0
+    assert runner.calls[2] == ["gh", "issue", "edit", "1", "--add-label", "bug"]
+    assert gh.issue_label_remove(runner, "1", "bug").returncode == 0
+    assert runner.calls[3] == ["gh", "issue", "edit", "1", "--remove-label", "bug"]
+
+    assert gh.issue_label_add(runner, "1", "bug", repo="o/r").returncode == 0
+    assert len(runner.calls) == 6
+    assert gh.issue_label_remove(runner, "1", "bug").returncode == 0
+    assert len(runner.calls) == 8
+
+    assert not hasattr(gh, "issue_label_edit_batch")
+    assert not hasattr(gh, "issue_labels_edit")
+
+
+def test_issue_edit_title_body_regression_unchanged() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "edit", "1"), 0, "", "", 0.01),
+        ],
+    )
+    assert gh.issue_edit(runner, "1", repo="o/r", title="t", body="b").returncode == 0
+    assert runner.calls[0][0:6] == ["gh", "issue", "edit", "1", "--repo", "o/r"]
+    assert runner.calls[0][6:8] == ["--title", "t"]
+    assert runner.calls[0][8] == "--body-file"
