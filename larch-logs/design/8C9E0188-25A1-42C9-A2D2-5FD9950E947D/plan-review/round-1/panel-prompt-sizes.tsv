@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	22947	5737	14071	3518	8876	2219		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	16854	4214	13783	3446	3071	768		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	22938	5735	14062	3516	8876	2219		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	22962	5741	14086	3522	8876	2219		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	16869	4218	13798	3450	3071	768		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	16845	4212	13774	3444	3071	768		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	22960	5740	14084	3521	8876	2219		0	0
+design Step 3	phase1	1	dyn-codex-plan-session-fixture-contract-auditor	plan-review	codex	dyn-codex-plan-session-fixture-contract-auditor.txt	17076	4269	13649	3413	3427	857		0	0
+design Step 3	phase1	1	dyn-cursor-plan-session-fixture-contract-auditor	plan-review	cursor	dyn-cursor-plan-session-fixture-contract-auditor.txt	23169	5793	13937	3485	9232	2308		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	16867	4217	13796	3449	3071	768		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	29895	7474	4601	1151	25294	6324	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14134	3534	9131	2283	5003	1251		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14134	3534	9131	2283	5003	1251		0	0
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14134	3534	9131	2283	5003	1251		0	0
