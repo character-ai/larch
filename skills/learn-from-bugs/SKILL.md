@@ -60,8 +60,15 @@ Decide the gh search query:
 - If `--zones "a,b"` was given alone, trim each comma-separated zone name, reject an empty list or empty zone names, treat zone text as untrusted search data, and resolve through the zone CLI helper. Parse only its whole-line `RESOLVED_SEARCH=` output. Example: `--zones "design,implement"` → `[BUG] (design OR implement) in:title,body`. Set `SEARCH_EXPLICIT=true` and keep the resolved query on the existing `RESOLVED_SEARCH` / `SEARCH_ARGS` preparation route.
 
 ```bash
-ZONE_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs resolve-zones --zones "$ZONES_CSV")
-RESOLVED_SEARCH=$(printf '%s\n' "$ZONE_OUT" | sed -n 's/^RESOLVED_SEARCH=//p')
+if ! ZONE_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs resolve-zones --zones "$ZONES_CSV"); then
+  exit 2
+fi
+mapfile -t RESOLVED_SEARCH_RECORDS < <(printf '%s\n' "$ZONE_OUT" | sed -n 's/^RESOLVED_SEARCH=//p')
+if [ "${#RESOLVED_SEARCH_RECORDS[@]}" -ne 1 ] || [ -z "${RESOLVED_SEARCH_RECORDS[0]}" ]; then
+  printf '%s\n' 'learn-from-bugs resolve-zones returned no unique resolved search' >&2
+  exit 2
+fi
+RESOLVED_SEARCH=${RESOLVED_SEARCH_RECORDS[0]}
 ```
 
 - Else if `--search QUERY` was given, use it verbatim and set `SEARCH_EXPLICIT=true`.
