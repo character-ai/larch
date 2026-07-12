@@ -5635,7 +5635,7 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
     "facade_module": "larch.implement.dispatch_step2",
     "attribute": "_materialize_oos",
     "defining_module": "larch.implement.dispatch_manifest",
@@ -5644,7 +5644,7 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
     "facade_module": "larch.implement.dispatch_step2",
     "attribute": "_normalize_scout",
     "defining_module": "larch.implement.dispatch_manifest",
@@ -5653,7 +5653,7 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_materialize_oos",
     "defining_module": "larch.implement.dispatch_manifest",
@@ -5662,7 +5662,7 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_normalize_scout",
     "defining_module": "larch.implement.dispatch_manifest",
@@ -5671,7 +5671,7 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_run_launcher",
     "defining_module": "larch.implement.dispatch_step2",

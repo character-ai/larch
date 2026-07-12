@@ -531,7 +531,7 @@
   "tests/implement/test_implement_dispatch.py::test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope": 13,
   "tests/implement/test_implement_dispatch.py::test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched": 9,
   "tests/implement/test_implement_dispatch.py::test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope": 16,
-  "tests/implement/test_implement_dispatch.py::test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading": 1,
+  "tests/implement/test_implement_dispatch.py::test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section": 1,
   "tests/implement/test_implement_dispatch.py::test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path": 14,
   "tests/implement/test_implement_dispatch.py::test_step2_dispatch_plan_read_failure_suppresses_coverage_kv": 11,
   "tests/implement/test_implement_dispatch.py::test_step2_dispatch_prelaunch_staged_index_blocks_recovery": 4,
