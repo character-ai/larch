@@ -314,14 +314,15 @@ def test_step18b_catches_composition_exception(
     assert "composition exploded" in out
 
 
-def test_write_final_report_non_fatal_runlog_copy(
+def test_write_final_report_runlog_copy_failure_surfaces_reason(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#6979: a run-log final-summary.md copy failure must not suppress the report.
+    """#6979: a run-log final-summary.md copy failure is fatal but names itself.
 
-    The user-visible summary-final.md is written first; the committed run-log copy
-    is best-effort. Its failure emits a breadcrumb and continues (rc=0).
+    The CLI must surface bookkeeping/write failures as rc!=0 + reason (Step 17
+    relies on this to log via _append_failure). The reason is also persisted via
+    a breadcrumb so it survives teardown.
     """
     _write_minimal_state(tmp_path)
     _stub_cost_and_assessment(monkeypatch)
@@ -336,19 +337,16 @@ def test_write_final_report_non_fatal_runlog_copy(
 
     rc, _url, err = final_report.write_final_report(tmp_path)
 
-    assert (rc, err) == (0, "")
+    assert rc == 1
+    assert "final-summary write failed" in err
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
-def test_write_final_report_non_fatal_tracking_upsert(
+def test_write_final_report_tracking_upsert_failure_surfaces_reason(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#6979: a tracking-issue upsert failure must not suppress the report.
-
-    The tracking comment is bookkeeping; its failure emits a breadcrumb and
-    continues (rc=0) so the user still sees the body via summary-final.md.
-    """
+    """#6979: a tracking-issue upsert failure is fatal but names itself."""
     _write_minimal_state(tmp_path)
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=1\nRUN_ID=run1\n", encoding="utf-8")
     _stub_cost_and_assessment(monkeypatch)
@@ -364,29 +362,30 @@ def test_write_final_report_non_fatal_tracking_upsert(
 
     monkeypatch.setattr(final_report.subprocess, "run", fake_run)
 
-    rc, url, err = final_report.write_final_report(tmp_path)
+    rc, _url, err = final_report.write_final_report(tmp_path)
 
-    assert (rc, err) == (0, "")
-    assert url == ""
+    assert rc == 1
+    assert "upsert boom" in err
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
-def test_write_final_report_non_fatal_manifest_reconcile(
+def test_write_final_report_manifest_reconcile_failure_surfaces_reason(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """#6979: a manifest-reconcile failure must not suppress the report."""
+    """#6979: a manifest-reconcile failure is fatal but names itself."""
     _write_minimal_state(tmp_path)
     _stub_cost_and_assessment(monkeypatch)
-    monkeypatch.setattr(
-        final_report,
-        "_reconcile_manifest_for_terminal_report",
-        lambda *a, **k: (1, "run-log manifest reconcile failed: boom"),  # noqa: ARG005
-    )
+
+    def fail_reconcile(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        return 1, "run-log manifest reconcile failed: boom"
+
+    monkeypatch.setattr(final_report, "_reconcile_manifest_for_terminal_report", fail_reconcile)
 
     rc, _url, err = final_report.write_final_report(tmp_path)
 
-    assert (rc, err) == (0, "")
+    assert rc == 1
+    assert "run-log manifest reconcile failed" in err
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 

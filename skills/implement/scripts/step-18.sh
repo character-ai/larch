@@ -202,14 +202,12 @@ run_finalize() {
     printf 'STEP17_EMITTED_PRESENT=%s\n' "$step17_present"
     printf 'SNAPSHOT_OK=%s\n' "$snapshot_ok"
     printf 'ERROR=%s\n' "$wfr_error"
-    # Break the silence (#6979): a non-zero WFR_RC means the final report render
-    # genuinely failed and no marker body will be emitted. Print a visible warning
-    # naming the reason so the turn is never fully silent, independent of the
-    # orchestrator's terminal-emit precedence. With the #6947 plan-coverage path
-    # already handled, the residual WFR_RC!=0 causes (summary write OSError,
-    # manifest reconcile, tracking upsert, or a composition exception) must surface
-    # loudly instead of vanishing. Bookkeeping failures are non-fatal in
-    # write_final_report, so this fires only when the body itself cannot render.
+    # Break the silence (#6979): a non-zero WFR_RC means write_final_report failed
+    # (summary write OSError, manifest reconcile, tracking upsert, or a composition
+    # exception) and no marker body will be emitted. Print a visible warning naming
+    # the reason so the turn is never fully silent, independent of the orchestrator's
+    # terminal-emit precedence. The #6947 plan-coverage path is already handled, so
+    # any residual WFR_RC!=0 cause must surface loudly instead of vanishing.
     if [ "$wfr_rc" != 0 ]; then
         wfr_reason=${wfr_error:-render failed (no reason surfaced)}
         printf '**⚠ Step 18: final report render failed (WFR_RC=%s): %s.**\n' "$wfr_rc" "$wfr_reason" >&2

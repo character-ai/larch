@@ -926,22 +926,15 @@ def write_final_report(
     except OSError as exc:
         if print_stdout:
             sys.stdout.write(body)
-        reason = f"summary-final write failed: {exc}"
-        # Fatal, but persist the reason so it is diagnosable after teardown (#6979).
-        logging_util.BreadcrumbWriter().emit(f"final report: {reason}", quiet=False)
-        return 1, "", reason
+        return 1, "", f"summary-final write failed: {exc}"
     if not comment_only:
         try:
             run_dir.mkdir(parents=True, exist_ok=True)
             (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
         except OSError as exc:
-            # Non-fatal (#6979): the user-visible summary-final.md is already
-            # written above. The committed run-log copy is best-effort and must
-            # not suppress the report; warn and continue.
-            logging_util.BreadcrumbWriter().emit(
-                f"final report: run-log final-summary.md write failed (non-fatal): {exc}",
-                quiet=False,
-            )
+            if print_stdout:
+                sys.stdout.write(body)
+            return 1, "", f"final-summary write failed: {exc}"
         if not skip_tracking_upsert:
             reconcile_rc, reconcile_err = _reconcile_manifest_for_terminal_report(
                 implement_tmpdir,
@@ -949,12 +942,9 @@ def write_final_report(
                 outcome=outcome,
             )
             if reconcile_rc != 0:
-                # Non-fatal (#6979): manifest bookkeeping must not suppress the
-                # user-visible report. Warn and continue.
-                logging_util.BreadcrumbWriter().emit(
-                    f"final report: manifest reconcile failed (non-fatal): {reconcile_err}",
-                    quiet=False,
-                )
+                if print_stdout:
+                    sys.stdout.write(body)
+                return reconcile_rc, "", reconcile_err
         if skip_tracking_upsert:
             if print_stdout:
                 sys.stdout.write(body)
@@ -980,15 +970,11 @@ def write_final_report(
         completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
         if completed.returncode != 0:
             err = (completed.stderr or completed.stdout or "tracking-issue upsert failed").strip()
-            # Non-fatal (#6979): the tracking-comment upsert must not suppress
-            # the user-visible report. Warn and continue with no comment URL.
-            logging_util.BreadcrumbWriter().emit(
-                f"final report: tracking-issue upsert failed (non-fatal): {err[:300]}",
-                quiet=False,
-            )
-        else:
-            m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
-            comment_url = m.group(1) if m else ""
+            if print_stdout:
+                sys.stdout.write(body)
+            return 1, "", err[:500]
+        m = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
+        comment_url = m.group(1) if m else ""
     if print_stdout:
         sys.stdout.write(body)
     return 0, comment_url, ""
@@ -1073,4 +1059,10 @@ def step18b_final_report_main(argv: list[str] | None = None) -> int:
     # ERROR=<reason> makes a render failure self-identifying instead of a silent
     # EMIT_BODY=false (#6979). Collapse to one line so the KV stream stays parseable.
     _emit_kv(key="ERROR", value=" ".join(error.split())[:500])
+    if error:
+        # Mirror the reason to stderr so step-18.sh's append_failure_best_effort
+        # (which captures step18b stderr) records it in execution-issues — the
+        # tmpdir is torn down after Step 18, so stdout KVs alone are not durable.
+        sys.stderr.write(f"final report render failed: {error}\n")
+        sys.stderr.flush()
     return wfr_rc
