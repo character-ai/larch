@@ -2,7 +2,7 @@
   "highest_closed_issue_number_scanned": 7111,
   "proposals": [
     {
-      "filed_issue": null,
+      "filed_issue": 7145,
       "id": "origin-marker-writer-surface",
       "run_date": "2026-07-12T20:41:35Z",
       "status": "proposed",
@@ -10,7 +10,7 @@
       "type": "fix"
     },
     {
-      "filed_issue": null,
+      "filed_issue": 7146,
       "id": "learn-from-bugs-out-path-symlink-refusal",
       "run_date": "2026-07-12T20:41:35Z",
       "status": "proposed",
