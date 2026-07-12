@@ -1269,7 +1269,6 @@ def test_resolve_repo_or_fail_unresolved_and_cwd(monkeypatch: pytest.MonkeyPatch
 
     def fake_resolve(_runner: object, *, cwd: str | None = None) -> str | None:
         seen["cwd"] = cwd
-        return None
 
     monkeypatch.setattr(tracking_issue.gh, "resolve_repo", fake_resolve)
     with pytest.raises(tracking_issue.CliFailure) as exc:
