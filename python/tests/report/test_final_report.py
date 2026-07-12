@@ -1357,3 +1357,49 @@ def test_plan_coverage_summary_stale_mismatch_propagates_invalid_persisted_cover
 
     with pytest.raises(ShipError, match="unreadable or malformed"):
         _ = final_report._plan_coverage_summary_line(tmp_path)
+
+
+def test_write_final_report_coverage_line_not_fed_run_log_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Coverage line reads the dispatcher manifest, not the run-log manifest (#6995).
+
+    The run-log manifest (larch-logs/implement/<RUN_ID>/manifest.json) legitimately
+    omits todos_left; feeding it to the scope-disposition validator raises
+    'resolved manifest schema-invalid' and aborts the whole final report. The
+    render must let resolve_implement_manifest find the dispatcher manifest
+    (implement_tmpdir/manifest.json), which carries todos_left.
+    """
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"schema_version": 2, "status": "partial"}),  # no todos_left
+        encoding="utf-8",
+    )
+    (tmp_path / "session-env.sh").write_text(
+        f"REPO=o/r\nMODE=N/A\nREPO_ROOT={tmp_path}\n",
+        encoding="utf-8",
+    )
+    _stub_cost_and_assessment(monkeypatch)
+
+    seen_manifest_paths: list[object] = []
+
+    def fake_load_live_coverage(
+        *, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None
+    ) -> None:
+        _ = tmpdir, repo_root
+        seen_manifest_paths.append(manifest_path)
+        # Mimic _load_manifest_todos_raw: the run-log manifest has no
+        # todos_left, so it is schema-invalid for the coverage validator.
+        if manifest_path is not None and manifest_path == run_dir / "manifest.json":
+            raise ShipError(f"resolved manifest schema-invalid: {manifest_path}")
+
+    monkeypatch.setattr(scope_disposition, "load_live_coverage", fake_load_live_coverage)
+
+    rc, _url, _err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert rc == 0
+    assert run_dir / "manifest.json" not in seen_manifest_paths
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "## /implement run run1" in summary

@@ -877,9 +877,13 @@ def write_final_report(
         ship=ship,
         final=final,
     )
-    plan_coverage_line = _plan_coverage_summary_line_or_empty(
-        implement_tmpdir, manifest_path=run_dir / "manifest.json"
-    )
+    # #6995: pass manifest_path=None so the coverage line resolves the
+    # *dispatcher* manifest (implement_tmpdir/manifest.json, which carries
+    # todos_left), not run_dir/manifest.json, which is the run-log manifest
+    # and legitimately omits todos_left. Feeding the run-log manifest to the
+    # scope-disposition validator raised "resolved manifest schema-invalid"
+    # and aborted the whole report.
+    plan_coverage_line = _plan_coverage_summary_line_or_empty(implement_tmpdir)
     summary_body = pr_body.render_run_summary(
         skill="implement",
         outcome=outcome,
