@@ -178,6 +178,8 @@ Abort on non-zero exit. On success, print the report to the operator and the `RU
 
 Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote.
 
+This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
+
 Run the whole fence as one Bash call. It publishes from a disposable clean worktree, so filing artifacts and unrelated operator changes remain untouched in `ANALYSIS_ROOT`:
 
 ```bash
@@ -312,7 +314,8 @@ set +e
 Publish the latest `/learn-from-bugs` scan and proposal state.
 EOF
   printf '%s\n' pr-create >"$PUBLICATION_PHASE"
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr create \
+  env -u IMPLEMENT_TMPDIR -u SHIP_PR_STATE_FILE \
+    python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr create \
     --repo "$REPO" \
     --branch "$STATE_BRANCH" \
     --base "$DEFAULT_BRANCH" \
@@ -342,12 +345,21 @@ EOF
       exit 2
       ;;
   esac
-  PR_OPEN_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq '.state') || exit 2
+  : >"$PUBLICATION_PR_CREATED"
+  PR_OPEN_RC=0
+  PR_OPEN_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state --jq '.state') || PR_OPEN_RC=$?
+  if [ "$PR_OPEN_RC" -ne 0 ]; then
+    {
+      printf 'PUBLICATION_STATUS=handoff-pending\n'
+      printf 'PR_NUMBER=%s\n' "$PR_NUMBER"
+      printf 'PR_URL=%s\n' "$PR_URL"
+    } >"$PUBLICATION_RESULT"
+    exit 0
+  fi
   if [ "$PR_OPEN_STATE" != OPEN ]; then
     printf '%s\n' "The identified state PR is not open." >&2
     exit 2
   fi
-  : >"$PUBLICATION_PR_CREATED"
 
   printf '%s\n' merge >"$PUBLICATION_PHASE"
   MERGE_RC=0
@@ -379,9 +391,12 @@ if [ "$CLEANUP_RC" -eq 0 ] && \
     git -C "$ANALYSIS_ROOT" branch -D "$STATE_BRANCH" >/dev/null 2>&1 || CLEANUP_RC=$?
   fi
 fi
-if [ "$CLEANUP_RC" -ne 0 ]; then
+if [ "$CLEANUP_RC" -ne 0 ] && [ ! -s "$PUBLICATION_RESULT" ]; then
   printf '%s\n' "State publication cleanup failed; inspect the disposable worktree." >&2
   exit 2
+fi
+if [ "$CLEANUP_RC" -ne 0 ]; then
+  printf '%s\n' "State publication cleanup failed after publication; inspect the disposable worktree." >&2
 fi
 if [ "$PUBLICATION_RC" -ne 0 ]; then
   FAILED_PHASE=$(cat "$PUBLICATION_PHASE")
