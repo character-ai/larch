@@ -66,24 +66,25 @@ Warnings (0):
 
 ## Architectural invariants
 
-No violations identified. The waterfall validates each lane result against independently-computed evidence fingerprints (head_sha, diff_fingerprint, knowledge_sha256) before persisting (I-Stale-1). Per-kind statuses are tracked and each kind is removed from the unresolved set only after a valid authored result is accepted, with unavailable outcomes recorded via _persist_unavailable rather than silently dropped (I-Flush-1, I-Slot-1). The Cursor dirty-tree sidecar is produced by git.snapshot_untracked independent of the agent output and must be STATUS=clean before the lane result is accepted—no gate is disarmed by data the agent itself authored (I-Gate-1). The _validate_prompt_evidence_paths check ensures all evidence paths in REQUESTS_JSON remain inside the validated evidence directory before any lane is launched (I-Agent-1).
+No violations identified. The waterfall coordinator computes diff fingerprints and knowledge SHA256s independently and validates them against the agent-echoed values in `_parse_result_row`; no gate disarms on agent-authored metadata (I-Gate-1 clean). Each lane result is accepted only when its embedded `head_sha`, `base_ref`, `diff_fingerprint`, and `knowledge_sha256` match the coordinator-computed evidence; `_HeadDrift` propagates up through `_prepare_pending` and `run()` triggers a full re-materialization (I-Stale-1 clean). The change does not touch pause snapshots, run-log flush paths, committed run-log fields, panel slot accounting, or pre-merge mutation routes; those invariants are not implicated by the changed code.
 
 ## Architectural guidelines
 
-No deviations identified. New constants (ARCHITECTURAL_ASSESSMENT_ROLE, ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC, ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL, ARCHITECTURAL_ASSESSMENT_CODEX_MODEL, ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL, ENV_CLAUDE_BINARY_FOUND) are defined once in config.py as Final values and consumed by reference (G-Cfg-1). _write_text_atomic delegates to larch_io.trusted_atomic_write, routing atomic writes through the shared IO helper (G-IO-1). AssessmentLane, LaunchRequest, LaunchResult, LaneOutcome, and LaneContext are all frozen dataclasses (G-Py-1). The per-kind error detail dict returned by _parse_results_independently replaces the single shared detail string, so each kind carries its own error reason (G-Py-3). Symlink and containment checks in _lane_output_path, _review_validate_args, and _validate_prompt_evidence_paths confine writes to owned roots (G-Sec-4). CLAUDE_BINARY_FOUND producer (session_env.py finalize_wrapper_env, setup_main) and consumer (_lane_availability) land in the same change (G-Gate-1). The ClaudeLauncher→DirectClaudeLauncher rename and _parse_results_independently signature change are swept across all call sites and tests in the same diff (G-Md-2). The step-8-assessment.sh budget is now derived from config constants via fixer_lane_budget_sec and tool_order rather than a hardcoded literal (G-Cfg-1, G-Cfg-3).
+No deviations identified. New constants (`ARCHITECTURAL_ASSESSMENT_ROLE`, `ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL`, `ARCHITECTURAL_ASSESSMENT_CODEX_MODEL`, `ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL`, `ENV_CLAUDE_BINARY_FOUND`) are defined once in `config.py` as `Final` and consumed via those constants at every call site (G-Cfg-1). New dataclasses (`AssessmentLane`, `LaneOutcome`, `LaneContext`) are `frozen=True` (G-Py-1). Side effects are injectable through `launchers` and `availability` params; tests exercise them (G-Py-5). `_write_text_atomic` delegates to `larch_io.trusted_atomic_write`; `_lane_output_path`, `_write_json_atomic`, and `_review_validate_args` all reject symlinks and non-regular files at use time (G-IO-1, G-Sec-4). `_validate_prompt_evidence_paths` rejects any diff or knowledge path outside the evidence directory, preventing path escape. `_record_invalid_result_row` clears all parsed results on an unknown extra row — fail-closed (G-Py-4). The waterfall advances to the next lane on any `unavailable_detail`, matching G-Idem-4's transient-failure routing guidance. `_preflight_bundle` now writes `.sidecar` alongside `.diag`, sweeping the shared preflight writer so `SharedReviewLauncher` can surface preflight diagnostics through the same sidecar path it reads (G-Wire-3). Documentation corrections to `external-reviewers.md` align the prose with the actual `config.py` waterfall orders. The `ClaudeLauncher` rename to `DirectClaudeLauncher` is fully swept across production code and tests (G-Md-2).
 
-## /implement run 25E51482-9DA4-4EB9-BA4A-82535482E0D8: shipping
+## /implement run 25E51482-9DA4-4EB9-BA4A-82535482E0D8: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:54:33
-- **Cost**: 💰 TOTAL ~$40.45: Claude $4.33, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.39  |  Tokens: 54536k
+- **Cost**: 💰 TOTAL ~$42.69: Claude $6.54, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.42  |  Tokens: 57748k
 - **Issue**: #7097: https://github.com/character-ai/larch/issues/7097
+- **PR**: #7106: https://github.com/character-ai/larch/pull/7106
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 13/15 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1337/-223, larch-logs +1168/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 0
