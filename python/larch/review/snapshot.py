@@ -287,6 +287,70 @@ def _safe_patch_name(path: str) -> str:
     return path.replace("/", "__").replace("\\", "__")
 
 
+# --- Shared artifact path helpers parameterized by (snap_dir, prefix) ---
+
+
+def _snap_head_path(snap_dir: Path, prefix: str) -> Path:
+    return snap_dir / f"{prefix}-head.txt"
+
+
+def _snap_tracked_paths_file(snap_dir: Path, prefix: str) -> Path:
+    return snap_dir / f"{prefix}-tracked-paths.txt"
+
+
+def _snap_untracked_paths_file(snap_dir: Path, prefix: str) -> Path:
+    return snap_dir / f"{prefix}-untracked-paths.txt"
+
+
+def _snap_patch_dir(snap_dir: Path, prefix: str) -> Path:
+    return snap_dir / f"{prefix}-path-diffs"
+
+
+def _snap_patch_file(snap_dir: Path, prefix: str, safe_name: str, *, cached: bool) -> Path:
+    suffix = ".cached.patch" if cached else ".patch"
+    return _snap_patch_dir(snap_dir, prefix) / f"{safe_name}{suffix}"
+
+
+def _path_matches_snapshot(
+    *, snap_dir: Path, prefix: str, patch_match_ref: str, path: str
+) -> bool:
+    safe = _safe_patch_name(path)
+    wt_snap = _snap_patch_file(snap_dir, prefix, safe, cached=False)
+    idx_snap = _snap_patch_file(snap_dir, prefix, safe, cached=True)
+    if not wt_snap.is_file() or not idx_snap.is_file():
+        return False
+    wt_diff = _git_stdout(["diff", patch_match_ref, "--", path])
+    idx_diff = _git_stdout(["diff", "--cached", patch_match_ref, "--", path])
+    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+
+
+def _classify_tracked_delta_paths(
+    tracked_paths: list[str],
+    *,
+    snap_dir: Path,
+    prefix: str,
+    patch_match_ref: str,
+) -> list[str]:
+    pre_tracked_file = _snap_tracked_paths_file(snap_dir, prefix)
+    pre_tracked_set: set[str] = (
+        {line for line in _read_text(pre_tracked_file).splitlines() if line}
+        if pre_tracked_file.is_file()
+        else set()
+    )
+    deltas: list[str] = []
+    seen: set[str] = set()
+    for path in tracked_paths:
+        if not path or path in seen:
+            continue
+        if path in pre_tracked_set and _path_matches_snapshot(
+            snap_dir=snap_dir, prefix=prefix, patch_match_ref=patch_match_ref, path=path
+        ):
+            continue
+        seen.add(path)
+        deltas.append(path)
+    return deltas
+
+
 def _path_exists_at_ref(*, pre_head: str, path: str) -> bool:
     if not pre_head:
         return False
@@ -378,23 +442,27 @@ def _remove_untracked_delta_paths(paths: list[str]) -> None:
 def _snapshot_pre_coder_tracked_state(
     *, _round_dir: Path, pre_head: str, snap_dir: Path
 ) -> None:
-    paths_file = snap_dir / "pre-coder-tracked-paths.txt"
-    diffs_dir = snap_dir / "pre-coder-path-diffs"
+    diffs_dir = _snap_patch_dir(snap_dir, "pre-coder")
     larch_io.ensure_trusted_directory(diffs_dir)
     tracked = _capture_round_tracked_paths()
-    _write_text(path=paths_file, text="\n".join(tracked) + ("\n" if tracked else ""))
+    _write_text(
+        path=_snap_tracked_paths_file(snap_dir, "pre-coder"),
+        text="\n".join(tracked) + ("\n" if tracked else ""),
+    )
     untracked = _capture_round_untracked_paths()
     _write_text(
-        path=snap_dir / "pre-coder-untracked-paths.txt",
+        path=_snap_untracked_paths_file(snap_dir, "pre-coder"),
         text="\n".join(untracked) + ("\n" if untracked else ""),
     )
     for path in tracked:
         safe = _safe_patch_name(path)
-        wt = diffs_dir / f"{safe}.patch"
-        idx = diffs_dir / f"{safe}.cached.patch"
-        _write_text(path=wt, text=_git_stdout(["diff", pre_head, "--", path]))
         _write_text(
-            path=idx, text=_git_stdout(["diff", "--cached", pre_head, "--", path])
+            path=_snap_patch_file(snap_dir, "pre-coder", safe, cached=False),
+            text=_git_stdout(["diff", pre_head, "--", path]),
+        )
+        _write_text(
+            path=_snap_patch_file(snap_dir, "pre-coder", safe, cached=True),
+            text=_git_stdout(["diff", "--cached", pre_head, "--", path]),
         )
 
 
@@ -444,54 +512,36 @@ def _write_attempt_pre_tracked_paths(
 def _path_matches_pre_coder_snapshot(
     *, round_dir: Path, pre_head: str, path: str
 ) -> bool:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    safe = _safe_patch_name(path)
-    wt_snap = snap_dir / "pre-coder-path-diffs" / f"{safe}.patch"
-    idx_snap = snap_dir / "pre-coder-path-diffs" / f"{safe}.cached.patch"
-    if not wt_snap.is_file() or not idx_snap.is_file():
-        return False
-    wt_diff = _git_stdout(["diff", pre_head, "--", path])
-    idx_diff = _git_stdout(["diff", "--cached", pre_head, "--", path])
-    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+    return _path_matches_snapshot(
+        snap_dir=pre_coder_snapshot_dir(round_dir),
+        prefix="pre-coder",
+        patch_match_ref=pre_head,
+        path=path,
+    )
 
 
 def _path_matches_attempt_snapshot(
     *, round_dir: Path, pre_head: str, path: str
 ) -> bool:
-    snap_dir = pre_coder_snapshot_dir(round_dir)
-    safe = _safe_patch_name(path)
-    wt_snap = snap_dir / "attempt-pre-path-diffs" / f"{safe}.patch"
-    idx_snap = snap_dir / "attempt-pre-path-diffs" / f"{safe}.cached.patch"
-    if not wt_snap.is_file() or not idx_snap.is_file():
-        return False
-    wt_diff = _git_stdout(["diff", pre_head, "--", path])
-    idx_diff = _git_stdout(["diff", "--cached", pre_head, "--", path])
-    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+    return _path_matches_snapshot(
+        snap_dir=pre_coder_snapshot_dir(round_dir),
+        prefix="attempt-pre",
+        patch_match_ref=pre_head,
+        path=path,
+    )
 
 
 def _round_coder_delta_paths(
     *, round_dir: Path, diff_base: str, snapshot_head: str | None = None
 ) -> list[str]:
     snap_dir = pre_coder_snapshot_dir(round_dir)
-    pre_tracked = snap_dir / "pre-coder-tracked-paths.txt"
-    pre_tracked_set: set[str] = (
-        {line for line in _read_text(pre_tracked).splitlines() if line}
-        if pre_tracked.is_file()
-        else set()
-    )
     compare_head = snapshot_head if snapshot_head is not None else diff_base
-    deltas: list[str] = []
-    seen: set[str] = set()
-    for path in _tracked_paths_vs_ref(diff_base):
-        if not path or path in seen:
-            continue
-        if path in pre_tracked_set and _path_matches_pre_coder_snapshot(
-            round_dir=round_dir, pre_head=compare_head, path=path
-        ):
-            continue
-        seen.add(path)
-        deltas.append(path)
-    return deltas
+    return _classify_tracked_delta_paths(
+        _tracked_paths_vs_ref(diff_base),
+        snap_dir=snap_dir,
+        prefix="pre-coder",
+        patch_match_ref=compare_head,
+    )
 
 
 def _round_coder_untracked_delta_paths(round_dir: Path) -> list[str]:
@@ -853,14 +903,14 @@ def _self_review_snapshot_dir(implement_tmpdir: Path) -> Path:
 def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     larch_io.ensure_trusted_directory(snap_dir, root=implement_tmpdir)
-    for name in (
-        "pre-self-review-head.txt",
-        "pre-self-review-tracked-paths.txt",
-        "pre-self-review-untracked-paths.txt",
+    for artifact_path in (
+        _snap_head_path(snap_dir, "pre-self-review"),
+        _snap_tracked_paths_file(snap_dir, "pre-self-review"),
+        _snap_untracked_paths_file(snap_dir, "pre-self-review"),
     ):
         with contextlib.suppress(FileNotFoundError):
-            (snap_dir / name).unlink()
-    diffs_dir = snap_dir / "pre-self-review-path-diffs"
+            artifact_path.unlink()
+    diffs_dir = _snap_patch_dir(snap_dir, "pre-self-review")
     if diffs_dir.exists() or diffs_dir.is_symlink():
         larch_io.validate_trusted_directory(diffs_dir, root=snap_dir)
         for artifact in diffs_dir.iterdir():
@@ -870,28 +920,28 @@ def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
     head = _git_head()
     if not head:
         return ""
-    _write_text(path=snap_dir / "pre-self-review-head.txt", text=head + "\n")
+    _write_text(path=_snap_head_path(snap_dir, "pre-self-review"), text=head + "\n")
     tracked = _capture_round_tracked_paths()
     _write_text(
-        path=snap_dir / "pre-self-review-tracked-paths.txt",
+        path=_snap_tracked_paths_file(snap_dir, "pre-self-review"),
         text="\n".join(tracked) + ("\n" if tracked else ""),
     )
     untracked = _capture_round_untracked_paths()
     _write_text(
-        path=snap_dir / "pre-self-review-untracked-paths.txt",
+        path=_snap_untracked_paths_file(snap_dir, "pre-self-review"),
         text="\n".join(untracked) + ("\n" if untracked else ""),
     )
     if not diffs_dir.exists():
         larch_io.ensure_trusted_directory(diffs_dir, root=snap_dir)
     for path in tracked:
-        safe = path.replace("/", "__").replace("\\", "__")
+        safe = _safe_patch_name(path)
         _write_text(
-            path=diffs_dir / f"{safe}.patch",
-            text=_git_output(["diff", head, "--", path]),
+            path=_snap_patch_file(snap_dir, "pre-self-review", safe, cached=False),
+            text=_git_stdout(["diff", head, "--", path]),
         )
         _write_text(
-            path=diffs_dir / f"{safe}.cached.patch",
-            text=_git_output(["diff", "--cached", head, "--", path]),
+            path=_snap_patch_file(snap_dir, "pre-self-review", safe, cached=True),
+            text=_git_stdout(["diff", "--cached", head, "--", path]),
         )
     return head
 
@@ -899,33 +949,28 @@ def _write_pre_self_review_snapshot(implement_tmpdir: Path) -> str:
 def _path_matches_pre_self_review_snapshot(
     *, implement_tmpdir: Path, pre_head: str, path: str
 ) -> bool:
-    snap_dir = _self_review_snapshot_dir(implement_tmpdir)
-    safe = path.replace("/", "__").replace("\\", "__")
-    wt_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.patch"
-    idx_snap = snap_dir / "pre-self-review-path-diffs" / f"{safe}.cached.patch"
-    if not wt_snap.is_file() or not idx_snap.is_file():
-        return False
-    wt_diff = _git_output(["diff", pre_head, "--", path])
-    idx_diff = _git_output(["diff", "--cached", pre_head, "--", path])
-    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+    return _path_matches_snapshot(
+        snap_dir=_self_review_snapshot_dir(implement_tmpdir),
+        prefix="pre-self-review",
+        patch_match_ref=pre_head,
+        path=path,
+    )
 
 
 def _validated_self_review_snapshot_head(implement_tmpdir: Path) -> str:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
     larch_io.validate_trusted_directory(snap_dir, root=implement_tmpdir)
     head = larch_io.read_trusted_text(
-        snap_dir / "pre-self-review-head.txt", root=snap_dir, errors="replace"
+        _snap_head_path(snap_dir, "pre-self-review"), root=snap_dir, errors="replace"
     ).strip()
-    tracked = larch_io.read_trusted_text(
-        snap_dir / "pre-self-review-tracked-paths.txt", root=snap_dir, errors="replace"
-    ).splitlines()
+    tracked = _snapshot_inventory(_snap_tracked_paths_file(snap_dir, "pre-self-review"))
     _ = larch_io.read_trusted_text(
-        snap_dir / "pre-self-review-untracked-paths.txt", root=snap_dir, errors="replace"
+        _snap_untracked_paths_file(snap_dir, "pre-self-review"), root=snap_dir, errors="replace"
     )
-    if not head or any(not path for path in tracked):
+    if not head:
         raise OSError(f"invalid self-review snapshot: {snap_dir}")
-    safe_names = [_safe_patch_name(path) for path in tracked]
-    if len(tracked) != len(set(tracked)) or len(safe_names) != len(set(safe_names)):
+    safe_names = tuple(_safe_patch_name(path) for path in tracked)
+    if len(safe_names) != len(set(safe_names)):
         raise OSError(f"invalid self-review snapshot inventory: {snap_dir}")
     # Patch artifacts are validated when read via read_trusted_text; do not
     # require a complete diffs set here so callers degrade gracefully when the
@@ -935,24 +980,13 @@ def _validated_self_review_snapshot_head(implement_tmpdir: Path) -> str:
 
 def _self_review_delta_paths(*, implement_tmpdir: Path, pre_head: str) -> list[str]:
     snap_dir = _self_review_snapshot_dir(implement_tmpdir)
-    pre_tracked = snap_dir / "pre-self-review-tracked-paths.txt"
-    pre_tracked_set: set[str] = (
-        {line for line in _read_text(pre_tracked).splitlines() if line}
-        if pre_tracked.is_file()
-        else set()
+    tracked_paths = _git_output(["diff", "--name-only", pre_head]).splitlines()
+    return _classify_tracked_delta_paths(
+        tracked_paths,
+        snap_dir=snap_dir,
+        prefix="pre-self-review",
+        patch_match_ref=pre_head,
     )
-    deltas: list[str] = []
-    seen: set[str] = set()
-    for path in _git_output(["diff", "--name-only", pre_head]).splitlines():
-        if not path or path in seen:
-            continue
-        if path in pre_tracked_set and _path_matches_pre_self_review_snapshot(
-            implement_tmpdir=implement_tmpdir, pre_head=pre_head, path=path
-        ):
-            continue
-        seen.add(path)
-        deltas.append(path)
-    return deltas
 
 
 def _self_review_untracked_delta_paths(implement_tmpdir: Path) -> list[str]:
@@ -960,7 +994,7 @@ def _self_review_untracked_delta_paths(implement_tmpdir: Path) -> list[str]:
     pre_untracked = {
         line
         for line in _read_text(
-            snap_dir / "pre-self-review-untracked-paths.txt"
+            _snap_untracked_paths_file(snap_dir, "pre-self-review")
         ).splitlines()
         if line
     }

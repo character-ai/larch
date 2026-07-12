@@ -2392,11 +2392,11 @@ def test_collect_round_stage_paths_excludes_pre_dirty_unrelated_since_committed(
             return "unrelated.py\nfixed.py\n"
         return ""
 
-    def fake_matches(*, round_dir, pre_head, path):
-        return pre_head == "pre" and path == "unrelated.py"
+    def fake_matches(*, snap_dir, prefix, patch_match_ref, path):
+        return patch_match_ref == "pre" and path == "unrelated.py"
 
     monkeypatch.setattr(snapshot, "_git_output", fake_git_output)
-    monkeypatch.setattr(snapshot, "_path_matches_pre_coder_snapshot", fake_matches)
+    monkeypatch.setattr(snapshot, "_path_matches_snapshot", fake_matches)
     monkeypatch.setattr(snapshot, "_round_coder_untracked_delta_paths", lambda _round: [])
     paths = snapshot._collect_round_stage_paths(round_dir, since_committed=True)
     assert paths == ["fixed.py"]
@@ -5487,3 +5487,110 @@ def test_progress_note_uses_run_aware_breadcrumb(
     assert len(breadcrumb_calls) == 1
     assert breadcrumb_calls[0][0] == "raf-run-33"
     assert breadcrumb_calls[0][3] == "round 1 done"
+
+
+# --- Snapshot drift-convergence regression tests ---
+
+
+@pytest.mark.commit_fixes
+def test_write_pre_self_review_snapshot_nonempty_git_fixture(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nonempty self-review snapshot: artifacts present, baseline excluded, later edit collected."""
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    impl = _tmp_impl(tmp_path)
+
+    # Stage a tracked baseline edit; no unstaged changes so snapshot write proceeds
+    (repo / "tracked.txt").write_text("baseline\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "tracked.txt"])
+
+    rc = review_and_fix.write_pre_self_review_snapshot(["--implement-tmpdir", str(impl)])
+    assert rc == 0
+
+    snap = snapshot._self_review_snapshot_dir(impl)
+    assert (snap / "pre-self-review-head.txt").is_file()
+    assert (snap / "pre-self-review-tracked-paths.txt").is_file()
+    assert (snap / "pre-self-review-untracked-paths.txt").is_file()
+    tracked_names = (snap / "pre-self-review-tracked-paths.txt").read_text(encoding="utf-8").splitlines()
+    assert "tracked.txt" in tracked_names
+    safe = snapshot._safe_patch_name("tracked.txt")
+    diffs = snap / "pre-self-review-path-diffs"
+    assert (diffs / f"{safe}.patch").is_file()
+    assert (diffs / f"{safe}.cached.patch").is_file()
+
+    pre_head = (snap / "pre-self-review-head.txt").read_text(encoding="utf-8").strip()
+
+    # Baseline staged edit matches snapshot → excluded from delta
+    deltas = snapshot._self_review_delta_paths(implement_tmpdir=impl, pre_head=pre_head)
+    assert "tracked.txt" not in deltas
+
+    # A later worktree edit (different from baseline) is collected
+    (repo / "tracked.txt").write_text("later edit\n", encoding="utf-8")
+    deltas_after = snapshot._self_review_delta_paths(implement_tmpdir=impl, pre_head=pre_head)
+    assert "tracked.txt" in deltas_after
+
+
+@pytest.mark.commit_fixes
+def test_round_coder_delta_paths_since_committed_uses_diff_base_for_enumeration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """_round_coder_delta_paths calls _tracked_paths_vs_ref(diff_base) and uses snapshot_head for patch matching."""
+    round_dir = _tmp_impl(tmp_path) / "round-1"
+    round_dir.mkdir()
+    snap = review_and_fix.pre_coder_snapshot_dir(round_dir)
+    snap.mkdir(parents=True)
+    (snap / "pre-coder-head.txt").write_text("pre\n", encoding="utf-8")
+    (snap / "pre-coder-tracked-paths.txt").write_text("a.py\n", encoding="utf-8")
+    (snap / "pre-coder-untracked-paths.txt").write_text("", encoding="utf-8")
+    (snap / "pre-coder-path-diffs").mkdir()
+
+    enum_refs: list[str] = []
+
+    def fake_tracked_vs_ref(ref: str) -> list[str]:
+        enum_refs.append(ref)
+        return ["a.py"]
+
+    match_refs: list[str] = []
+
+    def fake_matches(*, snap_dir: Path, prefix: str, patch_match_ref: str, path: str) -> bool:
+        match_refs.append(patch_match_ref)
+        return True  # exclude a.py (matched snapshot)
+
+    monkeypatch.setattr(snapshot, "_tracked_paths_vs_ref", fake_tracked_vs_ref)
+    monkeypatch.setattr(snapshot, "_path_matches_snapshot", fake_matches)
+
+    result = snapshot._round_coder_delta_paths(round_dir=round_dir, diff_base="post", snapshot_head="pre")
+
+    assert enum_refs == ["post"]    # _tracked_paths_vs_ref called with diff_base
+    assert match_refs == ["pre"]     # _path_matches_snapshot called with snapshot_head
+    assert result == []              # a.py excluded because it matched the snapshot
+
+
+@pytest.mark.commit_fixes
+def test_self_review_delta_paths_probe_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Self-review uses worktree-only probe; staged-only changes absent; _tracked_paths_vs_ref not called."""
+    impl = _tmp_impl(tmp_path)
+    snap = snapshot._self_review_snapshot_dir(impl)
+    snap.mkdir(parents=True)
+    (snap / "pre-self-review-head.txt").write_text("abc\n", encoding="utf-8")
+    (snap / "pre-self-review-tracked-paths.txt").write_text("", encoding="utf-8")
+    (snap / "pre-self-review-untracked-paths.txt").write_text("", encoding="utf-8")
+    (snap / "pre-self-review-path-diffs").mkdir()
+
+    def fake_git_output(args: list[str]) -> str:
+        # Worktree diff: unstaged.py present; staged-only idx.py absent
+        if args == ["diff", "--name-only", "abc"]:
+            return "unstaged.py\n"
+        return ""
+
+    monkeypatch.setattr(snapshot, "_git_output", fake_git_output)
+
+    trvr_called: list[bool] = []
+
+    def trvr_must_not_be_called(_ref: str) -> list[str]:
+        trvr_called.append(True)
+        return []
+
+    monkeypatch.setattr(snapshot, "_tracked_paths_vs_ref", trvr_must_not_be_called)
+
+    deltas = snapshot._self_review_delta_paths(implement_tmpdir=impl, pre_head="abc")
+
+    assert trvr_called == []           # _tracked_paths_vs_ref never called for self-review
+    assert deltas == ["unstaged.py"]   # staged-only idx.py not collected; only worktree change present
