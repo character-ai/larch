@@ -41,11 +41,19 @@ Exec Issues (0):
 Warnings (1):
   1. code-review panel (round 1): dynamic reviewer slot drop/failure detected (failed=1, dropped=1, stragglers=1); review continued with the remaining panel output.
 
+## Architectural invariants
+
+No invariant violations identified. The change strengthens the reship gate by requiring lane-bound provenance on salvage commits; it does not weaken or disarm any gate on self-reported metadata (I-Gate-1). The gate and its producer (_salvage_uncommitted_fixer_edits embedding the trailer) land in the same change (I-Ship-1 recovery path). No stale-result consumption, panel-slot accounting, run-log, or pause-snapshot surface is touched.
+
+## Architectural guidelines
+
+No meaningful deviations identified. G-Fix-1 is satisfied: both dispatch paths (direct commit and uncommitted-edit salvage) and crash recovery are patched in the same change. G-Fix-2 is satisfied: the fix ships with offline pytest parametrized cases covering missing, wrong-step, and duplicate trailer scenarios for both dispatch and finalize paths, plus an updated shell integration test. G-Gate-1 is satisfied: the provenance gate and its trailer-embedding producer land atomically. G-Cfg-3 is satisfied within Python: _SALVAGE_STEP_TRAILER is the single constant shared by the writer and the regex selector; the shell test hardcodes the string literal, which is the standard deviation for a shell script that cannot import Python constants. G-Py-4 is respected: the try/except in _salvage_provenance_valid catches the specific LaneClosedError and returns False (fail-closed). G-Py-8 is applied: provenance is re-verified after each candidate commit before reship is authorized.
+
 ## /implement run EAEAC8CE-2181-4F62-8E05-D41AFC83EC9F: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:29:46
-- **Cost**: 💰 TOTAL ~$14.00: Claude $0.68, Codex-5.6 $9.47, Codex-mini $0.02, Cursor $3.63 (Composer $3.63, Grok $0.00), Claude (subprocess) $0.20  |  Tokens: 18894k
+- **Cost**: 💰 TOTAL ~$14.17: Claude $0.85, Codex-5.6 $9.47, Codex-mini $0.02, Cursor $3.63 (Composer $3.63, Grok $0.00), Claude (subprocess) $0.20  |  Tokens: 19370k
 - **Issue**: #7088: https://github.com/character-ai/larch/issues/7088
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
