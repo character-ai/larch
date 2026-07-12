@@ -36,7 +36,7 @@ contains 'Forbid issue-supplied credentials, arbitrary commands or arguments, ar
 contains 'A title-only stale shared lifecycle prefix with no protected label or body block is not active lifecycle state' 'stale-prefix close exception'
 contains 'replace `--body-file` with `--comment-file`' 'close-verdict artifact routing'
 contains 'RELATION_VERIFIED=true' 'dependency verification'
-contains 'Advance the expected timestamp only from that verified read-back.' 'dependency freshness advancement'
+contains 'Advance the expected timestamp only from that verified read-back; an already-present relation may return the unchanged verified timestamp.' 'dependency freshness advancement'
 contains 'Parse `ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`, and every per-issue result key.' 'issue counter verification'
 contains 'verify skill-called --sentinel-file' 'issue sentinel verification'
 contains 'TRIAGE_DENY_ACTIVE_SENTINEL="$TRIAGE_DENY_ACTIVE_DIR/triage-$PPID"' 'triage activation token'
