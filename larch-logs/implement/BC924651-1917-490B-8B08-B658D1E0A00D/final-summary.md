@@ -65,11 +65,19 @@ Exec Issues (0):
 Warnings (1):
   1. G-Cfg-1: reconcile_manual_merge_main emits RECONCILE_STATUS=ok and RECONCILE_STATUS=failed as hardcoded string literals (4 call sites) without corresponding Final constants in config.py. The parall...
 
+## Architectural invariants
+
+No invariant violations identified. The waiver mechanism satisfies I-Gate-1: it requires an explicit operator decision (the waiver artifact, bound to LARCH_RUN_ID from trusted session-env.sh) rather than metadata the gated entity itself declared. Invariant violations are not waivable: mark_operator_waived_outcomes and validate_invariant_ship_outcome_record both enforce outcome=dropped and reason=unavailable before operator_waived=True is accepted. All reads and writes use trusted, no-follow atomic I/O confined within the validated tmpdir, consistent with I-Ship-1 (no pre-merge mutations; reconcile requires pr.state==MERGED before any write). _verify_reconciliation re-reads all layers and the sentinel after writes, confirming postconditions hold. The TERMINAL_DONE_CLEAR_FIELDS refactoring preserves the same clear-field set semantically. No stale result is consumed without its identity validation (I-Stale-1): waivers only apply to unavailable outcomes where no assessment content was produced.
+
+## Architectural guidelines
+
+No guideline deviations identified. All new wire literals and constants are defined once in config.py (G-Cfg-1: ASSESSMENT_OPERATOR_WAIVER_FILENAME, ASSESSMENT_WAIVER_STATUS_OK/FAILED, TERMINAL_DONE_CLEAR_FIELDS, RECONCILE_TERMINAL_DONE_CLEAR_FIELDS). The operator_waived field is a backward-compatible additive extension to the committed artifact schema; existing records without it remain valid (G-Wire-2); docs/run-log-batches.md explicitly documents this. All file reads and writes route through larch_io helpers with explicit policy flags (G-IO-1). The reconcile_manual_merge command re-verifies all postconditions via _verify_reconciliation after mutation (G-Py-8). waive_assessment_main and reconcile_manual_merge_main are module-level main(argv)->int functions registered in the cli.py table (G-CLI-1). The waiver mechanism is the prescribed operator path for transient unavailable outcomes (G-Idem-4). Tests covering the waiver path, partial-waiver, malformed-waiver, and flush-before-PR-creation cases are added (G-Fix-2). The pyright suppression on the _tmpdir_under_allowed_root import carries an inline reason (G-Py-11). The _normalize.py change removes ambient os.environ.get fallback for STALL_TRACKING, tightening isolation (G-Root-1 direction). No consumers of the shared TERMINAL_DONE_CLEAR_FIELDS machinery are left unsynchronized (G-Wire-3).
+
 ## /implement run BC924651-1917-490B-8B08-B658D1E0A00D: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 01:29:49
-- **Cost**: 💰 TOTAL ~$34.61: Claude $9.62, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.52  |  Tokens: 59014k
+- **Cost**: 💰 TOTAL ~$38.71: Claude $13.69, Codex-5.6 $12.89, Codex-mini $0.06, Cursor $11.52 (Composer $11.52, Grok $0.00), Claude (subprocess) $0.55  |  Tokens: 68444k
 - **Issue**: #7059: https://github.com/character-ai/larch/issues/7059
 - **PR**: #7091: https://github.com/character-ai/larch/pull/7091
 - **Plan review**: N/A
@@ -77,7 +85,7 @@ Warnings (1):
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/15 accepted
-- **Lines (PR diff)**: code +1565/-52, larch-logs +1395/-3
+- **Lines (PR diff)**: code +1565/-52, larch-logs +1399/-3
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
