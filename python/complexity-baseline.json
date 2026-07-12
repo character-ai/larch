@@ -1821,13 +1821,13 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "failure_report_core",
-    "metric": 235
+    "metric": 234
   },
   {
     "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
-    "metric": 62
+    "metric": 61
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -2054,6 +2054,12 @@
   {
     "file": "larch/git/gh.py",
     "code": "PLR0913",
+    "qualified_symbol": "issue_close",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
     "qualified_symbol": "issue_create",
     "metric": 6
   },
@@ -2061,6 +2067,18 @@
     "file": "larch/git/gh.py",
     "code": "PLR0913",
     "qualified_symbol": "issue_edit",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "issue_list_read",
+    "metric": 8
+  },
+  {
+    "file": "larch/git/gh.py",
+    "code": "PLR0913",
+    "qualified_symbol": "issue_view_template_read",
     "metric": 6
   },
   {
@@ -4191,7 +4209,7 @@
     "file": "larch/rendering/rendering.py",
     "code": "PLR0915",
     "qualified_symbol": "diagrams_upsert_main",
-    "metric": 95
+    "metric": 94
   },
   {
     "file": "larch/rendering/rendering.py",
