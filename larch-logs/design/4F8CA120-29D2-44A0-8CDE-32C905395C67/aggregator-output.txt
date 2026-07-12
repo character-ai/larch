@@ -1,0 +1,14 @@
+### FINDING_1: Codex assessment lane lacks access to validated evidence
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+- **Severity**: major
+- **Concern**: In assessment mode, Codex is not granted read access to the validated evidence directory containing `diff_path` and `knowledge_path`. The backup lane may therefore produce empty or malformed output instead of a real assessment.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In assessment mode, pass the validated evidence directory as Codex --add-dir (keep repository -C for dirty-tree baseline), and add a launcher test that the prompt paths are inside the granted add-dir roots.
+  - From Cursor-Requirements: In assessment mode, pass the validated evidence directory to Codex (extra --add-dir, or colocate launcher output under that directory), and add `test_launch_review.py` coverage that Codex `--add-dir` includes the evidence tree.
+
+### FINDING_2: Codex assessment uses review-specific trusted instructions
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: major
+- **Concern**: Assessment-mode Codex launches may still inject `_CODEX_REVIEW_STRICT_PREAMBLE`, framing the task as a read-only code review rather than requiring the compact architectural-assessment JSON contract. This can produce malformed review-shaped output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: In assessment mode, skip or swap the review trusted-instructions for assessment-only constraints aligned with `architectural-assessment-agent.md`, and test that Codex assessment launches do not inject the review preamble.

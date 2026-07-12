@@ -1,0 +1,1 @@
+Add a Cursor to Codex to Claude assessment waterfall. Each kind advances independently and gets one attempt per available lane. Extend the Step 8 budget and regression harness for the three-lane worst case.
