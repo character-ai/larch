@@ -22,12 +22,12 @@ from larch.implement import ship_guidelines
 _AGENT_PROMPT: Final = Path(__file__).parents[3] / "skills/implement/references/architectural-assessment-agent.md"
 _MODEL: Final = "claude-sonnet-4-6"
 _TIMEOUT_SECONDS: Final = 1800
+_EMPTY_STDOUT_ATTEMPTS: Final = 3
 _MAX_ASSESSMENT_CHARS: Final = 12000
 _UNAVAILABLE_RECEIPT: Final = "architectural-assessment-unavailable-{kind}.json"
 _KIND_ORDER: Final = (config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES)
 _DIFF_HEADER_RE: Final = re.compile(r"^diff --git a/(\S+) b/(\S+)$")
 _IDENTIFIER_RE: Final = re.compile(r"^#{1,6}\s+((?:I|G)-[A-Za-z0-9-]+-\d+):", re.MULTILINE)
-_SHA256_RE: Final = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _BASE_REF_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
 _REAUTHOR_REASONS: Final[frozenset[str]] = frozenset({
@@ -357,7 +357,10 @@ def _already_handled(kind: str, *, repo_root: Path, implement_tmpdir: Path, head
     if not (base_ref and consumer(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root) and _outcome_valid(kind, implement_tmpdir, metadata)):
         return False
     if metadata.get("NOTE_STATE") == config.NOTE_STATE_UNAVAILABLE:
-        return _unavailable_receipt_valid(kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
+        # A prior `unavailable` note records a transient capture failure, not durable
+        # coverage; a re-run must re-author it rather than reuse the stale receipt
+        # (_discard_unavailable_coverage clears it before re-materialization).
+        return False
     if kind == config.ASSESSMENT_KIND_GUIDELINES and metadata.get("ASSESSMENT_KIND") == "deviation":
         note_path = architectural_guidelines.durable_note_path(implement_tmpdir)
         try:
@@ -368,6 +371,23 @@ def _already_handled(kind: str, *, repo_root: Path, implement_tmpdir: Path, head
             return False
         return append_status in {"ok", "duplicate"}
     return True
+
+
+def _discard_unavailable_coverage(kind: str, *, implement_tmpdir: Path) -> None:
+    """Invalidate a prior `unavailable` note so a re-run re-authors instead of reusing it."""
+    metadata = (
+        architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir)
+        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        else architectural_guidelines.durable_note_metadata(implement_tmpdir)
+    )
+    if metadata.get("NOTE_STATE") != config.NOTE_STATE_UNAVAILABLE:
+        return
+    invalidator = (
+        architectural_guidelines.invalidate_invariant_implement_note
+        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        else architectural_guidelines.invalidate_implement_note
+    )
+    invalidator(implement_tmpdir)
 
 
 def _materialize_current(kind: str, *, repo_root: Path, implement_tmpdir: Path, head_sha: str) -> MaterializedEvidence | None:
@@ -700,32 +720,14 @@ def _preserved_invariant_violation(evidence: MaterializedEvidence, *, repo_root:
     )
 
 
-def _unavailable_receipt_valid(kind: str, *, repo_root: Path, implement_tmpdir: Path) -> bool:  # noqa: PLR0911 - receipt validation rejects each malformed boundary
-    try:
-        evidence = validate_materialization(kind=kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
-        receipt = _load_json(implement_tmpdir / _UNAVAILABLE_RECEIPT.format(kind=kind), root=implement_tmpdir)
-    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError):
-        return False
-    if not isinstance(receipt, dict):
-        return False
-    required = {"schema_version", "kind", "head_sha", "base_ref", "diff_fingerprint", "knowledge_sha256", "note_sha256", "outcome_sha256", "detail"}
-    if set(receipt) != required or receipt.get("schema_version") != "1" or receipt.get("kind") != kind:  # type: ignore[reportUnknownArgumentType, reportUnknownMemberType, reportUnknownVariableType]  # reason: receipt is dict from _load_json
-        return False
-    if any(not isinstance(receipt.get(key), str) for key in required):  # type: ignore[reportUnknownMemberType, reportUnknownArgumentType]  # reason: receipt is dict from _load_json
-        return False
-    if any(receipt[key] != expected for key, expected in {  # type: ignore[reportUnknownVariableType, reportUnknownArgumentType]  # reason: receipt is dict from _load_json
-        "head_sha": evidence.head_sha, "base_ref": evidence.base_ref,
-        "diff_fingerprint": evidence.diff_fingerprint, "knowledge_sha256": evidence.knowledge_sha256,
-    }.items()):
-        return False
-    if _SHA256_RE.fullmatch(cast("str", receipt["note_sha256"])) is None or _SHA256_RE.fullmatch(cast("str", receipt["outcome_sha256"])) is None:
-        return False
-    note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_path(implement_tmpdir)
-    outcome_path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.guideline_ship_outcome_path(implement_tmpdir)
-    try:
-        return receipt["note_sha256"] == _sha256(_read_regular(note_path, root=implement_tmpdir)) and receipt["outcome_sha256"] == _sha256(_read_regular(outcome_path, root=implement_tmpdir))  # type: ignore[reportUnknownVariableType, reportUnknownArgumentType]  # reason: receipt is dict from _load_json
-    except (OSError, UnicodeDecodeError, ValueError):
-        return False
+def _launch_assessment(launcher: Launcher, request: LaunchRequest) -> LaunchResult:
+    """Launch the assessment, retrying a transient exit-0 empty stdout before falling back."""
+    launch_result = launcher.launch(request)
+    for _retry in range(_EMPTY_STDOUT_ATTEMPTS - 1):
+        if launch_result.returncode != 0 or launch_result.stdout.strip():
+            break
+        launch_result = launcher.launch(request)
+    return launch_result
 
 
 def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launcher: Launcher | None = None) -> tuple[str, ...]:  # noqa: C901, PLR0912, PLR0915 - coordinator isolates each assessment lifecycle boundary
@@ -747,6 +749,7 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             if _already_handled(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha):
                 statuses[kind] = "handled"
                 continue
+            _discard_unavailable_coverage(kind, implement_tmpdir=tmpdir)
             evidence = _materialize_current(kind, repo_root=root, implement_tmpdir=tmpdir, head_sha=head_sha)
             if evidence is None:
                 try:
@@ -777,12 +780,14 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
             "--add-dir", str(evidence_dir), "--allowedTools", "Read", "--permission-mode", "plan",
         )
         _validate_launch_evidence(evidence_dir=evidence_dir, copied=copied)
-        launch_result = (launcher or ClaudeLauncher()).launch(LaunchRequest(argv, evidence_dir, prompt, evidence_dir))
+        launch_result = _launch_assessment(launcher or ClaudeLauncher(), LaunchRequest(argv, evidence_dir, prompt, evidence_dir))
         result_path = tmpdir / "architectural-assessment-result.json"
         try:
             if launch_result.returncode != 0:
                 raise ValueError(launch_result.stderr or f"launcher exited {launch_result.returncode}")
             _write_text_atomic(result_path, launch_result.stdout)
+            if not launch_result.stdout.strip():
+                raise ValueError(f"assessment launcher returned empty stdout after {_EMPTY_STDOUT_ATTEMPTS} attempts")
             results, invalid_kinds, invalid_detail = _parse_results_independently(_read_regular(result_path, root=tmpdir), pending)
             for result in results:
                 try:
