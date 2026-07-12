@@ -37,11 +37,24 @@ codex/apply                               │                              █�
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. G-Md-2: The function was promoted from private `_balanced_fence_line_indices` in `issue_create.py` to public `balanced_fence_line_indices` (no underscore) in `plan_grammar.py`, but two prose consum...
+
+## Architectural invariants
+
+No invariant violations. The changes consolidate fence-parsing logic into a shared helper, update all callers, and add regression tests. None of the touched code paths interact with gate disarm logic (I-Gate-1), pause snapshots (I-Pause-1), persisted step result validation (I-Stale-1), run-log artifact flushing (I-Flush-1, I-Commit-1, I-Outcome-1), panel slot accounting (I-Slot-1), agent verdict backing (I-Agent-1), or PR mutation routes (I-Ship-1).
+
+## Architectural guidelines
+
+G-Md-2: The function was promoted from private `_balanced_fence_line_indices` in `issue_create.py` to public `balanced_fence_line_indices` (no underscore) in `plan_grammar.py`, but two prose consumers were not fully swept in the same change. (1) `ARCHITECTURAL_GUIDELINES.md` G-Md-3 guidance was updated to the new module path but still names the symbol as `_balanced_fence_line_indices`; a developer following this text verbatim would write an import that fails at runtime with ImportError. (2) Three fixture strings in `python/tests/lint/test_lint_markdown_heading_fence_state.py` (lines ~607, ~616, ~625) were updated to reference `larch.design.plan_grammar` but still import `_balanced_fence_line_indices`, which does not exist in that module. All production call sites correctly use `balanced_fence_line_indices`, so there is no runtime defect, but the guideline prose and lint fixtures reference a symbol that no longer exists at the cited path.
+
 ## /implement run F6DE20F9-3076-4C59-BF57-909C936F47FF: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:48:12
-- **Cost**: 💰 TOTAL ~$13.87: Claude $2.35, Codex-5.6 $1.34, Codex-mini $0.94, Cursor $5.89 (Composer $3.56, Grok $2.33), Claude (subprocess) $3.35  |  Tokens: 23795k
+- **Cost**: 💰 TOTAL ~$14.12: Claude $2.60, Codex-5.6 $1.34, Codex-mini $0.94, Cursor $5.89 (Composer $3.56, Grok $2.33), Claude (subprocess) $3.35  |  Tokens: 24477k
 - **Issue**: #7075: https://github.com/character-ai/larch/issues/7075
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -51,7 +64,7 @@ codex/apply                               │                              █�
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/F6DE20F9-3076-4C59-BF57-909C936F47FF/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
