@@ -3,8 +3,8 @@
     "closure_content_estimated_tokens": 51933,
     "closure_estimated_tokens": 52083,
     "closure_lines": 1710,
-    "conditional_content_estimated_tokens": 18654,
-    "conditional_estimated_tokens": 18723,
+    "conditional_content_estimated_tokens": 18750,
+    "conditional_estimated_tokens": 18819,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
@@ -19,7 +19,7 @@
       "skills/design/references/dialectic-clarifier.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 765,
+    "conditional_lines": 767,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",
@@ -38,9 +38,9 @@
     "skill_md_lines": 690
   },
   {
-    "closure_content_estimated_tokens": 45793,
-    "closure_estimated_tokens": 45912,
-    "closure_lines": 1337,
+    "closure_content_estimated_tokens": 46303,
+    "closure_estimated_tokens": 46423,
+    "closure_lines": 1341,
     "conditional_content_estimated_tokens": 24330,
     "conditional_estimated_tokens": 24388,
     "conditional_files": [
@@ -69,9 +69,9 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 33224,
-    "skill_md_estimated_tokens": 33303,
-    "skill_md_lines": 841
+    "skill_md_content_estimated_tokens": 33462,
+    "skill_md_estimated_tokens": 33542,
+    "skill_md_lines": 843
   },
   {
     "closure_content_estimated_tokens": 46796,
