@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from larch.issue import analyze_issues
+from larch.issue import _oos
 from larch.rendering import render_chart
 
 
@@ -32,6 +33,24 @@ def _code_row(finding_id: str, result: str, votes: tuple[str, str, str], scope: 
 
 def test_render_chart_smoke() -> None:
     assert "Cumulative growth chart" in render_chart.render_chart(buckets=["2026-01"], rows=[("A", "Bug", [1])])
+
+
+def test_parse_oos_accepted_blocks_ignores_fenced_and_mixed_canonical_headings(tmp_path: Path) -> None:
+    accepted = tmp_path / "oos-accepted-review.md"
+    accepted.write_text(
+        "```md\n"
+        "### OOS_99: fenced fake\n"
+        "```\n"
+        "### OOS_1: public\n"
+        "- **Reviewer**: codex\n"
+        "### FINDING_2: in scope\n"
+        "- **Reviewer**: cursor\n",
+        encoding="utf-8",
+    )
+
+    blocks = _oos._parse_oos_accepted_blocks(accepted, run_dir=tmp_path)
+
+    assert [block["heading_id"] for block in blocks] == ["OOS_1", "FINDING_2"]
 
 
 def test_analyze_fixture_runs(tmp_path: Path, capsys) -> None:

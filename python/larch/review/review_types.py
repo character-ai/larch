@@ -24,7 +24,7 @@ _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 _FENCED_CODE_RE = re.compile(r"(?ms)^[ \t]{0,3}(`{3,}|~{3,}).*?^[ \t]{0,3}\1[ \t]*$")
 _SECURITY_TOKEN_RE = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)
 _SECURITY_HEADER_RE = re.compile(
-    r"^### (?:OOS|FINDING)_\d+:\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
+    r"^###[ \t]+(?:OOS|FINDING)_\d+:\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
     r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
     re.IGNORECASE,
 )

@@ -1872,6 +1872,28 @@ def test_finding_blocks_keep_heading_and_caller_local_strip() -> None:
     assert review_aggregate._finding_id_from_block(blocks[0]) == "FINDING_7"
 
 
+def test_aggregate_block_helpers_keep_mixed_canonical_items_separate(tmp_path: Path) -> None:
+    text = (
+        "### FINDING_1: one\nbody\n"
+        "### OOS_2: two\nbody\n"
+        "### FINDING_3: three\nbody\n"
+        "### Notes\nnotes\n"
+    )
+    path = tmp_path / "findings.md"
+    _ = path.write_text(text, encoding="utf-8")
+
+    assert review_aggregate._finding_blocks(text) == [
+        "### FINDING_1: one\nbody",
+        "### FINDING_3: three\nbody",
+    ]
+    assert review_aggregate._item_blocks(text) == [
+        "### FINDING_1: one\nbody",
+        "### OOS_2: two\nbody",
+        "### FINDING_3: three\nbody",
+    ]
+    assert review_aggregate._count_finding_blocks(path) == 2
+
+
 def test_renumber_findings_uses_heading_inclusive_blocks() -> None:
     assert review_aggregate._renumber_findings(
         "### FINDING_9: old\nbody\n\n### FINDING_10: old\nbody\n",

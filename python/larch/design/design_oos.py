@@ -434,14 +434,11 @@ def _load_issue_sentinel_status(design_tmpdir: Path) -> tuple[int, int, int]:
 
 
 def _block_range(*, text: str, os_number: str) -> tuple[int, int] | None:
-    pattern = re.compile(
-        rf"(^###\s+OOS_{re.escape(os_number)}:[^\n]*\n)([\s\S]*?)(?=^###\s+OOS_|\Z)",
-        re.MULTILINE,
-    )
-    match = pattern.search(text)
-    if not match:
-        return None
-    return match.start(), match.end()
+    item_id = f"OOS_{os_number}"
+    for block in parse_blocks(text, boundary="item-heading"):
+        if block.kind == "OOS" and block.item_id == item_id:
+            return block.start, block.end
+    return None
 
 
 def _recover_accepted_from_sentinel(*, accepted_text: str, sentinel_text: str) -> tuple[bool, str]:

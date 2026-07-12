@@ -60,6 +60,10 @@ def test_security_and_oos_eligibility_policy() -> None:
     assert count_non_security_blocks("".join(block.block for block in blocks)) == 2
 
 
+def test_security_header_allows_whitespace_after_hashes() -> None:
+    assert is_security_block_text("### OOS_1: [security] private\nbody\n")
+
+
 def test_finding_dedup_key_parity() -> None:
     first = "### FINDING_1: a\n- **Location**: x.py:1\n- **Concern**:  Bad   thing\n"
     second = "### FINDING_9: b\n- **Location**: x.py:1\n- **Concern**: Bad thing\n"

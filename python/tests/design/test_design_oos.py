@@ -40,6 +40,22 @@ def test_count_non_security_blocks_delegates_to_file_oos(monkeypatch: pytest.Mon
     assert seen == [text]
 
 
+def test_block_range_stops_at_intervening_finding_heading() -> None:
+    text = (
+        "### OOS_1: first\n"
+        "first body\n"
+        "### FINDING_2: middle\n"
+        "finding body\n"
+        "### OOS_3: last\n"
+        "last body\n"
+    )
+
+    span = design_oos._block_range(text=text, os_number="1")  # pyright: ignore[reportPrivateUsage]
+
+    assert span is not None
+    assert text[span[0] : span[1]] == "### OOS_1: first\nfirst body\n"
+
+
 def test_prepare_ready_emits_expected_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     accepted = tmp_path / "oos-accepted-design.md"
     _ = accepted.write_text(

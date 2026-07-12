@@ -141,7 +141,7 @@ def review_core_capture(*,
 
 def _filter_in_scope(*, accepted_file: Path, output: Path) -> None:
     text = _read_text(accepted_file)
-    blocks = parse_blocks(text, boundary="finding-heading")
+    blocks = parse_blocks(text, boundary="item-heading")
     first_start = blocks[0].start if blocks else None
     preamble = text[:first_start] if first_start is not None else text
     kept = [block.block.rstrip() for block in blocks if block.kind == "FINDING" and not is_oos_eligible_block(block)]
