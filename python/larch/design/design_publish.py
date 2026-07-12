@@ -110,17 +110,8 @@ def _is_repo(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value))
 
 
-_PROVENANCE_META_KEYS = ("review_status", "rounds_completed", "difficulty")
 _TERMINAL_STATUSES_REQUIRING_SENTINEL = frozenset({"complete", "cap-hit"})
 _REASON_TOKEN_RE = re.compile(r"REASON_TOKEN=([^ \t);,]+)")
-
-
-def _is_trailer_region_line(line: str) -> bool:
-    stripped = line.rstrip("\n")
-    if any(stripped.startswith(f"{key}: ") for key in _PROVENANCE_META_KEYS):
-        return True
-    match = plan_grammar.match_trailer_line(stripped)
-    return match is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS
 
 
 def _read_review_round_count(design_tmpdir: Path) -> int:

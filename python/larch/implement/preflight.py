@@ -447,7 +447,7 @@ def _plan_review_meta_value(*, plan_path: Path, key: str) -> str:
     trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
     if not trailers.matches:
         return ""
-    match = trailers.get(cast(plan_grammar.TrailerKey, key))
+    match = trailers.get(cast("plan_grammar.TrailerKey", key))
     return match.value if match is not None else ""
 
 
