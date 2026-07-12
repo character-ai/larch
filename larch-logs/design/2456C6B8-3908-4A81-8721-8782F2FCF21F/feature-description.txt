@@ -1,0 +1,17 @@
+# [OOS] Unify remaining plan marker grammar bypasses
+
+## Out-of-Scope Observation
+
+**Surfaced by**: External implementer
+
+**Phase**: implement
+
+**Vote tally**: N/A — auto-filed per policy
+
+
+## Description
+
+The plan names python/larch/design/decompose.py, python/larch/learn_from_bugs.py, and python/larch/design_router.py as out of scope. They may still bypass the shared marker or grammar owner and should be handled through the Step 5b OOS pipeline if no issue exists.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
