@@ -105,9 +105,11 @@ def test_valid_apply_preserves_original_and_verifies_readback(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal calls
         calls += 1
-        if calls == 1:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout="[]")
+        if calls in {1, 3}:
             return _result(argv, stdout=_snapshot())
-        if calls == 2:
+        if calls == 5:
             assert argv[:4] == ["gh", "issue", "edit", "7"]
             assert Path(argv[-1]).read_text(encoding="utf-8") == expected_body
             return _result(argv)
@@ -186,13 +188,17 @@ def test_close_stops_when_snapshot_changes_between_mutations(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         command = list(argv)
         calls.append(command)
+        if command[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            if len(calls) == 8:
+                return _result(command, stdout=json.dumps([{"body": marked}]))
+            return _result(command, stdout="[]")
         position = len(calls)
-        if position in {1, 2}:
+        if position in {1, 4}:
             return _result(command, stdout=_snapshot())
-        if position == 3:
+        if position == 6:
             assert command[:4] == ["gh", "issue", "comment", "7"]
             return _result(command)
-        if position == 4:
+        if position == 7:
             return _result(
                 command,
                 stdout=_snapshot(
@@ -226,7 +232,7 @@ def test_close_stops_when_snapshot_changes_between_mutations(
         ],
     )
     assert rc == triage.EXIT_STALE
-    assert len(calls) == 5
+    assert len(calls) == 9
     assert not any(command[:4] == ["gh", "issue", "close", "7"] for command in calls)
 
 
@@ -252,7 +258,10 @@ def test_protected_and_security_state_refuses(
         triage.proc,
         "run",
         lambda argv, **_: _result(
-            list(argv), stdout=_snapshot(title=title, body=body, labels=labels)
+            list(argv),
+            stdout="[]"
+            if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]
+            else _snapshot(title=title, body=body, labels=labels),
         ),
     )
     rc = triage.apply_main(
@@ -286,6 +295,185 @@ def test_sanitize_outbound_redacts_and_neutralizes() -> None:
     assert "<REDACTED-PII>" in sanitized
     assert "<INTERNAL-URL>" in sanitized
     assert "<REDACTED-TOKEN>" in sanitized
+
+
+def test_paginated_security_comment_blocks_public_mutation(
+    monkeypatch: Any, triage_root: Path
+) -> None:
+    body_file = triage_root / "body.md"
+    body_file.write_text("diagnosis", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout='[]\n[{"body": "api key exposed"}]')
+        return _result(argv, stdout=_snapshot())
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    rc = triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "valid",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--body-file", str(body_file), "--operator-invoked",
+    ])
+    assert rc == triage.EXIT_PROTECTED
+    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)
+
+
+def test_sensitive_pending_artifact_blocks_public_mutation(
+    monkeypatch: Any, triage_root: Path
+) -> None:
+    body_file = triage_root / "body.md"
+    body_file.write_text("credential exposure", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        return _result(argv, stdout="[]" if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"] else _snapshot())
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    rc = triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "valid",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--body-file", str(body_file), "--operator-invoked",
+    ])
+    assert rc == triage.EXIT_PROTECTED
+    assert len(calls) == 2
+
+
+def test_valid_apply_rechecks_snapshot_before_body_mutation(
+    monkeypatch: Any, triage_root: Path
+) -> None:
+    body_file = triage_root / "body.md"
+    body_file.write_text("diagnosis", encoding="utf-8")
+    views = 0
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        nonlocal views
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout="[]")
+        views += 1
+        return _result(argv, stdout=_snapshot(updated_at="2026-07-12T10:00:01Z" if views == 2 else "2026-07-12T10:00:00Z"))
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    rc = triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "valid",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--body-file", str(body_file), "--operator-invoked",
+    ])
+    assert rc == triage.EXIT_STALE
+    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)
+
+
+def test_duplicate_requires_an_open_canonical_issue(
+    monkeypatch: Any, triage_root: Path
+) -> None:
+    comment_file = triage_root / "comment.md"
+    comment_file.write_text("Duplicate of #8.", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout="[]")
+        if argv[:4] == ["gh", "issue", "view", "8"]:
+            return _result(argv, stdout=_snapshot(number=8, state="CLOSED"))
+        return _result(argv, stdout=_snapshot())
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    rc = triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "duplicate",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--comment-file", str(comment_file),
+        "--canonical-duplicate", "8", "--operator-invoked",
+    ])
+    assert rc == triage.EXIT_PROTECTED
+    assert not any(call[:4] == ["gh", "issue", "comment", "7"] for call in calls)
+
+
+def test_conflicting_verdict_marker_blocks_close(
+    monkeypatch: Any, triage_root: Path
+) -> None:
+    comment_file = triage_root / "comment.md"
+    comment_file.write_text("Verified as invalid.", encoding="utf-8")
+    comment_reads = 0
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        nonlocal comment_reads
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            comment_reads += 1
+            body = "<!-- larch:triage-verdict:invalid -->\nConflicting evidence."
+            return _result(argv, stdout="[]" if comment_reads == 1 else json.dumps([{"body": body}]))
+        return _result(argv, stdout=_snapshot())
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    rc = triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "invalid",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--comment-file", str(comment_file), "--operator-invoked",
+    ])
+    assert rc == triage.EXIT_POSTCONDITION
+    assert not any(call[:4] == ["gh", "issue", "close", "7"] for call in calls)
+
+
+def test_close_restores_title_and_verifies_not_planned(
+    monkeypatch: Any, triage_root: Path
+) -> None:
+    comment_file = triage_root / "comment.md"
+    comment_file.write_text("Verified as invalid.", encoding="utf-8")
+    title = "[DONE] Bug report"
+    state = "OPEN"
+    state_reason = ""
+    updated_at = "2026-07-12T10:00:00Z"
+    comments: list[dict[str, str]] = []
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        nonlocal title, state, state_reason, updated_at
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout=json.dumps(comments))
+        if argv[:4] == ["gh", "issue", "comment", "7"]:
+            comments.append({"body": "<!-- larch:triage-verdict:invalid -->\nVerified as invalid."})
+            updated_at = "2026-07-12T10:00:01Z"
+            return _result(argv)
+        if argv[:4] == ["gh", "issue", "edit", "7"]:
+            title = "Bug report"
+            updated_at = "2026-07-12T10:00:02Z"
+            return _result(argv)
+        if argv[:4] == ["gh", "issue", "close", "7"]:
+            state = "CLOSED"
+            state_reason = "NOT_PLANNED"
+            updated_at = "2026-07-12T10:00:03Z"
+            return _result(argv)
+        return _result(argv, stdout=_snapshot(
+            title=title, state=state, state_reason=state_reason,
+            updated_at=updated_at, comments=comments,
+        ))
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    rc = triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "invalid",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--comment-file", str(comment_file), "--operator-invoked",
+    ])
+    assert rc == 0
+    assert any(call[:4] == ["gh", "issue", "close", "7"] and call[-2:] == ["--reason", "not planned"] for call in calls)
+
+
+def test_inconclusive_verdict_makes_no_github_calls(monkeypatch: Any, triage_root: Path) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(triage.proc, "run", lambda argv, **_: calls.append(argv))
+    assert triage.apply_main([
+        "7", "--repo", "owner/repo", "--verdict", "inconclusive",
+        "--expected-updated-at", "2026-07-12T10:00:00Z", "--triage-root",
+        str(triage_root), "--operator-invoked",
+    ]) == 0
+    assert not calls
 
 
 def test_inspect_reads_only_immutable_git_object(

@@ -77,6 +77,21 @@ def test_verified_add_success(monkeypatch: Any, capsys: Any) -> None:
     assert "✓ #1 is now blocked by #2" in output
 
 
+def test_paginated_relation_readback_accepts_later_page(monkeypatch: Any) -> None:
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        if argv[:3] == ["gh", "api", "graphql"]:
+            return _result(
+                argv,
+                stdout=_lookup() if "query=query" in argv[-1] else _mutation("addBlockedBy"),
+            )
+        if "dependencies/blocked_by" in " ".join(argv):
+            return _result(argv, stdout='[{"number": 1}]\n[{"number": 2}]')
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(issue_block.proc, "run", fake_run)
+    assert issue_block.add_blocked_by_main(["1", "2", "--repo", "owner/repo", "--operator-invoked"]) == 0
+
+
 def test_verified_remove_success(monkeypatch: Any, capsys: Any) -> None:
     calls = 0
 
@@ -151,13 +166,15 @@ def test_triage_dependency_rechecks_and_returns_fresh_timestamp(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal calls
         calls += 1
-        if calls in {1, 3}:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/1/comments"]:
+            return _result(argv, stdout="[]")
+        if calls in {1, 4}:
             return _result(argv, stdout=_snapshot())
-        if calls == 2:
+        if calls == 3:
             return _result(argv, stdout=_lookup())
-        if calls == 4:
+        if calls == 6:
             return _result(argv, stdout=_mutation("addBlockedBy"))
-        if calls == 5:
+        if calls == 7:
             return _result(argv, stdout='[{"number": 2}]')
         return _result(argv, stdout=_snapshot("2026-07-12T10:00:01Z"))
 
@@ -178,3 +195,24 @@ def test_triage_dependency_rechecks_and_returns_fresh_timestamp(
     output = capsys.readouterr().out
     assert "RELATION_VERIFIED=true" in output
     assert "UPDATED_AT=2026-07-12T10:00:01Z" in output
+
+
+def test_triage_dependency_refuses_paginated_security_comment(
+    monkeypatch: Any, capsys: Any
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        calls.append(argv)
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/1/comments"]:
+            return _result(argv, stdout='[]\n[{"body": "private key exposed"}]')
+        return _result(argv, stdout=_snapshot())
+
+    monkeypatch.setattr(issue_block.proc, "run", fake_run)
+    rc = issue_block.add_blocked_by_main([
+        "1", "2", "--repo", "owner/repo", "--operator-invoked",
+        "--triage-controlled", "--expected-updated-at", "2026-07-12T10:00:00Z",
+    ])
+    assert rc == 4
+    assert not any(call[:3] == ["gh", "api", "graphql"] for call in calls)
+    assert "security-sensitive targets" in capsys.readouterr().err

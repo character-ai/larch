@@ -10,8 +10,10 @@ from dataclasses import dataclass
 from typing import Final, cast
 
 from larch.core import proc, redact
+from larch.git import gh
 from larch.issue.triage import (
     TriageError,
+    _comment_bodies,  # pyright: ignore[reportPrivateUsage]  # shared triage helper reads every comment before public mutation
     _contains_security_content,  # pyright: ignore[reportPrivateUsage]  # shared triage helper reused by /block-issue; no public alias exists
     _has_protected_state,  # pyright: ignore[reportPrivateUsage]  # shared triage helper reused by /block-issue; no public alias exists
     _issue_snapshot,  # pyright: ignore[reportPrivateUsage]  # shared triage helper reused by /block-issue; no public alias exists
@@ -197,9 +199,7 @@ def _relation_present(*, repo: str, issue: int, blocker: int) -> bool:
             8,
         )
     try:
-        rows: object = json.loads(result.stdout or "[]")
-        if not isinstance(rows, list):
-            raise TypeError
+        rows = gh.loads_json_paginated_list(result.stdout)
         numbers = {
             int(row["number"])
             for row in rows
@@ -217,6 +217,7 @@ def _triage_precondition(args: MutationArgs) -> None:
         return
     try:
         target = _issue_snapshot(proc, issue=args.issue, repo=args.repo)
+        comments = _comment_bodies(proc, issue=args.issue, repo=args.repo)
         protected = _has_protected_state(target, allow_stale_title=False)
     except TriageError as exc:
         raise BlockIssueError(f"target precondition read failed: {exc}", 4) from exc
@@ -224,7 +225,7 @@ def _triage_precondition(args: MutationArgs) -> None:
         raise BlockIssueError(
             "target issue changed since the expected triage snapshot", 4
         )
-    if _contains_security_content(target):
+    if _contains_security_content(target, comments=comments):
         raise BlockIssueError(
             "security-sensitive targets cannot receive public dependency mutations", 4
         )

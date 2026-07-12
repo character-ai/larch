@@ -279,7 +279,7 @@ def test_apply_revalidates_edges_and_calls_block_issue(tmp_path: Path, monkeypat
     data = read_stdout_json(capsys)
     assert data["skipped"][0]["reason"] == "duplicate existing edge"
     assert data["applied"] == [{"kind": "edge", "client_issue": 3, "blocker_issue": 2}]
-    assert any(list(call[-6:]) == ["block-issue", "add-blocked-by", "3", "2", "--repo", "o/r"] for call in calls)
+    assert any(list(call[-7:]) == ["block-issue", "add-blocked-by", "3", "2", "--repo", "o/r", "--operator-invoked"] for call in calls)
 
 
 def test_apply_redacts_failed_edit_and_close_errors(tmp_path: Path, monkeypatch, capsys) -> None:

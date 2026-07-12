@@ -61,6 +61,7 @@ class IssueSnapshot:  # pylint: disable=too-many-instance-attributes  # GitHub f
     """Typed issue state used by every compare-and-swap boundary."""
 
     number: int
+    repo: str
     title: str
     body: str
     state: str
@@ -171,6 +172,7 @@ def _issue_snapshot(runner: Runner, *, issue: int, repo: str) -> IssueSnapshot:
         ) from exc
     snapshot = IssueSnapshot(
         number=number,
+        repo=repo,
         title=str(data.get("title") or ""),
         body=str(data.get("body") or ""),
         state=str(data.get("state") or "").upper(),
@@ -193,12 +195,34 @@ def _issue_snapshot(runner: Runner, *, issue: int, repo: str) -> IssueSnapshot:
     return snapshot
 
 
-def _contains_security_content(snapshot: IssueSnapshot) -> bool:
+def _contains_security_content(
+    snapshot: IssueSnapshot, *, comments: tuple[str, ...] = ()
+) -> bool:
     if any(
         label.casefold() in {"security", "vulnerability"} for label in snapshot.labels
     ):
         return True
-    return _SECURITY_RE.search(f"{snapshot.title}\n{snapshot.body}") is not None
+    return _SECURITY_RE.search(
+        "\n".join((snapshot.title, snapshot.body, *snapshot.comments, *comments))
+    ) is not None
+
+
+def _comment_bodies(runner: Runner, *, issue: int, repo: str) -> tuple[str, ...]:
+    """Read every issue comment for security and idempotency checks."""
+    result = gh.issue_comments_list_read(runner, str(issue), repo=repo)
+    if result.returncode != 0:
+        raise TriageError("issue comments could not be read", EXIT_PROTECTED)
+    try:
+        rows = gh.loads_json_paginated_list(result.stdout)
+    except gh.ShipError as exc:
+        raise TriageError("issue comments returned invalid JSON", EXIT_PROTECTED) from exc
+    bodies: list[str] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise TriageError("issue comments returned a malformed row", EXIT_PROTECTED)
+        body = row.get("body")
+        bodies.append(body if isinstance(body, str) else str(body or ""))
+    return tuple(bodies)
 
 
 def _triage_span(body: str) -> tuple[int, int] | None:
@@ -307,10 +331,20 @@ def _artifact(path_value: str, *, root: Path) -> Path:
     return resolved
 
 
-def _check_snapshot(snapshot: IssueSnapshot, *, expected: str, verdict: str) -> None:
+def _check_snapshot(
+    runner: Runner,
+    snapshot: IssueSnapshot,
+    *,
+    expected: str,
+    verdict: str,
+    artifact_text: str,
+) -> None:
     if snapshot.updated_at != expected:
         raise TriageError("issue changed since the expected snapshot", EXIT_STALE)
-    if _contains_security_content(snapshot):
+    comments = _comment_bodies(runner, issue=snapshot.number, repo=snapshot.repo)
+    if _contains_security_content(snapshot, comments=comments) or _SECURITY_RE.search(
+        artifact_text
+    ):
         raise TriageError(
             "security-sensitive issue cannot be mutated publicly", EXIT_PROTECTED
         )
@@ -364,6 +398,9 @@ def _valid_apply(
     new_body = _replace_triage_block(snapshot.body, block)
     if new_body == snapshot.body:
         return snapshot
+    snapshot = _recheck_valid_snapshot(
+        runner, snapshot=snapshot, issue=issue, repo=repo
+    )
     body_result = gh.issue_edit(
         runner,
         str(issue),
@@ -395,7 +432,7 @@ def _canonical_duplicate(
             "canonical duplicate must differ from the triaged issue", EXIT_USAGE
         )
     duplicate = _issue_snapshot(runner, issue=canonical, repo=repo)
-    if duplicate.number != canonical:
+    if duplicate.number != canonical or duplicate.state != "OPEN":
         raise TriageError("canonical duplicate could not be verified", EXIT_PROTECTED)
 
 
@@ -408,11 +445,28 @@ def _recheck_close_snapshot(
     current = _issue_snapshot(runner, issue=request.issue, repo=request.repo)
     if current.updated_at != snapshot.updated_at:
         raise TriageError("issue changed before the next mutation", EXIT_STALE)
-    if _contains_security_content(current):
+    comments = _comment_bodies(runner, issue=current.number, repo=request.repo)
+    if _contains_security_content(current, comments=comments):
         raise TriageError(
             "security-sensitive issue cannot be mutated publicly", EXIT_PROTECTED
         )
     if _has_protected_state(current, allow_stale_title=True):
+        raise TriageError("issue has protected lifecycle state", EXIT_PROTECTED)
+    return current
+
+
+def _recheck_valid_snapshot(
+    runner: Runner, *, snapshot: IssueSnapshot, issue: int, repo: str
+) -> IssueSnapshot:
+    current = _issue_snapshot(runner, issue=issue, repo=repo)
+    if current.updated_at != snapshot.updated_at:
+        raise TriageError("issue changed before the next mutation", EXIT_STALE)
+    comments = _comment_bodies(runner, issue=current.number, repo=repo)
+    if _contains_security_content(current, comments=comments):
+        raise TriageError(
+            "security-sensitive issue cannot be mutated publicly", EXIT_PROTECTED
+        )
+    if _has_protected_state(current, allow_stale_title=False):
         raise TriageError("issue has protected lifecycle state", EXIT_PROTECTED)
     return current
 
@@ -425,8 +479,13 @@ def _ensure_verification_comment(
     marker: str,
     marked_comment: str,
 ) -> IssueSnapshot:
-    if any(existing.startswith(marker) for existing in snapshot.comments):
+    comments = _comment_bodies(runner, issue=request.issue, repo=request.repo)
+    if marked_comment in comments:
         return snapshot
+    if any(existing.startswith(marker) for existing in comments):
+        raise TriageError(
+            "conflicting triage verdict marker already exists", EXIT_POSTCONDITION
+        )
     snapshot = _recheck_close_snapshot(
         runner,
         snapshot=snapshot,
@@ -447,7 +506,8 @@ def _ensure_verification_comment(
     current = _read_after_mutation(
         runner, issue=request.issue, repo=request.repo, previous=snapshot
     )
-    if marked_comment not in current.comments:
+    current_comments = _comment_bodies(runner, issue=request.issue, repo=request.repo)
+    if marked_comment not in current_comments:
         raise TriageError("triage comment failed exact read-back", EXIT_POSTCONDITION)
     return current
 
@@ -619,7 +679,11 @@ def apply_main(argv: list[str]) -> int:
         artifact_text = artifact.read_text(encoding="utf-8", errors="replace")
         snapshot = _issue_snapshot(proc, issue=args.issue, repo=args.repo)
         _check_snapshot(
-            snapshot, expected=args.expected_updated_at, verdict=args.verdict
+            proc,
+            snapshot,
+            expected=args.expected_updated_at,
+            verdict=args.verdict,
+            artifact_text=artifact_text,
         )
         if args.verdict == "valid":
             final = _valid_apply(
