@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The planned complete registry and Step 5c helper migration can preserve its existing difficulty-inclusive behavior; no narrower subset is specified.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This active parser is not among the plan's stated grammar-consumer migrations, so changing its replacement behavior exceeds the anchored scope.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan deliberately preserves bootstrap's fenced provenance-stripping behavior while replacing its duplicate optional-trailer recognition; terminal parsing is unnecessary.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the existing OOS ledger observation.
