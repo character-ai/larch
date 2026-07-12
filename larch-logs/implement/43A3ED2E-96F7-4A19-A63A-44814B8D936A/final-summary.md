@@ -38,11 +38,19 @@ Exec Issues (3):
 Warnings (1):
   1. Step 2 — Codex bailed: quota
 
+## Architectural invariants
+
+No violations identified. The diff adds factory classmethods (strict_queue, default_queue) to RecordingRunner, standalone test-support helpers (ok, completed, repo_root), and a new test module. None of the changes touch gate logic (I-Gate-1), pause snapshots (I-Pause-1), persisted step result consumption or fingerprint validation (I-Stale-1), run-log flush (I-Flush-1, I-Commit-1, I-Outcome-1), panel slot accounting (I-Slot-1), machine-ingested agent verdicts (I-Agent-1), or pre-merge PR mutations (I-Ship-1).
+
+## Architectural guidelines
+
+No deviations identified. All new functions carry complete type annotations (G-Py-2, G-Py-9). The ok() and completed() helpers use typed return values rather than stringly-typed primitives (G-Py-3). The strict_queue factory propagates AssertionError loudly on queue exhaustion, consistent with G-Py-4. repo_root() wraps the existing ROOT constant derived from __file__ rather than ambient cwd, consistent with G-Root-1. No lint suppressions, wire-file I/O, protocol literals, CLI surface changes, or security-sensitive mutations appear in the diff.
+
 ## /implement run 43A3ED2E-96F7-4A19-A63A-44814B8D936A: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:25:14
-- **Cost**: 💰 TOTAL ~$6.46: Claude $2.82, Codex-5.6 $2.22, Codex-mini $0.09, Cursor $1.19 (Composer $1.19, Grok $0.00), Claude (subprocess) $0.14  |  Tokens: 12357k
+- **Cost**: 💰 TOTAL ~$6.71: Claude $3.07, Codex-5.6 $2.22, Codex-mini $0.09, Cursor $1.19 (Composer $1.19, Grok $0.00), Claude (subprocess) $0.14  |  Tokens: 13081k
 - **Issue**: #7023: https://github.com/character-ai/larch/issues/7023
 - **Plan review**: N/A
 - **Plan coverage**: 1/2 firm headings; band: high; disposition: proceed-partial; todos_left: 0; follow-up #7083
