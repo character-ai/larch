@@ -1021,18 +1021,30 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
     digests = [build_digest(issue) for issue in issues]
     out_dir = request.out_dir
     out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = out_dir.resolve()
     digest_path = out_dir / "digest.jsonl"
-    with digest_path.open("w", encoding="utf-8") as handle:
-        for digest in digests:
-            handle.write(json.dumps(digest.to_json()) + "\n")
+    larch_io.atomic_write(
+        digest_path,
+        "".join(json.dumps(digest.to_json()) + "\n" for digest in digests),
+        prefix=f".{digest_path.name}.",
+        nofollow=True,
+    )
     coverage = coverage_index(request.root)
     coverage_path = out_dir / "coverage-index.json"
-    coverage_path.write_text(
-        json.dumps(coverage.to_json(), indent=2) + "\n", encoding="utf-8"
+    larch_io.atomic_write(
+        coverage_path,
+        json.dumps(coverage.to_json(), indent=2) + "\n",
+        prefix=f".{coverage_path.name}.",
+        nofollow=True,
     )
     headline = render_origin_headline(digests)
     headline_path = out_dir / "origin-headline.md"
-    headline_path.write_text(headline, encoding="utf-8")
+    larch_io.atomic_write(
+        headline_path,
+        headline,
+        prefix=f".{headline_path.name}.",
+        nofollow=True,
+    )
     # Measure the full serialized digest payload the model reads, including origin.
     digest_chars = sum(len(json.dumps(digest.to_json())) for digest in digests)
     structured = sum(1 for digest in digests if digest.structured)
@@ -1399,8 +1411,10 @@ def check_proposals_main(argv: list[str]) -> int:
         )
     proposals = () if state is None else state.proposals
     checked = check_proposals(_runner(), proposals, root, args.repo)
-    proposals_out = Path(args.proposals_out)
-    adoption_out = Path(args.adoption_out)
+    raw_proposals_out = Path(args.proposals_out).expanduser()
+    proposals_out = raw_proposals_out.parent.resolve() / raw_proposals_out.name
+    raw_adoption_out = Path(args.adoption_out).expanduser()
+    adoption_out = raw_adoption_out.parent.resolve() / raw_adoption_out.name
     larch_io.atomic_write(
         proposals_out,
         "".join(json.dumps(item.to_json()) + "\n" for item in checked),

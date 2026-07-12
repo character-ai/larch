@@ -1246,6 +1246,110 @@ def test_check_proposals_main_rejects_repository_mismatch(tmp_path: Path) -> Non
         )
 
 
+# --- Out-path canonicalization (macOS default TMPDIR symlink) ---------------
+
+
+def test_check_proposals_main_accepts_symlinked_ancestor_out_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A symlinked out-path ancestor (like the /var -> /private/var Mac spelling)
+    is canonicalized instead of refused; artifacts land in the real directory."""
+    real = tmp_path / "real"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    proposals_out = alias / "checked-proposals.jsonl"
+    adoption_out = alias / "adoption-summary.md"
+    monkeypatch.setattr(
+        learn_from_bugs, "_runner", lambda: RecordingRunner(responses=[], strict=True)
+    )
+
+    rc = learn_from_bugs.check_proposals_main(
+        [
+            "--root",
+            str(tmp_path),
+            "--repo",
+            "o/r",
+            "--proposals-out",
+            str(proposals_out),
+            "--adoption-out",
+            str(adoption_out),
+        ]
+    )
+
+    assert rc == 0
+    assert (real / "checked-proposals.jsonl").is_file()
+    assert (real / "adoption-summary.md").is_file()
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line)
+    assert Path(out["CHECKED_PROPOSALS_PATH"]) == real.resolve() / "checked-proposals.jsonl"
+    assert Path(out["ADOPTION_SUMMARY_PATH"]) == real.resolve() / "adoption-summary.md"
+
+
+def test_prepare_main_accepts_symlinked_ancestor_out_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The sibling prepare verb also canonicalizes a symlinked --out ancestor."""
+    real = tmp_path / "real"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    rows = [_issue(1, "[BUG] a", STRUCTURED_BODY)]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    monkeypatch.setattr(learn_from_bugs, "_runner", lambda: runner)
+
+    rc = learn_from_bugs.prepare_main(
+        [
+            "--search",
+            learn_from_bugs.DEFAULT_SEARCH,
+            "--repo",
+            "o/r",
+            "--out",
+            str(alias / "run"),
+            "--root",
+            str(tmp_path),
+        ]
+    )
+
+    assert rc == 0
+    assert (real / "run" / "digest.jsonl").is_file()
+    assert (real / "run" / "coverage-index.json").is_file()
+    assert (real / "run" / "origin-headline.md").is_file()
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines() if "=" in line)
+    assert Path(out["DIGEST_PATH"]) == real.resolve() / "run" / "digest.jsonl"
+
+
+def test_check_proposals_main_refuses_symlinked_destination_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """G-Sec-4: a pre-created symlink at the destination leaf is still refused."""
+    real = tmp_path / "real"
+    real.mkdir()
+    elsewhere = tmp_path / "elsewhere.jsonl"
+    proposals_out = real / "checked-proposals.jsonl"
+    proposals_out.symlink_to(elsewhere)
+    adoption_out = real / "adoption-summary.md"
+    monkeypatch.setattr(
+        learn_from_bugs, "_runner", lambda: RecordingRunner(responses=[], strict=True)
+    )
+
+    with pytest.raises(OSError, match="symlink"):
+        learn_from_bugs.check_proposals_main(
+            [
+                "--root",
+                str(tmp_path),
+                "--repo",
+                "o/r",
+                "--proposals-out",
+                str(proposals_out),
+                "--adoption-out",
+                str(adoption_out),
+            ]
+        )
+
+    assert not elsewhere.exists()
+    assert not adoption_out.exists()
+
+
 def test_checked_adoption_becomes_orphaned_after_target_is_removed(
     tmp_path: Path,
 ) -> None:
