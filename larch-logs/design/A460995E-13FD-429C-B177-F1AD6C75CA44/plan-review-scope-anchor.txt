@@ -1,0 +1,58 @@
+#### Problem
+
+`/learn-from-bugs` proposals are fire-and-forget. The state marker (`larch-logs/shared/learn-from-bugs-state.json`, schema_version 1) records only scan boundaries; nothing records what was proposed, and no later run checks whether proposals landed. #6747 is the canonical consequence: a persistence verb shipped with no caller, and only a later manual audit noticed. Adoption rate is currently unmeasurable.
+
+#### Required design
+
+1. State schema v2: add a `proposals` list. Each entry: `{"id": "<stable-kebab-slug>", "type": "lint|invariant|guideline|hook|test|fix", "target": "<path, invariant ID, or guideline ID>", "filed_issue": <int or null>, "run_date": "<ISO>", "status": "proposed"}`. Default mode appends entries for every residual proposal in the report; filing mode also records the created issue numbers from the `/issue` result. Preserve v1 compatibility: a v1 marker reads as v2 with an empty proposals list; `write-state` always writes v2.
+2. Adoption check pass, run at the top of every scan (before Step 3 clustering): for each prior proposal, verify it landed: `lint` by a `("lint", ...)` registration in `python/larch/cli.py` or the named module existing; `invariant` and `guideline` by the ID or heading present in the target file; `test` by the named test file or function existing; `hook` by the named entry in `hooks/hooks.json`; `fix` and any entry with `filed_issue` by the issue's closed state via gh. Update `status` to `adopted`, `pending`, or `orphaned` (filed issue closed as not planned, or target removed).
+3. Report gains an `Adoption since last runs` section: adopted/pending/orphaned counts, the adoption rate, and the oldest pending proposals with ages. Keep it above the new-proposal sections so unadopted history is visible before new proposals are minted.
+4. Dedup interaction: a new-run proposal whose `id` matches a pending prior proposal is reported as `still pending`, not re-proposed as new.
+
+#### Tests
+
+v1-to-v2 read compatibility; round-trip of the proposals list; each adoption-check verb against fixture trees (present and absent); status transitions; report fixture with all three statuses; still-pending dedup.
+
+#### Non-goals
+
+No automatic re-filing, no reminder automation, no changes to what may be proposed (the prevention cost gate sibling #6968 owns proposal content requirements).
+
+#### Acceptance criteria
+
+1. A run after a fixture prior-state with one adopted lint, one pending guideline, and one orphaned filed issue renders correct statuses and rate.
+2. Marker commits stay `--only` the marker path per the existing contract.
+3. SKILL.md documents the schema v2 fields and the adoption section.
+
+#### Backing evidence
+
+Prevention work only reduces the bug rate if it lands; this repo's evidence (#6747, and the G-Fix-1 guideline existing while instance-scoped fixes continued) is that proposing and landing are different events that nobody currently reconciles. Part of the `bug-treadmill` umbrella; independent of the other children.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Record every residual proposal from a learn-from-bugs run in the durable state marker (schema v2).
+- Check whether prior proposals landed before each new run and surface the results in the report.
+- Suppress re-proposing of still-pending items by matching new proposals against prior pending ones by ID.
+
+### Non-goals
+- No automatic re-filing or reminder scheduling.
+- No changes to what may be proposed (sibling #6968 owns proposal content requirements).
+- No adoption enforcement; the check is observational only.
+
+### Approach sketch
+- Extend `LearnFromBugsState` / `_state_from_json` / `write_state` for v2 with a `proposals` list; v1 reads as v2 with empty proposals.
+- Add `check_proposals(runner, proposals, root)` function and a new `check-proposals` CLI verb that verifies each prior proposal's status via file-system checks and `gh issue view`.
+- Extend `write-state` CLI with a `--proposals-file` flag accepting a JSONL path.
+- Update `read-state` CLI to emit proposal summary counts.
+- Update SKILL.md: new adoption check step (Step 2.5), "Adoption since last runs" report section, dedup guidance, and schema v2 docs.
+
+### Surfaces in scope
+- `python/larch/issue/learn_from_bugs.py`
+- `python/tests/issue/test_learn_from_bugs.py`
+- `python/larch/cli.py`
+- `skills/learn-from-bugs/SKILL.md`
+
+### Open questions
+- None.

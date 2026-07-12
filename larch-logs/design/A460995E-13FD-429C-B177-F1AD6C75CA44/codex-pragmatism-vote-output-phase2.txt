@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates prior neutral FINDING_9; plan still omits an ID algorithm but grammar and dedup rules are unchanged, so this is not new gate-2/3 evidence
