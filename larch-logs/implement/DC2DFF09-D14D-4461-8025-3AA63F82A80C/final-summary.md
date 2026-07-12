@@ -36,7 +36,7 @@ codex/apply              │                                                 █
 
 - **Outcome**: shipping
 - **Duration**: 00:21:23
-- **Cost**: 💰 TOTAL ~$3.07: Claude/GLM-5.2 token $0.60 (estimated $0.04), Codex-5.6 $0.98, Codex-mini $0.27, Cursor $1.64 (Composer $1.64, Grok $0.00), Claude (subprocess) $0.14  |  Tokens: 6582k
+- **Cost**: 💰 TOTAL ~$3.08: Claude/GLM-5.2 token $0.79 (estimated $0.05), Codex-5.6 $0.98, Codex-mini $0.27, Cursor $1.64 (Composer $1.64, Grok $0.00), Claude (subprocess) $0.14  |  Tokens: 7214k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7047: https://github.com/character-ai/larch/issues/7047
 - **Plan review**: N/A
