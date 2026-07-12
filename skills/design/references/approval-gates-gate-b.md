@@ -49,7 +49,7 @@ The zero-findings short-circuit still precedes apply UX selection: nothing is ap
 
 Under default auto-apply (`approve_requested=false`), Gate B fires **no** finding-acceptance prompt. Only these brakes can prompt inside `### Shared post-apply pipeline`, independent of `approve_requested`:
 
-1. **Plan-size trigger** (`python/cli.py design postplan-emit` rc=12): in-loop continuation warns and continues. Split / Override / Cancel fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
+1. **Plan-size trigger** (`python/cli.py design postplan-emit` rc=12): in-loop continuation warns and continues. The unified Split-path single question fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
 2. **Plan-command validator escalation** (rc=10): cross-vendor auto-correction runs first with the `SKILL.md` shared validator contract. Fix-and-retry / Override / Cancel fires only after auto-fix is exhausted.
 
 Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.md` and exits `0`; it no longer halts.
@@ -108,6 +108,6 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 
 ### Gate B plan revision and Step 2b.5
 
-Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no prompt. Hard triggers are body `> 800`, firm headings `> 25`, surfaces `> 4`, or `diff_added > 2000` / fallback `diff_lines > 1500`; `mechanical_churn: true` softens only the diff trigger. `SIZE_TRIGGER_FIRED=true` fires Split / Override / Cancel; Override writes the oversize trailer, deletes `composed-plan.md`, and writes postplan completion. Drift is advisory. Standalone Step 2b.5 is only for Override-after-defects and recovery. Contract: `python/cli.py plan check-size`.
+Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no prompt. Hard triggers are body `> 800`, firm headings `> 25`, surfaces `> 4`, or `diff_added > 2000` / fallback `diff_lines > 1500`; `mechanical_churn: true` softens only the diff trigger. `SIZE_TRIGGER_FIRED=true` enters the unified Split-path directly. Its single question owns Partition, Override, and Other/chat. Override writes the oversize trailer, deletes `composed-plan.md`, and writes postplan completion. Drift is advisory. Standalone Step 2b.5 is only for Override-after-defects and recovery. Contract: `python/cli.py plan check-size`.
 
 ---

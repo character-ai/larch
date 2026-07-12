@@ -12,9 +12,8 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.plan_review.codex_archetypes"></a>`design.plan_review.codex_archetypes` | Codex | Architecture/Standards Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review-runtime.md` |
 | <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 1 | scout proposes specialists fanned into Cursor+Codex dyn slots | `python/larch/design/plan_scout.py` |
 | <a id="design.plan_review.panel_slots"></a>`design.plan_review.panel_slots` | round gated static plus dynamic | NDJSON manifest from python/cli.py plan-review panel-dispatch via paths-file sidecar | `python/larch/review/plan_review_panel.py` |
-| <a id="design.decompose.panel_slots"></a>`design.decompose.panel_slots` | 8 fixed | 4 archetypes x 2 vendors via python/cli.py | `skills/design/references/decompose-panel.md` |
-| <a id="design.decompose.dispatch"></a>`design.decompose.dispatch` | python/cli.py | renders prompts + agent dispatch-waterfall | `python/cli.py` |
-| <a id="design.decompose.aggregator"></a>`design.decompose.aggregator` | python/cli.py | single-slot merge of panel proposals | `python/cli.py` |
+| <a id="design.decompose.split_path"></a>`design.decompose.split_path` | AskUserQuestion | main-agent inline proposal + single AskUserQuestion Partition/Override/chat | `skills/design/references/decompose-panel.md` |
+| <a id="design.decompose.file_issues_after_split"></a>`design.decompose.file_issues_after_split` | python/cli.py | prepare annotate migrate-deps close-original | `python/cli.py` |
 | <a id="design.decompose.file_issues"></a>`design.decompose.file_issues` | python/cli.py | prepare annotate close-original | `python/cli.py` |
 | <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | cli.py | offline panel regression coverage | `python/cli.py` |
 | <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | cli.py | offline aggregator merge coverage | `python/cli.py` |

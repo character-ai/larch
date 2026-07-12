@@ -17,7 +17,7 @@
 
 ## Branch on STEP2B5_NEXT_ACTION
 
-1. **`hard-trigger`**: Print `## Plan Size: Hard Trigger` with size KVs. Initial Step 2b, discussion merged, `postplan-rc12-split`, and retained callers offer Split / Override / Cancel. Override runs `plan set-oversize-override`, deletes `composed-plan.md`, then writes postplan completion. Cancel exports `SUMMARY_OUTCOME=cancelled-plan-size`, runs Final summary, exits `0`, and preserves `$DESIGN_TMPDIR`. Split runs **Split-path**.
+1. **`hard-trigger`**: Print `## Plan Size: Hard Trigger` with size KVs. Enter the unified **Split-path** immediately. Its single question owns Partition, Override, and Other/chat. Override runs `plan set-oversize-override`, deletes `composed-plan.md`, then writes postplan completion. Other/chat exits the structured path without another question.
 2. **`partition-split`**: Route directly to Split-path without an intermediate prompt. Print `## Plan Size: Partition requested` with `trigger=partition-flag` and current `PLAN_LINES` / `DIFF_LINES`, then run **Split-path** in `SKILL.md` **`#### Split-path (decomposition panel)`**.
 3. **`drift-advisory`**: Return to the caller. Merged drivers already recorded the drift warning. Retained standalone callers run `python/cli.py design step2b-postplan --write-completion-only` through the launcher before returning.
 4. **`under-threshold`**: Print `⏩ 2b.5: plan-size: under thresholds (PLAN_LINES=<n> DIFF_LINES=<n>)` and return.

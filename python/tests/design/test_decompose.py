@@ -7,12 +7,10 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from larch.design import decompose
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _design_tmp(tmp_path: Path) -> Path:
@@ -29,22 +27,50 @@ def test_prepare_happy_path_multi_blocker_and_neutralizes_feature(tmp_path: Path
         "## Pieces\n\n"
         "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
         "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: blocked-by Piece 1\n\n"
-        "### Piece 3: UI\n- Scope: ui\n- Firm-headings: ui/file.py\n- Acceptance: verify ui\n- Dependencies: blocked-by Piece 1, Piece 2 and Piece 2\n",
+        "### Piece 3: UI\n- Scope: ui\n- Firm-headings: ui/file.py\n- Acceptance: verify ui\n- Dependencies: blocked-by Piece 1, Piece 2\n",
         encoding="utf-8",
     )
     status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="123")
     assert (status, witness) == ("ok", "")
     deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
-    assert deps.splitlines() == ["1\t2", "2\t3", "1\t3"]
+    assert deps.splitlines() == ["1\t2", "1\t3", "2\t3"]
     batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
     assert "#123" in batch
     assert "\u200b### embedded heading" in batch
 
 
+def test_prepare_rejects_duplicate_declared_dependency(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: blocked-by Piece 1, Piece 1\n",
+        encoding="utf-8",
+    )
+
+    assert decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition)[0] == "bad-dependency-ref"
+
+
+@pytest.mark.parametrize(
+    "records",
+    [
+        "PARTITION_FILE_MAP\t1\thttps://github.com/o/r/issues/101\nPARTITION_FILE_MAP\t2\thttps://github.com/o/r/issues/101\n",
+        "PARTITION_FILE_MAP\t1\thttps://github.com/o/r/issues/101\nPARTITION_FILE_MAP\t3\thttps://github.com/o/r/issues/103\n",
+    ],
+)
+def test_filed_pieces_rejects_non_unique_or_non_contiguous_mapping(tmp_path: Path, records: str) -> None:
+    d = _design_tmp(tmp_path)
+    (d / ".decompose-issues-filed").write_text(records, encoding="utf-8")
+
+    with pytest.raises(decompose.UsageError, match="incomplete or duplicate filed mapping"):
+        decompose.filed_pieces(d, repo="o/r")
+
+
 def test_prepare_bad_dependency_and_cycle(tmp_path: Path) -> None:
     d = _design_tmp(tmp_path)
     bad = d / "bad.md"
-    bad.write_text("## Pieces\n\n### Piece 1: A\n- Dependencies: blocked-by Piece 2\n", encoding="utf-8")
+    bad.write_text("## Pieces\n\n### Piece 1: A\n- Firm-headings: a.py\n- Acceptance: a\n- Dependencies: blocked-by Piece 3\n\n### Piece 2: B\n- Firm-headings: b.py\n- Acceptance: b\n- Dependencies: none\n", encoding="utf-8")
     assert decompose.prepare_partition_issues(design_tmpdir=d, partition_file=bad)[0] == "bad-dependency-ref"
     cycle = d / "cycle.md"
     cycle.write_text(
@@ -54,12 +80,11 @@ def test_prepare_bad_dependency_and_cycle(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=cycle)
-    assert (status, witness) == ("ok", "")
-    deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
-    assert deps.splitlines() == ["1\t2"]
+    assert status == "cycle-detected"
+    assert "Piece" in witness
 
 
-def test_prepare_skips_cyclic_panel_dependency_but_keeps_serial_chain(tmp_path: Path) -> None:
+def test_prepare_preserves_only_declared_dependency(tmp_path: Path) -> None:
     d = _design_tmp(tmp_path)
     (d / "plan.txt").write_text(
         "## Files to modify\n\n"
@@ -86,10 +111,10 @@ def test_prepare_skips_cyclic_panel_dependency_but_keeps_serial_chain(tmp_path: 
 
     assert (status, witness) == ("ok", "")
     deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
-    assert deps.splitlines() == ["1\t2", "2\t3"]
+    assert deps.splitlines() == ["3\t2"]
 
 
-def test_prepare_derives_piece_metadata_and_serial_edges(tmp_path: Path) -> None:
+def test_prepare_derives_piece_metadata_without_synthetic_edges(tmp_path: Path) -> None:
     d = _design_tmp(tmp_path)
     (d / "plan.txt").write_text(
         "## Files to modify\n\n"
@@ -113,7 +138,7 @@ def test_prepare_derives_piece_metadata_and_serial_edges(tmp_path: Path) -> None
 
     assert (status, witness) == ("ok", "")
     deps = (d / "decompose" / "partition-deps.tsv").read_text(encoding="utf-8")
-    assert deps.splitlines() == ["1\t2"]
+    assert deps.splitlines() == []
     batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
     assert "**Firm headings**: python/larch/design/a.py" in batch
     assert "Cover python/larch/design/b.py behavior." in batch
@@ -124,13 +149,16 @@ def test_prepare_missing_piece_metadata_when_fallback_cannot_match(tmp_path: Pat
     d = _design_tmp(tmp_path)
     (d / "plan.txt").write_text("## Files to modify\n\n### UPDATED: `python/larch/design/a.py`\ndiff_lines: 10\n", encoding="utf-8")
     partition = d / "partition.md"
-    partition.write_text("## Pieces\n\n### Piece 1: A\n- Scope: docs/other.md\n- Dependencies: none\n", encoding="utf-8")
+    partition.write_text("## Pieces\n\n### Piece 1: A\n- Scope: docs/other.md\n- Dependencies: none\n\n### Piece 2: B\n- Scope: docs/also.md\n- Dependencies: none\n", encoding="utf-8")
 
     assert decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition)[0] == "missing-piece-metadata"
 
 
 def test_annotate_success_partial_and_idempotent(tmp_path: Path) -> None:
     d = _design_tmp(tmp_path)
+    dec = d / "decompose"
+    dec.mkdir()
+    (dec / "partition-input.txt").write_text("### One\n\n### Two\n", encoding="utf-8")
     out = d / "issue.out"
     out.write_text("ISSUES_CREATED=2\nISSUES_FAILED=0\nISSUE_1_URL=https://x/1\nISSUE_2_URL=https://x/2\n", encoding="utf-8")
     decompose.annotate_partition_issues(design_tmpdir=d, issue_stdout_file=out)
@@ -145,11 +173,28 @@ def test_annotate_success_partial_and_idempotent(tmp_path: Path) -> None:
     assert not sentinel.exists()
 
 
+def test_annotate_requires_one_url_for_every_prepared_piece(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    dec = d / "decompose"
+    dec.mkdir()
+    (dec / "partition-input.txt").write_text("### One\n\n### Two\n", encoding="utf-8")
+    out = d / "issue.out"
+    out.write_text("ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUE_1_URL=https://x/1\n", encoding="utf-8")
+
+    decompose.annotate_partition_issues(design_tmpdir=d, issue_stdout_file=out)
+
+    assert not (d / ".decompose-issues-filed").exists()
+
+
 def test_close_original_redacts_and_preserves_comment_sentinel_on_close_failure(tmp_path: Path, monkeypatch) -> None:
     d = _design_tmp(tmp_path)
     dec = d / "decompose"
     dec.mkdir(exist_ok=True)
-    (dec / "partition-filed.md").write_text("## Piece 1\n- **Filed URL**: https://x/1\n", encoding="utf-8")
+    (dec / "partition-deps.tsv").write_text("", encoding="utf-8")
+    (dec / "partition-filed.md").write_text("## Piece 1\n- **Filed URL**: https://github.com/o/r/issues/101\n", encoding="utf-8")
+    (dec / "dependency-migration.json").write_text(json.dumps({"schema_version": "1", "original_issue": 99, "repo": "o/r", "pieces": [{"piece": 1, "issue": 101, "repo": "o/r"}], "incoming": [], "outgoing": []}) + "\n", encoding="utf-8")
+    (d / ".decompose-deps-migrated").touch()
+    monkeypatch.setattr(decompose, "_migration_postcondition", lambda _migration: True)  # type: ignore[reportUnknownLambdaType]
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
@@ -296,7 +341,10 @@ def test_close_original_idempotent_when_already_closed(tmp_path: Path, monkeypat
     (d / ".decompose-original-closed").touch()
     dec = d / "decompose"
     dec.mkdir(exist_ok=True)
-    (dec / "partition-filed.md").write_text("## Piece 1\n- **Filed URL**: https://x/1\n", encoding="utf-8")
+    (dec / "partition-filed.md").write_text("## Piece 1\n- **Filed URL**: https://github.com/o/r/issues/101\n", encoding="utf-8")
+    (dec / "dependency-migration.json").write_text(json.dumps({"schema_version": "1", "original_issue": 99, "repo": "o/r", "pieces": [{"piece": 1, "issue": 101, "repo": "o/r"}], "incoming": [], "outgoing": []}) + "\n", encoding="utf-8")
+    (d / ".decompose-deps-migrated").touch()
+    monkeypatch.setattr(decompose, "_migration_postcondition", lambda _migration: True)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
@@ -387,3 +435,69 @@ def test_aggregate_partition_defaults_to_agent_dispatch_waterfall(tmp_path: Path
     assert status == "ok"
     assert seen
     assert seen[0][:4] == [sys.executable, str(decompose.PLUGIN_ROOT / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+
+
+def test_migrate_dependencies_denies_before_github_calls(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    d = _design_tmp(tmp_path)
+    (d / "source-env.sh").write_text("LARCH_RUN_ID=test\n", encoding="utf-8")
+    calls: list[object] = []
+    monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (False, "denied"))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(decompose.proc, "run", lambda *_args, **_kwargs: calls.append(object()))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    assert decompose.migrate_dependencies(design_tmpdir=d, original_issue="99", repo="o/r") == "authorization-denied"
+    assert not calls
+    assert not (d / ".decompose-deps-migrated").exists()
+
+
+def test_migrate_dependencies_replaces_incoming_and_outgoing_edges(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    d = _design_tmp(tmp_path)
+    dec = d / "decompose"
+    dec.mkdir()
+    (d / "source-env.sh").write_text("LARCH_RUN_ID=test\nLARCH_LIVE_MUTATION_OK=true\n", encoding="utf-8")
+    (d / ".decompose-issues-filed").write_text(
+        "PARTITION_FILE_MAP\t1\thttps://github.com/o/r/issues/101\n"
+        "PARTITION_FILE_MAP\t2\thttps://github.com/o/r/issues/102\n",
+        encoding="utf-8",
+    )
+    (dec / "partition-deps.tsv").write_text("1\t2\n", encoding="utf-8")
+    blocked_by: dict[int, set[int]] = {99: {7}, 101: set(), 102: {101}, 8: {99}}
+    monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(
+        decompose,
+        "_read_dependencies",
+        lambda *, issue, repo: (tuple(sorted(blocked_by.get(issue, set()))), tuple(sorted(key for key, value in blocked_by.items() if issue in value))) if repo == "o/r" else ((), ()),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    )
+
+    def mutate(*, remove: bool, blocked: int, blocker: int, repo: str) -> bool:
+        assert repo == "o/r"
+        if remove:
+            blocked_by.setdefault(blocked, set()).discard(blocker)
+        else:
+            blocked_by.setdefault(blocked, set()).add(blocker)
+        return True
+
+    monkeypatch.setattr(decompose, "_run_dependency_mutation", mutate)
+
+    assert decompose.migrate_dependencies(design_tmpdir=d, original_issue="99", repo="o/r") == "ok"
+    assert blocked_by[101] == {7}
+    assert blocked_by[102] == {7, 101}
+    assert blocked_by[8] == {101, 102}
+    assert blocked_by[99] == set()
+    assert (d / ".decompose-deps-migrated").exists()
+
+
+def test_migrate_dependencies_rejects_live_dependency_drift(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    d = _design_tmp(tmp_path)
+    dec = d / "decompose"
+    dec.mkdir()
+    (d / "source-env.sh").write_text("LARCH_RUN_ID=test\n", encoding="utf-8")
+    (d / ".decompose-issues-filed").write_text(
+        "PARTITION_FILE_MAP\t1\thttps://github.com/o/r/issues/101\nPARTITION_FILE_MAP\t2\thttps://github.com/o/r/issues/102\n", encoding="utf-8"
+    )
+    (dec / "partition-deps.tsv").write_text("", encoding="utf-8")
+    (dec / "dependency-migration.json").write_text(json.dumps({"schema_version": "1", "original_issue": 99, "repo": "o/r", "pieces": [{"piece": 1, "issue": 101, "repo": "o/r"}, {"piece": 2, "issue": 102, "repo": "o/r"}], "incoming": [{"blocked": 99, "blocker": 7}], "outgoing": []}) + "\n", encoding="utf-8")
+    monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(decompose, "_read_dependencies", lambda *, issue, **_: ((8,), ()) if issue == 99 else ((), ()))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    assert decompose.migrate_dependencies(design_tmpdir=d, original_issue="99", repo="o/r") == "failed"
+    assert "phase=live-dependency-drift" in (dec / "migration-failure.txt").read_text(encoding="utf-8")

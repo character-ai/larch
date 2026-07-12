@@ -1124,14 +1124,20 @@
   {
     "file": "larch/design/decompose.py",
     "code": "C901",
-    "qualified_symbol": "prepare_partition_issues",
-    "metric": 13
+    "qualified_symbol": "migrate_dependencies",
+    "metric": 15
   },
   {
     "file": "larch/design/decompose.py",
     "code": "PLR0912",
     "qualified_symbol": "aggregate_partition",
     "metric": 13
+  },
+  {
+    "file": "larch/design/decompose.py",
+    "code": "PLR0912",
+    "qualified_symbol": "migrate_dependencies",
+    "metric": 15
   },
   {
     "file": "larch/design/decompose.py",
@@ -3536,26 +3542,26 @@
   {
     "file": "larch/issue/issue_block.py",
     "code": "C901",
-    "qualified_symbol": "add_blocked_by_main",
+    "qualified_symbol": "_mutation_main",
     "metric": 22
   },
   {
     "file": "larch/issue/issue_block.py",
     "code": "PLR0911",
-    "qualified_symbol": "add_blocked_by_main",
+    "qualified_symbol": "_mutation_main",
     "metric": 16
   },
   {
     "file": "larch/issue/issue_block.py",
     "code": "PLR0912",
-    "qualified_symbol": "add_blocked_by_main",
+    "qualified_symbol": "_mutation_main",
     "metric": 22
   },
   {
     "file": "larch/issue/issue_block.py",
     "code": "PLR0915",
-    "qualified_symbol": "add_blocked_by_main",
-    "metric": 66
+    "qualified_symbol": "_mutation_main",
+    "metric": 74
   },
   {
     "file": "larch/issue/issue_create.py",

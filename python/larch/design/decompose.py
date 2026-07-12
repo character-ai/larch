@@ -12,6 +12,7 @@ import subprocess
 import sys
 from collections import defaultdict, deque
 from collections.abc import Sequence
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import cast
 
@@ -20,6 +21,7 @@ from larch.core import external_defaults
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
+from larch.git import gh
 from larch.issue import issue_wire
 from larch.state import session_env
 
@@ -28,7 +30,33 @@ PLUGIN_ROOT = REPO_ROOT
 DECOMPOSE_ARCHETYPES = ("decomposition-specialist", "dependency-analyst", "scope-minimalist", "risk-isolation")
 RECOMMENDATION_RE = re.compile(r"^[ \t]*## Recommendation", re.MULTILINE)
 PROMPT_PREFIX_LINE_MAX = 8
+MIN_PARTITION_PIECES = 2
+PARTITION_MAP_FIELD_COUNT = 3
+PARTITION_DEP_FIELD_COUNT = 2
 
+
+
+
+@dataclass(frozen=True)
+class FiledPiece:
+    piece: int
+    issue: int
+    repo: str
+
+
+@dataclass(frozen=True)
+class DependencyEdge:
+    blocked: int
+    blocker: int
+
+
+@dataclass(frozen=True)
+class DependencyMigration:
+    original_issue: int
+    repo: str
+    pieces: tuple[FiledPiece, ...]
+    incoming: tuple[DependencyEdge, ...]
+    outgoing: tuple[DependencyEdge, ...]
 
 class UsageError(ValueError):
     """CLI usage error."""
@@ -87,7 +115,7 @@ def _prepare_parse_dependency(*, dep: str, index_by_num: dict[int, int]) -> list
             return None
         blocker = int(sm.group(1))
         if blocker in seen:
-            continue
+            return None
         seen.add(blocker)
         if blocker not in index_by_num:
             return None
@@ -288,8 +316,9 @@ def prepare_partition_issues(
         start = match.end()
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         pieces.append((pnum, title, text[start:end].strip()))
-    if not pieces:
-        return "no-pieces", ""
+    piece_status = "no-pieces" if not pieces else "one-piece" if len(pieces) < MIN_PARTITION_PIECES else "bad-piece-number" if len({piece[0] for piece in pieces}) != len(pieces) else ""
+    if piece_status:
+        return piece_status, ""
     pieces.sort(key=lambda item: item[0])
     index_by_num: dict[int, int] = {pnum: i for i, (pnum, _title, _body) in enumerate(pieces)}
 
@@ -303,14 +332,7 @@ def prepare_partition_issues(
     if err:
         return err, ""
 
-    serial_edges = [(idx, idx + 1) for idx in range(len(pieces) - 1)]
-    edges = list(dict.fromkeys(serial_edges))
-    for edge in panel_edges:
-        if edge in edges:
-            continue
-        candidate = [*edges, edge]
-        if _acyclic(node_count=len(pieces), edges=candidate):
-            edges.append(edge)
+    edges = list(dict.fromkeys(panel_edges))
     if not _acyclic(node_count=len(pieces), edges=edges):
         witness = "; ".join(f"Piece {pieces[a][0]}→Piece {pieces[b][0]}" for a, b in edges) or "(edges unavailable)"
         return "cycle-detected", witness
@@ -331,7 +353,7 @@ def prepare_partition_issues(
             f"**Scope**: {scope or '(see parent partition file)'}\n\n"
             f"**Firm headings**: {firm_text}\n\n"
             f"**Acceptance**:\n\n{acceptance_text}\n\n"
-            f"**Dependencies (from panel)**: {dep_lines[i]}\n\n"
+            f"**Dependencies (from proposal)**: {dep_lines[i]}\n\n"
             "```\n"
             "<!-- larch:plan:start -->\n"
             "## Plan\n\n"
@@ -371,22 +393,31 @@ def annotate_partition_issues(*, design_tmpdir: Path, issue_stdout_file: Path) -
     for m in re.finditer(r"^ISSUE_([0-9]+)_URL=(.+)\s*$", text, re.MULTILINE):
         urls[int(m.group(1))] = m.group(2).strip()
 
+    input_file = dec / "partition-input.txt"
+    expected_pieces = len(re.findall(r"(?m)^###\s+", input_file.read_text(encoding="utf-8"))) if input_file.is_file() and not input_file.is_symlink() else 0
+    complete_mapping = (
+        expected_pieces >= MIN_PARTITION_PIECES
+        and set(urls) == set(range(1, expected_pieces + 1))
+        and created.isdigit()
+        and int(created) == expected_pieces
+    )
+
     if sent.is_file():
         prev = sent.read_text(encoding="utf-8")
-        if prev.strip() and filed.is_file() and failed_n == 0:
+        if prev.strip() and filed.is_file() and failed_n == 0 and complete_mapping:
             ok = all(f"PARTITION_FILE_MAP\t{i}\t{url}" in prev for i, url in sorted(urls.items()))
             try:
                 created_n = int(created)
             except ValueError:
                 created_n = 0
-            if ok and created_n == len(urls):
+            if ok and created_n == expected_pieces:
                 return
 
     lines = ["# Partition filing record", "", f"- **ISSUES_CREATED**: {created}", f"- **ISSUES_FAILED**: {failed}", ""]
     for i in sorted(urls):
         lines.extend([f"## Piece {i}", f"- **Filed URL**: {urls[i]}", ""])
     filed.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    if failed_n == 0:
+    if failed_n == 0 and complete_mapping:
         with sent.open("w", encoding="utf-8") as handle:
             for i in sorted(urls):
                 _ = handle.write(f"PARTITION_FILE_MAP\t{i}\t{urls[i]}\n")
@@ -433,10 +464,240 @@ def _run_command(argv: Sequence[str], *, stdin: Path | None = None, stdout: Path
             return result.returncode, result.stderr.decode("utf-8", errors="replace")
 
 
+
+def _parse_issue_url(url: str, *, expected_repo: str) -> int:
+    match = re.fullmatch(r"https://github\.com/([^/]+/[^/]+)/issues/([1-9][0-9]*)", url)
+    if match is None or match.group(1) != expected_repo:
+        raise UsageError("migrate-deps: filed issue URL does not match the expected repository")
+    return int(match.group(2))
+
+
+def filed_pieces(design_tmpdir: Path, *, repo: str) -> tuple[FiledPiece, ...]:
+    sent = design_tmpdir / ".decompose-issues-filed"
+    if not sent.is_file() or sent.is_symlink():
+        raise UsageError("migrate-deps: missing complete annotation sentinel")
+    pieces: list[FiledPiece] = []
+    for line in sent.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split("\t")
+        if len(parts) != PARTITION_MAP_FIELD_COUNT or parts[0] != "PARTITION_FILE_MAP" or not parts[1].isdigit():
+            raise UsageError("migrate-deps: invalid annotation record")
+        pieces.append(FiledPiece(piece=int(parts[1]), issue=_parse_issue_url(parts[2], expected_repo=repo), repo=repo))
+    piece_numbers = {piece.piece for piece in pieces}
+    issue_numbers = {piece.issue for piece in pieces}
+    if (
+        len(pieces) < MIN_PARTITION_PIECES
+        or len(piece_numbers) != len(pieces)
+        or len(issue_numbers) != len(pieces)
+        or piece_numbers != set(range(1, len(pieces) + 1))
+    ):
+        raise UsageError("migrate-deps: incomplete or duplicate filed mapping")
+    return tuple(sorted(pieces, key=lambda piece: piece.piece))
+
+
+def _dependency_numbers(result: proc.CommandResult) -> tuple[int, ...]:
+    if result.returncode != 0:
+        raise RuntimeError("dependency-read-failed")
+    rows = gh.loads_json_paginated_list(result.stdout)
+    numbers: list[int] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            raise TypeError("dependency-read-invalid")
+        number = cast("dict[str, object]", row).get("number")
+        if isinstance(number, int) and number > 0:
+            numbers.append(number)
+        elif isinstance(number, str) and number.isdigit() and int(number) > 0:
+            numbers.append(int(number))
+        else:
+            raise TypeError("dependency-read-invalid")
+    return tuple(sorted(set(numbers)))
+
+
+def _read_dependencies(*, issue: int, repo: str) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    return (
+        _dependency_numbers(gh.issue_blocked_by_read(proc, str(issue), repo=repo)),
+        _dependency_numbers(gh.issue_blocking_read(proc, str(issue), repo=repo)),
+    )
+
+
+def _write_migration(path: Path, migration: DependencyMigration) -> None:
+    payload = {
+        "schema_version": "1",
+        "original_issue": migration.original_issue,
+        "repo": migration.repo,
+        "pieces": [asdict(piece) for piece in migration.pieces],
+        "incoming": [asdict(edge) for edge in migration.incoming],
+        "outgoing": [asdict(edge) for edge in migration.outgoing],
+    }
+    larch_io.atomic_write(path=path, text=json.dumps(payload, sort_keys=True) + "\
+")
+
+
+def _load_migration(path: Path) -> DependencyMigration:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        return DependencyMigration(
+            original_issue=int(payload["original_issue"]),
+            repo=str(payload["repo"]),
+            pieces=tuple(FiledPiece(**row) for row in payload["pieces"]),
+            incoming=tuple(DependencyEdge(**row) for row in payload["incoming"]),
+            outgoing=tuple(DependencyEdge(**row) for row in payload["outgoing"]),
+        )
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise UsageError("migrate-deps: invalid persisted migration manifest") from exc
+
+
+def _run_dependency_mutation(*, remove: bool, blocked: int, blocker: int, repo: str) -> bool:
+    verb = "remove-blocked-by" if remove else "add-blocked-by"
+    result = proc.run([sys.executable, str(PLUGIN_ROOT / "python" / "cli.py"), "block-issue", verb, str(blocked), str(blocker), "--repo", repo])
+    return result.returncode == 0
+
+
+def _intra_piece_edges(design_tmpdir: Path, pieces: tuple[FiledPiece, ...]) -> tuple[DependencyEdge, ...]:
+    deps_path = design_tmpdir / "decompose" / "partition-deps.tsv"
+    if not deps_path.is_file() or deps_path.is_symlink():
+        raise UsageError("migrate-deps: missing partition-deps.tsv")
+    issue_by_piece = {piece.piece: piece.issue for piece in pieces}
+    edges: list[DependencyEdge] = []
+    for line in deps_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.split("\t")
+        if len(parts) != PARTITION_DEP_FIELD_COUNT or not all(part.isdigit() for part in parts):
+            raise UsageError("migrate-deps: invalid partition dependency row")
+        blocker_piece, blocked_piece = (int(part) for part in parts)
+        if blocker_piece not in issue_by_piece or blocked_piece not in issue_by_piece or blocker_piece == blocked_piece:
+            raise UsageError("migrate-deps: partition dependency references an unknown piece")
+        edges.append(DependencyEdge(blocked=issue_by_piece[blocked_piece], blocker=issue_by_piece[blocker_piece]))
+    return tuple(edges)
+
+
+def _replacement_edges(migration: DependencyMigration) -> tuple[DependencyEdge, ...]:
+    edges: list[DependencyEdge] = []
+    for original in migration.incoming:
+        edges.extend(DependencyEdge(blocked=piece.issue, blocker=original.blocker) for piece in migration.pieces)
+    for original in migration.outgoing:
+        edges.extend(DependencyEdge(blocked=original.blocked, blocker=piece.issue) for piece in migration.pieces)
+    return tuple(edges)
+
+
+def _edge_present(edge: DependencyEdge, *, repo: str) -> bool:
+    blocked_by, _blocking = _read_dependencies(issue=edge.blocked, repo=repo)
+    return edge.blocker in blocked_by
+
+
+def _migration_postcondition(migration: DependencyMigration) -> bool:
+    if any(not _edge_present(edge, repo=migration.repo) for edge in _replacement_edges(migration)):
+        return False
+    return all(not _edge_present(edge, repo=migration.repo) for edge in (*migration.incoming, *migration.outgoing))
+
+
+def _intra_piece_postcondition(*, design_tmpdir: Path, pieces: tuple[FiledPiece, ...]) -> bool:
+    return all(_edge_present(edge, repo=pieces[0].repo) for edge in _intra_piece_edges(design_tmpdir, pieces))
+
+
+def _live_original_edges_match_migration(migration: DependencyMigration) -> bool:
+    incoming_numbers, blocking_numbers = _read_dependencies(issue=migration.original_issue, repo=migration.repo)
+    live_incoming = {DependencyEdge(blocked=migration.original_issue, blocker=number) for number in incoming_numbers}
+    live_outgoing = {DependencyEdge(blocked=number, blocker=migration.original_issue) for number in blocking_numbers}
+    expected_incoming = set(migration.incoming)
+    expected_outgoing = set(migration.outgoing)
+    if not live_incoming <= expected_incoming or not live_outgoing <= expected_outgoing:
+        return False
+    for edge in expected_incoming - live_incoming:
+        if any(not _edge_present(DependencyEdge(blocked=piece.issue, blocker=edge.blocker), repo=migration.repo) for piece in migration.pieces):
+            return False
+    for edge in expected_outgoing - live_outgoing:
+        if any(not _edge_present(DependencyEdge(blocked=edge.blocked, blocker=piece.issue), repo=migration.repo) for piece in migration.pieces):
+            return False
+    return True
+
+
+def _record_migration_failure(design_tmpdir: Path, *, phase: str, detail: str) -> str:
+    output_file = design_tmpdir / "decompose" / "migration-failure.txt"
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    output_file.write_text(f"phase={phase}\n{detail}\n", encoding="utf-8")
+    _emit_kv(key="DECOMPOSE_DEPS_PHASE", value=phase)
+    _append_failure(design_tmpdir, site="design decompose migrate-deps", tool=phase, exit_code=1, output_file=output_file)
+    return "failed"
+
+
+def _apply_migration(migration: DependencyMigration) -> bool:
+    for edge in _replacement_edges(migration):
+        if not _edge_present(edge, repo=migration.repo) and (not _run_dependency_mutation(remove=False, blocked=edge.blocked, blocker=edge.blocker, repo=migration.repo) or not _edge_present(edge, repo=migration.repo)):
+            return False
+    if not _live_original_edges_match_migration(migration):
+        return False
+    for edge in (*migration.incoming, *migration.outgoing):
+        if _edge_present(edge, repo=migration.repo) and (not _run_dependency_mutation(remove=True, blocked=edge.blocked, blocker=edge.blocker, repo=migration.repo) or _edge_present(edge, repo=migration.repo)):
+            return False
+    return _live_original_edges_match_migration(migration) and _migration_postcondition(migration)
+
+
+def migrate_dependencies(*, design_tmpdir: Path, original_issue: str, repo: str) -> str:
+    if not original_issue.isdigit() or int(original_issue) < 1 or re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", repo) is None:
+        raise UsageError("migrate-deps: invalid issue or repository")
+    source_env = design_tmpdir / "source-env.sh"
+    run_id = ""
+    if source_env.is_file() and not source_env.is_symlink():
+        for raw in source_env.read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw.removeprefix("export ").strip()
+            if line.startswith("LARCH_RUN_ID="):
+                run_id = line.partition("=")[2].strip().strip("'\"")
+    authorized, reason = session_env.check_live_mutation_auth(context_file=source_env, operator_mode=False, run_id=run_id, trusted_root=design_tmpdir)
+    if not authorized:
+        _record_migration_failure(design_tmpdir, phase="authorization", detail=reason)
+        _emit_kv(key="DECOMPOSE_DEPS_AUTH_REASON", value=reason)
+        return "authorization-denied"
+    try:
+        pieces = filed_pieces(design_tmpdir, repo=repo)
+        manifest_path = design_tmpdir / "decompose" / "dependency-migration.json"
+        if manifest_path.is_file():
+            migration = _load_migration(manifest_path)
+            if migration.original_issue != int(original_issue) or migration.repo != repo or migration.pieces != pieces:
+                raise UsageError("migrate-deps: persisted migration does not match filed mapping")
+            if not _live_original_edges_match_migration(migration):
+                return _record_migration_failure(design_tmpdir, phase="live-dependency-drift", detail="original dependency graph changed")
+        else:
+            incoming_numbers, blocking_numbers = _read_dependencies(issue=int(original_issue), repo=repo)
+            migration = DependencyMigration(
+                original_issue=int(original_issue), repo=repo, pieces=pieces,
+                incoming=tuple(DependencyEdge(blocked=int(original_issue), blocker=number) for number in incoming_numbers),
+                outgoing=tuple(DependencyEdge(blocked=number, blocker=int(original_issue)) for number in blocking_numbers),
+            )
+            _write_migration(manifest_path, migration)
+        sentinel = design_tmpdir / ".decompose-deps-migrated"
+        ready = _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces)
+        if ready and sentinel.is_file() and _live_original_edges_match_migration(migration) and _migration_postcondition(migration):
+            return "ok"
+        sentinel.unlink(missing_ok=True)
+        failure: tuple[str, str] | None = None
+        if not ready or not _apply_migration(migration):
+            failure = ("migration", "dependency mutation or verification failed")
+        elif not _live_original_edges_match_migration(migration):
+            failure = ("live-dependency-drift", "original dependency graph changed")
+        elif not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=pieces):
+            failure = ("intra-piece-postcondition", "declared piece dependency missing")
+        if failure is not None:
+            return _record_migration_failure(design_tmpdir, phase=failure[0], detail=failure[1])
+        sentinel.touch()
+        return "ok"
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        return _record_migration_failure(design_tmpdir, phase="dependency-read", detail=str(exc))
+
 def close_original_issue(*, design_tmpdir: Path, original_issue: str, repo: str) -> str:
     if (design_tmpdir / ".decompose-original-closed").is_file():
         return "ok"
     dec = design_tmpdir / "decompose"
+    migration_path = dec / "dependency-migration.json"
+    if not (design_tmpdir / ".decompose-deps-migrated").is_file() or not migration_path.is_file():
+        raise UsageError("close-original: dependency migration is not complete")
+    migration = _load_migration(migration_path)
+    if (
+        migration.original_issue != int(original_issue)
+        or migration.repo != repo
+        or not _live_original_edges_match_migration(migration)
+        or not _migration_postcondition(migration)
+        or not _intra_piece_postcondition(design_tmpdir=design_tmpdir, pieces=migration.pieces)
+    ):
+        raise UsageError("close-original: dependency migration postcondition failed")
     filed = dec / "partition-filed.md"
     if not filed.is_file():
         raise UsageError("close-original: missing partition-filed.md (run annotate first)")
@@ -830,6 +1091,27 @@ def annotate_main(argv: list[str]) -> int:
     except (SystemExit, UsageError) as exc:
         _err(f"decompose annotate: {exc}")
         return 2
+
+
+def migrate_deps_main(argv: list[str]) -> int:
+    logging_util.quiet_init(argv0="decompose-file-issues.sh")
+    parser = argparse.ArgumentParser(prog="decompose migrate-deps", add_help=False)
+    parser.add_argument("--design-tmpdir", required=True)
+    parser.add_argument("--original-issue", required=True)
+    parser.add_argument("--repo", required=True)
+    try:
+        args = parser.parse_args(argv)
+        design_tmpdir = _validate_design_tmpdir(args.design_tmpdir)
+        status = migrate_dependencies(design_tmpdir=design_tmpdir, original_issue=args.original_issue, repo=args.repo)
+        _emit_kv(key="DECOMPOSE_DEPS_STATUS", value=status)
+        _emit_kv(key="DECOMPOSE_DEPS_SENTINEL", value=design_tmpdir / ".decompose-deps-migrated")
+        return 0 if status == "ok" else 1
+    except (SystemExit, UsageError) as exc:
+        _err(f"decompose migrate-deps: {exc}")
+        return 2
+    except (OSError, RuntimeError, TypeError, ValueError) as exc:
+        _err(f"decompose migrate-deps: {exc}")
+        return 1
 
 
 def close_original_main(argv: list[str]) -> int:

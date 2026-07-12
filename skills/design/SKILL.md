@@ -12,7 +12,7 @@ Design an implementation plan and review it with the mechanical plan-review pane
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (persisted as `partition_requested` in `run-params.json`; see `references/flags.md` only for background) |
+| `-p` / `--partition` | `false` | Route directly to the unified inline Split-path on every plan write when no hard threshold tripped (persisted as `partition_requested` in `run-params.json`; see `references/flags.md` only for background) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (persisted as `brainstorm_requested` in `run-params.json`; see `references/flags.md` and `references/brainstorm.md` only for background) |
 | `--difficulty <TRIVIAL\|MODERATE\|HARD>` | empty | Sets the starting plan-review tier, beats rating and floors, and logs `override_source=operator`; the 1:30 audit can still upgrade a below-HARD run and logs both fields. |
 | `--per-round-approval` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (persisted as `approve_requested` in `run-params.json`; see `references/flags.md` only for background) |
@@ -295,7 +295,7 @@ Dispatch table for `DRAFTER_NEXT_ACTION` on exit 0 only:
 - `inline-retry`: run the inline rewrite once, then run the retained terminal postplan fence exactly once.
 - `dirty-tree-recovery`: fire the existing dirty-tree recovery `AskUserQuestion` flow before inline fallback or postplan.
 - `postplan-rc10`: use the existing validator-failure flow.
-- `postplan-rc12-split`: read `$DESIGN_TMPDIR/.drafter-next-action-rc12.txt`, prompt Split / Override / Cancel, and on Override run `plan set-oversize-override`, delete `composed-plan.md`, write postplan completion, then continue.
+- `postplan-rc12-split`: enter the unified Split-path. Its single question owns Partition, Override, and Other/chat. On Override run `plan set-oversize-override`, delete `composed-plan.md`, write postplan completion, then continue.
 - `postplan-rc13-partition`: read `$DESIGN_TMPDIR/.drafter-next-action-rc13.txt`, then enter Split-path.
 - `failsafe-missing-rows`: load `references/step2b-drafter-failsafe.md` and run the retained terminal postplan path only; this token is valid only after exit 0 without a trusted postplan action row.
 
@@ -331,7 +331,7 @@ The launcher `design-step2b-postplan.sh` maps to `python/cli.py design step2b-po
 
 Inline retry may come from `DRAFTER_NEXT_ACTION=inline-retry` or the retained postplan fence. If retained output prints `**⚠ 2b: drafter plan failed postplan validation: re-entering inline drafting once**` or leaves `.step2b-postplan-inline-retry-pending`, rewrite `plan.txt` once inline, then rerun the retained postplan fence once. Do not launch another drafter. `.step2b-postplan-inline-retry-done` prevents a second retry; later `_postplan_rc=10` uses the normal validator-failure path.
 On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`). Fix-and-retry re-enters this same `--with-plan-size --snapshot-original` fence. On **Override**, run `python/cli.py design step2b-postplan --write-step2b-completion-only` through the launcher, then run the retained **Step 2b.5** procedure before continuing.
-On `_postplan_rc=12`, the driver already printed the size-trigger section. Ask exactly **"Let my panel of agents split this feature for you"** / **"Override size guardrail"** / **"Cancel"**. Override runs `plan set-oversize-override`, deletes `composed-plan.md`, then writes postplan completion with `--include-step2b` before Step 3. Split / `_postplan_rc=13` runs only **Split-path** in `decompose-panel.md`. Do not re-run display subsections after `printf '%s\n' "${_postplan_out:-}"`. Non-exiting Split writes completion before Step 3. Plan drift logs a warning and exits 0.
+On `_postplan_rc=12` or `_postplan_rc=13`, enter only the unified **Split-path** in `decompose-panel.md`. Do not ask a preliminary partition question. The Split-path single question owns Partition, Override, and Other/chat. Override runs `plan set-oversize-override`, deletes `composed-plan.md`, then writes postplan completion with `--include-step2b` before Step 3. Do not re-run display subsections after `printf '%s\n' "${_postplan_out:-}"`. Non-exiting Split writes completion before Step 3. Plan drift logs a warning and exits 0.
 
 > **Continue to Step 3 IMMEDIATELY** when `_postplan_rc=0` (or after non-exiting Split/Override paths complete). The implementation plan is an intermediate design artifact: plan review, Gate B, rejected-findings reporting, Gate C, and cleanup still must run; architecture diagram work runs only at Step 5b.5 after Gate C approval. → shared/subskill-invocation.md#step-boundary
 
@@ -352,12 +352,12 @@ On direct-entry paths, bind plan-size KVs from `.design-postplan-emit-result.env
 
 #### Split-path (decomposition panel)
 
-**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely. It is the single normative source for panel input-artifact selection, the 3-stage `AskUserQuestion` flow, aggregator path, cycle check, filing, and original-issue close.
-Execute `decompose-panel.md` Split-path. Its **§2) Dispatch the fixed 8-slot panel** owns the exact `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose panel-dispatch` launch; never skip loading the reference first.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely. It is the single normative source for inline proposal construction, the one-question contract, validation, filing, dependency migration, and original-issue close.
+Execute `decompose-panel.md` Split-path inline. The main agent computes and repairs the proposal without subagents.
 On approved split that files N issues and closes the original: export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block through Read/cache, print `**ℹ /design exited: partition into N pieces filed (see #<original> close-comment).**`, emit the cached summary as terminal plain chat, and exit 0.
-On **"Refine plan myself (return to caller)"**: run `python/cli.py design step2b-postplan --write-completion-only` through the launcher first (add `--include-step2b` for initial-site merged Split returns), then return to caller. Step 2b.5 from Gate B goes to Step 3b; Step 1c sprawl returns to Step 1d; Step 1d sprawl returns to pre-plan Step 1d.7 outline approval, not Gate A.
-On user pick **"Cancel"**: export `SUMMARY_OUTCOME=cancelled-decompose`, run the Final summary block through Read/cache, print `**ℹ /design cancelled by operator (decomposition panel).**`, emit the cached summary as terminal plain chat, and exit **0**.
-When `PANEL_STATUS=panel-failed`, AskUserQuestion (**Retry panel** / **Cancel**). Retry dispatch once. When the second attempt fails, **MANDATORY: READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5-failures.md` immediately before staging `failed-judge-panel` or exporting `SUMMARY_OUTCOME=failed-judge-panel`; run the Final summary block through Read/cache, preserve `$DESIGN_TMPDIR`, emit the cached summary as terminal plain chat, and exit 1.
+On Other/chat, exit the structured partition path without another `AskUserQuestion`; apply the caller's normal non-exiting completion boundary when continuing.
+On unavailable Partition selection, record the validation failure, preserve `$DESIGN_TMPDIR`, and end Split-path without another question.
+Override applies the caller-specific existing override path. For Step 5c, only Override reruns `design-step5c.sh`.
 
 > **After Step 2b.5 returns to caller on a non-exiting initial path, continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact: plan review, Gate B, rejected-findings reporting, Gate C, and cleanup still must run; architecture diagram work runs only at Step 5b.5 after Gate C approval. → shared/subskill-invocation.md#step-boundary
 At any non-exiting Step 2b.5 success boundary, run `python/cli.py design step2b-postplan --write-completion-only` through the launcher before Step 3 unless the immediately preceding normal postplan wrapper already wrote `.completed/step-2b.5`.

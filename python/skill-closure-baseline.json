@@ -1,10 +1,10 @@
 [
   {
-    "closure_content_estimated_tokens": 52226,
-    "closure_estimated_tokens": 52376,
+    "closure_content_estimated_tokens": 51933,
+    "closure_estimated_tokens": 52083,
     "closure_lines": 1710,
-    "conditional_content_estimated_tokens": 21290,
-    "conditional_estimated_tokens": 21372,
+    "conditional_content_estimated_tokens": 18654,
+    "conditional_estimated_tokens": 18723,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
@@ -19,7 +19,7 @@
       "skills/design/references/dialectic-clarifier.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 895,
+    "conditional_lines": 765,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",
@@ -33,8 +33,8 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 26045,
-    "skill_md_estimated_tokens": 26099,
+    "skill_md_content_estimated_tokens": 25829,
+    "skill_md_estimated_tokens": 25883,
     "skill_md_lines": 690
   },
   {

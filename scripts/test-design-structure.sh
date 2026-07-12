@@ -88,6 +88,8 @@ step1e_line="$(grep -F -n -e '<!-- step:1e: Discussion Mode Gate (Gate A) -->' "
 [ "$gate_a_read_line" -gt "$step1e_line" ] || fail 'Gate A slice must remain absent from the default pre-plan path'
 not_contains "$FINALIZE_STEP5_MD" '## /design auto error reporting' 'green finalize must exclude failure reporting'
 contains "$FINALIZE_STEP5_FAILURES_MD" '## /design auto error reporting' 'failure slice must own error reporting'
+contains "$ROOT/skills/design/references/discussion-rounds.md" 'enter the unified **Split-path** directly' 'Step 1c sprawl must enter the unified Split-path directly'
+not_contains "$ROOT/skills/design/references/discussion-rounds.md" 'exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"**' 'Step 1c sprawl must not ask a preliminary Split/Cancel question'
 
 extract_stdout_keys_block() {
   awk '
@@ -610,8 +612,6 @@ contains "$FINALIZE_STEP5_MD" 'When `_publish_rc=3`, the publish tail may have c
 not_contains "$SKILL_MD" '_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}`' 'SKILL must not retain publish rc abort wall'
 contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging `failed-clarify` or exporting `SUMMARY_OUTCOME=failed-clarify`' 'clarify fetch failure must load failure slice before staging'
 contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging or exporting `SUMMARY_OUTCOME=failed-plan-write`' 'clarify plan-write failure must load failure slice before staging'
-contains "$SKILL_MD" 'finalize-step5-failures.md` immediately before staging `failed-judge-panel` or exporting `SUMMARY_OUTCOME=failed-judge-panel`' 'Split-path judge-panel failure must load failure slice before staging'
-contains "$SKILL_MD" 'run the Final summary block through Read/cache' 'Split-path judge-panel failure must execute the Final summary block'
 contains "$FINALIZE_STEP5_MD" 'Step 5d warning replay and footer' 'finalize-step5 must own Step 5d warning replay detail'
 contains "$SKILL_MD" 'architecture diagram work runs only at Step 5b.5 after Gate C approval' 'Step 2b anti-halt must not promise pre-approval diagram generation'
 not_contains "$SKILL_MD" 'design-run-$PPID.sh" design-step3b-sanitize.sh' 'SKILL must not retain standalone Step 5b.5 sanitizer fence'
