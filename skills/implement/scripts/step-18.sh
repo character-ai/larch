@@ -169,7 +169,7 @@ run_gate() {
 }
 
 run_finalize() {
-    local step18b_out step18b_err step18b_rc emit_body wfr_rc step17_present snapshot_ok marker_rc capture_out capture_rc
+    local step18b_out step18b_err step18b_rc emit_body wfr_rc step17_present snapshot_ok marker_rc capture_out capture_rc wfr_error wfr_reason
     if [ "$STEP17_EMITTED" = true ]; then
         touch "$IMPLEMENT_TMPDIR/.step17-emitted"
     fi
@@ -192,6 +192,7 @@ run_finalize() {
     step17_present=${step17_present:-false}
     snapshot_ok=$(kv_value SNAPSHOT_OK "$step18b_out")
     snapshot_ok=${snapshot_ok:-absent}
+    wfr_error=$(kv_value ERROR "$step18b_out")
     if [ "$step18b_rc" -ne 0 ]; then
         append_failure_best_effort "Step 18b — final-report" "python/cli.py final-report step18b" "$step18b_rc" "$step18b_err"
     fi
@@ -200,6 +201,17 @@ run_finalize() {
     printf 'WFR_RC=%s\n' "$wfr_rc"
     printf 'STEP17_EMITTED_PRESENT=%s\n' "$step17_present"
     printf 'SNAPSHOT_OK=%s\n' "$snapshot_ok"
+    printf 'ERROR=%s\n' "$wfr_error"
+    # Break the silence (#6979): a non-zero WFR_RC means write_final_report failed
+    # (summary write OSError, manifest reconcile, tracking upsert, or a composition
+    # exception) and no marker body will be emitted. Print a visible warning naming
+    # the reason so the turn is never fully silent, independent of the orchestrator's
+    # terminal-emit precedence. The #6947 plan-coverage path is already handled, so
+    # any residual WFR_RC!=0 cause must surface loudly instead of vanishing.
+    if [ "$wfr_rc" != 0 ]; then
+        wfr_reason=${wfr_error:-render failed (no reason surfaced)}
+        printf '**⚠ Step 18: final report render failed (WFR_RC=%s): %s.**\n' "$wfr_rc" "$wfr_reason" >&2
+    fi
 
     if [ "$emit_body" = true ] && [ "$wfr_rc" = 0 ] && [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then
         set +e

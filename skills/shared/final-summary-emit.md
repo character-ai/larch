@@ -80,7 +80,8 @@ This subsection is authoritative for orchestrator chat emit on `/implement`.
 2. **Precedence A — refreshed Step 18 body:** when captured composite stdout (`NEXT_ACTION=finalize-done`) or captured standalone finalize stdout has `EMIT_BODY=true`, `WFR_RC=0`, and a valid marker pair with non-empty body, terminal emit must use that post-Step-18b marker body even if a Step 17 cache exists.
 3. **Precedence B — Step 17 cache:** when Precedence A does not apply and a non-empty Step 17 marker body was cached during Step 17, terminal emit uses the Step 17 cache.
 4. **Precedence C — missing body:** when neither applies, emit only the existing missing-marker warning; do not Read `summary-final.md` after teardown.
-5. `STEP17_EMITTED_PRESENT` and `--step17-emitted true` are sentinel/suppression inputs for Step 18b refresh logic (`should_emit_updated_body`), not overrides of orchestrator terminal-emit precedence.
+5. **Precedence D — render failure (`WFR_RC!=0`):** when `WFR_RC` is non-zero, the final report render failed (summary write, manifest reconcile, tracking upsert, or a composition exception) and no body is available. The finalize wrapper has already printed `**⚠ Step 18: final report render failed (WFR_RC=<n>): <reason>**` (reason from the `ERROR=` KV) to composite stderr; treat that warning as the accounted-for outcome. Do not emit a body, do not Read `summary-final.md`, and do not add free-form recap prose. This closes the #6979 silence gap where an rc-failure path (`EMIT_BODY=false`) printed nothing because the missing-marker warning was gated on `EMIT_BODY=true` and `WFR_RC=0`.
+6. `STEP17_EMITTED_PRESENT` and `--step17-emitted true` are sentinel/suppression inputs for Step 18b refresh logic (`should_emit_updated_body`), not overrides of orchestrator terminal-emit precedence.
 
 ## File-only profile
 

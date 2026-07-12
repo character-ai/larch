@@ -992,15 +992,22 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
         _emit_kv(key="STATUS", value="failed")
         _emit_kv(key="ERROR", value="usage")
         return 2
-    rc, url, err = write_final_report(Path(args.implement_tmpdir), comment_only=args.comment_only, print_stdout=args.print_stdout)
+    # write_final_report must never crash this CLI (#6979): an uncaught composition
+    # exception previously escaped as a traceback (rc!=0, no ERROR=) and left the
+    # Step 17 caller unable to name the cause. Surface it as STATUS=failed + ERROR=.
+    try:
+        rc, url, err = write_final_report(Path(args.implement_tmpdir), comment_only=args.comment_only, print_stdout=args.print_stdout)
+    except Exception as exc:
+        rc, url, err = 1, "", f"final report render failed: {exc}"
+        logging_util.BreadcrumbWriter().emit(f"final report: {err}", quiet=False)
     _emit_kv(key="COMMENT_URL", value=url)
     _emit_kv(key="STATUS", value="ok" if rc == 0 else "failed")
     if err:
-        _emit_kv(key="ERROR", value=err)
+        _emit_kv(key="ERROR", value=" ".join(err.split())[:500])
     return rc
 
 
-def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str]:
+def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str, str]:
     step17_present = (implement_tmpdir / ".step17-emitted").exists()
     if not (implement_tmpdir / ".step16-16a-done").exists():
         closeout.step_16_16a(["--implement-tmpdir", str(implement_tmpdir)])
@@ -1016,7 +1023,16 @@ def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str]:
             snapshot_ok = "false"
             with contextlib.suppress(OSError):
                 pre.unlink()
-    wfr_rc, _url, _err = write_final_report(implement_tmpdir)
+    # write_final_report must never crash this terminal step (#6979): an uncaught
+    # composition exception previously escaped both callers (no try/except at the
+    # write_final_report_main and step18b_final_report call sites) and produced a
+    # silent EMIT_BODY=false with no diagnosable cause. Surface the reason instead.
+    wfr_err = ""
+    try:
+        wfr_rc, _url, wfr_err = write_final_report(implement_tmpdir)
+    except Exception as exc:
+        wfr_rc, wfr_err = 1, f"final report render failed: {exc}"
+        logging_util.BreadcrumbWriter().emit(f"final report: {wfr_err}", quiet=False)
     summary_present = summary.is_file() and summary.stat().st_size > 0
     snapshot_changed = pre.is_file() and pre.read_bytes() != summary.read_bytes()
     snapshot_unavailable = snapshot_ok in {"absent", "false"}
@@ -1028,16 +1044,25 @@ def step18b_final_report(implement_tmpdir: Path) -> tuple[bool, int, bool, str]:
     )
     if should_emit_updated_body:
         emit_body = True
-    return (emit_body and wfr_rc == 0 and summary_present), wfr_rc, step17_present, snapshot_ok
+    return (emit_body and wfr_rc == 0 and summary_present), wfr_rc, step17_present, snapshot_ok, wfr_err
 
 
 def step18b_final_report_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py final-report step18b")
     parser.add_argument("--implement-tmpdir", required=True)
     args = parser.parse_args(argv)
-    emit_body, wfr_rc, present, snapshot = step18b_final_report(Path(args.implement_tmpdir))
+    emit_body, wfr_rc, present, snapshot, error = step18b_final_report(Path(args.implement_tmpdir))
     _emit_kv(key="EMIT_BODY", value=str(emit_body).lower())
     _emit_kv(key="WFR_RC", value=wfr_rc)
     _emit_kv(key="STEP17_EMITTED_PRESENT", value=str(present).lower())
     _emit_kv(key="SNAPSHOT_OK", value=snapshot)
+    # ERROR=<reason> makes a render failure self-identifying instead of a silent
+    # EMIT_BODY=false (#6979). Collapse to one line so the KV stream stays parseable.
+    _emit_kv(key="ERROR", value=" ".join(error.split())[:500])
+    if error:
+        # Mirror the reason to stderr so step-18.sh's append_failure_best_effort
+        # (which captures step18b stderr) records it in execution-issues — the
+        # tmpdir is torn down after Step 18, so stdout KVs alone are not durable.
+        sys.stderr.write(f"final report render failed: {error}\n")
+        sys.stderr.flush()
     return wfr_rc

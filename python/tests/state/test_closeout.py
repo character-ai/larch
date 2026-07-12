@@ -323,6 +323,24 @@ def test_step_16_17_empty_failure_prints_no_markers(
     assert not (tmp_path / ".step17-printed").exists()
 
 
+def test_step_16_17_render_failure_prints_visible_warning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """#6979: a Step 17 render failure must not leave step-16-17 silent.
+
+    When Step 17 fails before writing a body, step_16_17 emits a stderr warning
+    naming the rc so the empty-stdout case is diagnosable instead of silent.
+    """
+    _install_closeout_stub(monkeypatch, tmp_path, step17_mode="fail-empty")
+    assert closeout.step_16_17_main([]) == 0
+    captured = capsys.readouterr()
+    assert closeout.SUMMARY_BEGIN not in captured.out
+    assert "Step 17 final report render failed" in captured.err
+    assert "rc=7" in captured.err
+
+
 def test_read_key_returns_cli_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     session = tmp_path / "session-env.sh"
