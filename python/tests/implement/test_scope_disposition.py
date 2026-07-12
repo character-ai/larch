@@ -687,9 +687,7 @@ def test_frozen_fallback_ignores_preexisting_provenance(tmp_path: Path) -> None:
     touched = scope_disposition.touched_paths_since_baseline(
         tmpdir=tmp_path,
         repo_root=tmp_path,
-        runner=FakeRunner(
-            status_z="", fail_symbolic_refs=frozenset({"origin"})
-        ),
+        runner=FakeRunner(status_z="", fail_symbolic_refs=frozenset({"origin"})),
         plan_paths=["src/a.py"],
     )
 
@@ -1331,31 +1329,155 @@ def test_load_coverage_rejects_companion_mismatch(tmp_path: Path) -> None:
         _ = scope_disposition.load_coverage(tmp_path)
 
 
-def test_create_followup_issue_passes_context_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_create_followup_issue_passes_context_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """_create_followup_issue must pass --context-file when session-env.sh exists."""
     senv = tmp_path / "session-env.sh"
-    _ = senv.write_text(f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8")
+    _ = senv.write_text(
+        f"{config.LIVE_MUTATION_AUTH_KEY}=true\nLARCH_RUN_ID=run-1\n", encoding="utf-8"
+    )
 
     captured_args: list[list[str]] = []
 
     def fake_run_cli(argv: Sequence[str]) -> CommandResult:
         captured_args.append(list(argv))
-        return CommandResult(tuple(argv), 0, "ISSUE_NUMBER=123\nISSUE_URL=https://github.com/o/r/issues/123\n", "", 0.0)
+        return CommandResult(
+            tuple(argv),
+            0,
+            "ISSUE_NUMBER=123\nISSUE_URL=https://github.com/o/r/issues/123\n",
+            "",
+            0.0,
+        )
 
     monkeypatch.setattr(scope_disposition, "_run_cli", fake_run_cli)
 
     plan_file = tmp_path / "plan.txt"
-    _ = plan_file.write_text("### UPDATED: src/a.py\ndiff_lines: 10\n", encoding="utf-8")
+    _ = plan_file.write_text(
+        "### UPDATED: src/a.py\ndiff_lines: 10\n", encoding="utf-8"
+    )
     _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
     coverage = scope_disposition.compute_and_write_coverage(
-        tmpdir=tmp_path, repo_root=tmp_path, plan_file=plan_file, runner=FakeRunner(diff_paths=[]),
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=FakeRunner(diff_paths=[]),
     )
 
     _ = scope_disposition._create_followup_issue(  # pyright: ignore[reportPrivateUsage]
-        tmpdir=tmp_path, repo="owner/repo", tracking_issue_number="42", coverage=coverage
+        tmpdir=tmp_path,
+        repo="owner/repo",
+        tracking_issue_number="42",
+        coverage=coverage,
     )
     assert captured_args, "no CLI call was made"
     first_call = captured_args[0]
     assert "--context-file" in first_call
     ctx_idx = first_call.index("--context-file")
     assert first_call[ctx_idx + 1] == str(senv)
+
+
+def test_live_coverage_maps_directory_descendant_to_firm_path(
+    tmp_path: Path,
+) -> None:
+    """Trailing-slash firm dirs credit nested touches once; siblings stay exact-only."""
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(
+        _plan(
+            [
+                "python/tests/support/",
+                "python/tests/support_helpers.py",
+                "src/exact.py",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "step2-baseline.txt").write_text("BASE\n", encoding="utf-8")
+    runner = FakeRunner(
+        diff_paths=[
+            "python/tests/support/helpers.py",
+            "python/tests/support/nested/util.py",
+            "python/tests/support_helpers.py",
+            "src/exact.py/not_a_descendant.py",
+            "unrelated/other.py",
+        ]
+    )
+
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=runner,
+    )
+
+    assert coverage.touched_paths == (
+        "python/tests/support/",
+        "python/tests/support_helpers.py",
+    )
+    assert "python/tests/support/" not in coverage.untouched_paths
+    assert coverage.untouched_paths == ("src/exact.py",)
+    assert coverage.untouched == 1
+    assert coverage.disposition_required is False
+
+    reloaded = scope_disposition.load_coverage(tmp_path)
+    assert reloaded is not None
+    assert reloaded == coverage
+    assert reloaded.fingerprint == coverage.fingerprint
+
+
+def test_frozen_fallback_keeps_raw_descendant_for_provenance(
+    tmp_path: Path,
+) -> None:
+    """Frozen fallback retains nested porcelain paths; coverage maps to firm dir."""
+    plan_file = tmp_path / "plan.txt"
+    _ = plan_file.write_text(
+        _plan(["python/tests/support/", "src/sibling_support.py"]),
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "step2-baseline.txt").write_text("STEP2BASE\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    nested = tmp_path / "python" / "tests" / "support"
+    nested.mkdir(parents=True)
+    _ = (nested / "helpers.py").write_text("helpers\n", encoding="utf-8")
+    sibling = tmp_path / "src"
+    sibling.mkdir()
+    _ = (sibling / "sibling_support.py").write_text("sibling\n", encoding="utf-8")
+
+    runner = FakeRunner(
+        diff_paths=["python/tests/support/helpers.py"],
+        status_z=_porcelain_z(
+            [
+                " M python/tests/support/helpers.py",
+                " M src/sibling_support.py",
+                "?? python/tests/support_extra.py",
+            ]
+        ),
+        fail_symbolic_refs=frozenset({"origin"}),
+        fail_diff=True,
+    )
+
+    coverage = scope_disposition.compute_and_write_coverage(
+        tmpdir=tmp_path,
+        repo_root=tmp_path,
+        plan_file=plan_file,
+        runner=runner,
+    )
+
+    provenance = json.loads(
+        (tmp_path / scope_disposition.FALLBACK_PROVENANCE).read_text(encoding="utf-8")
+    )
+    assert "python/tests/support/helpers.py" in provenance["path_signatures"]
+    assert "src/sibling_support.py" in provenance["path_signatures"]
+    assert "python/tests/support/" not in provenance["path_signatures"]
+    assert "python/tests/support_extra.py" not in provenance["path_signatures"]
+
+    assert coverage.touched_paths == (
+        "python/tests/support/",
+        "src/sibling_support.py",
+    )
+    assert not coverage.untouched_paths
+    assert coverage.disposition_required is False
+
+    reloaded = scope_disposition.load_coverage(tmp_path)
+    assert reloaded is not None
+    assert reloaded == coverage
