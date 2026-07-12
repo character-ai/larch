@@ -1,0 +1,132 @@
+### /triage scratch-write token guard
+
+Partition piece 1 of 2 split from #7080.
+
+**Scope**: Extend `scripts/deny-edit-write.sh` to recognize a `triage` activation token; document the consumer in `scripts/deny-edit-write.md`; add triage-token activation, cross-token isolation, inactive, stale, repository-denial, and canonical `/tmp` allowance cases to `scripts/test-deny-edit-write.sh`. Preserves the existing fail-closed canonical `/tmp` policy and token isolation.
+
+**Firm headings**: ### UPDATED: scripts/deny-edit-write.sh, ### UPDATED: scripts/deny-edit-write.md, ### UPDATED: scripts/test-deny-edit-write.sh
+
+**Acceptance**:
+
+`bash scripts/test-deny-edit-write.sh` passes; triage token activates scratch writes only under the canonical triage temp dir; other tokens and inactive/stale states stay fail-closed.
+
+**Dependencies (from proposal)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# [FEATURE] /triage: root-cause, verify, and update an issue to design-ready
+
+Add a `/triage` skill. It takes an issue number, root-causes and verifies the report, and updates the issue with a corrected root cause and a fix outline, so the issue is ready for `/design`.
+
+Origin: operator request after the 2026-07-12 triage session that produced #7072, #7073, #7074, and #7075 from the `/im 7000` and `/im 7001` exec-issue reports. That session is the reference implementation of the method.
+
+​#### Motivation
+
+Auto-filed and operator-filed issues often carry wrong, stale, or incomplete root causes. `/design` then plans against a bad diagnosis or spends its budget re-investigating. The verify-first patterns already exist for two special cases (synthetic stall reports, for example #3354 and #6869; stale OOS issues, for example #3565, #4697, #5083). `/triage` generalizes them into one reusable pre-`/design` entry point.
+
+​#### Proposed contract
+
+`/triage <issue-number> [--repo OWNER/REPO] [--report-only]`
+
+1. Fetch the issue body and comments. Wrap them as untrusted content, same convention as `/issue` Phase 2.
+2. Collect primary evidence: cited run logs under `larch-logs/`, including logs that exist only on unmerged PR branches (`git fetch` plus `git show`); `execution-issues.ndjson`, `final-summary.md`, `manifest.json`, outcome and handoff files; cited code at file:line on current main.
+3. Verify every claim: does the defect still exist on main; did a later PR fix it; do the cited symbols and line numbers still resolve. Distinguish observation from inference in the write-up.
+4. Reproduce when feasible. Prefer a minimal safe experiment for external-tool failures (for example the codex model probe one-liner from #7072). Repro commands become part of the evidence.
+5. Cross-reference neighbors: snapshot open issues, fetch plausible overlaps, split scope explicitly against siblings, and wire near-certain `blocked-by` edges through the existing `/issue` machinery.
+6. Act on the verdict:
+   - Valid (root cause confirmed or corrected): update the issue with corrected root cause, evidence (paths, line numbers, timestamps, repro commands), scope split, and a fix outline. The issue becomes design-ready.
+   - Already fixed or non-material: verify-comment plus close NOT_PLANNED; restore the title if a lifecycle rename is present.
+   - Duplicate: comment with the canonical issue and close.
+7. Never edit code. Never author a plan; that stays in `/design`. File follow-up issues only through `/issue`.
+
+​#### Outputs
+
+- Updated issue: corrected root cause, evidence, fix outline, scope-split references.
+- Machine summary on stdout (for example `TRIAGE_VERDICT=<valid|already-fixed|duplicate|invalid>`, `ISSUE_UPDATED=true|false`) for future automation.
+- `--report-only` prints the analysis without mutating the issue.
+
+​#### Design questions for /design
+
+- Body edit vs appended comment: preserve the original report. Probably append a marked triage section or comment rather than rewrite history; retitle only on close.
+- Evidence budget: cap log and code reads; when evidence is missing (for example an unflushed run log), say so instead of guessing.
+- Overlap with `/design` verify-first: `/design` keeps its own verify-first behavior; `/triage` is the standalone entry point that front-loads the investigation.
+- Whether `/triage` may apply the `blocked-by` edges itself or should only recommend them.
+
+Run /design on this issue before /implement.
+
+
+### /triage skill + helper + tests + docs/security sweep
+
+Partition piece 2 of 2 split from #7080.
+
+**Scope**: New `skills/triage/SKILL.md`; new `python/larch/issue/triage.py` typed mutation/verification helper; register the verb in `python/larch/cli.py`; `python/tests/issue/test_triage.py`; `scripts/test-triage-structure.sh` + `.md`; `scripts/residual-bash-paths.txt`; `Makefile` shard; `README.md`, `docs/skills.md`, `AGENTS.md`, `SECURITY.md` companion sweep.
+
+**Firm headings**: ### NEW: skills/triage/SKILL.md, ### NEW: python/larch/issue/triage.py, ### UPDATED: python/larch/cli.py, ### NEW: python/tests/issue/test_triage.py, ### NEW: scripts/test-triage-structure.sh, ### NEW: scripts/test-triage-structure.md, ### UPDATED: scripts/residual-bash-paths.txt, ### UPDATED: Makefile, ### UPDATED: README.md, ### UPDATED: docs/skills.md, ### UPDATED: AGENTS.md, ### UPDATED: SECURITY.md
+
+**Acceptance**:
+
+`pytest python/tests/issue/test_triage.py` and `bash scripts/test-triage-structure.sh` pass; `--report-only` makes zero GitHub calls; each verdict re-verifies its mutated surface; docs/security sweep complete.
+
+**Dependencies (from proposal)**: blocked-by Piece 1
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# [FEATURE] /triage: root-cause, verify, and update an issue to design-ready
+
+Add a `/triage` skill. It takes an issue number, root-causes and verifies the report, and updates the issue with a corrected root cause and a fix outline, so the issue is ready for `/design`.
+
+Origin: operator request after the 2026-07-12 triage session that produced #7072, #7073, #7074, and #7075 from the `/im 7000` and `/im 7001` exec-issue reports. That session is the reference implementation of the method.
+
+​#### Motivation
+
+Auto-filed and operator-filed issues often carry wrong, stale, or incomplete root causes. `/design` then plans against a bad diagnosis or spends its budget re-investigating. The verify-first patterns already exist for two special cases (synthetic stall reports, for example #3354 and #6869; stale OOS issues, for example #3565, #4697, #5083). `/triage` generalizes them into one reusable pre-`/design` entry point.
+
+​#### Proposed contract
+
+`/triage <issue-number> [--repo OWNER/REPO] [--report-only]`
+
+1. Fetch the issue body and comments. Wrap them as untrusted content, same convention as `/issue` Phase 2.
+2. Collect primary evidence: cited run logs under `larch-logs/`, including logs that exist only on unmerged PR branches (`git fetch` plus `git show`); `execution-issues.ndjson`, `final-summary.md`, `manifest.json`, outcome and handoff files; cited code at file:line on current main.
+3. Verify every claim: does the defect still exist on main; did a later PR fix it; do the cited symbols and line numbers still resolve. Distinguish observation from inference in the write-up.
+4. Reproduce when feasible. Prefer a minimal safe experiment for external-tool failures (for example the codex model probe one-liner from #7072). Repro commands become part of the evidence.
+5. Cross-reference neighbors: snapshot open issues, fetch plausible overlaps, split scope explicitly against siblings, and wire near-certain `blocked-by` edges through the existing `/issue` machinery.
+6. Act on the verdict:
+   - Valid (root cause confirmed or corrected): update the issue with corrected root cause, evidence (paths, line numbers, timestamps, repro commands), scope split, and a fix outline. The issue becomes design-ready.
+   - Already fixed or non-material: verify-comment plus close NOT_PLANNED; restore the title if a lifecycle rename is present.
+   - Duplicate: comment with the canonical issue and close.
+7. Never edit code. Never author a plan; that stays in `/design`. File follow-up issues only through `/issue`.
+
+​#### Outputs
+
+- Updated issue: corrected root cause, evidence, fix outline, scope-split references.
+- Machine summary on stdout (for example `TRIAGE_VERDICT=<valid|already-fixed|duplicate|invalid>`, `ISSUE_UPDATED=true|false`) for future automation.
+- `--report-only` prints the analysis without mutating the issue.
+
+​#### Design questions for /design
+
+- Body edit vs appended comment: preserve the original report. Probably append a marked triage section or comment rather than rewrite history; retitle only on close.
+- Evidence budget: cap log and code reads; when evidence is missing (for example an unflushed run log), say so instead of guessing.
+- Overlap with `/design` verify-first: `/design` keeps its own verify-first behavior; `/triage` is the standalone entry point that front-loads the investigation.
+- Whether `/triage` may apply the `blocked-by` edges itself or should only recommend them.
+
+Run /design on this issue before /implement.
+
+

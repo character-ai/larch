@@ -1,0 +1,22 @@
+1	triage can investigate or publicly mutate security-sensitive issues without the fail-closed handling used by `/bug`.
+1	the concurrent-update contract does not specify the timestamp field, comparison behavior, or protection across multiple mutations.
+1	the new structural harness may be treated as a dead script by ci.
+1	a `--repo` target differing from the checkout can cause code verification against the wrong repository and produce false verdicts.
+1	dependency mutation can report success without verifying that the required blocked-by edge exists.
+1	copied issue, evidence, or comment text can inject machine-parsed larch plan or pause markers into published triage content.
+1	a valid-verdict rewrite can destroy active design, implement, clarify, pause, or plan state.
+1	the cli and follow-up invocations do not pin the `--operator-invoked` boundary, risking unauthorized direct mutation.
+1	unvalidated issue-supplied refs or paths can cause option injection, traversal, unintended fetches, or secret-file disclosure.
+1	a single initial freshness check cannot protect later mutations in a multi-step verdict sequence.
+1	missing evidence or repository mismatch currently forces an unjustified verdict or an inappropriate issue close.
+1	prompt-only reproduction rules can execute issue-supplied shell expansion, destructive actions, secret exfiltration, or externally mutating requests.
+1	dependency application may target the checkout default instead of the repository selected for triage.
+1	`--report-only` may emit only terminal verdict keys instead of the requested evidence, diagnosis, and fix analysis.
+1	token-only sanitization can publish secrets, internal urls, pii, temporary paths, or control markers from evidence and repro output.
+1	logs, git output, code excerpts, and reproduction output are not consistently isolated from instructions embedded in untrusted evidence.
+2	triage can halt after child skills return, skipping dependency read-back, follow-up verification, cleanup, and terminal machine keys.
+2	investigation may inspect a feature branch or dirty worktree instead of main, producing false fixed or root-cause conclusions.
+2	the required fetch-and-show workflow for unmerged branch evidence has no reachable, validated cli surface.
+2	dependency application can use stale analysis after an intervening issue edit or lifecycle transition.
+2	rejecting lifecycle-prefixed titles before verdict routing makes required title restoration unreachable for already-fixed or duplicate issues.
+2	a blanket ban on networked or authenticated probes prevents the specified safe external-tool reproduction path.

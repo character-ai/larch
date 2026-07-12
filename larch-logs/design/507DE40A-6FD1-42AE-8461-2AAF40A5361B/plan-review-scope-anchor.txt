@@ -1,0 +1,65 @@
+Add a `/triage` skill. It takes an issue number, root-causes and verifies the report, and updates the issue with a corrected root cause and a fix outline, so the issue is ready for `/design`.
+
+Origin: operator request after the 2026-07-12 triage session that produced #7072, #7073, #7074, and #7075 from the `/im 7000` and `/im 7001` exec-issue reports. That session is the reference implementation of the method.
+
+#### Motivation
+
+Auto-filed and operator-filed issues often carry wrong, stale, or incomplete root causes. `/design` then plans against a bad diagnosis or spends its budget re-investigating. The verify-first patterns already exist for two special cases (synthetic stall reports, for example #3354 and #6869; stale OOS issues, for example #3565, #4697, #5083). `/triage` generalizes them into one reusable pre-`/design` entry point.
+
+#### Proposed contract
+
+`/triage <issue-number> [--repo OWNER/REPO] [--report-only]`
+
+1. Fetch the issue body and comments. Wrap them as untrusted content, same convention as `/issue` Phase 2.
+2. Collect primary evidence: cited run logs under `larch-logs/`, including logs that exist only on unmerged PR branches (`git fetch` plus `git show`); `execution-issues.ndjson`, `final-summary.md`, `manifest.json`, outcome and handoff files; cited code at file:line on current main.
+3. Verify every claim: does the defect still exist on main; did a later PR fix it; do the cited symbols and line numbers still resolve. Distinguish observation from inference in the write-up.
+4. Reproduce when feasible. Prefer a minimal safe experiment for external-tool failures (for example the codex model probe one-liner from #7072). Repro commands become part of the evidence.
+5. Cross-reference neighbors: snapshot open issues, fetch plausible overlaps, split scope explicitly against siblings, and wire near-certain `blocked-by` edges through the existing `/issue` machinery.
+6. Act on the verdict:
+   - Valid (root cause confirmed or corrected): update the issue with corrected root cause, evidence (paths, line numbers, timestamps, repro commands), scope split, and a fix outline. The issue becomes design-ready.
+   - Already fixed or non-material: verify-comment plus close NOT_PLANNED; restore the title if a lifecycle rename is present.
+   - Duplicate: comment with the canonical issue and close.
+7. Never edit code. Never author a plan; that stays in `/design`. File follow-up issues only through `/issue`.
+
+#### Outputs
+
+- Updated issue: corrected root cause, evidence, fix outline, scope-split references.
+- Machine summary on stdout (for example `TRIAGE_VERDICT=<valid|already-fixed|duplicate|invalid>`, `ISSUE_UPDATED=true|false`) for future automation.
+- `--report-only` prints the analysis without mutating the issue.
+
+#### Design questions for /design
+
+- Body edit vs appended comment: preserve the original report. Probably append a marked triage section or comment rather than rewrite history; retitle only on close.
+- Evidence budget: cap log and code reads; when evidence is missing (for example an unflushed run log), say so instead of guessing.
+- Overlap with `/design` verify-first: `/design` keeps its own verify-first behavior; `/triage` is the standalone entry point that front-loads the investigation.
+- Whether `/triage` may apply the `blocked-by` edges itself or should only recommend them.
+
+Run /design on this issue before /implement.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `/triage <issue-number> [--repo OWNER/REPO] [--report-only]`: root-cause, verify, and update an issue into a design-ready state.
+- Generalize the existing verify-first patterns (synthetic stall reports; stale OOS) into one reusable pre-`/design` entry point.
+- Emit a machine-readable verdict on stdout (`TRIAGE_VERDICT`, `ISSUE_UPDATED`) for future automation.
+
+### Non-goals
+- Not a code editor or plan author: never edits code, never writes a `/design` plan.
+- Not a replacement for `/design` verify-first, `/bug` (filing), or `/research` (read-only research, no issue mutation).
+
+### Approach sketch
+- New `skills/triage/SKILL.md` is thin orchestration (like `/bug`, `/research`); deterministic logic reuses or extends Python helpers behind `cli.py` per G-Skill-2: git-ref/repo validation (G-Sec-1), redaction (G-Sec-3), GitHub mutation + re-verify (G-Ext-2/4), and the verdict grammar.
+- Phases mirror `/issue` untrusted-content wrapping (G-Sec-2): fetch → evidence → verify → repro (read-only) → cross-reference → verdict → act.
+- Valid verdict rewrites the issue body into one coherent design-ready spec via `gh issue edit --body-file`, idempotently (G-Idem-1); already-fixed/duplicate/invalid verdicts comment, close NOT_PLANNED, and restore a lifecycle-renamed title.
+- `--report-only` performs every phase up to the verdict but skips all mutation.
+
+### Surfaces in scope
+- `skills/triage/SKILL.md` (new)
+- `README.md` (skill catalog, feature matrix, aliases)
+- `AGENTS.md` (canonical-sources pointer)
+- `SECURITY.md` (untrusted-content handling + read-only/idempotent repro hard rule)
+
+### Open questions
+- None. (Thin SKILL.md + existing Python helpers; add triage-specific Python only if deterministic logic emerges, per G-Skill-2.)
