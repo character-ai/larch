@@ -842,8 +842,8 @@ def test_decision_lock_rejects_swapped_registry_root(
 
     def swap_after_open(path: str | bytes | os.PathLike[str] | os.PathLike[bytes], flags: int, mode: int = 0o777, *, dir_fd: int | None = None) -> int:
         fd = original_open(path, flags, mode, dir_fd=dir_fd)
-        if Path(path) == registry_root and dir_fd is None:
-            registry_root.rename(moved_root)
+        if Path(os.fsdecode(path)) == registry_root and dir_fd is None:
+            _ = registry_root.rename(moved_root)
             registry_root.symlink_to(outside, target_is_directory=True)
         return fd
 
