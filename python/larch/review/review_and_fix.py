@@ -179,7 +179,7 @@ def _porcelain_dirty_paths(porcelain: str) -> frozenset[str]:
         if len(line) < 4:
             continue
         path = line[3:]
-        if " -> " in path:
+        if " -> " in path and "R" in line[:2]:
             old, new = path.split(" -> ", 1)
             if old:
                 dirty.add(old)

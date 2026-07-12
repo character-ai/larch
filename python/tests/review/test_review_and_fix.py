@@ -1959,6 +1959,12 @@ _STAGE_ALL_STATUS = ["git", "status", "--porcelain", "--untracked-files=all"]
 _POST_COMMIT_STATUS = ["git", "status", "--porcelain"]
 
 
+def test_porcelain_dirty_paths_preserves_ordinary_arrow_filename():
+    assert review_and_fix._porcelain_dirty_paths(  # type: ignore[reportPrivateUsage]
+        " M review -> fixes.py\n"
+    ) == {"review -> fixes.py"}
+
+
 @pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_dirty_no_delta_paths_noops(tmp_path, monkeypatch, capsys):
     # Dirty tree with no review-delta paths is benign — pre-existing dirt (issue #5715).
