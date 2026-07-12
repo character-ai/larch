@@ -1,0 +1,5 @@
+===== review fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude review-fix JSON: Expecting value: line 1 column 1 (char 0)
+Narrative output.
