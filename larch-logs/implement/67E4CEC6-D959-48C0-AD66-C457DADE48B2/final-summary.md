@@ -72,17 +72,17 @@ Warnings (1):
 
 ## Architectural invariants
 
-No invariant violations identified. The diff introduces a new lint tool enforcing `run_log_corpus` as the sole corpus-walker owner, promotes `_safe_child_run_dirs` to a public API, and migrates scattered raw `glob`/`scandir`/`walk` call sites to the shared helpers. None of the changed code touches gate disarm logic (I-Gate-1), pause snapshots (I-Pause-1), persisted step-result consumption (I-Stale-1), run-log flush paths (I-Flush-1, I-Commit-1), outcome labels (I-Outcome-1), panel slot accounting (I-Slot-1), agent verdict emission (I-Agent-1), or ship/recovery routes (I-Ship-1).
+No invariant violations identified. The changes consolidate raw corpus-traversal calls into run_log_corpus helpers; they do not touch gate disarm logic (I-Gate-1), pause snapshots (I-Pause-1), persisted step result consumption (I-Stale-1), run-log artifact recording (I-Flush-1 / I-Commit-1), committed outcome labels (I-Outcome-1), panel slot accounting (I-Slot-1), agent evidence contracts (I-Agent-1), or ship lifecycle routing (I-Ship-1).
 
 ## Architectural guidelines
 
-No guideline deviations identified. The change is directly aligned with G-Enf-1 (promoting a recurring judgment call to a mechanical lint) and G-Enf-2 (EXEMPT_RELPATHS carries per-entry #7008 reasons, shrinking as the deletion targets land). The new WalkWarning dataclass uses frozen=True (G-Py-1). Inline suppressions carry explicit reasons (G-Py-11). The new main() is registered by (domain, verb) in cli.py (G-CLI-1). Symlink rejection and containment checking are extended, not relaxed (G-Sec-4). The reordering of gc-slimmed marker write to occur after _dir_bytes() measurement in _slim_dir aligns with G-Idem-2 (write completion marker after the postcondition is verified). The contain_root narrowing from logs_root to logs_root/skill in _has_escape_symlink is a security tightening, not a deviation.
+No guideline deviations identified. The diff centralises corpus traversal in run_log_corpus (G-Fix-1, G-Wire-3), exposes WalkWarning as a frozen dataclass with a StrEnum kind (G-Py-1, G-Py-3), catches specific OSError/RuntimeError exceptions and emits structured warnings rather than swallowing silently (G-Py-4), annotates every lint/noqa suppression with an inline reason (G-Py-11), defines classification-glob and manifest-name constants once and shares them within the lint module (G-Cfg-3), lands the new lint gate together with the producer-side migrations so no valid run is blocked on arrival (G-Gate-1), and grandfathers the three #7008 deletion-target modules in a reason-bearing EXEMPT_RELPATHS set (G-Enf-2). The gc_run_logs.py reordering of gc-slimmed write after _dir_bytes measurement is intentional and does not violate G-Idem-2 because the actual slimming work precedes both.
 
 ## /implement run 67E4CEC6-D959-48C0-AD66-C457DADE48B2: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 01:34:24
-- **Cost**: 💰 TOTAL ~$40.53: Claude $7.77, Codex-5.6 $11.73, Codex-mini $1.70, Cursor $15.82 (Composer $12.26, Grok $3.56), Claude (subprocess) $3.51  |  Tokens: 73027k
+- **Cost**: 💰 TOTAL ~$43.02: Claude $10.20, Codex-5.6 $11.73, Codex-mini $1.70, Cursor $15.82 (Composer $12.26, Grok $3.56), Claude (subprocess) $3.57  |  Tokens: 80362k
 - **Issue**: #7009: https://github.com/character-ai/larch/issues/7009
 - **PR**: #7093: https://github.com/character-ai/larch/pull/7093
 - **Plan review**: N/A
@@ -90,7 +90,7 @@ No guideline deviations identified. The change is directly aligned with G-Enf-1 
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 23/34 accepted
-- **Lines (PR diff)**: code +1777/-292, larch-logs +1816/-0
+- **Lines (PR diff)**: code +1813/-302, larch-logs +1823/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
