@@ -1,10 +1,28 @@
 {
-  "highest_closed_issue_number_scanned": 6899,
+  "highest_closed_issue_number_scanned": 7111,
+  "proposals": [
+    {
+      "filed_issue": null,
+      "id": "origin-marker-writer-surface",
+      "run_date": "2026-07-12T20:41:35Z",
+      "status": "proposed",
+      "target": "fix:origin-marker-writer-surface",
+      "type": "fix"
+    },
+    {
+      "filed_issue": null,
+      "id": "learn-from-bugs-out-path-symlink-refusal",
+      "run_date": "2026-07-12T20:41:35Z",
+      "status": "proposed",
+      "target": "fix:learn-from-bugs-out-path-symlink-refusal",
+      "type": "fix"
+    }
+  ],
   "repo": "character-ai/larch",
-  "run_date": "2026-07-11T19:23:08Z",
-  "scan_started_at": "2026-07-11T19:18:06Z",
-  "schema_version": 1,
+  "run_date": "2026-07-12T20:41:35Z",
+  "scan_started_at": "2026-07-12T20:25:35Z",
+  "schema_version": 2,
   "search": "[BUG] in:title",
-  "selected_count": 14,
+  "selected_count": 10,
   "state": "closed"
 }
