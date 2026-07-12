@@ -236,7 +236,7 @@ class _Walker(ast.NodeVisitor):
     def _track_assignment(self, node: ast.Assign | ast.AnnAssign) -> None:
         self.generic_visit(node)
         targets = node.targets if isinstance(node, ast.Assign) else (node.target,)
-        names = set().union(*(self._target_names(target) for target in targets))
+        names = set[str]().union(*(self._target_names(target) for target in targets))
         value = node.value
         if value is None:
             return

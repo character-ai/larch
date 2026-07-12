@@ -19,6 +19,8 @@ DEFAULT_MANIFEST_CANDIDATES: tuple[str, ...] = ("manifest.json", "run-manifest.j
 RoundSort = Literal["numeric", "lexical"]
 _ROUND_DIR_RE = re.compile(r"^round-(\d+)$")
 _ROUND_IN_NAME_RE = re.compile(r"round-(\d+)")
+_DESIGN_CLASSIFICATION_PARTS = 3
+_IMPLEMENT_CLASSIFICATION_PARTS = 2
 
 
 class WalkWarningKind(StrEnum):
@@ -291,7 +293,7 @@ def _timestamp_field(data: Mapping[str, Any], *keys: str) -> tuple[str, bool]:
             return "", True
         text = value.strip()
         try:
-            _ = datetime.fromisoformat(text.replace("Z", "+00:00"))
+            _ = datetime.fromisoformat(text)
         except ValueError:
             return "", True
         return text, False
@@ -400,14 +402,7 @@ def classification_tsv_paths(
     round_sort: RoundSort = "numeric",
 ) -> list[Path]:
     """Return canonical classification TSV paths for one contained run directory."""
-    expected_parts: tuple[str, ...]
-    if skill == "design":
-        expected_parts = ("plan-review",)
-    elif skill == "implement":
-        expected_parts = ()
-    elif skill == "review":
-        expected_parts = ()
-    else:
+    if skill not in {"design", "implement", "review"}:
         return []
     paths: list[Path] = []
     try:
@@ -419,14 +414,14 @@ def classification_tsv_paths(
             relative = path.relative_to(canonical_run)
         except ValueError:
             continue
-        if skill == "design" and len(relative.parts) == 3 and relative.parts[0] == expected_parts[0] and _ROUND_DIR_RE.fullmatch(relative.parts[1]):
-            paths.append(path)
-        elif skill == "implement" and len(relative.parts) == 2 and _ROUND_DIR_RE.fullmatch(relative.parts[0]):
+        if (skill == "design" and len(relative.parts) == _DESIGN_CLASSIFICATION_PARTS and relative.parts[0] == "plan-review" and _ROUND_DIR_RE.fullmatch(relative.parts[1])) or (skill == "implement" and len(relative.parts) == _IMPLEMENT_CLASSIFICATION_PARTS and _ROUND_DIR_RE.fullmatch(relative.parts[0])):
             paths.append(path)
     if skill == "review":
-        for path in iter_validated_run_files(run_dir, name="", contain_root=run_dir.parent):
-            if re.fullmatch(r"review-findings-classification-round-.*\.tsv", path.name) and path.parent == canonical_run:
-                paths.append(path)
+        paths.extend(
+            path
+            for path in iter_validated_run_files(run_dir, name="", contain_root=run_dir.parent)
+            if re.fullmatch(r"review-findings-classification-round-.*\.tsv", path.name) and path.parent == canonical_run
+        )
     return _sort_classification_paths(paths, round_sort=round_sort)
 
 
