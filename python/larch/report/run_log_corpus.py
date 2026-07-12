@@ -395,6 +395,21 @@ def _sort_classification_paths(paths: list[Path], *, round_sort: RoundSort) -> l
     )
 
 
+def _is_classification_tsv_path(skill: str, relative: Path) -> bool:
+    if skill == "design":
+        return (
+            len(relative.parts) == _DESIGN_CLASSIFICATION_PARTS
+            and relative.parts[0] == "plan-review"
+            and _ROUND_DIR_RE.fullmatch(relative.parts[1]) is not None
+        )
+    if skill == "implement":
+        return (
+            len(relative.parts) == _IMPLEMENT_CLASSIFICATION_PARTS
+            and _ROUND_DIR_RE.fullmatch(relative.parts[0]) is not None
+        )
+    return False
+
+
 def classification_tsv_paths(
     skill: str,
     run_dir: Path,
@@ -414,7 +429,7 @@ def classification_tsv_paths(
             relative = path.relative_to(canonical_run)
         except ValueError:
             continue
-        if (skill == "design" and len(relative.parts) == _DESIGN_CLASSIFICATION_PARTS and relative.parts[0] == "plan-review" and _ROUND_DIR_RE.fullmatch(relative.parts[1])) or (skill == "implement" and len(relative.parts) == _IMPLEMENT_CLASSIFICATION_PARTS and _ROUND_DIR_RE.fullmatch(relative.parts[0])):
+        if _is_classification_tsv_path(skill, relative):
             paths.append(path)
     if skill == "review":
         paths.extend(

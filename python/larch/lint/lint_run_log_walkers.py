@@ -157,6 +157,30 @@ def _is_classification_glob_arg(arg: ast.AST | None) -> bool:
     )
 
 
+def _glob_pattern_looks_like_corpus(
+    pattern_arg: ast.AST | None,
+    pattern_text: str,
+    *,
+    stdlib_glob: bool,
+) -> bool:
+    if pattern_text in {"*", "**"} or pattern_text.startswith("*/") or "larch-logs" in pattern_text:
+        return True
+    pattern_node = pattern_arg or ast.Constant(value="")
+    if _joined_str_contains(pattern_node, "larch-logs"):
+        return True
+    if any(
+        _joined_str_contains(pattern_node, marker)
+        for marker in ("implement/", "design/", "review/")
+    ):
+        return True
+    if not stdlib_glob or pattern_arg is None:
+        return False
+    pattern_dump = ast.dump(pattern_arg)
+    has_corpus_marker = any(marker in pattern_dump for marker in CORPUS_PATH_MARKERS)
+    has_session_marker = any(marker in pattern_dump for marker in SESSION_PATH_MARKERS)
+    return has_corpus_marker and not has_session_marker
+
+
 def _iter_loop_targets(node: ast.AST) -> Iterable[str]:
     if isinstance(node, ast.Name):
         yield node.id
@@ -305,21 +329,10 @@ class _Walker(ast.NodeVisitor):
                 "use run_log_corpus validated-run helpers instead of Path.rglob on corpus roots",
             )
             return
-        if corpusish and (
-            pattern_text in {"*", "**"}
-            or pattern_text.startswith("*/")
-            or "larch-logs" in pattern_text
-            or _joined_str_contains(pattern_arg or ast.Constant(value=""), "larch-logs")
-            or any(
-                _joined_str_contains(pattern_arg or ast.Constant(value=""), marker)
-                for marker in ("implement/", "design/", "review/")
-            )
-            or (
-                stdlib_glob
-                and pattern_arg is not None
-                and any(marker in ast.dump(pattern_arg) for marker in CORPUS_PATH_MARKERS)
-                and not any(marker in ast.dump(pattern_arg) for marker in SESSION_PATH_MARKERS)
-            )
+        if corpusish and _glob_pattern_looks_like_corpus(
+            pattern_arg,
+            pattern_text,
+            stdlib_glob=stdlib_glob,
         ):
             self._add(
                 node,
