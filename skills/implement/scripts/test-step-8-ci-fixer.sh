@@ -5,7 +5,9 @@ set -euo pipefail
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 WRAPPER="$SCRIPT_DIR/step-8-ci-fixer.sh"
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/larch-ci-fixer-test.XXXXXX")
+TMP_BASE=${TMPDIR:-/tmp}
+TMP=$(mktemp -d "${TMP_BASE%/}/larch-ci-fixer-test.XXXXXX")
+TMP=$(cd "$TMP" && pwd -P)
 trap 'rm -rf "$TMP"' EXIT
 
 contains() {
@@ -200,10 +202,21 @@ contains "$TMP/crashed-final.out" 'REASON=crashed-lane-tiers-exhausted'
 setup_finalize_fixture crashed-salvage codex 1 44
 printf 'salvaged\n' >"$FINALIZE_REPO/README"
 git -C "$FINALIZE_REPO" add README
-git -C "$FINALIZE_REPO" commit -m 'Apply CI fixer working-tree edits (codex)' >/dev/null
+git -C "$FINALIZE_REPO" commit -m 'Apply CI fixer working-tree edits (codex)' \
+  -m "Larch-Salvage-Step: $FINALIZE_STEP" >/dev/null
 run_finalize "$TMP/crashed-salvage.out"
 contains "$TMP/crashed-salvage.out" 'RESULT=reship'
 contains "$TMP/crashed-salvage.out" 'REASON=crashed-lane-salvage-commit'
+[ ! -f "$FINALIZE_LINEAGE" ]
+
+# An expected subject without lane-bound provenance cannot authorize reship.
+setup_finalize_fixture crashed-spoofed codex 1 47
+printf 'spoofed\n' >"$FINALIZE_REPO/README"
+git -C "$FINALIZE_REPO" add README
+git -C "$FINALIZE_REPO" commit -m 'Apply CI fixer working-tree edits (codex)' >/dev/null
+run_finalize "$TMP/crashed-spoofed.out"
+contains "$TMP/crashed-spoofed.out" 'RESULT=operator-bail'
+contains "$TMP/crashed-spoofed.out" 'REASON=crashed-lane-head-unverified'
 [ ! -f "$FINALIZE_LINEAGE" ]
 
 # Dirty repository state fails closed.

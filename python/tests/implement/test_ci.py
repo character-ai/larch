@@ -841,6 +841,25 @@ def _lane_identity(repo: Path, impl: Path) -> ci.ci_fixer_lane.LaneIdentity:
     )
 
 
+def _salvage_commit_message(
+    identity: ci.ci_fixer_lane.LaneIdentity | ci.ci_fixer_lane.CrashFinalizeIdentity,
+    provenance: str,
+) -> str:
+    subject = f"Apply CI fixer working-tree edits ({identity.tier})"
+    if provenance == "missing":
+        return subject
+    if provenance == "wrong-step":
+        return f"{subject}\n\nLarch-Salvage-Step: wrong-step"
+    if provenance == "duplicate":
+        return (
+            f"{subject}\n\nLarch-Salvage-Step: {identity.step}\n"
+            f"Larch-Salvage-Step: {identity.step}"
+        )
+    if provenance == "valid":
+        return f"{subject}\n\nLarch-Salvage-Step: {identity.step}"
+    raise AssertionError(f"unknown salvage provenance fixture: {provenance}")
+
+
 def test_fixer_lane_dispatch_salvages_uncommitted_fixer_edit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -867,8 +886,168 @@ def test_fixer_lane_dispatch_salvages_uncommitted_fixer_edit(
     assert result.final_head != starting_head
     subject = _run_git(repo, "log", "-1", "--pretty=%s").stdout.strip()
     assert subject == "Apply CI fixer working-tree edits (codex)"
+    body = _run_git(repo, "log", "-1", "--pretty=%B").stdout
+    assert f"Larch-Salvage-Step: {identity.step}" in body
     # The fixer's edit was committed, so the tree is clean again.
     assert _run_git(repo, "status", "--porcelain").stdout == ""
+
+
+def test_fixer_lane_dispatch_accepts_lane_bound_direct_head_change(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    evidence = ci.ci_fixer_lane.EvidenceState(impl / "failure.md", "distilled", "c" * 64)
+
+    def committing_launcher(_argv: list[str] | None) -> int:
+        (repo / "tracked.txt").write_text("fixed directly\n", encoding="utf-8")
+        _run_git(repo, "add", "tracked.txt")
+        _run_git(repo, "commit", "-m", _salvage_commit_message(identity, "valid"))
+        return 0
+
+    result = ci.ci_fixer_lane._dispatch(
+        identity, evidence, runner=proc, launchers={"codex": committing_launcher}
+    )
+
+    assert result.result == "reship"
+    assert result.reason == "fixer-produced-change"
+
+
+@pytest.mark.parametrize("provenance", ["missing", "wrong-step", "duplicate"])
+def test_fixer_lane_dispatch_rejects_unverified_direct_head_change(
+    tmp_path: Path, provenance: str
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    evidence = ci.ci_fixer_lane.EvidenceState(impl / "failure.md", "distilled", "c" * 64)
+
+    def committing_launcher(_argv: list[str] | None) -> int:
+        (repo / "tracked.txt").write_text(f"{provenance}\n", encoding="utf-8")
+        _run_git(repo, "add", "tracked.txt")
+        _run_git(repo, "commit", "-m", _salvage_commit_message(identity, provenance))
+        return 0
+
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="provenance is unverified"):
+        ci.ci_fixer_lane._dispatch(
+            identity, evidence, runner=proc, launchers={"codex": committing_launcher}
+        )
+
+    assert _run_git(repo, "rev-parse", "HEAD").stdout.strip() != starting_head
+    assert not (identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE).exists()
+    assert not tuple(identity.handoff_dir.glob("lineage-*.tsv"))
+
+
+@pytest.mark.parametrize("provenance", ["missing", "wrong-step", "duplicate"])
+def test_fixer_lane_dispatch_rejects_unverified_uncommitted_salvage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provenance: str
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    evidence = ci.ci_fixer_lane.EvidenceState(impl / "failure.md", "distilled", "c" * 64)
+
+    def editing_launcher(_argv: list[str] | None) -> int:
+        (repo / "tracked.txt").write_text(f"{provenance}\n", encoding="utf-8")
+        return 0
+
+    def malformed_salvage(
+        salvage_identity: ci.ci_fixer_lane.LaneIdentity,
+        *,
+        runner: proc.Runner,
+        baseline: dict[str, str] | None,
+    ) -> str:
+        assert runner is proc
+        assert baseline == {}
+        _run_git(repo, "add", "tracked.txt")
+        _run_git(
+            repo,
+            "commit",
+            "-m",
+            _salvage_commit_message(salvage_identity, provenance),
+        )
+        return _run_git(repo, "rev-parse", "HEAD").stdout.strip()
+
+    monkeypatch.setattr(
+        ci.ci_fixer_lane, "_salvage_uncommitted_fixer_edits", malformed_salvage
+    )
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="provenance is unverified"):
+        ci.ci_fixer_lane._dispatch(
+            identity, evidence, runner=proc, launchers={"codex": editing_launcher}
+        )
+
+    assert _run_git(repo, "rev-parse", "HEAD").stdout.strip() != starting_head
+    assert not (identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE).exists()
+    assert not tuple(identity.handoff_dir.glob("lineage-*.tsv"))
+
+
+def test_fixer_lane_dispatch_salvage_provenance_verification_failure_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    impl = tmp_path / "impl"
+    identity = _lane_identity(repo, impl)
+    evidence = ci.ci_fixer_lane.EvidenceState(impl / "failure.md", "distilled", "c" * 64)
+
+    def editing_launcher(_argv: list[str] | None) -> int:
+        (repo / "tracked.txt").write_text("valid edit\n", encoding="utf-8")
+        return 0
+
+    def reject_provenance(
+        _identity: ci.ci_fixer_lane.LaneIdentity | ci.ci_fixer_lane.CrashFinalizeIdentity,
+        *,
+        runner: proc.Runner,
+        live_head: str,
+    ) -> bool:
+        assert runner is proc
+        assert live_head != starting_head
+        return False
+
+    monkeypatch.setattr(
+        ci.ci_fixer_lane, "_salvage_provenance_valid", reject_provenance
+    )
+    with pytest.raises(ci.ci_fixer_lane.LaneClosedError, match="provenance is unverified"):
+        ci.ci_fixer_lane._dispatch(
+            identity, evidence, runner=proc, launchers={"codex": editing_launcher}
+        )
+
+    assert _run_git(repo, "rev-parse", "HEAD").stdout.strip() != starting_head
+    assert _run_git(repo, "status", "--porcelain").stdout == ""
+    assert not (identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE).exists()
+
+
+def test_fixer_lane_main_does_not_persist_round_for_unverified_salvage_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    identity = _lane_identity(repo, tmp_path / "impl")
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "prepare_failure_evidence",
+        lambda *_args, **_kwargs: ci_monitor.LogCollectResult("failed check\n", "ready"),
+    )
+
+    def committing_launcher(_argv: list[str] | None) -> int:
+        (repo / "tracked.txt").write_text("spoofed\n", encoding="utf-8")
+        _run_git(repo, "add", "tracked.txt")
+        _run_git(repo, "commit", "-m", _salvage_commit_message(identity, "missing"))
+        return 0
+
+    assert ci.ci_fixer_lane.main([
+        "--repo-root", str(identity.repo_root), "--implement-tmpdir", str(identity.implement_tmpdir),
+        "--handoff-dir", str(identity.handoff_dir), "--repo", identity.repo,
+        "--run-id", identity.run_id, "--tier", identity.tier,
+        "--attempt", str(identity.attempt), "--starting-head", starting_head,
+        "--input-fingerprint", identity.input_fingerprint,
+        "--bgjob-result-env", str(identity.result_env),
+    ], runner=proc, launchers={"codex": committing_launcher}) == config.EXIT_INTERNAL_ERROR
+
+    assert "STATUS=closed-failure" in capsys.readouterr().out
+    assert not (identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE).exists()
 
 
 def test_fixer_lane_dispatch_reports_no_progress_when_tree_clean(
@@ -1193,13 +1372,50 @@ def test_crashed_lane_validated_salvage_commit_reships(tmp_path: Path) -> None:
     identity = _crash_identity(repo, tmp_path / "impl", starting_head=starting_head)
     (repo / "tracked.txt").write_text("salvaged\n", encoding="utf-8")
     _run_git(repo, "add", "tracked.txt")
-    _run_git(repo, "commit", "-m", "Apply CI fixer working-tree edits (codex)")
+    _run_git(repo, "commit", "-m", _salvage_commit_message(identity, "valid"))
 
     result = ci.ci_fixer_lane.finalize_crashed_lane(
         identity, runner=proc, availability=_all_tools()
     )
 
     assert result.result == "reship"
+    assert not identity.lineage.exists()
+
+
+def test_crashed_lane_spoofed_subject_without_trailer_bails(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl", starting_head=starting_head)
+    (repo / "tracked.txt").write_text("spoofed\n", encoding="utf-8")
+    _run_git(repo, "add", "tracked.txt")
+    _run_git(repo, "commit", "-m", _salvage_commit_message(identity, "missing"))
+
+    result = ci.ci_fixer_lane.finalize_crashed_lane(
+        identity, runner=proc, availability=_all_tools()
+    )
+
+    assert result.result == "operator-bail"
+    assert result.reason == "crashed-lane-head-unverified"
+    assert not identity.lineage.exists()
+
+
+@pytest.mark.parametrize("provenance", ["missing", "wrong-step", "duplicate"])
+def test_crashed_lane_rejects_malformed_salvage_provenance(
+    tmp_path: Path, provenance: str
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    identity = _crash_identity(repo, tmp_path / "impl", starting_head=starting_head)
+    (repo / "tracked.txt").write_text(f"{provenance}\n", encoding="utf-8")
+    _run_git(repo, "add", "tracked.txt")
+    _run_git(repo, "commit", "-m", _salvage_commit_message(identity, provenance))
+
+    result = ci.ci_fixer_lane.finalize_crashed_lane(
+        identity, runner=proc, availability=_all_tools()
+    )
+
+    assert result.result == "operator-bail"
+    assert result.reason == "crashed-lane-head-unverified"
     assert not identity.lineage.exists()
 
 
