@@ -439,6 +439,28 @@ def test_fresh_launch_failure_preserves_completion_marker(
     assert marker.is_file()
 
 
+def test_clear_on_fresh_failure_prevents_daemon_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.mkdir()
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    with pytest.raises(adapt.AdaptError, match="unsafe-path"):
+        _ = adapt.start_or_reattach(
+            spec,
+            options=adapt.AdaptOptions(clear_on_fresh=marker),
+        )
+
+    assert not launches
+    assert capsys.readouterr().out == ""
+
+
 def test_live_job_preserves_completion_marker_without_launch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

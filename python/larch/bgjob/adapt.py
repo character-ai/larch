@@ -375,15 +375,32 @@ def _unlink_regular_under(*, path: Path, root: Path, failure_reason: str) -> Non
         os.close(parent_fd)
 
 
-def _clear_before_fresh(*, spec: model.JobSpec, candidate: Path | None) -> None:
+def _clear_before_fresh(*, spec: model.JobSpec, candidate: Path | None) -> Path | None:
     if candidate is None:
-        return
+        return None
     path = _validated_clear_path(spec=spec, candidate=candidate)
+    try:
+        existed = larch_io.trusted_file_present(path, root=spec.tmpdir)
+    except OSError as exc:
+        raise AdaptError("unsafe-path") from exc
     _unlink_regular_under(
         path=path,
         root=spec.tmpdir,
         failure_reason="clear-on-fresh-failed",
     )
+    return path if existed else None
+
+
+def _restore_cleared_path(*, spec: model.JobSpec, path: Path | None) -> None:
+    """Restore an empty completion sentinel when daemon startup never succeeds."""
+    if path is None:
+        return
+    try:
+        if larch_io.trusted_file_present(path, root=spec.tmpdir):
+            return
+        larch_io.trusted_atomic_write(path=path, text="", root=spec.tmpdir, mode=0o600)
+    except (OSError, ValueError) as exc:
+        raise AdaptError("clear-on-fresh-restore-failed") from exc
 
 
 def _invalidate_completed_result(*, spec: model.JobSpec) -> None:
@@ -460,13 +477,15 @@ def _start_fresh(spec: model.JobSpec, *, options: AdaptOptions) -> int:
         raise AdaptError("registry-replaced")
     if _result_or_none(spec=spec):
         raise AdaptError("result-emitted")
+    cleared_path = _clear_before_fresh(spec=spec, candidate=options.clear_on_fresh)
     try:
         rc = daemon.start_daemon(launch_spec)
     except (OSError, RuntimeError, ValueError) as exc:
+        _restore_cleared_path(spec=spec, path=cleared_path)
         raise AdaptError("daemon-start-exception") from exc
     if rc != 0:
+        _restore_cleared_path(spec=spec, path=cleared_path)
         raise AdaptError("daemon-start-failed")
-    _clear_before_fresh(spec=spec, candidate=options.clear_on_fresh)
     return 0
 
 
