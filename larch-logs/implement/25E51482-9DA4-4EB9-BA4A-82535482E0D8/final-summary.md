@@ -66,17 +66,17 @@ Warnings (0):
 
 ## Architectural invariants
 
-No violations identified. The waterfall validates evidence paths before granting agent access (_validate_prompt_evidence_paths, G-Sec-4 pattern); Cursor write-cleanliness is verified via an independently computed dirty-tree sidecar (_cursor_dirty_tree_clean, consistent with I-Gate-1); HEAD SHA, diff_fingerprint, and knowledge_sha256 propagate through every parsed result row and are validated in _parse_result_row (I-Stale-1); lane failures are recorded to the latest_detail map and written to persisted unavailable sidecars (I-Flush-1); unknown extra result rows cause parsed.clear() so no fabricated verdict survives (I-Agent-1).
+No violations identified. The waterfall introduces session-recorded binary availability (CLAUDE_BINARY_FOUND, CURSOR_BINARY_FOUND, CODEX_BINARY_FOUND) recorded at session start, independent of the assessment agents themselves — I-Gate-1 is not triggered. Each result row carries head_sha, base_ref, diff_fingerprint, and knowledge_sha256 fields validated by _parse_result_row before persistence — I-Stale-1 is honoured. Assessment agents are constrained to Read-only tool access (--allowedTools Read, read-only Codex sandbox, evidence-directory workspace for Cursor), and the contract requires them to read evidence through their own tools or emit no verdict — I-Agent-1 is satisfied. I-Pause-1, I-Flush-1, I-Commit-1, I-Outcome-1, I-Slot-1, and I-Ship-1 are not touched by the changed code.
 
 ## Architectural guidelines
 
-No deviations identified. AssessmentLane, LaneOutcome, and LaneContext are frozen dataclasses (G-Py-1). All new tunables and env-var names are Final constants in config.py (G-Cfg-1). _write_text_atomic delegates to larch_io.trusted_atomic_write (G-IO-1). _lane_output_path rejects symlinks and containment-checks before unlink (G-Sec-4). Both Cursor and Codex assessment invocations are covered by exact-argv tests (G-Ext-1). The dirty-tree guard runs on the Cursor success path (G-Ext-4). Zero-findings clean result is first-class (G-Orch-3). launchers and availability are injectable seams enabling offline tests (G-Py-5). The ClaudeLauncher rename to DirectClaudeLauncher is swept through tests in the same change (G-Md-2).
+No deviations identified. New frozen dataclasses (AssessmentLane, LaneOutcome, LaneContext, updated LaunchRequest) follow G-Py-1. All new tunables and env-var names are defined once as Final constants in config.py (G-Cfg-1). _write_text_atomic now delegates to larch_io.trusted_atomic_write (G-IO-1). Symlink and containment checks are present in _lane_output_path, _validate_prompt_evidence_paths, and _review_validate_args (G-Sec-4). The dirty-tree postcondition is checked on both success and failure paths for Cursor; _shared_launcher_artifact_error validates .done/.meta/.sidecar on both paths for Codex (G-Ext-4). The ClaudeLauncher rename to DirectClaudeLauncher is swept in the same change including the test (G-Md-2). The waterfall is linear with at most three lanes per the registry role cap (G-Orch-2). Comprehensive new tests cover waterfall ordering, partial-success, exhaustion, timeout, and invariant-violation short-circuit behaviour.
 
 ## /implement run 25E51482-9DA4-4EB9-BA4A-82535482E0D8: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:54:33
-- **Cost**: 💰 TOTAL ~$44.57: Claude $8.40, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.44  |  Tokens: 60936k
+- **Cost**: 💰 TOTAL ~$46.46: Claude $10.29, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.44  |  Tokens: 64224k
 - **Issue**: #7097: https://github.com/character-ai/larch/issues/7097
 - **PR**: #7106: https://github.com/character-ai/larch/pull/7106
 - **Plan review**: N/A
@@ -84,7 +84,7 @@ No deviations identified. AssessmentLane, LaneOutcome, and LaneContext are froze
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 13/15 accepted
-- **Lines (PR diff)**: code +1349/-229, larch-logs +1175/-0
+- **Lines (PR diff)**: code +1377/-229, larch-logs +1180/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 0
