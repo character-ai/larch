@@ -771,6 +771,16 @@ def test_detector_and_config_validation(tmp_path: Path) -> None:
     assert out5 == ""
     assert "out of range" in err5 or "positive" in err5
 
+    def boolean_line(source: SourceFile) -> list[Finding]:
+        return [Finding(path=source.path, line=True, rule_id="demo-rule", message="x")]
+
+    code_bool_line, out_bool_line, err_bool_line, _ = _run(
+        tmp_path, files={"a.py": "x = 1\n"}, rule=_rule(detect=boolean_line)
+    )
+    assert code_bool_line == EXIT_ERROR
+    assert out_bool_line == ""
+    assert "out of range" in err_bool_line
+
     def bad_message(source: SourceFile) -> list[Finding]:
         return [Finding(path=source.path, line=1, rule_id="demo-rule", message="x\ny")]
 
@@ -798,6 +808,24 @@ def test_detector_and_config_validation(tmp_path: Path) -> None:
     assert code7 == EXIT_ERROR
     assert out7 == ""
     assert "metric" in err7
+
+    def boolean_metric(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="x",
+                metric=True,
+            )
+        ]
+
+    code_bool_metric, out_bool_metric, err_bool_metric, _ = _run(
+        tmp_path, files={"a.py": "x = 1\n"}, rule=_rule(detect=boolean_metric)
+    )
+    assert code_bool_metric == EXIT_ERROR
+    assert out_bool_metric == ""
+    assert "metric" in err_bool_metric
 
     def boom(_source: SourceFile) -> list[Finding]:
         raise RuntimeError("detector exploded")

@@ -354,7 +354,7 @@ def _suppression_reason(
 def _validate_metric(metric: object) -> int | None:
     if metric is None:
         return None
-    if type(metric) is not int or metric < 0:
+    if not isinstance(metric, int) or isinstance(metric, bool) or metric < 0:
         raise ScanError("finding metric must be a non-negative int when present")
     return metric
 
@@ -375,7 +375,12 @@ def _validate_finding(
         raise ScanError(
             f"finding rule_id {rule_id!r} does not match active rule {rule.rule_id!r}"
         )
-    if type(line) is not int or line < 1 or line > len(source.lines):
+    if (
+        not isinstance(line, int)
+        or isinstance(line, bool)
+        or line < 1
+        or line > len(source.lines)
+    ):
         raise ScanError(
             f"finding line {line!r} is out of range for {source.path} "
             f"({len(source.lines)} lines)"
