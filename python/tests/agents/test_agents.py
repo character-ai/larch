@@ -3242,6 +3242,44 @@ def test_review_append_launch_failure_threads_custom_site(tmp_path: Path, monkey
     assert "design Step 3 codex-review" in combined
 
 
+def test_vendor_failure_diagnostics_refuses_symlinked_parts_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "diagnostics.txt"
+    _ = source.write_text("failure detail\n", encoding="utf-8")
+    target = tmp_path / "target"
+    target.mkdir()
+    (tmp_path / "vendor-failure-diagnostics.parts").symlink_to(
+        target, target_is_directory=True
+    )
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    _run_external._append_vendor_failure_diagnostics(  # pylint: disable=protected-access
+        source, site="review Step 2 codex-review", exit_code=1
+    )
+
+    assert not list(target.iterdir())
+
+
+def test_read_tail_update_refuses_symlinked_implement_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outside = tmp_path / "outside-events.jsonl"
+    _ = outside.write_text("attacker content\n", encoding="utf-8")
+    impl = tmp_path / "implement"
+    impl.mkdir()
+    watch = impl / "events.jsonl"
+    watch.symlink_to(outside)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+
+    update = _run_external._read_tail_update(  # pylint: disable=protected-access
+        path=watch, offset=0
+    )
+
+    assert update.offset == 0
+    assert update.text == ""
+
+
 def test_review_append_outer_meta_writes_site(tmp_path: Path) -> None:
     prompt_sidecar = tmp_path / "out.txt.prompt"
     _ = prompt_sidecar.write_text("p", encoding="utf-8")

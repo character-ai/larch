@@ -142,6 +142,19 @@ def read_trusted_text(
     return text
 
 
+def read_trusted_tail(
+    path: str | Path, *, root: str | Path, offset: int
+) -> tuple[int, bytes]:
+    """Read a regular artifact from ``offset`` through a pinned root descriptor."""
+    fd = _open_trusted_regular(Path(path), root=Path(root))
+    with os.fdopen(fd, "rb") as handle:
+        size = os.fstat(handle.fileno()).st_size
+        start = 0 if size < offset else offset
+        handle.seek(start)
+        data = handle.read()
+    return start + len(data), data
+
+
 def trusted_file_present(path: str | Path, *, root: str | Path) -> bool:
     """Return false only for a wholly absent path; reject every unsafe entry."""
     absolute_path, absolute_root = _assert_contained(path=Path(path), root=Path(root))
