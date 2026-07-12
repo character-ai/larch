@@ -1,0 +1,47 @@
+#### Problem
+
+`git/gh.py` is internally clean — single `_gh` choke point, `_retry_read` transient retry, and `loads_json_paginated_list` (gh.py:208) already owning the concatenated-pages format — but it has **no public issue-list wrapper**. `audit_runs.py:141` says so in a noqa comment ("no public issue-list wrapper yet"). It also lacks a few of the view/edit/close variants that ~24 raw-`["gh", ...]` argv sites reimplement; notably there is no `issue_close` wrapper. Without these wrappers there is no single retry/pagination/error authority for callers to adopt.
+
+#### Goal
+
+Add to `python/larch/git/gh.py` (no caller edits in this issue):
+
+- `issue_list_read(runner, *, repo, state, labels, search, fields, paginate)` routing through `_retry_read` + `loads_json_paginated_list`, with one pagination/field/error grammar.
+- The missing view/edit/close variants surfaced by the caller audit — at minimum an `issue_close` wrapper. Confirm whether the 8 issue-view and 11 issue-edit/close raw-argv shapes are all covered by existing `issue_view_*` / `issue_edit*` wrappers, and add any gap.
+
+#### Scope
+
+- `python/larch/git/gh.py`
+- `python/tests/git/test_gh.py`
+
+#### Notes
+
+Foundation issue: caller repointing happens in the sibling issues, which are blocked by this one. Keep the change additive — no behavior change to existing wrappers.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `issue_list_read` wrapper routing through `_retry_read` + `loads_json_paginated_list`.
+- Add `issue_close` wrapper for all close-argv shapes used across `python/larch/`.
+- Fill any view/edit coverage gaps found by auditing 8 view + 11 edit/close raw-argv shapes.
+
+### Non-goals
+- Caller repointing (handled in sibling issues blocked by this one).
+- Behavior changes to existing wrappers.
+- New CLI verbs or module-level commands.
+
+### Approach sketch
+- Audit raw-argv shapes in `python/larch/` against existing `issue_view_*` / `issue_edit*` wrappers; record coverage gaps.
+- Add `issue_list_read(runner, *, repo, state, labels, search, fields, paginate)` via `_retry_read`; parse result with `loads_json_paginated_list`.
+- Add `issue_close(runner, issue, *, repo=None, reason=None, comment=None)` via `_gh`; return `CommandResult`.
+- Add any additional gap wrappers (e.g., plain `issue_view_read` for no-JSON view callers) if the audit finds uncovered shapes.
+- Add tests in `python/tests/git/test_gh.py` for every new function.
+
+### Surfaces in scope
+- `python/larch/git/gh.py`
+- `python/tests/git/test_gh.py`
+
+### Open questions
+- None.

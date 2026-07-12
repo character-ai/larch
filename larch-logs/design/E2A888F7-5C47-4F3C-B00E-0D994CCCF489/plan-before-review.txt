@@ -1,0 +1,88 @@
+## Approach
+
+- Keep the change additive and limited to the GitHub wrapper module and its unit tests.
+- Preserve the existing policy split:
+  - Read operations use `_retry_read`.
+  - Read parsing raises the established `ShipError` or `TransientNetworkError`.
+  - Mutations use `_gh`, return `CommandResult`, and do not retry.
+- Audit the raw issue command shapes in `python/larch/` against the final wrapper signatures. Do not repoint those callers in this change.
+
+## Files to modify/create
+
+### UPDATED: python/larch/git/gh.py
+
+- Add `issue_list_read` with keyword-only `repo`, `state`, `labels`, `search`, `fields`, and `paginate` inputs.
+- Build one deterministic `gh issue list` argv:
+  - Always include `--repo`, `--state`, and `--json`.
+  - Join the requested fields into the `--json` value without reordering them.
+  - Emit one `--label` pair per label.
+  - Include `--search` only when supplied.
+  - Include `--paginate` only when requested.
+- Execute the list read through `_retry_read`.
+- Route non-zero results through the existing read-failure grammar so transient exhaustion and ordinary failures retain their established exception types.
+- Parse successful output with `loads_json_paginated_list`. Return the merged list so single-page arrays, concatenated paginated arrays, empty output, and malformed output share one parser authority.
+- Add `issue_close(runner, issue, *, repo=None, reason=None, comment=None, cwd=None)`.
+  - Normalize the issue identifier with `str`.
+  - Add each optional flag only when supplied.
+  - Call `_gh` once and return its `CommandResult`.
+  - Do not add mutation retries.
+- Cover the audited templated-view gap with a focused read wrapper that accepts JSON fields plus a template, supports optional `repo` and `cwd`, and uses `_retry_read`.
+- Cover the audited issue-label edit gap with a focused mutation wrapper that accepts optional `repo`, repeated add-label values, repeated remove-label values, and `cwd`.
+  - Keep the existing `issue_edit` signature and behavior unchanged.
+  - Use `_gh` once and return `CommandResult`.
+- Treat existing generic JSON view helpers as coverage for ordinary `issue view --json` field combinations.
+- Treat the existing body-based edit helpers as coverage for title and body updates, including their owned temporary body-file handling. Do not expose caller-owned temporary paths unless the audit finds a raw shape that cannot use the content-based API.
+
+### UPDATED: python/tests/git/test_gh.py
+
+- Add `issue_list_read` tests for:
+  - Complete argv construction and stable option ordering.
+  - Multiple labels.
+  - Optional search omission and inclusion.
+  - Pagination omission and inclusion.
+  - Single-page JSON.
+  - Concatenated paginated arrays.
+  - Empty output.
+  - Malformed JSON and non-array pages.
+  - Ordinary command failure.
+  - Transient failure followed by success.
+  - Exhausted transient retries.
+- Add `issue_close` tests for:
+  - The minimal issue-only form.
+  - Optional repository, reason, and comment combinations.
+  - String conversion of numeric issue identifiers.
+  - Returning a failed `CommandResult` without retrying.
+- Add templated issue-view tests that verify exact argv, optional repository handling, the shared read timeout, and transient retry behavior.
+- Add label-edit tests for add-only, remove-only, combined, repeated-label, and optional-repository forms.
+- Extend the mutation policy test to prove the new close and edit wrappers call the runner once, including on transient-looking failures.
+- Retain the existing `issue_edit` assertions as regression coverage for unchanged title and body behavior.
+
+## Edge cases
+
+- Preserve caller-supplied field and label order.
+- Do not emit empty optional flags.
+- Accept empty paginated output as an empty result.
+- Reject valid JSON objects or scalar pages where issue-list arrays are required.
+- Keep arbitrary GitHub state and field values as caller data. Do not introduce policy validation that would block future `gh` values.
+- Do not combine mutation retries with read retries.
+
+## Failure modes
+
+- A non-transient list or view failure raises `ShipError`.
+- Exhausted transient read failures raise `TransientNetworkError` with the final result attached through the existing retry path.
+- Invalid or incorrectly shaped list JSON raises `ShipError`.
+- Close and label-edit failures remain inspectable through their returned `CommandResult`.
+- An incorrect argv order or missing optional flag is caught by exact runner-call assertions.
+
+## Testing strategy
+
+- Run the focused test module:
+  - `python3 -m pytest python/tests/git/test_gh.py -q`
+- Run lint and type checks scoped to the changed Python files using the repository’s documented Python lint commands.
+- Review the raw issue list, view, edit, and close argv audit after implementation. Confirm that each shape is covered by an existing or new wrapper without changing callers.
+
+difficulty: MODERATE
+diff_added: 190
+diff_deleted: 5
+mechanical_churn: false
+diff_lines: 195
