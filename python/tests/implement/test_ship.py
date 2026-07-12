@@ -7030,6 +7030,26 @@ def test_invariant_ship_outcome_present_empty_invariants_classifies_clean(tmp_pa
     assert ship.architectural_guidelines.validate_invariant_ship_outcome_record(data) is None
 
 
+def test_prepared_invariant_result_maps_shared_materialization_status(tmp_path: Path) -> None:
+    prepared = ship.architectural_guidelines.ComposeMaterializationResult(
+        status="present-empty",
+        guidelines_status="present",
+        guidelines_path="ARCHITECTURAL_INVARIANTS.md",
+    )
+
+    result = ship_guidelines._prepared_invariant_result(
+        prepared=prepared,
+        tmpdir=tmp_path,
+        head_sha="abc123",
+        base_ref="origin/main",
+        repo_root=None,
+    )
+
+    assert result.invariants_status == prepared.guidelines_status
+    assert result.assessment_kind == "clean"
+    assert result.reason == ship_guidelines.REASON_INVARIANTS_EMPTY
+
+
 def test_guideline_ship_outcome_missing_status_does_not_infer_from_note(tmp_path: Path) -> None:
     outcome = ship_guidelines.write_guideline_ship_outcome(
         implement_tmpdir=str(tmp_path),

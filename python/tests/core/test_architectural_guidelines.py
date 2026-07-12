@@ -5,12 +5,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+from dataclasses import fields
 from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 
 from larch.core import architectural_guidelines as ag
+from larch.core.assessment_kind import GUIDELINES, INVARIANTS, AssessmentKind
 from larch.implement import ship_guidelines
 from larch.report import run_log_flush
 from test_support import make_run_context
@@ -57,6 +59,59 @@ def _valid_guideline_ship_outcome_record(**overrides: object) -> dict[str, objec
         "base_ref": "origin/main",
         "assessment_kind": "clean",
     } | overrides
+
+
+def test_assessment_kind_descriptors_cover_distinct_lifecycle_contracts() -> None:
+    required_fields = {
+        "key", "singular", "filename", "env_prefix", "status_field",
+        "status_env_key", "path_env_key", "clean_presentation_note",
+        "assessment_required_line", "design_assessment", "staged_assessment",
+        "staged_assessment_env", "materialized_diff", "durable_note",
+        "durable_note_env", "dropped_note_artifact", "ship_outcome_sidecar",
+        "materialize_env", "heading_re", "identifier_re", "parse_entries",
+        "authored_outcomes", "non_clean_authored_outcome", "ship_outcomes",
+        "non_clean_ship_outcome", "absent_reason", "invalid_reason",
+        "empty_reason", "non_clean_note_reason", "ship_reason_tokens",
+        "ship_present_empty", "design_requires_nonempty", "design_empty_removes",
+        "flush_outcome",
+    }
+    assert {field.name for field in fields(AssessmentKind)} == required_fields
+    for kind in (GUIDELINES, INVARIANTS):
+        assert kind.filename
+        assert kind.env_prefix
+        assert kind.status_field
+        assert kind.status_env_key
+        assert kind.path_env_key
+        assert kind.authored_outcomes
+        assert kind.ship_outcomes
+        assert kind.ship_reason_tokens
+
+    assert GUIDELINES.parse_entries is not INVARIANTS.parse_entries
+    assert GUIDELINES.design_requires_nonempty is False
+    assert INVARIANTS.design_requires_nonempty is True
+    assert GUIDELINES.ship_present_empty is False
+    assert INVARIANTS.ship_present_empty is True
+
+
+def test_assessment_kind_entry_policies_preserve_the_kind_specific_bodies() -> None:
+    raw = """### G-Test-1: Filter details
+- Why: retained detail.
+- Mechanized: retained ratchet.
+- Extra: omitted detail.
+
+### I-Test-1: Preserve details
+- Why: retained detail.
+- Extra: retained invariant detail.
+"""
+
+    assert GUIDELINES.parse_entries(raw) == (
+        "### G-Test-1: Filter details\n- Mechanized: retained ratchet."
+    )
+    assert INVARIANTS.parse_entries(raw) == (
+        "### I-Test-1: Preserve details\n"
+        "- Why: retained detail.\n"
+        "- Extra: retained invariant detail."
+    )
 
 
 def test_ship_outcome_operator_waiver_marker_is_additive_and_constrained() -> None:
@@ -2217,6 +2272,29 @@ def test_invariants_present_note_empty_has_no_assessment_marker(tmp_path: Path, 
     assert ag.INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED not in out
 
 
+def test_empty_design_persistence_remains_asymmetric_by_kind(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "git")
+    (repo / ag.GUIDELINES_FILENAME).write_text("# No entries yet\n", encoding="utf-8")
+    (repo / ag.INVARIANTS_FILENAME).write_text("# No entries yet\n", encoding="utf-8")
+    design_tmpdir = tmp_path / "design"
+
+    assert ag.persist_design_assessment(
+        repo_root=repo,
+        design_tmpdir=str(design_tmpdir),
+        assessment="clean",
+    ) == 0
+    guideline_path = design_tmpdir / ag.DESIGN_ASSESSMENT
+    assert guideline_path.read_text(encoding="utf-8") == ag.CLEAN_PRESENTATION_NOTE + "\n"
+
+    invariant_path = design_tmpdir / ag.INVARIANT_DESIGN_ASSESSMENT
+    invariant_path.write_text("stale\n", encoding="utf-8")
+    assert ag.persist_invariant_design_assessment(
+        repo_root=repo,
+        design_tmpdir=str(design_tmpdir),
+    ) == 0
+    assert not invariant_path.exists()
+
+
 def test_invariant_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
     repo = _repo(tmp_path / "git")
     (repo / ag.INVARIANTS_FILENAME).write_text(
@@ -2237,6 +2315,8 @@ def test_invariant_compose_assessment_persists_durable_note(tmp_path: Path) -> N
     result = ag.prepare_invariant_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha)
     assert result.status == "assessment-required"
     assert result.diff_path == tmpdir / ag.INVARIANT_MATERIALIZED_DIFF
+    assert result.guidelines_status == "present"
+    assert result.guidelines_path == str(repo / ag.INVARIANTS_FILENAME)
     assert (tmpdir / ag.INVARIANT_MATERIALIZE_ENV).is_file()
 
     ag.write_invariant_compose_assessment(

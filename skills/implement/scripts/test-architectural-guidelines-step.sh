@@ -97,6 +97,11 @@ test ! -e "$TMPDIR/architectural-guideline-drop-notice.txt"
 cmp "$ASSESSMENT" "$TMPDIR/architectural-guideline-note.md"
 grep -Fxq "ASSESSMENT_KIND=clean" "$TMPDIR/architectural-guideline-note.meta.env"
 
+# The retained wrapper also accepts an absolute assessment path under the run tmpdir.
+IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
+  "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" "$ASSESSMENT" clean >/dev/null
+cmp "$ASSESSMENT" "$TMPDIR/architectural-guideline-note.md"
+
 MISSING_OUTCOME_TMP="$TMPDIR/missing-outcome"
 mkdir -p "$MISSING_OUTCOME_TMP"
 cp "$TMPDIR/architectural-guideline-materialize.env" "$MISSING_OUTCOME_TMP/architectural-guideline-materialize.env"
@@ -139,3 +144,18 @@ grep -Fxq "HEAD_SHA=$HEAD_SHA" "$TMPDIR/architectural-invariant-note.meta.env"
 grep -Fxq "ASSESSED_HEAD_SHA=$HEAD_SHA" "$TMPDIR/architectural-invariant-note.meta.env"
 grep -Fxq "INVARIANTS_STATUS=present" "$TMPDIR/architectural-invariant-note.meta.env"
 grep -Fxq "ASSESSMENT_KIND=clean" "$TMPDIR/architectural-invariant-note.meta.env"
+
+IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
+  "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" "$INVARIANT_ASSESSMENT" clean >/dev/null
+cmp "$INVARIANT_ASSESSMENT" "$TMPDIR/architectural-invariant-note.md"
+
+set +e
+IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
+  "$ROOT/skills/implement/scripts/step-architectural-guidelines-write-compose.sh" >/dev/null 2>&1
+missing_guideline_arg_rc=$?
+IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
+  "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" >/dev/null 2>&1
+missing_invariant_arg_rc=$?
+set -e
+test "$missing_guideline_arg_rc" -ne 0
+test "$missing_invariant_arg_rc" -ne 0

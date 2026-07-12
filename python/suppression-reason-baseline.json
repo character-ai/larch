@@ -513,20 +513,6 @@
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: C901, PLR0911, PLR0912",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: C901, PLR0911, PLR0912",
-    "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
     "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush chunking and dedupe.",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
@@ -611,42 +597,7 @@
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 5,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 6,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 7,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 8,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
     "text": "noqa: PLC0415 # lint-layering: ok validate-design-tmpdir must stay co-located with arg-parsing logic.",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok validator needs ship_guidelines constants",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
@@ -690,20 +641,6 @@
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportPrivateUsage=false",
     "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[assignment]",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[assignment]",
-    "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -2453,13 +2390,6 @@
     "file": "larch/implement/ship.py",
     "suppression_kind": "type-ignore",
     "text": "type: ignore[arg-type]",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/implement/ship.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[reportUnusedFunction]",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
