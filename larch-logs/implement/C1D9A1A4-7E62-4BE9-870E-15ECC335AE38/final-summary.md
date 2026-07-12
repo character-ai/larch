@@ -56,14 +56,14 @@ No meaningful deviations identified. The diff fixes the class rather than a sing
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:59:01
-- **Cost**: 💰 TOTAL ~$28.52: Claude $7.97, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $7.98  |  Tokens: 53133k
+- **Cost**: 💰 TOTAL ~$29.62: Claude $9.04, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $8.01  |  Tokens: 56103k
 - **Issue**: #7054: https://github.com/character-ai/larch/issues/7054
 - **PR**: #7090: https://github.com/character-ai/larch/pull/7090
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/8 accepted
-- **Lines (PR diff)**: code +647/-115, larch-logs +1043/-0
+- **Lines (PR diff)**: code +647/-115, larch-logs +1055/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
