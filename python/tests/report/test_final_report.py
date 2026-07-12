@@ -18,9 +18,16 @@ from larch.errors import ShipError
 from larch.implement import scope_disposition
 from larch.report import final_report, progress_report
 
+from test_support import IMPLEMENT_BASELINE_KEYS, write_session_env
+
+
 def _write_minimal_state(tmp_path: Path) -> None:
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run1\n", encoding="utf-8")
-    (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS,
+        overrides={"REPO": "o/r", "MODE": "N/A"},
+    )
     (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=1\nPR_URL=https://github.com/o/r/pull/1\n", encoding="utf-8")
     (tmp_path / "finalize-state.sh").write_text("", encoding="utf-8")
     (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
@@ -1351,9 +1358,10 @@ def test_cursor_token_argv_aggregate_bucket_uses_composer_flags() -> None:
 def test_plan_coverage_summary_recovers_post_merge_stale_live_mismatch(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "session-env.sh").write_text(
-        f"REPO_ROOT={tmp_path}\n",
-        encoding="utf-8",
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS - {"REPO_ROOT"},
+        overrides={"REPO_ROOT": str(tmp_path)},
     )
     (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
@@ -1375,9 +1383,10 @@ def test_plan_coverage_summary_recovers_post_merge_stale_live_mismatch(
 def test_plan_coverage_summary_propagates_non_mismatch_ship_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "session-env.sh").write_text(
-        f"REPO_ROOT={tmp_path}\n",
-        encoding="utf-8",
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS - {"REPO_ROOT"},
+        overrides={"REPO_ROOT": str(tmp_path)},
     )
 
     def boom(*, tmpdir: Path, repo_root: Path, manifest_path: Path | None = None) -> None:
@@ -1400,9 +1409,10 @@ def test_write_final_report_omits_coverage_line_on_stale_mismatch_without_sentin
     to empty and still writes summary-final.md.
     """
     _write_minimal_state(tmp_path)
-    (tmp_path / "session-env.sh").write_text(
-        f"REPO=o/r\nMODE=N/A\nREPO_ROOT={tmp_path}\n",
-        encoding="utf-8",
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS - {"REPO_ROOT"},
+        overrides={"REPO": "o/r", "MODE": "N/A", "REPO_ROOT": str(tmp_path)},
     )
     _stub_cost_and_assessment(monkeypatch)
 
@@ -1429,9 +1439,10 @@ def test_write_final_report_propagates_non_mismatch_coverage_ship_error(
     coverage artifact must not be silently swallowed.
     """
     _write_minimal_state(tmp_path)
-    (tmp_path / "session-env.sh").write_text(
-        f"REPO=o/r\nMODE=N/A\nREPO_ROOT={tmp_path}\n",
-        encoding="utf-8",
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS - {"REPO_ROOT"},
+        overrides={"REPO": "o/r", "MODE": "N/A", "REPO_ROOT": str(tmp_path)},
     )
     _stub_cost_and_assessment(monkeypatch)
 
@@ -1448,9 +1459,10 @@ def test_write_final_report_propagates_non_mismatch_coverage_ship_error(
 def test_plan_coverage_summary_post_merge_stale_mismatch_requires_persisted_coverage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "session-env.sh").write_text(
-        f"REPO_ROOT={tmp_path}\n",
-        encoding="utf-8",
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS - {"REPO_ROOT"},
+        overrides={"REPO_ROOT": str(tmp_path)},
     )
     (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
@@ -1468,9 +1480,10 @@ def test_plan_coverage_summary_post_merge_stale_mismatch_requires_persisted_cove
 def test_plan_coverage_summary_stale_mismatch_propagates_invalid_persisted_coverage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    (tmp_path / "session-env.sh").write_text(
-        f"REPO_ROOT={tmp_path}\n",
-        encoding="utf-8",
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS - {"REPO_ROOT"},
+        overrides={"REPO_ROOT": str(tmp_path)},
     )
     (tmp_path / "post-merge-sentinel").write_text("", encoding="utf-8")
 
@@ -1507,9 +1520,10 @@ def test_write_final_report_coverage_line_not_fed_run_log_manifest(
         json.dumps({"schema_version": 2, "status": "partial"}),  # no todos_left
         encoding="utf-8",
     )
-    (tmp_path / "session-env.sh").write_text(
-        f"REPO=o/r\nMODE=N/A\nREPO_ROOT={tmp_path}\n",
-        encoding="utf-8",
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS - {"REPO_ROOT"},
+        overrides={"REPO": "o/r", "MODE": "N/A", "REPO_ROOT": str(tmp_path)},
     )
     _stub_cost_and_assessment(monkeypatch)
 

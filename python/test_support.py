@@ -14,6 +14,49 @@ from larch.agents import collect_results
 from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 
+from tests.support.repo_contract import ROOT, repo_root
+
+CLI = ROOT / "python" / "cli.py"
+
+# Session/tmpdir builders depend on the root contract above; re-export after it.
+from tests.support.session import (  # noqa: E402  # pylint: disable=wrong-import-position
+    DESIGN_BASELINE_KEYS,
+    IMPLEMENT_BASELINE_KEYS,
+    make_design_tmpdir,
+    make_implement_tmpdir,
+    seed_feature_description,
+    seed_plan,
+    seed_run_params,
+    write_design_source_env,
+    write_session_env,
+)
+
+__all__ = [
+    "CLI",
+    "DESIGN_BASELINE_KEYS",
+    "IMPLEMENT_BASELINE_KEYS",
+    "PR_VIEW_BEHIND_JSON",
+    "PR_VIEW_OPEN_JSON",
+    "ROOT",
+    "RecordingRunner",
+    "completed",
+    "gh_pr_view",
+    "gh_result",
+    "make_design_tmpdir",
+    "make_implement_tmpdir",
+    "make_run_context",
+    "make_zero_findings_plan_review_fake_cli",
+    "merge_admin_responses",
+    "ok",
+    "repo_root",
+    "run_cli",
+    "seed_feature_description",
+    "seed_plan",
+    "seed_run_params",
+    "write_design_source_env",
+    "write_session_env",
+]
+
 
 def _empty_calls() -> list[list[str]]:
     return []
@@ -63,15 +106,6 @@ class RecordingRunner:
         result = self.responses[self._index]
         self._index += 1
         return result
-
-
-ROOT = Path(__file__).resolve().parents[1]
-CLI = ROOT / "python" / "cli.py"
-
-
-def repo_root() -> Path:
-    """Return the resolved repository root used by test helpers."""
-    return ROOT
 
 
 def run_cli(

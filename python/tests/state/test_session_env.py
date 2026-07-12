@@ -18,7 +18,8 @@ from larch.core import proc
 from larch.report import progress_file
 from larch.state import session_env
 
-CLI = Path(__file__).resolve().parents[2] / "cli.py"
+from test_support import CLI, make_design_tmpdir, seed_run_params, write_design_source_env
+
 TOOL_ENV_KEYS = ("CODEX_PRESENT", "CURSOR_PRESENT", "CODEX_AVAILABLE", "CURSOR_AVAILABLE", "CODEX_BINARY_FOUND", "CURSOR_BINARY_FOUND")
 
 
@@ -2169,3 +2170,17 @@ def test_write_design_env_includes_live_mutation_key(tmp_path: Path, monkeypatch
     assert rc == 0
     content = out.read_text(encoding="utf-8")
     assert f"{config.LIVE_MUTATION_AUTH_KEY}=true" in content
+
+def test_design_source_helper_matches_writer_key_contract(tmp_path: Path) -> None:
+    """Fixture helper stays on WRITE_DESIGN_ENV_KEYS and omits implement-only aliases."""
+    design = make_design_tmpdir(tmp_path)
+    text = (design / "source-env.sh").read_text(encoding="utf-8")
+    assert "LARCH_CLAUDE_PLUGIN_ROOT" not in text
+    assert "CODEX_PRESENT" not in text
+    assert "CURSOR_PRESENT" not in text
+    assert "export CLAUDE_PLUGIN_ROOT=" in text
+    assert "export REPO_ROOT=" in text
+    params = seed_run_params(design)
+    assert json.loads(params.read_text(encoding="utf-8"))["schema_version"] == 3
+    refreshed = write_design_source_env(design, overrides={"REPO": "owner/name"})
+    assert "export REPO=owner/name\n" in refreshed.read_text(encoding="utf-8")

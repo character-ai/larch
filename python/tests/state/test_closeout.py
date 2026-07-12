@@ -14,6 +14,8 @@ import pytest
 
 from larch.state import closeout
 
+from test_support import IMPLEMENT_BASELINE_KEYS, write_session_env
+
 
 def _completed(argv: list[str], rc: int = 0) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(argv, rc, stdout="", stderr="")
@@ -343,8 +345,11 @@ def test_step_16_17_render_failure_prints_visible_warning(
 
 def test_read_key_returns_cli_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    session = tmp_path / "session-env.sh"
-    session.write_text("LARCH_RUN_ID=session-run\n", encoding="utf-8")
+    session = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS,
+        overrides={"LARCH_RUN_ID": "session-run"},
+    )
     assert closeout._read_key(path=session, key="LARCH_RUN_ID", default="") == "session-run"
 
 
