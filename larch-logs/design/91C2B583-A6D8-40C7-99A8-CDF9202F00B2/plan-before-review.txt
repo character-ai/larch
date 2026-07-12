@@ -1,0 +1,67 @@
+## Approach
+
+Add an inactive, typed vendor layer. Reuse lower-level agent helpers, but do not change or connect production launchers.
+
+### NEW: python/larch/agents/_vendor.py
+
+- Add frozen request, result, and descriptor dataclasses. Add typed hook callables for preflight, execution, timing, quota mirroring, usage recording, postprocessing, cap-hit handling, and completion promotion.
+- Define canonical Codex, Cursor, and Claude descriptors with unique keys and explicit capabilities. Keep the registry immutable.
+- Build exact argv for:
+  - Codex `read-only` and `workspace-write` sandboxes, including workdir, add-directories, model arguments, trust/auth arguments, output, JSON events, and prompt placement.
+  - Cursor read-only review mode and workspace-write mode, preserving argument order, model placement, workspace, output format, and prompt wrapping.
+  - Claude read-only and workspace-write tool grants, JSON output, model, add-directory, and stdin prompt behavior.
+- Add model extraction for Codex `-m`, Cursor `--model`, and Claude `--model` argv without raising on missing values.
+- Add token-cap checking through the existing `cli.py token check-budget` contract. Preserve the established `STATUS=cap_hit` data and delegate family-specific cap-hit artifact emission through hooks.
+- Add a Cursor configuration context manager. Create an isolated directory, copy `~/.cursor/cli-config.json` with narrow `OSError` suppression, set and restore `CURSOR_CONFIG_DIR`, and remove the directory on normal return or exceptions.
+- Parse Claude JSON envelopes into result text and error state while preserving malformed, empty-result, and `is_error` distinctions for family postprocessing.
+- Implement `run_vendor_launch` in this order: token cap, preflight, model resolution, configuration context, argv construction, execution, quota mirroring, timing and usage, family postprocessing, then completion promotion.
+- Run quota mirroring for both successful and failed process results. Never promote completion if usage or postprocessing raises.
+- Keep execution and side effects injectable so tests require no vendor binary, network access, or production launcher.
+- Restrict imports to core utilities and lower-level agent helpers. Do not import `_drafter.py`, `_review_launcher.py`, `_ci_launcher.py`, any implement module, or another launcher family.
+
+## Edge cases
+
+- Handle absent token caps without invoking the cap command.
+- Treat cap hits as a preflight short circuit. Do not create a vendor context or invoke vendor auth.
+- Preserve argv ordering with zero, one, or multiple add-directories.
+- Restore a pre-existing `CURSOR_CONFIG_DIR`; remove it when none existed.
+- Clean Cursor state after preflight, runner, usage, or postprocess exceptions.
+- Treat malformed Claude JSON, non-object JSON, missing results, non-string results, and explicit error envelopes predictably.
+- Return no model for absent or dangling model flags.
+
+## Failure modes
+
+- Propagate unexpected hook and runner exceptions after context cleanup.
+- Do not run usage, postprocessing, or completion promotion after preflight or cap refusal.
+- Mirror quota evidence after any completed vendor process, regardless of its exit code.
+- Block completion promotion when usage or postprocessing fails.
+
+### NEW: python/tests/agents/test_vendor.py
+
+- Assert descriptor keys are unique and each vendor supplies every required capability.
+- Assert the module and current production launchers remain disconnected. Check that `_vendor.py` has no launcher-family or implement imports and that existing launchers do not import `_vendor.py`.
+- Add full-list argv assertions for every required Codex, Cursor, and Claude read-only and workspace-write mode, including optional model and add-directory cases.
+- Cover model extraction for each flag form plus missing and dangling values.
+- Cover cap command construction, no-cap behavior, pass-through behavior, and the unchanged cap-hit status payload.
+- Cover Cursor config copy, missing source config, copy failure, environment restoration, and directory cleanup after normal return and exceptions.
+- Cover valid Claude results, explicit error envelopes, empty results, malformed JSON, and non-object JSON.
+- Use ordered probe hooks to prove:
+  - cap checking precedes preflight;
+  - cap hits skip preflight and launch;
+  - quota mirroring runs after both success and failure;
+  - usage and postprocessing precede completion promotion;
+  - failed usage or postprocessing prevents promotion;
+  - configuration contexts exit after failures and exceptions.
+
+## Testing strategy
+
+- Run `pytest -q python/tests/agents/test_vendor.py`.
+- Run changed-file Python lint and type checks through `python3 python/cli.py checks run-relevant`.
+- Keep all tests offline with injected runners, hooks, environment state, and temporary directories.
+
+Confidence: medium
+difficulty: MODERATE
+diff_added: 780
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 780
