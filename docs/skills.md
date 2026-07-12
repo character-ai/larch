@@ -30,6 +30,7 @@ The skill set documented here matches the skills in the repository. Each entry l
 - [`/review-and-fix`](#review-and-fix)
 - [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
 - [`/status`](#status)
+- [`/triage`](#triage)
 - [`/upgrade-larch`](#upgrade-larch)
 - [`/voter-calibration`](#voter-calibration)
 
@@ -49,11 +50,11 @@ Example with `--private` or in a consumer repo: `/alias i implement --merge` cre
 
 ### `/block-issue`
 
-**Arguments**: `<ISSUE_A> <ISSUE_B> [--repo owner/name]`
+**Arguments**: `<ISSUE_A> <ISSUE_B> [--repo owner/name] --operator-invoked [--triage-controlled --expected-updated-at TIMESTAMP]`
 
 **Source**: [`skills/block-issue/SKILL.md`](../skills/block-issue/SKILL.md)
 
-Express a native GitHub blocked-by relationship between two issues using the `addBlockedBy` GraphQL mutation. ISSUE_A is marked as blocked by ISSUE_B. Repo is auto-detected from `gh repo view` when `--repo` is omitted. Verifies the relationship was recorded before confirming.
+Express a native GitHub blocked-by relationship between two issues using the `addBlockedBy` GraphQL mutation. ISSUE_A is marked as blocked by ISSUE_B. Repo is auto-detected from `gh repo view` when `--repo` is omitted. Live mutation requires `--operator-invoked`. Triage-controlled calls also require the target's expected timestamp, recheck security and protected lifecycle state immediately before mutation, verify the exact relation, and return a fresh timestamp.
 
 ### `/bug`
 
@@ -198,6 +199,24 @@ nothing to pause and exits successfully.
 **Source**: [`skills/report-tokens/SKILL.md`](../skills/report-tokens/SKILL.md)
 
 Analyze structured token reports from committed `larch-logs/<skill>/*/` run directories in the current larch repository. The skill requires `--skill=design|implement`, prices runs through `python/larch/report/report_tokens_cost.py`, writes a durable `Cache JSON:` NDJSON snapshot under a temp directory, optionally plots cost-over-time PNGs (`--no-plot` skips), and optionally posts a skill-prefixed GitHub issue (`--no-issue` skips). Advertised cache and plot paths remain readable after CLI exit and expire through automatic SessionStart `cleanup run` age sweeps for `larch-*` paths. The optional `--run-id <ID>` is consumed by the orchestrator and not forwarded to the CLI. Both skills use one aggregate graph and one per-day table set. Filed issues omit raw per-issue JSON and the removed reported-vs-estimated comparison. Dollar values are observability estimates, not billing truth; rates are printed and can be overridden with environment variables.
+
+### `/triage`
+
+**Arguments**: `<issue-number> [--repo OWNER/REPO] [--report-only]`
+
+**Source**: [`skills/triage/SKILL.md`](../skills/triage/SKILL.md)
+
+Verify, root-cause, and prepare an existing issue for `/design` without editing code or authoring a plan. `/triage` records one immutable `refs/heads/main` SHA from the fixed checkout origin and reads cited code or `larch-logs/` evidence only with validated `git show <sha>:<path>` requests. Full-SHA and `refs/pull/<N>/head` citations are allowed within the same fixed-remote boundary. Reads are capped; missing refs, rejected paths, unavailable objects, truncation, moved lines, and unflushed logs remain explicit evidence gaps.
+
+Verdicts are `valid`, `already-fixed`, `duplicate`, `invalid`, or `inconclusive`. A valid result appends or replaces only the helper-owned triage body section while preserving the original report and every other body byte. Verified close verdicts post a marker-keyed verification comment, restore only a permitted title-only stale lifecycle prefix, and close as `NOT_PLANNED`. Active lifecycle labels, valid or malformed control blocks, and other `larch:` markers fail closed. A foreign `--repo` may use issue-linked metadata but cannot use the local checkout as repository evidence and ends inconclusive.
+
+Two mandatory security gates route sensitive or uncertain findings to private `SECURITY.md` disclosure. Issue text, Git output, logs, code excerpts, and probe output are wrapped as untrusted evidence. Reproduction is limited to named no-shell local probes and narrowly named fixed-destination read-only external probes through credential-safe launch seams; issue-supplied commands, credentials, destinations, and mutations are forbidden. Outbound body and comment text is redacted and control markers are neutralized before scratch write and again at mutation.
+
+Every mutation compares the target's exact `updatedAt`, then re-reads the changed surface. Near-certain dependencies are applied serially through `/block-issue` with exact edge and fresh-timestamp verification; uncertain edges are recommendations. Follow-ups use `/issue --operator-invoked` and require both stdout counters and caller-sentinel verification. `--report-only`, `inconclusive`, security-sensitive, protected-state, foreign-repository, and insufficient-evidence outcomes perform no GitHub mutation.
+
+Terminal machine output is `TRIAGE_VERDICT=<valid|already-fixed|duplicate|invalid|inconclusive>`, `ISSUE_UPDATED=<true|false>`, and a bounded `TRIAGE_FAILURE=<reason>`.
+
+This differs from `/bug`, which investigates a user description and files a new issue; `/research`, which produces a broader research report; and `/design`, which authors the implementation plan after the diagnosis is ready.
 
 ### `/research`
 

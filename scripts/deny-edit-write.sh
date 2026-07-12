@@ -59,7 +59,7 @@ activation_dir() {
 activation_is_live() {
   local token="$1"
   case "$token" in
-    research|bug) ;;
+    research|bug|triage) ;;
     *) return 1 ;;
   esac
 
@@ -89,10 +89,10 @@ block() {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
-      permissionDecisionReason: "/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."
+      permissionDecisionReason: "The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp is not permitted."
     }
   }' 2>/dev/null) \
-    || json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+    || json='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
   hook_emit "$json"
   exit 0
 }
@@ -100,7 +100,7 @@ block() {
 # jq-absent static fallback. Byte-identical to the `jq -cn` output
 # above (same single reason literal).
 if ! command -v jq >/dev/null 2>&1; then
-  hook_emit '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
+  hook_emit '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"The active skill is read-only-repo -- Edit/Write/NotebookEdit outside /tmp is not permitted."}}'
   exit 0
 fi
 

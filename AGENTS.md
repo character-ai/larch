@@ -37,6 +37,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 - `docs/issue-anchored-plan.md`: **LIVE** /design ↔ /implement wire format, clarification round-trip, and pause pointer
 - `python/tracking_issue.py`, `python/test_tracking_issue.py`, `python/cli.py tracking-issue ...`: tracking issue lifecycle
 - `python/cli.py plan-block read`, `python/cli.py named-block write --marker plan`, `python/cli.py clarify {state,comment-post,label}`, `python/test_issue_wire.py`, `python/test_clarify.py`: issue wire helpers and tests
+- `skills/triage/SKILL.md`; `python/cli.py triage {inspect,probe,apply}`: pre-design issue verification, immutable-main evidence, bounded probes, and fail-closed issue mutation
 - `.claude/skills/release/scripts/classify-bump.md`: release classification rules
 - `skills/shared/subskill-invocation.md`; `skills/shared/skill-design-principles.md`; `skills/shared/reviewer-templates.md`: shared skill and reviewer authorities
 - `SECURITY.md`: security policy
