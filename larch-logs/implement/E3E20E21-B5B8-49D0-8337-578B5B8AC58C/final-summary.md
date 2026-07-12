@@ -46,11 +46,25 @@ codex/apply                            │                                      
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (1):
+  1. python/tests/issue/test_rejected_analysis.py adds file-wide Pyright diagnostic suppressions without inline reasons or narrow scopes.
+
+## Architectural invariants
+
+No invariant violations identified in the changed code.
+
+## Architectural guidelines
+
+python/tests/issue/test_rejected_analysis.py adds file-wide Pyright diagnostic suppressions without inline reasons or narrow scopes.
+
 ## /implement run E3E20E21-B5B8-49D0-8337-578B5B8AC58C: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:08:55
-- **Cost**: 💰 TOTAL ~$18.97: Claude $3.12, Codex-5.6 $2.71, Codex-mini $1.46, Cursor $9.56 (Composer $8.59, Grok $0.97), Claude (subprocess) $2.12  |  Tokens: 37347k
+- **Cost**: 💰 TOTAL ~$19.69: Claude $3.47, Codex-5.6 $3.00, Codex-mini $1.46, Cursor $9.62 (Composer $8.65, Grok $0.97), Claude (subprocess) $2.14  |  Tokens: 38572k
 - **Issue**: #7052: https://github.com/character-ai/larch/issues/7052
 - **Plan review**: N/A
 - **Plan coverage**: 16/16 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -59,8 +73,8 @@ codex/apply                            │                                      
 - **Code review**: 5/6 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 0
-- **Warnings**: 0
+- **Exec issues**: 1
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/E3E20E21-B5B8-49D0-8337-578B5B8AC58C/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
