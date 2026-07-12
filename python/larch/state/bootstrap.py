@@ -866,37 +866,15 @@ _PLAN_PROVENANCE_PREFIXES = ("review_status:", "rounds_completed:", "difficulty:
 
 def _strip_plan_provenance_headers(text: str) -> str:
     lines = text.splitlines(keepends=True)
-    diff_idx = -1
-    in_fence = False
-    in_fence_by_idx: list[bool] = []
-    for idx, line in enumerate(lines):
-        in_fence_by_idx.append(in_fence)
-        if line.lstrip().startswith("```"):
-            in_fence = not in_fence
-        if re.fullmatch(r"diff_lines: \d+", line.rstrip("\n")):
-            diff_idx = idx
-    if diff_idx < 0 or in_fence_by_idx[diff_idx]:
+    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
+    if not trailers.matches:
         return text
-
-    idx = diff_idx - 1
-    while idx >= 0:
-        stripped = lines[idx].rstrip("\n")
-        if in_fence_by_idx[idx]:
-            break
-        match = plan_grammar.match_trailer_line(stripped)
-        if match is None or match.key not in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
-            break
-        idx -= 1
-
-    remove: set[int] = set()
-    while idx >= 0:
-        stripped = lines[idx].rstrip("\n")
-        if in_fence_by_idx[idx]:
-            break
-        if not any(stripped.startswith(prefix) for prefix in _PLAN_PROVENANCE_PREFIXES):
-            break
-        remove.add(idx)
-        idx -= 1
+    start = trailers.start_line - 1
+    remove = {
+        start + idx
+        for idx, match in enumerate(trailers.matches)
+        if match.key in {"review_status", "rounds_completed", "difficulty"}
+    }
     if not remove:
         return text
     return "".join(line for idx, line in enumerate(lines) if idx not in remove)

@@ -473,16 +473,10 @@ def _canonical_plan_for_override(*, design_tmpdir: Path, plan_file: str | None) 
 
 
 def _is_override_trailer_region_line(*, stripped: str, trailer: str) -> bool:
-    patterns = (
-        r"diff_added: [0-9]+",
-        r"diff_deleted: [0-9]+",
-    )
-    return (
-        any(re.fullmatch(pattern, stripped) for pattern in patterns)
-        or stripped.startswith("mechanical_churn: ")
-        or stripped.startswith("difficulty: ")
-        or stripped == trailer
-    )
+    if stripped == trailer:
+        return True
+    match = plan_grammar.match_trailer_line(stripped)
+    return match is not None and (match.key == "difficulty" or match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS)
 
 
 def _last_diff_lines_index(lines: list[str]) -> int:
@@ -1039,7 +1033,7 @@ def _canonical_existing_file(path: Path) -> Path:
 
 
 def _heading_count(path: Path) -> int:
-    return sum(1 for line in path.read_text(encoding="utf-8", errors="replace").splitlines() if re.match(r"^###[ \t]+(NEW|UPDATED|REWRITTEN|MAY_UPDATE)[ \t]*:", line))
+    return len(list(plan_grammar.iter_plan_headings(path.read_text(encoding="utf-8", errors="replace"))))
 
 
 def _extract_file_replacement(output: str) -> str:
@@ -1047,30 +1041,23 @@ def _extract_file_replacement(output: str) -> str:
     candidate: list[str] = []
     block: list[str] = []
     in_block = False
-    trailer_idx = -1
     def capture() -> None:
         nonlocal candidate
-        if trailer_idx < 0:
-            return
-        start = 0
-        end = trailer_idx + 1
-        local = block[start:end]
+        local = block
         if local and re.match(r"^```([A-Za-z0-9_-]+)?\s*$", local[0]):
             local = local[1:]
             if local and local[-1] == "```":
                 local = local[:-1]
-        candidate = local
+        text = "\n".join(local)
+        candidate = local if plan_grammar.terminal_diff_lines(text) is not None else []
     for line in lines:
         if line == "## Plan":
             if in_block:
                 capture()
             in_block = True
             block = []
-            trailer_idx = -1
         if in_block:
             block.append(line)
-            if re.match(r"^diff_lines:\s*[0-9]+\s*$", line):
-                trailer_idx = len(block) - 1
     if in_block:
         capture()
     return "\n".join(candidate) + ("\n" if candidate else "")

@@ -97,6 +97,19 @@ diff_lines: 1
     assert "not-a-command" not in tsv
 
 
+def test_parse_plan_commands_ignores_headings_inside_fences(tmp_path: Path) -> None:
+    plan = """## Plan
+```markdown
+### NEW: scripts/phantom.sh
+### UPDATED: scripts/also-phantom.sh
+```
+### NEW: scripts/real.sh
+diff_lines: 1
+"""
+    rows = plan_quality.parse_plan_commands(plan_text=plan, repo_root=tmp_path, plugin_root=tmp_path)
+    assert [row.script_path for row in rows if row.row_type == "new_script"] == ["scripts/real.sh"]
+
+
 def test_parse_plan_commands_notes_for_unsafe_shell_forms(tmp_path: Path) -> None:
     plan = """```sh
 scripts/a.sh --x $(date)

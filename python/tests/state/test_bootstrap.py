@@ -565,6 +565,11 @@ def test_strip_plan_provenance_headers_skips_prose_above_size_trailers() -> None
     assert "rounds_completed: 5" not in result
 
 
+def test_strip_plan_provenance_headers_requires_terminal_trailers() -> None:
+    source = "review_status: complete\nrounds_completed: 2\ndiff_lines: 1\ntrailing prose\n"
+    assert bootstrap._strip_plan_provenance_headers(source) == source  # pyright: ignore[reportPrivateUsage]
+
+
 def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> None:
     calls: list[list[str]] = []
     preflight = tmp_path / "preflight"

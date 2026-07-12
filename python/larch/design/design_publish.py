@@ -327,40 +327,23 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
     lines = text.splitlines(keepends=True)
     if lines and not lines[-1].endswith("\n"):
         lines[-1] = lines[-1] + "\n"
-    diff_idx = -1
-    for idx in range(len(lines) - 1, -1, -1):
-        if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
-            diff_idx = idx
-            break
-    existing_difficulty = difficulty.plan_difficulty(text)
+    trailers = plan_grammar.parse_final_trailers("".join(lines), require_diff_lines=True)
+    if not trailers.matches:
+        return text
+    trailer_start = trailers.start_line - 1
+    diff_idx = trailer_start + len(trailers.matches) - 1
+    difficulty_match = trailers.get("difficulty")
     provenance = [
         f"review_status: {review_status}\n",
         f"rounds_completed: {rounds_completed}\n",
     ]
-    if existing_difficulty:
-        provenance.append(f"difficulty: {existing_difficulty}\n")
-    if diff_idx < 0:
-        trailer_start = len(lines)
-        idx = len(lines) - 1
-        while idx >= 0 and _is_trailer_region_line(lines[idx]):
-            trailer_start = idx
-            idx -= 1
-        head = lines[:trailer_start]
-        optional = [
-            line
-            for line in lines[trailer_start:]
-            if (match := plan_grammar.match_trailer_line(line.rstrip("\n"))) is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS
-        ]
-        return "".join(head) + "".join(provenance) + "".join(optional)
-    trailer_start = diff_idx
-    optional_lines: list[str] = []
-    idx = diff_idx - 1
-    while idx >= 0 and _is_trailer_region_line(lines[idx]):
-        stripped = lines[idx].rstrip("\n")
-        if (match := plan_grammar.match_trailer_line(stripped)) is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
-            optional_lines.insert(0, lines[idx])
-        trailer_start = idx
-        idx -= 1
+    if difficulty_match is not None:
+        provenance.append(f"difficulty: {difficulty_match.value}\n")
+    optional_lines = [
+        lines[trailer_start + idx]
+        for idx, match in enumerate(trailers.matches)
+        if match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS
+    ]
     return (
         "".join(lines[:trailer_start])
         + "".join(provenance)

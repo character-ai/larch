@@ -2080,6 +2080,15 @@ def test_splice_plan_provenance_preserves_oversize_override() -> None:
     assert "review_status: complete\nrounds_completed: 2\noversize_override: operator\ndiff_lines: 1\n" in spliced
 
 
+def test_splice_plan_provenance_leaves_nonterminal_diff_lines_unchanged() -> None:
+    text = "body\ndiff_lines: 1\ntrailing prose\n"
+    assert design_publish._splice_plan_provenance(  # pyright: ignore[reportPrivateUsage]
+        text=text,
+        review_status="complete",
+        rounds_completed=2,
+    ) == text
+
+
 def test_publish_refreshes_composed_plan_before_size_guard(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
