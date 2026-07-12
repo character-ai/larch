@@ -78,6 +78,31 @@ def _map_outcome_display(outcome: str) -> str:
     return outcome
 
 
+def _needs_user_outcome_display(*, reason: str, next_action: str) -> str:
+    """Distinct outcome for a terminal needs-user ship handoff (#7074).
+
+    A needs-user bail (e.g. architectural assessments unavailable) creates the PR
+    but skips the merge and CI watch. That must not render as ``✅ DONE``.
+    """
+    pending = f"; pending: {next_action}" if next_action else ""
+    return f"⚠️ NEEDS USER — merge and CI watch skipped (reason: {reason}{pending})"
+
+
+def _summary_outcome_display(*, outcome: str, kwargs: Mapping[str, object]) -> str:
+    """Outcome display line for the run summary; distinct on a needs-user handoff (#7074).
+
+    The caller passes ``needs_user_reason`` only when a terminal needs-user ship
+    handoff applies, so its presence alone selects the needs-user display.
+    """
+    needs_user_reason = str(kwargs.get("needs_user_reason") or "")
+    if needs_user_reason:
+        return _needs_user_outcome_display(
+            reason=needs_user_reason,
+            next_action=str(kwargs.get("needs_user_next_action") or ""),
+        )
+    return _map_outcome_display(outcome)
+
+
 def _bounded_warning_detail(text: str) -> str:
     detail = " ".join(text.split()) or "no-output"
     if len(detail) > _WARNING_TAIL_LIMIT:
@@ -675,7 +700,10 @@ def render_run_summary(**kwargs: object) -> str:
     if not run_logs_path and run_id != "unknown" and outcome not in {"failed-publish", "publish-skipped"}:
         run_logs_path = f"larch-logs/{skill}/{run_id}/"
     lines = [f"## /{skill} run {run_id}: {outcome}", ""]
-    lines.append(f"- **Outcome**: {_map_outcome_display(outcome)}")
+    # #7074: a terminal needs-user ship handoff (merge + CI watch skipped) must not
+    # render as ✅ DONE. _summary_outcome_display picks the needs-user display when
+    # the caller supplies the handoff reason.
+    lines.append(f"- **Outcome**: {_summary_outcome_display(outcome=outcome, kwargs=kwargs)}")
     if skill != "design" and kwargs.get("workflow_path"):
         lines.append(f"- **Path**: {kwargs.get('workflow_path')}")
     if force:

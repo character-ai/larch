@@ -5275,3 +5275,79 @@ def test_repair_loop_action_stalls_only_named_pre_ship_exhaustion(tmp_path: Path
         checks_log="",
         allowed_tmpdir=tmp_path,
     ) == "main-agent-edit"
+
+
+def _classify(tmp_path: Path, *, launcher_rc: int, useful_delta: bool, log: str = "", stderr_tail: str = "") -> str:
+    (tmp_path / "claude.log").write_text(log, encoding="utf-8")
+    (tmp_path / "claude.log.stderr-tail").write_text(stderr_tail, encoding="utf-8")
+    return _clf._classify_attempt_issue(  # pyright: ignore[reportPrivateUsage]
+        launcher_rc=launcher_rc, run_dir=tmp_path, log_name="claude.log", useful_delta=useful_delta,
+    )
+
+
+def test_classify_attempt_issue_green_fix_never_classified(tmp_path: Path) -> None:
+    # #7074: a succeeded fix with a useful delta is not an execution issue, even
+    # when its transcript names a repo file like preflight.py.
+    assert _classify(
+        tmp_path,
+        launcher_rc=0,
+        useful_delta=True,
+        log="I did not touch the unrelated `preflight.py` working-tree change.\n",
+        stderr_tail="",
+    ) == ""
+
+
+def test_classify_attempt_issue_ignores_transcript_prose(tmp_path: Path) -> None:
+    # #7074: token matching is anchored to stderr-tail. preflight.py / "not found"
+    # in the coder transcript (main log) must not brand a failed attempt.
+    assert _classify(
+        tmp_path,
+        launcher_rc=1,
+        useful_delta=False,
+        log="touched preflight.py; metadata not found earlier in the run\n",
+        stderr_tail="",
+    ) == "launcher-failure"
+
+
+def test_classify_attempt_issue_auth_on_stderr_still_flagged(tmp_path: Path) -> None:
+    assert _classify(
+        tmp_path,
+        launcher_rc=1,
+        useful_delta=False,
+        stderr_tail="Error: not authenticated. login required.\n",
+    ) == "authentication-preflight"
+
+
+def test_classify_attempt_issue_bare_not_found_dropped(tmp_path: Path) -> None:
+    # #7074: the bare "not found" token is dropped; "metadata not found" prose on
+    # stderr must not misclassify as missing-binary.
+    assert _classify(
+        tmp_path,
+        launcher_rc=1,
+        useful_delta=False,
+        stderr_tail="runtime model error gpt-5.6-sol metadata not found\n",
+    ) == "launcher-failure"
+    # A genuine missing binary still classifies.
+    assert _classify(
+        tmp_path,
+        launcher_rc=1,
+        useful_delta=False,
+        stderr_tail="claude: command not found\n",
+    ) == "missing-binary"
+
+
+def test_append_attempt_execution_issue_is_single_line(tmp_path: Path) -> None:
+    # #7074: a multi-line transcript tail must collapse to one bullet so its own
+    # "- ..." lines do not inflate the summary's exec-issue count.
+    attempt = tmp_path / "attempt.log"
+    attempt.write_text(
+        "Verification complete:\n- pyright: 0 errors\n- ruff: All checks passed!\nFIXED: foo.py\n",
+        encoding="utf-8",
+    )
+    issue_log = tmp_path / "execution-issues.md"
+    _clf._append_attempt_execution_issue(  # pyright: ignore[reportPrivateUsage]
+        issue_log=issue_log, tier="claude", issue_kind="authentication-preflight", attempt_log=str(attempt),
+    )
+    bullets = [line for line in issue_log.read_text(encoding="utf-8").splitlines() if line.startswith("- ")]
+    assert len(bullets) == 1
+    assert bullets[0].startswith("- lint-fix tier=claude category=authentication-preflight;")
