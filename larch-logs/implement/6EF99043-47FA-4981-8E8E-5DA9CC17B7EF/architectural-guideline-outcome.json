@@ -1,1 +1,1 @@
-{"assessment_kind":"","base_ref":"origin/main","detail":"Expecting value: line 1 column 1 (char 0)","guidelines_status":"present","head_sha":"e055ba7d6918e55f08372a5ad94945bd4df5604d","operator_waived":true,"outcome":"dropped","phase":"implement","reason":"unavailable","schema_version":"1","step":"8"}
+{"assessment_kind":"","base_ref":"origin/main","detail":"","guidelines_status":"absent","head_sha":"b8d24663da33b341558265ad6e6a556661587f0d","operator_waived":false,"outcome":"clean","phase":"implement","reason":"guidelines-absent","schema_version":"1","step":"8"}
