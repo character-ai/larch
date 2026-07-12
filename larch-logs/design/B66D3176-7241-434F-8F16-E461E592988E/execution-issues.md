@@ -1,0 +1,19 @@
+### External Reviewer Issues
+
+- **Step design Step 3: cursor-review failed (exit 1, unknown)**:
+  ```
+===== diag =====
+ActionRequiredError: You have an unpaid invoice Your team has an unpaid invoice. Please contact your team administrator to pay your invoice and continue using Cursor.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+⏳ cursor agent: still running (1m elapsed)
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== diag =====
+ActionRequiredError: You have an unpaid invoice Your team has an unpaid invoice. Please contact your team administrator to pay your invoice and continue using Cursor.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+⏳ cursor agent: still running (1m elapsed)
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+  ```

@@ -1,0 +1,82 @@
+### FINDING_1: In-window ledger rows cannot produce marker-chain edges
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: Marker-chain detection lacks an evidence path for historical in-window ledger issues that are not selected by the current manifest. If marker references are persisted only for manifest-selected issues, those issues cannot participate in marker edges until they are selected again.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend coordinator metadata for the in-window corpus: persist derived marker_references (and any needed stripped-body hash) on ledger rows during the metadata upsert pass for all canonical in-window issues, not only manifest-selected ones; or document and test an explicit bounded issue-text backfill for ledger rows missing marker_references before marker-edge construction.
+
+### FINDING_2: Canonical analytics selection must preserve ledger append order
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The planned ledger representation cannot deterministically select the canonical record required by the analytics rules. `load_ledger` collapses records by cache key and discards cross-key/file-order evidence, so equal `updated_at` values or legacy `updated_at=0` rows can select stale fix metadata or verdicts and miscompute chains, churn, chronic zones, and routing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an analytics-corpus loader that scans ledger.jsonl in file order, keeps all valid rows grouped by issue, then applies the documented canonical winner; reserve load_ledger for cache-key upserts and ingest paths.
+  - From Codex-Arch: Preserve valid append order in the loaded ledger corpus, or persist and load an explicit append sequence, then use it for the specified canonical-record tie-break.
+
+### FINDING_3: Run identity and predecessor selection are not collision-safe or persistent
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: Second-resolution `run_id` and `generated_at` values can cause concurrent runs to reuse a run directory and overwrite manifests or snapshots. The selected predecessor is also not persisted in `run-state.json`, allowing later rerenders to choose a different predecessor and change deltas or active run state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Use a collision-safe run identifier and persist the selected predecessor run identity in `run-state.json`; reuse that persisted predecessor during rerender.
+
+### FINDING_4: Churn threshold is underspecified
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The approach does not state the required cutoff for identifying churned files, so implementations could mark every touched file as churned or apply the wrong threshold.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: State explicitly that churned files are those touched by at least three distinct fix commits within the manifest-anchored 7-day window, and keep the existing deduplication-by-fix-commit rule.
+
+### FINDING_5: Verified-issue membership for deltas is undefined
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The plan stores and compares `verified_issues` but does not define the predicate used at snapshot time. Different implementations could include evidence-token triage, mechanical-only rows, partial triage, deep completions, or only final verdicts, producing unstable Since-last-run deltas across rerenders.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Define verified once: for example, manifest-selected issues whose current canonical ledger record has evidence-verified triage and/or a completed deep stage for the active cache key. Use that same predicate for run-state storage and Since-last-run rendering.
+  - From Cursor-Requirements: Define verified_issues as manifest issue numbers whose canonical record has a final evidence tier of MECH, TRIAGE, or DEEP and is not pending NEEDS_DEEP or not-yet-triaged; pin the rule in run-state schema text and delta tests.
+
+### FINDING_6: Dropped deep candidates lack durable routing reasons
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The plan requires every cap-dropped deep candidate and its routing reason to be persisted, but the existing `ledger-summary.json` contract only records bare `DEEP_TRUNCATED_ISSUES` identifiers. Stderr warnings do not provide durable audit evidence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Extend the existing `ledger-summary.json` sidecar with a structured dropped-candidate list such as issue id plus promotion reason, keep `DEEP_TRUNCATED_ISSUES` stdout-compatible, and include the new field in golden/fixture coverage.
+
+### FINDING_7: Metadata-only upsert may mutate verification state
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The plan does not prevent metadata-only ledger updates from reusing the verdict upsert path. A broad merge through `_upsert_record` could rewrite stage, triage-evidence, or verdict fields and allow risk promotion to bypass the verified-triage gate for `FIXED_CLEAR` or `FIXED_LIKELY` rows.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Add a dedicated metadata merge helper that updates only coordinator analytics keys on the existing cache-key row; state explicitly in plan and tests that stages_complete, triage_evidence_verified, and verdict fields are immutable on that path.
+
+### FINDING_8:
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/larch/issue/analyze_bugs.py:1329
+- **Concern**: [SCOPE-REDUCTION] Chronic zones section adds churned-file detail beyond the spec. Scenario: Required design item 3 defines the churn metric, but item 8 limits the Chronic zones section to zone, bug count, and member issues. Step 6 also forces churned-file detail into that section and the golden fixture, adding report and test surface the acceptance criteria do not require.
+- **Proposed resolution**: Compute churn internally for analytics if needed, but render Chronic zones with only zone, unique bug count, and member issues. Omit churned-file detail unless a follow-up issue expands the report contract.
+
+### FINDING_9:
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: plan step 6 / python/larch/issue/analyze_bugs.py:render_report
+- **Concern**: [SCOPE-REDUCTION] Chronic zones report should omit churned-file detail. Scenario: The binding scope requires a churn metric and a Chronic zones section with zone, bug count, and member issues only. Listing churned files adds a presentation contract and golden-fixture surface that no acceptance criterion or routing rule consumes.
+- **Proposed resolution**: Keep file-churn computation and unit tests in the analytics view; render Chronic zones with zone, unique bug count, and member issues only.
+
+### FINDING_10:
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: plan.txt:33-34
+- **Concern**: [SCOPE-REDUCTION] Historical git hydration and deferred ledger persistence exceed the required analytics path. Scenario: The plan adds git probes, failure handling, post-render mutations, and tests for legacy records whose absent metadata may remain unavailable under the stated compatibility contract
+- **Proposed resolution**: Remove historical hydration and its persistence pass. Build analytics from metadata already present or collected by the selected-issue metadata upsert
+
+### FINDING_11:
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Focus area**: code-quality
+- **Location**: plan.txt:47
+- **Concern**: [SCOPE-REDUCTION] Durable per-candidate cap-drop reasons exceed the required logging contract. Scenario: The feature only requires dropped candidates to be logged instead of silently truncated. Persisting structured reasons expands ledger-summary state and tests without affecting routing or report correctness
+- **Proposed resolution**: Keep the existing truncated issue identifiers and emit each issue and routing reason to stderr. Do not add a new durable reason schema
