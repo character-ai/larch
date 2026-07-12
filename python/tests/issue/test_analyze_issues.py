@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -76,11 +75,10 @@ def test_analyze_rich_fixture_pins_categories_duplicates_and_reviewers(tmp_path:
 
 
 def test_fetch_writes_private_output(monkeypatch, tmp_path: Path) -> None:
-    def fake_run(argv, stdout, **_kwargs):
-        stdout.write("[]\n")
-        return subprocess.CompletedProcess(argv, 0)
+    def fake_issue_list(_runner, **_kwargs):
+        return []
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(analyze_issues.gh, "issue_list_read", fake_issue_list)
     output = tmp_path / "issues.json"
     assert analyze_issues.fetch_main(["--repo", "o/r", "--limit", "10", "--output", str(output)]) == 0
     assert output.stat().st_mode & 0o777 == 0o600
@@ -406,23 +404,38 @@ def test_ground_truth_design_round_local_disagreement_is_weak(tmp_path: Path) ->
 
 
 def test_fetch_main_retries_without_optional_fields(monkeypatch, tmp_path: Path) -> None:
-    calls: list[list[str]] = []
+    from larch.errors import ShipError
 
-    def fake_run(argv, stdout, **_kwargs):
-        calls.append(list(argv))
-        if "stateReason" in argv[-1]:
-            return subprocess.CompletedProcess(argv, 1)
-        stdout.write(json.dumps([{"number": 1, "title": "t"}]))
-        return subprocess.CompletedProcess(argv, 0)
+    calls: list[tuple[str, ...]] = []
 
-    monkeypatch.setattr(subprocess, "run", fake_run)
+    def fake_issue_list(_runner, *, fields, **_kwargs):
+        field_tuple = tuple(fields)
+        calls.append(field_tuple)
+        if "stateReason" in field_tuple:
+            raise ShipError("expanded fields unavailable")
+        return [{"number": 1, "title": "t"}]
+
+    monkeypatch.setattr(analyze_issues.gh, "issue_list_read", fake_issue_list)
     output = tmp_path / "issues.json"
     assert analyze_issues.fetch_main(["--repo", "o/r", "--limit", "10", "--output", str(output)]) == 0
     assert len(calls) == 2
-    assert "stateReason" in calls[0][-1]
-    assert "stateReason" not in calls[1][-1]
+    assert "stateReason" in calls[0]
+    assert "stateReason" not in calls[1]
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload[0]["_larch_degraded_fields"] == ["stateReason", "url"]
+
+
+def test_fetch_main_terminal_failure_cleans_up(monkeypatch, tmp_path: Path, capsys) -> None:
+    from larch.errors import ShipError
+
+    def fake_issue_list(_runner, **_kwargs):
+        raise ShipError("unavailable")
+
+    monkeypatch.setattr(analyze_issues.gh, "issue_list_read", fake_issue_list)
+    output = tmp_path / "issues.json"
+    assert analyze_issues.fetch_main(["--repo", "o/r", "--limit", "10", "--output", str(output)]) == 1
+    assert not output.exists()
+    assert "gh issue list failed" in capsys.readouterr().err
 
 
 def test_legacy_stable_id_extraction_ignores_pre_filed_tokens() -> None:

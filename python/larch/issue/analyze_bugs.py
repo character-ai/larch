@@ -27,8 +27,9 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from larch.core import config, proc
-from larch.git import gh
 from larch.core.proc import Runner
+from larch.errors import ShipError
+from larch.git import gh
 from larch.issue.title_match import bug_title_match
 from larch.issue.issue_wire import strip_named_block
 from larch.report.report_tokens_cost import rate_row
@@ -410,13 +411,16 @@ def _closed_pr_refs_from_raw(raw: Mapping[str, Any]) -> tuple[dict[str, Any], ..
     return ()
 
 
-def _issue_list_argv(repo: str) -> list[str]:
-    return [
-        "gh",
-        "api",
-        "--paginate",
-        f"repos/{repo}/issues?state=all&per_page=100",
-    ]
+_BUG_ISSUE_LIST_FIELDS: Final = (
+    "number",
+    "title",
+    "state",
+    "stateReason",
+    "body",
+    "url",
+    "closedAt",
+    "closedByPullRequestsReferences",
+)
 
 
 def _issue_pr_refs_argv(repo: str, *, issue_number: int) -> list[str]:
@@ -437,10 +441,17 @@ def fetch_bug_issues(runner: Runner, *, repo: str, count: int) -> tuple[list[Iss
         return [], 0
     selected: list[IssueRecord] = []
     last_corpus_len = 0
-    result = runner.run(_issue_list_argv(repo))
-    if result.returncode != 0:
-        raise AnalyzeBugsError(f"gh issue list failed: {(result.stderr or result.stdout).strip()}")
-    raw_rows = [row for row in gh.loads_json_paginated_list(result.stdout) if isinstance(row, dict)]
+    try:
+        listed = gh.issue_list_read(
+            runner,
+            repo=repo,
+            state="all",
+            fields=_BUG_ISSUE_LIST_FIELDS,
+            limit=100000,
+        )
+    except ShipError as exc:
+        raise AnalyzeBugsError(f"gh issue list failed: {exc}") from exc
+    raw_rows = [row for row in listed if isinstance(row, dict)]
     last_corpus_len = len(raw_rows)
     for row in raw_rows:
         issue = _issue_from_raw(cast("Mapping[str, Any]", row))

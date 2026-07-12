@@ -244,12 +244,20 @@ def test_list_issues_parses_json_array() -> None:
     assert [row["number"] for row in out] == [1, 2]
     assert runner.calls[0][:3] == ["gh", "issue", "list"]
     assert "--search" in runner.calls[0]
+    assert runner.calls[0][runner.calls[0].index("--json") + 1] == "number,title,body,closedAt,url,state"
 
 
 def test_list_issues_raises_on_gh_failure() -> None:
     runner = RecordingRunner(responses=[_result(rc=1, stderr="boom")], strict=True)
-    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="boom"):
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="gh issue list failed"):
         learn_from_bugs.list_issues(runner, search="x", state="closed", limit=1, repo="o/r")
+
+
+def test_list_issues_filters_non_dict_rows() -> None:
+    rows: list[object] = [_issue(1, "[BUG] a", "b1"), "skip", 3, None]
+    runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
+    out = learn_from_bugs.list_issues(runner, search="[BUG] in:title", state="closed", limit=5, repo="o/r")
+    assert [row["number"] for row in out] == [1]
 
 
 def test_coverage_index_scans_repo_surface(tmp_path: Path) -> None:

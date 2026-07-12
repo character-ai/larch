@@ -18,6 +18,7 @@ from larch.git import gh
 from larch.issue import issue_wire
 from larch.core import proc
 from larch.core import redact
+from larch.errors import ShipError
 
 _GROUPS = ("DESIGNING", "DESIGNED", "IMPLEMENTING", "REGULAR")
 _MANAGED_PREFIXES = {
@@ -254,19 +255,25 @@ def _read_existing_edges(*, repo: str, issue: int) -> tuple[set[tuple[int, int]]
 
 
 def _fetch_open_issue_rows(repo: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
-    result = proc.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=open&per_page=100"])
-    if result.returncode != 0:
-        return [], [_warning(f"open issue fetch failed: {_redacted_gh_error(result)}", code="gh_api_failed")], result.returncode
     try:
-        rows = _rows_from_paginated_json(result.stdout)
-    except Exception as exc:
-        return [], [_warning(f"open issue JSON invalid: {exc}", code="json_invalid")], 1
+        rows = gh.issue_list_read(
+            proc,
+            repo=repo,
+            state="open",
+            fields=("number", "title", "state", "labels", "body"),
+            limit=100000,
+        )
+    except ShipError as exc:
+        reason = str(exc)
+        if "JSON parse failed" in reason:
+            return [], [_warning(f"open issue JSON invalid: {exc}", code="json_invalid")], 1
+        return [], [_warning(f"open issue fetch failed: {reason}", code="gh_api_failed")], 1
     issues: list[dict[str, Any]] = []
     for row in rows:
-        if row.get("pull_request") is not None:
+        if not isinstance(row, dict):
             continue
         number = _positive_int_value(row.get("number"))
-        if number is None or str(row.get("state") or "").lower() != "open":
+        if number is None or str(row.get("state") or "").casefold() != "open":
             continue
         issues.append({
             "number": number,

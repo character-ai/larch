@@ -18,6 +18,7 @@ from larch.issue import blocker
 from larch.git import gh
 from larch.core import proc
 from larch.core import redact
+from larch.errors import ShipError
 
 _BUSY_RE = re.compile(r"^(?:\[(?:DESIGNING|IMPLEMENTING|STALLED|DONE|PLANNED|IN PROGRESS)\]\s|\[LOCKED\])")
 _OOS_RE = re.compile(r"^\[OOS\]\s")
@@ -679,22 +680,27 @@ def list_open_main(argv: list[str] | None = None) -> int:
     if not repo:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
-    result = proc.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=open&per_page=100"])
     warnings: list[dict[str, str]] = []
-    if result.returncode != 0:
-        _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "gh_api_failed", "message": "failed to list open issues"}]})
-        return 1
     try:
-        rows = gh.loads_json_paginated_list(result.stdout)
-    except Exception as exc:
-        _emit_json({"status": "failed", "issues": [], "warnings": [{"code": "json_invalid", "message": str(exc)}]})
+        rows = gh.issue_list_read(
+            proc,
+            repo=repo,
+            state="open",
+            fields=("number", "title", "state", "labels", "body"),
+            limit=100000,
+        )
+    except ShipError as exc:
+        reason = str(exc)
+        code = "json_invalid" if "JSON parse failed" in reason else "gh_api_failed"
+        message = str(exc) if code == "json_invalid" else "failed to list open issues"
+        _emit_json({"status": "failed", "issues": [], "warnings": [{"code": code, "message": message}]})
         return 1
     issues: list[dict[str, Any]] = []
     for row in rows:
-        if not isinstance(row, dict) or row.get("pull_request") is not None:
+        if not isinstance(row, dict):
             continue
         number = _positive_int_value(row.get("number"))
-        if number is None or str(row.get("state") or "").lower() != "open":
+        if number is None or str(row.get("state") or "").casefold() != "open":
             continue
         issues.append({
             "number": number,
@@ -1147,16 +1153,15 @@ def fetch_main(argv: list[str] | None = None) -> int:
     if not repo:
         print("ERROR=Could not determine repository", file=sys.stderr)
         return 1
-    res = proc.run(["gh", "issue", "list", "--repo", repo, "--state", "open", "--limit", "200", "--json", "number,title,body,labels"])
-    if res.returncode != 0:
-        print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
-        return 1
     try:
-        raw: object = json.loads(res.stdout or "[]")
-    except json.JSONDecodeError:
-        print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
-        return 1
-    if not isinstance(raw, list):
+        raw = gh.issue_list_read(
+            proc,
+            repo=repo,
+            state="open",
+            fields=("number", "title", "body", "labels"),
+            limit=200,
+        )
+    except ShipError:
         print(f"ERROR=Failed to fetch issues from {repo}", file=sys.stderr)
         return 1
     out: list[dict[str, Any]] = []

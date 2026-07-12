@@ -9,12 +9,12 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
 from larch.core import proc
+from larch.errors import ShipError
 from larch.git import gh
 from larch.issue._ground_truth import (
     GroundTruthEvidence,
@@ -235,38 +235,66 @@ def fetch_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--output", required=True)
     args = parser.parse_args(list(argv) if argv is not None else None)
     output = Path(args.output)
-    expanded_fields = "number,title,state,createdAt,closedAt,body,labels,closedByPullRequestsReferences,url,stateReason"
-    fallback_fields = "number,title,state,createdAt,closedAt,body,labels,closedByPullRequestsReferences"
-    tmp = output.with_name(output.name + f".tmp.{os.getpid()}")
+    expanded_fields = (
+        "number",
+        "title",
+        "state",
+        "createdAt",
+        "closedAt",
+        "body",
+        "labels",
+        "closedByPullRequestsReferences",
+        "url",
+        "stateReason",
+    )
+    fallback_fields = (
+        "number",
+        "title",
+        "state",
+        "createdAt",
+        "closedAt",
+        "body",
+        "labels",
+        "closedByPullRequestsReferences",
+    )
+    try:
+        limit = int(args.limit)
+    except ValueError:
+        print(f"ERROR=gh issue list failed for repo {args.repo}", file=sys.stderr)
+        return 1
     old_umask = os.umask(0o077)
     try:
-        with tmp.open("w", encoding="utf-8") as handle:
-            tmp.chmod(0o600)
-            expanded_cmd = [
-                "gh", "issue", "list", "--repo", args.repo, "--state", "all", "--limit", args.limit,
-                "--json", expanded_fields,
-            ]
-            result = subprocess.run(expanded_cmd, stdout=handle, text=True, check=False)
         degraded: tuple[str, ...] = ()
-        if result.returncode != 0:
-            with tmp.open("w", encoding="utf-8") as handle:
-                tmp.chmod(0o600)
-                result = subprocess.run([
-                    "gh", "issue", "list", "--repo", args.repo, "--state", "all", "--limit", args.limit,
-                    "--json", fallback_fields,
-                ], stdout=handle, text=True, check=False)
-            if result.returncode == 0:
-                degraded = ("stateReason", "url")
-        if result.returncode != 0:
-            print(f"ERROR=gh issue list failed for repo {args.repo}", file=sys.stderr)
-            tmp.unlink(missing_ok=True)
-            return 1
-        payload = tmp.read_text(encoding="utf-8")
-        _write_issue_dump(path=output, text=payload, degraded_fields=degraded)
+        try:
+            rows = gh.issue_list_read(
+                proc,
+                repo=args.repo,
+                state="all",
+                fields=expanded_fields,
+                limit=limit,
+            )
+        except ShipError:
+            try:
+                rows = gh.issue_list_read(
+                    proc,
+                    repo=args.repo,
+                    state="all",
+                    fields=fallback_fields,
+                    limit=limit,
+                )
+            except ShipError:
+                print(f"ERROR=gh issue list failed for repo {args.repo}", file=sys.stderr)
+                return 1
+            degraded = ("stateReason", "url")
+        payload_rows = [row for row in rows if isinstance(row, dict)]
+        _write_issue_dump(
+            path=output,
+            text=json.dumps(payload_rows),
+            degraded_fields=degraded,
+        )
         return 0
     finally:
         os.umask(old_umask)
-        tmp.unlink(missing_ok=True)
 
 
 def _detect_repo() -> str:

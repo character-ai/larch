@@ -22,6 +22,7 @@ from larch.state import session_env as _session_env_audit
 from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record, validate_invariant_ship_outcome_record
 from larch.core import proc
 from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_SHIP_OUTCOME_SIDECAR
+from larch.errors import ShipError
 from larch.git import gh
 from larch.issue import learn_from_bugs
 from larch.issue.title_match import BUG_PREFIX, bug_title_match
@@ -139,34 +140,24 @@ def _valid_repo(value: str) -> bool:
 
 
 def _bugs_backlog_nudge_issue_rows(*, repo: str, boundary: str) -> list[dict[str, object]] | None:
-    result = gh._gh(  # noqa: SLF001 - existing typed gh argv seam; no public issue-list wrapper yet
-        proc,
-        [
-            "issue",
-            "list",
-            "--state",
-            "closed",
-            "--repo",
-            repo,
-            "--search",
-            f"{BUG_PREFIX} in:title closed:>{boundary}",
-            "--limit",
-            "100000",
-            "--json",
-            "number,title,closedAt",
-        ]
-    )
-    if result.returncode != 0:
-        reason = (result.stderr or result.stdout or "gh issue list failed").strip()
-        print(f"audit-runs bugs-backlog-nudge: gh issue list failed: {reason}", file=sys.stderr)
-        return None
     try:
-        parsed = json.loads(result.stdout or "[]")
-    except json.JSONDecodeError as exc:
-        print(f"audit-runs bugs-backlog-nudge: gh issue list returned invalid JSON: {exc}", file=sys.stderr)
-        return None
-    if not isinstance(parsed, list):
-        print("audit-runs bugs-backlog-nudge: gh issue list did not return a JSON array", file=sys.stderr)
+        parsed = gh.issue_list_read(
+            proc,
+            repo=repo,
+            state="closed",
+            fields=("number", "title", "closedAt"),
+            search=f"{BUG_PREFIX} in:title closed:>{boundary}",
+            limit=100000,
+        )
+    except ShipError as exc:
+        reason = str(exc).strip() or "gh issue list failed"
+        if "JSON parse failed" in reason:
+            print(
+                f"audit-runs bugs-backlog-nudge: gh issue list returned invalid JSON: {reason}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"audit-runs bugs-backlog-nudge: gh issue list failed: {reason}", file=sys.stderr)
         return None
     rows: list[dict[str, object]] = []
     for row in parsed:
@@ -589,11 +580,18 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
 
     if not verbal or verbal == "since last audit":
         implicit = "true" if not verbal else "false"
-        res = proc.run(["gh", "issue", "list", "--state", "all", "--limit", "100000", "--label", "audit-report", "--repo", args.repo, "--json", "number,title,createdAt"])
-        if res.returncode != 0:
+        try:
+            prior_list = gh.issue_list_read(
+                proc,
+                repo=args.repo,
+                state="all",
+                fields=("number", "title", "createdAt"),
+                labels=("audit-report",),
+                limit=100000,
+            )
+        except ShipError:
             return _kv_error(f"gh issue list failed while resolving prior audit-report issue for --skill={args.skill}")
-        prior_list = _load_json(text=res.stdout, default=[])
-        if not isinstance(prior_list, list) or not prior_list:
+        if not prior_list:
             return _kv_error(f"no prior audit-report issue found for --skill={args.skill}")
         prior_list = sorted([x for x in prior_list if isinstance(x, dict)], key=lambda x: str(x.get("createdAt") or ""), reverse=True)
         prior_num = ""
@@ -709,8 +707,17 @@ def preflight_main(argv: list[str] | None = None) -> int:
         return 0
     if not args.allow_concurrent:
         cutoff = (datetime.now(UTC) - timedelta(minutes=5)).strftime("%Y-%m-%dT%H:%M:%SZ")
-        res = proc.run(["gh", "issue", "list", "--state", "all", "--label", "audit-report", "--repo", args.repo, "--json", "number,createdAt", "--limit", "50"])
-        arr = _load_json(text=res.stdout, default=[]) if res.returncode == 0 else []
+        try:
+            arr = gh.issue_list_read(
+                proc,
+                repo=args.repo,
+                state="all",
+                fields=("number", "createdAt"),
+                labels=("audit-report",),
+                limit=50,
+            )
+        except ShipError:
+            arr = []
         if isinstance(arr, list) and any(isinstance(x, dict) and str(x.get("createdAt") or "") > cutoff for x in arr):
             print("PREFLIGHT_OK=false\nREASON=audit-report filed within the 5-minute concurrency window; use --allow-concurrent to override")
             return 0
@@ -1280,16 +1287,22 @@ def close_priors_main(argv: list[str] | None = None) -> int:
     if not _authorized:
         print(f"CLOSE_PRIORS_REFUSED=true\nREASON={config.LIVE_MUTATION_REFUSAL_REASON}:{_auth_reason}")
         return config.EXIT_MUTATION_REFUSED
-    res=proc.run(["gh","issue","list","--state","open","--limit","100000","--label","audit-report","--repo",args.repo,"--json","number,title"])
-    if res.returncode != 0:
-        print("ISSUE_LIST_FAILED=true\nREASON=gh issue list failed")
-        return 1
     try:
-        arr=json.loads(res.stdout or "null")
-    except json.JSONDecodeError:
-        print("ISSUE_LIST_FAILED=true\nREASON=gh issue list returned invalid JSON")
+        arr = gh.issue_list_read(
+            proc,
+            repo=args.repo,
+            state="open",
+            fields=("number", "title"),
+            labels=("audit-report",),
+            limit=100000,
+        )
+    except ShipError as exc:
+        reason = str(exc)
+        if "JSON parse failed" in reason:
+            print("ISSUE_LIST_FAILED=true\nREASON=gh issue list returned invalid JSON")
+        else:
+            print("ISSUE_LIST_FAILED=true\nREASON=gh issue list failed")
         return 1
-    if not isinstance(arr,list): print("ISSUE_LIST_FAILED=true\nREASON=gh issue list returned invalid JSON"); return 1
     body: Path | None = None
     try:
         handle = tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False)
