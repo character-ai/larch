@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 from larch.core import proc, redact
 from larch.core.proc import CommandResult, Runner
 from larch.git import gh
+from larch.issue.title_match import BUG_PREFIX
 from larch.state.session_env import check_live_mutation_auth
 
 EXIT_USAGE: Final = 2
@@ -42,6 +43,8 @@ _LIFECYCLE_PREFIX_RE: Final = re.compile(
     r"^\[(?:IMPLEMENTING|DONE|DESIGNING|DESIGNED|STALLED|IN PROGRESS|PLANNED)\]\s+",
     re.IGNORECASE,
 )
+_BUG_PREFIX_RE: Final = re.compile(r"^" + re.escape(BUG_PREFIX) + r"\s*", re.IGNORECASE)
+_TRIAGED_MARKER_RE: Final = re.compile(r"\[TRIAGED\]", re.IGNORECASE)
 _PROTECTED_MARKER_RE: Final = re.compile(r"<!--\s*larch:", re.IGNORECASE)
 _SECURITY_RE: Final = re.compile(
     r"\b(?:credential(?:s)?|secret(?:s)?|api[ -]?key|auth(?:entication|orization)? bypass|"
@@ -392,6 +395,16 @@ def _read_after_mutation(
     return current
 
 
+def _triaged_title(title: str) -> str:
+    """Return title with [TRIAGED] inserted after [BUG] prefix, or prepended."""
+    if _TRIAGED_MARKER_RE.search(title):
+        return title
+    match = _BUG_PREFIX_RE.match(title)
+    if match:
+        return f"{BUG_PREFIX} [TRIAGED] {title[match.end():]}"
+    return f"[TRIAGED] {title}"
+
+
 def _valid_apply(
     runner: Runner,
     *,
@@ -402,7 +415,8 @@ def _valid_apply(
 ) -> IssueSnapshot:
     block = sanitize_outbound(artifact_text, allow_triage_block=True)
     new_body = _replace_triage_block(snapshot.body, block)
-    if new_body == snapshot.body:
+    new_title = _triaged_title(snapshot.title)
+    if new_body == snapshot.body and new_title == snapshot.title:
         return snapshot
     snapshot = _recheck_valid_snapshot(
         runner, snapshot=snapshot, issue=issue, repo=repo
@@ -411,7 +425,8 @@ def _valid_apply(
         runner,
         str(issue),
         repo=repo,
-        body=new_body,
+        title=new_title if new_title != snapshot.title else None,
+        body=new_body if new_body != snapshot.body else None,
     )
     if body_result.returncode != 0:
         raise TriageError(
@@ -421,7 +436,7 @@ def _valid_apply(
     current = _read_after_mutation(runner, issue=issue, repo=repo, previous=snapshot)
     if (
         current.body != new_body
-        or current.title != snapshot.title
+        or current.title != new_title
         or current.state != "OPEN"
     ):
         raise TriageError(
