@@ -317,6 +317,7 @@ def reconcile_manual_merge_main(argv: list[str] | None = None) -> int:
             "PR_URL": pr.url,
             "MERGE_RESULT": config.MERGE_RESULT_MERGED,
             "REPO": repo,
+            "REPO_UNAVAILABLE": "false",
             "RUN_ID": run_id,
         }
         _write_terminal_layer(

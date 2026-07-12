@@ -148,6 +148,7 @@ def test_reconcile_manual_merge_clears_every_layer(
     _session(tmp_path)
     stale = (
         "REPO=owner/repo\nKEEP=value\nPHASE=stalled\nSTALL_TRACKING=true\nSTALL_STEP=8\n"
+        "REPO_UNAVAILABLE=true\n"
         "BAIL_REASON=architectural-assessment-unavailable\nIMPLEMENT_BAIL_REASON=operator-bail\n"
         "BAIL_NEEDS_USER_INPUT=true\nBAIL_FAILURE_DETAIL_LOG=failure.log\nFAILED_RUN_ID=77\nEXIT_CODE=4\n"
     )
@@ -172,6 +173,7 @@ def test_reconcile_manual_merge_clears_every_layer(
     for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
         layer = ship_recovery._read_layer(tmpdir=tmp_path, name=name)  # pyright: ignore[reportPrivateUsage]
         assert layer["PHASE"] == "done"
+        assert layer["REPO_UNAVAILABLE"] == "false"
         assert layer["STALL_TRACKING"] == "false"
         assert layer["BAIL_NEEDS_USER_INPUT"] == "false"
         assert layer["BAIL_REASON"] == ""
