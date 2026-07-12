@@ -64,14 +64,6 @@ codex/apply                               â”‚                                 â–
 
 **Reviewer slot failures**: 0
 
-## Architectural invariants
-
-No invariants apply to this change. The diff introduces a new shared lint engine module and tests, which does not intersect with any invariant-covered areas (gates, pause/resume, run-logs, panels, ship lifecycle, or agent contract consumption).
-
-## Architectural guidelines
-
-No deviations identified. The code follows architectural guidelines: uses frozen dataclasses (G-Py-1), annotates types beyond signatures including locals (G-Py-2), prefers domain types over primitives (G-Py-3), fails loudly with specific exceptions (G-Py-4), isolates side effects behind injected Runner (G-Py-5), uses typed functions over external CLIs with injected Runner (G-Py-7), acquires resources through context managers (os.fdopen, G-Py-13), defines constants as module-level Final (G-Cfg-1), and validates untrusted git outputs against allowlists (G-Sec-1).
-
 ## /implement run 37BF4F96-C65D-43BD-9C9F-B3905661C23C: shipping
 
 - **Outcome**: shipping
