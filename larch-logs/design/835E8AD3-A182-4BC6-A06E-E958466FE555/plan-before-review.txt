@@ -1,0 +1,97 @@
+## Approach
+
+Add one shared Codex CLI gate detector. Use it in probe and Step 2 launch paths. Preserve existing `KEY=value` grammars, the 60-second cache TTL, and exit-99 sentinel handling.
+
+### UPDATED: python/larch/agents/_types.py
+
+- Add an internal frozen result type for a detected Codex CLI gate: model, matched signal, and operator message.
+- Extend internal probe results with optional gate detail without adding fields to `CheckReviewersResult.kv()` or `kv_lines()`.
+
+### UPDATED: python/larch/agents/_launch_failure.py
+
+- Add the shared detector for:
+  - `Model metadata for <model> not found`
+  - `requires a newer version of Codex`
+- Extract the model from the diagnostic when possible. Otherwise use the resolved launch model.
+- Return: `codex CLI too old for <model>; run \`npm install -g @openai/codex@latest\``.
+- Sanitize the model before placing it in operator-facing text.
+- Keep ordinary auth, quota, timeout, parse, and refusal classification unchanged.
+
+### UPDATED: python/larch/agents/_auth.py
+
+- Change `_run_one_codex_probe` to resolve the `review` role, whose default is `gpt-5.6-luna`, instead of the `default` role.
+- Scan the probe stderr sidecar before cleanup and propagate gate detail through retry handling.
+- Treat a detected gate as non-transient. Do not spend normal transient retries on a CLI upgrade requirement.
+- Retain the gate reason long enough for the separate degraded-tools gate invocation to render it. Key and expire this diagnostic with the existing probe cache identity and TTL. Clear it after a non-gate result so stale upgrade advice cannot leak into later probes.
+- Let `degraded_tools_result` replace the generic Codex probe-failed phrase with the actionable upgrade message when current gate detail exists.
+- Make `status check` surface the same message while preserving its existing stdout KV keys and values.
+- Do not add a version floor or probe sol and terra.
+
+### UPDATED: python/larch/implement/dispatch_step2.py
+
+- Inspect the combined Codex launcher output and `codex-impl.log` after each launch attempt.
+- Detect the CLI gate before converting a missing manifest or invalid launcher exit into `codex-runtime-failure`.
+- Skip a redundant retry when the gate is deterministic.
+- On a clean, unchanged working tree, return the existing `claude_fallback` envelope with the actionable `REASON` and allowed edit authority. Preserve the launcher exit sentinel in its owning launcher artifacts.
+- If the launch touched the tree, changed `HEAD`, or left an index lock, fail closed with forbidden edit authority. Include the actionable reason rather than hiding it behind exit 99.
+- Leave all non-gate runtime failures and complete-manifest salvage behavior unchanged.
+
+### UPDATED: skills/implement/SKILL.md
+
+- In the Codex Step 2 selection-drift branch, append `REASON` when it contains the classified CLI upgrade message.
+- Log the same actionable message under `Warnings`.
+- Keep the existing drift banner and Claude fallback behavior for unrelated selection drift.
+- Do not change Bash fence structure.
+
+### UPDATED: skills/status/SKILL.md
+
+- Preserve the actionable Codex gate diagnostic emitted by `status check`.
+- When Codex is probe-failed for this reason, report the upgrade command instead of only the generic runtime-probe failure phrase.
+- Keep the existing handling for binary absence, unrelated probe failures, and one-vendor or two-vendor degradation.
+
+### UPDATED: skills/shared/external-reviewers.md
+
+- Document that the luna Step 0 probe can classify a Codex CLI model gate.
+- Document the actionable status and degraded-tools message.
+- Clarify that sol and terra remain launch-time checks and that the probe result still does not control later routing.
+
+## Edge cases
+
+- Match either vendor signal in stderr, sidecar, or relayed launcher text.
+- Prefer the model named by the diagnostic. Fall back to the resolved role model when the server message omits it.
+- Do not classify generic metadata, authentication, quota, or HTTP 400 errors as an upgrade gate.
+- Do not reuse a cached gate reason after a healthy or unrelated failed probe.
+- Preserve operator model overrides for the review role while keeping luna as the default probe model.
+- Never grant fallback edit authority after a partially mutating failed launch.
+
+## Failure modes
+
+- If gate-detail persistence cannot be read, retain the generic probe-failed explanation rather than inventing a model.
+- If launch diagnostics are missing, retain `codex-runtime-failure`.
+- If the diagnostic model is malformed, use the already resolved model or `unknown`; never emit control characters into a KV value.
+- If Step 2 safety checks fail, bail instead of silently continuing with Claude.
+
+## Testing strategy
+
+### UPDATED: python/tests/agents/test_agents.py
+
+- Test both gate signatures, model extraction, fallback model selection, sanitization, and near-miss diagnostics.
+- Assert the Codex probe invokes the review role and resolves to `gpt-5.6-luna` by default.
+- Test that a gate stops transient retries and produces the upgrade message.
+- Test gate-reason cache expiry and clearing after healthy or unrelated results.
+- Assert `agent check-reviewers` retains its exact KV order and key set.
+- Test `/status` and degraded-tools explanations for gate-specific and generic probe failures.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Reproduce a Codex launch with metadata-warning and server-version-gate stderr plus launcher exit 99.
+- Assert clean-tree handling returns `claude_fallback`, actionable `REASON`, and allowed edit authority.
+- Assert the deterministic gate does not launch twice.
+- Assert a dirty tree, changed `HEAD`, or index lock blocks fallback and keeps forbidden edit authority.
+- Verify unrelated failures still emit `codex-runtime-failure`.
+- Verify complete-manifest nonzero-exit salvage remains unchanged.
+
+Run the narrow agent and implement test modules, relevant Python lint/type checks, skill Markdown lint, and the implement fence-shape test as a no-drift check.
+
+difficulty: HARD
+diff_lines: 260

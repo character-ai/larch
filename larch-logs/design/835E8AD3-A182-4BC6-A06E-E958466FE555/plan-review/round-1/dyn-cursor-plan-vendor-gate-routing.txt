@@ -1,0 +1,47 @@
+Reviewing the plan against current code paths for gate detection, stderr propagation, and fallback contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/agents/_auth.py:223-254	Probe stamp cache is not keyed to the review-role model or gate-detail lifecycle	Switching `_run_one_codex_probe` to `codex_role="review"` (line 398) still uses `_codex_probe_stamp_kind()` stamps (`codex-login` / `codex-env-key` only). A `true` stamp from a prior default-model probe within the 60s TTL skips the luna probe, so Step 0/`/status` can report `CODEX_PRESENT=true` while implement still launches `gpt-5.6-sol` and hits the CLI gate; stale gate-detail files can also linger because no fresh probe runs to clear them.	Bump the stamp kind (or invalidate on role/model change), and tie gate-detail expiry to the same identity; write `codex_present=false` when a gate is detected even if a stale positive stamp exists.
+1	in_scope	major	correctness	python/larch/agents/_auth.py:440-464	Plan does not bind CLI-gate probe failures to the no-retry return contract	A gate classified as non-transient still returns probe `rc=1` today, which `_run_codex_probes` treats as transient and retries up to `_max_transient_probe_retries()` before recording failure—burning probe time and delaying the upgrade message.	Return `_PROBE_NO_RETRY_RC` (3) from `_run_one_codex_probe` when the shared detector fires; add a test mirroring `test_check_reviewers_probe_no_retry_rc_one_shot`.
+1	in_scope	major	risk-integration	skills/implement/references/step2-dispatch.md:57	Stdout grammar still forbids `REASON` on `claude_fallback`	The plan routes clean-tree CLI gates to `STATUS=claude_fallback` with an actionable `REASON`, but the dispatch contract says `REASON=<token> # set ONLY when STATUS=bailed`; parsers and harnesses treat `REASON` as bail-only.	Add `### UPDATED: skills/implement/references/step2-dispatch.md` documenting optional `REASON` on `claude_fallback` for the CLI-upgrade path (and keep bail-only tokens for `STATUS=bailed`).
+1	in_scope	major	correctness	skills/status/SKILL.md:25-29	`/status` cannot distinguish gate-specific probe failure from generic probe failure	`status check` preserves existing KVs (`CODEX_STATE=probe-failed` only; `python/larch/agents/_auth.py:772-779`). The planned SKILL prose swaps in the upgrade command, but step 2 maps every `probe-failed` to the generic runtime phrase with no gate-detail read.	Have `status check` emit the actionable gate text on stderr (KV keys unchanged) or document a concrete gate-detail file read in status step 2 before rendering Codex state.
+1	in_scope	minor	correctness	python/larch/implement/dispatch_step2.py:603-628	Step 2 gate scan sources are narrower than the launcher failure pipeline	Plan names `codex-impl.log` and launcher stdout; dispatch discards combined stderr (`_run_launcher` line 273) and does not mention `st.transcript_path` artifacts (`.failure-diag`, `.stderr-tail`) that `_append_implement_launch_failure` merges in `_ci_launcher.py:772-793`. Vendor gate text may exist only in transcript-sidecar files.	Scan via `resolve_failure_diagnostic_source(st.transcript_path, sink=str(st.sidecar_log))` (or equivalent) plus sidecar and capped launcher stdout before classifying `codex-runtime-failure` vs `claude_fallback`.
+
+## Findings
+
+### 1. [correctness] Probe stamp cache not keyed to review-role probe (`python/larch/agents/_auth.py:223-254`, `398`)
+
+The plan switches the Codex probe to the `review` role (`gpt-5.6-luna`) but leaves `_codex_probe_stamp_kind()` as `codex-login` / `codex-env-key` only. Stamps store a bare `true`/`false` with a 60s TTL (`_read_fresh_probe_stamp`, lines 231-251). A recent successful **default**-model probe can cache `codex_present=true` and skip the new luna probe entirely.
+
+That recreates the original bug during rollout: Step 0 and `/status` can green-light Codex while Step 2 still launches `gpt-5.6-sol` (`python/larch/core/config.py:741`) and hits the vendor CLI gate. Stale gate-detail persistence is coupled to the same gap: when the stamp short-circuits, no probe runs to clear an old gate-detail file per the plan’s “clear after non-gate result” rule.
+
+**Suggested revision:** Bump or partition the stamp kind for the review-role probe, invalidate on role/model change, and ensure a detected gate forces `codex_present=false` even if a stale positive stamp exists.
+
+### 2. [correctness] Gate probe failures must use the no-retry RC (`python/larch/agents/_auth.py:440-464`)
+
+The plan says a CLI gate is non-transient and must not consume transient retries. Today `_run_one_codex_probe` returns `1` on generic failure, and `_run_codex_probes` retries `rc == 1` up to `_max_transient_probe_retries()` (lines 460-464). `_PROBE_NO_RETRY_RC` (3) already exists for one-shot failures (`python/larch/agents/_types.py:78`; tested at `python/tests/agents/test_agents.py:1633-1655`).
+
+Without an explicit gate → `_PROBE_NO_RETRY_RC` mapping, operators still wait through retry loops before seeing the upgrade message.
+
+**Suggested revision:** Return `_PROBE_NO_RETRY_RC` when the shared detector fires; add a gate analogue of `test_check_reviewers_probe_no_retry_rc_one_shot`.
+
+### 3. [risk-integration] Dispatch stdout contract conflicts with `REASON` on `claude_fallback` (`skills/implement/references/step2-dispatch.md:57`)
+
+The plan’s clean-tree path emits `STATUS=claude_fallback` with an actionable `REASON`. The authoritative dispatch contract still states `REASON=<token> # set ONLY when STATUS=bailed`. That mismatch risks harness drift and violates the edit-in-sync list at `step2-dispatch.md:115-120`, which the plan does not include in its firm file set.
+
+**Suggested revision:** Add `skills/implement/references/step2-dispatch.md` as `### UPDATED:` and document optional `REASON` on `claude_fallback` for the CLI-upgrade path only.
+
+### 4. [correctness] `/status` gate message delivery path is incomplete (`skills/status/SKILL.md:25-29`, `python/larch/agents/_auth.py:744-779`)
+
+The plan preserves `check-reviewers` / `status check` KV keys (correct), and extends `degraded_tools_result` for Step 0. But `/status` step 2 renders Codex solely from `CODEX_STATE`, mapping every `probe-failed` to the generic runtime phrase. `CODEX_STATE` alone cannot distinguish CLI-gate failure from other probe failures.
+
+**Suggested revision:** Either emit the actionable gate text on stderr from `status_check_main` (KV unchanged), or add an explicit gate-detail file read in status step 2 before choosing the Codex line.
+
+### 5. [correctness] Step 2 diagnostic scan should follow the launcher failure pipeline (`python/larch/implement/dispatch_step2.py:270-273`, `603-628`)
+
+Gate detection is planned before mapping to `codex-runtime-failure` vs `claude_fallback`. `_run_launcher` only parses stdout KVs and drops combined stderr (third return value unused at line 603). Implement launch failures consolidate diagnostics into transcript-sidecar artifacts via `_append_implement_launch_failure` (`python/larch/agents/_ci_launcher.py:772-793`), not only `codex-impl.log`.
+
+**Suggested revision:** Scan `resolve_failure_diagnostic_source(st.transcript_path, sink=str(st.sidecar_log))`, sidecar, and capped launcher stdout—not sidecar alone—before branching.
+
+---
+
+**Note on intentional scope:** The plan’s choice to probe `luna` only and leave `sol`/`terra` as launch-time checks is a deliberate minimum-change tradeoff aligned with the issue’s “consider probing role model” wording; it is not flagged as over-scope. The stamp-cache and no-retry gaps above are what would leave Step 0/`/status` falsely healthy within TTL.
