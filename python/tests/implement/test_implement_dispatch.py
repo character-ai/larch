@@ -7340,9 +7340,12 @@ def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
     assert "PLAN_FIDELITY_FORCED=false" in out
 
 
-def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrelated_heading(
+def test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Regression for #7125: a vetted plan may list files as bare firm
+    # `### UPDATED:` headings with no `## Files to modify/create` section.
+    # Coverage must count those firm headings (total=1 here), not report 0/0.
     tmp = _session(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Plan\n"
@@ -7377,8 +7380,13 @@ def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrel
     assert rc == 0
     out = capsys.readouterr().out
     assert "STATUS=complete" in out
-    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=false" in out
-    assert "PLAN_FIDELITY_FORCED=false" in out
+    # docs/expected.md is a firm plan path; only README.md was touched, so the
+    # plan path is untouched and the disposition gate must fire.
+    assert "PLAN_COVERAGE_TOTAL=1" in out
+    assert "PLAN_COVERAGE_TOUCHED=0" in out
+    assert "PLAN_COVERAGE_UNTOUCHED=1" in out
+    assert "PLAN_COVERAGE_DISPOSITION_REQUIRED=true" in out
+    assert "PLAN_FIDELITY_FORCED=true" in out
 
 
 def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warnings(

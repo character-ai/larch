@@ -373,8 +373,6 @@ def extract_scope_paths(*, plan_text: str, use_fallback: bool = True, include_op
         event.generic_level_two and re.match(r"^##\s+Files to modify(?:/create)?\s*$", event.text)
         for event in events
     )
-    if not use_fallback and not has_scope_section:
-        return []
     in_section = not has_scope_section
     seen: list[str] = []
     for event in events:

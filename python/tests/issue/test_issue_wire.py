@@ -536,7 +536,16 @@ def test_extract_scope_paths_and_cli_errors(tmp_path: Path, capsys: pytest.Captu
     assert issue_wire.extract_scope_paths(plan_text=empty.read_text(encoding="utf-8")) == ["skills/design/SKILL.md"]
     assert issue_wire.extract_scope_paths(plan_text=empty.read_text(encoding="utf-8"), use_fallback=False) == []
     scopeless = "## Plan\n### UPDATED: `docs/expected.md`\n## Acceptance\n"
-    assert issue_wire.extract_scope_paths(plan_text=scopeless, use_fallback=False) == []
+    assert issue_wire.extract_scope_paths(plan_text=scopeless, use_fallback=False) == ["docs/expected.md"]
+    multi_scopeless = (
+        "## Plan\n"
+        "### UPDATED: `a/one.py`\n"
+        "### NEW: `b/two.md`\n"
+        "### REWRITTEN: c/three.sh (legacy)\n"
+        "### MAY_UPDATE: `d/opt.py`\n"
+        "## Acceptance\n"
+    )
+    assert issue_wire.extract_scope_paths(plan_text=multi_scopeless, use_fallback=False, include_optional=False) == ["a/one.py", "b/two.md", "c/three.sh"]
     optional = tmp_path / "optional.md"
     _ = optional.write_text(plan, encoding="utf-8")
     assert issue_wire.plan_scope_paths_main(["--plan-file", str(optional)]) == 0
