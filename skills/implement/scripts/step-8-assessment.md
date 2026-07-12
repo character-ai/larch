@@ -27,10 +27,11 @@ as the direct bgjob command.
 ## Step slug and budget
 
 - Fixed step slug: `implement-step8-assessment`
-- `--budget-s 5700` on every `bgjob start`
-- Rationale: Piece 2 can run three sequential 1800-second model lanes; the
-  adapter budget adds 300 seconds for shared-launcher sidecars, daemon startup,
-  merge-result publication, and `bgjob wait` finalization
+- `--budget-s 11040` on every `bgjob start`
+- Rationale: each adapter invocation permits two complete Piece 2 waterfalls.
+  Each waterfall has three 1800-second lanes, with a 60-second shared-launcher
+  grace for each Cursor or Codex lane: `2 * (3 * 1800 + 2 * 60) = 11040`.
+  Adapter attempt 2 is a full child retry, so it receives the same budget.
 
 ## Normative identity and result contract
 

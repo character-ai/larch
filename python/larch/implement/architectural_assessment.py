@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Final, Protocol, cast
 
+from larch import io as larch_io
 from larch.core import architectural_guidelines, config, external_defaults, logging_util, redact
 from larch.implement import ship_guidelines
 
@@ -731,13 +732,7 @@ def _parse_results_independently(
 
 
 def _write_text_atomic(path: Path, text: str) -> None:
-    if path.is_symlink() or (path.exists() and not path.is_file()):
-        raise OSError(f"unsafe artifact target: {path.name}")
-    tmp = path.with_name(path.name + ".tmp")
-    if tmp.is_symlink() or (tmp.exists() and not tmp.is_file()):
-        raise OSError(f"unsafe temporary artifact: {tmp.name}")
-    _ = tmp.write_text(text, encoding="utf-8")
-    _ = tmp.replace(path)
+    larch_io.trusted_atomic_write(path, text, root=path.parent, mode=0o600)
 
 
 def _write_json_atomic(path: Path, data: dict[str, object]) -> None:
@@ -1013,6 +1008,8 @@ def _set_latest_detail(
 
 def _lane_output_path(*, tool: str, implement_tmpdir: Path) -> Path:
     output_path = implement_tmpdir / f"architectural-assessment-{tool}-result.json"
+    if output_path.is_symlink():
+        raise OSError(f"unsafe stale {tool} result artifact")
     if not output_path.exists():
         return output_path
     if not _under(output_path, implement_tmpdir) or not _regular_file(output_path):
@@ -1095,13 +1092,7 @@ def _record_unresolved_lane_rows(
             evidence.kind,
             "assessment result omitted a requested kind",
         )
-        outcome_invalid = evidence.kind in invalid_details and (
-            "state is invalid" in detail or "result fields are invalid" in detail
-        )
-        if outcome_invalid:
-            statuses[evidence.kind] = _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
-        else:
-            latest_detail[evidence.kind] = detail
+        latest_detail[evidence.kind] = detail
     return [evidence for evidence in unresolved if evidence.kind not in statuses]
 
 
@@ -1154,6 +1145,8 @@ def _run_waterfall(
             statuses=statuses,
             latest_detail=latest_detail,
         )
+        if statuses.get(config.ASSESSMENT_KIND_INVARIANTS) == config.ASSESSMENT_OUTCOME_VIOLATION:
+            break
     for evidence in unresolved:
         _persist_unavailable(
             evidence,

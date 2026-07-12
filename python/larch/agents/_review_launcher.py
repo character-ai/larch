@@ -881,9 +881,9 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
         workdir = str(Path(args.assessment_repo_root).resolve()) if assessment_contract else _resolve_review_codex_workdir(str(Path.cwd()))
         add_dirs = [str(sandbox_dir)]
         if assessment_contract:
-            evidence_dir = str(Path(args.assessment_evidence_dir).resolve())
-            if evidence_dir not in add_dirs:
-                add_dirs.append(evidence_dir)
+            # Assessment agents need only the validated evidence directory;
+            # granting the output parent exposes the whole session tmpdir.
+            add_dirs = [str(Path(args.assessment_evidence_dir).resolve())]
         add_dir_args = [value for directory in add_dirs for value in ("--add-dir", directory)]
         cmd = [
             "codex",

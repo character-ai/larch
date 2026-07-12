@@ -184,6 +184,22 @@ def test_shared_launcher_sidecars_fail_closed_when_missing_or_inconsistent(tmp_p
     )
 
 
+def test_lane_output_rejects_dangling_symlink_before_existence_check(tmp_path: Path) -> None:
+    output = tmp_path / "architectural-assessment-codex-result.json"
+    output.symlink_to(tmp_path / "outside")
+
+    with pytest.raises(OSError, match="unsafe stale codex result artifact"):
+        _ = assessment._lane_output_path(tool="codex", implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_atomic_assessment_sidecar_write_rejects_symlink(tmp_path: Path) -> None:
+    receipt = tmp_path / "architectural-assessment-unavailable-guidelines.json"
+    receipt.symlink_to(tmp_path / "outside")
+
+    with pytest.raises(OSError, match="regular file"):
+        assessment._write_json_atomic(receipt, {"schema_version": "1"})  # pyright: ignore[reportPrivateUsage]
+
+
 def test_shared_launcher_preflight_sidecar_surfaces_operator_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     output = tmp_path / "result.json"
     reason = "codex auth setup failed"
@@ -348,8 +364,8 @@ def _payload(evidences: list[assessment.MaterializedEvidence], *, states: dict[s
         rows.append({
             "kind": evidence.kind,
             "state": state,
-            "assessment": "No violations identified." if state == "clean" else "G-Py-4 applies.",
-            "identifiers": [] if state == "clean" else ["G-Py-4"],
+            "assessment": "No violations identified." if state == "clean" else "An architectural requirement applies.",
+            "identifiers": [] if state == "clean" else sorted(evidence.identifiers),
             "head_sha": evidence.head_sha,
             "base_ref": evidence.base_ref,
             "diff_fingerprint": evidence.diff_fingerprint,
@@ -521,9 +537,10 @@ def test_per_kind_success_removes_kind_from_later_prompt(monkeypatch: pytest.Mon
     assert '"kind":"guidelines"' in codex.requests[0].prompt
 
 
-def test_invalid_explicit_outcome_stays_reauthor_required(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_invalid_explicit_outcome_falls_through_to_next_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     evidence = _run_evidence(tmp_path)
     _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
     payload = json.loads(_payload([evidence]))
     payload["results"][0]["state"] = "violation"
     cursor = _SequenceLauncher([assessment.LaunchResult(0, json.dumps(payload), "")])
@@ -535,8 +552,8 @@ def test_invalid_explicit_outcome_stays_reauthor_required(monkeypatch: pytest.Mo
         availability={"cursor": True, "codex": True, "claude": False},
     )
 
-    assert result == ("guidelines:re-author-required:invalid-explicit-outcome",)
-    assert (cursor.calls, codex.calls) == (1, 0)
+    assert result == ("guidelines:clean",)
+    assert (cursor.calls, codex.calls) == (1, 1)
 
 
 def test_full_exhaustion_persists_last_lane_diagnostic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -559,6 +576,49 @@ def test_full_exhaustion_persists_last_lane_diagnostic(monkeypatch: pytest.Monke
     )
     assert result == ("guidelines:unavailable",)
     assert outcome["detail"] == "final Claude diagnostic"
+
+
+def test_timeout_advances_through_each_lane_then_persists_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    launchers = {
+        "cursor": _SequenceLauncher([assessment.LaunchResult(config.EXIT_TIMEOUT, "", "Cursor timed out")]),
+        "codex": _SequenceLauncher([assessment.LaunchResult(config.EXIT_TIMEOUT, "", "Codex timed out")]),
+        "claude": _SequenceLauncher([assessment.LaunchResult(config.EXIT_TIMEOUT, "", "Claude timed out")]),
+    }
+
+    result = assessment.run(
+        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers=launchers,
+        availability={"cursor": True, "codex": True, "claude": True},
+    )
+
+    outcome = json.loads(
+        (tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8")
+    )
+    assert result == ("guidelines:unavailable",)
+    assert tuple(launcher.calls for launcher in launchers.values()) == (1, 1, 1)
+    assert outcome["detail"] == "Claude timed out"
+
+
+def test_invariant_violation_stops_waterfall_without_launching_later_lanes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invariant = _run_evidence(tmp_path, config.ASSESSMENT_KIND_INVARIANTS)
+    guideline = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {invariant.kind: invariant, guideline.kind: guideline})
+    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
+    payload = json.loads(_payload([invariant, guideline], states={"invariants": "violation"}))
+    payload["results"][1]["diff_fingerprint"] = "wrong"
+    cursor = _SequenceLauncher([assessment.LaunchResult(0, json.dumps(payload), "")])
+    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([guideline]), "")])
+
+    result = assessment.run(
+        kinds=[invariant.kind, guideline.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
+        launchers={"cursor": cursor, "codex": codex},
+        availability={"cursor": True, "codex": True, "claude": False},
+    )
+
+    assert result == ("invariants:violation", "guidelines:unavailable")
+    assert (cursor.calls, codex.calls) == (1, 0)
 
 
 def test_head_drift_during_persistence_rematerializes_and_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
