@@ -1955,6 +1955,10 @@ def test_commit_fixes_stage_all_clean_tree_noops(tmp_path, monkeypatch, capsys):
     assert "COMMIT_OUTCOME=noop" in out
 
 
+_STAGE_ALL_STATUS = ["git", "status", "--porcelain", "--untracked-files=all"]
+_POST_COMMIT_STATUS = ["git", "status", "--porcelain"]
+
+
 @pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_dirty_no_delta_paths_noops(tmp_path, monkeypatch, capsys):
     # Dirty tree with no review-delta paths is benign — pre-existing dirt (issue #5715).
@@ -1965,7 +1969,7 @@ def test_commit_fixes_stage_all_dirty_no_delta_paths_noops(tmp_path, monkeypatch
     committed_calls: list[list[str]] = []
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
-        if argv == ["git", "status", "--porcelain"]:
+        if argv == _STAGE_ALL_STATUS:
             return review_and_fix.proc.CommandResult(tuple(argv), 0, " M unrelated.py\n", "", 0.0)
         committed_calls.append(argv)
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
@@ -1981,6 +1985,43 @@ def test_commit_fixes_stage_all_dirty_no_delta_paths_noops(tmp_path, monkeypatch
 
 
 @pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_clean_collected_paths_noops(tmp_path, monkeypatch, capsys):
+    # Nonempty collected set that is fully clean while unrelated dirt remains (#7073).
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setattr(
+        review_and_fix,
+        "_collect_review_fix_stage_paths",
+        lambda _impl: ["a.py", "b.py"],
+    )
+    committed_calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if argv == _STAGE_ALL_STATUS:
+            return review_and_fix.proc.CommandResult(
+                tuple(argv),
+                0,
+                " M python/markdown-heading-fence-state-baseline.json\n",
+                "",
+                0.0,
+            )
+        committed_calls.append(argv)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+    rc = review_and_fix.commit_fixes(["--stage-all"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMITTED=false" in out
+    assert "COMMIT_OUTCOME=noop" in out
+    stage_file = impl / "review-fix-stage-paths.txt"
+    assert stage_file.read_text(encoding="utf-8") == ""
+    commit_calls = [c for c in committed_calls if "commit" in c]
+    assert not commit_calls
+
+
+@pytest.mark.commit_fixes
 def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch, capsys):
     impl = _tmp_impl(tmp_path)
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
@@ -1988,12 +2029,15 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
     calls: list[list[str]] = []
-    porcelain_outputs = [" M a.py\n M unrelated.py\n", ""]
+    pre_status = " M a.py\n M unrelated.py\n"
+    post_status = ""
 
     def fake_run(argv, **_kwargs):
         calls.append(list(argv))
-        if argv == ["git", "status", "--porcelain"]:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, porcelain_outputs.pop(0), "", 0.0)
+        if argv == _STAGE_ALL_STATUS:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, pre_status, "", 0.0)
+        if argv == _POST_COMMIT_STATUS:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, post_status, "", 0.0)
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
@@ -2025,11 +2069,12 @@ def test_commit_fixes_stage_all_dirty_after_success_nonfatal(tmp_path, monkeypat
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
-    status_outputs = [" M a.py\n", " M unrelated.py\n"]
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
-        if argv == ["git", "status", "--porcelain"]:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, status_outputs.pop(0), "", 0.0)
+        if argv == _STAGE_ALL_STATUS:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M a.py\n", "", 0.0)
+        if argv == _POST_COMMIT_STATUS:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M unrelated.py\n", "", 0.0)
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
@@ -2048,14 +2093,11 @@ def test_commit_fixes_stage_all_post_commit_status_probe_failure_fails(tmp_path,
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
-    status_calls = 0
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
-        nonlocal status_calls
-        if argv == ["git", "status", "--porcelain"]:
-            status_calls += 1
-            if status_calls == 1:
-                return review_and_fix.proc.CommandResult(tuple(argv), 0, " M a.py\n", "", 0.0)
+        if argv == _STAGE_ALL_STATUS:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M a.py\n", "", 0.0)
+        if argv == _POST_COMMIT_STATUS:
             return review_and_fix.proc.CommandResult(tuple(argv), 128, "", "fatal status", 0.0)
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
@@ -2076,7 +2118,7 @@ def test_commit_fixes_stage_all_pre_commit_status_probe_failure_fails(tmp_path, 
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
-        if argv == ["git", "status", "--porcelain"]:
+        if argv == _STAGE_ALL_STATUS:
             return review_and_fix.proc.CommandResult(tuple(argv), 128, "", "fatal status", 0.0)
         return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
 
@@ -2098,7 +2140,7 @@ def test_commit_fixes_failure_error_token_does_not_change_outcome(tmp_path, monk
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["a.py"])
 
     def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
-        if argv == ["git", "status", "--porcelain"]:
+        if argv == _STAGE_ALL_STATUS:
             return review_and_fix.proc.CommandResult(tuple(argv), 0, " M a.py\n", "", 0.0)
         if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
             return review_and_fix.proc.CommandResult(tuple(argv), 1, "", "fatal COMMIT_OUTCOME=ok nope", 0.0)
@@ -2362,11 +2404,12 @@ def test_commit_fixes_stage_all_passes_repo_root_as_cwd(tmp_path, monkeypatch, c
     monkeypatch.setattr(review_and_fix, "_collect_review_fix_stage_paths", lambda _impl: ["python/a.py"])  # type: ignore[arg-type]
     monkeypatch.setattr(review_and_fix, "_git_head", lambda: "deadbeef")
     captured_cwds: list[object] = []
-    porcelain_outputs = [" M python/a.py\n", ""]
 
     def fake_run(argv: list[str], *, cwd: object = None, **_kwargs: object) -> review_and_fix.proc.CommandResult:
-        if argv == ["git", "status", "--porcelain"]:
-            return review_and_fix.proc.CommandResult(tuple(argv), 0, porcelain_outputs.pop(0), "", 0.0)
+        if argv == _STAGE_ALL_STATUS:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, " M python/a.py\n", "", 0.0)
+        if argv == _POST_COMMIT_STATUS:
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
         if argv[:5] == ["git", "-C", repo_root, "rev-parse", "--show-toplevel"]:
             return review_and_fix.proc.CommandResult(tuple(argv), 0, f"{repo_root}\n", "", 0.0)
         if argv[:4] == [review_and_fix.sys.executable, str(review_and_fix._PY_CLI), "git", "commit"]:
@@ -2378,6 +2421,115 @@ def test_commit_fixes_stage_all_passes_repo_root_as_cwd(tmp_path, monkeypatch, c
     assert rc == 0
     assert len(captured_cwds) == 1
     assert captured_cwds[0] == review_and_fix.Path(repo_root)
+
+
+def _commit_count(repo: Path) -> int:
+    result = review_and_fix._run(["git", "rev-list", "--count", "HEAD"], cwd=repo)
+    assert result.returncode == 0
+    return int(result.stdout.strip())
+
+
+@pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_git_fixture_clean_collected_noops(tmp_path, monkeypatch, capsys):
+    repo = _mk_git_repo(tmp_path)
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    (repo / "fix.py").write_text("committed\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "fix.py"], cwd=repo)
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "add fix"], cwd=repo)
+    (repo / "baseline.json").write_text('{"n": 1}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        review_and_fix,
+        "_collect_review_fix_stage_paths",
+        lambda _impl: ["fix.py"],
+    )
+    before = _commit_count(repo)
+    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "should noop"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMITTED=false" in out
+    assert "COMMIT_OUTCOME=noop" in out
+    assert _commit_count(repo) == before
+    assert (impl / "review-fix-stage-paths.txt").read_text(encoding="utf-8") == ""
+    assert "baseline.json" in _git_porcelain(repo)
+
+
+@pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_git_fixture_partial_dirty_commits_subset(tmp_path, monkeypatch, capsys):
+    repo = _mk_git_repo(tmp_path)
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    (repo / "clean.py").write_text("clean\n", encoding="utf-8")
+    (repo / "dirty.py").write_text("v1\n", encoding="utf-8")
+    review_and_fix._run(["git", "add", "clean.py", "dirty.py"], cwd=repo)
+    review_and_fix._run(["git", "commit", "--quiet", "-m", "seed"], cwd=repo)
+    (repo / "dirty.py").write_text("v2\n", encoding="utf-8")
+    (repo / "baseline.json").write_text('{"n": 1}\n', encoding="utf-8")
+    monkeypatch.setattr(
+        review_and_fix,
+        "_collect_review_fix_stage_paths",
+        lambda _impl: ["clean.py", "dirty.py"],
+    )
+    before = _commit_count(repo)
+    baseline_before = (repo / "baseline.json").read_text(encoding="utf-8")
+    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "commit dirty only"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMITTED=true" in out
+    assert "COMMIT_OUTCOME=ok" in out
+    assert _commit_count(repo) == before + 1
+    assert (impl / "review-fix-stage-paths.txt").read_text(encoding="utf-8") == "dirty.py\n"
+    porcelain = _git_porcelain(repo)
+    assert "dirty.py" not in porcelain
+    assert "baseline.json" in porcelain
+    assert _git_cached_names(repo).strip() == ""
+    assert (repo / "baseline.json").read_text(encoding="utf-8") == baseline_before
+    show = review_and_fix._run(["git", "show", "--name-only", "--pretty=format:", "HEAD"], cwd=repo)
+    assert show.returncode == 0
+    assert show.stdout.strip().splitlines() == ["dirty.py"]
+
+
+@pytest.mark.commit_fixes
+def test_commit_fixes_stage_all_git_fixture_untracked_nested_file(tmp_path, monkeypatch, capsys):
+    repo = _mk_git_repo(tmp_path)
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(repo))
+    nested = repo / "nested"
+    nested.mkdir()
+    (nested / "new.py").write_text("new\n", encoding="utf-8")
+    default_porcelain = review_and_fix._run(["git", "status", "--porcelain"], cwd=repo).stdout
+    assert "nested/" in default_porcelain
+    assert "nested/new.py" not in default_porcelain
+    all_porcelain = review_and_fix._run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repo,
+    ).stdout
+    assert "nested/new.py" in all_porcelain
+    monkeypatch.setattr(
+        review_and_fix,
+        "_collect_review_fix_stage_paths",
+        lambda _impl: ["nested/new.py"],
+    )
+    before = _commit_count(repo)
+    rc = review_and_fix.commit_fixes(["--stage-all", "--message", "add nested"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "COMMITTED=true" in out
+    assert "COMMIT_OUTCOME=ok" in out
+    assert _commit_count(repo) == before + 1
+    assert (impl / "review-fix-stage-paths.txt").read_text(encoding="utf-8") == "nested/new.py\n"
+    show = review_and_fix._run(["git", "show", "--name-only", "--pretty=format:", "HEAD"], cwd=repo)
+    assert show.returncode == 0
+    assert show.stdout.strip().splitlines() == ["nested/new.py"]
 
 
 @pytest.mark.commit_fixes

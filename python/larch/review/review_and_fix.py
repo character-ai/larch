@@ -172,8 +172,26 @@ def _finish_stage_all_commit_success(sha: str) -> int:
     return 0
 
 
+def _porcelain_dirty_paths(porcelain: str) -> frozenset[str]:
+    """Parse repo-relative paths from newline porcelain (``--untracked-files=all``)."""
+    dirty: set[str] = set()
+    for line in porcelain.splitlines():
+        if len(line) < 4:
+            continue
+        path = line[3:]
+        if " -> " in path:
+            old, new = path.split(" -> ", 1)
+            if old:
+                dirty.add(old)
+            if new:
+                dirty.add(new)
+        elif path:
+            dirty.add(path)
+    return frozenset(dirty)
+
+
 def _commit_fixes_stage_all(message: str) -> int:
-    _status = _run(["git", "status", "--porcelain"])
+    _status = _run(["git", "status", "--porcelain", "--untracked-files=all"])
     porcelain = _status.stdout
     probe_ok = _status.returncode == 0
     if not probe_ok:
@@ -187,12 +205,16 @@ def _commit_fixes_stage_all(message: str) -> int:
         _emit_commit_fixes_kvs(committed=False, sha="", error="IMPLEMENT_TMPDIR required", outcome="failed")
         return 2
     implement_tmpdir = Path(raw_implement_tmpdir)
-    paths = _collect_review_fix_stage_paths(implement_tmpdir)
+    collected = _collect_review_fix_stage_paths(implement_tmpdir)
+    dirty = _porcelain_dirty_paths(porcelain)
+    # Preserve collected order; commit only paths that are still dirty (#7073).
+    paths = [path for path in collected if path in dirty]
     stage_file = implement_tmpdir / "review-fix-stage-paths.txt"
     _write_text(path=stage_file, text="\n".join(paths) + ("\n" if paths else ""))
     if not paths:
-        # Dirty tree with no review-delta paths means the dirt is pre-existing and
-        # unrelated to the review fix — benign noop, not a Tool Failure (issue #5715).
+        # Empty collected set, or nonempty collected set that is fully clean while
+        # unrelated dirt remains (e.g. regenerated baselines) — benign noop
+        # (issues #5715 / #7073).
         _emit_commit_fixes_kvs(committed=False, sha="", error="", outcome="noop")
         return 0
     raw_project = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
