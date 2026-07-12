@@ -1,0 +1,72 @@
+#### Problem
+
+82% of recently classified bugs were discovered by live runs; the recovery-path code where they live is exactly what CI cannot exercise, so "CI green, admin-merge" closes bugs that were never executed. And fixes are instance-scoped in practice: the chains #6610 to #6668, #6632 to #6672, #6882 to #6955 each survived review. G-Fix-1 ("Fix the class, not the instance") exists but nothing operationalizes it at review time.
+
+#### Required design
+
+Prompt-side checks with mechanical pinning, three surfaces:
+
+1. Guideline: append to `ARCHITECTURAL_GUIDELINES.md`, next free ID in the G-Fix area, matching the file's style:
+
+   ```markdown
+   ### G-Fix-2: A recovery-path bug fix ships with an executable reproduction
+
+   When fixing a bug in recovery or orchestration machinery (implement steps, ship and postmerge routing, bgjob, design publish and resume, CI fixer, stall classifiers), add or extend an offline harness or test case that replays the failure and passes with the fix. Close criteria is reproduced-then-passed, not merged.
+
+   **Why**: 82% of 2026-07 bugs were found only by live runs; CI-green carries no signal for this class, and unreproduced fixes repeatedly shipped incomplete (#6610, #6882, #6931 chains).
+
+   **Deviate when**: the failure requires live vendor or GitHub state that no harness can replay; say so in the PR and name the manual verification performed.
+   ```
+
+   (Adjust the ID to the file's numbering at implementation time.)
+2. `/design` plan review: for a plan whose source issue carries `[BUG]` and whose files touch the recovery surfaces named in the guideline, the plan-review prompt requires the plan to name the harness or test case that replays the failure, or to carry an explicit one-line no-repro justification. Add this to the plan-review prompt surface and pin the added text via the existing prompt-template invariants harness (`make test-prompt-template-invariants`).
+3. `/review` diff mode: in `skills/shared/reviewer-templates.md`, for diffs fixing a `[BUG]` issue, reviewers must answer: class or instance: name the sibling sites checked, or state that a grep for the pattern found none. Pin via the same template-invariants harness.
+
+#### Tests
+
+Template-invariant harness entries for both added questions; guideline presence test consistent with existing architectural-guidelines tests; no behavioral code paths to test beyond the pinned text.
+
+#### Non-goals
+
+No hard merge-blocking gate; no new harnesses authored here (the runtime-tier sibling surfaces coverage gaps; harness authoring is per-zone follow-up work); no retroactive audits.
+
+#### Acceptance criteria
+
+1. Guideline landed with correct ID and style; coverage indexer sees it.
+2. Both prompt surfaces carry the new questions and the invariants harness pins them.
+3. A `[BUG]`-sourced fixture plan touching a recovery surface without a repro line fails the plan-review checklist expectation in the structure harness.
+
+#### Backing evidence
+
+This is the pre-merge complement to the analyze-bugs class-completeness verdict: that issue catches instance-scoped fixes after merge; this one asks the question while the fix is still open. Effectiveness is measurable afterward via the chain rate in the analytics sibling's report. Part of the `bug-treadmill` umbrella; independent of the other children.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Land G-Fix-2 in ARCHITECTURAL_GUIDELINES.md: recovery-path bug fixes require an executable reproduction.
+- Add a plan-review checklist line for `[BUG]`-sourced plans touching recovery machinery.
+- Add a class-or-instance diff-mode question to the canonical code-reviewer template.
+- Pin both new prompt questions in the template-invariants harness.
+
+### Non-goals
+- No behavioral code paths beyond the pinned text.
+- No hard merge-blocking gate.
+- No new harnesses authored here; each bug fixer writes their own.
+- No retroactive audits.
+
+### Approach sketch
+- Append G-Fix-2 after G-Fix-1 in ARCHITECTURAL_GUIDELINES.md.
+- Add one sentence to the plan-review prompt f-string in rendering.py.
+- Add one `[BUG]-sourced diffs` bullet to `## Adapt scope` in reviewer-templates.md; regenerate agents/code-reviewer.md.
+- Add three `assert_contains` calls to scripts/test-prompt-template-invariants.sh.
+
+### Surfaces in scope
+- ARCHITECTURAL_GUIDELINES.md
+- python/larch/rendering/rendering.py
+- skills/shared/reviewer-templates.md
+- agents/code-reviewer.md
+- scripts/test-prompt-template-invariants.sh
+
+### Open questions
+- None.

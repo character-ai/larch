@@ -1,0 +1,83 @@
+## Approach
+
+Add the two bug-fix review questions as prompt-side guidance. Pin their exact text in the existing invariant harness. Do not add runtime gating or new harness machinery.
+
+The plan-review instruction must apply only when both conditions hold:
+
+- The source issue carries `[BUG]`.
+- The firm plan files touch the recovery surfaces named by G-Fix-2.
+
+It must require either a named offline harness or test case that replays the failure, or an explicit one-line no-repro justification.
+
+The diff-review instruction must ask reviewers of `[BUG]` fixes to classify the change as class-wide or instance-only. Require the sibling sites checked, or a statement that a grep found none.
+
+## Files to modify/create
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+- Add `G-Fix-2` after `G-Fix-1`, which is the next free ID in the Fix discipline section.
+- Match the current entry structure with `Why`, `Guidance`, and `Deviate when` bullets.
+- Require recovery-path bug fixes to ship with an executable offline reproduction.
+- Name the recovery surfaces from the issue: implement steps, ship and postmerge routing, bgjob, design publish and resume, CI fixer, and stall classifiers.
+- Define close criteria as reproduced-then-passed, not merely merged or CI-green.
+- Preserve the live-vendor or GitHub-state exception. Require the PR to state why no harness can replay the failure and name the manual verification.
+- Keep the heading grammar compatible with the existing architectural guideline reader and coverage indexer.
+
+### UPDATED: python/larch/rendering/rendering.py
+
+- Add a concise checklist instruction to the common `render_plan_review_main` prompt scaffold so static and dynamic plan reviewers receive the same rule.
+- Tell reviewers that a `[BUG]`-sourced plan touching a named recovery surface must identify the harness or test case that reproduces the failure, or include a one-line no-repro justification.
+- Phrase the check against the proposed firm file set. Do not demand a reproduction for unrelated bugs, non-bug issues, or plans that do not touch recovery machinery.
+- Keep the instruction advisory through plan review. Do not add parsing, title detection, path classifiers, or a hard gate.
+
+### UPDATED: skills/shared/reviewer-templates.md
+
+- Add one `[BUG]`-specific bullet under `## Adapt scope`.
+- For diff review, require reviewers to answer “class or instance” by naming sibling sites checked or stating that a grep for the defect pattern found none.
+- Keep this question within the canonical shared reviewer body so generated reviewer surfaces inherit it.
+- Do not require fixes at unrelated siblings. Existing scope and proportionality rules still govern whether a sibling is in scope or needs follow-up.
+
+### UPDATED: agents/code-reviewer.md
+
+- Regenerate the checked-in code reviewer from `skills/shared/reviewer-templates.md` with the repository generator.
+- Confirm the generated agent contains the new `[BUG]` class-or-instance instruction and no hand-edited divergence.
+
+### UPDATED: scripts/test-prompt-template-invariants.sh
+
+- Change the plan-review fixture feature text to carry a `[BUG]` source signal.
+- Make the fixture plan touch a representative recovery surface while omitting a reproduction line, so the rendered checklist question covers the required negative scenario.
+- Add exact `assert_contains` pins for:
+  - the G-Fix-2 executable-reproduction guideline text,
+  - the rendered plan-review harness-or-no-repro question,
+  - the canonical or generated diff-review class-or-instance question.
+- Keep the assertions textual. Do not simulate reviewer judgment or introduce a behavioral gate.
+
+## Edge cases
+
+- A `[BUG]` issue that changes ordinary product or documentation files must not imply that recovery-specific reproduction guidance applies.
+- A recovery-path feature that is not sourced from a `[BUG]` issue must not be described as subject to the bug-only checklist.
+- A legitimate live-state exception satisfies the prompt when the plan gives a one-line no-repro reason.
+- A reviewer may find no sibling sites. The prompt must accept an explicit grep-found-none result.
+- Generated reviewer content must remain synchronized with its canonical template.
+
+## Failure modes
+
+- Overbroad wording could make every bug plan appear to require a recovery harness.
+- Vague wording could let a plan claim “tests added” without naming the replaying case.
+- Editing only `agents/code-reviewer.md` would be overwritten by regeneration.
+- Unpinned prompt text could disappear during later renderer or template refactors.
+- A malformed G-Fix heading could prevent the coverage indexer from seeing the new guideline.
+
+## Testing strategy
+
+- Run `make test-prompt-template-invariants`.
+- Run the generator check for `agents/code-reviewer.md`, using the registered `generate code-reviewer-agent` command.
+- Run the focused rendering tests that verify checked-in reviewer surfaces remain synchronized.
+- Run `python3 -m pytest python/tests/issue/test_learn_from_bugs.py -q -k architectural` to confirm the committed guideline remains visible to both the reader and coverage indexer.
+- Run Markdown and changed-file lint checks for the two Markdown sources and generated agent.
+
+difficulty: MODERATE
+diff_added: 35
+diff_deleted: 3
+mechanical_churn: false
+diff_lines: 38
