@@ -9,7 +9,12 @@ from typing import Final
 
 RUNTIME_ROOT: Final = Path(__file__).resolve().parents[2] / "larch"
 GRAMMAR_OWNER: Final = Path("issue/issue_wire.py")
-PLAN_MARKERS: Final = ("larch:plan:start", "larch:plan:end")
+PLAN_MARKERS: Final = (
+    "larch:plan:start",
+    "larch:plan:end",
+    "<!-- larch:plan:start -->",
+    "<!-- larch:plan:end -->",
+)
 EXCLUDED_PARTS: Final = frozenset({"tests", "fixtures", "__pycache__", ".mypy_cache", ".pytest_cache", ".ruff_cache"})
 REQUIRED_HELPER_CALLS: Final = (
     (Path("design/decompose.py"), "compose_named_block"),
@@ -82,14 +87,14 @@ def test_runtime_plan_markers_use_the_shared_grammar_owner() -> None:
 
 def test_ownership_guard_reports_hardcoded_markers_and_ignores_fixtures(tmp_path: Path) -> None:
     _write_required_consumers(tmp_path)
-    _write(tmp_path / "issue/bypass.py", 'MARKER = "larch:plan:start"\n')
+    _write(tmp_path / "issue/bypass.py", 'MARKER = "<!-- larch:plan:start -->"\n')
     _write(tmp_path / "fixtures/marker_example.py", 'MARKER = "larch:plan:end"\n')
     _write(tmp_path / "tests/marker_example.py", 'MARKER = "larch:plan:end"\n')
     _write(tmp_path / "__pycache__/marker_example.py", 'MARKER = "larch:plan:end"\n')
 
     violations: list[str] = _ownership_violations(tmp_path)
 
-    assert violations == ["issue/bypass.py: hardcodes 'larch:plan:start'"]
+    assert violations == ["issue/bypass.py: hardcodes '<!-- larch:plan:start -->'"]
 
 
 def test_ownership_guard_reports_missing_shared_helper_call(tmp_path: Path) -> None:
