@@ -28,6 +28,7 @@ from larch.core import logging_util, proc
 from larch.git import gh
 from larch.issue import issue_wire
 from larch.review import voting
+from larch.review.review_types import parse_canonical_heading
 
 DEFAULT_VERIFY_CAP = 100
 LEDGER_PATH = Path("larch-logs/rejected-analysis-ledger.tsv")
@@ -86,7 +87,13 @@ PATH_TOKEN_RE = re.compile(
 )
 KNOWN_EXTENSIONLESS_PATHS = frozenset({"Makefile", "Dockerfile", "GNUmakefile"})
 FILED_DISPOSITIONS = frozenset({"filed-as", "deduped-as"})
-FINDING_HEADING_RE = re.compile(r"^\s*#{1,6}\s+((?:FINDING|OOS)_\d+)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.MULTILINE)
+def _first_canonical_heading(text: str) -> tuple[str, str] | None:
+    """Return (item_id, title) from the first canonical heading in text, or None."""
+    for line in text.splitlines():
+        heading = parse_canonical_heading(line)
+        if heading is not None:
+            return (heading.item_id, heading.title)
+    return None
 
 VerdictStatus = Literal["confirmed", "stale", "already-fixed"]
 IngestStatus = Literal["ingested", "launch-failed", "dirty-tree", "parse-failed", "location-mismatch"]
@@ -315,9 +322,9 @@ def _strip_md_value(value: str) -> str:
 
 
 def extract_concern(prose_body: str, tsv_row: Mapping[str, str]) -> str:  # lint-keyword-only: ok stable helper API
-    match = FINDING_HEADING_RE.search(prose_body or "")
-    if match and match.group(2).strip():
-        return _collapse_ws(re.sub(r"[*_`]+", "", match.group(2)))
+    heading = _first_canonical_heading(prose_body or "")
+    if heading is not None and heading[1].strip():
+        return _collapse_ws(re.sub(r"[*_`]+", "", heading[1]))
     for line in (prose_body or "").splitlines():
         stripped = line.strip()
         stripped = re.sub(r"^[-*+]\s+", "", stripped)
@@ -456,8 +463,8 @@ def _compute_hash_from_parts(*, file_path: str, concern: str) -> str:
 
 
 def _canonical_id_from_prose(prose_body: str) -> str:
-    match = FINDING_HEADING_RE.search(prose_body or "")
-    return match.group(1).upper() if match else ""
+    heading = _first_canonical_heading(prose_body or "")
+    return heading[0].upper() if heading is not None else ""
 
 
 def _finding_tokens(value: str, prose_body: str = "") -> set[str]:  # lint-keyword-only: ok stable helper API

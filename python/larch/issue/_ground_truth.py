@@ -28,6 +28,7 @@ from larch.issue._oos import (
     iter_filed_oos_records,
 )
 from larch.issue._report import default_category, issue_number, title_tokens
+from larch.review.review_types import parse_blocks
 from larch.issue._util import (
     BODY_CAP,
     CATEGORY_PATTERNS,
@@ -213,7 +214,6 @@ class GroundTruthEvidence:
     run_dir_key: str = ""
 
 
-_GT_HEADING_RE = re.compile(r"^###\s+((?:FINDING|OOS)_\d+):\s*(.*?)\s*$", re.M)
 _GT_VOTE_TALLY_RESULT_RE = re.compile(r"\bResult\s*:\s*(accepted|rejected)\b", re.I)
 _GT_REVERSAL_RE = re.compile(
     r"\b(revert|reverted|undo|regress|regression|superseded|re-introduce|re-add|closed in favor of)\b",
@@ -399,13 +399,10 @@ def _run_has_round_local_jsonl(run_dir: Path) -> bool:
 
 
 def _markdown_blocks_by_heading(text: str) -> dict[str, tuple[str, str]]:
-    matches = list(_GT_HEADING_RE.finditer(text or ""))
-    blocks: dict[str, tuple[str, str]] = {}
-    for idx, match in enumerate(matches):
-        start = match.start()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        blocks[match.group(1)] = (match.group(2).strip(), text[start:end].strip())
-    return blocks
+    return {
+        block.item_id: (block.title, block.block.strip())
+        for block in parse_blocks(text or "", boundary="item-heading")
+    }
 
 
 def _jsonl_records(path: Path) -> list[dict[str, Any]]:

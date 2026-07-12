@@ -11,13 +11,11 @@ from pathlib import Path
 from larch.core import redact
 from larch.report import progress_report
 from larch.review import voting
+from larch.review.review_types import parse_blocks
 
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
 REJECTED_OOS_AUDIT_LIMIT = 10
 _REJECTED_OOS_REASON_LIMIT = 260
-_REJECTED_OOS_BLOCK_RE = re.compile(
-    r"(?ms)^###\s+((?:OOS|FINDING)_[0-9A-Za-z_]+):[ \t]*(.*?)\n(.*?)(?=^###\s+(?:OOS|FINDING)_[0-9A-Za-z_]+:|\Z)"
-)
 _REJECTED_OOS_FIELD_RE_TEMPLATE = (
     r"(?ms)^[ \t]*-[ \t]+\*\*{label}\*\*:[ \t]*(.*?)(?=\n[ \t]*-[ \t]+\*\*[^*]+\*\*:|\n###\s+|\Z)"
 )
@@ -126,10 +124,10 @@ def _rejected_oos_audit_from_file(path: Path) -> list[str]:
         return []
     classification_results = _classification_vote_results(path.parent / "findings-classification.tsv")
     candidates: list[str] = []
-    for match in _REJECTED_OOS_BLOCK_RE.finditer(text):
-        oos_id = match.group(1)
-        title = _clean_oos_title(match.group(2), oos_id)
-        block = match.group(0)
+    for parsed_block in parse_blocks(text, boundary="item-heading"):
+        oos_id = parsed_block.item_id
+        title = _clean_oos_title(parsed_block.title, oos_id)
+        block = parsed_block.block
         result = classification_results.get(oos_id) or _vote_result(block)
         if result == "accepted" or voting.is_security_block_text(block):
             continue

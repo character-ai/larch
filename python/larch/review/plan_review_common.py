@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import cast
 
 from larch import io as larch_io
+from larch.review.review_types import parse_blocks
 from larch.calibration import difficulty
 from larch.design import plan_grammar
 from larch.state.session_env import validate_design_tmpdir
@@ -284,7 +285,7 @@ def _count_accepted(tmpdir: Path) -> int:
     path = tmpdir / "accepted-plan-findings.md"
     if not path.is_file() or path.is_symlink():
         return 0
-    return len(re.findall(r"(?m)^### FINDING_[0-9]+:", path.read_text(encoding="utf-8", errors="replace")))
+    return sum(1 for block in parse_blocks(path.read_text(encoding="utf-8", errors="replace"), boundary="level-three-heading") if block.kind == "FINDING")
 
 
 def _run_command(

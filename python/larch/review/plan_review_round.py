@@ -18,6 +18,7 @@ from larch import io as larch_io
 from larch.core import config, logging_util
 from larch.report import progress_file
 from larch.review import review_aggregate
+from larch.review.review_types import is_canonical_heading, parse_blocks
 from larch.review import voting
 from larch.review.plan_review_common import resolve_plan_review_tier
 
@@ -549,8 +550,9 @@ def _compose_findings_from_collector(
 
     _ = manifest_slots  # reserved for parity with bash slot manifest walk
     raw = "".join(findings_parts)
-    fin = re.findall(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", raw)
-    oos = re.findall(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", raw)
+    parsed_blocks = parse_blocks(raw, boundary="level-three-heading")
+    fin = [block.block for block in parsed_blocks if block.kind == "FINDING"]
+    oos = [block.block for block in parsed_blocks if block.kind == "OOS"]
     in_scope = "\n\n".join(fin) + ("\n\n" if fin else "")
     oos_md = "\n\n".join(oos) + ("\n\n" if oos else "")
     return in_scope, oos_md, ok_count, failure_count
@@ -1065,7 +1067,7 @@ def execute_round(
     # instead of dispatching voters against an empty ballot. The ok_count == 0 empty-
     # collection case is left to the existing voter-dispatch / classifier path so its loud
     # degraded-empty-collector outcome (issue #4790) is preserved.
-    if ok_count > 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
+    if ok_count > 0 and not any(is_canonical_heading(line) for line in ballot_text.splitlines()):
         values.update(
             {
                 "LOOP_STATUS": "zero-findings-degraded-panel",
@@ -1171,7 +1173,16 @@ def execute_round(
             _emit(key=k, value=v)
         return 0, values
 
-    accepted = len(re.findall(r"(?m)^### FINDING_[0-9]+:", (design / "accepted-plan-findings.md").read_text(encoding="utf-8", errors="replace") if (design / "accepted-plan-findings.md").is_file() else ""))
+    accepted = sum(
+        1
+        for block in parse_blocks(
+            (design / "accepted-plan-findings.md").read_text(encoding="utf-8", errors="replace")
+            if (design / "accepted-plan-findings.md").is_file()
+            else "",
+            boundary="level-three-heading",
+        )
+        if block.kind == "FINDING"
+    )
     values["ACCEPTED_COUNT"] = str(accepted)
     degraded = voter_kv.get("DISPATCH_OK", "true") != "true" or int(voter_kv.get("DEGRADED_PANEL", "0") or "0") == 1
     values["DEGRADED_PANEL"] = "1" if degraded else "0"

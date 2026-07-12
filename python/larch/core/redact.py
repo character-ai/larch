@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from larch.core import config
+from larch.review.review_types import parse_blocks
 
 # Line-local secret families (byte-for-byte ports of python3 python/cli.py redact secrets sed -E)
 _SK_RE = re.compile(r"sk-(ant-)?[A-Za-z0-9_-]{20,}")
@@ -542,12 +543,13 @@ def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path
     submodules = discover_submodule_paths(repo)
     scrubbed_count = 0
     audit: list[str] = []
-    blocks = re.split(r"(?=^### FINDING_)", text, flags=re.MULTILINE)
-    out_blocks: list[str] = []
-    for block in blocks:
-        if not block.startswith("### FINDING_"):
-            out_blocks.append(block)
+    parsed = parse_blocks(text, boundary="finding-heading")
+    keep: set[int] = set()  # start offsets of blocks to keep
+    for parsed_block in parsed:
+        if parsed_block.kind != "FINDING":
+            keep.add(parsed_block.start)
             continue
+        block = parsed_block.block
         matched = False
         for sub in sorted(submodules, key=len, reverse=True):
             escaped = re.escape(sub)
@@ -570,10 +572,14 @@ def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path
         if matched:
             scrubbed_count += 1
             audit.append(block.splitlines()[0])
-            continue
-        out_blocks.append(block)
+        else:
+            keep.add(parsed_block.start)
+    # Reconstruct output: preamble + kept blocks in source order.
+    preamble_end = parsed[0].start if parsed else len(text)
+    parts: list[str] = [text[:preamble_end]]
+    parts.extend(pb.block for pb in parsed if pb.start in keep)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("".join(out_blocks), encoding="utf-8")
+    output_path.write_text("".join(parts), encoding="utf-8")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("\n".join(audit) + ("\n" if audit else ""), encoding="utf-8")
     return scrubbed_count, True

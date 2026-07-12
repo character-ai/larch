@@ -22,11 +22,11 @@ from larch.issue._util import (
     parse_iso,
 )
 from larch.review import voting
+from larch.review.review_types import parse_blocks
 
 _GITHUB_ISSUE_URL_RE = re.compile(r"https://[^\s|)]+/[^/\s|)]+/[^/\s|)]+/issues/(\d+)")
 _COMBINED_AWAY_MARKER_RE = re.compile(r"<!--\s*larch:combined-away\s+source=#\d+\s+target=#\d+\s*-->", re.I)
 _LEGACY_COMBINED_RE = re.compile(r"\bCombined\s+into\s+#\d+\b", re.I)
-_OOS_HEADING_RE = re.compile(r"^###\s+((?:OOS|FINDING)_\d+):\s*(.*?)\s*$", re.MULTILINE)
 _STABLE_ID_LINE_RE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Stable ID(?:\*\*)?[ \t]*:[ \t]*(\S+)", re.I | re.M)
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*(?:[-*][ \t]+)?(?:\*\*)?Filed[ \t]*URL(?:\*\*)?[ \t]*:[ \t]*(https://[^\s|)]+/issues/\d+)", re.I | re.M)
 _FILED_AS_RE = re.compile(r"\bFiled\s+as\s+#(\d+)\b", re.I)
@@ -263,19 +263,17 @@ def _parse_oos_accepted_blocks(path: Path, *, run_dir: Path) -> list[dict[str, A
     if not path.is_file():
         return []
     text = path.read_text(encoding="utf-8", errors="replace")
-    matches = list(_OOS_HEADING_RE.finditer(text))
+    parsed_blocks = parse_blocks(text, boundary="item-heading")
     blocks: list[dict[str, Any]] = []
     source_key = oos_filer._stable_source_key(path)  # pyright: ignore[reportPrivateUsage]
     try:
         artifact_relpath = path.relative_to(run_dir).as_posix()
     except ValueError:
         artifact_relpath = path.name
-    for idx, match in enumerate(matches):
-        start = match.start()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        body = text[start:end].rstrip()
-        heading_id = match.group(1)
-        title = _normalize_oos_title(match.group(2))
+    for parsed in parsed_blocks:
+        body = parsed.block.rstrip()
+        heading_id = parsed.item_id
+        title = _normalize_oos_title(parsed.title)
         fields = _parse_markdown_fields(body)
         canonical = _canonical_stable_id(source_key=source_key, bare_id=heading_id)
         hash_id = _hash_stable_id(title=title, body=body, source_key=source_key)
@@ -473,14 +471,11 @@ def _rollup_excerpt_source_texts( *,run_dir: Path, ndjson_record: Mapping[str, A
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        matches = list(_OOS_HEADING_RE.finditer(text))
-        for idx, match in enumerate(matches):
-            heading = f"{match.group(1)}: {match.group(2)}"
+        for parsed in parse_blocks(text, boundary="item-heading"):
+            heading = f"{parsed.item_id}: {parsed.title}"
             if not re.search(r"Aggregated rollup", heading, re.I):
                 continue
-            start = match.start()
-            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-            texts.append(text[start:end])
+            texts.append(parsed.block)
     return texts
 
 

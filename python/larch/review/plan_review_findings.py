@@ -9,26 +9,10 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from larch.review.plan_review_common import _require_tmpdir, _write_atomic
+from larch.review.review_types import finding_dedup_key, parse_blocks
 
 
-def _finding_dedup_key(block: str) -> str:
-    """Stable cross-round identity for an accepted FINDING block, keyed on
-    Location + Concern (falls back to the block body without its numbered header
-    when both are absent). Normalized so trivial whitespace differences between
-    rounds do not defeat the dedup.
-    """
-
-    def _field(label: str) -> str:
-        match = re.search(rf"(?mi)^- \*\*{label}\*\*:\s*(.*?)\s*$", block)
-        return match.group(1) if match else ""
-
-    location = _field("Location")
-    concern = _field("Concern")
-    if location or concern:
-        raw = f"{location}\x1f{concern}"
-    else:
-        raw = re.sub(r"(?m)^### FINDING_[0-9]+:.*$", "", block)
-    return re.sub(r"\s+", " ", raw).strip().lower()
+_finding_dedup_key = finding_dedup_key
 
 
 def _read_applied_finding_keys(tmpdir: Path, *, before_round: int) -> set[str]:
@@ -116,27 +100,34 @@ def _record_already_addressed_finding_keys(*, tmpdir: Path, keys: Sequence[str])
     )
 
 
+def _keys_from_blocks(blocks: list[str]) -> list[str]:
+    keys: list[str] = []
+    for block in blocks:
+        if _ALREADY_ADDRESSED_RE.search(block):
+            key = _finding_dedup_key(_ALREADY_ADDRESSED_RE.sub("", block))
+            if key:
+                keys.append(key)
+    return keys
+
+
 def _already_addressed_keys_in_rejected(tmpdir: Path) -> list[str]:
     """Concern keys of rejected blocks tagged ``[ALREADY_ADDRESSED]`` this round."""
     path = tmpdir / "rejected-findings.md"
     if not path.is_file() or path.is_symlink():
         return []
     text = path.read_text(encoding="utf-8", errors="replace")
-    for marker_re in (r"(?m)^### \[Plan Review\] ", r"(?m)^### FINDING_[0-9]+:"):
-        matches = list(re.finditer(marker_re, text))
-        if not matches:
-            continue
-        keys: list[str] = []
-        for idx, match in enumerate(matches):
-            end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-            block = text[match.start():end]
-            if _ALREADY_ADDRESSED_RE.search(block):
-                # Key on the tag-stripped block so a later round that re-raises
-                # the same concern WITHOUT the tag matches this laddered key.
-                key = _finding_dedup_key(_ALREADY_ADDRESSED_RE.sub("", block))
-                if key:
-                    keys.append(key)
-        return keys
+    # Try distinct Plan-Review heading grammar first.
+    plan_review_matches = list(re.finditer(r"(?m)^### \[Plan Review\] ", text))
+    if plan_review_matches:
+        blocks = [
+            text[match.start():(plan_review_matches[idx + 1].start() if idx + 1 < len(plan_review_matches) else len(text))]
+            for idx, match in enumerate(plan_review_matches)
+        ]
+        return _keys_from_blocks(blocks)
+    # Fall back to canonical FINDING blocks via shared parser.
+    finding_blocks = [pb.block for pb in parse_blocks(text, boundary="finding-heading") if pb.kind == "FINDING"]
+    if finding_blocks:
+        return _keys_from_blocks(finding_blocks)
     return []
 
 
@@ -158,6 +149,25 @@ def _filter_rejected_findings_body(*, text: str, applied: set[str], marker_re: s
     for idx, match in enumerate(matches):
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         block = text[match.start():end]
+        key = _finding_dedup_key(block)
+        if (key and key in applied) or _ALREADY_ADDRESSED_RE.search(block):
+            continue
+        kept.append(block)
+    return "".join(kept), True
+
+
+def _filter_rejected_findings_body_canonical(*, text: str, applied: set[str]) -> tuple[str, bool]:
+    """Filter canonical FINDING blocks from ``text``, dropping suppressed keys."""
+    parsed = parse_blocks(text, boundary="finding-heading")
+    finding_blocks = [b for b in parsed if b.kind == "FINDING"]
+    if not finding_blocks:
+        return "", False
+    kept: list[str] = []
+    preamble = text[: finding_blocks[0].start]
+    if preamble:
+        kept.append(preamble)
+    for parsed_block in finding_blocks:
+        block = parsed_block.block
         key = _finding_dedup_key(block)
         if (key and key in applied) or _ALREADY_ADDRESSED_RE.search(block):
             continue
@@ -205,9 +215,7 @@ def emit_rejected_findings(argv: Sequence[str]) -> int:
     if had_blocks:
         print(_format_rejected_findings_report(body=filtered, report_framing=ns.report_framing), end="")
         return 0
-    filtered, had_blocks = _filter_rejected_findings_body(
-        text=text, applied=applied, marker_re=r"(?m)^### FINDING_[0-9]+:"
-    )
+    filtered, had_blocks = _filter_rejected_findings_body_canonical(text=text, applied=applied)
     if had_blocks:
         print(_format_rejected_findings_report(body=filtered, report_framing=ns.report_framing), end="")
         return 0

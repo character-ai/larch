@@ -24,6 +24,7 @@ from larch.core import config
 from larch.core import proc
 from larch.issue import file_oos
 from larch.issue import oos_priority
+from larch.review.review_types import is_security_block_text, parse_canonical_heading
 from larch.state import session_env as _session_env_oos
 
 _CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -93,8 +94,7 @@ def _parse_kv(text: str) -> dict[str, str]:
 
 
 def _is_security_block(block: str) -> bool:
-    normalized = file_oos._strip_md_emphasis(block)  # pyright: ignore[reportPrivateUsage]
-    return bool(file_oos._SECURITY_HEADER_RE.search(block) or file_oos._SECURITY_FOCUS_RE.search(normalized))  # pyright: ignore[reportPrivateUsage]
+    return is_security_block_text(block)
 
 
 def _stable_source_key(path: Path) -> str:
@@ -111,9 +111,12 @@ def _bare_oos_suffix(stable_id: str) -> str | None:
 
 
 def _stable_identifier(title: str, body: str, *, source_key: str = "") -> str:
-    header = re.search(r"^###[ \t]+OOS_(\d+):", body, re.MULTILINE)
-    if header:
-        bare = f"OOS_{header.group(1)}"
+    oos_heading = next(
+        (h for line in body.splitlines() for h in [parse_canonical_heading(line)] if h is not None and h.kind == "OOS"),
+        None,
+    )
+    if oos_heading is not None:
+        bare = oos_heading.item_id
         return f"{source_key}:{bare}" if source_key else bare
     normalized = file_oos._normalize_title(f"{title}\n{body}").lower()  # pyright: ignore[reportPrivateUsage]
     digest = hashlib.sha256(normalized.encode("utf-8", errors="replace")).hexdigest()[:16]

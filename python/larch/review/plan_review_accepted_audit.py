@@ -3,18 +3,17 @@
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
 from larch import io as larch_io
 from larch.state.session_env import validate_design_tmpdir
+from larch.review.review_types import parse_blocks
 
 PRE_REVIEW_PLAN = "plan-before-review.txt"
 ACCEPTED_AUDIT = "accepted-plan-findings-audit.md"
 ONE_BY_ONE_SKIP_MARKER = "rejected by user during one-by-one review"
 
-_FINDING_BLOCK_RE = re.compile(r"(?ms)^### FINDING_[0-9A-Za-z_]+:.*?(?=^### |\Z)")
 
 
 class AcceptedAuditError(ValueError):
@@ -80,11 +79,16 @@ def filter_gate_b_skipped_text(*, accepted_text: str, rejected_text: str) -> str
     """Return accepted findings with one-by-one user-skipped blocks removed."""
     skipped: set[str] = {
         _normalize_finding_block(block)
-        for block in _FINDING_BLOCK_RE.findall(rejected_text)
+        for parsed in parse_blocks(rejected_text, boundary="level-three-heading")
+        if parsed.kind == "FINDING"
+        for block in [parsed.block]
         if ONE_BY_ONE_SKIP_MARKER in block
     }
     kept: list[str] = []
-    for block in _FINDING_BLOCK_RE.findall(accepted_text):
+    for parsed in parse_blocks(accepted_text, boundary="level-three-heading"):
+        if parsed.kind != "FINDING":
+            continue
+        block = parsed.block
         normalized = _normalize_finding_block(block)
         if normalized not in skipped:
             kept.append(block.strip())

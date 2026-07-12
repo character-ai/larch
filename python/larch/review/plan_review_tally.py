@@ -31,6 +31,7 @@ from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.review import plan_review_round
 from larch.review import voting
+from larch.review.review_types import parse_blocks
 from larch.state.session_env import validate_design_tmpdir
 
 _VALID_SLOTS = {
@@ -979,9 +980,6 @@ def _append(*, path: Path, chunks: list[str]) -> None:
             _ = handle.write("".join(chunks))
 
 
-_ARTIFACT_BLOCK_HEADING_RE = re.compile(r"(?m)^### (?:FINDING|OOS)_[0-9]+(?:\b|:).*$")
-
-
 def _read_regular_file_text(path: Path) -> str:
     if not path.is_file():
         return ""
@@ -992,18 +990,15 @@ def _markdown_artifact_blocks(text: str) -> list[str]:
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
     if not normalized.strip():
         return []
-    matches = list(_ARTIFACT_BLOCK_HEADING_RE.finditer(normalized))
-    if not matches:
+    parsed = parse_blocks(normalized, boundary="item-heading")
+    if not parsed:
         return [_ensure_trailing_newline(normalized)]
-    blocks: list[str] = []
-    if normalized[: matches[0].start()].strip():
-        blocks.append(_ensure_trailing_newline(normalized[: matches[0].start()]))
-    for idx, match in enumerate(matches):
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(normalized)
-        block = normalized[match.start():end]
-        if block.strip():
-            blocks.append(_ensure_trailing_newline(block))
-    return blocks
+    result: list[str] = []
+    preamble = normalized[: parsed[0].start]
+    if preamble.strip():
+        result.append(_ensure_trailing_newline(preamble))
+    result.extend(_ensure_trailing_newline(pb.block) for pb in parsed if pb.block.strip())
+    return result
 
 
 def _ensure_trailing_newline(text: str) -> str:

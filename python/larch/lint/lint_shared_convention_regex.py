@@ -24,7 +24,7 @@ from larch.issue.title_match import BUG_PREFIX
 TOOL_FAILURE_EXIT = 2
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycache__", "tests"})
-ALLOWLIST_RELPATHS = frozenset({"larch/core/architectural_guidelines.py", "larch/issue/title_match.py"})
+ALLOWLIST_RELPATHS = frozenset({"larch/core/architectural_guidelines.py", "larch/issue/title_match.py", "larch/review/review_types.py"})
 LINT_MODULE_RELPATH = "larch/lint/lint_shared_convention_regex.py"
 PRAGMA_RE = re.compile(r"#\s*lint-shared-convention-regex:\s*ok\s+(\S.*)$")
 
@@ -72,8 +72,9 @@ def _call_name(node: ast.Call) -> tuple[str, str] | None:
     return None
 
 
-def _is_re_compile_call(node: ast.Call) -> bool:
-    return _call_name(node) == ("re", "compile")
+def _is_re_pattern_call(node: ast.Call) -> bool:
+    call_name = _call_name(node)
+    return call_name is not None and call_name[0] == "re" and call_name[1] in {"compile", "search", "match", "findall", "finditer", "split"}
 
 
 def _looks_like_guideline_heading_regex(value: str) -> bool:
@@ -88,6 +89,27 @@ def _looks_like_invariant_heading_regex(value: str) -> bool:
     has_invariant_id: bool = ("I-" in value or "INV-" in value) and r"\d" in value
     has_markdown_separator: bool = ":" in value and r"\s" in value
     return has_heading_anchor and has_invariant_id and has_markdown_separator
+
+
+
+
+def _looks_like_reviewer_item_heading_regex(value: str) -> bool:
+    has_item_token = "FINDING_" in value or "OOS_" in value or "(?:FINDING|OOS)" in value or "(?:OOS|FINDING)" in value
+    has_markdown_heading = "###" in value or "^#" in value or r"\A#" in value
+    has_numeric_id = r"\d" in value or "[0-9]" in value
+    # Block segmentation: lookahead/end-anchor form (.*? + lookahead or \Z)
+    has_block_segmentation = ".*?" in value and ("(?=" in value or r"\Z" in value)
+    # Block segmentation: inline-multiline .*$ form used as item boundary sentinel
+    has_block_seg_multiline = "(?m" in value and ".*$" in value
+    # Full canonical heading parse: extracts kind/number/title via (.*?) capture
+    has_full_heading_parse = has_item_token and "(.*?)" in value and ("MULTILINE" not in value)
+    # Canonical numeric-ID capture: extracts OOS_N or FINDING_N number via (\d+) group
+    has_canonical_id_capture = (
+        (r"OOS_(\d" in value or r"FINDING_(\d" in value) and has_markdown_heading
+    )
+    return has_item_token and has_markdown_heading and has_numeric_id and (
+        has_block_segmentation or has_block_seg_multiline or has_full_heading_parse or has_canonical_id_capture
+    )
 
 
 def _heading_findings_for_value(*, value: str, normalized_file: str, lineno: int) -> list[Finding]:
@@ -108,6 +130,15 @@ def _heading_findings_for_value(*, value: str, normalized_file: str, lineno: int
                 lineno=lineno,
                 context="invariant-heading-regex",
                 guidance="use architectural_guidelines.INVARIANT_HEADING_RE",
+            )
+        )
+    if _looks_like_reviewer_item_heading_regex(value):
+        findings.append(
+            Finding(
+                file=normalized_file,
+                lineno=lineno,
+                context="reviewer-item-heading-regex",
+                guidance="use review_types.parse_blocks or review_types.parse_canonical_heading",
             )
         )
     return findings
@@ -140,7 +171,7 @@ def _bug_selector_finding_for_assignment(*, node: ast.stmt, normalized_file: str
 def _compile_call_findings(tree: ast.Module, *, normalized_file: str) -> list[Finding]:
     findings: list[Finding] = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not _is_re_compile_call(node) or not node.args:
+        if not isinstance(node, ast.Call) or not _is_re_pattern_call(node) or not node.args:
             continue
         pattern: str | None = _literal_text(node.args[0])
         if pattern is None:
