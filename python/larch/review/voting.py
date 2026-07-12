@@ -16,7 +16,7 @@ import os
 import re
 import sys
 import tempfile
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from contextlib import suppress
 from pathlib import Path
 from typing import NoReturn
@@ -1335,43 +1335,42 @@ def degraded_warning_main(argv: list[str]) -> int:
     return 0
 
 
+def build_voter_status_rows(
+    *,
+    voters: Sequence[tuple[str, str, str, str]],
+    voter_paths_file: str,
+    row_layout: str,
+    paths_file_policy: str,
+) -> list[tuple[str, str]]:
+    """Build voter status rows in one of the two established wire orders."""
+    if len(voters) != 3:  # noqa: PLR2004
+        raise ValueError("exactly three voter records are required")
+    if row_layout not in {"code_review_sequential", "plan_review_interleaved"}:
+        raise ValueError(f"unknown voter row layout: {row_layout}")
+    if paths_file_policy not in {"always", "nonempty"}:
+        raise ValueError(f"unknown voter paths-file policy: {paths_file_policy}")
+    suffixes = ("PATH", "TOOL", "STATUS", "PARSE_RATE_STATUS")
+    sequential_order = tuple((voter, field) for voter in range(3) for field in range(4))
+    interleaved_order = ((0, 0), (0, 1), (0, 2), (0, 3), (1, 0), (2, 0), (1, 1), (2, 1), (1, 2), (2, 2), (1, 3), (2, 3))
+    order = sequential_order if row_layout == "code_review_sequential" else interleaved_order
+    rows = [(f"VOTER_{voter + 1}_{suffixes[field]}", voters[voter][field]) for voter, field in order]
+    paths_file_index = len(rows) if row_layout == "code_review_sequential" else 6
+    paths_file_present = paths_file_policy == "always" or (
+        bool(voter_paths_file) and Path(voter_paths_file).is_file() and Path(voter_paths_file).stat().st_size > 0
+    )
+    if paths_file_present:
+        rows.insert(paths_file_index, ("VOTER_PATHS_FILE", voter_paths_file))
+    return rows
+
+
 def voter_status_block_main(argv: list[str]) -> int:
     if len(argv) != 13:  # noqa: PLR2004
         return _error("usage: voter-status-block <13 positional args>")
-    (
-        voter_1_path,
-        voter_1_tool,
-        voter_1_status,
-        voter_1_parse_rate_status,
-        voter_2_path,
-        voter_2_tool,
-        voter_2_status,
-        voter_2_parse_rate_status,
-        voter_3_path,
-        voter_3_tool,
-        voter_3_status,
-        voter_3_parse_rate_status,
-        plan_voter_paths_file,
-    ) = argv
-    rows = [
-        ("VOTER_1_PATH", voter_1_path),
-        ("VOTER_1_TOOL", voter_1_tool),
-        ("VOTER_1_STATUS", voter_1_status),
-        ("VOTER_1_PARSE_RATE_STATUS", voter_1_parse_rate_status),
-        ("VOTER_2_PATH", voter_2_path),
-        ("VOTER_3_PATH", voter_3_path),
-    ]
-    if Path(plan_voter_paths_file).is_file() and Path(plan_voter_paths_file).stat().st_size > 0:
-        rows.append(("VOTER_PATHS_FILE", plan_voter_paths_file))
-    rows.extend(
-        [
-            ("VOTER_2_TOOL", voter_2_tool),
-            ("VOTER_3_TOOL", voter_3_tool),
-            ("VOTER_2_STATUS", voter_2_status),
-            ("VOTER_3_STATUS", voter_3_status),
-            ("VOTER_2_PARSE_RATE_STATUS", voter_2_parse_rate_status),
-            ("VOTER_3_PARSE_RATE_STATUS", voter_3_parse_rate_status),
-        ]
+    rows = build_voter_status_rows(
+        voters=(tuple(argv[0:4]), tuple(argv[4:8]), tuple(argv[8:12])),  # type: ignore[arg-type]  # argv slices are exactly 4-wide, matching the fixed-arity voter tuple
+        voter_paths_file=argv[12],
+        row_layout="plan_review_interleaved",
+        paths_file_policy="nonempty",
     )
     for key, value in rows:
         print(f"{key}={value}")
@@ -1660,7 +1659,7 @@ def tally_vote_main(argv: list[str]) -> int:
                 yes += 1
             elif vote == "NO":
                 no += 1
-        accepted = "true" if len(args.voter_files) < 2 or yes >= 2 else "false"  # noqa: PLR2004
+        accepted = "true" if len(args.voter_files) < 2 or yes >= 2 else "false"  # noqa: PLR2004 - two-vote acceptance quorum threshold
         output.extend(
             [
                 f"FINDING_{idx}_ACCEPTED={accepted}",
