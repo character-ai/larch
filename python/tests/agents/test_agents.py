@@ -76,6 +76,50 @@ def test_parse_launcher_exit_text_fails_closed_on_wrapper_failure() -> None:
     assert agents.parse_launcher_exit_text(text="LAUNCHER_EXIT=4\n", process_rc=7) == 4
 
 
+def test_assessment_codex_grants_only_evidence_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    evidence = tmp_path / "evidence"
+    output_dir = tmp_path / "session"
+    for directory in (repo, evidence, output_dir):
+        directory.mkdir()
+    output = output_dir / "result.json"
+    captured: dict[str, object] = {}
+    args = argparse.Namespace(
+        output=str(output),
+        timeout="1",
+        timing_task_kind="assessment",
+        site="implement Step 8 architectural assessment",
+        assessment_contract=True,
+        assessment_repo_root=str(repo),
+        assessment_evidence_dir=str(evidence),
+        agent_file="",
+        description_text="",
+        risk="",
+        stderr_sink="",
+        model_role="fix",
+        single_attempt=True,
+    )
+
+    def fake_run_with_retries(**kwargs: object) -> tuple[agents.RunExternalAgentResult, int, int]:
+        captured["cmd"] = kwargs["cmd"]
+        return agents.RunExternalAgentResult(0, output), 1, 1
+
+    monkeypatch.setattr(_review_launcher, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
+    monkeypatch.setattr(_review_launcher, "_review_run_with_retries", fake_run_with_retries)
+    monkeypatch.setattr(_review_launcher, "_review_append_outer_meta", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_review_launcher, "_review_record_timing", lambda **_kwargs: None)
+    monkeypatch.setattr(_review_launcher, "_record_usage_from_events", lambda **_kwargs: None)
+    monkeypatch.setattr(_review_launcher, "_review_write_clean_readonly_dirty_tree", lambda _output: None)
+    monkeypatch.setattr(_review_launcher, "_promote_inner_done", lambda _output: None)
+    monkeypatch.setattr(_review_launcher, "_review_emit_launcher_result", lambda **_kwargs: None)
+
+    assert _review_launcher._review_launch_codex(args=args, prompt="prompt") == 0
+
+    cmd = list(captured["cmd"])
+    assert cmd[cmd.index("-C") + 1] == str(repo.resolve())
+    assert [cmd[index + 1] for index, item in enumerate(cmd) if item == "--add-dir"] == [str(evidence.resolve())]
+
+
 def test_read_launcher_exit_missing_file_defaults_zero(tmp_path: Path) -> None:
     assert agents.read_launcher_exit(output_file=tmp_path / "missing.out") == 0
 

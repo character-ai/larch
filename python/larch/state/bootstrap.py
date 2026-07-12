@@ -299,6 +299,7 @@ class BootstrapState:
     repo_unavailable: str = "false"
     codex_present: str = ""
     cursor_present: str = ""
+    claude_binary_found: str = ""
     codex_binary_found: str = ""
     cursor_binary_found: str = ""
     codex_available: str = ""
@@ -370,6 +371,8 @@ def _write_base_session_env(st: BootstrapState) -> None:
         st.codex_present,
         "--cursor-present",
         st.cursor_present,
+        "--claude-binary-found",
+        st.claude_binary_found,
         "--codex-binary-found",
         st.codex_binary_found,
         "--cursor-binary-found",
@@ -486,6 +489,7 @@ def _phase_infra(st: BootstrapState) -> None:
         st.repo_unavailable = st.read_session(key="REPO_UNAVAILABLE", default="false")
         st.codex_present = st.read_session(key="CODEX_PRESENT")
         st.cursor_present = st.read_session(key="CURSOR_PRESENT")
+        st.claude_binary_found = st.read_session(key="CLAUDE_BINARY_FOUND")
         st.codex_binary_found = st.read_session(key="CODEX_BINARY_FOUND")
         st.cursor_binary_found = st.read_session(key="CURSOR_BINARY_FOUND")
         _restore_resume_progress(st)
@@ -512,6 +516,7 @@ def _phase_infra(st: BootstrapState) -> None:
         st.repo_unavailable = skv.get("REPO_UNAVAILABLE", "false")
         st.codex_present = skv.get("CODEX_PRESENT", "")
         st.cursor_present = skv.get("CURSOR_PRESENT", "")
+        st.claude_binary_found = skv.get("CLAUDE_BINARY_FOUND", "")
         st.codex_binary_found = skv.get("CODEX_BINARY_FOUND", "")
         st.cursor_binary_found = skv.get("CURSOR_BINARY_FOUND", "")
         _materialize_preflight_sidecars(st)
@@ -1164,6 +1169,7 @@ def _emit_final(st: BootstrapState) -> None:
         ("SKIP_BRANCH_CHECK", st.skip_branch_check),
         ("IMPLEMENT_TMPDIR", st.implement_tmpdir),
         ("SESSION_ID", st.session_id),
+        ("CLAUDE_BINARY_FOUND", st.claude_binary_found),
         ("CODEX_BINARY_FOUND", st.codex_binary_found),
         ("CURSOR_BINARY_FOUND", st.cursor_binary_found),
         ("REPO", st.repo),

@@ -123,6 +123,8 @@ def test_write_env_writer_guard_and_plugin_root_only(tmp_path: Path) -> None:
         "true",
         "--cursor-present",
         "false",
+        "--claude-binary-found",
+        "true",
         "--run-id",
         "RUN_1",
         env={"CLAUDE_PLUGIN_ROOT": "/tmp/larch-plugin"},
@@ -130,6 +132,7 @@ def test_write_env_writer_guard_and_plugin_root_only(tmp_path: Path) -> None:
     assert ok.returncode == 0, ok.stderr
     text = out.read_text(encoding="utf-8")
     assert "REPO=owner/repo\n" in text
+    assert "CLAUDE_BINARY_FOUND=true\n" in text
     assert "CODEX_AVAILABLE" not in text
     assert "CODEX_PRESENT" not in text
     assert "LARCH_RUN_ID=RUN_1\n" in text

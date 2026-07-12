@@ -9,9 +9,11 @@ No real assessment model, daemon, or repository mutation occurs.
 
 - Fresh start: kind order normalization, covered fingerprint, plugin
   `PYTHONPATH`, stale merge clear, single `implement-step8-assessment` start with
-  `--budget-s 2100` and wrapper-child argv (`bash …/step-8-assessment.sh
-  --bgjob-child`); assessment CLI only from child mode
-- Static budget pin (`BUDGET_S=2100`)
+  `--budget-s 11040` and wrapper-child argv (`bash …/step-8-assessment.sh
+  --bgjob-child`); assessment CLI only from child mode. The adapter has no
+  vendor availability probe or lane selector.
+- Derived budget pin: two full waterfalls plus the `+60` grace for each
+  Codex/Cursor lane per attempt (`BUDGET_S=11040` with current defaults)
 - Live rejoin: zero-duration probe, `WAIT` → blocking wait, no duplicate start;
   attempt-1 timeout after rejoin routes to in-invocation attempt 2
 - Completed rejoin for `complete` (`BGJOB_RC=0`) and terminal `fail-closed`
@@ -20,8 +22,9 @@ No real assessment model, daemon, or repository mutation occurs.
 - Stale rejection: changed kinds or fingerprint clears and relaunches; symlink /
   non-regular path refusal
 - Active-stale live row: exit 2 + `ASSESSMENT_ERROR=active-stale-identity-mismatch`
-- Timeout and invalid-output retries with terminal `fail-closed` after attempt 2;
-  no foreground inline Piece 2 call
+- Timeout and invalid child-envelope retries with terminal `fail-closed` after
+  attempt 2; adapter retries are distinct from Piece 2 model-lane attempts; no
+  foreground inline Piece 2 call
 - Required KVs and daemon-reserved merge-key refusal
 - Fingerprint grammar: shared helper digest matches harness preimage
 - Bash portability guards (no associative arrays / namerefs / `mapfile`)

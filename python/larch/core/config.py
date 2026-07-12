@@ -434,6 +434,7 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
     "implement.step2_coder": _waterfall_role("implement.step2_coder", order=("codex", "cursor", "claude"), doc_phase="Implement Step 2", doc_role="Write the implementation", doc_skills="/implement", doc_fallback="Pick Cursor first for MODERATE and Codex first for TRIVIAL or HARD; --coder reorders the two external tools, then Claude."),
     "implement.lint_fix_coder": _waterfall_role("implement.lint_fix_coder", order=("claude", "codex", "cursor"), doc_phase="Lint/checks", doc_role="Repair local lint/check failures", doc_skills="/implement, /review", doc_fallback="Claude, then Codex, then Cursor; main agent required after external tiers fail."),
     "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("codex", "cursor", "claude"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Codex fix, then Cursor Composer 2.5 by default, then Claude Sonnet 4.6 1M."),
+    "implement.architectural_assessment": _waterfall_role("implement.architectural_assessment", order=("cursor", "codex", "claude"), doc_phase="Architectural assessment", doc_role="Assess Step 8 architectural evidence", doc_skills="/implement", doc_fallback="Cursor Composer 2.5, then Codex Terra, then Claude Sonnet 4.6; each kind stops on its first valid authored result."),
     "implement.rebase_conflict_fixer": _waterfall_role("implement.rebase_conflict_fixer", order=("claude", "codex", "cursor"), doc_phase="Rebase conflicts", doc_role="Resolve rebase conflicts", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
     "review.fix_coder": _waterfall_role("review.fix_coder", order=("codex", "cursor", "claude"), doc_phase="Review fixes", doc_role="Apply accepted review findings", doc_skills="/implement, /review", doc_fallback="Codex fix, then Cursor Composer 2.5 by default, then Claude Sonnet 4.6 1M; main agent required after automated tiers fail."),
     "review.dynamic_archetype_scout": _waterfall_role("review.dynamic_archetype_scout", order=("cursor", "claude"), doc_phase="Code-review scout", doc_role="Propose dynamic reviewer archetypes", doc_skills="/review", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
@@ -682,6 +683,7 @@ ENV_ISSUE_NUMBER: Final = "ISSUE_NUMBER"
 ENV_SESSION_ID: Final = "SESSION_ID"
 ENV_SESSION_TMPDIR: Final = "SESSION_TMPDIR"
 ENV_CLAUDE_PID: Final = "CLAUDE_PID"
+ENV_CLAUDE_BINARY_FOUND: Final = "CLAUDE_BINARY_FOUND"
 ENV_CODEX_BINARY_FOUND: Final = "CODEX_BINARY_FOUND"
 ENV_CURSOR_BINARY_FOUND: Final = "CURSOR_BINARY_FOUND"
 ENV_CODEX_PRESENT: Final = "CODEX_PRESENT"
@@ -762,6 +764,11 @@ CODEX_DEFAULT_MODEL: Final = "gpt-5.6-sol"
 CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.6-luna"
 CODEX_VOTE_MODEL_DEFAULT: Final = "gpt-5.6-terra"
 CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.6-terra"
+ARCHITECTURAL_ASSESSMENT_ROLE: Final = "implement.architectural_assessment"
+ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC: Final = 1800
+ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL: Final = CURSOR_DEFAULT_MODEL
+ARCHITECTURAL_ASSESSMENT_CODEX_MODEL: Final = CODEX_FIX_MODEL_DEFAULT
+ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL: Final = CLAUDE_SONNET_4_6_MODEL
 CODEX_PROBE_GATE_IMMEDIATE_TTL_SEC: Final = 5
 CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_TRIVIAL: "gpt-5.6-terra",

@@ -262,6 +262,106 @@ JSON
     assert "MODEL=sentinel-cursor-model" in token_record
 
 
+def test_cursor_assessment_mode_uses_evidence_workspace_and_verbatim_result(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    evidence = tmp_path / "evidence"
+    repo.mkdir()
+    evidence.mkdir()
+    _init_git_repo(repo)
+    argv_log = tmp_path / "cursor-assessment-argv.txt"
+    payload = '{"schema_version":"1","results":[]}'
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        f"""#!/usr/bin/env bash
+printf '%s\n' "$@" > "{argv_log}"
+cat <<'JSON'
+{{"result":{json.dumps(payload)},"usage":{{"inputTokens":10,"outputTokens":5}}}}
+JSON
+""",
+    )
+    out = tmp_path / "cursor-assessment.txt"
+
+    proc = _run(
+        [
+            "--tool", "cursor", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT,
+            "--prompt", "ASSESSMENT_PROMPT", "--assessment-contract",
+            "--assessment-evidence-dir", str(evidence), "--assessment-repo-root", str(repo),
+            "--single-attempt", "--cursor-model", "composer-2.5",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
+    )
+
+    assert proc.returncode == 0
+    assert out.read_text(encoding="utf-8") == payload
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert argv[argv.index("--mode") + 1] == "ask"
+    assert argv[argv.index("--workspace") + 1] == str(evidence.resolve())
+    assert argv[argv.index("--model") + 1] == "composer-2.5"
+    assert argv[-1] == "ASSESSMENT_PROMPT"
+    assert "STATUS=clean" in out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
+
+
+def test_codex_assessment_mode_grants_evidence_and_keeps_repo_workdir(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    evidence = tmp_path / "evidence"
+    repo.mkdir()
+    evidence.mkdir()
+    _init_git_repo(repo)
+    argv_log = tmp_path / "codex-assessment-argv.txt"
+    bin_dir = _stub_bin(
+        tmp_path,
+        "codex",
+        f"""#!/usr/bin/env bash
+printf '%s\n' "$@" > "{argv_log}"
+out=""; last=""
+for arg in "$@"; do
+  if [ "$last" = "--output-last-message" ]; then out=$arg; fi
+  last=$arg
+done
+printf '%s' '{{"schema_version":"1","results":[]}}' >"$out"
+""",
+    )
+    out = tmp_path / "codex-assessment.txt"
+
+    proc = _run(
+        [
+            "--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT,
+            "--prompt", "ASSESSMENT_PROMPT", "--assessment-contract",
+            "--assessment-evidence-dir", str(evidence), "--assessment-repo-root", str(repo),
+            "--single-attempt", "--model-role", "fix", "--default-model", "gpt-5.6-terra",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "LARCH_CODEX_FIX_MODEL": "gpt-5.6-terra"},
+    )
+
+    assert proc.returncode == 0
+    argv = argv_log.read_text(encoding="utf-8").splitlines()
+    assert argv[argv.index("--sandbox") + 1] == "read-only"
+    assert argv[argv.index("-C") + 1] == str(repo.resolve())
+    add_dirs = [argv[index + 1] for index, value in enumerate(argv) if value == "--add-dir"]
+    assert str(evidence.resolve()) in add_dirs
+    assert argv[argv.index("-m") + 1] == "gpt-5.6-terra"
+    assert argv[-1] == "ASSESSMENT_PROMPT"
+
+
+def test_single_attempt_mode_bypasses_all_shared_retry_classes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = 0
+
+    def one_failure(**_kwargs: object) -> agents.RunExternalAgentResult:
+        nonlocal calls
+        calls += 1
+        return agents.RunExternalAgentResult(7, tmp_path / "out.txt")
+
+    monkeypatch.setattr(_review_launcher, "_review_run_wrapper_attempt", one_failure)
+    result, auth_attempt, transient_attempt = agents._review_run_with_retries(
+        tool="cursor", output=tmp_path / "out.txt", timeout_seconds=1,
+        cmd=("cursor",), single_attempt=True,
+    )
+
+    assert result.exit_code == 7
+    assert (auth_attempt, transient_attempt, calls) == (1, 1, 1)
+
+
 def test_cursor_plan_review_launch_keeps_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
     bin_dir = _stub_bin(
         tmp_path,
@@ -905,6 +1005,7 @@ def test_cursor_auth_preflight_writes_preflight_bundle(tmp_path: Path, monkeypat
     diag = out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
     assert "STATUS=FAILED" in diag
     assert "cursor-auth-preflight" in diag
+    assert "cursor-auth-preflight" in out.with_suffix(out.suffix + ".sidecar").read_text(encoding="utf-8")
     dirty = out.with_suffix(out.suffix + ".dirty-tree").read_text(encoding="utf-8")
     assert "STATUS=unknown" in dirty
     assert "preflight-short-circuit-no-agent-ran" in dirty
@@ -959,7 +1060,8 @@ def test_cursor_done_promoted_after_timing_record(tmp_path: Path, monkeypatch: p
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
@@ -1011,7 +1113,8 @@ def test_cursor_terminal_artifacts_order_metadata_trap_postprocess_dirty_tree_do
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
@@ -1223,7 +1326,8 @@ def _cursor_review_launch_cmd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def resolve_model_args_ok(_tool: str, *, with_effort: bool = False, default_model: str = "") -> agents.ModelArgResult:
@@ -1306,6 +1410,7 @@ def test_codex_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: P
     assert "model-args-preflight-no-agent-ran" in dirty
     assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
     assert "model-args failed" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+    assert "model-args failed" in out.with_suffix(out.suffix + ".sidecar").read_text(encoding="utf-8")
 
 
 def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1330,6 +1435,7 @@ def test_cursor_model_args_preflight_exit_one_with_unknown_dirty_tree(tmp_path: 
     assert "model-args-preflight-no-agent-ran" in dirty
     assert out.with_suffix(out.suffix + ".done").read_text(encoding="utf-8").strip() == "1"
     assert "load_model_args failed" in out.with_suffix(out.suffix + ".diag").read_text(encoding="utf-8")
+    assert "load_model_args failed" in out.with_suffix(out.suffix + ".sidecar").read_text(encoding="utf-8")
     assert out.with_suffix(out.suffix + ".prompt").read_text(encoding="utf-8") == "hi"
     meta = out.with_suffix(out.suffix + ".meta").read_text(encoding="utf-8")
     assert "OUTER_LAUNCHER=agent launch-review" in meta
@@ -1651,7 +1757,8 @@ def test_cursor_failure_skips_postprocess(tmp_path: Path, monkeypatch: pytest.Mo
     def cleanup_cursor_config_dir(cfg_tmp: Path, old_cfg: str | None) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
@@ -2006,7 +2113,8 @@ def test_brainstorm_cursor_failure_uses_stderr_sink_without_runlog_append(tmp_pa
     def cleanup_cursor_config_dir(**_kwargs: object) -> None:
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:
@@ -2065,7 +2173,8 @@ def test_review_cursor_failure_still_appends_runlog(tmp_path: Path, monkeypatch:
     def cleanup_cursor_config_dir(**_kwargs: object) -> None:
         return None
 
-    def capture_cursor_dirty_baseline(_output: Path) -> Path:
+    def capture_cursor_dirty_baseline(_output: Path, *, workdir: str = "") -> Path:
+        _ = workdir
         return tmp_path / "baseline"
 
     def write_cursor_dirty_tree_from_baseline(**_kwargs: object) -> None:

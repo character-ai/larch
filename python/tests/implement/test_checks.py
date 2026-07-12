@@ -3199,6 +3199,7 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
         return "/usr/bin/claude" if name == "claude" else None
 
     monkeypatch.setattr(shutil, "which", claude_on_path)
+    monkeypatch.delenv("CLAUDE_BINARY_FOUND", raising=False)
     head = "abc123"
     delta_raw = ":100644 100644 abc def M\tfixed.py\n"
     runner = StubRunner([
@@ -5072,6 +5073,7 @@ def test_run_lint_fix_claude_only_host_dispatches_claude(
         return "/usr/bin/claude" if name == "claude" else None
 
     monkeypatch.setattr(shutil, "which", claude_on_path)
+    monkeypatch.delenv("CLAUDE_BINARY_FOUND", raising=False)
     head = "abc123"
     delta_raw = ":100644 100644 abc def M\tfixed.py\n"
     runner = StubRunner([
@@ -5160,6 +5162,7 @@ def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
         return f"/usr/bin/{name}"
 
     monkeypatch.setattr(shutil, "which", all_tools_on_path)
+    monkeypatch.delenv("CLAUDE_BINARY_FOUND", raising=False)
     head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff

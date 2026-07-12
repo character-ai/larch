@@ -14,6 +14,7 @@ def test_all_registry_roles_are_pinned_independently() -> None:
         "implement.step2_coder": ("waterfall", ("codex", "cursor", "claude")),
         "implement.lint_fix_coder": ("waterfall", ("claude", "codex", "cursor")),
         "implement.ci_recovery_fixer": ("waterfall", ("codex", "cursor", "claude")),
+        "implement.architectural_assessment": ("waterfall", ("cursor", "codex", "claude")),
         "implement.rebase_conflict_fixer": ("waterfall", ("claude", "codex", "cursor")),
         "review.fix_coder": ("waterfall", ("codex", "cursor", "claude")),
         "review.dynamic_archetype_scout": ("waterfall", ("cursor", "claude")),
@@ -195,6 +196,42 @@ def test_next_untried_tier_gates_claude_at_launch_time() -> None:
     assert result.action == config.FIXER_TIER_ACTION_UNAVAILABLE
     assert result.selected_tier == ""
     assert result.failure_reason == config.FIXER_TIER_FAIL_REASON_UNAVAILABLE
+
+
+def test_architectural_assessment_waterfall_skips_recorded_absence() -> None:
+    cursor_absent = external_defaults.next_untried_tier(
+        config.ARCHITECTURAL_ASSESSMENT_ROLE,
+        (),
+        cursor_present=False,
+        codex_present=True,
+        claude_present=True,
+    )
+    assert cursor_absent.selected_tier == "codex"
+    claude_absent = external_defaults.next_untried_tier(
+        config.ARCHITECTURAL_ASSESSMENT_ROLE,
+        ("cursor", "codex"),
+        cursor_present=True,
+        codex_present=True,
+        claude_present=False,
+    )
+    assert claude_absent.action == config.FIXER_TIER_ACTION_UNAVAILABLE
+
+
+def test_binary_available_prefers_process_then_session_before_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    key = config.ENV_CURSOR_BINARY_FOUND
+    _ = (tmp_path / "session-env.sh").write_text(f"{key}=false\n", encoding="utf-8")
+    monkeypatch.delenv(key, raising=False)
+    def fake_which(_binary: str) -> str:
+        return "/bin/cursor"
+
+    monkeypatch.setattr(external_defaults.shutil, "which", fake_which)
+    assert external_defaults.binary_available(name=key, implement_tmpdir=tmp_path, binary="cursor") is False
+
+    monkeypatch.setenv(key, "true")
+    assert external_defaults.binary_available(name=key, implement_tmpdir=tmp_path, binary="cursor") is True
 
 
 def test_next_untried_tier_reports_exhaustion_regardless_of_availability() -> None:

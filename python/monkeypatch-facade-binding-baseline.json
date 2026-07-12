@@ -19,6 +19,33 @@
   },
   {
     "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_assessment_codex_grants_only_evidence_dir",
+    "facade_module": "larch.agents._review_launcher",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "Assessment command test patches review launcher bindings to isolate external dependencies."
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_assessment_codex_grants_only_evidence_dir",
+    "facade_module": "larch.agents._review_launcher",
+    "attribute": "_promote_inner_done",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 7,
+    "reason": "Assessment command test patches review launcher bindings to isolate external dependencies."
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_assessment_codex_grants_only_evidence_dir",
+    "facade_module": "larch.agents._review_launcher",
+    "attribute": "_record_usage_from_events",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 5,
+    "reason": "Assessment command test patches review launcher bindings to isolate external dependencies."
+  },
+  {
+    "file": "tests/agents/test_agents.py",
     "qualified_symbol": "test_check_reviewers_codex_auth_setup_failure",
     "facade_module": "larch.agents._auth",
     "attribute": "_prepare_codex_home",
