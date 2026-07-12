@@ -101,6 +101,7 @@ def test_valid_apply_preserves_original_and_verifies_readback(
         "Original report\n\n<!-- larch:triage:start -->\n"
         "## Summary\n\nCorrected diagnosis.\n<!-- larch:triage:end -->\n"
     )
+    expected_title = "[TRIAGED] Bug report"
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal calls
@@ -111,11 +112,17 @@ def test_valid_apply_preserves_original_and_verifies_readback(
             return _result(argv, stdout=_snapshot())
         if calls == 5:
             assert argv[:4] == ["gh", "issue", "edit", "7"]
+            assert "--title" in argv
+            assert argv[argv.index("--title") + 1] == expected_title
             assert Path(argv[-1]).read_text(encoding="utf-8") == expected_body
             return _result(argv)
         return _result(
             argv,
-            stdout=_snapshot(body=expected_body, updated_at="2026-07-12T10:00:01Z"),
+            stdout=_snapshot(
+                body=expected_body,
+                title=expected_title,
+                updated_at="2026-07-12T10:00:01Z",
+            ),
         )
 
     monkeypatch.setattr(triage.proc, "run", fake_run)
@@ -140,6 +147,75 @@ def test_valid_apply_preserves_original_and_verifies_readback(
     assert "TRIAGE_VERDICT=valid" in output
     assert "ISSUE_UPDATED=true" in output
     assert "UPDATED_AT=2026-07-12T10:00:01Z" in output
+
+
+def test_valid_apply_bug_prefix_title_gets_triaged_infix(
+    monkeypatch: Any,
+    capsys: Any,
+    triage_root: Path,
+) -> None:
+    body_file = triage_root / "body.md"
+    body_file.write_text("## Summary\n\nRoot cause.", encoding="utf-8")
+    calls = 0
+    expected_body = (
+        "Original report\n\n<!-- larch:triage:start -->\n"
+        "## Summary\n\nRoot cause.\n<!-- larch:triage:end -->\n"
+    )
+    expected_title = "[BUG] [TRIAGED] Crash on startup"
+
+    def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
+        nonlocal calls
+        calls += 1
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+            return _result(argv, stdout="[]")
+        if calls in {1, 3}:
+            return _result(argv, stdout=_snapshot(title="[BUG] Crash on startup"))
+        if calls == 5:
+            assert "--title" in argv
+            assert argv[argv.index("--title") + 1] == expected_title
+            return _result(argv)
+        return _result(
+            argv,
+            stdout=_snapshot(
+                body=expected_body,
+                title=expected_title,
+                updated_at="2026-07-12T10:00:01Z",
+            ),
+        )
+
+    monkeypatch.setattr(triage.proc, "run", fake_run)
+    rc = triage.apply_main(
+        [
+            "7",
+            "--repo",
+            "owner/repo",
+            "--verdict",
+            "valid",
+            "--expected-updated-at",
+            "2026-07-12T10:00:00Z",
+            "--triage-root",
+            str(triage_root),
+            "--body-file",
+            str(body_file),
+            "--operator-invoked",
+        ],
+    )
+    assert rc == 0
+    assert "ISSUE_UPDATED=true" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("[BUG] Crash on startup", "[BUG] [TRIAGED] Crash on startup"),
+        ("[BUG]  Extra space", "[BUG] [TRIAGED] Extra space"),
+        ("Plain issue", "[TRIAGED] Plain issue"),
+        ("[BUG] [TRIAGED] Already done", "[BUG] [TRIAGED] Already done"),
+        ("[TRIAGED] Already done", "[TRIAGED] Already done"),
+    ],
+)
+def test_triaged_title(title: str, expected: str) -> None:
+    assert triage._triaged_title(title) == expected  # pyright: ignore[reportPrivateUsage]
 
 
 def test_stale_snapshot_refuses_before_mutation(
@@ -347,7 +423,7 @@ def test_valid_apply_reports_a_verified_noop(monkeypatch: Any, capsys: Any, tria
         calls.append(argv)
         if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
             return _result(argv, stdout="[]")
-        return _result(argv, stdout=_snapshot(body=existing_body))
+        return _result(argv, stdout=_snapshot(body=existing_body, title="[TRIAGED] Bug report"))
 
     monkeypatch.setattr(triage.proc, "run", fake_run)
     assert triage.apply_main([
