@@ -82,7 +82,7 @@ Architectural assessment unavailable.
 
 - **Outcome**: shipping
 - **Duration**: 03:18:51
-- **Cost**: 💰 TOTAL ~$46.78: Claude $19.76, Codex-5.6 $10.54, Codex-mini $0.08, Cursor $8.92 (Composer $8.92, Grok $0.00), Claude (subprocess) $7.48  |  Tokens: 87571k
+- **Cost**: 💰 TOTAL ~$48.04: Claude $20.99, Codex-5.6 $10.54, Codex-mini $0.08, Cursor $8.92 (Composer $8.92, Grok $0.00), Claude (subprocess) $7.51  |  Tokens: 91570k
 - **Issue**: #7061: https://github.com/character-ai/larch/issues/7061
 - **Plan review**: N/A
 - **Plan coverage**: 56/56 firm headings; band: advisory; disposition: none; todos_left: 0
