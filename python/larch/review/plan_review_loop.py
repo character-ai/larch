@@ -347,12 +347,16 @@ def gate_b_finding_line(argv: Sequence[str]) -> int:
 
 
 def _trailer_map(text: str) -> dict[str, str]:
-    """Return strictly valid optional trailer values from the whole document."""
+    """Preserve Gate B's legacy whole-document snapshot compatibility.
+
+    Terminal consumers use ``plan_grammar``. Gate B snapshots historically
+    accepted loose optional-trailer spellings anywhere in the document.
+    """
     values: dict[str, str] = {}
     for line in text.splitlines():
-        match = plan_grammar.match_trailer_line(line)
-        if match is not None and match.key in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
-            values[match.key] = match.value
+        match = re.match(r"^([a-z_]+):\s*(.*?)\s*$", line)
+        if match is not None and match.group(1) in plan_grammar.OPTIONAL_SIZE_TRAILER_KEYS:
+            values[match.group(1)] = match.group(2)
     return values
 
 
