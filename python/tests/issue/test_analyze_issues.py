@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from larch.core.proc import CommandResult
+from larch.errors import ShipError
 from larch.issue import analyze_issues
 from larch.issue import _ground_truth as gt
 from larch.issue import _oos
@@ -404,8 +405,6 @@ def test_ground_truth_design_round_local_disagreement_is_weak(tmp_path: Path) ->
 
 
 def test_fetch_main_retries_without_optional_fields(monkeypatch, tmp_path: Path) -> None:
-    from larch.errors import ShipError
-
     calls: list[tuple[str, ...]] = []
 
     def fake_issue_list(_runner, *, fields, **_kwargs):
@@ -426,8 +425,6 @@ def test_fetch_main_retries_without_optional_fields(monkeypatch, tmp_path: Path)
 
 
 def test_fetch_main_terminal_failure_cleans_up(monkeypatch, tmp_path: Path, capsys) -> None:
-    from larch.errors import ShipError
-
     def fake_issue_list(_runner, **_kwargs):
         raise ShipError("unavailable")
 

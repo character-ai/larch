@@ -718,7 +718,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
             )
         except ShipError:
             arr = []
-        if isinstance(arr, list) and any(isinstance(x, dict) and str(x.get("createdAt") or "") > cutoff for x in arr):
+        if any(isinstance(x, dict) and str(x.get("createdAt") or "") > cutoff for x in arr):
             print("PREFLIGHT_OK=false\nREASON=audit-report filed within the 5-minute concurrency window; use --allow-concurrent to override")
             return 0
     print("PREFLIGHT_OK=true\nREASON=")

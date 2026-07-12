@@ -1,5 +1,5 @@
-# ruff: noqa: TC002,FLY002,FBT003
-# pyright: reportUnusedCallResult=false, reportArgumentType=false
+# ruff: noqa: FLY002, FBT003
+# pyright: reportUnusedCallResult=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnknownArgumentType=false
 from __future__ import annotations
 
 import json
@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.errors import ShipError
 from larch.issue import rejected_analysis as ra
 from larch.report import run_log_corpus
 from larch.review import voting
@@ -348,9 +349,7 @@ def test_query_open_issues_uses_shared_wrapper(tmp_path: Path, monkeypatch: pyte
 
 
 def test_query_open_issues_translates_ship_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from larch.errors import ShipError
-
-    monkeypatch.setattr(ra.gh, "resolve_repo", lambda *_a, **_k: "o/r")
-    monkeypatch.setattr(ra.gh, "issue_list_read", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("boom")))
+    monkeypatch.setattr(ra.gh, "resolve_repo", lambda *_a, **_k: "o/r")  # pyright: ignore[reportUnknownLambdaType]
+    monkeypatch.setattr(ra.gh, "issue_list_read", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("boom")))  # pyright: ignore[reportUnknownLambdaType]
     with pytest.raises(ra.RejectedAnalysisError, match="open issue snapshot failed"):
         ra._query_open_issues(object(), repo_root=tmp_path)  # pyright: ignore[reportPrivateUsage]
