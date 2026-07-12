@@ -1607,4 +1607,4 @@ def test_run_prepare_writes_origin_headline_and_digest_origin(tmp_path: Path) ->
     first = json.loads((out_dir / "digest.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert first["origin"] == {"kind": "regression", "ref": 100}
     # DIGEST_CHARS measures full serialized digest including origin.
-    assert int(stats["DIGEST_CHARS"]) == len(json.dumps(first))
+    assert int(str(stats["DIGEST_CHARS"])) == len(json.dumps(first))
