@@ -5162,6 +5162,7 @@ def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
         return f"/usr/bin/{name}"
 
     monkeypatch.setattr(shutil, "which", all_tools_on_path)
+    monkeypatch.delenv("CLAUDE_BINARY_FOUND", raising=False)
     head = "abc123"
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
