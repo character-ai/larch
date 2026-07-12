@@ -64,11 +64,19 @@ Exec Issues (1):
   1. Step 5: Code review hit the 2-round cap (HARD tier) without fully converging. The final round applied fixes (FINAL_REVIEW_AND_FIX_STATUS=fix-applied, CODER_STATUS=applied). Proceeding.
 Warnings (0):
 
+## Architectural invariants
+
+No violations identified. The waterfall validates each lane result against independently-computed evidence fingerprints (head_sha, diff_fingerprint, knowledge_sha256) before persisting (I-Stale-1). Per-kind statuses are tracked and each kind is removed from the unresolved set only after a valid authored result is accepted, with unavailable outcomes recorded via _persist_unavailable rather than silently dropped (I-Flush-1, I-Slot-1). The Cursor dirty-tree sidecar is produced by git.snapshot_untracked independent of the agent output and must be STATUS=clean before the lane result is accepted—no gate is disarmed by data the agent itself authored (I-Gate-1). The _validate_prompt_evidence_paths check ensures all evidence paths in REQUESTS_JSON remain inside the validated evidence directory before any lane is launched (I-Agent-1).
+
+## Architectural guidelines
+
+No deviations identified. New constants (ARCHITECTURAL_ASSESSMENT_ROLE, ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC, ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL, ARCHITECTURAL_ASSESSMENT_CODEX_MODEL, ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL, ENV_CLAUDE_BINARY_FOUND) are defined once in config.py as Final values and consumed by reference (G-Cfg-1). _write_text_atomic delegates to larch_io.trusted_atomic_write, routing atomic writes through the shared IO helper (G-IO-1). AssessmentLane, LaunchRequest, LaunchResult, LaneOutcome, and LaneContext are all frozen dataclasses (G-Py-1). The per-kind error detail dict returned by _parse_results_independently replaces the single shared detail string, so each kind carries its own error reason (G-Py-3). Symlink and containment checks in _lane_output_path, _review_validate_args, and _validate_prompt_evidence_paths confine writes to owned roots (G-Sec-4). CLAUDE_BINARY_FOUND producer (session_env.py finalize_wrapper_env, setup_main) and consumer (_lane_availability) land in the same change (G-Gate-1). The ClaudeLauncher→DirectClaudeLauncher rename and _parse_results_independently signature change are swept across all call sites and tests in the same diff (G-Md-2). The step-8-assessment.sh budget is now derived from config constants via fixer_lane_budget_sec and tool_order rather than a hardcoded literal (G-Cfg-1, G-Cfg-3).
+
 ## /implement run 25E51482-9DA4-4EB9-BA4A-82535482E0D8: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:54:33
-- **Cost**: 💰 TOTAL ~$39.72: Claude $3.60, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.39  |  Tokens: 53562k
+- **Cost**: 💰 TOTAL ~$40.45: Claude $4.33, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.39  |  Tokens: 54536k
 - **Issue**: #7097: https://github.com/character-ai/larch/issues/7097
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
