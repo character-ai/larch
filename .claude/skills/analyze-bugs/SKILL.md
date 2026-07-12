@@ -19,7 +19,7 @@ Parse `$ARGUMENTS` and forward only these flags:
 - `--deep-max M`: maximum deep verifier tasks. Default: `30`.
 - `--deep-model sonnet|opus|fable`: model alias for deep checks. Default: `sonnet`.
 - `--refresh`: ignore matching ledger skips for this run.
-- `--sample K`: deterministic calibration sample from triage clear or likely rows.
+- `--sample K`: deterministic calibration sample from triage clear or likely rows. Default: `3`. Pass `--sample 0` to disable calibration.
 - `--repo OWNER/REPO`: explicit GitHub repo. Default: `gh repo view`.
 
 Reject unknown flags before spending Task tokens.
@@ -90,6 +90,8 @@ python3 "$PWD/python/cli.py" analyze-bugs ledger \
 
 Recompute the ledger after triage ingest so deep priority, sampling, and cap truncation reflect current evidence.
 
+The coordinator risk-routes verified `FIXED_CLEAR` and `FIXED_LIKELY` rows to deep verification. Priority is chain-linked, chronic-zone, cross-language contract surface, then fixes adding more than 300 lines. This promotion requires verified triage evidence. The coordinator records every candidate dropped by `--deep-max` with its issue and routing reason.
+
 ```bash
 LEDGER_OUT=$(python3 "$PWD/python/cli.py" analyze-bugs ledger \
   --run-dir "$RUN_DIR" \
@@ -122,6 +124,8 @@ python3 "$PWD/python/cli.py" analyze-bugs report \
 ```
 
 Print the markdown report and the `ANALYZE_BUGS_COST_ESTIMATE=...` line. The estimate is marked estimated when Task token usage is unavailable.
+
+The Issues table names the final evidence tier as `MECH`, `TRIAGE`, or `DEEP`. The report then shows chronic zones, directional fix chains, baseline-extending fixes, and the delta since the prior valid run snapshot. A verified issue has a final non-pending verdict from one of those evidence tiers. Sample calibration always prints the sample size, sampled failures, and triage false-pass rate. When chronic zones exist, the report suggests `/learn-from-bugs` scoped to those zones.
 
 ## Follow-up filing gate
 

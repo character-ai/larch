@@ -11,6 +11,10 @@ from larch.core.proc import CommandResult
 from larch.issue import analyze_bugs
 from test_support import RecordingRunner, run_cli
 
+_marker_evidence = analyze_bugs._marker_evidence  # pyright: ignore[reportPrivateUsage]  # direct pure-helper coverage
+_bundle_from_mapping = analyze_bugs._bundle_from_mapping  # pyright: ignore[reportPrivateUsage]  # fixture construction
+_priority_deep_candidates = analyze_bugs._priority_deep_candidates  # pyright: ignore[reportPrivateUsage]  # routing coverage
+
 
 EVIDENCE_TOKEN = "token-123"
 
@@ -278,6 +282,8 @@ def test_prefetch_emits_manifest_and_handoff_paths(tmp_path: Path) -> None:
             _result(),
             _result(),
             _result("file.py\n"),
+            _result("1767225600\n"),
+            _result("10\t2\tfile.py\n"),
             _result("later: touch\n"),
             _result("diff --git a/file.py b/file.py\n"),
             _result(""),
@@ -639,7 +645,7 @@ def test_load_ledger_quarantines_corrupt_lines(tmp_path: Path) -> None:
     assert list(tmp_path.glob("ledger.jsonl.corrupt-*"))
 
 
-def test_render_report_overrides_stale_deep_and_writes_follow_up(tmp_path: Path) -> None:
+def test_render_report_prefers_deep_verdict_over_mechanical_verdict(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     body1 = run_dir / "issue-1-body.md"
@@ -712,13 +718,11 @@ def test_render_report_overrides_stale_deep_and_writes_follow_up(tmp_path: Path)
 
     report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
 
-    assert "NOT_FIXED" in report
+    assert "CONFIRMED_FIXED" in report
     assert "deep cap truncated this candidate" in report
     assert "ANALYZE_BUGS_COST_ESTIMATE=" in report
     assert (run_dir / "report.md").read_text(encoding="utf-8") == report
-    follow_up = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
-    assert "# Analyze-bugs follow-up" in follow_up
-    assert "#1: NOT_FIXED" in follow_up
+    assert not (run_dir / "follow-up-issue.md").exists()
 
 
 def test_render_report_surfaces_deep_verdict_after_mechanical_needs_deep(tmp_path: Path) -> None:
@@ -786,7 +790,7 @@ def test_render_report_surfaces_deep_verdict_after_mechanical_needs_deep(tmp_pat
 
     assert "| Confirmed or likely fixed | 1 |" in report
     assert "| Needs deep | 0 |" in report
-    assert "| [#1](https://github.com/o/r/issues/1) | sha1 | CONFIRMED_FIXED | deep verifier found the fix |  |" in report
+    assert "| [#1](https://github.com/o/r/issues/1) | sha1 | DEEP | CONFIRMED_FIXED | deep verifier found the fix |  |" in report
     assert "no exact Fixes reference" not in report
 
 
@@ -904,3 +908,234 @@ def test_cli_dispatches_analyze_bugs_help() -> None:
 
     assert result.returncode == 0
     assert "analyze-bugs prefetch" in result.stdout
+
+
+def _analytics_bundle(run_dir: Path, *, issue: int, cache_key: str, files: list[str], fix_time: int, added_lines: int = 10, markers: list[int] | None = None, mechanical: str = "") -> dict[str, object]:
+    row = _single_manifest_issue(run_dir, issue=issue, cache_key=cache_key, mechanical=mechanical)
+    row["fix_sha"] = f"sha-{issue}"
+    row["touched_files"] = files
+    row["fix_time"] = fix_time
+    row["added_lines"] = added_lines
+    row["zones"] = sorted({analyze_bugs.zone_for_path(path) for path in files})
+    row["marker_references"] = markers or []
+    row["marker_fingerprint"] = f"fingerprint-{issue}"
+    row["baseline_extended"] = any(path.startswith("python/") and path.endswith("-baseline.json") for path in files)
+    return row
+
+
+def test_zone_mapping_table() -> None:
+    cases = {
+        "python/larch/issue/analyze_bugs.py": "python/larch/issue",
+        "skills/implement/SKILL.md": "skills/implement",
+        "scripts/check.sh": "scripts",
+        "docs/linting.md": "docs",
+        "python/complexity-baseline.json": "python/complexity-baseline.json",
+        "README.md": "README.md",
+    }
+
+    assert {path: analyze_bugs.zone_for_path(path) for path in cases} == cases
+
+
+def test_marker_evidence_requires_phrase_and_reference() -> None:
+    references, fingerprint = _marker_evidence("[BUG] Regression from #12", "body")
+    no_phrase, _ = _marker_evidence("[BUG] follow-up #12", "body")
+    no_reference, _ = _marker_evidence("[BUG] residual failure", "body")
+
+    assert references == (12,)
+    assert len(fingerprint) == 64
+    assert not no_phrase
+    assert not no_reference
+
+
+def test_analytics_detects_churn_chronic_chains_and_baseline(tmp_path: Path) -> None:
+    run_dir = tmp_path / "runs" / "200"
+    run_dir.mkdir(parents=True)
+    now = 2_000_000
+    issues = [
+        _analytics_bundle(run_dir, issue=1, cache_key="k1", files=["python/larch/issue/shared.py", "python/complexity-baseline.json"], fix_time=now - 100, markers=[9]),
+        _analytics_bundle(run_dir, issue=2, cache_key="k2", files=["python/larch/issue/shared.py"], fix_time=now - 200),
+        _analytics_bundle(run_dir, issue=3, cache_key="k3", files=["python/larch/issue/shared.py"], fix_time=now - 300),
+    ]
+    manifest = {"schema_version": "1", "repo": "o/r", "run_id": "200", "generated_at": now, "issues": issues}
+    ledger = tmp_path / "ledger.jsonl"
+
+    view = analyze_bugs.build_analytics_view(
+        manifest=manifest,
+        bundles=[_bundle_from_mapping(row) for row in issues],
+        ledger_path=ledger,
+    )
+
+    assert analyze_bugs.ChainEdge(1, 9, "marker") in view.chain_edges
+    assert analyze_bugs.ChainEdge(1, 2, "file_intersection") in view.chain_edges
+    assert analyze_bugs.ChainEdge(2, 3, "file_intersection") in view.chain_edges
+    assert view.churned_files == ("python/larch/issue/shared.py",)
+    assert view.chronic_zones[0].zone == "python/larch/issue"
+    assert view.chronic_zones[0].issues == (1, 2, 3)
+    assert view.baseline_issues == (1,)
+
+
+def test_risk_routing_priority_and_verified_triage_gate(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    now = 2_000_000
+    raw = _analytics_bundle(
+        run_dir,
+        issue=1,
+        cache_key="k1",
+        files=["python/larch/issue/a.py", "scripts/a.sh"],
+        fix_time=now - 100,
+        added_lines=500,
+        markers=[2],
+    )
+    bundle = _bundle_from_mapping(raw)
+    verified = analyze_bugs.LedgerRecord(
+        cache_key="k1",
+        issue=1,
+        fix_sha="sha-1",
+        later_history_hash="later",
+        triage_verdict="FIXED_CLEAR",
+        triage_evidence_verified=True,
+        stages_complete=("triage",),
+    )
+    view = analyze_bugs.build_analytics_view(manifest={"generated_at": now}, bundles=[bundle], ledger_path=tmp_path / "ledger.jsonl")
+
+    candidates = _priority_deep_candidates(bundles=[bundle], ledger={"k1": verified}, sample=0, refresh=False, analytics=view)
+    blocked = _priority_deep_candidates(
+        bundles=[bundle],
+        ledger={"k1": analyze_bugs.LedgerRecord(cache_key="k1", issue=1, fix_sha="sha-1", later_history_hash="later", triage_verdict="FIXED_CLEAR", stages_complete=("triage",))},
+        sample=0,
+        refresh=False,
+        analytics=view,
+    )
+
+    assert candidates[0]["source"] == "chain-linked"
+    assert not blocked
+
+
+def test_report_renders_analytics_and_stable_delta(tmp_path: Path, monkeypatch: object) -> None:
+    runs = tmp_path / "runs"
+    prior_dir = runs / "100"
+    run_dir = runs / "200"
+    prior_dir.mkdir(parents=True)
+    run_dir.mkdir()
+    now = 2_000_000
+    prior = analyze_bugs.RunSnapshot("1", "o/r", "100", now - 1000, (1,), (1,), (), (), analyze_bugs.VERIFIED_PREDICATE_VERSION)
+    _write_json(prior_dir / "run-state.json", cast("dict[str, object]", analyze_bugs.asdict(prior)))
+    issues = [
+        _analytics_bundle(run_dir, issue=1, cache_key="k1", files=["python/larch/issue/shared.py", "python/complexity-baseline.json"], fix_time=now - 100, markers=[9], mechanical="NOT_FIXED"),
+        _analytics_bundle(run_dir, issue=2, cache_key="k2", files=["python/larch/issue/shared.py"], fix_time=now - 200, mechanical="WONTFIX"),
+        _analytics_bundle(run_dir, issue=3, cache_key="k3", files=["python/larch/issue/shared.py"], fix_time=now - 300, mechanical="NOT_FIXED"),
+    ]
+    manifest: dict[str, object] = {
+        "schema_version": "1", "repo": "o/r", "run_id": "200", "run_dir": str(run_dir), "evidence_ref": "origin/main",
+        "bugs_requested": 3, "bugs_selected": 3, "generated_at": now, "ledger_path": str(tmp_path / "ledger.jsonl"),
+        "triage_batch_paths": [], "deep_queue_path": str(run_dir / "deep-queue.jsonl"), "issues": issues,
+    }
+    _write_json(run_dir / "manifest.json", manifest)
+    monkeypatch.setattr(analyze_bugs, "_runner", RecordingRunner)  # type: ignore[attr-defined]  # test seam
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=tmp_path / "ledger.jsonl", run_dir=run_dir)
+
+    assert "| Issue | Fix | Tier | Verdict |" in report
+    assert "## Chronic zones" in report
+    assert "## Fix chains" in report
+    assert "## Baseline-extending fixes" in report
+    assert "## Since last run" in report
+    assert "Newly selected: #2, #3" in report
+    assert "Suggestion: run /learn-from-bugs scoped to python/larch/issue." in report
+    assert report.rstrip().splitlines()[-1].startswith("ANALYZE_BUGS_COST_ESTIMATE=")
+
+
+def test_file_intersection_excludes_exact_fourteen_day_boundary(tmp_path: Path) -> None:
+    now = 2_000_000
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    issues = [
+        _analytics_bundle(run_dir, issue=1, cache_key="k1", files=["shared.py"], fix_time=now),
+        _analytics_bundle(run_dir, issue=2, cache_key="k2", files=["shared.py"], fix_time=now - (14 * analyze_bugs.DAY_SECONDS)),
+    ]
+
+    view = analyze_bugs.build_analytics_view(
+        manifest={"generated_at": now},
+        bundles=[_bundle_from_mapping(row) for row in issues],
+        ledger_path=tmp_path / "ledger.jsonl",
+    )
+
+    assert not any(edge.detector_kind == "file_intersection" for edge in view.chain_edges)
+
+
+def test_hydrates_undated_historical_fix_before_window_filter(tmp_path: Path) -> None:
+    now = 2_000_000
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "historic", "issue": 2, "fix_sha": "sha-2", "later_history_hash": "", "fix_time": 0, "updated_at": 1}) + "\n",
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(responses=[_result("python/a.py\n"), _result(str(now - 100)), _result("4\t0\tpython/a.py\n")], strict=True)
+
+    view = analyze_bugs.build_analytics_view(manifest={"generated_at": now}, bundles=[], ledger_path=ledger, runner=runner)
+
+    assert [record.issue for record in view.records] == [2]
+    assert view.hydrated_records[0].fix_time == now - 100
+
+
+def test_hydration_repairs_partial_metadata_and_marker_backfill_keeps_it(tmp_path: Path) -> None:
+    now = 2_000_000
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "historic", "issue": 2, "fix_sha": "sha-2", "later_history_hash": "", "fix_time": now - 100, "added_lines": 0, "touched_files": [], "updated_at": 1, "metadata_version": 1}) + "\n",
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(
+        responses=[_result("python/a.py\n"), _result(str(now - 100)), _result("4\t0\tpython/a.py\n"), _result(json.dumps({"title": "[BUG] residual after #1", "body": "body"}))],
+        strict=True,
+    )
+
+    view = analyze_bugs.build_analytics_view(manifest={"generated_at": now, "repo": "o/r"}, bundles=[], ledger_path=ledger, runner=runner)
+
+    assert view.hydrated_records[0].touched_files == ("python/a.py",)
+    assert view.hydrated_records[0].added_lines == 4
+    assert view.hydrated_records[0].marker_references == (1,)
+
+
+def test_external_marker_reference_does_not_make_zone_chronic(tmp_path: Path) -> None:
+    now = 2_000_000
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    bundles = [
+        _bundle_from_mapping(_analytics_bundle(run_dir, issue=1, cache_key="k1", files=["python/a.py"], fix_time=now - 100, markers=[9])),
+        _bundle_from_mapping(_analytics_bundle(run_dir, issue=2, cache_key="k2", files=["python/b.py"], fix_time=now - 200, markers=[9])),
+    ]
+
+    view = analyze_bugs.build_analytics_view(manifest={"generated_at": now}, bundles=bundles, ledger_path=tmp_path / "ledger.jsonl")
+
+    assert not view.chronic_zones
+
+
+def test_historical_marker_backfill_is_deferred_until_report_success(tmp_path: Path, monkeypatch: object) -> None:
+    runs = tmp_path / "runs"
+    run_dir = runs / "200"
+    run_dir.mkdir(parents=True)
+    now = 2_000_000
+    manifest = _single_manifest(run_dir, issue=1, cache_key="active", mechanical="WONTFIX")
+    manifest["generated_at"] = now
+    manifest["run_id"] = "200"
+    manifest["run_dir"] = str(run_dir)
+    manifest["ledger_path"] = str(tmp_path / "ledger.jsonl")
+    issues = cast("list[dict[str, object]]", manifest["issues"])
+    issues[0]["fix_sha"] = ""
+    _write_json(run_dir / "manifest.json", manifest)
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "historic", "issue": 2, "fix_sha": "", "later_history_hash": "", "fix_time": now - 100, "updated_at": 1}) + "\n",
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(responses=[_result(json.dumps({"title": "[BUG] residual after #1", "body": "body"}))], strict=True)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: runner)  # type: ignore[attr-defined]  # typed runner factory
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+    rows = [json.loads(line) for line in ledger.read_text(encoding="utf-8").splitlines()]
+
+    assert "| #2 | #1 | marker |" in report
+    assert rows[-1]["marker_references"] == [1]
+    assert rows[-1]["marker_fingerprint"]
