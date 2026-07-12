@@ -70,11 +70,19 @@ Exec Issues (0):
 Warnings (1):
   1. Step 7a.1 — 2 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/report/final_report.py, python/tests/issue/test_ground_truth.py
 
+## Architectural invariants
+
+No invariant violations identified. The change migrates raw corpus walkers (glob/scandir/walk/dual-manifest loops) to a centralized run_log_corpus module, adds a lint rule to enforce the new boundary, and migrates all call sites. None of the changed code touches gate disarm logic (I-Gate-1), pause/resume artifacts (I-Pause-1), persisted step result identity or stale-result consumers (I-Stale-1), run-log flush completeness or execution-issue recording (I-Flush-1 / I-Commit-1), committed outcome labels (I-Outcome-1), panel slot tracking (I-Slot-1), agent-tool-contract compliance (I-Agent-1), or pre-merge mutation guards on closed PRs (I-Ship-1).
+
+## Architectural guidelines
+
+No guideline deviations identified. The change exemplifies G-Fix-1 (fixes the class by consolidating all corpus walkers into run_log_corpus rather than patching individual sites), G-Enf-1 (promotes the convention to a pre-commit lint and make target), and G-Enf-2 (three known residual modules are exempted with issue-number-bearing reasons in EXEMPT_RELPATHS, functioning as a shrinking baseline). New dataclasses (WalkWarning, Finding) use frozen=True per G-Py-1. All noqa/lint suppressions carry inline reasons per G-Py-11. The gc_run_logs.py contain_root tightening from logs_root to logs_root/skill is correct: validated_run_has_escape_symlink requires the immediate parent, and this is now consistent across the codebase. The reordering of after=_dir_bytes before writing gc-slimmed in _slim_dir is not a G-Idem-2 violation because gc-slimmed is the completion marker and is now correctly written only after the postcondition (the slimmed byte total) is measured. The fluff-analysis.py _enumerate_design_run_dirs change removes the manifest-is-None skip guard; runs without manifests are now included when no since_version/cutoff filter is active, but this is a calibration script with loose data contracts and the downstream code handles empty started_at gracefully via _parse_started_at returning None.
+
 ## /implement run 67E4CEC6-D959-48C0-AD66-C457DADE48B2: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:34:24
-- **Cost**: 💰 TOTAL ~$39.16: Claude $6.48, Codex-5.6 $11.73, Codex-mini $1.70, Cursor $15.82 (Composer $12.26, Grok $3.56), Claude (subprocess) $3.43  |  Tokens: 68943k
+- **Cost**: 💰 TOTAL ~$39.53: Claude $6.82, Codex-5.6 $11.73, Codex-mini $1.70, Cursor $15.82 (Composer $12.26, Grok $3.56), Claude (subprocess) $3.46  |  Tokens: 70002k
 - **Issue**: #7009: https://github.com/character-ai/larch/issues/7009
 - **Plan review**: N/A
 - **Plan coverage**: 25/27 firm headings; band: advisory; disposition: none; todos_left: 0
