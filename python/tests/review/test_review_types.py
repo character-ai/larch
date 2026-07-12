@@ -22,6 +22,13 @@ def test_parse_canonical_heading_is_exact() -> None:
     assert is_canonical_heading("### OOS_2: title", kind="OOS")
 
 
+def test_parse_canonical_heading_allows_horizontal_whitespace_after_hashes() -> None:
+    heading = parse_canonical_heading("### \tOOS_12: title")
+
+    assert heading is not None
+    assert (heading.item_id, heading.kind, heading.number, heading.title) == ("OOS_12", "OOS", 12, "title")
+
+
 def test_parse_blocks_ignores_fenced_headings() -> None:
     text = "preamble\n```md\n### FINDING_9: fake\n```\n### FINDING_1: real\nbody\n"
     blocks = parse_blocks(text)

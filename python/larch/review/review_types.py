@@ -17,8 +17,8 @@ BoundaryMode: TypeAlias = Literal[
 ]
 CompatibilityBoundary: TypeAlias = Literal["finding_heading", "any_heading"]
 
-_CANONICAL_HEADING_RE = re.compile(r"^### (FINDING|OOS)_([0-9]+):(.*)$")
-_LEVEL_THREE_HEADING_RE = re.compile(r"^###(?: |$)")
+_CANONICAL_HEADING_RE = re.compile(r"^###[ \t]+(FINDING|OOS)_([0-9]+):(.*)$")
+_LEVEL_THREE_HEADING_RE = re.compile(r"^###(?:[ \t]+|$)")
 _FENCE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 _FENCED_CODE_RE = re.compile(r"(?ms)^[ \t]{0,3}(`{3,}|~{3,}).*?^[ \t]{0,3}\1[ \t]*$")
