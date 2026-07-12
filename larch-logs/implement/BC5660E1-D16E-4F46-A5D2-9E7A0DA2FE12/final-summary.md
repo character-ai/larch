@@ -39,7 +39,8 @@ codex/apply                          │                                        
 ## Exec Issues and Warnings
 Exec Issues (1):
   1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
-Warnings (0):
+Warnings (1):
+  1. `tests.support.session` manually serializes production-style `session-env.sh` and `source-env.sh` KEY=value wire files instead of using the shared wire-file helpers, creating a parallel grammar tha...
 
 ## Architectural invariants
 
@@ -47,23 +48,24 @@ No violations identified.
 
 ## Architectural guidelines
 
-No deviations identified.
+`tests.support.session` manually serializes production-style `session-env.sh` and `source-env.sh` KEY=value wire files instead of using the shared wire-file helpers, creating a parallel grammar that can drift from runtime behavior.
 
-## /implement run BC5660E1-D16E-4F46-A5D2-9E7A0DA2FE12: shipping
+## /implement run BC5660E1-D16E-4F46-A5D2-9E7A0DA2FE12: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 00:39:39
-- **Cost**: 💰 TOTAL ~$14.76: Claude $1.40, Codex-5.6 $1.73, Codex-mini $1.34, Cursor $10.07 (Composer $6.77, Grok $3.30), Claude (subprocess) $0.22  |  Tokens: 31094k
+- **Cost**: 💰 TOTAL ~$16.21: Claude $2.02, Codex-5.6 $2.28, Codex-mini $1.34, Cursor $10.27 (Composer $6.97, Grok $3.30), Claude (subprocess) $0.30  |  Tokens: 33760k
 - **Issue**: #7024: https://github.com/character-ai/larch/issues/7024
+- **PR**: #7160: https://github.com/character-ai/larch/pull/7160
 - **Plan review**: N/A
 - **Plan coverage**: 10/10 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/4 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +788/-285, larch-logs +800/-5
 - **OOS filed**: 0
 - **Exec issues**: 1
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/BC5660E1-D16E-4F46-A5D2-9E7A0DA2FE12/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
