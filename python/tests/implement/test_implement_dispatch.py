@@ -41,6 +41,8 @@ from larch.core import logging_util
 from larch.outcomes import Outcome
 from larch.report import run_logs
 
+from test_support import make_implement_tmpdir
+
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
@@ -50,7 +52,7 @@ def test_checks_commit_route_step3_does_not_touch_legacy_sidecars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
 
     def fake_impl(args: Any, implement_tmpdir: Path) -> int:
@@ -67,7 +69,7 @@ def test_checks_commit_route_step3_does_not_touch_legacy_sidecars(
 
 
 def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     plugin_root = Path(__file__).resolve().parents[3]
 
@@ -115,20 +117,6 @@ def repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     )
     monkeypatch.chdir(root)
     return root
-
-
-def _session(tmp_path: Path) -> Path:
-    tmp = tmp_path / "impl"
-    tmp.mkdir()
-    (tmp / "plan.txt").write_text("## Plan\n", encoding="utf-8")
-    (tmp / "feature-description.txt").write_text("feature\n", encoding="utf-8")
-    plugin_root = Path(__file__).resolve().parents[3]
-    (tmp / "session-env.sh").write_text(
-        f"CURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\n"
-        f"LARCH_CLAUDE_PLUGIN_ROOT={plugin_root}\nREPO_ROOT={plugin_root}\n",
-        encoding="utf-8",
-    )
-    return tmp
 
 
 def _clear_rater_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -212,25 +200,24 @@ def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
 
 
 def test_resolve_implement_rater_model_prefers_codex_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path, overrides={"LARCH_CODEX_MODEL": "codex-session-model"})
     _clear_rater_model_env(monkeypatch)
     monkeypatch.setenv(config.ENV_LARCH_CODEX_MODEL, "codex-env-model")
-    with (tmp / "session-env.sh").open("a", encoding="utf-8") as handle:
-        handle.write("LARCH_CODEX_MODEL=codex-session-model\n")
 
     model = dispatch_step2._resolve_implement_rater_model(tool="codex", session_env=tmp / "session-env.sh")
 
     assert model == "codex-env-model"
 
 
-def test_resolve_implement_rater_model_uses_cursor_plugin_option_from_session(
+def test_resolve_implement_rater_model_uses_cursor_plugin_option_frommake_implement_tmpdir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(
+        tmp_path,
+        overrides={"CLAUDE_PLUGIN_OPTION_CURSOR_MODEL": "cursor-plugin-model"},
+    )
     _clear_rater_model_env(monkeypatch)
-    with (tmp / "session-env.sh").open("a", encoding="utf-8") as handle:
-        handle.write("CLAUDE_PLUGIN_OPTION_CURSOR_MODEL=cursor-plugin-model\n")
 
     model = dispatch_step2._resolve_implement_rater_model(tool="cursor", session_env=tmp / "session-env.sh")
 
@@ -241,7 +228,7 @@ def test_resolve_implement_rater_model_uses_default_and_rejects_control_chars(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
 
     assert dispatch_step2._resolve_implement_rater_model(tool="codex", session_env=tmp / "session-env.sh") == config.CODEX_DEFAULT_MODEL
@@ -260,7 +247,7 @@ def test_write_step2_difficulty_record_passes_resolved_rater_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
     monkeypatch.setenv(config.ENV_LARCH_CODEX_MODEL, "codex-env-model")
     calls: list[list[str]] = []
@@ -292,7 +279,7 @@ def test_write_step2_difficulty_record_uses_trivial_tier_model(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
     calls: list[list[str]] = []
 
@@ -366,7 +353,7 @@ def test_normalize_coder_scout_empty_tmpdir_argv_falls_back_to_env(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     source = tmp / "scout.raw.json"
     source.write_text('{"archetypes":[]}\n', encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
@@ -390,7 +377,7 @@ def test_normalize_coder_scout_root_relative_argv_rebases_to_tmpdir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     source = tmp / "scout-coder-manifest.raw.json"
     source.write_text('{"archetypes":[]}\n', encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
@@ -412,7 +399,7 @@ def test_recovery_paths_empty_tmpdir_argv_falls_back_to_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     repo = tmp_path / "repo"
     repo.mkdir()
     pre = tmp / "pre.nul"
@@ -462,7 +449,7 @@ def test_recovery_paths_root_relative_argv_rebases_to_tmpdir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     repo = tmp_path / "repo"
     repo.mkdir()
     pre = tmp / "step2-prelaunch-porcelain.nul"
@@ -541,7 +528,7 @@ def test_ship_route_exit_routes_persisted_conflict_handoff(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "ship-pr-state.sh").write_text(
         "RESUME_PHASE=ship-pr-rrr-phase14\n"
         "CALLER_KIND=ship_pr_pre_push\n"
@@ -579,7 +566,7 @@ def test_ship_normalize_assessment_handoff_normalizes_legacy_aliases(
     action: str,
     expected: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
     _ = handoff.write_text(f"KEEP=value\nNEXT_ACTION={action}\nDETAIL=stale\n", encoding="utf-8")
 
@@ -593,7 +580,7 @@ def test_ship_normalize_assessment_handoff_canonicalizes_kind_order(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
     _ = handoff.write_text("NEXT_ACTION=assessments\nDETAIL=guidelines,invariants\n", encoding="utf-8")
 
@@ -604,7 +591,7 @@ def test_ship_normalize_assessment_handoff_canonicalizes_kind_order(
 
 
 def test_ship_normalize_assessment_handoff_rejects_noncanonical_kinds(tmp_path: Path) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
     original = "NEXT_ACTION=assessments\nDETAIL=guidelines, invariants\n"
     _ = handoff.write_text(original, encoding="utf-8")
@@ -617,7 +604,7 @@ def test_ship_normalize_assessment_handoff_rejects_noncanonical_kinds(tmp_path: 
 def test_ship_normalize_assessment_handoff_ignores_legacy_symlinked_temp_path(
     tmp_path: Path,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
     _ = handoff.write_text("NEXT_ACTION=assessments\nDETAIL=guidelines\n", encoding="utf-8")
     redirected = tmp / "redirected.txt"
@@ -634,7 +621,7 @@ def test_ship_normalize_assessment_handoff_reads_detail_from_detail_file(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
     detail_file = tmp / "assessment-detail.txt"
     _ = detail_file.write_text("guidelines,invariants", encoding="utf-8")
@@ -672,7 +659,7 @@ def test_ship_normalize_assessment_handoff_rejects_invalid_handoff(
     tmp_path: Path,
     handoff_body: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
     _ = handoff.write_text(handoff_body, encoding="utf-8")
 
@@ -684,7 +671,7 @@ def test_ship_normalize_assessment_handoff_rejects_invalid_handoff(
 def test_ship_normalize_assessment_handoff_rejects_detail_file_outside_tmpdir(
     tmp_path: Path,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     outside = tmp_path / "outside-detail.txt"
     _ = outside.write_text("invariants", encoding="utf-8")
     handoff = tmp / ".ship-route-exit-handoff.env"
@@ -697,7 +684,7 @@ def test_ship_normalize_assessment_handoff_rejects_detail_file_outside_tmpdir(
 
 
 def test_ship_normalize_assessment_handoff_missing_handoff_file(tmp_path: Path) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
 
     assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 2
 
@@ -717,7 +704,7 @@ def test_ship_normalize_assessment_handoff_falls_back_to_env(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
     _ = handoff.write_text("NEXT_ACTION=guidelines-assessment\n", encoding="utf-8")
     monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp))
@@ -733,7 +720,7 @@ def test_ship_route_exit_reships_no_checks_when_phase14_flag_pending(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(
         "RESUME_PHASE=ship-pr-rrr-phase14\n",
         encoding="utf-8",
@@ -785,7 +772,7 @@ def test_ship_route_exit_classifies_driver_sidecars(
     payload: dict[str, object],
     action: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
 
     exit_rc, out, _err = _route_exit(tmp, capsys, monkeypatch, rc, payload)
 
@@ -799,7 +786,7 @@ def test_ship_route_exit_preserves_combined_assessment_detail(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
 
     exit_rc, out, _err = _route_exit(
         tmp,
@@ -845,7 +832,7 @@ def test_ship_route_exit_adds_validated_unavailable_detail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
     kinds: str, invariant_detail: str, guideline_detail: str, expected: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     for kind, detail in (("invariants", invariant_detail), ("guidelines", guideline_detail)):
         if kind in kinds:
             _write_unavailable_outcome(tmp, kind, detail)
@@ -869,7 +856,7 @@ def test_ship_route_exit_adds_validated_unavailable_detail(
 def test_ship_route_exit_omits_unavailable_detail_for_unrelated_bail(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_unavailable_outcome(tmp, "invariants", "must not leak")
 
     exit_rc, _out, _err = _route_exit(
@@ -896,7 +883,7 @@ def test_ship_route_exit_preserves_dormant_assessment_aliases_for_prompt_normali
     reason: str,
     action: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
 
     exit_rc, out, _err = _route_exit(
         tmp,
@@ -928,7 +915,7 @@ def test_ship_route_exit_allows_nonzero_bgjob_rc_with_current_sidecars(
     payload: dict[str, object],
     expected_action: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     bgjob = tmp / "bgjob"
     bgjob.mkdir()
     (bgjob / "implement-step8-ship.result.env").write_text(
@@ -958,7 +945,7 @@ def test_ship_route_exit_blocks_terminal_bgjob_failures(
     capsys: pytest.CaptureFixture[str],
     bgjob_rc: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     bgjob = tmp / "bgjob"
     bgjob.mkdir()
     (bgjob / "implement-step8-ship.result.env").write_text(
@@ -988,7 +975,7 @@ def test_ship_route_exit_blocks_stale_bgjob_handoff_rc(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     bgjob = tmp / "bgjob"
     bgjob.mkdir()
     (bgjob / "implement-step8-ship.result.env").write_text(
@@ -1017,7 +1004,7 @@ def test_ship_route_exit_blocks_stale_bgjob_handoff_json_presence(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     bgjob = tmp / "bgjob"
     bgjob.mkdir()
     (bgjob / "implement-step8-ship.result.env").write_text(
@@ -1057,7 +1044,7 @@ def test_ship_route_exit_fails_closed_without_required_json(
     rc: int,
     payload: dict[str, object],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
 
     exit_rc, out, _err = _route_exit(tmp, capsys, monkeypatch, rc, payload)
 
@@ -1071,7 +1058,7 @@ def test_ship_route_exit_retries_transient_and_persists_count(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     sleeps: list[int] = []
     monkeypatch.setattr(implement_dispatch.time, "sleep", lambda seconds: sleeps.append(int(seconds)))
 
@@ -1094,7 +1081,7 @@ def test_ship_route_exit_empty_tmpdir_argv_falls_back_to_env(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
     _write_ship_handoff(tmp, 0, {"outcome": "OK"})
@@ -1109,7 +1096,7 @@ def test_ship_route_exit_fourth_transient_seeds_stall(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "ship-pr-net-retries-python.count").write_text("3\n", encoding="utf-8")
     calls: list[list[str]] = []
     monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
@@ -1141,7 +1128,7 @@ def test_ship_route_exit_rc_file_wins_and_multiline_detail_uses_file(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     payload: dict[str, object] = {"outcome": "STALLED", "detail": "line one\nline two", "ledger_ready": True}
     _write_ship_handoff(tmp, 4, payload)
     monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
@@ -1200,7 +1187,7 @@ def _write_pre_fix_state(
 
 @pytest.mark.parametrize(("action", "expected"), [("ci-fix", True), ("reship", True), ("operator-bail", False), ("conflict-fix", False), ("stall", False), ("complete", False)])
 def test_ship_route_exit_marks_pre_fix_rebase_required_for_autonomous_actions(tmp_path: Path, action: str, expected: bool) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / ".ship-pre-fix-rebase-ok").write_text("stale\n", encoding="utf-8")
 
     dispatch_ship._write_ship_route_handoff(
@@ -1227,7 +1214,7 @@ def test_ship_route_exit_ci_fix_writes_scope_aware_identity(
     payload: dict[str, object],
     expected_scope: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     dispatch_ship._write_ship_route_handoff(
         implement_tmpdir=tmp,
         payload={"outcome": "NEEDS_USER_INPUT", "needs_user_reason": reason, **payload},
@@ -1247,7 +1234,7 @@ def test_ship_pre_fix_rebase_ok_uses_fork_aware_remote_and_pushes(
     forked: str,
     base_remote: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp, forked=forked)
     calls: list[dict[str, object]] = []
 
@@ -1288,7 +1275,7 @@ def test_ship_pre_fix_rebase_successful_physical_rebase_increments_count(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
 
     def fake_rebase_and_push(**_kwargs: object) -> dispatch_ship.rebase.RebaseResult:
@@ -1333,7 +1320,7 @@ def test_ship_pre_fix_rebase_refuses_mismatched_branch_or_repo(
     current_repo: str,
     expected_message: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: current_branch)
     monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: current_repo)
@@ -1358,7 +1345,7 @@ def test_ship_pre_fix_rebase_refuses_main_branch_without_fork(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp, forked="false")
     (tmp / "ship-pr-state.sh").write_text(
         "PHASE=ci-initial\n"
@@ -1411,7 +1398,7 @@ def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(
         f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=DIRTY\n",
@@ -1441,7 +1428,7 @@ def test_ship_pre_fix_rebase_closed_pr_skips_physical_rebase(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp, pr_closed="true")
     calls: list[str] = []
     monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: calls.append("branch") or "feature/pre-fix")
@@ -1468,7 +1455,7 @@ def test_ship_pre_fix_rebase_closed_pr_does_not_override_conflict_handoff(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp, pr_closed="true")
     with (tmp / "ship-pr-state.sh").open("a", encoding="utf-8") as handle:
         handle.write(
@@ -1507,7 +1494,7 @@ def test_ship_pre_fix_rebase_phase14_skip_does_not_override_conflict_handoff(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     with (tmp / "ship-pr-state.sh").open("a", encoding="utf-8") as handle:
         handle.write(
@@ -1561,7 +1548,7 @@ def test_ship_pre_fix_rebase_phase14_invalid_flags_do_not_skip(
     capsys: pytest.CaptureFixture[str],
     flag_text: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(flag_text, encoding="utf-8")
     rebase_calls: list[bool] = []
@@ -1592,7 +1579,7 @@ def test_ship_pre_fix_rebase_phase14_valid_flag_with_rebase_in_progress_stalls(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(
         f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=BEHIND\n",
@@ -1620,7 +1607,7 @@ def test_ship_pre_fix_rebase_routes_existing_conflict_handoff(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     with (tmp / "ship-pr-state.sh").open("a", encoding="utf-8") as handle:
         handle.write(
@@ -1661,7 +1648,7 @@ def test_ship_pre_fix_rebase_stalls_existing_rebase_without_metadata(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     (tmp / ".ship-pre-fix-rebase-ok").write_text("stale\n", encoding="utf-8")
     rebase_calls: list[str] = []
@@ -1688,7 +1675,7 @@ def test_ship_pre_fix_rebase_conflict_handoff_writes_state_and_preserves_handoff
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
     (tmp / ".ship-route-exit-handoff.env").write_text("FAILED_RUN_ID=99\n", encoding="utf-8")
 
@@ -1730,7 +1717,7 @@ def test_ship_pre_fix_rebase_conflict_handoff_write_failures_emit_no_next_action
     capsys: pytest.CaptureFixture[str],
     helper: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
 
     def fake_rebase_and_push(**_kwargs: object) -> object:
@@ -1774,7 +1761,7 @@ def test_ship_pre_fix_rebase_stall_exceptions_emit_stall(
     capsys: pytest.CaptureFixture[str],
     exc: Exception,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp)
 
     def fake_rebase_and_push(**_kwargs: object) -> object:
@@ -1803,7 +1790,7 @@ def test_ship_pre_fix_rebase_missing_state_fails_without_next_action(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_pre_fix_state(tmp, repo="")
 
     rc = implement_dispatch.ship_pre_fix_rebase_main([
@@ -1829,7 +1816,7 @@ def test_step8_oos_checkpoint_success_writes_stats_stamp_and_clears_state(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text(
         "PHASE=ci-initial\nRUN_ID=state-run\nPR_NUMBER=12\nRESUME_PHASE=ship-pr-rrr-phase14\nOOS_PENDING=true\n",
@@ -1863,7 +1850,7 @@ def test_step8_oos_checkpoint_success_refreshes_execution_issues(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
     run_dir = tmp / "larch-logs" / "implement" / "run"
@@ -1889,7 +1876,7 @@ def test_step8_oos_checkpoint_refresh_failure_still_reships(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
     run_dir = tmp / "larch-logs" / "implement" / "run"
@@ -1913,7 +1900,7 @@ def test_step8_oos_checkpoint_stall_does_not_refresh(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     monkeypatch.setattr(
         implement_dispatch.subprocess,
@@ -1938,7 +1925,7 @@ def test_step8_oos_checkpoint_bookkeeping_failure_stalls_and_preserves_oos_pendi
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
     (tmp / "larch-logs" / "implement" / "run").mkdir(parents=True)
@@ -1970,7 +1957,7 @@ def test_step8_oos_checkpoint_run_id_precedence_state_over_session_id(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
     (tmp / "ship-pr-state.sh").write_text("RUN_ID=state-run\nOOS_PENDING=true\n", encoding="utf-8")
@@ -2001,7 +1988,7 @@ def test_step8_oos_checkpoint_stats_write_failure_stalls(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
     (tmp / "larch-logs" / "implement" / "run").mkdir(parents=True)
@@ -2025,7 +2012,7 @@ def test_step8_oos_checkpoint_state_patch_failure_stalls(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\n", encoding="utf-8")
     run_dir = tmp / "larch-logs" / "implement" / "run"
@@ -2050,7 +2037,7 @@ def test_step8_oos_checkpoint_bookkeeping_resolves_run_id_from_session_id_only(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "session-id").write_text("session-run\n", encoding="utf-8")
     (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
@@ -2073,7 +2060,7 @@ def test_step8_oos_checkpoint_resolves_run_id_from_single_ndjson_without_state_r
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text("OOS_PENDING=true\nPR_NUMBER=3\n", encoding="utf-8")
     run_dir = tmp / "larch-logs" / "implement" / "ndjson-run"
@@ -2154,7 +2141,7 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("STALL_TRACKING", "false")
     normalize_calls: list[list[str]] = []
     finalize_calls: list[list[str]] = []
@@ -2201,7 +2188,7 @@ def test_step18_gate_finalize_empty_tmpdir_argv_falls_back_to_env(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     monkeypatch.setenv("STALL_TRACKING", "false")
     finalize_calls: list[list[str]] = []
@@ -2219,7 +2206,7 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "ship-pr-state.sh").write_text("STALL_TRACKING=1\n", encoding="utf-8")
     monkeypatch.setattr(
         implement_dispatch,
@@ -2246,7 +2233,7 @@ def test_step18_gate_finalize_abandoned_checks_bgjob_breaks_out_without_finalize
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setattr(dispatch_step18, "_abandoned_checks_bgjob_stall_step", lambda _tmpdir: "3")
     monkeypatch.setattr(
         implement_dispatch,
@@ -2274,7 +2261,7 @@ def test_step18_gate_finalize_outcome_false_skips_filing_even_with_evidence(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "stall-recovery-escalation-fallback.tsv").write_text("site=step8\n", encoding="utf-8")
     _install_step18_normalize(monkeypatch, succeeded=False)
     finalize_calls: list[list[str]] = []
@@ -2291,7 +2278,7 @@ def test_step18_gate_finalize_terminal_sentinel_skips_filing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "stall-recovery-terminal-report.env").write_text("TERMINAL=true\n", encoding="utf-8")
     (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
     _install_step18_normalize(monkeypatch, succeeded=True)
@@ -2309,7 +2296,7 @@ def test_step18_gate_finalize_escalation_success_sentinel_skips_filing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "stall-recovery-escalation-success.env").write_text("FILED=true\n", encoding="utf-8")
     (tmp / "stall-recovery-escalation-record-failure.env").write_text("FAILED=true\n", encoding="utf-8")
     _install_step18_normalize(monkeypatch, succeeded=True)
@@ -2327,7 +2314,7 @@ def test_step18_gate_finalize_preserves_finalize_rc(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _install_step18_normalize(monkeypatch, succeeded=False)
     finalize_calls: list[list[str]] = []
     _install_step18_finalize(monkeypatch, calls=finalize_calls, rc=9, stdout="EMIT_BODY=true\n")
@@ -2345,7 +2332,7 @@ def test_step8_oos_checkpoint_filed_count_ignores_stale_sentinel_without_ndjson(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "ship-pr-state.sh").write_text("RUN_ID=run\nOOS_PENDING=true\nPR_NUMBER=1\n", encoding="utf-8")
     run_dir = tmp / "larch-logs" / "implement" / "run"
@@ -2368,7 +2355,7 @@ def test_step8_oos_checkpoint_nonzero_preserves_child_written_stderr_log(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     (tmp / "oos-disposition-checkpoint.stderr.log").write_text("child validation detail\n", encoding="utf-8")
     monkeypatch.setattr(
@@ -2480,7 +2467,7 @@ def test_ship_pre_driver_guard_failure_isolates_stdout(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     calls: list[list[str]] = []
 
@@ -2504,7 +2491,7 @@ def test_ship_pre_driver_seed_failure_stops_before_oos(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_step2_baseline(tmp)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     results = [
@@ -2533,7 +2520,7 @@ def test_ship_pre_driver_oos_failure_uses_distinct_action(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_step2_baseline(tmp)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     results = [
@@ -2567,7 +2554,7 @@ def test_ship_pre_driver_security_sidecar_payload_routes_to_oos_pipeline(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_step2_baseline(tmp)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     results = [
@@ -2606,7 +2593,7 @@ def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _write_step2_baseline(tmp)
     (tmp / "ship-pr-state.sh").write_text("# comment\nPHASE=checks\n", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
@@ -2636,7 +2623,7 @@ def test_ship_pre_driver_validates_scope_before_seeding_and_halts_for_missing_di
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     calls: list[list[str]] = []
 
@@ -2672,7 +2659,7 @@ def test_ship_pre_driver_scope_validation_hard_failure_stays_tool_failure(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     calls: list[list[str]] = []
 
@@ -2739,7 +2726,7 @@ def test_recovery_paths_filters_tmpdir_and_detects_changed_predirty(repo: Path) 
 
 
 def test_step2_dispatch_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -2753,7 +2740,7 @@ def test_step2_dispatch_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFi
 
 
 def test_step2_dispatch_claude_fallback_clears_scout_sidecars(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
     (tmp / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
     (tmp / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
@@ -2837,7 +2824,7 @@ def test_run_dispatch_empty_tmpdir_argv_falls_back_to_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
     captured: dict[str, list[str]] = {}
 
@@ -2857,7 +2844,7 @@ def test_run_dispatch_empty_tmpdir_argv_falls_back_to_env(
 
 
 def test_run_dispatch_missing_answers_path_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     rc = implement_dispatch.run_dispatch_main([
         "--implement-tmpdir", str(tmp),
         "--coder", "codex",
@@ -2868,7 +2855,7 @@ def test_run_dispatch_missing_answers_path_exits_2(tmp_path: Path, capsys: pytes
 
 
 def test_run_dispatch_ignores_legacy_cursor_present(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "session-env.sh").write_text(
         "CURSOR_PRESENT=maybe\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
         encoding="utf-8",
@@ -2892,7 +2879,7 @@ def test_run_dispatch_ignores_legacy_cursor_present(tmp_path: Path, monkeypatch:
 
 
 def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     answers = tmp / "answers.json"
     answers.write_text('{"answers":[]}\n', encoding="utf-8")
     captured: dict[str, list[str]] = {}
@@ -2923,7 +2910,7 @@ def test_run_dispatch_marks_step2_once_under_lock_and_skips_answers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "session-env.sh").write_text(
         "CODEX_BINARY_FOUND=false\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
         encoding="utf-8",
@@ -2976,7 +2963,7 @@ def test_run_dispatch_fails_closed_when_fallback_repo_root_missing(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         call = list(argv)
@@ -3003,7 +2990,7 @@ def test_run_dispatch_fails_closed_when_fallback_repo_root_missing(
 
 
 def test_run_dispatch_rejects_concurrent_caller(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     lock_path = tmp / "dispatch.lock"
     lock_path.touch()
     with lock_path.open("w") as holder:
@@ -3024,7 +3011,7 @@ def test_run_dispatch_permission_error_not_reported_as_contention(
         raise OSError(errno.EACCES, "Operation not permitted")
 
     monkeypatch.setattr(fcntl, "flock", _flock_raises_eacces)
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
     assert rc == 2
     err = capsys.readouterr().err
@@ -3033,7 +3020,7 @@ def test_run_dispatch_permission_error_not_reported_as_contention(
 
 
 def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -3076,7 +3063,7 @@ def test_step2_dispatch_resolves_omitted_difficulty_for_cursor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=MODERATE\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     captured: dict[str, str] = {}
@@ -3114,7 +3101,7 @@ def test_step2_dispatch_resolves_omitted_difficulty_for_cursor(
 
 
 def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -3142,7 +3129,7 @@ def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, 
 
 def test_step2_dispatch_malformed_manifest_empty_delta_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setattr(implement_dispatch, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
     monkeypatch.setattr(dispatch_step2, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
@@ -3157,7 +3144,7 @@ def test_step2_dispatch_malformed_manifest_empty_delta_bails(repo: Path, tmp_pat
 
 
 def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (repo / "staged.txt").write_text("prelaunch staged\n", encoding="utf-8")
     _git(repo, "add", "staged.txt")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
@@ -3184,7 +3171,7 @@ def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_p
 
 def test_step2_dispatch_rename_recovery_uses_destination_path(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def edit(repo_root: Path, _st: implement_dispatch.DispatchState) -> None:
@@ -3239,7 +3226,7 @@ def test_recovery_paths_git_mv_includes_source_path_and_commit_is_clean(repo: Pa
 
 
 def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     state = {"round": 0}
 
@@ -3290,7 +3277,7 @@ def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_
 
 
 def test_step2_dispatch_non_v1_schema_version_hard_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -3316,7 +3303,7 @@ def test_step2_dispatch_non_v1_schema_version_hard_bails(repo: Path, tmp_path: P
 
 
 def test_step2_dispatch_launcher_retries_on_clean_post_failure(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     launcher_calls = 0
 
@@ -3350,7 +3337,7 @@ def test_step2_dispatch_launcher_retries_on_clean_post_failure(repo: Path, tmp_p
 
 def test_step2_dispatch_codex_runtime_failure_retries_then_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     calls = 0
 
@@ -3376,7 +3363,7 @@ def test_step2_dispatch_codex_runtime_failure_retries_then_bails(repo: Path, tmp
 
 
 def test_step2_dispatch_oos_materialize_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     plugin_root = Path(__file__).resolve().parents[3]
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("LARCH_TEST_MATERIALIZE_FORCE_FAIL", "true")
@@ -3500,7 +3487,7 @@ def _setup_commit_route(
     porcelain_rc: int = 0,
     seed_rc: int = 0,
 ) -> tuple[Path, list[list[str]], list[list[str]]]:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     invoke_calls: list[list[str]] = []
     seed_calls: list[list[str]] = []
@@ -3815,7 +3802,7 @@ def test_commit_route_child_envelope_distinguishes_seed_failure(
 
 
 def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, commit_stdout: str = "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n") -> Path:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(
         implement_dispatch,
@@ -3863,7 +3850,7 @@ def test_step6_entry_skip_relays_degradation_kvs_and_does_not_run_composite(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     _mock_step6_check_changes(
         monkeypatch,
@@ -3894,7 +3881,7 @@ def test_step6_entry_check_changes_uses_pinned_baselines(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     calls: list[list[str]] = []
     _mock_step6_check_changes(
@@ -3919,7 +3906,7 @@ def test_step6_entry_files_changed_runs_fixed_composite_with_forked_target(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     _mock_step6_check_changes(
         monkeypatch,
@@ -3960,7 +3947,7 @@ def test_step6_entry_checks_failed_relay_keeps_redacted_log_after_leading_change
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     _mock_step6_check_changes(
         monkeypatch,
@@ -4000,7 +3987,7 @@ def test_step6_entry_relays_composite_stall_and_rebase_routing(
     composite_stdout: str,
     next_action: str,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     _mock_step6_check_changes(
         monkeypatch,
@@ -4030,7 +4017,7 @@ def test_step6_entry_malformed_files_changed_seeds_stall(
     capsys: pytest.CaptureFixture[str],
     stdout: str,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     seed_calls: list[tuple[str, str]] = []
     _mock_step6_check_changes(monkeypatch, stdout=stdout)
@@ -4059,7 +4046,7 @@ def test_step6_entry_check_changes_nonzero_seed_failure_returns_nonzero_without_
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     _mock_step6_check_changes(
         monkeypatch,
@@ -4080,7 +4067,7 @@ def test_step6_entry_composite_seed_failed_output_does_not_fabricate_next_action
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     _mock_step6_check_changes(
         monkeypatch,
@@ -4108,7 +4095,7 @@ def test_step6_entry_force_checks_skips_change_gate_and_never_emits_skip(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
 
     def fail_check_changes(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -4136,7 +4123,7 @@ def test_run_relevant_checks_for_site_does_not_allow_skip(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     calls: list[tuple[list[str], int, str]] = []
 
     def fake_run_leg(*, argv: Sequence[str], deadline_ms: int, label: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -4182,7 +4169,7 @@ def test_run_relevant_checks_binds_persisted_root_over_claude_project_dir(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     foreign = tmp_path / "foreign"
     foreign.mkdir()
     monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(foreign))
@@ -4225,7 +4212,7 @@ def test_checks_commit_route_ok_envelope_continues_through_real_helper(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     checks_calls: list[list[str]] = []
     commit_calls: list[str] = []
@@ -4282,7 +4269,7 @@ def test_checks_step5_resume_ok_envelope_runs_resume_without_continue_action(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     checks_calls: list[list[str]] = []
     resume_calls: list[tuple[str, int]] = []
@@ -4496,7 +4483,7 @@ def test_composite_rebase_checkpoint_skips_checks_failed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(
         implement_dispatch,
@@ -4559,7 +4546,7 @@ def test_step4_composite_noop_runs_4r_and_does_not_double_emit_continue(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(
         implement_dispatch,
@@ -4616,7 +4603,7 @@ def test_step4_composite_seeded_stall_skips_4r(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(
         implement_dispatch,
@@ -4657,7 +4644,7 @@ def test_run_step4_commit_leg_commits_ordinary_pathspec(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
     (impl / "implementation-commit-paths.nul").write_bytes(b"file.txt\0")
     calls: list[list[str]] = []
@@ -4690,7 +4677,7 @@ def test_run_step4_commit_leg_failure_seeds_step4_stall(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
     (impl / "implementation-commit-paths.nul").write_bytes(b"file.txt\0")
     seed_calls: list[tuple[str, str]] = []
@@ -4725,7 +4712,7 @@ def test_run_step4_commit_leg_failure_seeds_step4_stall(
 
 
 def test_persist_ship_seed_context_refreshes_blank_manifest_path(tmp_path: Path) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     (impl / "ship-seed-input.env").write_text("MANIFEST_PATH=\nTOOL_LABEL=\n", encoding="utf-8")
     (impl / "manifest.json").write_text('{"schema_version":"1"}\n', encoding="utf-8")
     (impl / "bootstrap-routing.env").write_text("coder=codex\n", encoding="utf-8")
@@ -4743,7 +4730,7 @@ def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _ = repo
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     manifest = impl / "manifest.json"
     manifest.write_text('{"schema_version":"1"}\n', encoding="utf-8")
     (impl / "ship-seed-input.env").write_text(
@@ -4764,7 +4751,7 @@ def test_run_step4_commit_leg_dispatcher_committed_commits_later_dirty_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     manifest = impl / "manifest.json"
     manifest.write_text('{"schema_version":"1"}\n', encoding="utf-8")
     (impl / "ship-seed-input.env").write_text(
@@ -4824,7 +4811,7 @@ def test_run_step4_commit_leg_already_committed_by_main_agent_short_circuits_noo
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
     (impl / "implementation-commit-paths.nul").write_bytes(b"already-committed.txt\0")
     (repo / "already-committed.txt").write_text("done\n", encoding="utf-8")
@@ -4852,7 +4839,7 @@ def test_run_step4_commit_leg_recovery_branch_uses_recovery_pathspec(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
     (impl / "recovery-commit-message.txt").write_text("Recover implementation\n", encoding="utf-8")
     (impl / "step2-recovery-paths-final.nul").write_bytes(b"recovered.txt\0")
@@ -4885,7 +4872,7 @@ def test_run_step4_commit_leg_recovery_branch_uses_recovery_pathspec(
 def test_run_step4_commit_leg_recovery_metadata_missing_message_seed_fails(
     tmp_path: Path,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
     (impl / "implementation-commit-message.txt").write_text("Ordinary\n", encoding="utf-8")
     (impl / "implementation-commit-paths.nul").write_bytes(b"file.txt\0")
@@ -4901,7 +4888,7 @@ def test_run_step4_recovery_recompute_scope_check_failure_emits_bail(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
 
     monkeypatch.setattr(implement_dispatch, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
@@ -4926,7 +4913,7 @@ def test_step4_composite_recovery_out_of_scope_emits_bail_without_next_action(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(
@@ -4963,7 +4950,7 @@ def test_run_dispatch_skips_telemetry_marker_on_timing_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     token_calls: list[list[str]] = []
     timing_calls: list[list[str]] = []
 
@@ -4993,7 +4980,7 @@ def test_run_dispatch_retries_step2_telemetry_after_bailed_first_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "session-env.sh").write_text(
         "CODEX_BINARY_FOUND=false\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
         encoding="utf-8",
@@ -5041,7 +5028,7 @@ def test_run_dispatch_skips_step2_token_mark_when_external_binary_present(
     coder: str,
     env_key: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "session-env.sh").write_text(
         f"{env_key}=true\nLARCH_CLAUDE_PLUGIN_ROOT=.\n",
         encoding="utf-8",
@@ -5223,7 +5210,7 @@ def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     answers = tmp / "answers.json"
     answers.write_text('{"answers":[{"id":"q1","text":"yes"}]}\n', encoding="utf-8")
@@ -5269,7 +5256,7 @@ def test_composite_commit_route_spawns_child_with_emit_next_action_false(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     calls: list[list[str]] = []
 
@@ -5326,7 +5313,7 @@ def test_composite_checks_timeout_with_partial_pass_skips_commit_leg(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(
         implement_dispatch,
@@ -5362,7 +5349,7 @@ def test_composite_checks_timeout_with_partial_pass_skips_resume_leg(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(
         implement_dispatch,
@@ -5400,7 +5387,7 @@ def test_composite_checks_failure_skips_commit_leg(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setattr(
         implement_dispatch,
@@ -5425,7 +5412,7 @@ def test_commit_leg_timeout_seeds_stall_in_parent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     seed_calls: list[tuple[str, str]] = []
     monkeypatch.setattr(
         implement_dispatch,
@@ -5459,7 +5446,7 @@ def test_checks_step5_resume_timeout_relays_partial_without_composite_continue(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     resume_calls: list[int] = []
     monkeypatch.setattr(
@@ -6208,7 +6195,7 @@ def _auth_lines(out: str) -> int:
 
 
 def test_step2_dispatch_auth_pair_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -6223,7 +6210,7 @@ def test_step2_dispatch_auth_pair_claude_fallback(tmp_path: Path, capsys: pytest
 
 
 def test_step2_dispatch_auth_pair_external_bailed(repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-baseline.txt").write_text(_git(repo, "rev-parse", "HEAD").stdout, encoding="utf-8")
     (tmp / "step2-spawn-branch.txt").write_text(_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout, encoding="utf-8")
     (tmp / "codex-resume-count.txt").write_text("5\n", encoding="utf-8")
@@ -6277,7 +6264,7 @@ def test_commit_main_pathspec_with_spaced_paths(repo: Path, tmp_path: Path, monk
 
 
 def test_step2_dispatch_git_add_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6325,7 +6312,7 @@ def test_step2_dispatch_git_add_failure_bails(repo: Path, tmp_path: Path, monkey
 
 def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     subprocess.run(["git", "-C", str(repo), "checkout", "-B", "main"], check=True, stdout=subprocess.DEVNULL)
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "session-env.sh").write_text("ISSUE_NUMBER=123\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     rc = implement_dispatch.step2_dispatch_main([
@@ -6343,7 +6330,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
 
 def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6413,7 +6400,7 @@ def _complete_manifest_payload(*, path: str = "implemented.txt", commit_message:
 
 
 def test_step2_dispatch_qa_loop_exceeded(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _seed_external_dispatch_state(repo, tmp, resume_count="5")
     answers = tmp_path / "answers.json"
     answers.write_text('{"answers":[{"id":"q1","text":"x"}]}\n', encoding="utf-8")
@@ -6444,7 +6431,7 @@ def test_step2_dispatch_qa_loop_exceeded(repo: Path, tmp_path: Path, monkeypatch
 
 
 def test_step2_dispatch_corrupt_resume_counter_bails(repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _seed_external_dispatch_state(repo, tmp, resume_count="garbage")
     answers = tmp_path / "answers.json"
     answers.write_text('{"answers":[{"id":"q1","text":"x"}]}\n', encoding="utf-8")
@@ -6464,7 +6451,7 @@ def test_step2_dispatch_corrupt_resume_counter_bails(repo: Path, tmp_path: Path,
 
 
 def test_step2_dispatch_coder_mismatch_tmpdir_reuse(repo: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _seed_external_dispatch_state(repo, tmp, spawn_coder="codex")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
@@ -6486,7 +6473,7 @@ def test_step2_dispatch_coder_mismatch_tmpdir_reuse(repo: Path, tmp_path: Path, 
 
 def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     subprocess.run(["git", "-C", str(repo), "checkout", "--detach"], check=True, stdout=subprocess.DEVNULL)
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "session-env.sh").write_text("ISSUE_NUMBER=2486\nFORKED_TARGET=false\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     launcher_calls = 0
@@ -6517,7 +6504,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
 
 def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
@@ -6541,7 +6528,7 @@ def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: p
 
 def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
@@ -6564,7 +6551,7 @@ def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: P
 
 
 def test_step2_dispatch_dirty_state_after_timeout_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
@@ -6602,7 +6589,7 @@ def test_step2_dispatch_codex_cli_gate_clean_tree_falls_back_without_retry(
     diagnostic: str,
 ) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     calls = 0
 
@@ -6638,7 +6625,7 @@ def test_step2_dispatch_codex_cli_gate_mutation_fails_closed(
     capsys: pytest.CaptureFixture[str],
     mutation: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
@@ -6670,7 +6657,7 @@ def test_step2_dispatch_codex_cli_gate_mutation_fails_closed(
 
 
 def test_step2_dispatch_codex_nonzero_exit_salvages_complete(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6735,7 +6722,7 @@ def test_step2_dispatch_codex_nonzero_exit_does_not_salvage_non_complete(
     manifest_payload: dict[str, object],
 ) -> None:
     _ = repo
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6764,7 +6751,7 @@ def test_step2_dispatch_codex_nonzero_exit_does_not_salvage_non_complete(
 
 
 def test_step2_dispatch_complete_emits_scout_kv(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6856,7 +6843,7 @@ def test_step5_review_main_defaults_dynamic_cap_to_one(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     calls: list[list[str]] = []
@@ -6882,7 +6869,7 @@ def test_step5_review_main_accepts_dynamic_boundary_values(
     monkeypatch: pytest.MonkeyPatch,
     value: str,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", value)
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
@@ -6898,7 +6885,7 @@ def test_step5_review_main_rejects_over_cap_dynamic_values(
     capsys: pytest.CaptureFixture[str],
     value: str,
 ) -> None:
-    impl = _session(tmp_path)
+    impl = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", value)
     monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
@@ -6912,7 +6899,7 @@ def test_step5_review_main_rejects_over_cap_dynamic_values(
 
 
 def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6945,7 +6932,7 @@ def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: P
 
 
 def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6984,7 +6971,7 @@ def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monk
 def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Files to modify/create\n"
         "### UPDATED: `README.md`\n"
@@ -7033,7 +7020,7 @@ def test_step2_dispatch_bails_on_quota_when_plan_coverage_requires_disposition(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Files to modify/create\n"
         "### UPDATED: `README.md`\n"
@@ -7082,7 +7069,7 @@ def test_step2_dispatch_bails_on_quota_in_transcript_when_coverage_is_incomplete
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Files to modify/create\n"
         "### UPDATED: `README.md`\n"
@@ -7124,7 +7111,7 @@ def test_step2_dispatch_completes_full_coverage_despite_quota_sidecar(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Files to modify/create\n"
         "### UPDATED: `README.md`\n"
@@ -7173,7 +7160,7 @@ def test_step2_dispatch_completes_full_coverage_despite_quota_sidecar(
 def test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text("## Files to modify/create\n### UPDATED: `README.md`\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -7212,7 +7199,7 @@ def test_step2_dispatch_ignores_nonblocking_full_suite_validation_todo(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Files to modify/create\n"
         "### UPDATED: `README.md`\n"
@@ -7265,7 +7252,7 @@ def test_step2_dispatch_ignores_nonblocking_full_suite_validation_todo(
 def test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text("## Files to modify/create\n### MAY_UPDATE: `docs/optional.md`\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -7304,7 +7291,7 @@ def test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope(
 def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text("## Plan\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -7346,7 +7333,7 @@ def test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section(
     # Regression for #7125: a vetted plan may list files as bare firm
     # `### UPDATED:` headings with no `## Files to modify/create` section.
     # Coverage must count those firm headings (total=1 here), not report 0/0.
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Plan\n"
         "### UPDATED: `docs/expected.md`\n"
@@ -7392,7 +7379,7 @@ def test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section(
 def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warnings(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "plan.txt").write_text(
         "## Files to modify/create\n"
         "### UPDATED: `README.md`\n"
@@ -7448,7 +7435,7 @@ def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warning
 def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     plan_path = tmp / "plan.txt"
     plan_path.write_text(
         "## Files to modify/create\n"
@@ -7965,7 +7952,7 @@ def test_step2_dispatch_retries_after_fixer_pre_commit_hook(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     counter = repo / ".git" / "hook-count"
     _install_step2_pre_commit_hook(
@@ -8015,7 +8002,7 @@ def test_step2_dispatch_persistent_pre_commit_failure_uses_second_stderr(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     counter = repo / ".git" / "hook-count"
     _install_step2_pre_commit_hook(
@@ -8060,7 +8047,7 @@ def test_step2_dispatch_required_architectural_acknowledgment_passes(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -8087,7 +8074,7 @@ def test_step2_dispatch_missing_architectural_acknowledgment_bails_without_recov
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -8110,7 +8097,7 @@ def test_step2_dispatch_needs_qa_missing_architectural_acknowledgment_bails(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
     (tmp / "step2-spawn-branch.txt").write_text("feat/test-branch\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
@@ -8133,7 +8120,7 @@ def test_step2_dispatch_bailed_manifest_does_not_require_architectural_acknowled
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
     (tmp / "step2-spawn-branch.txt").write_text("feat/test-branch\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
@@ -8158,7 +8145,7 @@ def test_step2_dispatch_snapshot_false_is_authoritative_when_knowledge_file_pres
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=false\n", encoding="utf-8")
     (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Present\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
@@ -8183,7 +8170,7 @@ def test_step2_dispatch_absent_architectural_knowledge_snapshot_requires_ack_whe
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Present\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -8206,7 +8193,7 @@ def test_step2_dispatch_malformed_architectural_knowledge_snapshot_requires_ack_
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=maybe\n", encoding="utf-8")
     (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Present\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
@@ -8230,7 +8217,7 @@ def test_step2_dispatch_schema_invalid_missing_ack_bails_before_recovery(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -8253,7 +8240,7 @@ def test_step2_dispatch_missing_schema_version_missing_ack_bails_before_recovery
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -8278,7 +8265,7 @@ def test_step2_dispatch_invalid_architectural_knowledge_warns_without_ack_requir
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     (repo / "ARCHITECTURAL_INVARIANTS.md").symlink_to(tmp_path / "outside-invariants.md")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
@@ -8326,7 +8313,7 @@ def test_resolve_implement_rater_model_uses_moderate_cursor_default(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
 
     model = dispatch_step2._resolve_implement_rater_model(
@@ -8359,7 +8346,7 @@ def test_resolve_implement_rater_model_routing_matrix(
     difficulty_tier: str,
     expected_model: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
 
     assert dispatch_step2._resolve_implement_rater_model(
@@ -8384,7 +8371,7 @@ def test_resolve_implement_rater_model_cursor_overrides_beat_tier_default(
     env_key: str,
     env_value: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
     monkeypatch.setenv(env_key, env_value)
 
@@ -8401,7 +8388,7 @@ def test_resolve_implement_rater_model_cursor_larch_env_wins_over_plugin(
     monkeypatch: pytest.MonkeyPatch,
     difficulty_tier: str,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
     monkeypatch.setenv(config.ENV_LARCH_CURSOR_MODEL, "cursor-env-wins")
     monkeypatch.setenv(config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL, "cursor-plugin-loses")
@@ -8417,7 +8404,7 @@ def test_resolve_implement_rater_model_moderate_codex_fallback_stays_sol(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    tmp = _session(tmp_path)
+    tmp = make_implement_tmpdir(tmp_path)
     _clear_rater_model_env(monkeypatch)
 
     assert dispatch_step2._resolve_implement_rater_model(

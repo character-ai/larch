@@ -11,7 +11,13 @@ import pytest
 
 from larch.state import bootstrap
 
-_REPO_ROOT = Path(__file__).resolve().parents[3]
+from test_support import (
+    IMPLEMENT_BASELINE_KEYS,
+    ROOT as _REPO_ROOT,
+    seed_feature_description,
+    seed_plan,
+    write_session_env,
+)
 
 
 def test_filtered_envelope_allowlist_and_resume_empty_coder() -> None:
@@ -352,8 +358,8 @@ def test_resume_plan_tail_appends_force_bypass_before_flags(tmp_path, monkeypatc
     monkeypatch.setattr(bootstrap, "_run", lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, "BRANCH=feature\n", ""))  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_publish_plan_review_tally", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_upsert_plan_summary", lambda _st: None)  # pyright: ignore[reportPrivateUsage]
-    (tmp_path / "feature-description.txt").write_text("Title\n", encoding="utf-8")
-    (tmp_path / "plan.txt").write_text("Plan\n", encoding="utf-8")
+    _ = seed_feature_description(tmp_path, "Title\n")
+    _ = seed_plan(tmp_path, "Plan\n")
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="plan", issue_number="7", resume_plan_tail=True),
         implement_tmpdir=str(tmp_path),
@@ -942,9 +948,8 @@ def test_invoke_refuses_non_regular_bootstrap_routing_env(tmp_path, monkeypatch,
 @pytest.mark.usefixtures("gate_and_probe")
 def test_invoke_resume_preserves_prior_coder_in_routing_file(tmp_path, monkeypatch, capsys) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     (tmp_path / "bootstrap-routing.env").write_text(
         f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\ncoder_fallback=true\n",
         encoding="utf-8",
@@ -973,9 +978,8 @@ def test_invoke_resume_restored_coder_tail_absent_route_rebase_routes(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     _ = (tmp_path / "bootstrap-routing.env").write_text(
         f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\n",
         encoding="utf-8",
@@ -1037,8 +1041,8 @@ def test_phase_coder_selection_matrix(
     expected_fallback: str,
     expected_explicit_warning: bool,
 ) -> None:
-    (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
-    (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    _ = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     explicit_warnings: list[tuple[str, str]] = []
     fallback_reasons: list[str] = []
     monkeypatch.setattr(
@@ -1063,8 +1067,8 @@ def test_phase_coder_selection_matrix(
 
 
 def test_phase_coder_moderate_prefers_cursor(tmp_path: Path) -> None:
-    _ = (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    _ = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     _ = (tmp_path / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=MODERATE\n", encoding="utf-8")
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="coder"),
@@ -1081,8 +1085,8 @@ def test_phase_coder_moderate_prefers_cursor(tmp_path: Path) -> None:
 
 
 def test_phase_coder_override_precedes_prior(tmp_path: Path) -> None:
-    _ = (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    _ = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     _ = (tmp_path / "run-flags.sh").write_text("DIFFICULTY_OVERRIDE=HARD\n", encoding="utf-8")
     _ = (tmp_path / "difficulty-prior.env").write_text("DESIGN_DIFFICULTY=MODERATE\n", encoding="utf-8")
     st = bootstrap.BootstrapState(
@@ -1115,8 +1119,8 @@ def test_phase_coder_routes_difficulty_matrix(
     cursor_available: str,
     expected_coder: str,
 ) -> None:
-    _ = (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    _ = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     if difficulty_value:
         _ = (tmp_path / "difficulty-prior.env").write_text(
             f"DESIGN_DIFFICULTY={difficulty_value}\n",
@@ -1137,8 +1141,8 @@ def test_phase_coder_routes_difficulty_matrix(
 
 
 def test_phase_coder_self_implement_forces_claude_without_fallback(tmp_path, monkeypatch) -> None:
-    (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
-    (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    _ = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     explicit_warnings: list[tuple[str, str]] = []
     fallback_reasons: list[str] = []
     monkeypatch.setattr(
@@ -1163,8 +1167,8 @@ def test_phase_coder_self_implement_forces_claude_without_fallback(tmp_path, mon
 
 
 def test_phase_coder_force_alone_does_not_force_claude(tmp_path) -> None:
-    (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
-    (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    _ = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     st = bootstrap.BootstrapState(
         bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", force_requested="true"),
         implement_tmpdir=str(tmp_path),
@@ -1451,9 +1455,8 @@ def test_write_implement_env_missing_pid_is_fatal_without_write_attempt(tmp_path
 
 
 def _continue_data(tmp_path: Path, **overrides: str) -> dict[str, str]:
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     data = {
         "IMPLEMENT_TMPDIR": str(tmp_path),
         "IMPLEMENT_BAIL_REASON": "",
@@ -1855,9 +1858,8 @@ def test_invoke_absorbed_1r_synthesizes_rebase_rc_from_process_status(tmp_path: 
 
 
 def test_invoke_absorbed_1r_phantom_stdout_not_routing_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
 
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")
@@ -1889,9 +1891,8 @@ def test_invoke_degraded_prompt_required_sets_bootstrap_next(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
 
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")
@@ -2019,9 +2020,8 @@ def test_invoke_resume_runs_absorbed_tail_for_symlinked_routing_file(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     target = tmp_path / "routing-target.env"
     _ = target.write_text(f"IMPLEMENT_TMPDIR={tmp_path}\nRUN_ID=R1\ncoder=codex\n", encoding="utf-8")
     (tmp_path / "bootstrap-routing.env").symlink_to(target)
@@ -2075,9 +2075,8 @@ def test_invoke_absorbed_degraded_gate_cli_failure_exit_2(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
 
     def fake_cli(*args: str, **_kwargs):
         if args[:2] == ("agent", "degraded-tools-gate"):
@@ -2252,9 +2251,8 @@ def test_invoke_absorbed_1r_uses_consumer_repo_cwd(tmp_path: Path, monkeypatch: 
 
 
 def test_invoke_absorbed_degraded_gate_explanation_missing_contract_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    plan = tmp_path / "plan.txt"
-    _ = plan.write_text("plan\n", encoding="utf-8")
-    _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    plan = seed_plan(tmp_path, "plan\n")
+    _ = seed_feature_description(tmp_path)
     monkeypatch.setattr(
         bootstrap,
         "_cli",
@@ -2299,8 +2297,11 @@ def test_restore_resume_progress_reactivates_persisted_run_id(
     bs = bootstrap
 
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
-    session_env_path = tmp_path / "session-env.sh"
-    session_env_path.write_text("LARCH_RUN_ID=resume-run-77\n", encoding="utf-8")
+    _ = write_session_env(
+        tmp_path,
+        omit=IMPLEMENT_BASELINE_KEYS,
+        overrides={"LARCH_RUN_ID": "resume-run-77"},
+    )
 
     activate_calls: list[tuple[str, ...]] = []
     real_run = bs._run  # type: ignore[attr-defined]
