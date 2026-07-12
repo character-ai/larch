@@ -1,0 +1,1 @@
+Add typed issue-list, close, templated-view, and label-edit wrappers to `gh.py`. Keep callers unchanged. Cover argv construction, retry policy, pagination parsing, failures, and mutation behavior in focused unit tests.
