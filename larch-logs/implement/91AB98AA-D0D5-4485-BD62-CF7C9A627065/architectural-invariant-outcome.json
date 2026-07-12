@@ -1,1 +1,1 @@
-{"assessment_kind":"clean","base_ref":"origin/main","detail":"","head_sha":"f85b9fc85d3775c6c6ddb59be77d3e9c30a2eccc","invariants_status":"present","outcome":"clean","phase":"implement","reason":"clean-note","schema_version":"1","step":"8"}
+{"assessment_kind":"","base_ref":"origin/main","detail":"","head_sha":"7002365f533bc58ac3d4576d0ce1123ea25305d9","invariants_status":"present","outcome":"dropped","phase":"implement","reason":"unavailable","schema_version":"1","step":"8"}
