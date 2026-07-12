@@ -2655,19 +2655,19 @@
     "file": "larch/implement/preflight.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
-    "metric": 28
+    "metric": 27
   },
   {
     "file": "larch/implement/preflight.py",
     "code": "PLR0911",
     "qualified_symbol": "preflight_main",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/implement/preflight.py",
     "code": "PLR0912",
     "qualified_symbol": "preflight_main",
-    "metric": 29
+    "metric": 28
   },
   {
     "file": "larch/implement/preflight.py",
@@ -2679,7 +2679,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0915",
     "qualified_symbol": "preflight_main",
-    "metric": 98
+    "metric": 95
   },
   {
     "file": "larch/implement/ship.py",
@@ -3585,7 +3585,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "fetch_issue_details_main",
-    "metric": 22
+    "metric": 21
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -3657,7 +3657,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "fetch_issue_details_main",
-    "metric": 24
+    "metric": 23
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -3699,7 +3699,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "PLR0915",
     "qualified_symbol": "fetch_issue_details_main",
-    "metric": 89
+    "metric": 85
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -6225,7 +6225,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_phase_plan",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6297,7 +6297,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "_phase_plan",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6339,7 +6339,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_phase_plan",
-    "metric": 63
+    "metric": 61
   },
   {
     "file": "larch/state/bootstrap.py",
