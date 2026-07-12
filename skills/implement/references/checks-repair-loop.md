@@ -20,7 +20,7 @@ Then route to the default stall semantics in section 4: set `STALL_TRACKING=true
 When `REDACTED_LOG_FILE` is present, run:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" checks repair-loop --tmpdir "$IMPLEMENT_TMPDIR" --site <lint-site> [--checks-site <capture-site>] --checks-log "$REDACTED_LOG_FILE"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py checks repair-loop --tmpdir "$IMPLEMENT_TMPDIR" --site <lint-site> [--checks-site <capture-site>] --checks-log "$REDACTED_LOG_FILE"
 ```
 
 Bind and reuse the pinned site pair for every invocation in section 4, including post-main-agent re-entries:
@@ -125,7 +125,7 @@ The `checks repair-loop` lint-fix tiers and the Step 3 pre-commit ruff autofix e
 Before concluding that a tracked file which changed between two of your own actions was touched by a concurrent or external runner — and before halting or asking the operator about a parallel session on that basis — consult the log:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" checks self-edit-log show --tmpdir "$IMPLEMENT_TMPDIR" --path <changed-path> --repo-root "$(git rev-parse --show-toplevel)"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py checks self-edit-log show --tmpdir "$IMPLEMENT_TMPDIR" --path <changed-path> --repo-root "$(git rev-parse --show-toplevel)"
 ```
 
 - `SELF_EDIT_ATTRIBUTED=true`: one of this run's own spawned subprocesses changed that path. Do not treat it as an external edit and do not halt for a concurrent runner on that path.

@@ -227,7 +227,7 @@ def checks_lint_fix_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--repo-root", default="")
     _ = parser.add_argument("--run-parent", default="")
     args = parser.parse_args(argv)
-    canonical_tmp = validate_tmpdir(args.tmpdir)
+    canonical_tmp = validate_tmpdir(args.tmpdir or os.environ.get("IMPLEMENT_TMPDIR", ""))
     if canonical_tmp is None:
         print("LINT_FIX_STATUS=failed")
         print("FAILURE_REASON=tmpdir-validation")
@@ -350,7 +350,7 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:  # noqa: PLR0
     _ = parser.add_argument("--checks-log", required=True)
     _ = parser.add_argument("--repo-root", default="")
     args = parser.parse_args(argv)
-    canonical_tmp = validate_tmpdir(args.tmpdir)
+    canonical_tmp = validate_tmpdir(args.tmpdir or os.environ.get("IMPLEMENT_TMPDIR", ""))
     if canonical_tmp is None:
         print("NEXT_ACTION=stall")
         print("LOOP_STATUS=tmpdir-validation")
@@ -456,7 +456,7 @@ def checks_self_edit_log_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--path", default="")
     _ = parser.add_argument("--repo-root", default="")
     args = parser.parse_args(argv)
-    canonical_tmp = validate_tmpdir(args.tmpdir)
+    canonical_tmp = validate_tmpdir(args.tmpdir or os.environ.get("IMPLEMENT_TMPDIR", ""))
     if canonical_tmp is None:
         print("SELF_EDIT_LOG_STATUS=tmpdir-validation")
         return 2

@@ -4768,6 +4768,36 @@ def test_checks_repair_loop_main_validation_failure_emits_stall(
     assert "LOOP_STATUS=tmpdir-validation" in out
 
 
+def test_checks_repair_loop_main_empty_tmpdir_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # A fresh Bash block expands an unset $IMPLEMENT_TMPDIR to an empty --tmpdir
+    # argument. The stable launcher exports IMPLEMENT_TMPDIR to this process, so
+    # the entrypoint must fall back to the env var instead of stalling at
+    # LOOP_STATUS=tmpdir-validation. Progression to the next validation gate
+    # (checks-site-validation) proves the env fallback resolved the tmpdir.
+    session = _checks_session(tmp_path, monkeypatch)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        "",
+        "--site",
+        "step6",
+        "--checks-site",
+        "../bad",
+        "--checks-log",
+        str(session / "initial.redacted.log"),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "LOOP_STATUS=checks-site-validation" in out
+    assert "LOOP_STATUS=tmpdir-validation" not in out
+
+
 def test_checks_repair_loop_main_rejects_invalid_checks_site(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
