@@ -1,8 +1,8 @@
-"""Complete port of scripts/test-bug-structure.sh."""
+"""Complete port of test-bug-structure.sh."""
 from __future__ import annotations
 from pathlib import Path
 
-LEGACY_LABELS: frozenset[str] = frozenset(["(A) frontmatter argument-hint must include [--urgent]", "(B) contract must document --urgent as the only flag", "(D) contract must strip leading --urgent before validation", "(E) Step 5 invocation must pass --title-prefix", "(F.1) default [BUG] prefix literal missing", "(F.2) urgent [BUG] (URGENT) prefix literal missing", "(G) skill must still say not to pass --no-dedup", "(H.1) Write hook matcher must remain present", "(H.2) Write hook command must pass the bug token", "(H.3) Step 2 must create bug-$PPID activation sentinel", "(H.4) sentinel write failure must abort loudly", "(H.5) Step 3 security abort must remove sentinel with BUG_TMPDIR", "(H.6) Step 5 security abort must remove sentinel with BUG_TMPDIR", "(H.7) Step 6 failure must remove sentinel while leaving BUG_TMPDIR", "(H.8) Step 7 cleanup must remove sentinel"])
+LEGACY_LABELS: frozenset[str] = frozenset(["(A) frontmatter argument-hint must include [--urgent]", "(B) contract must document --urgent as the only flag", "(C) old no-flags contract prose is still present", "(D) contract must strip leading --urgent before validation", "(E) Step 5 invocation must pass --title-prefix", "(F.1) default [BUG] prefix literal missing", "(F.2) urgent [BUG] (URGENT) prefix literal missing", "(G) skill must still say not to pass --no-dedup", "(H.1) Write hook matcher must remain present", "(H.2) Write hook command must pass the bug token", "(H.3) Step 2 must create bug-$PPID activation sentinel", "(H.4) sentinel write failure must abort loudly", "(H.5) Step 3 security abort must remove sentinel with BUG_TMPDIR", "(H.6) Step 5 security abort must remove sentinel with BUG_TMPDIR", "(H.7) Step 6 failure must remove sentinel while leaving BUG_TMPDIR", "(H.8) Step 7 cleanup must remove sentinel"])
 
 def run(repo_root: Path) -> list[str]:
     failures: list[str] = []
@@ -14,6 +14,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(A) frontmatter argument-hint must include [--urgent]")
     if "`--urgent` is the only flag." not in text:
         failures.append("(B) contract must document --urgent as the only flag")
+    if "This skill has no flags" in text:
+        failures.append("(C) old no-flags contract prose is still present")
     if "Remove one or more leading `--urgent` tokens from the description before validation." not in text:
         failures.append("(D) contract must strip leading --urgent before validation")
     if "--title-prefix" not in text:
@@ -41,4 +43,3 @@ def run(repo_root: Path) -> list[str]:
     if 'rm -f "$BUG_DENY_ACTIVE_SENTINEL"' not in text:
         failures.append("(H.8) Step 7 cleanup must remove sentinel")
     return failures
-

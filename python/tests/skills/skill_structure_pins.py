@@ -19,7 +19,6 @@ PredicateKind = Literal[
     "ordered",
     "same_line",
     "adjacent_pair_count_at_least",
-    "cross_file_bound",
 ]
 MatchKind = Literal["fixed", "regex"]
 CountUnit = Literal["physical_line", "matching_line", "substring", "adjacent_pair"]
@@ -385,6 +384,16 @@ def validate_pin_table(pins: tuple[StructurePin, ...]) -> None:
     """Fail loudly on duplicate IDs or malformed pin configuration."""
     seen: set[str] = set()
     for pin in pins:
+        if pin.kind not in {
+            "contains",
+            "absent",
+            "exact_count",
+            "count_at_least",
+            "ordered",
+            "same_line",
+            "adjacent_pair_count_at_least",
+        }:
+            raise ValueError(f"unknown predicate: {pin.kind!r}")
         if not pin.label.strip():
             raise ValueError(f"empty label for skill={pin.skill!r}")
         if not pin.path.strip():
@@ -393,6 +402,14 @@ def validate_pin_table(pins: tuple[StructurePin, ...]) -> None:
         if pid in seen:
             raise ValueError(f"duplicate param_id: {pid!r} ({pin.label!r})")
         seen.add(pid)
+        if pin.match not in {"fixed", "regex"}:
+            raise ValueError(f"unknown match kind: {pin.match!r}")
+        if pin.count_unit not in {"physical_line", "matching_line", "substring", "adjacent_pair"}:
+            raise ValueError(f"unknown count unit: {pin.count_unit!r}")
+        if pin.comparator not in {"exact", "at_least"}:
+            raise ValueError(f"unknown comparator: {pin.comparator!r}")
+        if pin.match_mode not in {"exact_line", "contains"}:
+            raise ValueError(f"unknown match mode: {pin.match_mode!r}")
         if pin.kind in {"contains", "absent", "exact_count", "count_at_least"} and not pin.needle:
             raise ValueError(f"empty needle for {pin.label!r}")
         if pin.kind == "ordered" and (not pin.needle or not pin.needle2):
@@ -400,14 +417,18 @@ def validate_pin_table(pins: tuple[StructurePin, ...]) -> None:
         if pin.kind == "adjacent_pair_count_at_least":
             if not pin.needle or not pin.needle2 or pin.expected is None:
                 raise ValueError(f"adjacent-pair incomplete: {pin.label!r}")
-        if pin.kind in {"exact_count", "count_at_least"} and pin.expected is None:
-            raise ValueError(f"count pin missing expected: {pin.label!r}")
+        if pin.kind in {"exact_count", "count_at_least"}:
+            if not isinstance(pin.expected, int) or isinstance(pin.expected, bool) or pin.expected < 0:
+                raise ValueError(f"count pin needs non-negative integer expected: {pin.label!r}")
+            expected_comparator = "exact" if pin.kind == "exact_count" else "at_least"
+            if pin.comparator != expected_comparator:
+                raise ValueError(
+                    f"{pin.kind} requires comparator={expected_comparator!r}: {pin.label!r}"
+                )
         if pin.kind == "same_line" and len(pin.tokens) < 2:
             raise ValueError(f"same_line needs >=2 tokens: {pin.label!r}")
-        if pin.kind == "cross_file_bound" and (
-            not pin.path2 or not pin.needle2 or pin.bound is None
-        ):
-            raise ValueError(f"cross_file_bound incomplete: {pin.label!r}")
+        if pin.kind == "same_line" and any(not token for token in pin.tokens):
+            raise ValueError(f"same_line has empty token: {pin.label!r}")
 
 
 validate_pin_table(ALL_PINS)
@@ -421,6 +442,16 @@ FOCUSED_SELECTION: Final[dict[str, str]] = {
     "learn-from-bugs": "learn_from_bugs_structure",
     "research": "research_structure",
     "review": "review_structure",
+}
+
+FOCUSED_TARGETS: Final[dict[str, str]] = {
+    "alias": "test-alias-structure",
+    "bug": "test-bug-structure",
+    "design": "test-design-structure",
+    "implement": "test-implement-structure",
+    "learn-from-bugs": "test-learn-from-bugs-structure",
+    "research": "test-research-structure",
+    "review": "test-review-structure",
 }
 
 SPECIALIZED_MODULES: Final[dict[str, str]] = {

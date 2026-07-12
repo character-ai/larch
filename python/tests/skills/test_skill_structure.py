@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import importlib
 import re
+import subprocess
+import sys
 from collections.abc import Iterator
 from functools import cache
 from pathlib import Path
@@ -13,6 +15,7 @@ from .skill_structure_pins import (
     ALL_PINS,
     DESIGN_PINS,
     FOCUSED_SELECTION,
+    FOCUSED_TARGETS,
     SPECIALIZED_MODULES,
     StructurePin,
     validate_pin_table,
@@ -100,8 +103,6 @@ def evaluate_pin(pin: StructurePin, *, repo_root: Path | None = None) -> None:
     prefix = (
         f"skill={pin.skill} label={pin.label!r} path={pin.path} predicate={pin.kind}"
     )
-    if pin.kind == "absent" and not full.exists():
-        return  # missing file satisfies absence of content
     if not full.is_file():
         raise AssertionError(f"{prefix}: missing target file")
 
@@ -128,7 +129,7 @@ def evaluate_pin(pin: StructurePin, *, repo_root: Path | None = None) -> None:
         observed = _count(
             text, pin.needle, match=pin.match, unit=pin.count_unit
         )
-        if pin.comparator == "exact" or pin.kind == "exact_count":
+        if pin.kind == "exact_count":
             if observed != pin.expected:
                 raise AssertionError(
                     f"{prefix}: expected exactly {pin.expected} "
@@ -180,31 +181,6 @@ def evaluate_pin(pin: StructurePin, *, repo_root: Path | None = None) -> None:
                 f"found {observed}; first={pin.needle!r} second={pin.needle2!r}"
             )
         return
-
-    if pin.kind == "cross_file_bound":
-        other = root / pin.path2
-        if not other.is_file():
-            raise AssertionError(f"{prefix}: missing second target {pin.path2}")
-        other_text = other.read_text(encoding="utf-8")
-        # Anchor in first file; require token in second within bound lines of
-        # the matching line index (legacy proximity across paired files).
-        assert pin.bound is not None
-        anchor_lines = _match_lines(text, pin.needle, match=pin.match)
-        if not anchor_lines:
-            raise AssertionError(f"{prefix}: missing anchor {pin.needle!r} in {pin.path}")
-        token_lines = _match_lines(other_text, pin.needle2, match=pin.match)
-        if not token_lines:
-            raise AssertionError(
-                f"{prefix}: missing token {pin.needle2!r} in {pin.path2}"
-            )
-        for a in anchor_lines:
-            for t in token_lines:
-                if abs(a - t) <= pin.bound:
-                    return
-        raise AssertionError(
-            f"{prefix}: token {pin.needle2!r} not within bound={pin.bound} "
-            f"of anchor {pin.needle!r} across {pin.path} / {pin.path2}"
-        )
 
     raise AssertionError(f"{prefix}: unknown predicate")
 
@@ -281,23 +257,70 @@ SPECIALIZED_LABEL_OWNERS: dict[str, str] = {
 }
 
 
-def test_legacy_label_inventory_covers_specialized_and_pins() -> None:
-    """Every specialized module exposes LEGACY_LABELS; pin IDs are unique."""
+def _collect_node_ids(*, selection: str | None = None) -> set[str]:
+    command = [sys.executable, "-m", "pytest", "--collect-only", "-q", __file__]
+    if selection is not None:
+        command.extend(("-k", selection))
+    result = subprocess.run(command, cwd=REPO_ROOT, text=True, capture_output=True, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return {
+        line.removeprefix("python/")
+        for line in result.stdout.splitlines()
+        if "::test_" in line
+    }
+
+
+def _skill_nodes(skill: str) -> set[str]:
+    nodes = {
+        f"tests/skills/test_skill_structure.py::{SPECIALIZED_LABEL_OWNERS[skill]}",
+    }
+    nodes.update(
+        f"tests/skills/test_skill_structure.py::test_design_structure_pin[{pin.param_id}]"
+        for pin in ALL_PINS
+        if pin.skill == skill
+    )
+    return nodes
+
+
+def test_legacy_label_inventory_maps_every_label_to_one_collected_node() -> None:
+    """Each legacy assertion has one owning pytest node."""
     validate_pin_table(ALL_PINS)
-    pin_ids = {p.param_id for p in ALL_PINS}
-    assert len(pin_ids) == len(ALL_PINS)
+    all_nodes = _collect_node_ids()
+    label_owners: dict[tuple[str, str], list[str]] = {}
+    for pin in ALL_PINS:
+        label_owners.setdefault((pin.skill, pin.label), []).append(
+            f"tests/skills/test_skill_structure.py::test_design_structure_pin[{pin.param_id}]"
+        )
     for skill, mod_name in SPECIALIZED_MODULES.items():
         mod = importlib.import_module(f".{mod_name}", package=__package__)
         labels = getattr(mod, "LEGACY_LABELS", None)
         assert isinstance(labels, frozenset), skill
         assert labels, f"{skill} specialized module has empty LEGACY_LABELS"
-        assert skill in SPECIALIZED_LABEL_OWNERS
+        owner = f"tests/skills/test_skill_structure.py::{SPECIALIZED_LABEL_OWNERS[skill]}"
+        for label in labels:
+            label_owners.setdefault((skill, label), []).append(owner)
+    for label_id, owners in label_owners.items():
+        assert len(owners) == 1, f"legacy label {label_id!r} has owners {owners!r}"
+        assert owners[0] in all_nodes, f"legacy label {label_id!r} owner not collected: {owners[0]}"
 
 
-def test_focused_selection_registry_covers_all_skills() -> None:
+def test_focused_selection_registry_covers_all_structure_nodes() -> None:
     for skill in SPECIALIZED_MODULES:
         assert skill in FOCUSED_SELECTION
-        assert FOCUSED_SELECTION[skill].strip()
+        target = FOCUSED_TARGETS[skill]
+        makefile = (REPO_ROOT / "Makefile").read_text(encoding="utf-8")
+        command = re.search(
+            rf"^{re.escape(target)}:\n(?:.*\n)*?\t.* -k '([^']+)'",
+            makefile,
+            re.MULTILINE,
+        )
+        assert command is not None, f"{target} must run a focused pytest selection"
+        assert command.group(1) == FOCUSED_SELECTION[skill]
+        selected = _collect_node_ids(selection=FOCUSED_SELECTION[skill])
+        assert selected == _skill_nodes(skill), (
+            f"{skill} focused selection {FOCUSED_SELECTION[skill]!r} selects "
+            f"{sorted(selected)!r}, expected {sorted(_skill_nodes(skill))!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -326,6 +349,20 @@ def test_evaluator_contains_and_absent(tmp_path: Path) -> None:
             StructurePin(skill="t", label="a2", path=rel, kind="absent", needle="alpha"),
             repo_root=tmp_path,
         )
+    with pytest.raises(AssertionError, match="missing target file"):
+        evaluate_pin(
+            StructurePin(skill="t", label="a3", path="missing.md", kind="absent", needle="nope"),
+            repo_root=tmp_path,
+        )
+    evaluate_pin(
+        StructurePin(skill="t", label="regex", path=rel, kind="contains", needle=r"beta\s+gamma", match="regex"),
+        repo_root=tmp_path,
+    )
+    with pytest.raises(AssertionError, match="forbidden regex"):
+        evaluate_pin(
+            StructurePin(skill="t", label="regex-absent", path=rel, kind="absent", needle=r"beta\s+gamma", match="regex"),
+            repo_root=tmp_path,
+        )
 
 
 def test_evaluator_counts_and_ordered(tmp_path: Path) -> None:
@@ -340,6 +377,20 @@ def test_evaluator_counts_and_ordered(tmp_path: Path) -> None:
             expected=2,
             count_unit="matching_line",
             comparator="exact",
+        ),
+        repo_root=tmp_path,
+    )
+    evaluate_pin(
+        StructurePin(
+            skill="t", label="atleast-default", path="c.md", kind="count_at_least",
+            needle="one", expected=1, count_unit="matching_line", comparator="at_least",
+        ),
+        repo_root=tmp_path,
+    )
+    evaluate_pin(
+        StructurePin(
+            skill="t", label="substring-regex", path="c.md", kind="exact_count",
+            needle=r"o.e", expected=2, count_unit="substring", comparator="exact", match="regex",
         ),
         repo_root=tmp_path,
     )
@@ -395,6 +446,18 @@ def test_evaluator_counts_and_ordered(tmp_path: Path) -> None:
             ),
             repo_root=tmp_path,
         )
+    evaluate_pin(
+        StructurePin(
+            skill="t",
+            label="ord-contains",
+            path="c.md",
+            kind="ordered",
+            needle="one",
+            needle2="two",
+            match_mode="contains",
+        ),
+        repo_root=tmp_path,
+    )
 
 
 def test_evaluator_adjacent_pair_and_same_line(tmp_path: Path) -> None:
@@ -467,6 +530,23 @@ def test_validate_pin_table_rejects_empty_needle() -> None:
     )
     with pytest.raises(ValueError, match="empty needle"):
         validate_pin_table(bad)
+
+
+@pytest.mark.parametrize(
+    ("pin", "message"),
+    [
+        (StructurePin(skill="t", label="kind", path="a", kind="invalid"), "unknown predicate"),  # type: ignore[arg-type]
+        (StructurePin(skill="t", label="match", path="a", kind="contains", needle="n", match="invalid"), "unknown match kind"),  # type: ignore[arg-type]
+        (StructurePin(skill="t", label="unit", path="a", kind="exact_count", needle="n", expected=1, count_unit="invalid"), "unknown count unit"),  # type: ignore[arg-type]
+        (StructurePin(skill="t", label="compare", path="a", kind="exact_count", needle="n", expected=1, comparator="invalid"), "unknown comparator"),  # type: ignore[arg-type]
+        (StructurePin(skill="t", label="mode", path="a", kind="ordered", needle="n", needle2="m", match_mode="invalid"), "unknown match mode"),  # type: ignore[arg-type]
+        (StructurePin(skill="t", label="bound", path="a", kind="count_at_least", needle="n", expected=-1, comparator="at_least"), "non-negative"),
+        (StructurePin(skill="t", label="compat", path="a", kind="count_at_least", needle="n", expected=1), "requires comparator"),
+    ],
+)
+def test_validate_pin_table_rejects_invalid_modes_and_bounds(pin: StructurePin, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        validate_pin_table((pin,))
 
 
 def test_missing_target_file_is_assertion_not_collection(tmp_path: Path) -> None:
