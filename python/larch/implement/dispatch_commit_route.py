@@ -479,7 +479,7 @@ def _step5_review_worker(implement_tmpdir: Path) -> int:
         return 2
     os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = dynamic_cap
     print(
-        f"> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, fixed tier cap 2; "
+        f"> **🔶 /implement 5: code review: review-and-fix step5 --mode loop, fixed tier cap 2; "
         "escalated rounds skip pruning; prune-to-empty converges; no round-5 re-probe; "
         f"dynamic-archetypes cap={dynamic_cap}**",
         file=sys.stderr,
@@ -1464,6 +1464,7 @@ def _step5_resume_commit_phase() -> int | None:
 
 
 def _record_step5_handoff_timing(*, implement_tmpdir: Path, final_round_num: str) -> None:
+    # lint-subprocess-via-runner: ok timing-mark needs custom DESIGN_TMPDIR/LARCH_TIMING_SKILL env; _invoke_cli does not support custom env
     subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 5: review handoff"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
     round_start_file = implement_tmpdir / f"round-{final_round_num}" / "round-start-s"
     if round_start_file.is_file():

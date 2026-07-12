@@ -147,7 +147,7 @@ def _context(tmpdir: Path) -> Context:
     repo_root = Path(repo_raw)
     if not repo_root.is_absolute() or repo_root.is_symlink() or not (repo_root / ".git").exists():
         raise CiFixerAdapterError("missing-repo-root")
-    repo = os.environ.get("REPO", "") or _required(state, "REPO", "missing-repo")
+    repo = os.environ.get(config.ENV_REPO, "") or _required(state, "REPO", "missing-repo")
     return Context(root, handoff, bgjob, repo_root.resolve(), repo)
 
 
