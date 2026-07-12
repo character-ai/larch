@@ -1177,6 +1177,46 @@ def test_render_plan_review_injects_architectural_guidelines_separate_from_scope
     assert "documented hard constraints" in out
 
 
+@pytest.mark.parametrize("archetype", ["innovation", "pragmatic", "requirements"])
+def test_render_plan_review_non_arch_archetypes_omit_architectural_knowledge(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    archetype: str,
+) -> None:
+    _reset_quiet(monkeypatch)
+    _patch_architectural_guidelines(
+        monkeypatch,
+        "present",
+        "### G-test-1: Keep seams",
+        invariant_status="present",
+        invariant_content="### I-test-1: Keep hard seams",
+    )
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+
+    rc = rendering.render_plan_review_main(
+        [
+            "--archetype",
+            archetype,
+            "--vendor",
+            "codex",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+        ],
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "## Architectural knowledge (untrusted documented policy)" not in out
+    assert "### I-test-1: Keep hard seams" not in out
+    assert "### G-test-1: Keep seams" not in out
+
+
 def test_render_plan_review_trivial_omits_architectural_guidelines(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
