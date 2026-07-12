@@ -6,13 +6,14 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 ## Primary Flow
 
-1. Create issue  describing the task/problem with `/issue` or `/bug` or manually
-2. Design it with `/design` (detailed reviewed design gets stored in tracking issue)
-3. Implement it with `/implement`
+1. Create an issue describing the task/problem with `/issue` or `/bug`, or manually
+2. Verify an existing report with `/triage` when its diagnosis needs evidence before planning
+3. Design it with `/design` (the detailed reviewed design is stored in the issue)
+4. Implement it with `/implement`
 
 ## Support Skills
 
-- Manage issues and their dependencies: `/issue`, `/bug`, `/combine-issues`, `/block-issue`, `/deps`
+- Manage issues and their dependencies: `/issue`, `/bug`, `/triage`, `/combine-issues`, `/block-issue`, `/deps`
 - Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/difficulty-calibration`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
 - `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
 
@@ -70,15 +71,21 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#block-issue"><code>/block-issue</code></a></td>
-      <td><code>&lt;ISSUE_A&gt; &lt;ISSUE_B&gt; [--repo owner/name]</code></td>
+      <td><code>&lt;ISSUE_A&gt; &lt;ISSUE_B&gt; [--repo owner/name] --operator-invoked [--triage-controlled --expected-updated-at TIMESTAMP]</code></td>
     </tr>
-    <tr><td colspan="2">Express a native GitHub blocked-by relationship between two issues using the <code>addBlockedBy</code> GraphQL mutation. Repo auto-detected when <code>--repo</code> is omitted.</td></tr>
+    <tr><td colspan="2">Express and verify a native GitHub blocked-by relationship between two issues using the <code>addBlockedBy</code> GraphQL mutation. Live mutation requires explicit operator invocation. Triage-controlled calls add exact target freshness, protected-state, security, relation read-back, and fresh-timestamp checks.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#bug"><code>/bug</code></a></td>
       <td><code>[--urgent] &lt;bug description&gt;</code></td>
     </tr>
     <tr><td colspan="2">Investigate a user-described bug read-only, compose a detailed issue body, then file it via <code>/issue</code> with dedup enabled. <code>--urgent</code> changes the title prefix. Aborts to <code>SECURITY.md</code> disclosure if the report looks security-sensitive; never edits the repo.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#triage"><code>/triage</code></a></td>
+      <td><code>&lt;issue-number&gt; [--repo OWNER/REPO] [--report-only]</code></td>
+    </tr>
+    <tr><td colspan="2">Verify and root-cause an eligible non-security issue against an immutable main snapshot before <code>/design</code>. A verified verdict may update or close the issue; <code>--report-only</code> and inconclusive results never mutate GitHub.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#cleanup"><code>/cleanup</code></a></td>

@@ -3530,26 +3530,14 @@
   {
     "file": "larch/issue/issue_block.py",
     "code": "C901",
-    "qualified_symbol": "_mutation_main",
-    "metric": 22
-  },
-  {
-    "file": "larch/issue/issue_block.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_mutation_main",
-    "metric": 16
+    "qualified_symbol": "_parse_args",
+    "metric": 14
   },
   {
     "file": "larch/issue/issue_block.py",
     "code": "PLR0912",
-    "qualified_symbol": "_mutation_main",
-    "metric": 22
-  },
-  {
-    "file": "larch/issue/issue_block.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_mutation_main",
-    "metric": 74
+    "qualified_symbol": "_parse_args",
+    "metric": 15
   },
   {
     "file": "larch/issue/issue_create.py",

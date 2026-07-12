@@ -228,6 +228,16 @@ assert_allow "T12c tokenless invocation stays inactive" "" "{\"tool_input\":{\"f
 assert_allow "T12d unrecognized token stays inactive" unknown "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 assert_deny "T12e bug token denies with bug sentinel" bug "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
 
+# T12f — triage has an independent activation token and the same /tmp policy.
+reset_activation
+activate triage
+assert_deny "T12f triage token denies repo path" triage "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+assert_allow "T12g triage token allows canonical /tmp" triage "{\"tool_input\":{\"file_path\":\"$TMP_FILE\"}}"
+assert_allow "T12h triage sentinel does not activate research token" research "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+reset_activation
+stale_activation triage
+assert_allow "T12i stale triage sentinel stays inactive" triage "{\"tool_input\":{\"file_path\":\"$REPO_ROOT/foo.txt\"}}"
+
 # T13 — activation is PID-agnostic; a foreign-PID sentinel activates.
 reset_activation
 activate research 999999

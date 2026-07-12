@@ -346,7 +346,7 @@ test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesse
 
 test-harnesses-1: test-write-final-report test-voter-calibration test-design-step3-review test-step-8-ship test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
-test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-research-structure test-lint-no-raw-stderr-after-quiet-init test-implement-structure test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-bug-structure test-learn-from-bugs-structure test-effort-prose
+test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-research-structure test-lint-no-raw-stderr-after-quiet-init test-implement-structure test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-bug-structure test-learn-from-bugs-structure test-triage-structure test-effort-prose
 
 test-harnesses-3: test-design-step3-mav test-prompt-template-invariants test-implement-review-token-propagation test-sessionstart test-step-5-review test-cache-root-validation test-lint-awk-multibyte-regex test-resolve-upstream-larch-repo test-architectural-guidelines-step test-render-cost-line-callsites test-lint-renderer-substitution-safety test-hook-deny-run-in-background test-design-clarify test-legacy-title-prefix-literals-scope test-synthesis-subagent test-fluff-analysis-corpus test-implement-relevant-checks-anti-halt
 
@@ -1004,6 +1004,10 @@ test-references-headers:
 
 test-research-structure:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-research-structure.sh
+
+.PHONY: test-triage-structure
+test-triage-structure:
+	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-triage-structure.sh
 
 test-review-structure:
 	python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-review-structure.sh

@@ -1,10 +1,10 @@
 # scripts/deny-edit-write.sh — contract
 
-`scripts/deny-edit-write.sh` is a token-gated PreToolUse hook used by `/research` and `/bug`. Consumers invoke it with a recognized first argument: `research` from `skills/research/SKILL.md` and `bug` from `skills/bug/SKILL.md`.
+`scripts/deny-edit-write.sh` is a token-gated PreToolUse hook used by `/research`, `/bug`, and `/triage`. Consumers invoke it with a recognized first argument: `research` from `skills/research/SKILL.md`, `bug` from `skills/bug/SKILL.md`, and `triage` from `skills/triage/SKILL.md`.
 
 ## Activation gate
 
-Before reading stdin or checking `jq`, the hook checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` for a fresh sentinel named `<token>-*`. Recognized token prefixes are `research` and `bug`. The TTL is 360 minutes. The filename embeds the writer's `$PPID` for debugging and per-run overwrite only.
+Before reading stdin or checking `jq`, the hook checks `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active` for a fresh sentinel named `<token>-*`. Recognized token prefixes are `research`, `bug`, and `triage`. The TTL is 360 minutes. The filename embeds the writer's `$PPID` for debugging and per-run overwrite only.
 
 A missing activation directory, unreadable directory, stale sentinel, missing token, or unrecognized token is inactive. Inactive hooks exit 0 with empty stdout. There is no any-sentinel fallback, so a stale tokenless registration cannot be re-armed by another skill's fresh sentinel. The hook performs no `$PPID` correlation because production PreToolUse parent PIDs can diverge from orchestrator Bash parent PIDs.
 
@@ -18,7 +18,7 @@ Path resolution mirrors `scripts/block-submodule-edit.sh`: bounded symlink walk 
 
 On allow the script emits empty stdout and exits 0. On deny it emits a fixed-literal `hookSpecificOutput` JSON envelope through local `hook_emit` and exits 0. The deny envelope is composed only from fixed ASCII literals (single fixed reason string, no runtime interpolation into the deny JSON) and is byte-identical across the active `jq`-absent static path, the `block()` helper's `jq -cn` path, and `block()`'s inner static fallback. The hook writes deny JSON through a local FD-3 `hook_emit` path.
 
-The hook is the sole mechanical enforcer of the active `/tmp`-only policy for the matched Claude tool surface. `allowed-tools` declares each orchestrator's surface but does not confine writes to `/tmp`; see `SECURITY.md` for the residual-risk framing. `/research` must keep matcher `Edit|Write|NotebookEdit`. `/bug` must keep matcher `Write`. Adding `Skill` would deny `/issue` delegations and break child-invocation flows.
+The hook is the sole mechanical enforcer of the active `/tmp`-only policy for the matched Claude tool surface. `allowed-tools` declares each orchestrator's surface but does not confine writes to `/tmp`; see `SECURITY.md` for the residual-risk framing. `/research` must keep matcher `Edit|Write|NotebookEdit`. `/bug` and `/triage` must keep matcher `Write`. `/triage` activates its token only after the initial security, repository-target, and immutable-main gates, and its Write surface remains scratch-only. Adding `Skill` would deny `/issue` or `/block-issue` delegations and break child-invocation flows.
 
 Stale or leaked registrations no longer deny by themselves. A fresh activation sentinel is required for each consumer token.
 

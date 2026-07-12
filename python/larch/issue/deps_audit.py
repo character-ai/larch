@@ -910,7 +910,7 @@ def apply_main(argv: list[str] | None = None) -> int:
                 warnings.append(_warning(f"Skipped dependency #{client} blocked by #{blocker_issue}: {reason}", code="edge_apply_skipped"))
                 continue
             cli_path = Path(__file__).resolve().parents[2] / "cli.py"
-            result = proc.run([sys.executable, str(cli_path), "block-issue", "add-blocked-by", str(client), str(blocker_issue), "--repo", args.repo])
+            result = proc.run([sys.executable, str(cli_path), "block-issue", "add-blocked-by", str(client), str(blocker_issue), "--repo", args.repo, "--operator-invoked"])
             if result.returncode == 0:
                 applied.append({"kind": "edge", "client_issue": client, "blocker_issue": blocker_issue})
                 batch_edges.add((client, blocker_issue))
