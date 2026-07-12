@@ -28,7 +28,7 @@ This skill forwards to `/implement` (`skills/implement/SKILL.md`). Parse exit co
 | Code | Meaning |
 |------|---------|
 | **0** | Normal completion of the scripted path for that attempt. |
-| **2** | Operator-visible hard errors (argv, missing/malformed `larch:plan`, `gh` / plan helpers, `persist-post-plan-keys` / related validation, etc.). |
+| **2** | Operator-visible hard errors (argv, missing/malformed `larch:plan`, `gh` / plan helpers, etc.). |
 | **3** | **Preflight audit refused** — terminal for this attempt until upstream work resolves the plan/clarify state. On the normal clarify path, the operator must run `/design <N>` before retrying `/implement`. When `STATE=ambiguous` from `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" clarify state`, Preflight exits **3** **before** posting or labeling; the thread must be repaired manually — exit **3** does **not** imply a new clarify request was posted. |
 
 Do not treat every non-zero exit as a blind retry; route **3** back through `/design` / manual clarify repair, not generic re-invocation of `/implement` with the same inputs.
