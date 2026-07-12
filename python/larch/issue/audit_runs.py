@@ -750,6 +750,15 @@ def _report_pr_view_failed( *,pr: str, field: str, res: proc.CommandResult) -> N
     print(f"audit-map-runs.sh: MAP_GH_PR_VIEW_FAILED=true PR={pr} FIELD={field} REASON={reason}", file=sys.stderr)
 
 
+def _parent_issue_candidates(*, root: Path, closes: str) -> list[Path]:
+    candidates: list[Path] = []
+    for run_dir in run_log_corpus.safe_child_run_dirs(root):
+        parent = run_dir / "parent-issue.md"
+        if parent.is_file() and _parent_issue_number(parent) == closes:
+            candidates.append(run_dir)
+    return candidates
+
+
 def map_runs_main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="cli.py audit-runs map-runs")
     p.add_argument("--skill", required=True)
@@ -802,12 +811,7 @@ def map_runs_main(argv: list[str] | None = None) -> int:
             if len(nums) > 1:
                 print(f"audit-map-runs.sh: MAP_PR_BODY_CLOSING_AMBIGUOUS=true KEYWORD={kw}", file=sys.stderr)
                 break
-        candidates: list[Path] = []
-        if closes:
-            for run_dir in run_log_corpus.safe_child_run_dirs(root):
-                parent = run_dir / "parent-issue.md"
-                if parent.is_file() and _parent_issue_number(parent) == closes:
-                    candidates.append(run_dir)
+        candidates = _parent_issue_candidates(root=root, closes=closes) if closes else []
         if candidates:
             candidates.sort(key=lambda d: _manifest_epoch(d / "manifest.json"), reverse=True)
             best_epoch = _manifest_epoch(candidates[0] / "manifest.json")
