@@ -50,7 +50,7 @@ MAIN_HEALTH_KEYS = (
     "MAIN_HEALTH_DETAIL",
 )
 _RECOGNIZED_TRAILER_PREFIX_RE = re.compile(
-    r"^(review_status|rounds_completed|difficulty|diff_added|diff_deleted|mechanical_churn|oversize_override|diff_lines):"
+    r"^(?:" + "|".join(plan_grammar.TRAILER_KEYS) + r"):"
 )
 
 

@@ -110,6 +110,16 @@ diff_lines: 1
     assert [row.script_path for row in rows if row.row_type == "new_script"] == ["scripts/real.sh"]
 
 
+def test_parse_plan_commands_preserves_headings_after_unclosed_fence(tmp_path: Path) -> None:
+    plan = """```bash
+scripts/ignored.sh --flag
+### NEW: scripts/visible-after-unclosed.sh
+"""
+    rows = plan_quality.parse_plan_commands(plan_text=plan, repo_root=tmp_path, plugin_root=tmp_path)
+    assert [row.script_path for row in rows if row.row_type == "new_script"] == ["scripts/visible-after-unclosed.sh"]
+    assert not [row for row in rows if row.row_type.startswith("invocation")]
+
+
 def test_parse_plan_commands_notes_for_unsafe_shell_forms(tmp_path: Path) -> None:
     plan = """```sh
 scripts/a.sh --x $(date)

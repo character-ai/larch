@@ -29,6 +29,7 @@ from larch.agents import _ci_launcher
 from larch.agents import _review_launcher
 from larch.agents import _drafter
 from larch.agents import _claude_runner
+from larch.design import plan_grammar
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -5498,6 +5499,68 @@ def test_parse_drafter_output_rejects_contract_violations(tmp_path: Path, raw_te
     _ = raw.write_text(raw_text, encoding="utf-8")
     with pytest.raises(ValueError, match=r"invalid|missing"):
         agents.parse_drafter_output(raw_file=raw, plan_tmp=plan, summary_tmp=summary, scout_tmp=scout)
+    assert not scout.exists()
+
+
+def test_parse_drafter_output_accepts_typed_diff_lines_and_full_trailer_block(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.txt"
+    plan = tmp_path / "plan.txt.tmp"
+    summary = tmp_path / "summary.md.tmp"
+    scout = tmp_path / "scout.json.tmp"
+    trailer_block = "\n".join(
+        plan_grammar.compose_trailer_lines(
+            {
+                "review_status": "complete",
+                "rounds_completed": 1,
+                "difficulty": "TRIVIAL",
+                "diff_added": 2,
+                "diff_deleted": 0,
+                "mechanical_churn": True,
+                "oversize_override": "operator",
+                "diff_lines": 9,
+            }
+        )
+    )
+    _ = raw.write_text(
+        "LARCH_SUMMARY_BEGIN\nsummary\nLARCH_SUMMARY_END\n"
+        f"LARCH_PLAN_BEGIN\nDo work\n{trailer_block}\nLARCH_PLAN_END\n"
+        'LARCH_SCOUT_BEGIN\n{"archetypes":[]}\nLARCH_SCOUT_END\n',
+        encoding="utf-8",
+    )
+    result = agents.parse_drafter_output(raw_file=raw, plan_tmp=plan, summary_tmp=summary, scout_tmp=scout)
+    assert result.diff_lines == 9
+    assert result.scout_candidate_written is True
+    assert plan.read_text(encoding="utf-8").endswith("diff_lines: 9\n")
+
+
+@pytest.mark.parametrize(
+    "raw_text",
+    [
+        "LARCH_PLAN_BEGIN\nDo work\ndiff_lines: nope\nLARCH_PLAN_END\n",
+        "LARCH_PLAN_BEGIN\nDo work\ndifficulty: HARD\nLARCH_PLAN_END\n",
+        "LARCH_PLAN_BEGIN\nDo work\ndiff_lines: 3\nextra\nLARCH_PLAN_END\n",
+        "LARCH_PLAN_BEGIN\nDo work\nLARCH_PLAN_END\n"
+        'LARCH_SCOUT_BEGIN\n{"archetypes":[]}\nLARCH_SCOUT_END\n'
+        "LARCH_DIALECTIC_BEGIN\n{}\nLARCH_DIALECTIC_END\n",
+    ],
+)
+def test_parse_drafter_output_rejects_malformed_or_non_terminal_diff_lines(
+    tmp_path: Path,
+    raw_text: str,
+) -> None:
+    raw = tmp_path / "raw.txt"
+    plan = tmp_path / "plan.txt.tmp"
+    summary = tmp_path / "summary.md.tmp"
+    scout = tmp_path / "scout.json.tmp"
+    _ = raw.write_text(raw_text, encoding="utf-8")
+    with pytest.raises(ValueError, match=r"invalid|missing"):
+        agents.parse_drafter_output(
+            raw_file=raw,
+            plan_tmp=plan,
+            summary_tmp=summary,
+            scout_tmp=scout,
+        )
+    assert not plan.exists()
     assert not scout.exists()
 
 

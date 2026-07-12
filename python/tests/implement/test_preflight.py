@@ -13,6 +13,7 @@ from typing import Any
 import pytest
 
 from larch.implement import preflight
+from larch.design import plan_grammar
 
 
 def _write(handle: object, text: str) -> None:
@@ -346,6 +347,57 @@ def test_preflight_refuses_malformed_rounds_completed_metadata(
     out = capsys.readouterr().out
     assert "malformed plan review metadata" in out
     assert "rounds_completed=nope" in out
+
+
+def test_malformed_terminal_metadata_direct_cases(tmp_path: Path) -> None:
+    valid = tmp_path / "valid.txt"
+    valid.write_text(
+        "\n".join(
+            plan_grammar.compose_trailer_lines(
+                {
+                    "review_status": "complete",
+                    "rounds_completed": 2,
+                    "difficulty": "MODERATE",
+                    "diff_added": 1,
+                    "diff_deleted": 0,
+                    "mechanical_churn": False,
+                    "oversize_override": "operator",
+                    "diff_lines": 12,
+                }
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    assert preflight._malformed_terminal_metadata(plan_path=valid) == ""
+
+    malformed = tmp_path / "malformed.txt"
+    malformed.write_text(
+        "review_status: complete\ndifficulty: EASY\ndiff_lines: 8\n",
+        encoding="utf-8",
+    )
+    assert preflight._malformed_terminal_metadata(plan_path=malformed) == "difficulty: EASY"
+
+    unrecognized = tmp_path / "unrecognized.txt"
+    unrecognized.write_text(
+        "review_status: complete\nconfidence: high\ndifficulty: HARD\ndiff_lines: 8\n",
+        encoding="utf-8",
+    )
+    assert preflight._malformed_terminal_metadata(plan_path=unrecognized) == ""
+
+    non_terminal = tmp_path / "non-terminal.txt"
+    non_terminal.write_text(
+        "review_status: complete\ndiff_lines: 8\nmore body\n",
+        encoding="utf-8",
+    )
+    assert preflight._malformed_terminal_metadata(plan_path=non_terminal) == ""
+
+
+def test_recognized_trailer_prefix_regex_covers_every_trailer_key() -> None:
+    for key in plan_grammar.TRAILER_KEYS:
+        assert preflight._RECOGNIZED_TRAILER_PREFIX_RE.match(f"{key}: value") is not None
+    assert preflight._RECOGNIZED_TRAILER_PREFIX_RE.match("confidence: high") is None
+    assert preflight._RECOGNIZED_TRAILER_PREFIX_RE.match("not_a_trailer: x") is None
 
 
 def test_preflight_refuses_zero_review_provenance(

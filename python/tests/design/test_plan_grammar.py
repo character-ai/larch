@@ -31,6 +31,32 @@ def test_shorter_fence_does_not_close_a_longer_fence() -> None:
     assert [heading.path for heading in plan_grammar.iter_plan_headings(text)] == ["shown.py"]
 
 
+def test_balanced_fence_helper_covers_backtick_tilde_and_unclosed() -> None:
+    backtick = ["before", "```md", "## NEW: hidden.py", "```", "after"]
+    tilde = ["before", "~~~~md", "## NEW: hidden.py", "~~~~", "after"]
+    longer = ["````md", "```", "## NEW: still-hidden.py", "````"]
+    invalid_closer = ["```md", "## NEW: still-open.py", "```not-a-close"]
+    unclosed = ["```md", "## NEW: after-unclosed.py"]
+    mismatched = ["```md", "## NEW: still-open.py", "~~~"]
+
+    assert plan_grammar.balanced_fence_line_indices(backtick) == {2}
+    assert plan_grammar.balanced_fence_line_indices(tilde) == {2}
+    assert plan_grammar.balanced_fence_line_indices(longer) == {1, 2}
+    assert plan_grammar.balanced_fence_line_indices(invalid_closer) == set()
+    assert plan_grammar.balanced_fence_line_indices(unclosed) == set()
+    assert plan_grammar.balanced_fence_line_indices(mismatched) == set()
+
+
+def test_iter_heading_events_preserves_headings_after_unmatched_opener() -> None:
+    text = "```md\n## NEW: hidden-if-balanced.py\n## NEW: visible-after-unclosed.py\n"
+    assert [heading.path for heading in plan_grammar.iter_plan_headings(text)] == [
+        "hidden-if-balanced.py",
+        "visible-after-unclosed.py",
+    ]
+    text_closed = "~~~\n## NEW: hidden.py\n~~~\n## NEW: shown.py\n"
+    assert [heading.path for heading in plan_grammar.iter_plan_headings(text_closed)] == ["shown.py"]
+
+
 def test_registry_and_subsets() -> None:
     assert plan_grammar.TRAILER_KEYS == (
         "review_status", "rounds_completed", "difficulty", "diff_added", "diff_deleted",

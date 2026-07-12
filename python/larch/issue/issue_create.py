@@ -16,6 +16,7 @@ from collections.abc import Callable
 
 from larch.core import config
 from larch.core import proc
+from larch.design.plan_grammar import balanced_fence_line_indices
 from larch.git import gh
 from larch.core.redact import redact_secrets_outbound
 from larch.state import session_env as _session_env
@@ -28,7 +29,6 @@ CONF_FIELD_COUNT = 4
 THIRD_ATTEMPT = 2
 OOS_HEADING_RE = re.compile(r"^###[ \t]+OOS_[0-9]+:[ \t]+(.+)$")
 PLAIN_HEADING_RE = re.compile(r"^###[ \t]+(.+)$")
-FENCE_MARKER_RE = re.compile(r"^(`{3,}|~{3,})(.*)$")
 DESC_RE = re.compile(r"^-[ \t]+\*\*Description\*\*:[ \t]*(.*)$")
 # FINDING-block OOS (review pipeline) uses `**Concern**` for the body and
 # `**Reviewer(s)**` for attribution; treat them as Description/Reviewer
@@ -198,32 +198,10 @@ class ParseState:
         return False
 
 
-def _balanced_fence_line_indices(lines: list[str]) -> set[int]:
-    fenced_lines: set[int] = set()
-    stack: list[tuple[int, str, int]] = []
-    for index, line in enumerate(lines):
-        stripped = line.strip()
-        match = FENCE_MARKER_RE.match(stripped)
-        if not match:
-            continue
-        marker = match.group(1)
-        marker_char = marker[0]
-        marker_len = len(marker)
-        suffix = match.group(2)
-        if not stack:
-            stack.append((index, marker_char, marker_len))
-            continue
-        top_index, top_char, top_len = stack[-1]
-        if marker_char == top_char and marker_len >= top_len and suffix.strip() == "":
-            stack.pop()
-            fenced_lines.update(range(top_index + 1, index))
-    return fenced_lines
-
-
 def parse_issue_input(text: str) -> tuple[list[ParsedItem], str]:
     state = ParseState()
     lines = text.splitlines()
-    fenced_lines = _balanced_fence_line_indices(lines)
+    fenced_lines = balanced_fence_line_indices(lines)
     for index, line in enumerate(lines):
         in_fence = index in fenced_lines
         if not in_fence and (match := OOS_HEADING_RE.match(line)):

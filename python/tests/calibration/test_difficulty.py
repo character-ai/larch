@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from larch.calibration import difficulty
+from larch.design import plan_grammar
 
 
 def test_validate_rating_low_confidence_bumps_and_sanitizes() -> None:
@@ -148,6 +149,30 @@ def test_trailing_plan_metadata_lines_accepts_oversize_override() -> None:
         "oversize_override: operator",
         "diff_lines: 9",
     )
+
+
+def test_registry_driven_final_trailers_through_difficulty_lookup_and_rewrite() -> None:
+    values = {
+        "review_status": "complete",
+        "rounds_completed": 2,
+        "difficulty": "MODERATE",
+        "diff_added": 3,
+        "diff_deleted": 1,
+        "mechanical_churn": False,
+        "oversize_override": "operator",
+        "diff_lines": 11,
+    }
+    lines = plan_grammar.compose_trailer_lines(values)  # type: ignore[arg-type]
+    assert tuple(match.key for match in map(plan_grammar.match_trailer_line, lines) if match) == plan_grammar.TRAILER_KEYS
+    text = "body\n" + "\n".join(lines) + "\n"
+    trailers = plan_grammar.parse_final_trailers(text, require_diff_lines=True)
+    assert trailers.lines == lines
+    assert difficulty.plan_difficulty(text) == "MODERATE"
+    assert difficulty.trailing_plan_metadata_lines(text) == lines
+    rewritten = difficulty.rewrite_plan_difficulty(text, "HARD")
+    assert difficulty.plan_difficulty(rewritten) == "HARD"
+    assert "difficulty: HARD" in rewritten
+    assert rewritten.rstrip().endswith("diff_lines: 11")
 
 
 def test_operator_override_beats_floors_and_audit_can_upgrade(tmp_path: Path) -> None:
