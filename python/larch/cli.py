@@ -124,6 +124,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("learn-from-bugs", "prepare"): ("larch.issue.learn_from_bugs", "prepare_main"),
     ("learn-from-bugs", "coverage-index"): ("larch.issue.learn_from_bugs", "coverage_index_main"),
     ("learn-from-bugs", "read-state"): ("larch.issue.learn_from_bugs", "read_state_main"),
+    ("learn-from-bugs", "check-proposals"): ("larch.issue.learn_from_bugs", "check_proposals_main"),
     ("learn-from-bugs", "write-state"): ("larch.issue.learn_from_bugs", "write_state_main"),
     ("rejected-analysis", "prepare"): ("larch.issue.rejected_analysis", "prepare_main"),
     ("rejected-analysis", "ingest-verdict"): ("larch.issue.rejected_analysis", "ingest_verdict_main"),
@@ -679,6 +680,10 @@ _DESIGN_LIFECYCLE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
 })
 
 _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
+    ("learn-from-bugs", "prepare"),
+    ("learn-from-bugs", "read-state"),
+    ("learn-from-bugs", "check-proposals"),
+    ("learn-from-bugs", "write-state"),
     ("bgjob", "start"),
     ("bgjob", "wait"),
     ("bgjob", "status"),
