@@ -1019,6 +1019,37 @@ def test_fixer_lane_dispatch_salvage_provenance_verification_failure_raises(
     assert not (identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE).exists()
 
 
+def test_fixer_lane_main_does_not_persist_round_for_unverified_salvage_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = tmp_path / "repo"
+    starting_head = _init_repo(repo)
+    identity = _lane_identity(repo, tmp_path / "impl")
+    monkeypatch.setattr(
+        ci.ci_fixer_lane.ci_monitor,
+        "prepare_failure_evidence",
+        lambda *_args, **_kwargs: ci_monitor.LogCollectResult("failed check\n", "ready"),
+    )
+
+    def committing_launcher(_argv: list[str] | None) -> int:
+        (repo / "tracked.txt").write_text("spoofed\n", encoding="utf-8")
+        _run_git(repo, "add", "tracked.txt")
+        _run_git(repo, "commit", "-m", _salvage_commit_message(identity, "missing"))
+        return 0
+
+    assert ci.ci_fixer_lane.main([
+        "--repo-root", str(identity.repo_root), "--implement-tmpdir", str(identity.implement_tmpdir),
+        "--handoff-dir", str(identity.handoff_dir), "--repo", identity.repo,
+        "--run-id", identity.run_id, "--tier", identity.tier,
+        "--attempt", str(identity.attempt), "--starting-head", starting_head,
+        "--input-fingerprint", identity.input_fingerprint,
+        "--bgjob-result-env", str(identity.result_env),
+    ], runner=proc, launchers={"codex": committing_launcher}) == config.EXIT_INTERNAL_ERROR
+
+    assert "STATUS=closed-failure" in capsys.readouterr().out
+    assert not (identity.handoff_dir / config.CI_FIXER_ROUNDS_FILE).exists()
+
+
 def test_fixer_lane_dispatch_reports_no_progress_when_tree_clean(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

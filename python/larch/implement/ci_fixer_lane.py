@@ -96,6 +96,10 @@ class LaneClosedError(RuntimeError):
     """Raised when no trustworthy typed result can be persisted."""
 
 
+class SalvageProvenanceError(LaneClosedError):
+    """Raised when a salvage commit cannot be attributed to this fixer lane."""
+
+
 def _contains_control(value: str) -> bool:
     return bool(_CONTROL_RE.search(value))
 
@@ -515,7 +519,7 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
     )
     if launcher_exit == 0 and final_head != identity.starting_head:
         if not _salvage_provenance_valid(identity, runner=runner, live_head=final_head):
-            raise LaneClosedError("CI fixer salvage commit provenance is unverified")
+            raise SalvageProvenanceError("CI fixer salvage commit provenance is unverified")
         return LaneResult("reship", "fixer-produced-change", final_head)
     if launcher_exit != 0 and final_head != identity.starting_head:
         return LaneResult("operator-bail", "failed-launcher-modified-head", final_head)
@@ -527,7 +531,7 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
             if not _salvage_provenance_valid(
                 identity, runner=runner, live_head=committed_head
             ):
-                raise LaneClosedError("CI fixer salvage commit provenance is unverified")
+                raise SalvageProvenanceError("CI fixer salvage commit provenance is unverified")
             return LaneResult("reship", "fixer-produced-uncommitted-change", committed_head)
         return LaneResult("retry-next-tool", "fixer-made-no-progress", final_head)
     return LaneResult("retry-next-tool", f"launcher-exit-{launcher_exit}", final_head)
@@ -1069,6 +1073,9 @@ def main(
         result = _dispatch(identity, evidence, runner=runner, launchers=selected_launchers)
         result = _persist(identity, result, evidence, runner=runner)
     except (LaneClosedError, OSError, UnicodeError, ValueError) as exc:
+        if isinstance(exc, SalvageProvenanceError):
+            print(f"STATUS=closed-failure\nREASON={redact.redact(str(exc)).replace(chr(10), ' ')}")
+            return config.EXIT_INTERNAL_ERROR
         if identity is not None:
             try:
                 result = _persist(
