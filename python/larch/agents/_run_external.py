@@ -730,7 +730,7 @@ def _read_tail_update(*, path: Path, offset: int) -> TailReadResult:
     if not path.is_file():
         return TailReadResult(offset=offset, text="")
     try:
-        implement_tmpdir = os.environ.get("IMPLEMENT_TMPDIR", "")
+        implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
         root = Path(implement_tmpdir) if implement_tmpdir else None
         if root is not None and path.absolute().is_relative_to(root.absolute()):
             next_offset, data = larch_io.read_trusted_tail(
