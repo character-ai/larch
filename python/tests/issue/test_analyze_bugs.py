@@ -1079,7 +1079,7 @@ def test_hydrates_undated_historical_fix_before_window_filter(tmp_path: Path) ->
     assert view.hydrated_records[0].fix_time == now - 100
 
 
-def test_hydration_repairs_partial_metadata_and_marker_backfill_keeps_it(tmp_path: Path, monkeypatch: object) -> None:
+def test_hydration_repairs_partial_metadata_and_marker_backfill_keeps_it(tmp_path: Path) -> None:
     now = 2_000_000
     ledger = tmp_path / "ledger.jsonl"
     ledger.write_text(
