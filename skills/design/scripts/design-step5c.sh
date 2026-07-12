@@ -3,8 +3,49 @@ set -euo pipefail
 
 SESSION_ENV_PATH=""
 CLAUDE_PID=""
-RUN_STEP5C_CHILD=false
+CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-}"
+BGJOB_CHILD=false
+MERGE_RESULT_ENV=""
+FRESH_ATTEMPT=false
 ORIGINAL_ARGS=("$@")
+
+_arg_count=${#ORIGINAL_ARGS[@]}
+if [ "$_arg_count" -ge 3 ] \
+  && [ "${ORIGINAL_ARGS[$((_arg_count - 3))]}" = "--bgjob-child" ] \
+  && [ "${ORIGINAL_ARGS[$((_arg_count - 2))]}" = "--merge-result-env" ] \
+  && [ -n "${ORIGINAL_ARGS[$((_arg_count - 1))]}" ]; then
+  BGJOB_CHILD=true
+  MERGE_RESULT_ENV="${ORIGINAL_ARGS[$((_arg_count - 1))]}"
+  set -- "${ORIGINAL_ARGS[@]:0:$((_arg_count - 3))}"
+  ORIGINAL_ARGS=("$@")
+fi
+for _adapter_control in "$@"; do
+  case "$_adapter_control" in
+    --bgjob-child|--merge-result-env)
+      printf '%s\n' 'design-step5c.sh: adapter child controls must be one terminal suffix' >&2
+      exit 2
+      ;;
+  esac
+done
+
+FORWARD_ARGS=()
+_before_public=true
+for _arg in "${ORIGINAL_ARGS[@]}"; do
+  if [ "$_before_public" = true ] && [ "$_arg" = "--" ]; then
+    _before_public=false
+  fi
+  if [ "$_before_public" = true ] && [ "$_arg" = "--fresh-attempt" ]; then
+    [ "$FRESH_ATTEMPT" = false ] || { printf '%s\n' 'design-step5c.sh: duplicate --fresh-attempt' >&2; exit 2; }
+    FRESH_ATTEMPT=true
+    continue
+  fi
+  FORWARD_ARGS[${#FORWARD_ARGS[@]}]="$_arg"
+done
+if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
+  set -- "${FORWARD_ARGS[@]}"
+else
+  set --
+fi
 
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -14,7 +55,6 @@ export CLAUDE_PLUGIN_ROOT
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --run-step5c-child) RUN_STEP5C_CHILD=true; shift ;;
     --session-env-path) SESSION_ENV_PATH="$2"; shift 2 ;;
     --claude-pid) CLAUDE_PID="$2"; shift 2 ;;
     --plugin-root) CLAUDE_PLUGIN_ROOT="$2"; export CLAUDE_PLUGIN_ROOT; shift 2 ;;
@@ -24,13 +64,14 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ "$RUN_STEP5C_CHILD" = true ]; then
-  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step5c "${ORIGINAL_ARGS[@]:1}"
-fi
-
-if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  # shellcheck source=/dev/null
-  . "$SESSION_ENV_PATH"
+if [ -n "${SESSION_ENV_PATH:-}" ]; then
+  _resolver_args=(--resolve-session-env --session-env-path "$SESSION_ENV_PATH")
+  [ -n "${CLAUDE_PID:-}" ] && _resolver_args[${#_resolver_args[@]}]=--owner-pid && _resolver_args[${#_resolver_args[@]}]="$CLAUDE_PID"
+  _resolved_session_env="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob adapt "${_resolver_args[@]}")" || {
+      printf '%s\n' "${_resolved_session_env:-BGJOB_ERROR=session-env-resolution-failed}"
+      exit 2
+    }
+  eval "$_resolved_session_env"
 fi
 if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
   printf '%s\n' 'design-step5c.sh: DESIGN_TMPDIR required' >&2
@@ -40,67 +81,50 @@ DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 export DESIGN_TMPDIR
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
-step5c_recreate_merge_env() {
-  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR/.design-step5c-status.env" "$DESIGN_TMPDIR" <<'PY'
-from pathlib import Path
+publish_step5c_result() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - \
+    "$DESIGN_TMPDIR/.design-step5c-status.env" "$MERGE_RESULT_ENV" "$DESIGN_TMPDIR" <<'PY'
 import sys
-from larch.design.design_core import design_recreate_merge_env
+from pathlib import Path
 
-design_recreate_merge_env(path=Path(sys.argv[1]), design_tmpdir=Path(sys.argv[2]))
+from larch import io as larch_io
+from larch.design.design_core import design_write_merge_env
+
+source, destination, root = map(Path, sys.argv[1:4])
+values = larch_io.read_kvs(source, reject_cr=True, reject_symlink=True)
+required = {
+    "PUBLISH_RC", "PLAN_WRITE_OK", "PUBLISH_OK", "VALIDATE_STATUS",
+    "FINAL_SUMMARY_PATH", "CLEANUP_ELIGIBLE",
+}
+if not required.issubset(values):
+    raise SystemExit(1)
+design_write_merge_env(path=destination, design_tmpdir=root, rows=values.items())
 PY
 }
 
-step5c_bgjob_registry_state() {
-  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR" <<'PY'
-from pathlib import Path
-import sys
-from larch.bgjob import registry
-
-path, entry = registry.read_for(tmpdir=Path(sys.argv[1]), step="design-step5c")
-if entry is None:
-    print("missing")
-    raise SystemExit(0)
-child_live = registry.child_liveness(entry).live
-if child_live or registry.daemon_liveness(entry).live:
-    print("live")
-    raise SystemExit(0)
-registry.unlink_entry(path)
-print("cleared")
-PY
-}
-
-_result_env="$DESIGN_TMPDIR/bgjob/design-step5c.result.env"
-if [ -L "$_result_env" ]; then
-  printf '%s\n' 'design-step5c.sh: existing bgjob result env must not be a symlink' >&2
-  exit 1
-fi
-if [ -e "$_result_env" ] && [ ! -f "$_result_env" ]; then
-  printf '%s\n' 'design-step5c.sh: existing bgjob result env must be a regular file' >&2
-  exit 1
-fi
-_registry_state="$(step5c_bgjob_registry_state)" || {
-  printf '%s\n' 'BGJOB_ERROR=registry-check-failed'
-  exit 2
-}
-if [ "$_registry_state" = live ]; then
-  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob wait \
-    --step design-step5c \
-    --tmpdir "$DESIGN_TMPDIR" \
-    --max-wait-s 0
+if [ "$BGJOB_CHILD" = true ]; then
+  set +e
+  if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step5c "${FORWARD_ARGS[@]}"
+  else
+    python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design step5c
+  fi
+  _step5c_rc=$?
+  set -e
+  publish_step5c_result || exit 1
+  exit "$_step5c_rc"
 fi
 
-mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
-rm -f "$DESIGN_TMPDIR/bgjob/design-step5c.result.env" 2>/dev/null || true
-step5c_recreate_merge_env
-
-_owner_args=()
-if [ -n "${CLAUDE_PID:-}" ]; then
-  _owner_args=(--owner-pid "$CLAUDE_PID")
-fi
-exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
+_adapt_args=(
   --step design-step5c \
   --tmpdir "$DESIGN_TMPDIR" \
-  --budget-s 21600 \
-  "${_owner_args[@]}" \
-  --merge-result-env "$DESIGN_TMPDIR/.design-step5c-status.env" \
-  -- bash "$0" --run-step5c-child "${ORIGINAL_ARGS[@]}"
+  --budget-s 21600
+)
+[ -n "${CLAUDE_PID:-}" ] && _adapt_args[${#_adapt_args[@]}]=--owner-pid && _adapt_args[${#_adapt_args[@]}]="$CLAUDE_PID"
+[ -n "${SESSION_ENV_PATH:-}" ] && _adapt_args[${#_adapt_args[@]}]=--session-env-path && _adapt_args[${#_adapt_args[@]}]="$SESSION_ENV_PATH"
+[ "$FRESH_ATTEMPT" = true ] && _adapt_args[${#_adapt_args[@]}]=--replace-completed-result
+if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
+  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob adapt "${_adapt_args[@]}" -- bash "$0" "${FORWARD_ARGS[@]}"
+else
+  exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob adapt "${_adapt_args[@]}" -- bash "$0"
+fi

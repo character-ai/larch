@@ -31,10 +31,10 @@ Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design r
 <!-- loop-mode review contract -->
 In loop mode, accepted findings are applied inside `python/plan_review.py` before `STEP3_REVIEW_LOOP_STATUS=complete`. Prompt-side Gate B applies only on loop bail-outs; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
 
-Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `design-step5c.sh`. Skip auto-repair and do not offer Override.
+Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `design-step5c.sh --fresh-attempt`. Skip auto-repair and do not offer Override.
 
 For ordinary composed-plan validator defects where the file exists and is non-empty, keep ordinary recovery semantics: auto-repair, then Fix-and-retry / Override / Cancel when auto-repair does not resolve the defect.
 
-Limit `design-step5c.sh --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Fix-and-retry re-runs `design-step5c.sh` without `--skip-validate` so command validation reruns on the operator-edited `composed-plan.md`. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
+Limit `design-step5c.sh --fresh-attempt --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Fix-and-retry re-runs `design-step5c.sh --fresh-attempt` without `--skip-validate` so command validation reruns on the operator-edited `composed-plan.md`. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
 
 Compatibility grep note: `design-step35-settle.sh` calls `design-step2b-postplan.sh --site gate-b` internally through the launcher mapping to `python/cli.py design step2b-postplan --site gate-b`.

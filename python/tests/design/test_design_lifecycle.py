@@ -18,6 +18,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from larch import io as larch_io
 from larch.core import config
 from larch.design import design_dialectic
 from larch.design import design_lifecycle
@@ -4405,7 +4406,9 @@ def test_step5c_core_requires_step5b_result_env(tmp_path: Path, monkeypatch: pyt
     env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42")
     rc, _ = design_lifecycle.step5c_core(["--session-env-path", str(env_path), "--claude-pid", "123"])
     assert rc == 1
-    assert not (design / ".design-step5c-status.env").exists()
+    status = larch_io.read_kvs(design / ".design-step5c-status.env")
+    assert status["PUBLISH_RC"] == "not-run"
+    assert status["CLEANUP_ELIGIBLE"] == "false"
 
 
 def test_step5c_core_allows_publish_to_complete_step5b5_result_env(
@@ -4465,7 +4468,9 @@ def test_step5c_core_pause_requested_skips_publish_and_marker(
     assert rc == 12
     assert called == [["--design-tmpdir", str(design), "--issue", "42", "--repo", "owner/repo"]]
     assert True
-    assert not (design / ".design-step5c-status.env").exists()
+    status = larch_io.read_kvs(design / ".design-step5c-status.env")
+    assert status["PUBLISH_RC"] == "not-run"
+    assert status["CLEANUP_ELIGIBLE"] == "false"
 
 
 def test_step5c_core_pause_requested_emits_step5c_status(
@@ -4489,7 +4494,9 @@ def test_step5c_core_pause_requested_emits_step5c_status(
     assert rc == 0
     assert "STEP5C_STATUS=pause-save" in contract
     assert "PAUSE_OK=true" in contract
-    assert not (design / ".design-step5c-status.env").exists()
+    status = larch_io.read_kvs(design / ".design-step5c-status.env")
+    assert status["PUBLISH_RC"] == "not-run"
+    assert status["CLEANUP_ELIGIBLE"] == "false"
 
 
 def test_step5c_core_assembles_publish_argv_and_writes_merge_status(

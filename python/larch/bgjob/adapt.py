@@ -45,6 +45,14 @@ class ProcessState:
     identity_mismatch: bool
 
 
+@dataclass(frozen=True)
+class AdaptOptions:
+    """Workflow-neutral controls applied under the adapter decision lock."""
+
+    clear_on_fresh: Path | None = None
+    replace_completed_result: bool = False
+
+
 def _close_adapter_locks_after_fork() -> None:
     for fd in tuple(_FORK_CLOSE_FDS):
         with contextlib.suppress(OSError):
@@ -313,6 +321,78 @@ def _prepare_launch_spec(spec: model.JobSpec) -> model.JobSpec:
     return replace(spec, command=command, merge_result_env=merge_env)
 
 
+def _validated_clear_path(*, spec: model.JobSpec, candidate: Path) -> Path:
+    try:
+        path = model.ensure_under(candidate, spec.tmpdir, label="clear-on-fresh")
+    except (OSError, ValueError) as exc:
+        raise AdaptError("unsafe-path") from exc
+    if candidate.is_symlink() or path.is_symlink():
+        raise AdaptError("unsafe-path")
+    if path.exists() and not path.is_file():
+        raise AdaptError("unsafe-path")
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        raise AdaptError("unsafe-path")
+    return path
+
+
+def _unlink_regular_under(*, path: Path, root: Path, failure_reason: str) -> None:
+    try:
+        parent = larch_io.validate_trusted_directory(path.parent, root=root)
+        parent_fd = os.open(parent, _directory_open_flags())
+    except (OSError, ValueError) as exc:
+        raise AdaptError("unsafe-path") from exc
+    try:
+        opened_parent = os.fstat(parent_fd)
+        current_parent = parent.stat(follow_symlinks=False)
+        if (opened_parent.st_dev, opened_parent.st_ino) != (
+            current_parent.st_dev,
+            current_parent.st_ino,
+        ):
+            raise AdaptError("unsafe-path")
+        try:
+            current = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if not stat.S_ISREG(current.st_mode):
+            raise AdaptError("unsafe-path")
+        os.unlink(path.name, dir_fd=parent_fd)
+        try:
+            _ = os.stat(path.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        raise AdaptError(failure_reason)
+    except OSError as exc:
+        raise AdaptError(failure_reason) from exc
+    finally:
+        os.close(parent_fd)
+
+
+def _clear_before_fresh(*, spec: model.JobSpec, candidate: Path | None) -> None:
+    if candidate is None:
+        return
+    path = _validated_clear_path(spec=spec, candidate=candidate)
+    _unlink_regular_under(
+        path=path,
+        root=spec.tmpdir,
+        failure_reason="clear-on-fresh-failed",
+    )
+
+
+def _invalidate_completed_result(*, spec: model.JobSpec) -> None:
+    try:
+        root = model.bgjob_dir(spec.tmpdir)
+        result = model.result_env_path(tmpdir=spec.tmpdir, step=spec.step)
+        if not larch_io.trusted_file_present(result, root=root):
+            return
+        _unlink_regular_under(
+            path=result,
+            root=spec.tmpdir,
+            failure_reason="result-clear-failed",
+        )
+    except (OSError, ValueError) as exc:
+        raise AdaptError("unsafe-path") from exc
+
+
 def _plugin_root_from_file(*, path: Path, key: str) -> str:
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise AdaptError("plugin-root-invalid")
@@ -355,7 +435,7 @@ def _rehydrate_plugin_root(tmpdir: Path) -> Path:
     return resolved
 
 
-def _start_fresh(spec: model.JobSpec) -> int:
+def _start_fresh(spec: model.JobSpec, *, options: AdaptOptions) -> int:
     _ = _rehydrate_plugin_root(spec.tmpdir)
     if _result_or_none(spec=spec):
         return 0
@@ -364,6 +444,7 @@ def _start_fresh(spec: model.JobSpec) -> int:
         raise AdaptError("registry-replaced")
     if _result_or_none(spec=spec):
         raise AdaptError("result-emitted")
+    _clear_before_fresh(spec=spec, candidate=options.clear_on_fresh)
     launch_spec = _prepare_launch_spec(spec)
     if _result_or_none(spec=spec):
         raise AdaptError("result-emitted")
@@ -387,6 +468,7 @@ def _handle_expired(
     snapshot: RegistrySnapshot,
     daemon_state: ProcessState,
     child_state: ProcessState,
+    options: AdaptOptions,
 ) -> int:
     if daemon_state.live:
         raise AdaptError("expired-live")
@@ -399,7 +481,7 @@ def _handle_expired(
     _clear_expired(spec=spec, snapshot=snapshot)
     if _result_or_none(spec=spec):
         return 0
-    return _start_fresh(spec)
+    return _start_fresh(spec, options=options)
 
 
 def _handle_active(
@@ -429,17 +511,40 @@ def _handle_active(
     return 0
 
 
-def _decide_locked(spec: model.JobSpec) -> int:
-    if _result_or_none(spec=spec):
+def _replacement_registry_check(*, spec: model.JobSpec, snapshot: RegistrySnapshot) -> None:
+    if snapshot.invalid:
+        raise AdaptError("registry-invalid")
+    entry = snapshot.entry
+    if entry is None:
+        return
+    _validate_entry(spec=spec, entry=entry)
+    daemon_state = _process_state(registry.daemon_liveness(entry))
+    child_state = _process_state(registry.child_liveness(entry))
+    if daemon_state.live or child_state.live:
+        raise AdaptError("replace-active")
+    if not daemon_state.proven_dead or not child_state.proven_dead:
+        raise AdaptError("registry-identity-unverifiable")
+    raise AdaptError("registry-dead")
+
+
+def _decide_locked(spec: model.JobSpec, *, options: AdaptOptions) -> int:
+    completed = _read_completed_result(spec=spec)
+    if completed is not None and not options.replace_completed_result:
+        _emit_done(completed)
         return 0
     snapshot = _snapshot_registry(spec=spec)
+    if options.replace_completed_result:
+        _replacement_registry_check(spec=spec, snapshot=snapshot)
+    if completed is not None:
+        _invalidate_completed_result(spec=spec)
+        snapshot = _snapshot_registry(spec=spec)
     if snapshot.invalid:
         raise AdaptError("registry-invalid")
     entry = snapshot.entry
     if entry is None:
         if _result_or_none(spec=spec):
             raise AdaptError("result-emitted")
-        return _start_fresh(spec)
+        return _start_fresh(spec, options=options)
     _validate_entry(spec=spec, entry=entry)
     daemon_state = _process_state(registry.daemon_liveness(entry))
     child_state = _process_state(registry.child_liveness(entry))
@@ -449,6 +554,7 @@ def _decide_locked(spec: model.JobSpec) -> int:
             snapshot=snapshot,
             daemon_state=daemon_state,
             child_state=child_state,
+            options=options,
         )
     return _handle_active(
         spec=spec,
@@ -459,11 +565,11 @@ def _decide_locked(spec: model.JobSpec) -> int:
     )
 
 
-def start_or_reattach(spec: model.JobSpec) -> int:
+def start_or_reattach(spec: model.JobSpec, *, options: AdaptOptions | None = None) -> int:
     """Start a step daemon or emit the matching existing job/result contract."""
     try:
         with _decision_lock(run_id=spec.run_id, step=spec.step):
-            return _decide_locked(spec)
+            return _decide_locked(spec, options=options or AdaptOptions())
     except AdaptError as exc:
         if exc.token == "result-emitted":
             return 0

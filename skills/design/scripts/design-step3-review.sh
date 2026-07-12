@@ -11,7 +11,28 @@ SITE=""
 SUMMARY_OUTCOME="${SUMMARY_OUTCOME:-}"
 SKIP_VALIDATE=""
 PUBLIC_ARGV_WORDS=()
-RUN_LOOP_CHILD=false
+BGJOB_CHILD=false
+MERGE_RESULT_ENV=""
+ORIGINAL_ARGS=("$@")
+
+_arg_count=${#ORIGINAL_ARGS[@]}
+if [ "$_arg_count" -ge 3 ] \
+  && [ "${ORIGINAL_ARGS[$((_arg_count - 3))]}" = "--bgjob-child" ] \
+  && [ "${ORIGINAL_ARGS[$((_arg_count - 2))]}" = "--merge-result-env" ] \
+  && [ -n "${ORIGINAL_ARGS[$((_arg_count - 1))]}" ]; then
+  BGJOB_CHILD=true
+  MERGE_RESULT_ENV="${ORIGINAL_ARGS[$((_arg_count - 1))]}"
+  set -- "${ORIGINAL_ARGS[@]:0:$((_arg_count - 3))}"
+  ORIGINAL_ARGS=("$@")
+fi
+for _adapter_control in "$@"; do
+  case "$_adapter_control" in
+    --bgjob-child|--merge-result-env)
+      printf '%s\n' 'design-step3-review.sh: adapter child controls must be one terminal suffix' >&2
+      exit 2
+      ;;
+  esac
+done
 
 # Prompt-side values may be supplied only as environment variables by Claude Code.
 # Default them before sourced session env overrides to preserve the old inline-fence no-set-u behavior.
@@ -65,7 +86,6 @@ while [ "$#" -gt 0 ]; do
     --snapshot-original) SNAPSHOT_ORIGINAL=true; shift ;;
     --outcome) SUMMARY_OUTCOME="$2"; shift 2 ;;
     --skip-validate) SKIP_VALIDATE=1; shift ;;
-    --run-loop-child) RUN_LOOP_CHILD=true; shift ;;
     --starting-round)
       if [ "$#" -lt 2 ]; then
         printf '%s\n' 'design-step3-review.sh: --starting-round requires a non-empty positive integer' >&2
@@ -138,15 +158,16 @@ design_require_plugin_root() {
   export CLAUDE_PLUGIN_ROOT
 }
 
-design_source_env_optional() {
-  if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-    # shellcheck source=/dev/null
-    . "$SESSION_ENV_PATH"
-  fi
-}
-
-design_source_env_optional
 design_require_plugin_root
+if [ -n "${SESSION_ENV_PATH:-}" ]; then
+  _resolver_args=(--resolve-session-env --session-env-path "$SESSION_ENV_PATH")
+  [ -n "${CLAUDE_PID:-}" ] && _resolver_args[${#_resolver_args[@]}]=--owner-pid && _resolver_args[${#_resolver_args[@]}]="$CLAUDE_PID"
+  _resolved_session_env="$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob adapt "${_resolver_args[@]}")" || {
+      printf '%s\n' "${_resolved_session_env:-BGJOB_ERROR=session-env-resolution-failed}"
+      exit 2
+    }
+  eval "$_resolved_session_env"
+fi
 larch_err() { printf '%s\n' "$*" >&2; }
 
 STEP3_REVIEW_HAS_RESUME_STATE=false
@@ -212,17 +233,6 @@ step3_review_validate_resume_state() {
   fi
 }
 
-step3_review_recreate_merge_env() {
-  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR" <<'PY'
-from pathlib import Path
-import sys
-
-from larch.design.design_terminal import phase_driver_recreate_result_env
-
-phase_driver_recreate_result_env(path=Path(sys.argv[1]), design_tmpdir=Path(sys.argv[2]))
-PY
-}
-
 step3_review_write_resume_state() {
   local _phase_file _phase_tmp _approval_env _approval_tmp _continue_file _continue_tmp
   [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] || return 0
@@ -246,24 +256,6 @@ step3_review_write_resume_state() {
   fi
 }
 
-step3_review_bgjob_registry_state() {
-  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR" <<'PY'
-from pathlib import Path
-import sys
-from larch.bgjob import registry
-
-path, entry = registry.read_for(tmpdir=Path(sys.argv[1]), step="design-step3-review")
-if entry is None:
-    print("missing")
-    raise SystemExit(0)
-if registry.daemon_liveness(entry).live:
-    print("live")
-    raise SystemExit(0)
-registry.unlink_entry(path)
-print("cleared")
-PY
-}
-
 step3_review_prelaunch_failure() {
   local _reason="${1:-scope-anchor-missing}"
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review prelaunch-failure \
@@ -271,26 +263,47 @@ step3_review_prelaunch_failure() {
     --reason "$_reason"
 }
 
-step3_review_child_args() {
-  printf '%s\0' bash "$0" --run-loop-child --plugin-root "$CLAUDE_PLUGIN_ROOT"
-  if [ -n "${SESSION_ENV_PATH:-}" ]; then
-    printf '%s\0' --session-env-path "$SESSION_ENV_PATH"
-  fi
-  if [ -n "${CLAUDE_PID:-}" ]; then
-    printf '%s\0' --claude-pid "$CLAUDE_PID"
-  fi
-  if [ "$STARTING_ROUND_SEEN" = true ]; then
-    printf '%s\0' --starting-round "$STARTING_ROUND"
-  fi
-  if [ "$RESUME_PHASE_SEEN" = true ]; then
-    printf '%s\0' --phase "$RESUME_PHASE"
-  fi
-  if [ "$RESUME_FINDINGS_FILE_SEEN" = true ]; then
-    printf '%s\0' --findings-file "$RESUME_FINDINGS_FILE"
-  fi
-  if [ "${POSTPLAN_OPERATOR_CONTINUE:-false}" = true ]; then
-    printf '%s\0' --postplan-operator-continue
-  fi
+step3_review_publish_merge() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - \
+    "$DESIGN_TMPDIR/.step3-review-result.env" "$MERGE_RESULT_ENV" "$DESIGN_TMPDIR" <<'PY'
+import stat
+import sys
+from pathlib import Path
+
+from larch import io as larch_io
+from larch.design.design_core import design_write_merge_env
+
+source, destination, root = Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+current = source.lstat()
+if not stat.S_ISREG(current.st_mode):
+    raise SystemExit(1)
+values = larch_io.read_kvs(source, reject_cr=True, reject_symlink=True)
+if not values.get("NEXT_ACTION") or not (values.get("STEP3_REVIEW_LOOP_STATUS") or values.get("LOOP_STATUS")):
+    raise SystemExit(1)
+design_write_merge_env(path=destination, design_tmpdir=root, rows=values.items())
+PY
+}
+
+step3_review_write_pause_result() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - \
+    "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR" <<'PY'
+import sys
+from pathlib import Path
+
+from larch.design.design_core import design_write_merge_env
+
+path, root = Path(sys.argv[1]), Path(sys.argv[2])
+design_write_merge_env(
+    path=path,
+    design_tmpdir=root,
+    rows=[
+        ("NEXT_ACTION", "pause-save"),
+        ("STEP3_REVIEW_LOOP_STATUS", "pause-save"),
+        ("LOOP_STATUS", "pause-save"),
+        ("PAUSE_OK", "true"),
+    ],
+)
+PY
 }
 
 if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
@@ -308,60 +321,34 @@ step3_review_validate_resume_state
 if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ]; then
   step3_review_write_resume_state
 fi
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-
-if [ "$RUN_LOOP_CHILD" = false ]; then
-  _result_env="$DESIGN_TMPDIR/bgjob/design-step3-review.result.env"
-  if [ -L "$_result_env" ]; then
-    printf '%s\n' 'design-step3-review.sh: existing bgjob result env must not be a symlink' >&2
-    exit 1
-  fi
-  if [ -e "$_result_env" ] && [ ! -f "$_result_env" ]; then
-    printf '%s\n' 'design-step3-review.sh: existing bgjob result env must be a regular file' >&2
-    exit 1
-  fi
-  if [ -f "$_result_env" ]; then
-    exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
-      --step design-step3-review \
-      --tmpdir "$DESIGN_TMPDIR" \
-      --max-wait-s 0
-  fi
-  _registry_state="$(step3_review_bgjob_registry_state)" || {
-    printf '%s\n' 'BGJOB_ERROR=registry-check-failed'
-    exit 2
-  }
-  if [ "$_registry_state" = live ]; then
-    exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
-      --step design-step3-review \
-      --tmpdir "$DESIGN_TMPDIR" \
-      --max-wait-s 0
-  fi
-  if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
-    rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
-  else
-    rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
-  fi
-  mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
-  rm -f "$DESIGN_TMPDIR/bgjob/design-step3-review.result.env" 2>/dev/null || true
-  step3_review_recreate_merge_env
-
-  _owner_args=()
-  if [ -n "${CLAUDE_PID:-}" ]; then
-    _owner_args=(--owner-pid "$CLAUDE_PID")
-  fi
-  _child_argv_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-child-argv.XXXXXX")" || {
-    printf '%s\n' 'BGJOB_ERROR=child-argv-tempfile-failed'
-    exit 2
-  }
-  step3_review_child_args >"$_child_argv_file"
-  # Bash 3.2 has no readarray; use xargs -0 to preserve the validated argv cells.
-  exec xargs -0 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+if [ "$BGJOB_CHILD" = false ]; then
+  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  _adapt_args=(
     --step design-step3-review \
     --tmpdir "$DESIGN_TMPDIR" \
-    --budget-s 21600 \
-    "${_owner_args[@]}" \
-    --merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env" \
-    -- <"$_child_argv_file"
+    --budget-s 21600
+  )
+  [ -n "${CLAUDE_PID:-}" ] && _adapt_args[${#_adapt_args[@]}]=--owner-pid && _adapt_args[${#_adapt_args[@]}]="$CLAUDE_PID"
+  [ -n "${SESSION_ENV_PATH:-}" ] && _adapt_args[${#_adapt_args[@]}]=--session-env-path && _adapt_args[${#_adapt_args[@]}]="$SESSION_ENV_PATH"
+  [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] && _adapt_args[${#_adapt_args[@]}]=--replace-completed-result
+  _adapt_args[${#_adapt_args[@]}]=--clear-on-fresh
+  _adapt_args[${#_adapt_args[@]}]="$DESIGN_TMPDIR/.completed/step-3"
+  exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob adapt "${_adapt_args[@]}" -- bash "$0" "${ORIGINAL_ARGS[@]}"
+fi
+
+STEP3_PRIOR_SIDECAR=""
+if [ -e "$DESIGN_TMPDIR/.step3-review-result.env" ] || [ -L "$DESIGN_TMPDIR/.step3-review-result.env" ]; then
+  [ -f "$DESIGN_TMPDIR/.step3-review-result.env" ] && [ ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ] || exit 1
+  STEP3_PRIOR_SIDECAR="$DESIGN_TMPDIR/.step3-review-result.env.prior.$$"
+  mv "$DESIGN_TMPDIR/.step3-review-result.env" "$STEP3_PRIOR_SIDECAR"
+fi
+
+if [ -f "$DESIGN_TMPDIR/.pause-requested" ]; then
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+  step3_review_write_pause_result
+  step3_review_publish_merge
+  [ -z "$STEP3_PRIOR_SIDECAR" ] || rm -f "$STEP3_PRIOR_SIDECAR"
+  exit 0
 fi
 
 if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" scope-anchor validate \
@@ -370,8 +357,9 @@ if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" scope-anchor validate \
   --path "$DESIGN_TMPDIR/plan-review-scope-anchor.txt" >/dev/null; then
   larch_err "**⚠ Step 3: plan-review-scope-anchor.txt is missing, empty, invalid, or outside DESIGN_TMPDIR; treating plan review as panel-init-failed before launch**"
   step3_review_prelaunch_failure scope-anchor-missing
-  printf '%s\n' 'SUMMARY_OUTCOME=failed-judge-panel'
-  exit 1
+  step3_review_publish_merge
+  [ -z "$STEP3_PRIOR_SIDECAR" ] || rm -f "$STEP3_PRIOR_SIDECAR"
+  exit 0
 fi
 
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
@@ -404,4 +392,6 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
   --stdout-file "$_plan_review_stdout_file" \
   --loop-rc "$_plan_review_rc" || _step3_normalize_rc=$?
 rm -f "$_plan_review_stdout_file"
-exit "$_step3_normalize_rc"
+step3_review_publish_merge || exit 1
+[ -z "$STEP3_PRIOR_SIDECAR" ] || rm -f "$STEP3_PRIOR_SIDECAR"
+exit 0

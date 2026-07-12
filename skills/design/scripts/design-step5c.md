@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Bgjob launcher for the `/design` Step 5c Python entrypoint.
+Adapter-backed `/design` Step 5c launcher.
 
 ## Primary callers
 
@@ -10,16 +10,15 @@ Bgjob launcher for the `/design` Step 5c Python entrypoint.
 
 ## Invariants
 
-- Derives and exports `CLAUDE_PLUGIN_ROOT` when needed.
-- Accepts prompt-side wrapper flags and forwards them unchanged to child `python/cli.py design step5c`.
-- Fresh launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step5c PGID=<n>`.
-- Before fresh `bgjob start`, reuses only a live identity-valid `design-step5c` registry row; stale or terminal result envs are cleared before fresh start.
-- Recreates `$DESIGN_TMPDIR/.design-step5c-status.env`, removes stale `$DESIGN_TMPDIR/bgjob/design-step5c.result.env`, then passes that merge env to `bgjob start`.
-- The Python entrypoint owns source-env rehydration, pause-save handling, publish-tail orchestration, final-summary markers, status artifacts, `.completed/step-5c`.
-- `.design-step5c-status.env` remains the legacy status sidecar and is also the bgjob merge-result env.
-- `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` is completion truth after `bgjob wait` `DONE`.
-- `python/cli.py design publish` remains the library/legacy publish-tail verb.
+- Resolves a supplied session env through the trusted bgjob resolver before parent routing or tmpdir use. It never sources the file.
+- Delegates lifecycle decisions to `bgjob adapt` with step `design-step5c`, explicit tmpdir, 21600-second budget, session path, and optional owner PID.
+- Ordinary calls reattach a valid completed result. The wrapper-private `--fresh-attempt` control maps to `--replace-completed-result` only for documented repair and refusal retries.
+- Never forwards `--fresh-attempt` to `python/cli.py design step5c`. It preserves all other public argv cells.
+- Accepts child mode only as the terminal `--bgjob-child --merge-result-env <path>` suffix.
+- The child requires the authoritative `.design-step5c-status.env` to contain publish, validation, final-summary, and cleanup rows, then atomically copies those rows to the adapter merge env.
+- Missing Step 5b, pause, publish refusal, validation failure, and success all write the authoritative status envelope before return.
+- `$DESIGN_TMPDIR/bgjob/design-step5c.result.env` remains the prompt-side completion source after `bgjob wait` reports `DONE`.
 
 ## Harness
 
-Covered by `make test-design-structure`, `skills/design/scripts/test-design-step5c.sh`, and `python/test_design_lifecycle.py`.
+Covered by `make test-design-step5c` and `make test-design-structure`.

@@ -350,6 +350,13 @@ def _step5c_write_status(
         ("PUBLISH_RC", str(publish_rc)),
         ("PUBLISH_STDOUT_FALLBACK", "true" if publish_stdout_fallback else "false"),
         ("CLEANUP_ELIGIBLE", "true" if cleanup_eligible else "false"),
+        ("VALIDATE_STATUS", result_env.get("VALIDATE_STATUS", "")),
+        ("VALIDATE_DEFECT_COUNT", result_env.get("VALIDATE_DEFECT_COUNT", "")),
+        ("VALIDATE_SKIPPED_COUNT", result_env.get("VALIDATE_SKIPPED_COUNT", "")),
+        ("VALIDATE_UNSAFE_TOKEN_COUNT", result_env.get("VALIDATE_UNSAFE_TOKEN_COUNT", "")),
+        ("VALIDATE_MISSING_SCRIPT_COUNT", result_env.get("VALIDATE_MISSING_SCRIPT_COUNT", "")),
+        ("VALIDATE_LOG_FILE", result_env.get("VALIDATE_LOG_FILE", "")),
+        ("FINAL_SUMMARY_PATH", result_env.get("FINAL_SUMMARY_PATH", "")),
     ]
     rows.extend(
         (key, result_env.get(key, ""))
@@ -624,9 +631,27 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
             _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b: OOS filing incomplete; repair Step 5b before publish**")
+            _step5c_write_status(
+                design_tmpdir=design_tmpdir,
+                ctx=ctx,
+                publish_rc="not-run",
+                publish_stdout_fallback=False,
+                plan_write_ok="",
+                publish_ok="",
+                cleanup_eligible=False,
+            )
             return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
             pause_rc = _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx)
+            _step5c_write_status(
+                design_tmpdir=design_tmpdir,
+                ctx=ctx,
+                publish_rc="not-run",
+                publish_stdout_fallback=False,
+                plan_write_ok="",
+                publish_ok="",
+                cleanup_eligible=False,
+            )
             logging_util.emit_kv(key="STEP5C_STATUS", value="pause-save")
             return pause_rc, []
 
@@ -761,6 +786,15 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             rre_rc, result_env, stdout_fallback = _step5c_safe_publish_env(design_tmpdir=design_tmpdir, publish_rc=publish_rc, publish_stdout_file=publish_stdout_file)
             if rre_rc != 0:
                 _core_diagnostic("**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**")
+                _step5c_write_status(
+                    design_tmpdir=design_tmpdir,
+                    ctx=ctx,
+                    publish_rc=publish_rc,
+                    publish_stdout_fallback=stdout_fallback,
+                    plan_write_ok="",
+                    publish_ok="",
+                    cleanup_eligible=False,
+                )
                 return 1, []
             final_summary_path = result_env.get("FINAL_SUMMARY_PATH", "")
             summary_emit_path = final_summary_path or str(design_tmpdir / "final-summary.md")

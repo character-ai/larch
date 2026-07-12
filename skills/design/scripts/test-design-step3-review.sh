@@ -27,19 +27,35 @@ REAL_CLI = os.path.join(REAL_ROOT, "python", "cli.py")
 def delegate() -> int:
     return subprocess.call([sys.executable, REAL_CLI, *sys.argv[1:]])
 
-if len(sys.argv) >= 3 and sys.argv[1] == "bgjob" and sys.argv[2] == "start":
+if len(sys.argv) >= 4 and sys.argv[1:4] == ["bgjob", "adapt", "--resolve-session-env"]:
+    raise SystemExit(delegate())
+if len(sys.argv) >= 3 and sys.argv[1] == "bgjob" and sys.argv[2] == "adapt":
     step = sys.argv[sys.argv.index("--step") + 1]
     tmpdir = sys.argv[sys.argv.index("--tmpdir") + 1]
-    merge_env = sys.argv[sys.argv.index("--merge-result-env") + 1]
+    merge_env = os.path.join(tmpdir, "bgjob", f"{step}.merge.env")
     command = sys.argv[sys.argv.index("--") + 1 :]
     result_dir = os.path.join(tmpdir, "bgjob")
     os.makedirs(result_dir, exist_ok=True)
     result_env = os.path.join(result_dir, f"{step}.result.env")
-    try:
-        os.unlink(result_env)
-    except FileNotFoundError:
-        pass
-    rc = subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.path.isfile(result_env) and "--replace-completed-result" not in sys.argv:
+        print("BGJOB_STATUS=DONE")
+        with open(result_env, encoding="utf-8") as handle:
+            print(handle.read(), end="")
+        raise SystemExit(0)
+    if "--replace-completed-result" in sys.argv:
+        try:
+            os.unlink(result_env)
+        except FileNotFoundError:
+            pass
+    if "--clear-on-fresh" in sys.argv:
+        clear_path = sys.argv[sys.argv.index("--clear-on-fresh") + 1]
+        try:
+            os.unlink(clear_path)
+        except FileNotFoundError:
+            pass
+    Path = __import__("pathlib").Path
+    Path(merge_env).write_text("", encoding="utf-8")
+    rc = subprocess.call([*command, "--bgjob-child", "--merge-result-env", merge_env], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.environ.get("FAKE_STEP3_EMPTY") == "1" and rc == 0:
         # Emulate the daemon's invalid-result path so the stale-merge regression
         # can assert the non-success routing branch.
@@ -122,11 +138,14 @@ grep -Fq 'design-step3-review.result.env' "$NORMALIZE_MODULE" || fail 'normalize
 grep -Fq 'bgjob/design-step3-review.result.env' "$SKILL_MD" || fail 'SKILL must name bgjob Step 3 result env'
 grep -Fq 'BGJOB_RC=0' "$SKILL_MD" || fail 'SKILL must gate Step 3 success on BGJOB_RC=0'
 grep -Fq 'bgjob wait --step design-step3-review' "$SKILL_MD" || fail 'SKILL must use chunked bgjob wait for Step 3'
-grep -Fq 'python/cli.py" bgjob start' "$WRAPPER" || fail 'wrapper must launch through bgjob start'
+grep -Fq 'python/cli.py" bgjob adapt' "$WRAPPER" || fail 'wrapper must launch through bgjob adapt'
 # shellcheck disable=SC2016
-grep -Fq -- '--merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env"' "$WRAPPER" || fail 'wrapper must pass Step 3 merge-result env'
-grep -Fq 'step3_review_recreate_merge_env' "$WRAPPER" || fail 'wrapper must recreate stale merge env safely before start'
-grep -Fq 'step3_review_bgjob_registry_state' "$WRAPPER" || fail 'wrapper must check live bgjob registry before start'
+grep -Fq -- '--clear-on-fresh' "$WRAPPER" || fail 'wrapper must request fresh-only clearing'
+grep -Fq "\"\$DESIGN_TMPDIR/.completed/step-3\"" "$WRAPPER" || fail 'wrapper must name the Step 3 marker for fresh-only clearing'
+grep -Fq -- '--bgjob-child|--merge-result-env' "$WRAPPER" || fail 'wrapper must parse the standard adapter child suffix'
+if grep -Fq 'step3_review_bgjob_registry_state' "$WRAPPER" || grep -Fq 'bgjob start' "$WRAPPER"; then
+  fail 'wrapper must not retain local registry policy or direct bgjob start'
+fi
 if grep -Fq 'plan-review write-loop-identity' "$WRAPPER" || grep -Fq 'plan-review teardown-loop-identity' "$WRAPPER"; then
   fail 'Step 3 wrapper must not retain legacy loop identity ownership after bgjob migration'
 fi

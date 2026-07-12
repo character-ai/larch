@@ -28,19 +28,33 @@ from pathlib import Path
 args = sys.argv[1:]
 if args[:3] == ["session", "validate-design-tmpdir", os.environ.get("DESIGN_TMPDIR", "")]:
     raise SystemExit(0)
-if args[:2] == ["bgjob", "start"]:
+if args[:2] == ["bgjob", "adapt"] and "--resolve-session-env" in args:
+    source = Path(args[args.index("--session-env-path") + 1])
+    print(source.read_text(encoding="utf-8"), end="")
+    raise SystemExit(0)
+if args[:2] == ["bgjob", "adapt"]:
     step = args[args.index("--step") + 1]
     tmpdir = Path(args[args.index("--tmpdir") + 1])
-    merge_env = Path(args[args.index("--merge-result-env") + 1])
+    merge_env = tmpdir / "bgjob" / f"{step}.merge.env"
     command = args[args.index("--") + 1 :]
     result_dir = tmpdir / "bgjob"
     result_dir.mkdir(exist_ok=True)
     result_env = result_dir / f"{step}.result.env"
-    try:
-        result_env.unlink()
-    except FileNotFoundError:
-        pass
-    rc = subprocess.call(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if result_env.is_file() and "--replace-completed-result" not in args:
+        print("BGJOB_STATUS=DONE")
+        print(result_env.read_text(encoding="utf-8"), end="")
+        raise SystemExit(0)
+    if "--replace-completed-result" in args:
+        try:
+            result_env.unlink()
+        except FileNotFoundError:
+            pass
+    merge_env.write_text("", encoding="utf-8")
+    rc = subprocess.call(
+        [*command, "--bgjob-child", "--merge-result-env", str(merge_env)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
     rows = [("BGJOB_RC", str(rc)), ("BGJOB_ELAPSED_S", "0"), ("STEP", step)]
     if merge_env.is_file() and not merge_env.is_symlink():
         for raw in merge_env.read_text(encoding="utf-8").splitlines():
@@ -67,7 +81,9 @@ if args[:2] == ["design", "step5c"]:
         Path(log).write_text(json.dumps(args) + "\n", encoding="utf-8")
     design_tmpdir = Path(os.environ["DESIGN_TMPDIR"])
     (design_tmpdir / ".design-step5c-status.env").write_text(
-        "PLAN_WRITE_OK=true\nPUBLISH_OK=true\nPUBLISH_RC=0\nCLEANUP_ELIGIBLE=true\n",
+        "PLAN_WRITE_OK=true\nPUBLISH_OK=true\nPUBLISH_RC=0\n"
+        "VALIDATE_STATUS=ok\nFINAL_SUMMARY_PATH=/tmp/final-summary.md\n"
+        "CLEANUP_ELIGIBLE=true\n",
         encoding="utf-8",
     )
     raise SystemExit(int(os.environ.get("DESIGN_STEP5C_STUB_RC", "0")))
@@ -109,7 +125,7 @@ if args[:6] != expected_prefix or "--skip-validate" not in args or args[-2:] != 
     print(f"FAIL: wrapper argv mismatch: {args!r}", file=sys.stderr)
     raise SystemExit(1)
 PY
-pass 'wrapper launches bgjob and child delegates to python/cli.py design step5c'
+pass 'wrapper launches bgjob adapt and child delegates to python/cli.py design step5c'
 
 grep -Fxq 'PLAN_WRITE_OK=true' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must merge Step 5c status rows'
 grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'bgjob result env must include BGJOB_RC'
@@ -124,12 +140,21 @@ stale_result=$(cat "$D/bgjob/design-step5c.result.env")
 out=$(CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$D" LARCH_BGJOB_REGISTRY_ROOT="$TMP/registry" \
   "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh" --session-env-path "$TMP/source-env.sh" --claude-pid $$)
 case "$out" in
-  BGJOB_STATUS=STARTED\ STEP=design-step5c\ PGID=*) ;;
-  *) fail "stale result env must trigger a fresh bgjob start, got: $out" ;;
+  BGJOB_STATUS=DONE*) ;;
+  *) fail "ordinary duplicate must reattach the completed result, got: $out" ;;
 esac
 new_result=$(cat "$D/bgjob/design-step5c.result.env")
-[ "$new_result" != "$stale_result" ] || fail 'fresh bgjob start must overwrite the stale result env'
-grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'fresh result env must contain the new bgjob result'
-pass 'stale bgjob result env is cleared before relaunch'
+[ "$new_result" = "$stale_result" ] || fail 'ordinary duplicate must preserve the terminal result env'
+pass 'ordinary duplicate reattaches without relaunch'
+
+out=$(CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" DESIGN_TMPDIR="$D" LARCH_BGJOB_REGISTRY_ROOT="$TMP/registry" \
+  "$FAKE_PLUGIN/skills/design/scripts/design-step5c.sh" --fresh-attempt \
+  --session-env-path "$TMP/source-env.sh" --claude-pid $$)
+case "$out" in
+  BGJOB_STATUS=STARTED\ STEP=design-step5c\ PGID=*) ;;
+  *) fail "explicit retry must start a fresh bgjob, got: $out" ;;
+esac
+grep -Fxq 'BGJOB_RC=0' "$D/bgjob/design-step5c.result.env" || fail 'fresh retry result env must contain the new bgjob result'
+pass 'explicit retry replaces the completed result'
 
 printf 'PASS: test-design-step5c.sh\n'

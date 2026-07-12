@@ -344,7 +344,7 @@ lint-awk-multibyte-regex:
 # New bash harnesses get appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5
 
-test-harnesses-1: test-write-final-report test-voter-calibration test-design-step3-review test-step-8-ship test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
+test-harnesses-1: test-write-final-report test-voter-calibration test-design-step3-review test-design-step3b-tail test-step-8-ship test-hook-stop-fail-close test-lint-bash32 test-cache-key-discipline test-references-headers test-check-stale-plugin test-implement-timing-rehydration test-implement-anti-halt test-orchestrator-scope-sync test-implement-step8-exit3-first-fixer test-anti-improvised-wakeup test-implement-positional-issue
 
 test-harnesses-2: test-harness-shards-coverage test-read-result-env test-lint-bare-grep-probe test-design-multi-round-integration test-sweep-design-logs test-lint-literal-counts test-deny-edit-write test-lint-no-raw-stderr-after-quiet-init test-rejected-analysis test-subskill-anchors test-research-angle-prompts test-triage-structure test-effort-prose
 
@@ -1305,7 +1305,7 @@ trufflehog:
 setup:
 	pre-commit install
 
-.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3-entry test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
+.PHONY: test-design-stage-terminal-state test-design-failure-report test-design-step-final-summary test-design-step3-review test-design-step3b-tail test-design-step3-entry test-design-step0-init test-design-step5c test-design-step6 test-design-step-validator-autofix
 
 test-design-stage-terminal-state:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/design/test_design_lifecycle.py -k 'stage_terminal_state or capture_contract or clarify_hard_halt'
@@ -1318,6 +1318,9 @@ test-design-step-final-summary:
 
 test-design-step3-review:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-review.sh
+
+test-design-step3b-tail:
+	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3b-tail.sh
 
 test-design-step3-entry:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/design/scripts/test-design-step3-entry.sh
