@@ -645,7 +645,7 @@ def test_load_ledger_quarantines_corrupt_lines(tmp_path: Path) -> None:
     assert list(tmp_path.glob("ledger.jsonl.corrupt-*"))
 
 
-def test_render_report_overrides_stale_deep_and_writes_follow_up(tmp_path: Path) -> None:
+def test_render_report_prefers_deep_verdict_over_mechanical_verdict(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
     body1 = run_dir / "issue-1-body.md"
@@ -718,13 +718,11 @@ def test_render_report_overrides_stale_deep_and_writes_follow_up(tmp_path: Path)
 
     report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
 
-    assert "NOT_FIXED" in report
+    assert "CONFIRMED_FIXED" in report
     assert "deep cap truncated this candidate" in report
     assert "ANALYZE_BUGS_COST_ESTIMATE=" in report
     assert (run_dir / "report.md").read_text(encoding="utf-8") == report
-    follow_up = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
-    assert "# Analyze-bugs follow-up" in follow_up
-    assert "#1: NOT_FIXED" in follow_up
+    assert not (run_dir / "follow-up-issue.md").exists()
 
 
 def test_render_report_surfaces_deep_verdict_after_mechanical_needs_deep(tmp_path: Path) -> None:

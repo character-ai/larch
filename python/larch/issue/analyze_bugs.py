@@ -642,9 +642,9 @@ def _marker_evidence(title: str, body: str) -> tuple[tuple[int, ...], str]:
     text = f"{title}\n{body}"
     fingerprint = hashlib.sha256(text.encode()).hexdigest()
     if not MARKER_PHRASE_RE.search(text):
-        return (), fingerprint
+        return (), ""
     references = tuple(sorted({int(match.group(1)) for match in ISSUE_REFERENCE_RE.finditer(text)}))
-    return references, fingerprint
+    return (references, fingerprint) if references else ((), "")
 
 
 def _fix_metadata(runner: Runner, *, fix_sha: str) -> tuple[int, int]:
@@ -1153,7 +1153,7 @@ def build_analytics_view(
     chosen: dict[int, AnalyticsCorpusRecord] = {}
     for row in corpus:
         record = row.record
-        if record.fix_time and not (window_start < record.fix_time <= generated_at):
+        if not record.fix_time or not (window_start < record.fix_time <= generated_at):
             continue
         previous = chosen.get(record.issue)
         key = (max(0, record.updated_at), row.append_ordinal)
@@ -1165,13 +1165,20 @@ def build_analytics_view(
         matching = next((row.record for row in reversed(corpus) if row.record.cache_key == bundle.cache_key), None)
         records[bundle.issue_number] = _analytics_record_from_bundle(bundle, matching)
 
-    hydrated: list[LedgerRecord] = []
+    hydrated: dict[str, LedgerRecord] = {}
     if runner is not None:
         for issue, record in tuple(records.items()):
-            if not record.fix_sha or (record.fix_time and record.touched_files):
+            persisted = record.ledger_record
+            if not record.fix_sha or (
+                persisted is not None
+                and persisted.metadata_version >= ANALYTICS_METADATA_VERSION
+                and persisted.fix_time > 0
+            ) or (persisted is None and record.fix_time > 0):
                 continue
             touched = record.touched_files or _touched_files(runner, fix_sha=record.fix_sha)
             fix_time, added_lines = _fix_metadata(runner, fix_sha=record.fix_sha)
+            if fix_time <= 0:
+                continue
             updated = AnalyticsRecord(
                 issue=record.issue,
                 cache_key=record.cache_key,
@@ -1187,6 +1194,16 @@ def build_analytics_view(
                 bundle=record.bundle,
             )
             records[issue] = updated
+            if persisted is not None:
+                hydrated[persisted.cache_key] = replace(
+                    persisted,
+                    touched_files=touched,
+                    fix_time=fix_time,
+                    added_lines=added_lines,
+                    zones=_zones_for_files(touched),
+                    baseline_extended=_baseline_extended(touched),
+                    metadata_version=ANALYTICS_METADATA_VERSION,
+                )
 
         repo = str(manifest.get("repo") or "")
         backfill_count = 0
@@ -1195,20 +1212,18 @@ def build_analytics_view(
                 break
             if record.bundle is not None or record.marker_fingerprint or not repo:
                 continue
-            backfill_count += 1
             references, fingerprint = _historical_marker_backfill(runner, repo=repo, issue=issue)
-            if not fingerprint:
+            if not references or not fingerprint:
                 continue
+            backfill_count += 1
             updated = replace(record, marker_references=references, marker_fingerprint=fingerprint)
             records[issue] = updated
             if record.ledger_record is not None:
-                hydrated.append(
-                    replace(
-                        record.ledger_record,
-                        marker_references=references,
-                        marker_fingerprint=fingerprint,
-                        metadata_version=ANALYTICS_METADATA_VERSION,
-                    )
+                hydrated[record.ledger_record.cache_key] = replace(
+                    record.ledger_record,
+                    marker_references=references,
+                    marker_fingerprint=fingerprint,
+                    metadata_version=ANALYTICS_METADATA_VERSION,
                 )
 
     marker_edges = {
@@ -1243,7 +1258,7 @@ def build_analytics_view(
 
     zone_members: dict[str, set[int]] = {}
     for record in records.values():
-        if record.fix_time and not (window_start < record.fix_time <= generated_at):
+        if not record.fix_time or not (window_start < record.fix_time <= generated_at):
             continue
         for zone in record.zones:
             zone_members.setdefault(zone, set()).add(record.issue)
@@ -1261,7 +1276,7 @@ def build_analytics_view(
         chronic_zones=tuple(chronic),
         churned_files=churned_files,
         baseline_issues=baseline_issues,
-        hydrated_records=tuple(hydrated),
+        hydrated_records=tuple(hydrated.values()),
     )
 
 
@@ -1677,10 +1692,10 @@ def ledger_main(argv: list[str]) -> int:
 
 
 def _final_verdict_with_tier(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, str, tuple[str, ...], bool]:
-    if bundle.mechanical_verdict and bundle.mechanical_verdict != "NEEDS_DEEP":
-        return bundle.mechanical_verdict, "MECH", bundle.mechanical_reason, (), False
     if record and record.deep_verdict:
         return record.deep_verdict, "DEEP", record.deep_reason, (), record.sampled
+    if bundle.mechanical_verdict and bundle.mechanical_verdict != "NEEDS_DEEP":
+        return bundle.mechanical_verdict, "MECH", bundle.mechanical_reason, (), False
     if _triage_complete(record, refresh=False) and record and record.triage_verdict:
         if record.triage_verdict in {"SUSPECT", "NEEDS_DEEP"} or record.triage_needs_deep:
             return "NEEDS_DEEP", "TRIAGE", record.triage_reason, record.triage_missing_items, record.sampled
@@ -1717,8 +1732,11 @@ def _previous_snapshot(run_dir: Path, *, repo: str, generated_at: int) -> RunSna
     if not runs_root.is_dir():
         return None
     for path in sorted(runs_root.glob("*/run-state.json")):
-        raw = _load_json(path)
-        snapshot = _snapshot_from_mapping(raw, path=path)
+        try:
+            raw = _load_json(path)
+            snapshot = _snapshot_from_mapping(raw, path=path)
+        except (AnalyzeBugsError, OSError, json.JSONDecodeError):
+            continue
         if snapshot.repo == repo and snapshot.generated_at < generated_at:
             candidates.append(snapshot)
     return max(candidates, key=lambda item: (item.generated_at, item.run_id), default=None)
