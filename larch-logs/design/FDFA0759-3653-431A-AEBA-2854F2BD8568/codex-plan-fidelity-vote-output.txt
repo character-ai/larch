@@ -1,0 +1,3 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- `remote_repo` returns only parsed GitHub owner/repo slugs or None, so it cannot supply the claimed malformed origin candidate.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- the canonical resolver already does not fall back when primary stdout is non-empty, and the required clarify invalid-primary mapping is covered by the accepted prior finding.
