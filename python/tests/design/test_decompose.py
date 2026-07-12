@@ -151,7 +151,7 @@ def test_close_original_redacts_and_preserves_comment_sentinel_on_close_failure(
     (dec / "partition-filed.md").write_text("## Piece 1\n- **Filed URL**: https://github.com/o/r/issues/101\n", encoding="utf-8")
     (dec / "dependency-migration.json").write_text(json.dumps({"schema_version": "1", "original_issue": 99, "repo": "o/r", "pieces": [{"piece": 1, "issue": 101, "repo": "o/r"}], "incoming": [], "outgoing": []}) + "\n", encoding="utf-8")
     (d / ".decompose-deps-migrated").touch()
-    monkeypatch.setattr(decompose, "_migration_postcondition", lambda _migration: True)
+    monkeypatch.setattr(decompose, "_migration_postcondition", lambda _migration: True)  # type: ignore[reportUnknownLambdaType]
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
@@ -301,7 +301,7 @@ def test_close_original_idempotent_when_already_closed(tmp_path: Path, monkeypat
     (dec / "partition-filed.md").write_text("## Piece 1\n- **Filed URL**: https://github.com/o/r/issues/101\n", encoding="utf-8")
     (dec / "dependency-migration.json").write_text(json.dumps({"schema_version": "1", "original_issue": 99, "repo": "o/r", "pieces": [{"piece": 1, "issue": 101, "repo": "o/r"}], "incoming": [], "outgoing": []}) + "\n", encoding="utf-8")
     (d / ".decompose-deps-migrated").touch()
-    monkeypatch.setattr(decompose, "_migration_postcondition", lambda _migration: True)
+    monkeypatch.setattr(decompose, "_migration_postcondition", lambda _migration: True)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     gh = bin_dir / "gh"
@@ -398,8 +398,8 @@ def test_migrate_dependencies_denies_before_github_calls(tmp_path: Path, monkeyp
     d = _design_tmp(tmp_path)
     (d / "source-env.sh").write_text("LARCH_RUN_ID=test\n", encoding="utf-8")
     calls: list[object] = []
-    monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (False, "denied"))
-    monkeypatch.setattr(decompose.proc, "run", lambda *_args, **_kwargs: calls.append(object()))
+    monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (False, "denied"))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(decompose.proc, "run", lambda *_args, **_kwargs: calls.append(object()))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     assert decompose.migrate_dependencies(design_tmpdir=d, original_issue="99", repo="o/r") == "authorization-denied"
     assert calls == []
@@ -418,11 +418,11 @@ def test_migrate_dependencies_replaces_incoming_and_outgoing_edges(tmp_path: Pat
     )
     (dec / "partition-deps.tsv").write_text("1\t2\n", encoding="utf-8")
     blocked_by: dict[int, set[int]] = {99: {7}, 101: set(), 102: {101}, 8: {99}}
-    monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))
+    monkeypatch.setattr(decompose.session_env, "check_live_mutation_auth", lambda **_kwargs: (True, "session"))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(
         decompose,
         "_read_dependencies",
-        lambda *, issue, repo: (tuple(sorted(blocked_by.get(issue, set()))), tuple(sorted(key for key, value in blocked_by.items() if issue in value))) if repo == "o/r" else ((), ()),
+        lambda *, issue, repo: (tuple(sorted(blocked_by.get(issue, set()))), tuple(sorted(key for key, value in blocked_by.items() if issue in value))) if repo == "o/r" else ((), ()),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     def mutate(*, remove: bool, blocked: int, blocker: int, repo: str) -> bool:

@@ -169,20 +169,20 @@
   },
   {
     "file": "larch/issue/issue_block.py",
+    "qualified_symbol": "_mutation_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_block.py",
+    "qualified_symbol": "_mutation_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_block.py",
     "qualified_symbol": "_repo",
     "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/issue/issue_block.py",
-    "qualified_symbol": "add_blocked_by_main",
-    "occurrence": 1,
-    "reason": "Legacy direct gh calls pending wrapper migration."
-  },
-  {
-    "file": "larch/issue/issue_block.py",
-    "qualified_symbol": "add_blocked_by_main",
-    "occurrence": 2,
     "reason": "Legacy direct gh calls pending wrapper migration."
   },
   {

@@ -486,7 +486,7 @@ def _dependency_numbers(result: proc.CommandResult) -> tuple[int, ...]:
     for row in rows:
         if not isinstance(row, dict):
             raise TypeError("dependency-read-invalid")
-        number = row.get("number")
+        number = cast("dict[str, object]", row).get("number")
         if isinstance(number, int) and number > 0:
             numbers.append(number)
         elif isinstance(number, str) and number.isdigit() and int(number) > 0:
