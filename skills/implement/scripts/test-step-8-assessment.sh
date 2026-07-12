@@ -677,6 +677,24 @@ else
   fail "fresh: kinds got=$KINDS_GOT"
 fi
 
+# --- bare re-author token is rejected by the adapter grammar (regression: #7144) ---
+# The Step 8 repair path once emitted a bare `re-author-required` with no bounded reason.
+# The grammar requires the reasoned three-part token, so the child fails coverage validation
+# and the adapter publishes fail-closed. The Python fix stops the coordinator from emitting
+# the bare form; this pins the adapter contract that still rejects it (versus the reasoned
+# form accepted by fresh-reauthor above).
+setup_impl bare-reauthor
+printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
+printf 'ARCHITECTURAL_ASSESSMENT_STATUS=re-author-required\nARCHITECTURAL_ASSESSMENT_RESULTS=invariants:re-author-required,guidelines:clean\n' \
+  >"$IMPL_TMP/.test-assessment-stdout"
+set +e
+BARE_OUT=$(run_helper 2>"$TMP_ROOT/bare-reauthor.err")
+BARE_RC=$?
+set -e
+assert_rc "$BARE_RC" 0 'bare-reauthor: adapter exits 0'
+assert_contains 'ASSESSMENT_STATUS=fail-closed' "$BARE_OUT" 'bare-reauthor: bare token fails closed'
+assert_contains 'coverage mismatch' "$(cat "$IMPL_TMP/child-stderr.txt" 2>/dev/null)" 'bare-reauthor: grammar rejects bare re-author token'
+
 # --- completed rejoin success ---
 setup_impl rejoin-ok
 FP_EXPECTED=$(expected_fingerprint)

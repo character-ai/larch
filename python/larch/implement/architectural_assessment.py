@@ -860,22 +860,38 @@ def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Pat
     """Repair a missing outcome sidecar without replacing a current durable note."""
     if _git_read(repo_root, ["rev-parse", "HEAD"]) != head_sha:
         raise _HeadDrift("HEAD changed before current-outcome repair")
+    # A note the repair path cannot certify is stale: invalidate it so the next pass
+    # re-materializes and re-authors (mirroring _persist_authored_results), and return
+    # a bounded re-author reason the Step 8 adapter grammar accepts, not a bare token
+    # that the grammar rejects and hard-stops the run as fail-closed. See #7144.
+    invalidator = (
+        architectural_guidelines.invalidate_invariant_implement_note
+        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        else architectural_guidelines.invalidate_implement_note
+    )
     metadata = architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_metadata(implement_tmpdir)
     note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_path(implement_tmpdir)
     state = metadata.get("ASSESSMENT_KIND", "")
     allowed = {"clean", "violation"} if kind == config.ASSESSMENT_KIND_INVARIANTS else {"clean", "deviation"}
     if state not in allowed:
-        return config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+        invalidator(implement_tmpdir)
+        return _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
     try:
         note = _read_regular(note_path, root=implement_tmpdir)
     except (OSError, UnicodeDecodeError, ValueError):
-        return config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+        invalidator(implement_tmpdir)
+        return _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA)
     if not architectural_guidelines.authored_outcome_valid(
         note=note,
         outcome=state,
         invariant=kind == config.ASSESSMENT_KIND_INVARIANTS,
     ):
-        return config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED
+        invalidator(implement_tmpdir)
+        return _reauthor_status(
+            config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH
+            if state == "clean"
+            else config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME
+        )
     if not _outcome_valid(kind, implement_tmpdir, metadata):
         result = AssessmentResult(kind, state, note, (), head_sha, metadata["BASE_REF"], "", "")
         _write_outcome(kind, implement_tmpdir=implement_tmpdir, result=result)

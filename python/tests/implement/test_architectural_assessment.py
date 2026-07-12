@@ -971,3 +971,86 @@ def test_discard_unavailable_coverage_uses_guideline_invalidator(monkeypatch: py
     monkeypatch.setattr(assessment.architectural_guidelines, "invalidate_implement_note", _fake_invalidate)
     assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_GUIDELINES, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
     assert invalidated == [tmp_path]
+
+
+def _repair_stubs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, kind: str, state: str, invalidated: list[Path]) -> None:
+    head = "a" * 40
+
+    def _head(*_args: object, **_kwargs: object) -> str:
+        return head
+
+    def _meta(_tmpdir: Path) -> dict[str, str]:
+        return {"BASE_REF": "origin/main", "ASSESSMENT_KIND": state}
+
+    def _note_path(_tmpdir: Path) -> Path:
+        return tmp_path / "note.md"
+
+    def _fake_invalidate(tmpdir: Path) -> None:
+        invalidated.append(tmpdir)
+
+    monkeypatch.setattr(assessment, "_git_read", _head)
+    if kind == config.ASSESSMENT_KIND_INVARIANTS:
+        monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _meta)
+        monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_path", _note_path)
+        monkeypatch.setattr(assessment.architectural_guidelines, "invalidate_invariant_implement_note", _fake_invalidate)
+    else:
+        monkeypatch.setattr(assessment.architectural_guidelines, "durable_note_metadata", _meta)
+        monkeypatch.setattr(assessment.architectural_guidelines, "durable_note_path", _note_path)
+        monkeypatch.setattr(assessment.architectural_guidelines, "invalidate_implement_note", _fake_invalidate)
+
+
+def test_repair_current_outcome_invalid_kind_reauthors_and_invalidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invalidated: list[Path] = []
+    _repair_stubs(monkeypatch, tmp_path, kind=config.ASSESSMENT_KIND_GUIDELINES, state="bogus", invalidated=invalidated)
+    status = assessment._repair_current_outcome(  # pyright: ignore[reportPrivateUsage]
+        config.ASSESSMENT_KIND_GUIDELINES, repo_root=tmp_path, implement_tmpdir=tmp_path, head_sha="a" * 40
+    )
+    assert status == assessment._reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)  # pyright: ignore[reportPrivateUsage]
+    assert invalidated == [tmp_path]
+
+
+def test_repair_current_outcome_unreadable_note_reauthors_and_invalidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invalidated: list[Path] = []
+    _repair_stubs(monkeypatch, tmp_path, kind=config.ASSESSMENT_KIND_INVARIANTS, state="clean", invalidated=invalidated)
+
+    def _unreadable(_path: Path, **_kwargs: object) -> str:
+        raise OSError("note unreadable")
+
+    monkeypatch.setattr(assessment, "_read_regular", _unreadable)
+    status = assessment._repair_current_outcome(  # pyright: ignore[reportPrivateUsage]
+        config.ASSESSMENT_KIND_INVARIANTS, repo_root=tmp_path, implement_tmpdir=tmp_path, head_sha="a" * 40
+    )
+    assert status == assessment._reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA)  # pyright: ignore[reportPrivateUsage]
+    assert invalidated == [tmp_path]
+
+
+def test_repair_current_outcome_clean_classification_mismatch_reauthors_and_invalidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invalidated: list[Path] = []
+    _repair_stubs(monkeypatch, tmp_path, kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", invalidated=invalidated)
+
+    def _note_text(_path: Path, **_kwargs: object) -> str:
+        return "clean note prose that mentions G-Py-4"
+
+    monkeypatch.setattr(assessment, "_read_regular", _note_text)
+    monkeypatch.setattr(assessment.architectural_guidelines, "authored_outcome_valid", lambda **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    status = assessment._repair_current_outcome(  # pyright: ignore[reportPrivateUsage]
+        config.ASSESSMENT_KIND_GUIDELINES, repo_root=tmp_path, implement_tmpdir=tmp_path, head_sha="a" * 40
+    )
+    assert status == assessment._reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)  # pyright: ignore[reportPrivateUsage]
+    assert invalidated == [tmp_path]
+
+
+def test_repair_current_outcome_non_clean_classification_mismatch_reauthors_and_invalidates(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    invalidated: list[Path] = []
+    _repair_stubs(monkeypatch, tmp_path, kind=config.ASSESSMENT_KIND_GUIDELINES, state="deviation", invalidated=invalidated)
+
+    def _note_text(_path: Path, **_kwargs: object) -> str:
+        return "deviation note prose"
+
+    monkeypatch.setattr(assessment, "_read_regular", _note_text)
+    monkeypatch.setattr(assessment.architectural_guidelines, "authored_outcome_valid", lambda **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    status = assessment._repair_current_outcome(  # pyright: ignore[reportPrivateUsage]
+        config.ASSESSMENT_KIND_GUIDELINES, repo_root=tmp_path, implement_tmpdir=tmp_path, head_sha="a" * 40
+    )
+    assert status == assessment._reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)  # pyright: ignore[reportPrivateUsage]
+    assert invalidated == [tmp_path]
