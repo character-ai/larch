@@ -233,37 +233,37 @@ def _run_specialized(skill: str) -> list[str]:
 
 def test_alias_structure_specialized() -> None:
     fails = _run_specialized("alias")
-    assert fails == [], fails
+    assert not fails, fails
 
 
 def test_bug_structure_specialized() -> None:
     fails = _run_specialized("bug")
-    assert fails == [], fails
+    assert not fails, fails
 
 
 def test_learn_from_bugs_structure_specialized() -> None:
     fails = _run_specialized("learn-from-bugs")
-    assert fails == [], fails
+    assert not fails, fails
 
 
 def test_design_structure_specialized() -> None:
     fails = _run_specialized("design")
-    assert fails == [], fails
+    assert not fails, fails
 
 
 def test_implement_structure_specialized() -> None:
     fails = _run_specialized("implement")
-    assert fails == [], fails
+    assert not fails, fails
 
 
 def test_research_structure_specialized() -> None:
     fails = _run_specialized("research")
-    assert fails == [], fails
+    assert not fails, fails
 
 
 def test_review_structure_specialized() -> None:
     fails = _run_specialized("review")
-    assert fails == [], fails
+    assert not fails, fails
 
 
 # ---------------------------------------------------------------------------
