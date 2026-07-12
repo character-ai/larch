@@ -291,8 +291,8 @@ def test_launch_assessment_does_not_retry_nonzero_exit(tmp_path: Path) -> None:
 def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     diff = tmp_path / "diff.txt"
     knowledge = tmp_path / "guidelines.md"
-    diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
-    knowledge.write_text("# G-Py-4\n", encoding="utf-8")
+    _ = diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
+    _ = knowledge.write_text("# G-Py-4\n", encoding="utf-8")
     evidence = assessment.MaterializedEvidence(
         kind=config.ASSESSMENT_KIND_GUIDELINES,
         head_sha="a" * 40,
@@ -306,11 +306,11 @@ def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.Mo
     )
     token = "ghp_" + "x" * 30
     launcher = _SequenceLauncher([assessment.LaunchResult(0, "", f"auth failed {tmp_path} {token}")])
-    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)
-    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)
-    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     assert assessment.run(
         kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path, launcher=launcher
@@ -325,8 +325,8 @@ def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.Mo
 def test_run_persists_sanitized_stderr_after_nonzero_launcher_exit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     diff = tmp_path / "diff.txt"
     knowledge = tmp_path / "guidelines.md"
-    diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
-    knowledge.write_text("# G-Py-4\n", encoding="utf-8")
+    _ = diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
+    _ = knowledge.write_text("# G-Py-4\n", encoding="utf-8")
     evidence = assessment.MaterializedEvidence(
         kind=config.ASSESSMENT_KIND_GUIDELINES,
         head_sha="a" * 40,
@@ -340,11 +340,11 @@ def test_run_persists_sanitized_stderr_after_nonzero_launcher_exit(monkeypatch: 
     )
     token = "ghp_" + "x" * 30
     launcher = _SequenceLauncher([assessment.LaunchResult(1, "", f"launcher failed {tmp_path} {token}")])
-    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)
-    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)
-    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)
-    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
     assert assessment.run(
         kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path, launcher=launcher
