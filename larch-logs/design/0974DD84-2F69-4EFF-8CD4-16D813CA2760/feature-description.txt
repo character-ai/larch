@@ -1,0 +1,46 @@
+# contract-unification [FEATURE] Parameterize the snapshot family by (root, prefix)
+
+Partition piece 3 of 3 split from #7002.
+
+**Scope**: Collapse the pre-coder vs pre-self-review snapshot twins in `python/larch/review/snapshot.py` into one implementation parameterized by (root, prefix). Each call site passes its own snapshot root and artifact prefix; behavior otherwise unchanged.
+
+**Firm headings**: python/larch/review/snapshot.py
+
+**Acceptance**:
+
+one parameterized snapshot family replaces the two twins; each call site preserves its current root and artifact prefix; the review pre-coder and pre-self-review flows behave identically (existing snapshot-exercising review tests pass unchanged); net line reduction; each drift-convergence change is called out for review.
+
+**Dependencies (from proposal)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Merge plan-review onto code-review machinery
+
+​#### Problem
+
+Plan review was ported beside, not onto, the code-review pipeline, so the two families re-implement the same stages in parallel.
+
+Voter dispatch: `agents/agent_voters.py` (659 lines) vs `review/plan_review_panel.py:682-1268` (~590) define parallel `DispatchState`/`VoterPromptResult`, byte-identical `_feedback_enabled`, ~40-line `_fresh_calibration_stats_file` variants, the same 14 `VOTER_*` final KVs, and the same parse-rate retry. Panel dispatch: `review_dispatch_panel.py` (943) vs `plan_review_panel.py:101-681`; `_resolved_model_for_row` exists in 3 copies (third in agent_voters.py:331) and has already drifted textually past the R0801 radar.
+
+Tally: `review_tally.py` (1,482) and `plan_review_tally.py` (1,056) both drive the shared `voting.py` primitives but each re-implements the per-item vote loop, classification-TSV row writing, score rows, and OOS artifact pooling; `_finding_oos_reroute_marker` is verbatim in both (review_tally.py:662, plan_review_tally.py:62). `snapshot.py` carries a third small twin family (pre-coder :60-845 vs pre-self-review :849-996, differing only in artifact prefix and root).
+
+​#### Goal
+
+A shared panel/voter dispatch layer (DispatchState, slot-row builders parameterized by topology key, model attribution, calibration snapshot, final-KV emitter) plus one per-item tally/adjudication engine over voting.py with family hooks. Both families become configuration plus prompts. Parameterize the snapshot family by (root, prefix).
+
+​#### Size
+
+About 5.4k lines involved; net reduction 1,200-1,800 lines, and voting-policy changes stop being two-site shotgun edits.
+
+​#### Dependencies
+
+Land after the FINDING/OOS block-grammar owner (same files; the merged tally should consume the single parser).
+

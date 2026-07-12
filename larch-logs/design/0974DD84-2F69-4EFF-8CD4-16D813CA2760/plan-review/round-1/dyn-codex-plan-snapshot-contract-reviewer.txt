@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	minor	correctness	python/larch/review/snapshot.py:_tracked_paths_vs_ref (296-309); python/tests/review/test_review_and_fix.py:2189-2207	Planned tests do not exercise the new shared staged/unstaged delta union	Existing self-review tests stub delta helpers, so staged-only or mixed staged/unstaged regressions can pass unnoticed	Add a focused git-fixture test covering staged-only, unstaged-only, and pre-existing delta exclusion for both snapshot facades
