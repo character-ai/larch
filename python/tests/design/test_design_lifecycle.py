@@ -83,6 +83,41 @@ def _fake_read_json_issue_t(*_args: object, **_kwargs: object) -> tuple[str, str
     return ("T", "body", "false")
 
 
+@pytest.mark.parametrize(
+    ("repo", "expected_argv"),
+    [
+        ("", ("gh", "issue", "view", "42", "--json", "body,labels,number,title")),
+        ("owner/repo", ("gh", "issue", "view", "42", "--json", "body,labels,number,title", "--repo", "owner/repo")),
+    ],
+)
+def test_read_json_issue_uses_canonical_wrapper_argv_and_parses_clarification_label(
+    repo: str,
+    expected_argv: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+    payload = {"title": "Title", "body": "body", "labels": [{"name": "other"}, {"name": "needs-design-clarification"}]}
+
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        calls.append(tuple(argv))
+        return CommandResult(tuple(argv), 0, json.dumps(payload), "", 0.0)
+
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+
+    assert design_step0._read_json_issue(issue_number="42", repo=repo) == ("Title", "body", "true")  # pyright: ignore[reportPrivateUsage]
+    assert calls == [expected_argv]
+
+
+def test_read_json_issue_raises_on_wrapper_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_proc_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
+        return CommandResult(tuple(argv), 1, "", "gh failed", 0.0)
+
+    monkeypatch.setattr(design_step0.proc, "run", fake_proc_run)
+
+    with pytest.raises(RuntimeError, match="gh issue view failed"):
+        design_step0._read_json_issue(issue_number="42", repo="owner/repo")  # pyright: ignore[reportPrivateUsage]
+
+
 def _step0_wrapper_args(env_path: Path) -> list[str]:
     return ["--session-env-path", str(env_path), "--claude-pid", "123", "--plugin-root", str(CLI.parent.parent)]
 
@@ -1829,6 +1864,21 @@ def test_step0_route_enables_brainstorm_from_prefix(tmp_path: Path, monkeypatch:
     assert "brainstorm_requested=true" in state
     run_params = json.loads((design / "run-params.json").read_text(encoding="utf-8"))
     assert run_params["brainstorm_requested"] is True
+
+
+def test_step0_route_aborts_when_issue_view_wrapper_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / ".design-step0-parsed.env").write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=42\n", encoding="utf-8")
+    env_path = _write_session_env(tmp_path, design, monkeypatch, ISSUE_NUMBER="42", REPO="owner/repo")
+
+    def failed_view(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("gh",), 1, "", "gh failed", 0.0)
+
+    monkeypatch.setattr(design_step0.gh, "issue_view_field_read", failed_view)
+
+    assert design_lifecycle.step0_route_main(_step0_wrapper_args(env_path)) == 1
+    assert "gh issue view failed for issue 42" in capsys.readouterr().err
 
 
 

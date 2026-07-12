@@ -545,13 +545,16 @@ def test_gate_blocker_subprocess_failure_fails_closed_e2e(monkeypatch, capsys) -
     payload = {"title": "[DESIGNED] Work", "state": "OPEN", "labels": []}
 
     def fake_run(argv: list[str], **_: object) -> subprocess.CompletedProcess[str]:
-        if argv[:3] == ["gh", "issue", "view"]:
-            return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
-        return subprocess.CompletedProcess(argv, 1, "", "fake subprocess failure\n")
+        return subprocess.CompletedProcess(argv, 1, "", "fake blocker subprocess failure\n")
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(
+        admission.proc,
+        "run",
+        lambda argv, **_: CommandResult(tuple(argv), 0, json.dumps(payload), "", 0.0),
+    )
     assert admission.gate_main(["--issue", "7", "--repo", "owner/repo"]) == 2
     out = capsys.readouterr().out
-    assert "ADMISSION_ERROR=" in out
+    assert "ADMISSION_ERROR=blocker check failed (exit 1)" in out
     assert "ADMISSION_RESULT=pass" not in out
     assert "ADMISSION_RESULT=missing-designed-prefix" not in out
