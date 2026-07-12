@@ -69,6 +69,7 @@ The following surfaces embed this rubric's necessity-gate language. When the rub
 - `agents/reviewer-security-structure-tests.md` — generated (re-run `python3 python/cli.py generate reviewer-security-structure-tests-agent`)
 - `agents/reviewer-edge-cases.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
 - `agents/reviewer-testing.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `agents/reviewer-architectural-compliance.md` — hand-maintained specialist; edit directly, then run `python3 python/cli.py generate pre-rendered-reviewer-prompts`
 - `python/cli.py render plan-review` — plan-review external prompts
 - `python/cli.py render specialist` — code-review external prompts (competition notice)
 - `skills/design/references/plan-review-runtime.md` — structural plan-review contracts and artifact interpretation; runtime prompt bodies come from `python/cli.py render plan-review` and `python/cli.py render voter`

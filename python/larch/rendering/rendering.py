@@ -985,7 +985,12 @@ def render_specialist_main(argv: list[str]) -> int:
     try:
         args = _parse_specialist(argv)
         effective_diff_mode = _effective_diff_mode(args)
-        architectural_guidelines_section = _architectural_guidelines_review_section(difficulty_value=args.difficulty)
+        agent_base = Path(args.agent_file).stem
+        architectural_guidelines_section = (
+            _architectural_guidelines_review_section(difficulty_value=args.difficulty)
+            if agent_base == "reviewer-architectural-compliance"
+            else ""
+        )
         cache_dir = os.environ.get("LARCH_RENDER_CACHE_DIR", "")
         if cache_dir:
             try:
@@ -1318,7 +1323,7 @@ def render_voter_main(argv: list[str]) -> int:
 
 
 _PLAN_REVIEW_ROLES = {
-    "arch": "You are an Architecture/Standards reviewer. Check maintainability, standards, patterns, boundaries, error handling, and failure paths.",
+    "arch": "You are an Architecture/Standards reviewer. Check maintainability, standards, patterns, boundaries, error handling, failure paths, and compliance with every supplied architectural invariant and guideline. Cite the concrete `I-*` or `G-*` id for each policy finding.",
     "innovation": "You are an Innovation/Exploration reviewer. Question assumptions, alternatives, and missed unconventional stronger solutions.",
     "pragmatic": "You are a Pragmatism/Safety reviewer. Keep scope minimal, avoid complexity, protect existing behavior, and check recovery, races, and data integrity.",
     "requirements": "You are a Requirements/Completeness reviewer. Check coverage of stated goals, acceptance criteria, constraints, and required testing or validation.",
@@ -1349,6 +1354,11 @@ def _plan_review_plan_directive(*, vendor: str, plan_file: Path) -> str:
         f"Review the implementation plan file at {plan_file}. Explore code paths named in the "
         "plan; inspect adjacent files only as needed for contracts and integration."
     )
+
+
+def _plan_review_architectural_guidelines(*, is_static_arch: bool, difficulty_value: str) -> tuple[str, int]:
+    section = _architectural_guidelines_review_section(difficulty_value=difficulty_value) if is_static_arch else ""
+    return "\n".join(_section_lines(section)), _byte_len(section)
 
 
 def render_plan_review_main(argv: list[str]) -> int:
@@ -1415,10 +1425,11 @@ def render_plan_review_main(argv: list[str]) -> int:
         ledger_section = _plan_ledger_section(path_value=args.findings_ledger_file, design_tmpdir=str(design_tmpdir), role="reviewer")
         if ledger_section:
             payload_bytes += _byte_len(ledger_section)
-        architectural_guidelines_section = _architectural_guidelines_review_section(difficulty_value=args.difficulty)
-        if architectural_guidelines_section:
-            payload_bytes += _byte_len(architectural_guidelines_section)
-        architectural_guidelines_prompt = "\n".join(_section_lines(architectural_guidelines_section)) if architectural_guidelines_section else ""
+        architectural_guidelines_prompt, architectural_guidelines_payload_bytes = _plan_review_architectural_guidelines(
+            is_static_arch=not args.body_file and args.archetype == "arch",
+            difficulty_value=args.difficulty,
+        )
+        payload_bytes += architectural_guidelines_payload_bytes
         if args.vendor == "cursor":
             payload_bytes += _file_payload_bytes(plan_file)
         plan_directive = _plan_review_plan_directive(vendor=args.vendor, plan_file=plan_file)

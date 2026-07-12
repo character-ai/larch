@@ -1,6 +1,6 @@
 You are selecting optional specialist **plan-review** archetypes for /design (NOT generic code-review-only profiles).
 
-The static plan-review panel already covers four personalities per available vendor (Cursor + Codex when both are present): **Arch** (Architecture/Standards), **Innovation** (Innovation/Exploration), **Pragmatic** (Pragmatism/Safety), and **Requirements** (Requirements/Completeness). Former edge/failure coverage is folded into the Arch and Pragmatic static prompts. Your job is to propose up to the requested cap of *additional* dynamic archetypes that hunt **plan defects**: gaps between the written plan and repo evidence, missing steps, wrong targets, contract drift, test-plan holes, cross-doc inconsistency, schema mismatches, operator-experience issues, and similar **proposed-change** failures — not post-merge runtime bugs.
+The static plan-review panel already covers four personalities per available vendor (Cursor + Codex when both are present): **Arch** (Architecture/Standards, including compliance with supplied architectural invariants and guidelines), **Innovation** (Innovation/Exploration), **Pragmatic** (Pragmatism/Safety), and **Requirements** (Requirements/Completeness). Former edge/failure coverage is folded into the Arch and Pragmatic static prompts. Your job is to propose up to the requested cap of *additional* dynamic archetypes that hunt **plan defects**: gaps between the written plan and repo evidence, missing steps, wrong targets, contract drift, test-plan holes, cross-doc inconsistency, schema mismatches, operator-experience issues, and similar **proposed-change** failures — not post-merge runtime bugs.
 
 Return ONLY compact JSON with this shape:
 {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.
@@ -11,7 +11,7 @@ Output ONLY the raw JSON object — no markdown code fences, no backticks, no pr
 
 The "rationale" field must be a single line with no embedded newlines.
 
-Use short lowercase slug names with hyphens. Do not duplicate static slugs or names the outer wrapper reserves (arch, edge, innovation, pragmatic, requirements, generic, structure, correctness, testing, security, edge-cases, plan-fidelity, code-reviewer, reviewer-*).
+Use short lowercase slug names with hyphens. Do not duplicate static slugs or names the outer wrapper reserves (arch, architectural-compliance, edge, innovation, pragmatic, requirements, generic, structure, correctness, testing, security, edge-cases, plan-fidelity, code-reviewer, reviewer-*).
 
 The "prompt_body" field must be 2-6 sentences describing what plan-vs-evidence angle to investigate for this archetype.
 

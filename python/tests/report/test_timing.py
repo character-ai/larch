@@ -355,6 +355,24 @@ def test_timing_record_vendor_task_accepts_checks_task_kinds(
     assert "unknown task-kind" not in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("task_kind", ["codex-architectural-assessment", "cursor-architectural-assessment"])
+def test_timing_record_vendor_task_accepts_architectural_assessment_task_kinds(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    task_kind: str,
+) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    vendor = task_kind.split("-", 1)[0]
+    timing.TimingLedger(ledger).record_vendor_task(
+        vendor=vendor,
+        task_kind=task_kind,
+        start_s=1,
+        end_s=2,
+        output=f"{vendor}-architectural-assessment.out",
+    )
+    assert "unknown task-kind" not in capsys.readouterr().err
+
+
 def test_timing_record_vendor_task_normalizes_status_aliases(tmp_path: Path) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     for status, _expected in (("OK", "complete"), ("ERROR", "signal"), ("TIMEOUT", "signal")):

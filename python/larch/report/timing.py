@@ -43,6 +43,7 @@ TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-phase2-edge-cases", "codex-phase2-testing", "codex-exec", "codex-plan-draft",
     "claude-relevant-checks", "claude-lint-fix", "vendor-misc", "implement-code-flow",
     "exec-issue-assessment", "rejected-analysis-verify",
+    "codex-architectural-assessment", "cursor-architectural-assessment",
 })
 TIMING_VENDOR_MIN_COLS = 13
 TIMING_LOCK_TIMEOUT_S = 5.0

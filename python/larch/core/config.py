@@ -421,7 +421,14 @@ class RoleDefault:
     doc_fallback: str = ""
 
 
-_CODE_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = ("correctness", "edge-cases", "testing")
+# The four specialists per vendor cover correctness, edge/failure behavior,
+# testing, and compliance with supplied architectural policy.
+_CODE_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = (
+    "correctness",
+    "edge-cases",
+    "testing",
+    "architectural-compliance",
+)
 _PLAN_REVIEW_ARCHETYPES: Final[tuple[str, ...]] = ("arch", "innovation", "pragmatic", "requirements")
 _DECOMPOSE_ARCHETYPES: Final[tuple[str, ...]] = ("decomposition-specialist", "dependency-analyst", "scope-minimalist", "risk-isolation")
 

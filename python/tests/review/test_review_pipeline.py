@@ -1708,7 +1708,7 @@ def test_review_core_panel_failed_on_collector_error_static_files(tmp_path: Path
     assert "THRESHOLD_OK=false" in threshold_env
     assert "THRESHOLD_REASON=no successful launched reviewer output" in threshold_env
     assert "THRESHOLD_REASON=no successful launched reviewer output" in result.stdout
-    assert "FAILED_SLOTS=3" in threshold_env
+    assert "FAILED_SLOTS=4" in threshold_env
 
 
 def test_review_core_all_oos_parseable_output_bypasses_no_success_gate(tmp_path: Path) -> None:
@@ -1718,7 +1718,7 @@ def test_review_core_all_oos_parseable_output_bypasses_no_success_gate(tmp_path:
         outdir_name="all-oos-parseable",
         extra_env={
             "TEST_EXTERNAL_STATIC_OUTPUTS": "true",
-            "TEST_STATIC_SLOT_COUNT": "3",
+            "TEST_STATIC_SLOT_COUNT": "4",
             "TEST_COLLECTOR_VARIANT": "empty-with-oos",
         },
     )
@@ -1738,15 +1738,15 @@ def test_review_core_panel_failed_on_missing_static_archetype(tmp_path: Path) ->
         outdir_name="coverage-failed",
         extra_env={
             "TEST_FULL_STATIC_MANIFEST": "true",
-            "TEST_COLLECTOR_VARIANT": "missing-testing",
+            "TEST_COLLECTOR_VARIANT": "missing-architectural-compliance",
         },
     )
 
     assert result.returncode == 2, result.stderr
     assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
     threshold_env = (tmp_path / "coverage-failed" / "review-core-threshold.env").read_text(encoding="utf-8")
-    assert "COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): testing" in threshold_env
-    assert "THRESHOLD_REASON=no successful static reviewer for archetype(s): testing" in result.stdout
+    assert "COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): architectural-compliance" in threshold_env
+    assert "THRESHOLD_REASON=no successful static reviewer for archetype(s): architectural-compliance" in result.stdout
 
 
 def test_review_core_static_coverage_excuses_straggler_dropped_archetype(tmp_path: Path) -> None:
@@ -1768,18 +1768,21 @@ done
 mkdir -p "$tmp"
 correctness="$tmp/codex-specialist-correctness-output.txt"
 edge="$tmp/codex-specialist-edge-cases-output.txt"
+compliance="$tmp/codex-specialist-architectural-compliance-output.txt"
 printf 'correctness review\\n' > "$correctness"
 printf 'edge review\\n' > "$edge"
+printf 'compliance review\\n' > "$compliance"
 dropped="$tmp/panel.dropped-slots"
 printf 'testing\\tcursor\\tstraggler-dropped\\tcut\\n' > "$dropped"
 cat > "$tmp/panel-manifest.ndjson" <<EOF
 {"slot":"correctness","tool":"codex","output":"$correctness","agent":"agents/reviewer-correctness.md"}
 {"slot":"edge-cases","tool":"codex","output":"$edge","agent":"agents/reviewer-edge-cases.md"}
 {"slot":"testing","tool":"cursor","output":"$tmp/cursor-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
+{"slot":"architectural-compliance","tool":"codex","output":"$compliance","agent":"agents/reviewer-architectural-compliance.md"}
 EOF
-printf 'EXTERNAL_OUTPUT_FILES=%s %s\\n' "$correctness" "$edge"
+printf 'EXTERNAL_OUTPUT_FILES=%s %s %s\\n' "$correctness" "$edge" "$compliance"
 printf 'CLAUDE_OUTPUT_FILES=\\nPANEL_MODE=waterfall\\nPANEL_SHAPE=%s\\n' "$panel"
-printf 'SCOUT_STATUS=na\\nDYNAMIC_SLOTS=0\\nSTATIC_SLOT_COUNT=3\\nSLOT_COUNT=3\\n'
+printf 'SCOUT_STATUS=na\\nDYNAMIC_SLOTS=0\\nSTATIC_SLOT_COUNT=4\\nSLOT_COUNT=4\\n'
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\nDROPPED_SLOTS_FILE=%s\\n' "$tmp" "$dropped"
 """,
     )
@@ -1790,7 +1793,7 @@ printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\nDROPPED_SLO
         stubs=stubs,
         REVIEW_CORE_DISPATCH_PANEL_SH=str(dispatch_stub),
         TEST_COLLECTOR_VARIANT="missing-testing",
-        TEST_STATIC_SLOT_COUNT="3",
+        TEST_STATIC_SLOT_COUNT="4",
         TEST_FINDINGS="1",
         TEST_ACCEPTED="1"
     )
@@ -2611,7 +2614,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
     assert result.returncode == 0, result.stderr
     assert "SCOUT_STATUS=pre-scouted" in result.stdout
     assert "DYNAMIC_SLOTS=1" in result.stdout
-    assert "SLOT_COUNT=4" in result.stdout
+    assert "SLOT_COUNT=5" in result.stdout
     normalized = json.loads((case_dir / "scout-round1-manifest.json").read_text(encoding="utf-8"))
     assert [a["name"] for a in normalized["archetypes"]] == ["arch"]
 
@@ -2749,7 +2752,7 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
     assert render_call[render_call.index("--difficulty") + 1] == "MODERATE"
 
 
-def test_synthesize_dynamic_slots_difficulty_trivial_prerender_omits_guidelines(
+def test_synthesize_dynamic_slots_prerender_omits_architectural_knowledge(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2827,7 +2830,7 @@ def test_synthesize_dynamic_slots_difficulty_trivial_prerender_omits_guidelines(
 
     assert count == 1
     prompt = (review_tmpdir / "dynamic-archetypes" / "dyn-contract-prompt.md").read_text(encoding="utf-8")
-    assert "### I-test-1: Invariant" in prompt
+    assert "### I-test-1: Invariant" not in prompt
     assert "### G-test-1: Guideline" not in prompt
 
 
@@ -2865,7 +2868,7 @@ def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Pat
         assert result.returncode == 0, result.stderr
         rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
         assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=6" in result.stdout
+        assert "STATIC_SLOT_COUNT=8" in result.stdout
 
 
 def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
@@ -2902,7 +2905,7 @@ def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp
         assert result.returncode == 0, result.stderr
         rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
         assert not any(row.get("slot") == "generalist" for row in rows)
-        assert "STATIC_SLOT_COUNT=3" in result.stdout
+        assert "STATIC_SLOT_COUNT=4" in result.stdout
 
 
 def _write_waterfall_noop(path: Path) -> None:
@@ -4597,10 +4600,10 @@ printf 'DROPPED_SLOTS_FILE={dropped}\\nDISPATCH_OK=true\\n'
     assert "DROPPED_STATIC_SLOTS=0" in threshold_env
 
 
-def test_review_core_real_threshold_dynamic_straggler_nine_slots(tmp_path: Path) -> None:
+def test_review_core_real_threshold_dynamic_straggler_ten_slots(tmp_path: Path) -> None:
     stubs = rts.write_review_core_stubs(tmp_path / "stubs")
-    dispatch_stub = tmp_path / "dispatch-nine-slot-dynamic.sh"
-    collect_stub = tmp_path / "collect-nine-slot-dynamic.sh"
+    dispatch_stub = tmp_path / "dispatch-ten-slot-dynamic.sh"
+    collect_stub = tmp_path / "collect-ten-slot-dynamic.sh"
     _write_executable(
         dispatch_stub,
         """#!/usr/bin/env bash
@@ -4616,7 +4619,7 @@ while [[ $# -gt 0 ]]; do
 done
 mkdir -p "$tmp"
 external=""
-for slot in correctness edge-cases testing arch security structure robustness; do
+for slot in correctness edge-cases testing architectural-compliance arch security structure robustness; do
   file="$tmp/codex-specialist-${slot}-output.txt"
   printf 'static %s review\\n' "$slot" > "$file"
   external="${external}${external:+ }$file"
@@ -4631,6 +4634,7 @@ cat > "$tmp/panel-manifest.ndjson" <<EOF
 {"slot":"correctness","tool":"codex","output":"$tmp/codex-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
 {"slot":"edge-cases","tool":"codex","output":"$tmp/codex-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
 {"slot":"testing","tool":"codex","output":"$tmp/codex-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
+{"slot":"architectural-compliance","tool":"codex","output":"$tmp/codex-specialist-architectural-compliance-output.txt","agent":"agents/reviewer-architectural-compliance.md"}
 {"slot":"arch","tool":"codex","output":"$tmp/codex-specialist-arch-output.txt","agent":"agents/reviewer-arch.md"}
 {"slot":"security","tool":"codex","output":"$tmp/codex-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
 {"slot":"structure","tool":"codex","output":"$tmp/codex-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
@@ -4640,7 +4644,7 @@ cat > "$tmp/panel-manifest.ndjson" <<EOF
 EOF
 printf 'EXTERNAL_OUTPUT_FILES=%s\\n' "$external"
 printf 'CLAUDE_OUTPUT_FILES=\\nPANEL_MODE=normal\\nPANEL_SHAPE=%s\\n' "$panel"
-printf 'SCOUT_STATUS=na\\nSTATIC_SLOT_COUNT=6\\nDYNAMIC_SLOTS=2\\nSLOT_COUNT=8\\n'
+printf 'SCOUT_STATUS=na\\nSTATIC_SLOT_COUNT=8\\nDYNAMIC_SLOTS=2\\nSLOT_COUNT=10\\n'
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\\nDISPATCH_OK=true\\n' "$tmp"
 printf 'DROPPED_SLOTS_FILE=%s\\nSTRAGGLER_DROPPED_COUNT=1\\n' "$dropped"
 """,
@@ -4675,6 +4679,10 @@ REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
 TOOL=codex
 STATUS=OK
 
+REVIEWER_FILE=$rtmp/codex-specialist-architectural-compliance-output.txt
+TOOL=codex
+STATUS=OK
+
 REVIEWER_FILE=$rtmp/codex-specialist-arch-output.txt
 TOOL=codex
 STATUS=OK
@@ -4696,7 +4704,7 @@ EOF
 printf 'FINDINGS_COUNT=0\\nOOS_COUNT=0\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\\nCOLLECTOR_OUTPUT_FILE=collector.env\\n'
 """,
     )
-    outdir = tmp_path / "real-threshold-nine-slot"
+    outdir = tmp_path / "real-threshold-ten-slot"
     outdir.mkdir()
     env = rts.build_review_core_env(_stub_dir=tmp_path / "stubs", stubs=stubs)
     env["REVIEW_CORE_DISPATCH_PANEL_SH"] = str(dispatch_stub)
@@ -4718,7 +4726,7 @@ printf 'FINDINGS_COUNT=0\\nOOS_COUNT=0\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\
 
     assert result.returncode == 0, result.stderr
     threshold_env = (outdir / "review-core-threshold.env").read_text(encoding="utf-8")
-    assert "INTENDED_SLOTS=8" in threshold_env
+    assert "INTENDED_SLOTS=10" in threshold_env
     assert "FAILED_SLOTS=1" in threshold_env
     assert "DYNAMIC_DROPPED_SLOTS=1" in threshold_env
     assert "STRAGGLER_DROPPED_COUNT=1" in threshold_env
@@ -4791,13 +4799,14 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
         ("correctness", "cursor"),
         ("edge-cases", "cursor"),
         ("testing", "cursor"),
+        ("architectural-compliance", "cursor"),
     ]
     assert all("cursor_model" not in row for row in rows)
     assert "PANEL_SHAPE=singles" in proc.stdout
     assert "PANEL_TIER=TRIVIAL" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
-    assert "STATIC_SLOT_COUNT=3" in proc.stdout
-    assert "SLOT_COUNT=3" in proc.stdout
+    assert "STATIC_SLOT_COUNT=4" in proc.stdout
+    assert "SLOT_COUNT=4" in proc.stdout
 
 
 def test_dispatch_panel_hard_uses_pairs_and_terra_codex_review_role(tmp_path: Path) -> None:
@@ -4826,21 +4835,22 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert {row["tool"] for row in rows} == {"codex", "cursor"}
     roles_by_slot = {str(row["slot"]): str(row.get("model_role")) for row in rows if row["tool"] == "codex"}
-    assert roles_by_slot == {"correctness": "review", "edge-cases": "review", "testing": "review"}
+    assert roles_by_slot == {"correctness": "review", "edge-cases": "review", "testing": "review", "architectural-compliance": "review"}
     resolved_by_slot = {str(row["slot"]): str(row.get("resolved_model")) for row in rows if row["tool"] == "codex"}
     assert resolved_by_slot == {
         "correctness": "gpt-5.6-terra",
         "edge-cases": "gpt-5.6-terra",
         "testing": "gpt-5.6-terra",
+        "architectural-compliance": "gpt-5.6-terra",
     }
     cursor_rows = [row for row in rows if row["tool"] == "cursor"]
-    assert {row["slot"] for row in cursor_rows} == {"correctness", "edge-cases", "testing"}
+    assert {row["slot"] for row in cursor_rows} == {"correctness", "edge-cases", "testing", "architectural-compliance"}
     assert all("cursor_model" not in row for row in cursor_rows)
     assert all(row["resolved_model"] == config.CURSOR_DEFAULT_MODEL for row in cursor_rows)
     assert "PANEL_SHAPE=pairs" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
-    assert "STATIC_SLOT_COUNT=6" in proc.stdout
-    assert "SLOT_COUNT=6" in proc.stdout
+    assert "STATIC_SLOT_COUNT=8" in proc.stdout
+    assert "SLOT_COUNT=8" in proc.stdout
 
 
 def test_dispatch_panel_codex_unavailable_emits_default_cursor_specialists(tmp_path: Path) -> None:
@@ -4868,10 +4878,10 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     assert proc.returncode == 0
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert {row["tool"] for row in rows} == {"cursor"}
-    assert {row["slot"] for row in rows} == {"correctness", "edge-cases", "testing"}
+    assert {row["slot"] for row in rows} == {"correctness", "edge-cases", "testing", "architectural-compliance"}
     assert all("cursor_model" not in row for row in rows)
     assert all(row["resolved_model"] == config.CURSOR_DEFAULT_MODEL for row in rows)
-    assert "STATIC_SLOT_COUNT=3" in proc.stdout
+    assert "STATIC_SLOT_COUNT=4" in proc.stdout
 
 
 def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
