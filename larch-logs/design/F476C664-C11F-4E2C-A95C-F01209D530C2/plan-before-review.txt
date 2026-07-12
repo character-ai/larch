@@ -1,0 +1,72 @@
+## Approach
+
+Extract changed symbols from fix diffs before history scans. Find external consumers, include them in bundle evidence, and widen history and revert scans. Evolve agent and ledger schemas additively. Render introduced risks and incomplete fix classes without changing filing approval.
+
+### UPDATED: python/larch/issue/analyze_bugs.py
+
+- Parse added and deleted diff-hunk lines for function or method definitions, dataclass-style fields, and string-literal dictionary keys. Deduplicate stable symbol names.
+- Search the evidence checkout for symbol references outside touched files. Record deterministic `path:line` entries and tag shell, skill Markdown, and hook consumers as `cross-language`.
+- Add `## Consumers of changed symbols` to each bundle.
+- Build `all_scan_files` from touched files plus consumer paths. Use it for later-history and revert scans while keeping `touched_files` unchanged for existing analytics.
+- Include the widened file set in `later_history_hash`, causing the intended one-time cache invalidation.
+- Add `introduced_risk`, `class_complete`, `sibling_sites`, and `legacy_schema` fields to ingest and ledger records.
+- Accept exactly the prior or current triage and verifier key sets. Mark prior shapes as legacy. Reject partial, mixed, or extra-key shapes.
+- Preserve new fields through ledger serialization and loading. Clear stale deep-only fields when refreshed triage invalidates a deep verdict.
+- Render `## Introduced risk` with the selected agent risk and evidence reason.
+- Render `## Instance fixed, class open` with sibling sites.
+- Add class-open rows to the existing follow-up body alongside terminal verdict follow-ups. Preserve the approval-gated filing path.
+
+### UPDATED: .claude/agents/bug-fix-triage.md
+
+- Require `introduced_risk`.
+- Tell the agent to name the most plausible consumer defect or emit `none found`.
+- Preserve strict JSONL, evidence-token, unreadable-evidence, and exact-key rules.
+
+### UPDATED: .claude/agents/bug-fix-verifier.md
+
+- Require `introduced_risk`, `class_complete`, and `sibling_sites`.
+- Require at least one targeted Grep outside the fix before `class_complete=true`.
+- Require `path:symbol` sibling entries and fail closed when the checkout or search evidence is insufficient.
+- Preserve read-only operation and strict JSONL output.
+
+### UPDATED: .claude/skills/analyze-bugs/SKILL.md
+
+- Document the consumer evidence included in bundles.
+- Note that widening `later_history_hash` invalidates existing cache entries once.
+- Describe the two report sections and class-open follow-up behavior.
+
+### UPDATED: python/tests/issue/test_analyze_bugs.py
+
+- Add symbol extraction and consumer-scan coverage for Python definitions, dataclass field renames, and string dictionary keys.
+- Reproduce a Python field rename with stale shell and SKILL.md consumers. Assert cross-language tags and exclusion of touched files.
+- Verify consumer paths widen later-history, revert-scan, and hash inputs.
+- Cover exact current schemas, accepted legacy schemas, legacy marking, and rejection of partial or extra-key rows.
+- Verify ledger round trips and triage refresh clear stale deep class data.
+- Add verifier-contract assertions for targeted Grep and the three new fields.
+- Add report fixture coverage for one introduced-risk row and one class-open row. Assert both sections and the follow-up body content.
+
+## Edge cases
+
+- Diffs without recognized symbols produce an empty consumer section and retain touched-file-only scans.
+- Deleted names remain searchable so stale consumers of renamed fields are visible.
+- Multiple symbols or references on one line remain deduplicated and deterministic.
+- References inside touched files do not become consumers.
+- Legacy rows remain usable but do not fabricate risk or class-completeness claims.
+- `none found` risks and `class_complete=true` rows stay out of alert sections and follow-up content.
+
+## Failure modes
+
+- Reject malformed current-version agent rows rather than silently dropping fields.
+- Do not treat grep matches in the changed files as blast-radius evidence.
+- Do not overwrite a verified deep risk or sibling list with stale triage data.
+- Do not create a follow-up issue directly. Only generate the body consumed by the existing approval gate.
+
+## Testing strategy
+
+- Run `pytest python/tests/issue/test_analyze_bugs.py`.
+- Run changed-file pre-commit checks for the Python, test, agent, and skill files.
+- Run `python3 python/cli.py lint agent-tool-contract`.
+- Confirm existing analytics, sampling, evidence-token, cache, and report tests still pass.
+
+difficulty: HARD
+diff_lines: 480
