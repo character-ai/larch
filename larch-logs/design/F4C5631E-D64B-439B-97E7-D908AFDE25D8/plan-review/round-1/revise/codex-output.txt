@@ -1,0 +1,117 @@
+## Plan
+
+confidence: high
+
+## Approach
+
+- Add `bgjob adapt` as an additive command. Do not convert step scripts or change assessment and ship token vocabularies.
+- Reuse `JobSpec`, registry identity checks, daemon startup, result-env parsing, and atomic `larch.io` helpers.
+- Resolve adapter inputs from explicit flags and existing session environment defaults. Accept the child command after `--`.
+- Serialize each run-and-step decision with a confined lock. Hold it through the final result check, registry inspection, stale clearing, merge-env preparation, and daemon startup decision.
+- Ensure the adapter lock is not retained by the forked daemon: use a fork-safe lock implementation or explicitly close the lock descriptor in the daemon child before it can retain ownership. A prompt second invocation must be able to acquire the lock and re-attach rather than block for job completion.
+- Implement this state machine under the held lock:
+  1. Return the existing result through the `BGJOB_STATUS=DONE` contract when a valid result env already exists.
+  2. Re-read and validate the result env immediately before every destructive action or `daemon.start_daemon` call. If it appeared after the initial probe, return `DONE`; never launch a daemon that could unlink a newly completed result.
+  3. Start a new daemon when no registry entry exists after the final locked result check.
+  4. Treat malformed, replaced, symlinked, unsafe, or identity-unverifiable registry state as fail-closed. Do not unlink or restart from it, because the recorded processes cannot be proven dead.
+  5. Validate every reusable registry entry against requested run, step, tmpdir, and `clone_path == Path.cwd().resolve()` before applying liveness policy.
+  6. Use one ownership-safe liveness policy: a valid, in-budget entry is reusable only while its validated daemon is live. The daemon owns child monitoring and final result publication. A live child with a dead daemon is not a safe re-attach state without a verified takeover/finalization protocol, which this additive change does not introduce.
+  7. Re-attach to a valid, in-budget entry with a live daemon. Emit exactly `BGJOB_STATUS=STARTED STEP=<step> PGID=<pgid>`, where `<pgid>` is the validated child PGID from the registry, matching `bgjob start` wire semantics.
+  8. Fail closed without unlinking or restarting when a valid, in-budget entry has a dead daemon, including both-dead and child-only-live states.
+  9. Clear and restart an expired entry only when the registry entry is structurally valid, identity-matched, and both recorded processes are verified dead. Fail closed if either recorded process remains live or identity cannot be verified.
+- Document the ownership rationale in code: daemon liveness is required because the daemon monitors the child, merges/publishes the result, and makes the existing wait protocol reliable. Do not introduce an `and`/`or` fork in the new module.
+- Derive and validate the adapter merge-env path under the bgjob tmpdir. Reject symlinks and non-regular files. Initialize it with an atomic, mode-restricted write before a fresh launch.
+- Add the adapter-owned child flags and merge-env path to the child argv. Rehydrate `CLAUDE_PLUGIN_ROOT` from persisted session state before daemon launch so the child inherits the runtime plugin root.
+- Keep the user-facing entry point at `python3 python/cli.py`. Register the command in the canonical `python/larch/cli.py` dispatcher because `python/cli.py` is only a shim.
+- Register `("bgjob", "adapt")` in both `_REGISTRY` and `_MACHINE_STDOUT_KEYS` so `LARCH_QUIET_DISABLE=1` is set and adapter `BGJOB_STATUS` / `BGJOB_ERROR` output remains parseable.
+
+## Files to modify/create
+
+### NEW: python/larch/bgjob/adapt.py
+
+- Define the typed start-or-re-attach request and decision helpers.
+- Add the per-run-and-step lock and validate its path under the registry root.
+- Make lock ownership fork-safe so the daemon cannot retain the adapter decision lock after `start_daemon` forks.
+- Centralize result detection, the final locked result re-check, registry classification, daemon-ownership liveness, proven-dead stale clearing, and dead-entry refusal.
+- Validate registry identity against requested run, step, tmpdir, and current resolved clone path before reusing, clearing, or reporting an entry.
+- Fail closed for malformed, unsafe, replaced, or identity-unverifiable registry entries; only clear structurally valid entries with both validated identities dead.
+- Re-attach only to a valid, in-budget entry with a validated live daemon. Emit `STARTED` with the validated registry child PGID; never replay persisted PID or PGID on failure paths.
+- Treat child-only-live as a fail-closed ownership loss rather than a reusable entry, because no child takeover or result-finalization protocol exists.
+- Prepare the merge env atomically and construct the adapter-owned child argv.
+- Rehydrate the plugin root without trusting ambient cwd.
+- Delegate fresh launches to `daemon.start_daemon`.
+- Translate every nonzero `start_daemon` return into a machine-readable `BGJOB_ERROR` before returning nonzero, including closed startup-pipe, malformed startup-pipe, and raised startup-exception paths.
+- Emit only existing `KEY=value` wire shapes. Return distinct `BGJOB_ERROR` values for malformed input, unsafe paths, dead or ownership-lost registry state, expired-live state, lock or registry failures, and daemon startup failures.
+
+### UPDATED: python/larch/bgjob/cli.py
+
+- Add `adapt_main(argv) -> int`.
+- Parse `--step`, `--budget-s`, optional start-compatible identity and path flags, and the command after `--`.
+- Resolve the tmpdir from an explicit value or `IMPLEMENT_TMPDIR`. Fail with `BGJOB_ERROR=missing-tmpdir` when neither exists.
+- Reuse `_build_spec` where its start semantics match. Keep adapter-only merge-env and child-argv preparation in `adapt.py`.
+- Catch the same bounded error classes as the existing bgjob commands and return exit code 2 for contract or integrity failures.
+- Ensure every nonzero adapter startup outcome still prints one machine-readable `BGJOB_ERROR` record.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("bgjob", "adapt")` to `larch.bgjob.cli.adapt_main`.
+- Add `("bgjob", "adapt")` to `_MACHINE_STDOUT_KEYS` beside existing bgjob verbs.
+- Leave the root `python/cli.py` shim unchanged.
+
+### NEW: python/tests/bgjob/test_bgjob_adapt.py
+
+- Cover fresh start and exact daemon spec construction.
+- Cover a second invocation re-attaching without another launch and emitting the exact one-line `BGJOB_STATUS=STARTED STEP=<step> PGID=<validated-child-pgid>` grammar.
+- Cover daemon-live re-attach with child identity validation.
+- Cover child-only-live, daemon-dead refusal: assert no restart, no unlink, no stale PGID output, and no unsupported takeover behavior.
+- Cover valid, in-budget, both-dead fail-closed behavior. Assert that it neither unlinks nor restarts.
+- Cover clone-path mismatch refusal, alongside run, step, and tmpdir identity mismatch cases.
+- Cover malformed, replaced, symlinked, or identity-unverifiable registry entries failing closed without clearing or launching.
+- Cover expired-and-verified-dead clearing followed by a fresh start.
+- Cover expired-but-live refusal for both daemon-live and child-only-live states.
+- Cover an existing completed result returning `DONE` without a launch.
+- Cover a result appearing after the initial probe but before the locked launch decision; assert the final locked re-check returns `DONE` and does not invoke `start_daemon`.
+- Cover merge-env atomic initialization, child flag construction, and rejection of symlink or non-regular paths.
+- Cover plugin-root rehydration and missing or malformed persisted state.
+- Cover lock serialization so concurrent adapter decisions cannot launch duplicate jobs.
+- Add a real-fork regression test: start a job, then promptly invoke `adapt` again and assert it re-attaches rather than blocking because the daemon inherited the adapter lock.
+- Cover invalid budget, missing child command, missing tmpdir, bad step slug, and daemon startup failure.
+- Cover nonzero `start_daemon` outcomes for closed startup pipe, malformed startup pipe, and raised startup exception; assert a `BGJOB_ERROR` record accompanies every nonzero return.
+- Exercise canonical dispatcher registration and assert `("bgjob", "adapt")` is present in both `_REGISTRY` and `_MACHINE_STDOUT_KEYS`, including a quiet-mode-compatible machine-output assertion.
+
+## Edge cases
+
+- A result may appear between the initial probe and the launch decision. Re-check it under the held lock immediately before stale clearing and immediately before `start_daemon`.
+- The daemon owns result finalization. A live child with a dead daemon is not safely reusable without an explicit takeover protocol; fail closed and preserve the entry.
+- A valid, live daemon entry may be re-attached even if child-state observation is transient, provided the entry’s child identity and child PGID remain validated for wire-compatible output.
+- A registry row may be malformed, symlinked, expired, replaced during inspection, or belong to another clone. Revalidate paths, clone path, and identities at use time.
+- A live expired process must not be silently orphaned or duplicated.
+- Existing merge or result paths may be symlinks, directories, or other special files. Refuse them.
+- Repeated calls must preserve the same `STARTED` or `DONE` wire grammar.
+- Failure paths must not emit a persisted PID or PGID; successful re-attach emits only the validated child PGID required by the existing `STARTED` contract.
+
+## Failure modes
+
+- Fail closed when process identity cannot prove that a registry entry is safely reusable or safely stale.
+- Fail closed when the daemon is dead, even if the child remains live, because this version provides no verified takeover or finalization protocol.
+- Do not unlink malformed, unsafe, identity-unverifiable, or valid-but-dead in-budget entries merely to make the next launch succeed.
+- Do not start a child if lock acquisition, plugin-root rehydration, merge-env initialization, registry inspection, or the final locked result check fails.
+- Preserve daemon startup errors as nonzero adapter failures with a machine-readable `BGJOB_ERROR`, including nonzero returns that do not raise.
+- Never signal a persisted PID or PGID from a fail-closed or error path.
+
+## Testing strategy
+
+- Run the new focused suite:
+  - `python3 -m pytest python/tests/bgjob/test_bgjob_adapt.py`
+- Run existing bgjob regression suites to detect wire or lifecycle regressions:
+  - `python3 -m pytest python/tests/bgjob`
+- Run the accepted Python checks:
+  - `make py-lint`
+  - `make py-test`
+- Confirm existing step scripts remain byte-unchanged and still call `bgjob start`.
+
+difficulty: HARD
+diff_added: 840
+diff_deleted: 5
+mechanical_churn: false
+diff_lines: 845
