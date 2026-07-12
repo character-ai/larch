@@ -66,17 +66,17 @@ Warnings (0):
 
 ## Architectural invariants
 
-No violations identified. The waterfall introduces session-recorded binary availability (CLAUDE_BINARY_FOUND, CURSOR_BINARY_FOUND, CODEX_BINARY_FOUND) recorded at session start, independent of the assessment agents themselves — I-Gate-1 is not triggered. Each result row carries head_sha, base_ref, diff_fingerprint, and knowledge_sha256 fields validated by _parse_result_row before persistence — I-Stale-1 is honoured. Assessment agents are constrained to Read-only tool access (--allowedTools Read, read-only Codex sandbox, evidence-directory workspace for Cursor), and the contract requires them to read evidence through their own tools or emit no verdict — I-Agent-1 is satisfied. I-Pause-1, I-Flush-1, I-Commit-1, I-Outcome-1, I-Slot-1, and I-Ship-1 are not touched by the changed code.
+No violations identified. The new multi-lane waterfall correctly enforces I-Agent-1: DirectClaudeLauncher passes --allowedTools Read and --permission-mode plan, and the SharedReviewLauncher uses --assessment-contract to configure Codex and Cursor as read-only assessment agents that receive only the validated evidence directory. I-Stale-1 is respected: assessment results carry head_sha, base_ref, diff_fingerprint, and knowledge_sha256 identity fields that are validated before persistence by _parse_result_row. I-Gate-1 is respected: the Cursor dirty-tree check in _cursor_dirty_tree_clean is independently computed from the git snapshot taken before the agent ran, not from agent self-reported metadata.
 
 ## Architectural guidelines
 
-No deviations identified. New frozen dataclasses (AssessmentLane, LaneOutcome, LaneContext, updated LaunchRequest) follow G-Py-1. All new tunables and env-var names are defined once as Final constants in config.py (G-Cfg-1). _write_text_atomic now delegates to larch_io.trusted_atomic_write (G-IO-1). Symlink and containment checks are present in _lane_output_path, _validate_prompt_evidence_paths, and _review_validate_args (G-Sec-4). The dirty-tree postcondition is checked on both success and failure paths for Cursor; _shared_launcher_artifact_error validates .done/.meta/.sidecar on both paths for Codex (G-Ext-4). The ClaudeLauncher rename to DirectClaudeLauncher is swept in the same change including the test (G-Md-2). The waterfall is linear with at most three lanes per the registry role cap (G-Orch-2). Comprehensive new tests cover waterfall ordering, partial-success, exhaustion, timeout, and invariant-violation short-circuit behaviour.
+No deviations identified. G-Cfg-1 is satisfied: all new tunables (ARCHITECTURAL_ASSESSMENT_ROLE, ARCHITECTURAL_ASSESSMENT_TIMEOUT_SEC, ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL, ARCHITECTURAL_ASSESSMENT_CODEX_MODEL, ARCHITECTURAL_ASSESSMENT_CLAUDE_MODEL, ENV_CLAUDE_BINARY_FOUND) are defined as Final in config.py and consumed by reference; the hardcoded model_reasoning_effort string in the assessment Codex path is a single-call-site private construction matching the deviation allowance. G-IO-1 is satisfied: _write_text_atomic now delegates to larch_io.trusted_atomic_write; shared-launcher sidecars use _read_env_strict for KEY=value wire files. G-Sec-4 is satisfied: _lane_output_path rejects symlinks and checks containment; _cursor_dirty_tree_clean validates path under implement_tmpdir; _validate_prompt_evidence_paths confirms REQUESTS_JSON paths are confined to the evidence directory. G-Py-1 is satisfied: LaneOutcome, LaneContext, and AssessmentLane are frozen dataclasses. G-Wire-3 is satisfied: _review_write_preflight_bundle gains the .sidecar write and existing tests are updated to assert its presence. G-Md-2 is satisfied: ClaudeLauncher→DirectClaudeLauncher rename is swept in the test file.
 
 ## /implement run 25E51482-9DA4-4EB9-BA4A-82535482E0D8: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:54:33
-- **Cost**: 💰 TOTAL ~$46.46: Claude $10.29, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.44  |  Tokens: 64224k
+- **Cost**: 💰 TOTAL ~$48.92: Claude $12.75, Codex-5.6 $26.45, Codex-mini $0.06, Cursor $9.22 (Composer $9.22, Grok $0.00), Claude (subprocess) $0.44  |  Tokens: 68150k
 - **Issue**: #7097: https://github.com/character-ai/larch/issues/7097
 - **PR**: #7106: https://github.com/character-ai/larch/pull/7106
 - **Plan review**: N/A
@@ -84,7 +84,7 @@ No deviations identified. New frozen dataclasses (AssessmentLane, LaneOutcome, L
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 13/15 accepted
-- **Lines (PR diff)**: code +1377/-229, larch-logs +1180/-0
+- **Lines (PR diff)**: code +1378/-229, larch-logs +1185/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 0
