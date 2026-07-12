@@ -56,14 +56,14 @@ No meaningful deviations identified. The change is a comprehensive class-level f
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:59:01
-- **Cost**: 💰 TOTAL ~$31.21: Claude $10.60, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $8.04  |  Tokens: 60752k
+- **Cost**: 💰 TOTAL ~$32.12: Claude $11.48, Codex-5.6 $1.71, Codex-mini $1.35, Cursor $9.51 (Composer $5.41, Grok $4.10), Claude (subprocess) $8.07  |  Tokens: 63315k
 - **Issue**: #7054: https://github.com/character-ai/larch/issues/7054
 - **PR**: #7090: https://github.com/character-ai/larch/pull/7090
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/8 accepted
-- **Lines (PR diff)**: code +647/-115, larch-logs +1055/-0
+- **Lines (PR diff)**: code +646/-117, larch-logs +1060/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
