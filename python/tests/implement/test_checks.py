@@ -5072,6 +5072,7 @@ def test_run_lint_fix_claude_only_host_dispatches_claude(
         return "/usr/bin/claude" if name == "claude" else None
 
     monkeypatch.setattr(shutil, "which", claude_on_path)
+    monkeypatch.delenv("CLAUDE_BINARY_FOUND", raising=False)
     head = "abc123"
     delta_raw = ":100644 100644 abc def M\tfixed.py\n"
     runner = StubRunner([
