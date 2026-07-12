@@ -76,6 +76,7 @@ Tailor the review to the change:
 - **Large diffs (>1000 lines changed)**: report confidence. If low, recommend splitting the PR; do a high-level five-focus-area walk and flag only highest-risk regions.
 - **Generated code / lockfiles / vendored deps**: skip or scan-only for obvious regressions; do not review semantics. Also covered in `## Do NOT report`.
 - **Security-elevation trigger**: if the change touches authentication, sessions, secrets, shelling out, parsing/deserialization, permissions, network boundaries, cryptography, or untrusted input, walk §5 Security first and spend proportionally more attention there.
+- **`[BUG]` fixes**: classify whether the change addresses the class or only an instance; name sibling sites checked, or state that a grep for the defect pattern found none.
 
 ## Do NOT report
 

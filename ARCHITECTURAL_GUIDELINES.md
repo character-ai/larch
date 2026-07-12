@@ -9,6 +9,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Guidance: when the defect you are fixing has the same shape at sibling sites (launch lanes, step wrappers, retry classes, tally writers, sentinel cases, grace windows), enumerate the siblings by grep in the same change, and fix each one or file a tracking issue for it in the same run; never leave a conscious descope untracked.
 - Deviate when: a sibling is provably unreachable or intentionally different; say so, with the sibling list, in the PR description.
 
+### G-Fix-2: A recovery-path bug fix ships with an executable reproduction
+- Why: 82% of 2026-07 bugs were found only by live runs; CI-green carries no signal for this class, and unreproduced fixes repeatedly shipped incomplete (#6610, #6882, #6931 chains).
+- Guidance: when fixing a bug in recovery or orchestration machinery (implement steps, ship and postmerge routing, bgjob, design publish and resume, CI fixer, stall classifiers), add or extend an offline harness or test case that replays the failure and passes with the fix. Close criteria is reproduced-then-passed, not merged or CI-green.
+- Deviate when: the failure requires live vendor or GitHub state that no harness can replay; say so in the PR and name the manual verification performed.
+
 ## Python coding practices
 
 ### G-Py-1: Pass composite data as frozen dataclasses
