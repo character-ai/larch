@@ -684,29 +684,38 @@ def _origin_source_texts(*, title: str, prefix: str) -> list[str]:
 
 def _first_referenced_origin(text: str) -> tuple[int, int] | None:
     """Return ``(match_start, issue_ref)`` for the earliest referenced marker."""
-    best: tuple[int, int] | None = None
+    best_start: int | None = None
+    best_ref: int | None = None
     for pattern in _ORIGIN_REF_PATTERNS:
         match = pattern.search(text)
         if match is None:
             continue
         start = match.start()
         ref = int(match.group(1))
-        if best is None or start < best[0]:
-            best = (start, ref)
-    return best
+        if best_start is None or start < best_start:
+            best_start = start
+            best_ref = ref
+    return None if best_start is None or best_ref is None else (best_start, best_ref)
 
 
 def _first_referenced_across_sources(sources: Sequence[str]) -> int | None:
     """Return the first referenced issue number in title-then-body source order."""
-    best_ref: tuple[int, int, int] | None = None  # (source_index, match_start, ref)
+    best_source_index: int | None = None
+    best_match_start: int | None = None
+    best_ref: int | None = None
     for source_index, source in enumerate(sources):
         referenced = _first_referenced_origin(source)
         if referenced is None:
             continue
         match_start, ref = referenced
-        if best_ref is None or (source_index, match_start) < (best_ref[0], best_ref[1]):
-            best_ref = (source_index, match_start, ref)
-    return None if best_ref is None else best_ref[2]
+        if best_source_index is None or (source_index, match_start) < (
+            best_source_index,
+            best_match_start,
+        ):
+            best_source_index = source_index
+            best_match_start = match_start
+            best_ref = ref
+    return best_ref
 
 
 def _phrase_in_sources(sources: Sequence[str], phrases: Sequence[str]) -> bool:
