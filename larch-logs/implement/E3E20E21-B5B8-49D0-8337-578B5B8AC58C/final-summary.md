@@ -50,7 +50,7 @@ codex/apply                            │                                      
 
 - **Outcome**: shipping
 - **Duration**: 01:08:55
-- **Cost**: 💰 TOTAL ~$18.83: Claude $2.98, Codex-5.6 $2.71, Codex-mini $1.46, Cursor $9.56 (Composer $8.59, Grok $0.97), Claude (subprocess) $2.12  |  Tokens: 37025k
+- **Cost**: 💰 TOTAL ~$18.97: Claude $3.12, Codex-5.6 $2.71, Codex-mini $1.46, Cursor $9.56 (Composer $8.59, Grok $0.97), Claude (subprocess) $2.12  |  Tokens: 37347k
 - **Issue**: #7052: https://github.com/character-ai/larch/issues/7052
 - **Plan review**: N/A
 - **Plan coverage**: 16/16 firm headings; band: advisory; disposition: none; todos_left: 0
