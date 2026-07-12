@@ -1,0 +1,184 @@
+## Plan
+
+## Approach
+
+Create a typed, immutable per-item adjudication engine over `voting.py`. Both tally families prepare lazy item contexts and invoke one ordered `tally_engine.run_items()` pass per ballot. The engine evaluates shared policy once per item; family adapters serialize their existing rows and artifacts from cached results.
+
+Preserve existing code-review partial-output ordering. `run_items()` processes ballot order incrementally: prepare one context, create an immutable pre-security adjudication result, serialize that item’s classification/ledger/tally-env/score outputs, run the family security hook, then publish only eligible OOS artifacts and public-pool entries. A proposer-restoration failure occurs before that item’s row; a code-review security failure retains that item’s existing row writes, exits with its existing diagnostic, and publishes no OOS output for that item or later items. `run_items()` returns a complete ordered result list only when every item completes.
+
+The engine owns shared policy evaluation only: vote-result selection from finalized OOS context, neutral rescue, OOS fileability, non-fileable OOS score neutralization, score kind/result/weight, unique-finder eligibility, ledger outcome, agreement inputs, reroute marker, and pre-security artifact eligibility. Family adapters retain input parsing, security input selection, side-effect ordering, row schemas, tuple shapes, wrappers, paths, numbering, and error translation.
+
+Preserve all CLI entry points, status KVs, headers, paths, output bytes, and caller contracts. Require a net production-line reduction.
+
+## Files to modify/create
+
+### NEW: python/larch/review/tally_engine.py
+
+- Add frozen input/result dataclasses for:
+  - Per-item identity, original block text, restored artifact text, proposer attribution, vote counts, ordered vote/severity cells, classification cells, finalized effective OOS context, and effective voter count.
+  - Immutable pre-security and completed adjudication outputs: voting result, classification scope, `neutral_rescued`, `fileable_oos`, score kind/result, accepted severity weight, unique-finder eligibility, ledger outcome, agreement inputs, reroute marker, and artifact-route flags/buckets.
+- Define `run_items()` as the sole ordered shared-policy pass for one ballot. It accepts a lazy adapter context iterator plus narrow serialization, security, and artifact-publication callbacks, and walks ballot order without preparing later items after an abort.
+- For each prepared item, evaluate `voting.classify_result` or `voting.classify_oos_result`, `neutral_high_severity_rescue_to_oos`, `oos_fileable_from_votes`, accepted-finding severity weighting, unique-finder eligibility, ledger outcome, and reroute policy exactly once.
+- Emit `score_result="neutral"` for accepted but non-fileable OOS items. Adapters must consume this cached score result rather than deriving it from raw acceptance and fileability.
+- Invoke the per-item serializer with the immutable cached pre-security result, then invoke the supplied family security hook under the family’s existing conditions, produce a completed immutable routing result, and invoke artifact publication only after the security decision.
+- Return `list[ItemAdjudicationResult]` in ballot order only on full success. On proposer preparation or security failure, stop at the existing family boundary without serializing an incomplete result or publishing its public OOS artifact.
+- Own the single production definition of `_finding_oos_reroute_marker`.
+- Keep security probing family-specific: the engine invokes the supplied hook but never selects, normalizes, or converts its input. It must not assume restored text is the security source.
+- Do not emit rendered TSV rows or canonical scoreboard tuples. Return score primitives and routing decisions only, so existing code-review four-tuples plus `bonus_by_reviewer` and plan-review five-tuples with inline bonus remain unchanged.
+
+### UPDATED: python/larch/review/voting.py
+
+- Make one shared parser-backed ballot-block helper delegate to `review_types.parse_blocks(..., boundary="item-heading")`.
+- Make `split_ballot()`, `_ballot_blocks`, proposer-map ballot-ID enumeration, and every attribution or neutralization helper that consumes ballot FINDING/OOS headings use that helper and therefore the same canonical item IDs and exact block slices.
+- Preserve duplicate-heading failure behavior, stderr diagnostic, block filenames, exact block text, and `SystemExit` contract used by both tally callers.
+- Preserve malformed-heading handling at the existing tally boundaries; do not create a second FINDING/OOS parser or alter accepted ballot grammar.
+- Retain fail-closed proposer-map validation when canonical fenced or whitespace-variant headings are used.
+
+### UPDATED: python/larch/review/review_tally.py
+
+- Replace the active and zero-effective-voter per-item loops with one lazy code-review context-preparation iterator and one streaming `tally_engine.run_items()` invocation.
+- Keep code-review-specific context preparation in this module:
+  - Restore proposer attribution and perform existing fail-closed sidecar validation before the affected item can serialize.
+  - Determine OOS from canonical parsed kind, existing heading-tag promotion, and existing scope-drift detection.
+  - Increment and report scope drift only for the existing code-review condition.
+  - Select `classify_oos_result` only after that effective OOS decision.
+  - Preserve vote parsing, aliasing, slot alignment, quorum warnings, and degraded-panel behavior.
+- Preserve the existing per-item side-effect order:
+  - Serialize classification, ledger, tally-env, and score projection from the cached pre-security engine result.
+  - Run the neutralized-block-path security hook using `voting.is_security_block`.
+  - Preserve `_security_block`’s `SystemExit`-to-`RuntimeError` mapping and CLI diagnostic.
+  - Publish private/public OOS artifacts and aggregate-pool entries only from the completed cached security-routing result.
+- On a code-review security failure, retain prior-item output and the failing item’s classification/ledger/tally-env/score writes, stop before its artifact/public-pool output, and do not prepare later items.
+- Make classification TSV writing, ledger entry construction, agreement accumulation, tally-env rows, score-row projection, and accepted/rejected/OOS artifact rendering consume cached engine fields only.
+- Refactor `_record_code_review_score_rows` to consume cached `score_kind`, `score_result`, `accepted_weight`, `neutral_rescued`, and unique-finder eligibility only; it must not call voting policy helpers.
+- Retain current code-review row schema, output paths, OOS numbering, artifact formatting, scoreboard rendering, `surface_warning`, emit/log phases, public functions, and KVs.
+- Remove the local `_finding_oos_reroute_marker` and duplicated result, rescue, fileability, score-weight, and OOS-routing policy branches.
+
+### UPDATED: python/larch/review/plan_review_tally.py
+
+- Build lazy plan-review item contexts once and run one ordered `run_items()` pass through `_Tally` for each ballot, including main-agent and zero-voter stub paths.
+- Cache each immutable engine result on `_Tally` as it completes; serializers and later round accumulation consume those cached results rather than re-tallying.
+- Keep plan-review-specific context preparation in `_Tally`:
+  - Use canonical parsed FINDING/OOS kind and existing prefix behavior only; do not introduce code-review heading-tag or scope-drift promotion.
+  - Preserve voter-slot resolution, missing-slot alignment, alias handling, restored proposer attribution, and plan-review artifact text.
+  - Supply a security hook that calls `voting.is_security_block_text` on restored artifact text and preserves existing `_AbortTally` and stub-output behavior at the plan-review boundary.
+- Refactor `_render`, `_write_findings_classification`, `_write_findings_ledger`, `_write_findings_outputs`, and zero-voter stub writers into thin serializers over cached engine results. Remove their independent `_tally_votes_for_id`, vote parsing, neutral-rescue, fileability, score, and ledger-policy passes.
+- Preserve the TSV-only main-agent override: when `main_agent_voter` is set, the classification `voting_result` cell remains `rejected`; cached adjudication, artifact routing, and score semantics remain otherwise unchanged.
+- Project engine score primitives into the existing five-field plan-review score tuples and existing attribution-label split, preserving co-proposer handling and inline unique-finder bonus math.
+- Refactor `_record_plan_review_score_rows` to consume cached `score_kind`, `score_result`, `accepted_weight`, `neutral_rescued`, and unique-finder eligibility only, with no direct voting-policy calls.
+- Keep the 22-column classification header and row bytes, tally status KVs, artifact paths/wrappers, round accumulation, OOS pooling, scoreboard presentation, cleanup, diagnostics, and `_AbortTally` contracts unchanged.
+- Remove the local `_finding_oos_reroute_marker` and all standalone adjudication loops.
+
+### NEW: python/tests/review/test_tally_engine.py
+
+- Test deterministic fake family contexts through one ordered engine run, covering accepted, rejected, neutral, neutral-to-OOS rescue, fileable and non-fileable OOS, security routing, accepted severity weight, co-proposers, and unique-finder eligibility.
+- Assert accepted non-fileable OOS produces cached `score_result="neutral"`.
+- Assert immutable per-item results drive classification cells, ledger outcomes, agreement inputs, score primitives, and artifact-route buckets consistently; repeated serialization of one result must not re-evaluate or change policy decisions.
+- Assert streaming callback order: result serialization precedes security evaluation, and security completion precedes artifact publication.
+- Assert a security failure returns no completed batch list, preserves already-serialized results, does not publish the failing item, and prevents preparation of later items.
+- Assert `_finding_oos_reroute_marker` from its single owner.
+- Test family-specific security hooks independently: code-review-style raw-block probing and plan-review-style restored-text probing, including a neutralized-security regression that prevents public OOS pooling.
+- Cover missing voter slots, zero-voter stub contexts, and the plan-review main-agent TSV-only `rejected` override.
+
+### UPDATED: python/tests/review/test_voting.py
+
+- Add parser parity cases for fenced headings, whitespace and tab variants, duplicate canonical IDs, malformed/noncanonical headings, item-heading boundaries, and exact extracted block text.
+- Verify `split_ballot()`, `_ballot_blocks`, and proposer-map validation enumerate the same IDs and preserve the same duplicate-heading failure and output contracts.
+- Verify parser-backed attribution remains fail closed for canonical whitespace-variant headings.
+
+### UPDATED: python/tests/review/test_review_tally.py
+
+- Add byte-parity regression coverage for code-review classification rows, score rows, tally-env rows, OOS artifacts, scope-drift promotion, and raw-block security classification after adapter extraction.
+- Add a multi-item abort regression proving proposer failure occurs before row N, while security failure preserves row N classification/ledger/tally-env/score output but prevents row N public OOS publication and all later-item processing.
+- Assert no public OOS artifact is published when proposer restoration or security classification fails.
+- Assert code-review score-row projection uses cached engine primitives and does not directly invoke voting policy helpers.
+
+### UPDATED: python/tests/review/test_plan_review.py
+
+- Add parity coverage proving `_render`, classification, ledger, score projection, and artifact routing consume the same cached adjudication results.
+- Cover restored-text security classification, missing middle voter slots, co-proposer scoring, neutral rescue, accepted non-fileable OOS neutral scoring, zero-voter stubs, and the main-agent classification override.
+- Assert plan-review score-row projection does not directly invoke voting policy helpers.
+
+## Drift-convergence review
+
+Call out these intentional convergence changes in the implementation and PR:
+
+- Both families perform exactly one shared, ordered adjudication pass per ballot; classification, ledger, score projection, and artifact routing consume immutable cached results.
+- The shared pass preserves family abort ordering: per-item row serialization may occur before security routing, but public OOS publication always occurs after security completion.
+- Both families compute result selection from finalized context, neutral rescue, OOS fileability, non-fileable-OOS neutral scoring, score primitives, ledger outcome, and reroute marker once.
+- `_finding_oos_reroute_marker` has one production definition.
+- Every ballot-heading consumer on the tally, proposer-attribution, and neutralization paths uses `review_types.parse_blocks(..., boundary="item-heading")` through the shared `voting.py` helper.
+- Public OOS-pool eligibility derives from the same completed adjudication route as OOS artifact handling.
+
+Preserve these intentional differences:
+
+- Classification TSV headers, columns, sanitization, and the plan-review main-agent TSV-only override.
+- Vote-source adapters, slot semantics, degraded-panel behavior, and scoreboard tuple shapes/bonus storage.
+- Security inputs and error mapping: code review probes its block path through `is_security_block`; plan review probes restored artifact text through `is_security_block_text`.
+- Artifact filenames, wrappers, OOS numbering, round accumulation, and final scoreboard presentation.
+- Code-review heading-tag promotion and scope-drift reclassification; plan review remains canonical-prefix-only.
+
+## Edge cases
+
+- Empty ballots and zero effective voters retain current status KVs, warnings, and header-only/stub outputs while consuming cached stub results rather than re-tallying.
+- Missing middle voter slots retain classification-column and severity alignment.
+- Main-agent fallback is not scored as an external panel, and only its plan-review TSV result is forcibly `rejected`.
+- Neutral high-severity findings route to OOS without becoming fileable unless the shared voting predicates permit it.
+- Accepted non-fileable OOS findings retain their OOS classification but receive the cached neutral score result.
+- Rejected and non-fileable OOS items never enter the aggregate public pool.
+- Security OOS items reach only the private sidecar.
+- Neutralized ballots retain restored proposer attribution and fail closed on missing or stale sidecars.
+- Co-proposers and unique-finder bonuses retain existing attribution and weighting.
+- Duplicate, fenced, malformed, tab, and whitespace-variant headings follow the canonical parser without changing existing split-ballot diagnostics.
+
+## Failure modes
+
+- Complete one item’s required context preparation before any output for that item; proposer restoration failure preserves the existing before-row abort boundary.
+- Preserve the code-review partial-serialization contract: a completed pre-security result may serialize classification, ledger, tally-env, and score output before its security check, but no public OOS artifact or pool entry may be written before that check succeeds.
+- On a security failure, preserve each family’s existing error code, diagnostic, and stub/abort contract; do not prepare or publish later items.
+- Do not serialize from an incomplete context or recompute policy in serializers, score helpers, `_render`, ledger writers, zero-voter writers, or artifact writers.
+- Treat byte differences in successful TSV rows, scoreboards, tally-env rows, and Markdown artifacts as regressions unless listed above.
+- Reject an extraction that increases total production lines.
+
+## Testing strategy
+
+- Run focused engine and parser tests:
+  - `python3 -m pytest -q python/tests/review/test_tally_engine.py python/tests/review/test_voting.py`
+- Run acceptance suites unchanged:
+  - `python3 -m pytest -q python/tests/review/test_review_tally.py python/tests/review/test_self_review_tally.py python/tests/review/test_plan_review.py`
+- Run direct plan-tally integration coverage:
+  - `python3 -m pytest -q python/tests/review/test_plan_review_round.py`
+- Run Ruff, Pylint, and Pyright against:
+  - `python/larch/review/tally_engine.py`
+  - `python/larch/review/voting.py`
+  - `python/larch/review/review_tally.py`
+  - `python/larch/review/plan_review_tally.py`
+- Compare representative successful pre-refactor and post-refactor classification TSV rows, score rows, ledger entries, tally-env rows, and OOS artifacts byte for byte.
+- Compare multi-item proposer and security abort paths against their existing partial-output boundaries.
+- Confirm `_finding_oos_reroute_marker` has exactly one production definition, all ballot-heading consumers use the parser-backed helper, and both tally modules have no standalone policy loop.
+- Confirm score-row helpers consume cached engine primitives and do not call voting policy functions.
+- Confirm added production lines are fewer than deleted production lines.
+
+## Acceptance
+
+- Run focused engine and parser tests:
+  - `python3 -m pytest -q python/tests/review/test_tally_engine.py python/tests/review/test_voting.py`
+- Run acceptance suites unchanged:
+  - `python3 -m pytest -q python/tests/review/test_review_tally.py python/tests/review/test_self_review_tally.py python/tests/review/test_plan_review.py`
+- Run direct plan-tally integration coverage:
+  - `python3 -m pytest -q python/tests/review/test_plan_review_round.py`
+- Run Ruff, Pylint, and Pyright against:
+  - `python/larch/review/tally_engine.py`
+  - `python/larch/review/voting.py`
+  - `python/larch/review/review_tally.py`
+  - `python/larch/review/plan_review_tally.py`
+- Compare representative successful pre-refactor and post-refactor classification TSV rows, score rows, ledger entries, tally-env rows, and OOS artifacts byte for byte.
+- Compare multi-item proposer and security abort paths against their existing partial-output boundaries.
+- Confirm `_finding_oos_reroute_marker` has exactly one production definition, all ballot-heading consumers use the parser-backed helper, and both tally modules have no standalone policy loop.
+- Confirm score-row helpers consume cached engine primitives and do not call voting policy functions.
+- Confirm added production lines are fewer than deleted production lines.
+
+review_status: complete
+rounds_completed: 2
+difficulty: HARD
+diff_lines: 1200
