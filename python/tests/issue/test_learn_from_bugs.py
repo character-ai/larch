@@ -1411,6 +1411,8 @@ def test_filed_issue_rejects_malformed_json_response(stdout: str) -> None:
         ("introduced by PR #99", 99),
         ("introduced by PR#88", 88),
         ("introduced by pr #12", 12),
+        ("introduced in #77", 77),
+        ("Introduced in #12", 12),
         ("incomplete fix of #55", 55),
         ("Incomplete Fix Of #55", 55),
         ("persists after #100", 100),
@@ -1431,6 +1433,12 @@ def test_origin_bare_regression_has_null_ref() -> None:
 
 def test_origin_no_marker_is_unknown() -> None:
     body = "## Root cause\n\nA plain logic error with no residual language.\n"
+    origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
+    assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
+
+
+def test_origin_introduced_in_requires_adjacency() -> None:
+    body = "## Root cause analysis\n\nThe defect was introduced early in #12 of the port.\n"
     origin = learn_from_bugs.classify_origin(title="[BUG] x", body=body)
     assert origin == learn_from_bugs.Origin(kind="unknown", ref=None)
 

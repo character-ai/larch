@@ -88,9 +88,13 @@ REGISTRY_KEY_LENGTH: Final = 2
 
 # Origin extraction: referenced residual markers (first match in source order wins).
 # Supported PR spacing: "PR #N" and "PR#N" only.
+# Two prose surfaces enumerate these phrases for reporters: the G-Md-4 entry in
+# ARCHITECTURAL_GUIDELINES.md and the /bug body template in skills/bug/SKILL.md.
+# Sweep all three surfaces together when the phrase set changes (G-Wire-3, G-Md-2).
 _ORIGIN_REF_PATTERNS: Final = (
     re.compile(r"introduced\s+by\s+PR\s*#(\d+)", re.IGNORECASE),
     re.compile(r"introduced\s+by\s+#(\d+)", re.IGNORECASE),
+    re.compile(r"introduced\s+in\s+#(\d+)", re.IGNORECASE),
     re.compile(r"incomplete\s+fix\s+of\s+#(\d+)", re.IGNORECASE),
     re.compile(r"persists\s+after\s+#(\d+)", re.IGNORECASE),
     re.compile(r"residual\s+of\s+#(\d+)", re.IGNORECASE),
