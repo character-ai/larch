@@ -1,0 +1,2 @@
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add focused tests patching design_step0.gh.issue_view_field_read or design_step0')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_5 not traceable to scoped input (first 80 chars: 'Stub admission.proc.run for the view leg (return success JSON), keep _run failin')
