@@ -220,7 +220,7 @@ def _comment_bodies(runner: Runner, *, issue: int, repo: str) -> tuple[str, ...]
     for row in rows:
         if not isinstance(row, dict):
             raise TriageError("issue comments returned a malformed row", EXIT_PROTECTED)
-        body = row.get("body")
+        body = cast("dict[str, object]", row).get("body")
         bodies.append(body if isinstance(body, str) else str(body or ""))
     return tuple(bodies)
 
