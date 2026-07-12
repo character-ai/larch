@@ -358,6 +358,8 @@ The local sentinel reader validates non-empty `ISSUE_NUMBER` values as digits on
 
 **CI-fixer crash diagnostics** are a committed-log egress surface. Crash finalization captures only validated launch metadata and available daemon-owned stdout and stderr tails. It redacts secrets, operator paths, and tmpdir paths before persistence, then applies one combined `BGJOB_LOG_TAIL_BYTES` cap across the launch context and both tails. The main agent never reads the captured transcripts. Redaction, diagnostic persistence, lineage verification, repository-safety validation, or salvage-provenance validation failures block automatic tier advancement.
 
+**CI-fixer salvage provenance** is required before normal dispatch or crash recovery reships a fixer-created commit. The commit must have the expected tier-specific subject, be the sole commit after the lane's `starting_head`, name that head as its parent, and contain exactly one `Larch-Salvage-Step` trailer whose value matches the deterministic lane step. This trailer provides deterministic lane-bound provenance; it is not a cryptographic signature.
+
 **Operator diagnostic redaction**: `larch_err` / `larch_errf` still pipe through
 `redact secrets --streaming` directly (the redaction streaming wrapper
 was removed in Stage 3). Durable log publication redaction remains in

@@ -28,6 +28,10 @@ _CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
 _MAX_EVIDENCE_BYTES = 1_048_576
 _ROUNDS_COLUMNS = 7
 _LINEAGE_COLUMNS = 6
+_SALVAGE_STEP_TRAILER = "Larch-Salvage-Step"
+_SALVAGE_STEP_TRAILER_RE = re.compile(
+    rf"^{re.escape(_SALVAGE_STEP_TRAILER)}:[ \t]*(.*)$", re.MULTILINE
+)
 
 Launcher = Callable[[list[str] | None], int]
 
@@ -471,7 +475,10 @@ def _salvage_uncommitted_fixer_edits(
         raise LaneClosedError("failed to stage CI fixer working-tree edits")
     commit_result = git.commit_with_trailer(
         runner,
-        f"Apply CI fixer working-tree edits ({identity.tier})",
+        (
+            f"Apply CI fixer working-tree edits ({identity.tier})\n\n"
+            f"{_SALVAGE_STEP_TRAILER}: {identity.step}"
+        ),
         no_trailer=True,
         cwd=str(identity.repo_root),
     )
@@ -507,6 +514,8 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
         captured_text="", output_file=output, process_rc=int(process_rc)
     )
     if launcher_exit == 0 and final_head != identity.starting_head:
+        if not _salvage_provenance_valid(identity, runner=runner, live_head=final_head):
+            raise LaneClosedError("CI fixer salvage commit provenance is unverified")
         return LaneResult("reship", "fixer-produced-change", final_head)
     if launcher_exit != 0 and final_head != identity.starting_head:
         return LaneResult("operator-bail", "failed-launcher-modified-head", final_head)
@@ -515,6 +524,10 @@ def _dispatch(identity: LaneIdentity, evidence: EvidenceState, *, runner: Runner
             identity, runner=runner, baseline=baseline
         )
         if committed_head is not None:
+            if not _salvage_provenance_valid(
+                identity, runner=runner, live_head=committed_head
+            ):
+                raise LaneClosedError("CI fixer salvage commit provenance is unverified")
             return LaneResult("reship", "fixer-produced-uncommitted-change", committed_head)
         return LaneResult("retry-next-tool", "fixer-made-no-progress", final_head)
     return LaneResult("retry-next-tool", f"launcher-exit-{launcher_exit}", final_head)
@@ -890,18 +903,42 @@ def _worktree_clean(identity: CrashFinalizeIdentity, *, runner: Runner) -> bool:
     return not status.stdout.strip()
 
 
-def _validated_salvage_head(identity: CrashFinalizeIdentity, *, runner: Runner, live_head: str) -> bool:
+def _salvage_provenance_valid(
+    identity: LaneIdentity | CrashFinalizeIdentity, *, runner: Runner, live_head: str
+) -> bool:
     if live_head == identity.starting_head:
         return False
-    count = _git_read(
-        runner, ["rev-list", "--count", f"{identity.starting_head}..{live_head}"],
-        cwd=identity.repo_root,
-    )
-    parent = _git_read(runner, ["rev-parse", f"{live_head}^"], cwd=identity.repo_root)
-    subject = _git_read(runner, ["show", "-s", "--format=%s", live_head], cwd=identity.repo_root)
+    try:
+        count = _git_read(
+            runner, ["rev-list", "--count", f"{identity.starting_head}..{live_head}"],
+            cwd=identity.repo_root,
+        )
+        parent = _git_read(runner, ["rev-parse", f"{live_head}^"], cwd=identity.repo_root)
+        subject = _git_read(
+            runner, ["show", "-s", "--format=%s", live_head], cwd=identity.repo_root
+        )
+        body = _git_read(
+            runner, ["show", "-s", "--format=%B", live_head], cwd=identity.repo_root
+        )
+        parsed_trailers = _git_read(
+            runner,
+            [
+                "show",
+                "-s",
+                f"--format=%(trailers:key={_SALVAGE_STEP_TRAILER},only,unfold)",
+                live_head,
+            ],
+            cwd=identity.repo_root,
+        )
+    except LaneClosedError:
+        return False
+    trailers = tuple(match.group(1).strip() for match in _SALVAGE_STEP_TRAILER_RE.finditer(body))
+    expected_trailer = f"{_SALVAGE_STEP_TRAILER}: {identity.step}"
     return (
         count == "1" and parent == identity.starting_head
         and subject == f"Apply CI fixer working-tree edits ({identity.tier})"
+        and trailers == (identity.step,)
+        and tuple(parsed_trailers.splitlines()) == (expected_trailer,)
     )
 
 
@@ -947,7 +984,7 @@ def finalize_crashed_lane(
     if not clean:
         return LaneResult("operator-bail", "crashed-lane-worktree-drift", live_head)
     if live_head != identity.starting_head:
-        if _validated_salvage_head(identity, runner=runner, live_head=live_head):
+        if _salvage_provenance_valid(identity, runner=runner, live_head=live_head):
             return LaneResult("reship", "crashed-lane-salvage-commit", live_head)
         return LaneResult("operator-bail", "crashed-lane-head-unverified", live_head)
     expected_existing = (
