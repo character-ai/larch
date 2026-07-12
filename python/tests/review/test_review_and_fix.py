@@ -5578,9 +5578,11 @@ def test_self_review_delta_paths_probe_policy(tmp_path: Path, monkeypatch: pytes
         # Worktree diff: unstaged.py present; staged-only idx.py absent
         if args == ["diff", "--name-only", "abc"]:
             return "unstaged.py\n"
+        if "--cached" in args:
+            return "idx.py\n"
         return ""
 
-    monkeypatch.setattr(snapshot, "_git_output", fake_git_output)
+    monkeypatch.setattr(snapshot, "_git_output", fake_git_output)  # lint-monkeypatch-binding: ok worktree probe facade
 
     trvr_called: list[bool] = []
 
@@ -5594,3 +5596,51 @@ def test_self_review_delta_paths_probe_policy(tmp_path: Path, monkeypatch: pytes
 
     assert trvr_called == []           # _tracked_paths_vs_ref never called for self-review
     assert deltas == ["unstaged.py"]   # staged-only idx.py not collected; only worktree change present
+
+
+@pytest.mark.commit_fixes
+def test_collect_self_review_stage_paths_rejects_hostile_tracked_inventory(tmp_path: Path) -> None:
+    impl = _tmp_impl(tmp_path)
+    (impl / "self-review-accepted.md").write_text("accepted\n", encoding="utf-8")
+    snap = snapshot._self_review_snapshot_dir(impl)
+    snap.mkdir()
+    (snap / "pre-self-review-head.txt").write_text("abc\n", encoding="utf-8")
+    (snap / "pre-self-review-tracked-paths.txt").write_text("../unsafe.py\n", encoding="utf-8")
+    (snap / "pre-self-review-untracked-paths.txt").write_text("", encoding="utf-8")
+
+    assert snapshot._collect_self_review_stage_paths(impl) == []
+
+
+@pytest.mark.commit_fixes
+def test_collect_self_review_stage_paths_rejects_invalid_untracked_inventory(tmp_path: Path) -> None:
+    impl = _tmp_impl(tmp_path)
+    (impl / "self-review-accepted.md").write_text("accepted\n", encoding="utf-8")
+    snap = snapshot._self_review_snapshot_dir(impl)
+    snap.mkdir()
+    (snap / "pre-self-review-head.txt").write_text("abc\n", encoding="utf-8")
+    (snap / "pre-self-review-tracked-paths.txt").write_text("", encoding="utf-8")
+    (snap / "pre-self-review-untracked-paths.txt").write_text("new.py\nnew.py\n", encoding="utf-8")
+
+    assert snapshot._collect_self_review_stage_paths(impl) == []
+
+
+@pytest.mark.commit_fixes
+def test_path_matches_snapshot_accepts_legacy_stripped_patch_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    (repo / "tracked.txt").write_text("dirty\n", encoding="utf-8")
+    snap = tmp_path / "snapshot"
+    diffs = snap / "pre-self-review-path-diffs"
+    diffs.mkdir(parents=True)
+    raw_diff = snapshot._git_stdout(["diff", "HEAD", "--", "tracked.txt"])
+    raw_cached_diff = snapshot._git_stdout(["diff", "--cached", "HEAD", "--", "tracked.txt"])
+    safe = snapshot._safe_patch_name("tracked.txt")
+    (diffs / f"{safe}.patch").write_text(raw_diff.strip(), encoding="utf-8")
+    (diffs / f"{safe}.cached.patch").write_text(raw_cached_diff.strip(), encoding="utf-8")
+
+    assert snapshot._path_matches_snapshot(
+        snap_dir=snap,
+        prefix="pre-self-review",
+        patch_match_ref="HEAD",
+        path="tracked.txt",
+    )

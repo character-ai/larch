@@ -321,7 +321,11 @@ def _path_matches_snapshot(
         return False
     wt_diff = _git_stdout(["diff", patch_match_ref, "--", path])
     idx_diff = _git_stdout(["diff", "--cached", patch_match_ref, "--", path])
-    return wt_diff == _read_text(wt_snap) and idx_diff == _read_text(idx_snap)
+    wt_saved = _read_text(wt_snap)
+    idx_saved = _read_text(idx_snap)
+    return (wt_diff == wt_saved or wt_diff.strip() == wt_saved) and (
+        idx_diff == idx_saved or idx_diff.strip() == idx_saved
+    )
 
 
 def _classify_tracked_delta_paths(
@@ -964,9 +968,7 @@ def _validated_self_review_snapshot_head(implement_tmpdir: Path) -> str:
         _snap_head_path(snap_dir, "pre-self-review"), root=snap_dir, errors="replace"
     ).strip()
     tracked = _snapshot_inventory(_snap_tracked_paths_file(snap_dir, "pre-self-review"))
-    _ = larch_io.read_trusted_text(
-        _snap_untracked_paths_file(snap_dir, "pre-self-review"), root=snap_dir, errors="replace"
-    )
+    _snapshot_inventory(_snap_untracked_paths_file(snap_dir, "pre-self-review"))
     if not head:
         raise OSError(f"invalid self-review snapshot: {snap_dir}")
     safe_names = tuple(_safe_patch_name(path) for path in tracked)
