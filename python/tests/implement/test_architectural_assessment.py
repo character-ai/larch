@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -155,9 +156,9 @@ def test_main_preserves_bounded_reauthor_reason(monkeypatch: pytest.MonkeyPatch,
 
 def test_sanitize_detail_main_reads_stdin_and_emits_one_safe_line(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     token = "ghp_" + "x" * 30
-    monkeypatch.setattr(assessment.sys, "stdin", io.StringIO(f"first\n{tmp_path}\t{token}"))
+    monkeypatch.setattr(sys, "stdin", io.StringIO(f"first\n{tmp_path}\t{token}"))
 
-    rc = assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)])
+    rc = assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)])  # pyright: ignore[reportAttributeAccessIssue]
 
     output = capsys.readouterr().out
     assert rc == config.EXIT_OK
@@ -165,6 +166,27 @@ def test_sanitize_detail_main_reads_stdin_and_emits_one_safe_line(monkeypatch: p
     assert str(tmp_path) not in output
     assert token not in output
     assert output == "first <implement-tmpdir> <REDACTED-TOKEN>\n"
+
+
+def test_sanitize_detail_main_caps_stdin_before_sanitizing(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    class _RecordingBuffer:
+        def __init__(self) -> None:
+            self.size: int | None = None
+
+        def read(self, size: int) -> bytes:
+            self.size = size
+            return b"bounded diagnostic"
+
+    class _Stdin:
+        def __init__(self) -> None:
+            self.buffer = _RecordingBuffer()
+
+    stdin = _Stdin()
+    monkeypatch.setattr(sys, "stdin", stdin)
+
+    assert assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK  # pyright: ignore[reportAttributeAccessIssue]
+    assert stdin.buffer.size == assessment._MAX_SANITIZE_DETAIL_BYTES  # pyright: ignore[reportAttributeAccessIssue, reportPrivateUsage]
+    assert capsys.readouterr().out == "bounded diagnostic\n"
 
 
 @pytest.mark.parametrize("kind", [config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES])
@@ -259,6 +281,40 @@ def test_launch_assessment_does_not_retry_nonzero_exit(tmp_path: Path) -> None:
     result = assessment._launch_assessment(launcher, _launch_request(tmp_path))  # pyright: ignore[reportPrivateUsage]
     assert launcher.calls == 1
     assert result.returncode == 1
+
+
+def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    diff = tmp_path / "diff.txt"
+    knowledge = tmp_path / "guidelines.md"
+    diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
+    knowledge.write_text("# G-Py-4\n", encoding="utf-8")
+    evidence = assessment.MaterializedEvidence(
+        kind=config.ASSESSMENT_KIND_GUIDELINES,
+        head_sha="a" * 40,
+        base_ref="origin/main",
+        diff_path=diff,
+        diff_text=diff.read_text(encoding="utf-8"),
+        diff_fingerprint="b" * 64,
+        knowledge_path=knowledge,
+        knowledge_sha256=assessment._sha256(knowledge.read_text(encoding="utf-8")),  # pyright: ignore[reportPrivateUsage]
+        identifiers=frozenset({"G-Py-4"}),
+    )
+    token = "ghp_" + "x" * 30
+    launcher = _SequenceLauncher([assessment.LaunchResult(0, "", f"auth failed {tmp_path} {token}")])
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)
+    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)
+    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)
+
+    assert assessment.run(
+        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path, launcher=launcher
+    ) == ("guidelines:unavailable",)
+
+    outcome_path = tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
+    outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
+    assert launcher.calls == assessment._EMPTY_STDOUT_ATTEMPTS  # pyright: ignore[reportPrivateUsage]
+    assert outcome["detail"] == "auth failed <implement-tmpdir> <REDACTED-TOKEN>"
 
 
 def _true_kwargs(**_kwargs: object) -> bool:

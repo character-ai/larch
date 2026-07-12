@@ -704,25 +704,47 @@ run_child() {
   for kind in "$@"; do
     cmd+=(--kind "$kind")
   done
-  raw_stderr=$(mktemp "$IMPLEMENT_TMPDIR/architectural-assessment-stderr.XXXXXX") || exit 2
+  raw_stderr=""
   # shellcheck disable=SC2329 # invoked indirectly by EXIT and signal traps
   cleanup_child_stderr() {
     exec 3>&- || true
     exec 4<&- || true
-    rm -f "$raw_stderr" 2>/dev/null || true
+    [ -z "$raw_stderr" ] || rm -f "$raw_stderr" 2>/dev/null || true
   }
   trap cleanup_child_stderr EXIT
   trap 'exit 129' HUP
   trap 'exit 130' INT
   trap 'exit 143' TERM
+  raw_stderr=$(mktemp "$IMPLEMENT_TMPDIR/architectural-assessment-stderr.XXXXXX") || exit 2
   chmod 0600 "$raw_stderr" 2>/dev/null || true
-  exec 3>"$raw_stderr" || exit 2
   exec 4<"$raw_stderr" || exit 2
   set +e
-  out=$("${cmd[@]}" 2>&3)
+  out=$(python3 - "$raw_stderr" "${cmd[@]}" <<'PY'
+import subprocess
+import sys
+from pathlib import Path
+
+limit = 8 * 1024
+written = 0
+truncated = False
+with Path(sys.argv[1]).open("wb") as raw:
+    process = subprocess.Popen(sys.argv[2:], stderr=subprocess.PIPE)
+    assert process.stderr is not None
+    while chunk := process.stderr.read(4096):
+        remaining = limit - written
+        if remaining > 0:
+            kept = chunk[:remaining]
+            raw.write(kept)
+            written += len(kept)
+        if len(chunk) > remaining:
+            truncated = True
+    if truncated:
+        raw.write(b"\n[stderr truncated]\n")
+raise SystemExit(process.wait())
+PY
+  )
   child_rc=$?
   set -e
-  exec 3>&-
   rm -f "$raw_stderr" || exit 2
   set +e
   child_detail=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" architectural-assessment sanitize-detail \

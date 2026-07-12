@@ -24,6 +24,7 @@ _AGENT_PROMPT: Final = Path(__file__).parents[3] / "skills/implement/references/
 _MODEL: Final = "claude-sonnet-4-6"
 _TIMEOUT_SECONDS: Final = 1800
 _EMPTY_STDOUT_ATTEMPTS: Final = 3
+_MAX_SANITIZE_DETAIL_BYTES: Final = 8 * 1024
 _MAX_ASSESSMENT_CHARS: Final = 12000
 _UNAVAILABLE_RECEIPT: Final = "architectural-assessment-unavailable-{kind}.json"
 _KIND_ORDER: Final = (config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES)
@@ -804,7 +805,10 @@ def run(*, kinds: Sequence[str], repo_root: Path, implement_tmpdir: Path, launch
                 raise ValueError(launch_result.stderr or f"launcher exited {launch_result.returncode}")
             _write_text_atomic(result_path, launch_result.stdout)
             if not launch_result.stdout.strip():
-                raise ValueError(f"assessment launcher returned empty stdout after {_EMPTY_STDOUT_ATTEMPTS} attempts")
+                raise ValueError(
+                    launch_result.stderr
+                    or f"assessment launcher returned empty stdout after {_EMPTY_STDOUT_ATTEMPTS} attempts"
+                )
             results, invalid_kinds, invalid_detail = _parse_results_independently(_read_regular(result_path, root=tmpdir), pending)
             for result in results:
                 try:
@@ -891,6 +895,9 @@ def sanitize_detail_main(argv: list[str] | None = None) -> int:
     if not implement_tmpdir.is_dir() or implement_tmpdir.is_symlink():
         print("architectural-assessment sanitize-detail: invalid implement tmpdir", file=sys.stderr)
         return config.EXIT_USAGE
-    diagnostic: str = sys.stdin.read()
+    stdin_bytes = getattr(sys.stdin, "buffer", sys.stdin)
+    diagnostic = stdin_bytes.read(_MAX_SANITIZE_DETAIL_BYTES)
+    if isinstance(diagnostic, bytes):
+        diagnostic = diagnostic.decode("utf-8", errors="replace")
     print(sanitize_detail(diagnostic, implement_tmpdir=implement_tmpdir))
     return config.EXIT_OK

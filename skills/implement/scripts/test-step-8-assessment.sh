@@ -332,6 +332,13 @@ def assessment_run(argv: list[str]) -> int:
     stderr = _impl() / ".test-assessment-stderr"
     if stderr.is_file():
         sys.stderr.write(stderr.read_text(encoding="utf-8"))
+    stderr_bytes = _impl() / ".test-assessment-stderr-bytes"
+    if stderr_bytes.is_file():
+        sys.stderr.buffer.write(b"x" * int(stderr_bytes.read_text(encoding="utf-8").strip()))
+    sleep_for = _impl() / ".test-assessment-sleep"
+    if sleep_for.is_file():
+        import time
+        time.sleep(float(sleep_for.read_text(encoding="utf-8").strip()))
     if (_impl() / ".test-corrupt-merge").is_file():
         merge = _impl() / "bgjob" / "implement-step8-assessment.merge.env"
         merge.unlink(missing_ok=True)
@@ -351,7 +358,9 @@ def sanitize_detail(argv: list[str]) -> int:
         return 1
     import re
 
-    text = sys.stdin.read().replace(os.environ["IMPLEMENT_TMPDIR"], "<implement-tmpdir>")
+    text = sys.stdin.read()
+    (_impl() / ".test-sanitizer-input-size").write_text(str(len(text.encode("utf-8"))), encoding="utf-8")
+    text = text.replace(os.environ["IMPLEMENT_TMPDIR"], "<implement-tmpdir>")
     text = text.replace(str(_impl()), "<implement-tmpdir>")
     text = re.sub(r"ghp_[A-Za-z0-9_]{20,}", "<REDACTED-TOKEN>", text)
     print(text.replace("\r", " ").replace("\n", " ").strip()[:500])
@@ -519,6 +528,26 @@ assert_not_contains "$TOKEN" "$CHILD_DETAIL_OUT" 'child-detail: secret does not 
 assert_not_contains "$IMPL_TMP" "$CHILD_DETAIL_OUT" 'child-detail: tmpdir does not escape'
 assert_no_raw_stderr "$IMPL_TMP" 'child-detail: raw stderr removed after success'
 
+# --- child stderr capture remains bounded while draining ---
+setup_impl child-detail-bounded
+printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
+printf 'ARCHITECTURAL_ASSESSMENT_STATUS=ok\nARCHITECTURAL_ASSESSMENT_RESULTS=invariants:clean,guidelines:clean\n' \
+  >"$IMPL_TMP/.test-assessment-stdout"
+printf '20000\n' >"$IMPL_TMP/.test-assessment-stderr-bytes"
+set +e
+BOUNDED_DETAIL_OUT=$(run_helper 2>"$TMP_ROOT/child-detail-bounded.err")
+BOUNDED_DETAIL_RC=$?
+set -e
+assert_rc "$BOUNDED_DETAIL_RC" 0 'child-detail-bounded: successful assessment exits 0'
+SANITIZER_INPUT_SIZE=$(cat "$IMPL_TMP/.test-sanitizer-input-size")
+if [ "$SANITIZER_INPUT_SIZE" -le 8220 ]; then
+  pass 'child-detail-bounded: sanitizer receives bounded stderr'
+else
+  fail "child-detail-bounded: sanitizer received $SANITIZER_INPUT_SIZE bytes"
+fi
+assert_contains 'ASSESSMENT_CHILD_DETAIL=' "$BOUNDED_DETAIL_OUT" 'child-detail-bounded: retains diagnostic prefix'
+assert_no_raw_stderr "$IMPL_TMP" 'child-detail-bounded: raw stderr removed'
+
 # --- malformed output preserves sanitized terminal detail ---
 setup_impl malformed-child-detail
 printf 'run-child\n' >"$IMPL_TMP/.test-start-mode"
@@ -562,6 +591,34 @@ MERGE_FAIL_RC=$?
 set -e
 assert_rc "$MERGE_FAIL_RC" 2 'merge-write-failure: child fails closed'
 assert_no_raw_stderr "$IMPL_TMP" 'merge-write-failure: raw stderr removed'
+
+# --- signal interruption preserves the signal status and removes raw stderr ---
+setup_impl child-signal
+MERGE_PATH="$IMPL_TMP/bgjob/implement-step8-assessment.merge.env"
+cat >"$MERGE_PATH" <<ENV
+ASSESSMENT_REQUESTED_KINDS=invariants,guidelines
+ASSESSMENT_COVERED_FINGERPRINT=$(expected_fingerprint)
+ASSESSMENT_ATTEMPT=1
+ENV
+printf '0.5\n' >"$IMPL_TMP/.test-assessment-sleep"
+PATH="$STUB_BIN:$PATH" \
+  IMPLEMENT_TMPDIR="$IMPL_TMP" \
+  CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
+  bash "$HELPER_UNDER_TEST" --bgjob-child --merge-result-env "$MERGE_PATH" >"$TMP_ROOT/child-signal.out" 2>"$TMP_ROOT/child-signal.err" &
+CHILD_SIGNAL_PID=$!
+for _ in $(seq 1 50); do
+  if find "$IMPL_TMP" -maxdepth 1 -name 'architectural-assessment-stderr.*' -print -quit | grep -q .; then
+    break
+  fi
+  sleep 0.01
+done
+set +e
+kill -TERM "$CHILD_SIGNAL_PID"
+wait "$CHILD_SIGNAL_PID"
+CHILD_SIGNAL_RC=$?
+set -e
+assert_rc "$CHILD_SIGNAL_RC" 143 'child-signal: preserves TERM exit status'
+assert_no_raw_stderr "$IMPL_TMP" 'child-signal: raw stderr removed'
 
 # --- fresh re-author terminal ---
 setup_impl fresh-reauthor
