@@ -56,6 +56,25 @@ def test_block_range_stops_at_intervening_finding_heading() -> None:
     assert text[span[0] : span[1]] == "### OOS_1: first\nfirst body\n"
 
 
+def test_recover_accepted_from_plain_url_preserves_intervening_finding() -> None:
+    accepted = (
+        "### OOS_1: first\n"
+        "first body\n"
+        "### FINDING_2: middle\n"
+        "finding body\n"
+        "### OOS_3: last\n"
+        "last body\n"
+    )
+
+    recovered, text = design_oos._recover_accepted_from_sentinel(  # pyright: ignore[reportPrivateUsage]
+        accepted_text=accepted,
+        sentinel_text="https://github.com/acme/repo/issues/101\n",
+    )
+
+    assert not recovered
+    assert text == accepted
+
+
 def test_prepare_ready_emits_expected_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     accepted = tmp_path / "oos-accepted-design.md"
     _ = accepted.write_text(

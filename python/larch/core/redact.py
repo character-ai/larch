@@ -544,9 +544,13 @@ def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path
     scrubbed_count = 0
     audit: list[str] = []
     parsed = parse_blocks(text, boundary="item-heading")
-    kept_blocks: list[str] = []
+    parts: list[str] = []
+    previous_end = 0
     for parsed_block in parsed:
+        parts.append(text[previous_end : parsed_block.start])
+        previous_end = parsed_block.end
         if parsed_block.kind != "FINDING":
+            parts.append(parsed_block.block)
             continue
         block = parsed_block.block
         matched = False
@@ -572,11 +576,8 @@ def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path
             scrubbed_count += 1
             audit.append(block.splitlines()[0])
         else:
-            kept_blocks.append(block)
-    # Reconstruct output: preamble + kept blocks in source order.
-    preamble_end = parsed[0].start if parsed else len(text)
-    parts: list[str] = [text[:preamble_end]]
-    parts.extend(kept_blocks)
+            parts.append(block)
+    parts.append(text[previous_end:])
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text("".join(parts), encoding="utf-8")
     log_path.parent.mkdir(parents=True, exist_ok=True)

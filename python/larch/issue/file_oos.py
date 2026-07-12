@@ -652,7 +652,7 @@ class OosItem:
 def _parse_oos_blocks(text: str) -> list[OosItem]:
     return [
         OosItem(int(block.item_id.removeprefix("OOS_")), block.title, block.block.rstrip())
-        for block in parse_blocks(text, boundary="oos-heading")
+        for block in parse_blocks(text, boundary="item-heading")
         if block.kind == "OOS"
     ]
 

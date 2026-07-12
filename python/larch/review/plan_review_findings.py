@@ -110,6 +110,20 @@ def _keys_from_blocks(blocks: list[str]) -> list[str]:
     return keys
 
 
+def _plan_review_finding_blocks(text: str) -> list[str]:
+    """Return each Plan Review wrapper through its immediate FINDING block."""
+    matches = list(re.finditer(r"(?m)^### \[Plan Review\] ", text))
+    blocks: list[str] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        segment = text[match.start():end]
+        items = parse_blocks(segment, boundary="item-heading")
+        finding = next((item for item in items if item.kind == "FINDING"), None)
+        if finding is not None:
+            blocks.append(segment[: finding.end])
+    return blocks
+
+
 def _already_addressed_keys_in_rejected(tmpdir: Path) -> list[str]:
     """Concern keys of rejected blocks tagged ``[ALREADY_ADDRESSED]`` this round."""
     path = tmpdir / "rejected-findings.md"
@@ -117,15 +131,11 @@ def _already_addressed_keys_in_rejected(tmpdir: Path) -> list[str]:
         return []
     text = path.read_text(encoding="utf-8", errors="replace")
     # Try distinct Plan-Review heading grammar first.
-    plan_review_matches = list(re.finditer(r"(?m)^### \[Plan Review\] ", text))
-    if plan_review_matches:
-        blocks = [
-            text[match.start():(plan_review_matches[idx + 1].start() if idx + 1 < len(plan_review_matches) else len(text))]
-            for idx, match in enumerate(plan_review_matches)
-        ]
+    blocks = _plan_review_finding_blocks(text)
+    if blocks:
         return _keys_from_blocks(blocks)
     # Fall back to canonical FINDING blocks via shared parser.
-    finding_blocks = [pb.block for pb in parse_blocks(text, boundary="finding-heading") if pb.kind == "FINDING"]
+    finding_blocks = [pb.block for pb in parse_blocks(text, boundary="item-heading") if pb.kind == "FINDING"]
     if finding_blocks:
         return _keys_from_blocks(finding_blocks)
     return []
@@ -149,8 +159,12 @@ def _filter_rejected_findings_body(*, text: str, applied: set[str], marker_re: s
     for idx, match in enumerate(matches):
         end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
         block = text[match.start():end]
-        key = _finding_dedup_key(block)
+        items = parse_blocks(block, boundary="item-heading")
+        finding = next((item for item in items if item.kind == "FINDING"), None)
+        candidate = block[: finding.end] if finding is not None else block
+        key = _finding_dedup_key(candidate)
         if (key and key in applied) or _ALREADY_ADDRESSED_RE.search(block):
+            kept.append(block[len(candidate) :])
             continue
         kept.append(block)
     return "".join(kept), True
@@ -158,7 +172,7 @@ def _filter_rejected_findings_body(*, text: str, applied: set[str], marker_re: s
 
 def _filter_rejected_findings_body_canonical(*, text: str, applied: set[str]) -> tuple[str, bool]:
     """Filter canonical FINDING blocks from ``text``, dropping suppressed keys."""
-    parsed = parse_blocks(text, boundary="finding-heading")
+    parsed = parse_blocks(text, boundary="item-heading")
     finding_blocks = [b for b in parsed if b.kind == "FINDING"]
     if not finding_blocks:
         return "", False

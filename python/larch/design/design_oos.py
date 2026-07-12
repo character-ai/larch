@@ -468,12 +468,12 @@ def _recover_accepted_from_sentinel(*, accepted_text: str, sentinel_text: str) -
         return True, text
     if not plain_urls:
         return True, text
-    blocks = [block.block for block in parse_blocks(text, boundary="oos-heading") if block.kind == "OOS"]
+    blocks = [block.block for block in parse_blocks(text, boundary="item-heading") if block.kind == "OOS"]
     unfiled = [block for block in blocks if not _FILED_URL_LINE_RE.search(block)]
     if len(plain_urls) > 1 or len(unfiled) > 1:
         return False, accepted_text
     for url in plain_urls:
-        for parsed in parse_blocks(text, boundary="oos-heading"):
+        for parsed in parse_blocks(text, boundary="item-heading"):
             if parsed.kind != "OOS" or _FILED_URL_LINE_RE.search(parsed.block):
                 continue
             new_block = parsed.block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"

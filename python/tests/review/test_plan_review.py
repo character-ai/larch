@@ -3867,6 +3867,23 @@ def test_emit_rejected_without_ledger_emits_verbatim(tmp_path: Path) -> None:
     assert proc.stdout == body
 
 
+def test_emit_rejected_preserves_intervening_oos_block(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    applied = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    oos = "### OOS_2: preserve\n- **Concern**: unrelated OOS\n"
+    fresh = _make_rejected_block("FINDING_3", "beta.py:20", "Concern B", "Title B")
+    body = applied + oos + fresh
+    _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
+    key = plan_review._finding_dedup_key(applied)  # pyright: ignore[reportPrivateUsage]
+    _ = (design / ".step3-applied-finding-keys.tsv").write_text(f"1\t{key}\n", encoding="utf-8")
+
+    proc = _emit_rejected(design)
+
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout == oos + fresh
+
+
 def test_emit_rejected_all_applied_emits_empty(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()

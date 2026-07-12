@@ -411,7 +411,7 @@ def test_scrub_submodule_paths_inline_mention_without_label(
     assert "FINDING_1" not in output_path.read_text(encoding="utf-8")
 
 
-def test_scrub_submodule_paths_drops_intervening_oos_without_duplication(
+def test_scrub_submodule_paths_preserves_intervening_oos_without_duplication(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(redact, "discover_submodule_paths", _fake_submodule_paths)
@@ -433,4 +433,10 @@ def test_scrub_submodule_paths_drops_intervening_oos_without_duplication(
 
     assert ok
     assert count == 1
-    assert output_path.read_text(encoding="utf-8") == "Preamble\n### FINDING_1: keep\n- **Concern**: public finding\n"
+    assert output_path.read_text(encoding="utf-8") == (
+        "Preamble\n"
+        "### FINDING_1: keep\n"
+        "- **Concern**: public finding\n"
+        "### OOS_1: private\n"
+        "- **Concern**: vendor/libfoo must not survive\n"
+    )
