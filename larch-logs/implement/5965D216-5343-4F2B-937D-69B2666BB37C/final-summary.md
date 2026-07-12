@@ -39,32 +39,34 @@ codex/apply                                   │                             �
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (1):
+Warnings (2):
   1. G-Py-11: test_porcelain_dirty_paths_preserves_ordinary_arrow_filename uses `# type: ignore[reportPrivateUsage]` with no inline reason (python/tests/review/test_review_and_fix.py). The guideline req...
+  2. G-Py-11: in test_porcelain_dirty_paths_preserves_ordinary_arrow_filename, the suppression '# type: ignore[reportPrivateUsage]' carries no inline reason. G-Py-11 requires '# type: ignore[code] # rea...
 
 ## Architectural invariants
 
-No invariant violations. The dirty-path filtering in _commit_fixes_stage_all uses independently computed git status data (not data authored by the gated entity), so I-Gate-1 is satisfied. No changes touch pause/resume artifacts (I-Pause-1), persisted step result consumption (I-Stale-1), run-log flush (I-Flush-1, I-Commit-1, I-Outcome-1), panel slot accounting (I-Slot-1), agent-verdict backing (I-Agent-1), or pre-merge mutation guards (I-Ship-1).
+No violations identified. The change adds _porcelain_dirty_paths() and filters collected paths against actual dirty git status in _commit_fixes_stage_all; it does not touch gate disarming (I-Gate-1), pause snapshots (I-Pause-1), persisted step result consumption (I-Stale-1), run-log artifact flushing (I-Flush-1, I-Commit-1, I-Outcome-1), panel slot accounting (I-Slot-1), agent verdict provenance (I-Agent-1), or ship lifecycle recovery (I-Ship-1).
 
 ## Architectural guidelines
 
-G-Py-11: test_porcelain_dirty_paths_preserves_ordinary_arrow_filename uses `# type: ignore[reportPrivateUsage]` with no inline reason (python/tests/review/test_review_and_fix.py). The guideline requires a reason comment — e.g., `# type: ignore[reportPrivateUsage]  # testing internal helper directly`. All other aspects are compliant: G-Fix-2 is satisfied by three new git-fixture tests reproducing the #7073 scenarios (clean-collected noop, partial-dirty commits-subset, untracked-nested-file); G-Fix-1 is satisfied by addressing the full class; G-Py-14 fake_run helpers carry full type annotations; the stage-paths wire format is unchanged (G-Wire-1).
+G-Py-11: in test_porcelain_dirty_paths_preserves_ordinary_arrow_filename, the suppression '# type: ignore[reportPrivateUsage]' carries no inline reason. G-Py-11 requires '# type: ignore[code]  # reason'; the reason (directly testing a private function) is evident from context but absent from the inline annotation, which reads as unexplained debt in a codebase that annotates suppressions densely.
 
-## /implement run 5965D216-5343-4F2B-937D-69B2666BB37C: shipping
+## /implement run 5965D216-5343-4F2B-937D-69B2666BB37C: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:20:25
-- **Cost**: 💰 TOTAL ~$9.75: Claude $0.72, Codex-5.6 $0.79, Codex-mini $0.86, Cursor $7.03 (Composer $5.21, Grok $1.82), Claude (subprocess) $0.35  |  Tokens: 19640k
+- **Cost**: 💰 TOTAL ~$10.36: Claude $1.32, Codex-5.6 $0.79, Codex-mini $0.86, Cursor $7.03 (Composer $5.21, Grok $1.82), Claude (subprocess) $0.36  |  Tokens: 21401k
 - **Issue**: #7073: https://github.com/character-ai/larch/issues/7073
+- **PR**: #7087: https://github.com/character-ai/larch/pull/7087
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +202/-22, larch-logs +586/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/5965D216-5343-4F2B-937D-69B2666BB37C/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
