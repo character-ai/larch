@@ -1,0 +1,105 @@
+### FINDING_1: Read daemon result before lane artifacts
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-dyn-Ci Recovery Integrity
+- **Severity**: major
+- **Concern**: Finalization must inspect the daemon-owned `.result.env` and branch on `BGJOB_RC` before requiring merge or status artifacts.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In `--finalize`, validate `$BGJOB_DIR/$STEP.result.env` first for `BGJOB_RC` / `STEP`. Branch on non-zero before requiring merge env or status. Keep `BGJOB_RC=0` plus missing or mismatched lane artifacts on the existing `operator-bail` / `missing-result` path.
+  - From Cursor-Innovation: Read BGJOB_RC from $BGJOB_DIR/$STEP.result.env first; require merge env and fixer-status.env only on the BGJOB_RC=0 path
+  - From Cursor-dyn-Ci Recovery Integrity: Today --finalize requires $BGJOB_DIR/$STEP.merge.env and fixer-status.env before any routing; on BGJOB_RC!=0 the daemon writes only $STEP.result.env (BGJOB_RC timeout orphaned or numeric) while merge.env is absent, so the wrapper never reaches crash accounting Read and validate $IMPLEMENT_TMPDIR/bgjob/$STEP.result.env first; treat BGJOB_RC equal to 0 as the success path requiring merge.env and status agreement; treat any other BGJOB_RC token as the crash helper path
+
+### FINDING_2: Preserve the six-column crash lineage schema
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-Ci Recovery Integrity, Codex-dyn-Ci Recovery Integrity
+- **Severity**: major
+- **Concern**: Crash rows must preserve the success-path column order so tier selection and attempt allocation remain correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Make the crashed-lane helper append the same six fields as `step-8-ci-fixer.sh:138`, using live `HEAD` for `FINAL_HEAD` and a stable crashed result token. Add a harness assertion that column 2 equals the crashed tier.
+  - From Cursor-dyn-Ci Recovery Integrity: Pin crash lineage writes to the same six-column shape as the success append (attempt tier starting_head input_fingerprint result final_head) and add a harness assertion that a crash row makes column 2 appear in ATTEMPTED
+
+### FINDING_3: Pin redacted CI Issues diagnostic persistence
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Codex-dyn-Ci Recovery Integrity
+- **Severity**: minor
+- **Concern**: Crash diagnostics need to use the established redacted CI Issues run-log path and fail closed if persistence fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Use the same redacted CI Issues path as `python/larch/agents/_run_external.py` (`run-log append-failure` or `execution-issues append` with `--category CI Issues` and redaction). Fail closed before lineage advance when persistence fails.
+  - From Cursor-Innovation: Use python/cli.py run-log append-failure with category CI Issues --redact and bounded tail fixtures in tests
+
+### FINDING_4: Validate malformed or stale result envelopes
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: minor
+- **Concern**: The crash route needs regression coverage for missing, malformed, stale, or identity-mismatched daemon result envelopes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add focused cases for missing or malformed `BGJOB_RC`, mismatched `STEP` or `RUN_ID`, and a stale result envelope; assert `operator-bail` with no lineage advancement or diagnostic written
+
+### FINDING_5: Define and register the crash-finalization CLI contract
+- **Reviewer(s)**: Codex-Arch, Cursor-dyn-Ci Recovery Integrity, Codex-dyn-Ci Recovery Integrity
+- **Severity**: major
+- **Concern**: The shell wrapper needs an explicit registered Python entry point, arguments, output grammar, and exit behavior for crashed-lane finalization.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Specify the helper's `python/cli.py` verb or exact `ci fixer-lane` mode, required arguments, exit codes, and compact stdout grammar, and include the corresponding dispatch/registration change if a new verb is used
+  - From Cursor-dyn-Ci Recovery Integrity: The shell contract requires invoking Python for non-zero bgjob finalize, but only ci fixer-lane is registered today; without an explicit new verb or --mode the wrapper may sprawl into inline Python or stay unwired Add python/larch/implement/ci.py plus python/larch/cli.py to the firm plan set with a thin registered entry (for example ci fixer-lane-finalize-crash) that the --finalize branch calls with implement-tmpdir handoff-dir step and bgjob result-env path
+
+### FINDING_6: Scope duplicate detection by run identity
+- **Reviewer(s)**: Cursor-Innovation, Cursor-dyn-Ci Recovery Integrity, Codex-dyn-Ci Recovery Integrity
+- **Severity**: major
+- **Concern**: Both round reading and persistence must reject only duplicate `(run_id, attempt)` pairs, not attempts reused by different lineages.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Scope the _persist check to rows where row[2] equals identity.run_id; add an explicit plan bullet and regression test
+  - From Cursor-dyn-Ci Recovery Integrity: Replace the global attempts set with per-run_id duplicate detection: validate all rows for column shape and tier, allow foreign run_id rows, and reject only duplicate (parts[2] parts[0]) pairs; mirror the same (run_id attempt) filter at _persist:553-554
+
+### FINDING_7: Account for salvage commits before retrying
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: major
+- **Concern**: Crash finalization must not retry another tier when the crashed lane already advanced `HEAD` with a salvage commit.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Before crashed-tier accounting compare live HEAD to launch STARTING_HEAD and emit RESULT=reship when advanced; document precedence in ship-pr-ci-fix.md and test it
+
+### FINDING_8: Make diagnostic persistence idempotent
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: major
+- **Concern**: If diagnostic persistence succeeds but lineage persistence fails, re-entry must not append duplicate committed warnings.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add a durable identity-based deduplication mechanism for diagnostics, or make the existing run-log append operation verify and replace an entry keyed by the launch identity before advancing the lineage. Test the diagnostic-success/lineage-failure/retry sequence.
+
+### FINDING_9: Preserve the recovery stdout contract
+- **Reviewer(s)**: Cursor-Pragmatic, Codex-Pragmatic
+- **Severity**: major
+- **Concern**: Recovery success emits `STATUS=complete` with `RESULT=operator-bail` and exit 0, not `STATUS=closed`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In the test_ci.py bullet, require STATUS=complete plus RESULT=operator-bail (exit 0), and assert STATUS=closed-failure is absent.
+  - From Codex-Pragmatic: Change the test requirement to expect STATUS=complete with RESULT=operator-bail and exit 0.
+
+### FINDING_10: Validate repository safety before advancing tiers
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: major
+- **Concern**: Crash recovery must fail closed on uncommitted drift or unverified changes before launching the next fixer tier.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Before returning retry-next-tool, validate live HEAD and working-tree state against the launch state. Fail closed on uncommitted drift or an unprovable HEAD change. Permit any advanced HEAD only through a narrowly validated lane-owned commit condition.
+
+### FINDING_11: Enforce a global diagnostic size cap
+- **Reviewer(s)**: Cursor-dyn-Ci Recovery Integrity, Codex-dyn-Ci Recovery Integrity
+- **Severity**: minor
+- **Concern**: Launch context plus stdout and stderr tails must be composed, redacted, and truncated as one bounded payload.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Ci Recovery Integrity: Plan requires a single payload near BGJOB_LOG_TAIL_BYTES; bgjob wait already tail-reads up to 4096 bytes per log file, so naively concatenating launch envelope plus stdout and stderr tails can exceed the committed-log cap and leak oversized diagnostics before append-failure Compose launch context plus both tails into one buffer then apply _safe_evidence_text-style redaction and one final truncate to config.BGJOB_LOG_TAIL_BYTES before run-log append-failure; add a unit test with oversized stdout and stderr fixtures proving total output stays bounded
+
+### OOS_1: [OUT_OF_SCOPE] Add prose-contract regression needles
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Concern**: The documentation contract could regress without needles for the non-zero `BGJOB_RC` branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `scripts/test-implement-step8-exit3-first-fixer.sh` needles for the new non-zero `BGJOB_RC` finalize branch in `ship-pr-ci-fix.md` so the prose contract cannot regress after item 5 drops the unconditional `BGJOB_RC=0` gate.
+
+### OOS_2: [OUT_OF_SCOPE] Mirror the branch in skill prose
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Concern**: The Step 8 skill prose may not mirror the documented non-zero branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror the `BGJOB_RC` branch in `skills/implement/SKILL.md` Step 8 `ci-fix` prose (line 723). `ship-pr-ci-fix.md` is already mandatory reading, so this is documentation alignment only.
+
+### OOS_3: [OUT_OF_SCOPE] Make successful finalization idempotent
+- **Reviewer(s)**: Cursor-Arch, Codex-dyn-Ci Recovery Integrity
+- **Severity**: major
+- **Concern**: Re-entering successful finalization can append a duplicate lineage row for the same launch identity.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend success-path `--finalize` idempotency beyond the crash helper (duplicate success finalize can still double-append lineage). Prior reviews flagged this; the plan only covers crash identity idempotency, which is enough for the reported bug.
+  - From Codex-dyn-Ci Recovery Integrity: Route successful finalization through the same identity-bound, atomic, idempotent lineage recorder as crashed finalization, or first validate an existing row for the exact launch identity and treat it as already finalized. Add a regression that finalizes the same successful `STEP` twice and verifies one lineage row, unchanged tier selection, and preserved shared-round accounting.

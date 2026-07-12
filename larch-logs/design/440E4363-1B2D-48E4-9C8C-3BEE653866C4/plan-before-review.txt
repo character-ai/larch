@@ -1,0 +1,137 @@
+## Implementation Plan
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/ci_fixer_lane.py
+
+- Treat `fixer-rounds.tsv` as a cross-lineage history ledger.
+- Validate every row before use. Keep malformed rows fatal.
+- Track duplicate attempts by `(run_id, attempt)` instead of attempt alone.
+- Preserve valid foreign-run rows when `_persist` rewrites the ledger.
+- Reject a duplicate attempt only when the row has the current run ID.
+- Keep the existing rollback behavior if any sidecar write or verification fails.
+- Add a typed crashed-lane finalization helper for the shell wrapper:
+  - Validate the launch identity, daemon result envelope, lineage file, and bgjob log paths.
+  - Require a non-zero `BGJOB_RC`. Leave `BGJOB_RC=0` with missing lane artifacts on the existing fail-closed path.
+  - Record the crashed tier in `lineage-$LINEAGE_KEY.tsv` so the next start selects a different tier.
+  - Make repeated finalization idempotent for the same launch identity. Reject conflicting or malformed lineage rows.
+  - Use `external_defaults.next_untried_tier` so crash routing follows the same configured tier order and executable-availability policy as `--start`.
+  - Return `retry-next-tool` when another tier is available. Return `operator-bail` only when the waterfall is exhausted or crash finalization cannot prove its postconditions.
+- Compose one crash diagnostic from the validated launch envelope and the daemon-owned stdout and stderr tails.
+- Redact secrets, operator paths, and tmpdir paths before persistence. Enforce a total cap near `config.BGJOB_LOG_TAIL_BYTES`, rather than applying the cap separately to each source.
+- Append the diagnostic under `CI Issues` in `$IMPLEMENT_TMPDIR/execution-issues.md` through the existing run-log helper.
+- Write the diagnostic before advancing the lineage. If diagnostic persistence fails, fail closed instead of silently advancing.
+- Keep `main()` recovery unchanged in intent, but verify through tests that a prior valid foreign-run row no longer makes the recovery `_persist` fail a second time.
+
+### UPDATED: skills/implement/scripts/step-8-ci-fixer.sh
+
+- In `--finalize`, read and validate the daemon result envelope for the captured dynamic `STEP` before requiring the lane-owned merge envelope and `fixer-status.env`.
+- When `BGJOB_RC != 0`, invoke the Python crashed-lane helper. Do not read or print lane transcripts from prompt-side orchestration.
+- Emit the helper's compact `RESULT`, `REASON`, and identity KVs.
+- Record the crashed attempt exactly once in the existing lineage ledger.
+- Preserve the current merge/status agreement checks, final-HEAD checks, and normal lineage append for `BGJOB_RC=0`.
+- Keep `BGJOB_RC=0` plus missing or mismatched lane artifacts as `operator-bail`; do not reinterpret an integrity failure as a crashed tier.
+- Keep start and finalize non-waiting. Do not change the single wait owner or add polling.
+- Do not change `python/larch/bgjob/daemon.py` or `python/larch/bgjob/model.py`.
+
+### UPDATED: skills/implement/references/ship-pr-ci-fix.md
+
+- Replace the unconditional `BGJOB_RC=0` requirement with an explicit branch after `BGJOB_STATUS=DONE`.
+- For `BGJOB_RC=0`, run finalize and use the existing validated lane-result route.
+- For any non-zero `BGJOB_RC`, still run finalize once. State that finalize, not the main agent, validates the daemon envelope, preserves diagnostics, records the crashed tier, and chooses `retry-next-tool` or `operator-bail`.
+- Require a fresh start, dynamic `STEP`, and byte-identical wait loop after `retry-next-tool`.
+- State that `operator-bail` is used when the tier waterfall is exhausted or crash finalization cannot persist or validate its result.
+- Preserve the rules that forbid main-agent reads of merge envelopes, `fixer-status.env`, transcripts, failure digests, and default-path evidence.
+
+### UPDATED: python/tests/implement/test_ci.py
+
+- Add a regression where `fixer-rounds.tsv` contains a valid row for run ID A and `_persist` succeeds for run ID B.
+- Assert that persistence retains both lineages in the shared ledger.
+- Assert that equal attempt numbers across different run IDs are allowed.
+- Assert that a duplicate attempt for the current run ID still raises `LaneClosedError`.
+- Retain or add malformed-row cases for wrong column count, invalid attempt, and invalid tier.
+- Add a two-lineage sequence that persists run A, then persists run B and verifies the second lane writes its merge env and `fixer-status.env`.
+- Exercise `main()` with a post-identity exception and a prior foreign-run row. Verify that the recovery path persists `operator-bail`, emits `STATUS=closed`, and exits successfully instead of producing `closed-failure`.
+- Unit-test crashed-lane finalization:
+  - A first-tier crash records the tier and returns `retry-next-tool`.
+  - A final-tier crash returns `operator-bail`.
+  - Repeating finalize for the same identity does not duplicate the lineage row or diagnostic.
+  - A conflicting duplicate or malformed lineage fails closed.
+  - `BGJOB_RC=0` is rejected by the crash helper.
+- Verify the diagnostic contains the launch context and both available log tails, is bounded, redacts secret and tmpdir fixtures, and embeds no live tmpdir path.
+- Verify a diagnostic append failure prevents tier advancement.
+
+### UPDATED: skills/implement/scripts/test-step-8-ci-fixer.sh
+
+- Extend the existing wrapper harness with finalize fixtures.
+- Cover a non-zero daemon result with no merge env or fresh status file. Assert that finalize records the crashed tier and emits `RESULT=retry-next-tool`.
+- Prepopulate earlier tier rows and crash the final tier. Assert `RESULT=operator-bail`.
+- Run crashed finalize twice and assert one lineage row and one execution-issue entry.
+- Confirm that a stale `fixer-status.env` from another lineage is not consumed on the non-zero route.
+- Confirm that `BGJOB_RC=0` with missing lane artifacts still emits `REASON=missing-result`.
+- Assert that the wrapper still contains no wait, `gh run`, or direct evidence-reading route.
+
+### UPDATED: SECURITY.md
+
+- Document the CI fixer crash-diagnostic path as a committed-log egress surface.
+- State that finalize captures only a bounded launch envelope and bounded bgjob log tails.
+- Record that Python redacts secrets and tmpdir paths before appending to `execution-issues.md`.
+- State that the main agent never reads the captured transcripts and that a redaction or persistence failure blocks automatic tier advancement.
+
+## Approach
+
+1. Fix the root ledger contract first. Keep all valid history rows, but scope duplicate detection to each run ID.
+2. Add the crash route at finalize, where the daemon result and launch identity are available without violating the no-evidence-reads rule.
+3. Put validation, redaction, diagnostic composition, idempotency, and tier selection in Python. Keep Bash limited to envelope discovery and routing.
+4. Persist the diagnostic and crashed lineage row before returning a retry result.
+5. Reuse the existing tier selector, execution-issue writer, redactor, and byte-cap constant. Do not add a second waterfall policy or diagnostic store.
+6. Leave prompt hardening, complexity-baseline behavior, local-check scope, and bgjob daemon semantics unchanged.
+
+## Edge cases
+
+- Valid foreign-run rows remain in `fixer-rounds.tsv` and may reuse the same attempt number.
+- Duplicate attempts within one run ID still fail closed.
+- Any malformed rounds or lineage row remains fatal, even when it belongs to another run.
+- A stale status file from the prior lineage must not affect a non-zero bgjob route.
+- `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, and numeric non-zero exits follow the same crashed-attempt accounting.
+- A successful bgjob with absent or mismatched lane artifacts remains an integrity failure.
+- Missing stdout or stderr logs produce an explicit unavailable section without blocking the other diagnostic sources.
+- Re-entering finalize after a partial failure must converge without duplicate rows or duplicate committed warnings.
+- Diagnostic text may contain hostile control text, credentials, or absolute paths. Treat it only as redacted evidence.
+
+## Failure modes
+
+1. **The ledger fix drops prior lineage history.**
+   - Earliest signal: the cross-lineage test finds only the new row after `_persist`.
+   - Mitigation: validate all rows, preserve all rows when rendering, and scope only duplicate detection by run ID.
+
+2. **A crash advances the tier without durable accounting.**
+   - Earliest signal: finalize emits `retry-next-tool` while the lineage row or `execution-issues.md` entry is absent.
+   - Mitigation: persist and verify the diagnostic and lineage row before emitting the retry result. Fail closed on either error.
+
+3. **Crash diagnostics leak secrets or temporary paths into committed logs.**
+   - Earliest signal: hostile diagnostic fixtures retain a token or fixture tmpdir after finalization.
+   - Mitigation: use the shared redaction pipeline, cap the final redacted payload, test both secret and path fixtures, and block advancement if persistence cannot complete safely.
+
+## Testing strategy
+
+- Run focused fixer-lane tests:
+  - `python3 -m pytest python/tests/implement/test_ci.py -q`
+- Run the wrapper harness:
+  - `bash skills/implement/scripts/test-step-8-ci-fixer.sh`
+- Validate the edited shell:
+  - `bash -n skills/implement/scripts/step-8-ci-fixer.sh`
+  - `make lint-bash32`
+  - `make lint-bare-grep-probe`
+- Run Python lint and type checks required for the production Python edit:
+  - `make py-lint`
+- Run Markdown checks for the reference and security contract:
+  - `make markdownlint`
+- Confirm the focused tests cover the executable two-lineage reproduction, not only isolated parser behavior.
+
+Difficulty rationale: HARD with high confidence. The evidence directly identifies the affected persistence and finalize paths. The change crosses CI recovery routing, persistent identity ledgers, Bash/Python wire contracts, redaction, and committed run-log diagnostics.
+
+difficulty: HARD
+diff_added: 340
+diff_deleted: 30
+diff_lines: 370

@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	37215	9304	14095	3524	23120	5780		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	26855	6714	13807	3452	13048	3262		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	26846	6712	13798	3450	13048	3262		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	37230	9308	14110	3528	23120	5780		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	26868	6717	13820	3455	13048	3262		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	26870	6718	13822	3456	13048	3262		0	0
+design Step 3	phase1	1	dyn-cursor-plan-ci-recovery-integrity	plan-review	cursor	dyn-cursor-plan-ci-recovery-integrity.txt	37615	9404	13961	3491	23654	5914		0	0
+design Step 3	phase1	1	dyn-codex-plan-ci-recovery-integrity	plan-review	codex	dyn-codex-plan-ci-recovery-integrity.txt	27255	6814	13673	3419	13582	3396		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	37228	9307	14108	3527	23120	5780		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	37206	9302	14086	3522	23120	5780		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	39076	9769	4495	1124	34581	8646	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	24179	6045	9167	2292	15012	3753		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	24179	6045	9167	2292	15012	3753		0	0
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	24179	6045	9167	2292	15012	3753		0	0

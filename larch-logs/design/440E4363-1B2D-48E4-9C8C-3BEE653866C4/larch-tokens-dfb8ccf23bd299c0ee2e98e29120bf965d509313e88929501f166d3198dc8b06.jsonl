@@ -1,0 +1,21 @@
+{"type":"mark","step":"design Step 0: session setup","ts":"2026-07-12T06:16:31Z"}
+{"type":"vendor","vendor":"codex","input":79144,"output":21543,"cache_read":1212316,"cache_create":0,"total":1313003,"raw":"codex_plan_draft","ts":"2026-07-12T06:32:34Z","model":"gpt-5.6-sol"}
+{"type":"vendor","vendor":"codex","input":47041,"output":5037,"cache_read":352435,"cache_create":0,"total":404513,"raw":"codex_review","ts":"2026-07-12T06:35:00Z","model":"gpt-5.6-luna"}
+{"type":"vendor","vendor":"codex","input":49626,"output":6930,"cache_read":449816,"cache_create":0,"total":506372,"raw":"codex_review","ts":"2026-07-12T06:35:14Z","model":"gpt-5.6-luna"}
+{"type":"vendor","vendor":"codex","input":49841,"output":7440,"cache_read":437887,"cache_create":0,"total":495168,"raw":"codex_review","ts":"2026-07-12T06:35:17Z","model":"gpt-5.6-luna"}
+{"type":"vendor","vendor":"cursor","input":124201,"output":11130,"cache_read":1741624,"cache_create":0,"total":1876955,"raw":"cursor_review","ts":"2026-07-12T06:36:06Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":144533,"output":13112,"cache_read":2634139,"cache_create":0,"total":2791784,"raw":"cursor_review","ts":"2026-07-12T06:36:39Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":123904,"output":18012,"cache_read":2422240,"cache_create":0,"total":2564156,"raw":"cursor_review","ts":"2026-07-12T06:37:09Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":242322,"output":17885,"cache_read":2702555,"cache_create":0,"total":2962762,"raw":"cursor_review","ts":"2026-07-12T06:37:15Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":129912,"output":16013,"cache_read":2041056,"cache_create":0,"total":2186981,"raw":"cursor_review","ts":"2026-07-12T06:37:23Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":65272,"output":11832,"cache_read":816563,"cache_create":0,"total":893667,"raw":"codex_review","ts":"2026-07-12T06:37:29Z","model":"gpt-5.6-sol"}
+{"type":"vendor","vendor":"codex","input":55355,"output":5304,"cache_read":454500,"cache_create":0,"total":515159,"raw":"codex_review","ts":"2026-07-12T06:38:20Z","model":"gpt-5.6-sol"}
+{"type":"vendor","vendor":"codex","input":15867,"output":6405,"cache_read":0,"cache_create":0,"total":22272,"raw":"codex_review","ts":"2026-07-12T06:38:56Z","model":"gpt-5.6-luna"}
+{"type":"vendor","vendor":"codex","input":30072,"output":5551,"cache_read":74722,"cache_create":0,"total":110345,"raw":"codex_review","ts":"2026-07-12T06:40:17Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":38034,"output":5502,"cache_read":146811,"cache_create":0,"total":190347,"raw":"codex_review","ts":"2026-07-12T06:40:46Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":47308,"output":7382,"cache_read":267681,"cache_create":0,"total":322371,"raw":"codex_review","ts":"2026-07-12T06:40:50Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":13969,"output":3486,"cache_read":0,"cache_create":0,"total":17455,"raw":"codex_review","ts":"2026-07-12T06:41:39Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":113708,"output":10140,"cache_read":789063,"cache_create":0,"total":912911,"raw":"codex_review","ts":"2026-07-12T06:45:20Z","model":"gpt-5.6-sol"}
+{"type":"vendor","vendor":"codex","input":14297,"output":356,"cache_read":14003,"cache_create":0,"total":28656,"raw":"codex_review","ts":"2026-07-12T06:45:31Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":14288,"output":644,"cache_read":14003,"cache_create":0,"total":28935,"raw":"codex_review","ts":"2026-07-12T06:45:35Z","model":"gpt-5.6-terra"}
+{"type":"vendor","vendor":"codex","input":21322,"output":827,"cache_read":47256,"cache_create":0,"total":69405,"raw":"codex_review","ts":"2026-07-12T06:45:39Z","model":"gpt-5.6-terra"}

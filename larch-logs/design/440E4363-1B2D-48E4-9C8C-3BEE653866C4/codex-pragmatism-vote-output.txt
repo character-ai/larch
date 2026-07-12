@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The approved scope targets crashed lanes; extending diagnostics to clean no-progress outcomes is not necessary to fix the reported failure.
