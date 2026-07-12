@@ -64,15 +64,25 @@ codex/apply                          │                                      �
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (0):
-Warnings (1):
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (2):
   1. Step 7a.1 — 3 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/tests/design/test_design_lifecycle.py, python/tests/issue/test_issue_create...
+  2. Several changed issue-close and label-mutation paths accept successful gh wrapper results without re-reading the mutated issue or label surface, including close_priors_main, _close_combined_away_is...
+
+## Architectural invariants
+
+No violations identified.
+
+## Architectural guidelines
+
+Several changed issue-close and label-mutation paths accept successful gh wrapper results without re-reading the mutated issue or label surface, including close_priors_main, _close_combined_away_issue, and _apply_priority_label.
 
 ## /implement run F1BFA841-BF5E-4B97-9424-FEA0531462CC: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:11:30
-- **Cost**: 💰 TOTAL ~$32.56: Claude $4.91, Codex-5.6 $8.57, Codex-mini $1.89, Cursor $16.79 (Composer $16.79, Grok $0.00), Claude (subprocess) $0.40  |  Tokens: 65483k
+- **Cost**: 💰 TOTAL ~$33.45: Claude $5.18, Codex-5.6 $9.07, Codex-mini $1.89, Cursor $16.86 (Composer $16.86, Grok $0.00), Claude (subprocess) $0.45  |  Tokens: 66809k
 - **Issue**: #7053: https://github.com/character-ai/larch/issues/7053
 - **Plan review**: N/A
 - **Plan coverage**: 27/28 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -81,8 +91,8 @@ Warnings (1):
 - **Code review**: 7/9 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 0
-- **Warnings**: 1
+- **Exec issues**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/F1BFA841-BF5E-4B97-9424-FEA0531462CC/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
