@@ -64,17 +64,27 @@ grep -Fq -- '--input-file "$RUN_DIR/batch-issues.md" --repo "$REPO"' "$SKILL_MD"
 grep -Fq 'learn-from-bugs resolve-zones --zones "$ZONES_CSV"' "$SKILL_MD" \
   || fail "(B.5) Step 1 must resolve zones through learn-from-bugs resolve-zones"
 
-grep -Fq 'RESOLVED_SEARCH=$(printf' "$SKILL_MD" \
-  || fail "(B.6) Step 1 must parse RESOLVED_SEARCH from zone CLI output"
+grep -Fq 'while IFS= read -r resolved_search_record; do' "$SKILL_MD" \
+  || fail "(B.6) Step 1 must use a Bash 3.2-safe zone-output read loop"
+
+grep -Fq 'RESOLVED_SEARCH_COUNT=$((RESOLVED_SEARCH_COUNT + 1))' "$SKILL_MD" \
+  || fail "(B.7) Step 1 must count resolved-search records"
+
+grep -Fq '[ "$RESOLVED_SEARCH_COUNT" -ne 1 ] || [ -z "$RESOLVED_SEARCH" ]' "$SKILL_MD" \
+  || fail "(B.8) Step 1 must require one non-empty resolved search"
+
+if grep -Eq '\b(mapfile|readarray)\b' "$SKILL_MD"; then
+  fail "(B.9) Step 1 must not use Bash 4-only mapfile/readarray"
+fi
 
 grep -Fq 'SEARCH_ARGS=(--search "$RESOLVED_SEARCH")' "$SKILL_MD" \
-  || fail "(B.7) Step 2 must keep resolved search on SEARCH_ARGS preparation route"
+  || fail "(B.10) Step 2 must keep resolved search on SEARCH_ARGS preparation route"
 
 grep -Fq 'ORIGIN_HEADLINE_PATH' "$SKILL_MD" \
-  || fail "(B.8) Step 2 must parse ORIGIN_HEADLINE_PATH"
+  || fail "(B.11) Step 2 must parse ORIGIN_HEADLINE_PATH"
 
 grep -Fq 'Abort if `DIGEST_PATH` or `ORIGIN_HEADLINE_PATH` is missing' "$SKILL_MD" \
-  || fail "(B.9) Step 2 must abort when ORIGIN_HEADLINE_PATH is missing"
+  || fail "(B.12) Step 2 must abort when ORIGIN_HEADLINE_PATH is missing"
 
 # (C) Untrusted-content boundary.
 grep -Fq 'Untrusted-content boundary' "$SKILL_MD" \
@@ -140,6 +150,9 @@ grep -Fq 'nearest lint, hook, or invariant-test alternative' "$SKILL_MD" \
 
 grep -Fq 'learn-from-bugs validate-report' "$SKILL_MD" \
   || fail "(C2.12) Step 4 must run report-contract validation before print/marker/filing"
+
+grep -Fq 'if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs validate-report' "$SKILL_MD" \
+  || fail "(C2.13) Step 4 must stop when report-contract validation fails"
 
 # (D) Regression-test proposals; tests outside CoverageIndex.
 grep -Fq '**Proposed regression tests.**' "$SKILL_MD" \

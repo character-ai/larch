@@ -63,12 +63,16 @@ Decide the gh search query:
 if ! ZONE_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs resolve-zones --zones "$ZONES_CSV"); then
   exit 2
 fi
-mapfile -t RESOLVED_SEARCH_RECORDS < <(printf '%s\n' "$ZONE_OUT" | sed -n 's/^RESOLVED_SEARCH=//p')
-if [ "${#RESOLVED_SEARCH_RECORDS[@]}" -ne 1 ] || [ -z "${RESOLVED_SEARCH_RECORDS[0]}" ]; then
+RESOLVED_SEARCH=
+RESOLVED_SEARCH_COUNT=0
+while IFS= read -r resolved_search_record; do
+  RESOLVED_SEARCH_COUNT=$((RESOLVED_SEARCH_COUNT + 1))
+  RESOLVED_SEARCH=$resolved_search_record
+done < <(printf '%s\n' "$ZONE_OUT" | sed -n 's/^RESOLVED_SEARCH=//p')
+if [ "$RESOLVED_SEARCH_COUNT" -ne 1 ] || [ -z "$RESOLVED_SEARCH" ]; then
   printf '%s\n' 'learn-from-bugs resolve-zones returned no unique resolved search' >&2
   exit 2
 fi
-RESOLVED_SEARCH=${RESOLVED_SEARCH_RECORDS[0]}
 ```
 
 - Else if `--search QUERY` was given, use it verbatim and set `SEARCH_EXPLICIT=true`.
@@ -161,9 +165,11 @@ After the report's proposal sections are final, build exactly one `${RUN_DIR}/re
 Before printing the report, writing a durable marker, or beginning filing-mode work, validate the report contract:
 
 ```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs validate-report \
+if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs validate-report \
   --report "${RUN_DIR}/report.md" \
-  --headline "$ORIGIN_HEADLINE_PATH"
+  --headline "$ORIGIN_HEADLINE_PATH"; then
+  exit 2
+fi
 ```
 
 Abort on non-zero exit. On success, print the report to the operator and the `RUN_DIR` path.
