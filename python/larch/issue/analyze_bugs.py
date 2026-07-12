@@ -1153,7 +1153,7 @@ def build_analytics_view(
     chosen: dict[int, AnalyticsCorpusRecord] = {}
     for row in corpus:
         record = row.record
-        if not record.fix_time or not (window_start < record.fix_time <= generated_at):
+        if not record.fix_sha and not (window_start < record.fix_time <= generated_at):
             continue
         previous = chosen.get(record.issue)
         key = (max(0, record.updated_at), row.append_ordinal)
@@ -1169,11 +1169,14 @@ def build_analytics_view(
     if runner is not None:
         for issue, record in tuple(records.items()):
             persisted = record.ledger_record
-            if not record.fix_sha or (
+            complete_metadata = (
                 persisted is not None
                 and persisted.metadata_version >= ANALYTICS_METADATA_VERSION
                 and persisted.fix_time > 0
-            ) or (persisted is None and record.fix_time > 0):
+                and bool(persisted.touched_files)
+                and persisted.added_lines > 0
+            )
+            if not record.fix_sha or complete_metadata:
                 continue
             touched = record.touched_files or _touched_files(runner, fix_sha=record.fix_sha)
             fix_time, added_lines = _fix_metadata(runner, fix_sha=record.fix_sha)
@@ -1220,11 +1223,17 @@ def build_analytics_view(
             records[issue] = updated
             if record.ledger_record is not None:
                 hydrated[record.ledger_record.cache_key] = replace(
-                    record.ledger_record,
+                    hydrated.get(record.ledger_record.cache_key, record.ledger_record),
                     marker_references=references,
                     marker_fingerprint=fingerprint,
                     metadata_version=ANALYTICS_METADATA_VERSION,
                 )
+
+    records = {
+        issue: record
+        for issue, record in records.items()
+        if record.bundle is not None or window_start < record.fix_time <= generated_at
+    }
 
     marker_edges = {
         ChainEdge(record.issue, reference, "marker")
@@ -1262,7 +1271,10 @@ def build_analytics_view(
             continue
         for zone in record.zones:
             zone_members.setdefault(zone, set()).add(record.issue)
-    components = _chain_components(edges)
+    analytics_issues = set(records)
+    components = _chain_components(
+        tuple(edge for edge in edges if edge.from_issue in analytics_issues and edge.to_issue in analytics_issues)
+    )
     chronic: list[ChronicZone] = []
     for zone, members in sorted(zone_members.items()):
         connected = any(len(component.intersection(members)) >= CHAIN_MEMBER_THRESHOLD for component in set(components.values()))
@@ -1471,7 +1483,9 @@ def ledger_compute(
     manifest, bundles = _load_manifest(manifest_path)
     ledger, corrupt_count = load_ledger(ledger_path)
     analytics = build_analytics_view(manifest=manifest, bundles=bundles, ledger_path=ledger_path, runner=_runner())
-    metadata_records: list[LedgerRecord] = []
+    metadata_records: list[LedgerRecord] = list(analytics.hydrated_records)
+    for record in analytics.hydrated_records:
+        ledger[record.cache_key] = record
     for bundle in bundles:
         base = ledger.get(bundle.cache_key)
         updated = _upsert_record(base, bundle, updated_at=int(manifest.get("generated_at", 0) or 0))
@@ -1803,6 +1817,7 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
         verdict, tier, reason, missing, sampled = _final_verdict_with_tier(bundle, record)
         if bundle.issue_number in truncated:
             verdict = "NEEDS_DEEP"
+            tier = ""
             reason = "deep cap truncated this candidate"
         rows.append((bundle, verdict, tier, reason, missing, sampled))
         verdict_values.append(verdict)

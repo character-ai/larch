@@ -1064,6 +1064,54 @@ def test_file_intersection_excludes_exact_fourteen_day_boundary(tmp_path: Path) 
     assert not any(edge.detector_kind == "file_intersection" for edge in view.chain_edges)
 
 
+def test_hydrates_undated_historical_fix_before_window_filter(tmp_path: Path) -> None:
+    now = 2_000_000
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "historic", "issue": 2, "fix_sha": "sha-2", "later_history_hash": "", "fix_time": 0, "updated_at": 1}) + "\n",
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(responses=[_result("python/a.py\n"), _result(str(now - 100)), _result("4\t0\tpython/a.py\n")], strict=True)
+
+    view = analyze_bugs.build_analytics_view(manifest={"generated_at": now}, bundles=[], ledger_path=ledger, runner=runner)
+
+    assert [record.issue for record in view.records] == [2]
+    assert view.hydrated_records[0].fix_time == now - 100
+
+
+def test_hydration_repairs_partial_metadata_and_marker_backfill_keeps_it(tmp_path: Path, monkeypatch: object) -> None:
+    now = 2_000_000
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "historic", "issue": 2, "fix_sha": "sha-2", "later_history_hash": "", "fix_time": now - 100, "added_lines": 0, "touched_files": [], "updated_at": 1, "metadata_version": 1}) + "\n",
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(
+        responses=[_result("python/a.py\n"), _result(str(now - 100)), _result("4\t0\tpython/a.py\n"), _result(json.dumps({"title": "[BUG] residual after #1", "body": "body"}))],
+        strict=True,
+    )
+
+    view = analyze_bugs.build_analytics_view(manifest={"generated_at": now, "repo": "o/r"}, bundles=[], ledger_path=ledger, runner=runner)
+
+    assert view.hydrated_records[0].touched_files == ("python/a.py",)
+    assert view.hydrated_records[0].added_lines == 4
+    assert view.hydrated_records[0].marker_references == (1,)
+
+
+def test_external_marker_reference_does_not_make_zone_chronic(tmp_path: Path) -> None:
+    now = 2_000_000
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    bundles = [
+        _bundle_from_mapping(_analytics_bundle(run_dir, issue=1, cache_key="k1", files=["python/a.py"], fix_time=now - 100, markers=[9])),
+        _bundle_from_mapping(_analytics_bundle(run_dir, issue=2, cache_key="k2", files=["python/b.py"], fix_time=now - 200, markers=[9])),
+    ]
+
+    view = analyze_bugs.build_analytics_view(manifest={"generated_at": now}, bundles=bundles, ledger_path=tmp_path / "ledger.jsonl")
+
+    assert view.chronic_zones == ()
+
+
 def test_historical_marker_backfill_is_deferred_until_report_success(tmp_path: Path, monkeypatch: object) -> None:
     runs = tmp_path / "runs"
     run_dir = runs / "200"
