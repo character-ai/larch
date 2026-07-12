@@ -35,15 +35,25 @@ codex/apply              │                                                   �
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (0):
-Warnings (1):
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (2):
   1. Step 7a.1 — 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: scripts/test-review-structure.sh
+  2. The new architectural-compliance slot is re-listed independently in config, pipeline, token classification, and scout reservation code rather than deriving selectors from one shared constant. This...
+
+## Architectural invariants
+
+No invariant violations identified.
+
+## Architectural guidelines
+
+The new architectural-compliance slot is re-listed independently in config, pipeline, token classification, and scout reservation code rather than deriving selectors from one shared constant. This can drift when the panel shape changes again.
 
 ## /implement run 62120EBC-9C85-4EAB-8F01-55FD8382E691: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 00:41:13
-- **Cost**: 💰 TOTAL ~$26.30: Claude $0.89, Codex-5.6 $20.35, Codex-mini $0.02, Cursor $4.62 (Composer $4.62, Grok $0.00), Claude (subprocess) $0.42  |  Tokens: 39475k
+- **Cost**: 💰 TOTAL ~$27.34: Claude $1.15, Codex-5.6 $20.96, Codex-mini $0.02, Cursor $4.74 (Composer $4.74, Grok $0.00), Claude (subprocess) $0.47  |  Tokens: 40854k
 - **Issue**: #7018: https://github.com/character-ai/larch/issues/7018
 - **Plan review**: N/A
 - **Plan coverage**: 29/30 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -52,8 +62,8 @@ Warnings (1):
 - **Code review**: 2/7 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 0
-- **Warnings**: 1
+- **Exec issues**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/62120EBC-9C85-4EAB-8F01-55FD8382E691/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
