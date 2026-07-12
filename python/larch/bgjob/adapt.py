@@ -338,15 +338,15 @@ def _start_fresh(spec: model.JobSpec) -> int:
     if final_registry.invalid or final_registry.entry is not None:
         raise AdaptError("registry-replaced")
     if _result_or_none(spec=spec):
-        return 0
+        raise AdaptError("result-emitted")
     launch_spec = _prepare_launch_spec(spec)
     if _result_or_none(spec=spec):
-        return 0
+        raise AdaptError("result-emitted")
     final_registry = _snapshot_registry(spec=spec)
     if final_registry.invalid or final_registry.entry is not None:
         raise AdaptError("registry-replaced")
     if _result_or_none(spec=spec):
-        return 0
+        raise AdaptError("result-emitted")
     try:
         rc = daemon.start_daemon(launch_spec)
     except (OSError, RuntimeError, ValueError) as exc:
@@ -411,7 +411,7 @@ def _decide_locked(spec: model.JobSpec) -> int:
     entry = snapshot.entry
     if entry is None:
         if _result_or_none(spec=spec):
-            return 0
+            raise AdaptError("result-emitted")
         return _start_fresh(spec)
     _validate_entry(spec=spec, entry=entry)
     daemon_state = _process_state(registry.daemon_liveness(entry))
