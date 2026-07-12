@@ -68,11 +68,19 @@ Exec Issues (0):
 Warnings (1):
   1. Step 7a.1 — 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/design/design_step2b.py
 
+## Architectural invariants
+
+Architectural assessment unavailable.
+
+## Architectural guidelines
+
+Architectural assessment unavailable.
+
 ## /implement run BD267D84-8B70-4E30-9FC7-E60E4328D5FE: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:46:40
-- **Cost**: 💰 TOTAL ~$21.18: Claude $1.96, Codex-5.6 $11.41, Codex-mini $0.08, Cursor $7.43 (Composer $7.43, Grok $0.00), Claude (subprocess) $0.30  |  Tokens: 30601k
+- **Cost**: 💰 TOTAL ~$21.45: Claude $2.21, Codex-5.6 $11.41, Codex-mini $0.08, Cursor $7.43 (Composer $7.43, Grok $0.00), Claude (subprocess) $0.32  |  Tokens: 31301k
 - **Issue**: #7028: https://github.com/character-ai/larch/issues/7028
 - **Plan review**: N/A
 - **Plan coverage**: 13/14 firm headings; band: advisory; disposition: none; todos_left: 0
