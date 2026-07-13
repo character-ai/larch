@@ -1,5 +1,6 @@
 """Tests for ARCHITECTURAL_GUIDELINES.md helper surfaces."""
 # pyright: reportUnusedCallResult=false, reportPrivateUsage=false, reportAttributeAccessIssue=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportUnknownArgumentType=false
+# pylint: disable=no-member
 
 from __future__ import annotations
 

@@ -23,7 +23,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.core import config
-from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
+from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS, _MARKDOWN_HEADING_RE  # re-export: lint consumers import this name from this module
 from larch.errors import ShipError
 
 GUIDELINES_FILENAME = GUIDELINES.filename
