@@ -590,6 +590,28 @@ def test_ship_normalize_assessment_handoff_canonicalizes_kind_order(
     assert handoff.read_text(encoding="utf-8") == "NEXT_ACTION=assessments\nDETAIL=invariants,guidelines\n"
 
 
+def test_ship_normalize_assessment_handoff_strips_stale_needs_user_reason(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # #7171: the assessments route-exit records NEEDS_USER_REASON=architectural-assessments.
+    # Normalizing the reship handoff must drop it so the resumed ship run does not read a
+    # stale terminal needs-user bail and append a false-positive "merge and CI watch skipped"
+    # exec-issue row. Unrelated keys are preserved.
+    tmp = make_implement_tmpdir(tmp_path)
+    handoff = tmp / ".ship-route-exit-handoff.env"
+    _ = handoff.write_text(
+        "KEEP=value\nNEEDS_USER_REASON=architectural-assessments\n"
+        "NEXT_ACTION=assessments\nDETAIL=guidelines,invariants\n",
+        encoding="utf-8",
+    )
+
+    assert implement_dispatch.ship_normalize_assessment_handoff_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    assert capsys.readouterr().out == "NEXT_ACTION=assessments\nASSESSMENT_REQUESTED_KINDS=invariants,guidelines\n"
+    assert handoff.read_text(encoding="utf-8") == "KEEP=value\nNEXT_ACTION=assessments\nDETAIL=invariants,guidelines\n"
+
+
 def test_ship_normalize_assessment_handoff_rejects_noncanonical_kinds(tmp_path: Path) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     handoff = tmp / ".ship-route-exit-handoff.env"
