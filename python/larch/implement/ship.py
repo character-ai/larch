@@ -106,8 +106,7 @@ from larch.implement.ship_guidelines import (
     InvariantsShipOutcome,
     REASON_UNAVAILABLE,
     _pin_and_load_guidelines_note,
-    clear_guideline_ship_outcome_sidecar,
-    clear_invariant_ship_outcome_sidecar,
+    _clear_ship_outcome_sidecar,
     load_or_prepare_guidelines_note,
     load_or_prepare_invariants_note,
     mark_operator_waived_outcomes,
@@ -257,14 +256,6 @@ def _committed_outcome_matches(
         return False
 
 
-def _committed_guideline_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
-    return _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=GUIDELINES)
-
-
-def _committed_invariant_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
-    return _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=INVARIANTS)
-
-
 def _pre_pr_reentry_phase(resume: ResumePlan) -> str:
     if resume.start == "fresh":
         return "pr-prep"
@@ -354,10 +345,10 @@ def _flush_guideline_outcome_before_pr(
         return
     if (
         refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY
-        and _committed_guideline_outcome_matches(ctx=ctx, cwd=cwd)
+        and _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=GUIDELINES)
         and (
             not require_invariant_match
-            or _committed_invariant_outcome_matches(ctx=ctx, cwd=cwd)
+            or _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=INVARIANTS)
         )
     ):
         _breadcrumb(step="warning", detail="guideline outcome refresh skipped: volatile-only with matching committed artifact")
@@ -419,12 +410,7 @@ def _assessment_gate_before_pr(
         implement_tmpdir=pr_context.tmpdir, kind=kind.key,
         head_sha=compose_head_sha, base_ref=compose_base_ref,
     )
-    clear_sidecar = (
-        clear_invariant_ship_outcome_sidecar
-        if kind.is_invariant
-        else clear_guideline_ship_outcome_sidecar
-    )
-    clear_sidecar(implement_tmpdir=pr_context.tmpdir)
+    _clear_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir, kind=kind)
     if kind.is_invariant:
         invariant_file = architectural_guidelines.read_invariants(repo_root=repo_root)
         if invariant_file.status == "absent":

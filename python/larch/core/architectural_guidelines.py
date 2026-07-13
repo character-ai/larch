@@ -390,13 +390,6 @@ def _validate_design_tmpdir_arg(candidate: str) -> Path:
     return Path(candidate).resolve(strict=False)
 
 
-_sidecar_path = partial(_artifact_path, kind=GUIDELINES, attribute="staged_assessment_env")
-_durable_meta_path = partial(_artifact_path, kind=GUIDELINES, attribute="durable_note_env")
-_invariant_durable_meta_path = partial(_artifact_path, kind=INVARIANTS, attribute="durable_note_env")
-_diff_path = partial(_artifact_path, kind=GUIDELINES, attribute="materialized_diff")
-_invariant_diff_path = partial(_artifact_path, kind=INVARIANTS, attribute="materialized_diff")
-
-
 def _env_escape(value: str) -> str:
     return value.replace("\n", " ").replace("\r", " ")
 
@@ -473,7 +466,7 @@ def _regular_file(path: Path) -> bool:
 
 def staged_assessment_present(implement_tmpdir: Path) -> bool:
     staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _sidecar_path(implement_tmpdir)
+    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
     if not _regular_file(staged) or not _regular_file(sidecar):
         return False
     return _read_env(sidecar).get("STATUS") == "present"
@@ -489,16 +482,8 @@ def _durable_note_present(implement_tmpdir: Path, *, kind: AssessmentKind) -> bo
 
 durable_note_present = partial(_durable_note_present, kind=GUIDELINES)
 invariant_durable_note_present = partial(_durable_note_present, kind=INVARIANTS)
-
-
-def note_readable_any_head(implement_tmpdir: Path) -> bool:
-    """Return true when a present durable note is readable regardless of HEAD."""
-    return durable_note_present(implement_tmpdir)
-
-
-def invariant_note_readable_any_head(implement_tmpdir: Path) -> bool:
-    """Return true when a present invariant durable note is readable regardless of HEAD."""
-    return invariant_durable_note_present(implement_tmpdir)
+note_readable_any_head = durable_note_present
+invariant_note_readable_any_head = invariant_durable_note_present
 
 
 def dropped_note_message() -> str:
@@ -710,11 +695,11 @@ def write_deterministic_clean_note(
     head_sha: str,
     base_ref: str,
     diff_text: str,
-    invariant: bool = False,
+    kind: AssessmentKind = GUIDELINES,
 ) -> None:
     """Persist a deterministic clean note backed by validated diff evidence."""
     fingerprint = diff_fingerprint(diff_text)
-    diff_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
+    diff_path = _artifact_path(implement_tmpdir, kind, "materialized_diff")
     _write_text_atomic(path=diff_path, text=diff_text)
     metadata = {
         "NOTE_STATE": config.NOTE_STATE_DETERMINISTIC_CLEAN,
@@ -725,13 +710,13 @@ def write_deterministic_clean_note(
         "DIFF_SNAPSHOT": str(diff_path),
         "ASSESSMENT_KIND": "clean",
     }
-    writer = write_invariant_implement_note if invariant else write_implement_note
-    writer(
+    _write_implement_note(
         implement_tmpdir=implement_tmpdir,
-        note_text=CLEAN_INVARIANT_PRESENTATION_NOTE if invariant else CLEAN_PRESENTATION_NOTE,
+        note_text=kind.clean_presentation_note,
         head_sha=head_sha,
         metadata=metadata,
         base_ref=base_ref,
+        kind=kind,
     )
 
 
@@ -740,17 +725,17 @@ def write_unavailable_note(
     implement_tmpdir: Path,
     head_sha: str,
     base_ref: str,
-    invariant: bool = False,
+    kind: AssessmentKind = GUIDELINES,
 ) -> None:
     """Persist a non-violating note when assessment input is unavailable."""
     metadata = {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE, "ASSESSMENT_KIND": ""}
-    writer = write_invariant_implement_note if invariant else write_implement_note
-    writer(
+    _write_implement_note(
         implement_tmpdir=implement_tmpdir,
         note_text="Architectural assessment unavailable.",
         head_sha=head_sha,
         metadata=metadata,
         base_ref=base_ref,
+        kind=kind,
     )
 
 
@@ -811,7 +796,7 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
     if repo_root is None or not head_sha.strip():
         return False
     staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _sidecar_path(implement_tmpdir)
+    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
     if not _regular_file(staged) or not _regular_file(sidecar):
         return False
     metadata = _read_env(sidecar)
@@ -856,7 +841,7 @@ def _pin_note_from_live_diff(
 ) -> bool:
     pinned = False
     staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _sidecar_path(implement_tmpdir)
+    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
     try:
         assessment_text = _read_regular_text_no_follow(staged)
         diff_text, fingerprint = live_diff
@@ -894,7 +879,7 @@ def pin_note_from_staged_for_current_head(
 ) -> bool:
     """Pin the staged assessment, using one live diff materialization when available."""
     staged = staged_assessment_path(implement_tmpdir)
-    sidecar = _sidecar_path(implement_tmpdir)
+    sidecar = _artifact_path(implement_tmpdir, GUIDELINES, "staged_assessment_env")
     pinned = False
     if _regular_file(staged) and _regular_file(sidecar):
         metadata = _read_env(sidecar)
@@ -966,15 +951,7 @@ def _pin_kind_note_from_staged(
     return True
 
 
-def pin_note_from_staged(
-    implement_tmpdir: Path, *, head_sha: str, base_ref: str = "",
-    repo_root: str | Path | None = None,
-) -> bool:
-    """Copy the staged assessment into a durable note pinned to head_sha."""
-    return _pin_kind_note_from_staged(
-        implement_tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, kind=GUIDELINES,
-    )
+pin_note_from_staged = partial(_pin_kind_note_from_staged, kind=GUIDELINES)
 
 
 def _invalidate_artifacts(kind: AssessmentKind) -> tuple[str, ...]:
@@ -987,10 +964,6 @@ def _invalidate_artifacts(kind: AssessmentKind) -> tuple[str, ...]:
         kind.ship_outcome_sidecar,
     )
     return (LEGACY_WARNING, LEGACY_WARNING_ENV, *common) if kind is GUIDELINES else common
-
-
-_INVALIDATE_ARTIFACTS = _invalidate_artifacts(GUIDELINES)
-_INVARIANT_INVALIDATE_ARTIFACTS = _invalidate_artifacts(INVARIANTS)
 
 
 def _artifact_still_present(path: Path) -> bool:
@@ -1021,14 +994,13 @@ invalidate_implement_note = partial(_invalidate_implement_note, kind=GUIDELINES)
 invalidate_invariant_implement_note = partial(_invalidate_implement_note, kind=INVARIANTS)
 
 
-def durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
+def _durable_note_metadata(implement_tmpdir: Path, *, kind: AssessmentKind) -> dict[str, str]:
     """Return durable-note sidecar metadata when present."""
-    return _read_env(_durable_meta_path(implement_tmpdir))
+    return _read_env(_artifact_path(implement_tmpdir, kind, "durable_note_env"))
 
 
-def invariant_durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
-    """Return invariant durable-note sidecar metadata when present."""
-    return _read_env(_invariant_durable_meta_path(implement_tmpdir))
+durable_note_metadata = partial(_durable_note_metadata, kind=GUIDELINES)
+invariant_durable_note_metadata = partial(_durable_note_metadata, kind=INVARIANTS)
 
 
 def _path_out_of_scope(path: str) -> bool:
@@ -1128,7 +1100,7 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - 
     head_sha: str,
     base_ref: str,
     repo_root: Path,
-    invariant: bool,
+    kind: AssessmentKind,
 ) -> bool:
     stored_head = metadata.get("HEAD_SHA", "").strip()
     identity = _note_identity(metadata)
@@ -1137,7 +1109,7 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - 
     note_state, authored_fingerprint, covered_fingerprint = identity
     if note_state == config.NOTE_STATE_UNAVAILABLE:
         return False
-    snapshot_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
+    snapshot_path = _artifact_path(implement_tmpdir, kind, "materialized_diff")
     if not _valid_commit(repo_root=repo_root, revision=stored_head):
         return False
     remote, ref = base_ref.split("/", 1) if "/" in base_ref else ("origin", base_ref)
@@ -1169,8 +1141,8 @@ def _advance_note_coverage(  # noqa: C901, PLR0911, PLR0912, PLR0913, PLR0915 - 
     refreshed["COVERED_DIFF_FINGERPRINT"] = covered_fingerprint
     refreshed["DIFF_FINGERPRINT"] = covered_fingerprint
     refreshed["DIFF_SNAPSHOT"] = str(snapshot_path)
-    meta_path = _invariant_durable_meta_path(implement_tmpdir) if invariant else _durable_meta_path(implement_tmpdir)
-    status_key = "INVARIANTS_STATUS" if invariant else "GUIDELINES_STATUS"
+    meta_path = _artifact_path(implement_tmpdir, kind, "durable_note_env")
+    status_key = kind.status_env_key
     snapshot_tmp = snapshot_path.with_name(snapshot_path.name + ".coverage.tmp")
     meta_tmp = meta_path.with_name(meta_path.name + ".coverage.tmp")
     try:
@@ -1222,13 +1194,13 @@ def _note_consumable(  # noqa: C901, PLR0911 - fail-closed consumption logic has
     *,
     implement_tmpdir: Path,
     head_sha: str,
-    invariant: bool,
+    kind: AssessmentKind,
     base_ref: str = "",
     repo_root: str | Path | None = None,
 ) -> bool:
-    note_path = invariant_durable_note_path(implement_tmpdir) if invariant else durable_note_path(implement_tmpdir)
-    meta_path = _invariant_durable_meta_path(implement_tmpdir) if invariant else _durable_meta_path(implement_tmpdir)
-    snapshot_path = _invariant_diff_path(implement_tmpdir) if invariant else _diff_path(implement_tmpdir)
+    note_path = _artifact_path(implement_tmpdir, kind, "durable_note")
+    meta_path = _artifact_path(implement_tmpdir, kind, "durable_note_env")
+    snapshot_path = _artifact_path(implement_tmpdir, kind, "materialized_diff")
     if not _regular_file(note_path) or not _regular_file(meta_path):
         return False
     metadata = _read_env(meta_path)
@@ -1257,7 +1229,7 @@ def _note_consumable(  # noqa: C901, PLR0911 - fail-closed consumption logic has
             head_sha=head_sha,
             base_ref=resolved_base,
             repo_root=root,
-            invariant=invariant,
+            kind=kind,
         ):
             return False
         metadata = _read_env(meta_path)
@@ -1274,18 +1246,18 @@ def _note_consumable(  # noqa: C901, PLR0911 - fail-closed consumption logic has
     return live_fingerprint is not None and live_fingerprint == covered_fingerprint
 
 
-note_consumable = partial(_note_consumable, invariant=False)
-invariant_note_consumable = partial(_note_consumable, invariant=True)
+note_consumable = partial(_note_consumable, kind=GUIDELINES)
+invariant_note_consumable = partial(_note_consumable, kind=INVARIANTS)
 
 
 def _note_fingerprint_stale(
     implement_tmpdir: Path,
     *,
     base_ref: str,
-    invariant: bool,
+    kind: AssessmentKind,
     repo_root: str | Path | None = None,
 ) -> bool:
-    meta_path = _invariant_durable_meta_path(implement_tmpdir) if invariant else _durable_meta_path(implement_tmpdir)
+    meta_path = _artifact_path(implement_tmpdir, kind, "durable_note_env")
     metadata = _read_env(meta_path)
     identity = _note_identity(metadata)
     if identity is None or not base_ref or repo_root is None:
@@ -1300,8 +1272,8 @@ def _note_fingerprint_stale(
     return live_fingerprint is None or live_fingerprint != identity[2]
 
 
-note_fingerprint_stale = partial(_note_fingerprint_stale, invariant=False)
-invariant_note_fingerprint_stale = partial(_note_fingerprint_stale, invariant=True)
+note_fingerprint_stale = partial(_note_fingerprint_stale, kind=GUIDELINES)
+invariant_note_fingerprint_stale = partial(_note_fingerprint_stale, kind=INVARIANTS)
 
 
 def _clear_ship_outcome(implement_tmpdir: Path, *, kind: AssessmentKind) -> None:
@@ -1395,13 +1367,13 @@ def authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool:
     return True
 
 
-def _invariant_assessment_kind(note: str) -> str:  # type: ignore[reportUnusedFunction]  # reason: tested compatibility alias, routing uses persisted metadata
-    """Compatibility alias for tests; routing must use persisted metadata."""
+def classify_note_for_kind(note: str, *, kind: AssessmentKind) -> str:
+    """Classify prose for one assessment kind's explicit-clean consistency check."""
     return classify_assessment_prose(
         note,
-        clean_lead=CLEAN_INVARIANT_PRESENTATION_NOTE,
-        identifier_pattern=NOTE_INVARIANT_ID_RE,
-        non_clean_outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
+        clean_lead=kind.clean_presentation_note,
+        identifier_pattern=kind.identifier_re,
+        non_clean_outcome=kind.non_clean_authored_outcome,
     )
 
 
@@ -1425,7 +1397,7 @@ def _compose_precheck_result(
         head_sha=current_head,
         repo_root=root,
         base_ref=metadata.get("BASE_REF", ""),
-        invariant=kind.is_invariant,
+        kind=kind,
     ):
         current_result: ComposeMaterializationResult | None = None
         if root is None:
@@ -1436,7 +1408,7 @@ def _compose_precheck_result(
                 implement_tmpdir=implement_tmpdir,
                 base_ref=stored_base_ref,
                 repo_root=root,
-                invariant=kind.is_invariant,
+                kind=kind,
             ):
                 current_result = ComposeMaterializationResult(status="current", head_sha=current_head)
         if current_result is not None:
@@ -1761,12 +1733,6 @@ def _append_deviation_note_main(argv: list[str], *, kind: AssessmentKind) -> int
     return 1 if status == _APPEND_DEVIATION_FAILED else 0
 
 
-append_deviation_note_main = partial(_append_deviation_note_main, kind=GUIDELINES)
-
-
-invariants_append_deviation_note_main = partial(_append_deviation_note_main, kind=INVARIANTS)
-
-
 def _bool_arg(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1901,15 +1867,13 @@ def _persist_design_assessment_main(argv: list[str], *, kind: AssessmentKind) ->
             assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
         except OSError as exc:
             _emit_guideline_persist_result(
-                kind=kind, status=result.status, result="failed",
-                reason="assessment-file-unreadable",
+                kind=kind, status=result.status, result="failed", reason="assessment-file-unreadable"
             )
             print(f"assessment-file: {exc}", file=sys.stderr)
             return 1
         if not assessment_text.strip():
             _emit_guideline_persist_result(
-                kind=kind, status=result.status, result="failed",
-                reason="assessment-file-empty",
+                kind=kind, status=result.status, result="failed", reason="assessment-file-empty"
             )
             print("assessment-file: content must not be empty", file=sys.stderr)
             return 1
@@ -1934,12 +1898,6 @@ def _persist_design_assessment_main(argv: list[str], *, kind: AssessmentKind) ->
         return 1
 
 
-persist_design_assessment_main = partial(_persist_design_assessment_main, kind=GUIDELINES)
-
-
-invariants_persist_design_assessment_main = partial(_persist_design_assessment_main, kind=INVARIANTS)
-
-
 def _read_main(argv: list[str], *, kind: AssessmentKind) -> int:
     from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
     parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} read")
@@ -1959,12 +1917,6 @@ def _read_main(argv: list[str], *, kind: AssessmentKind) -> int:
     elif result.status == "invalid":
         print(f"{kind.env_prefix}_WARNING={result.warning}")
     return 0
-
-
-read_main = partial(_read_main, kind=GUIDELINES)
-
-
-invariants_read_main = partial(_read_main, kind=INVARIANTS)
 
 
 def _emit_present_assessment(
@@ -2000,12 +1952,6 @@ def _present_note_main(argv: list[str], *, kind: AssessmentKind) -> int:
     if not kind.design_requires_nonempty or result.content.strip():
         print(kind.assessment_required_line)
     return 0
-
-
-present_note_main = partial(_present_note_main, kind=GUIDELINES)
-
-
-invariants_present_note_main = partial(_present_note_main, kind=INVARIANTS)
 
 
 def _emit_materialized_diff(
@@ -2079,12 +2025,6 @@ def _materialize_diff_main(argv: list[str], *, kind: AssessmentKind) -> int:
     )
 
 
-materialize_diff_main = partial(_materialize_diff_main, kind=GUIDELINES)
-
-
-invariants_materialize_diff_main = partial(_materialize_diff_main, kind=INVARIANTS)
-
-
 def _prepare_main(argv: list[str], *, kind: AssessmentKind) -> int:
     parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} prepare")
     parser.add_argument("--repo-root")
@@ -2120,12 +2060,6 @@ def _prepare_main(argv: list[str], *, kind: AssessmentKind) -> int:
         implement_tmpdir=args.implement_tmpdir,
         kind=kind,
     )
-
-
-prepare_main = partial(_prepare_main, kind=GUIDELINES)
-
-
-invariants_prepare_main = partial(_prepare_main, kind=INVARIANTS)
 
 
 def _emit_compose_prepare_result(
@@ -2190,12 +2124,6 @@ def _prepare_compose_main(argv: list[str], *, kind: AssessmentKind) -> int:
     return 1 if result.status == "failed" else 0
 
 
-prepare_compose_main = partial(_prepare_compose_main, kind=GUIDELINES)
-
-
-invariants_prepare_compose_main = partial(_prepare_compose_main, kind=INVARIANTS)
-
-
 def _write_compose_assessment_main(argv: list[str], *, kind: AssessmentKind) -> int:
     parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} write-compose-assessment")
     parser.add_argument("--outcome", default="")
@@ -2235,12 +2163,6 @@ def _write_compose_assessment_main(argv: list[str], *, kind: AssessmentKind) -> 
         return 1
     print(f"{kind.env_prefix}_WRITE_STATUS=ok")
     return 0
-
-
-write_compose_assessment_main = partial(_write_compose_assessment_main, kind=GUIDELINES)
-
-
-invariants_write_compose_assessment_main = partial(_write_compose_assessment_main, kind=INVARIANTS)
 
 
 def _write_staged_assessment_main(argv: list[str], *, kind: AssessmentKind) -> int:
@@ -2297,12 +2219,6 @@ def _write_staged_assessment_main(argv: list[str], *, kind: AssessmentKind) -> i
     return 0
 
 
-write_staged_assessment_main = partial(_write_staged_assessment_main, kind=GUIDELINES)
-
-
-invariants_write_staged_assessment_main = partial(_write_staged_assessment_main, kind=INVARIANTS)
-
-
 def _pin_note_from_staged_main(argv: list[str], *, kind: AssessmentKind) -> int:
     parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} pin-note-from-staged")
     parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
@@ -2326,24 +2242,7 @@ def _pin_note_from_staged_main(argv: list[str], *, kind: AssessmentKind) -> int:
     return 0
 
 
-pin_note_from_staged_main = partial(_pin_note_from_staged_main, kind=GUIDELINES)
-
-
-def pin_invariant_note_from_staged(
-    implement_tmpdir: Path,
-    *,
-    head_sha: str,
-    base_ref: str = "",
-    repo_root: str | Path | None = None,
-) -> bool:
-    """Copy the staged invariant assessment into a durable note pinned to head_sha."""
-    return _pin_kind_note_from_staged(
-        implement_tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, kind=INVARIANTS,
-    )
-
-
-invariants_pin_note_from_staged_main = partial(_pin_note_from_staged_main, kind=INVARIANTS)
+pin_invariant_note_from_staged = partial(_pin_kind_note_from_staged, kind=INVARIANTS)
 
 
 def _invalidate_main(argv: list[str], *, kind: AssessmentKind) -> int:
@@ -2365,10 +2264,21 @@ def _invalidate_main(argv: list[str], *, kind: AssessmentKind) -> int:
     return 0
 
 
-invalidate_main = partial(_invalidate_main, kind=GUIDELINES)
-
-
-invariants_invalidate_main = partial(_invalidate_main, kind=INVARIANTS)
+for _guideline_cli, _invariant_cli, _handler in (
+    ("append_deviation_note_main", "invariants_append_deviation_note_main", _append_deviation_note_main),
+    ("persist_design_assessment_main", "invariants_persist_design_assessment_main", _persist_design_assessment_main),
+    ("read_main", "invariants_read_main", _read_main),
+    ("present_note_main", "invariants_present_note_main", _present_note_main),
+    ("materialize_diff_main", "invariants_materialize_diff_main", _materialize_diff_main),
+    ("prepare_main", "invariants_prepare_main", _prepare_main),
+    ("prepare_compose_main", "invariants_prepare_compose_main", _prepare_compose_main),
+    ("write_compose_assessment_main", "invariants_write_compose_assessment_main", _write_compose_assessment_main),
+    ("write_staged_assessment_main", "invariants_write_staged_assessment_main", _write_staged_assessment_main),
+    ("pin_note_from_staged_main", "invariants_pin_note_from_staged_main", _pin_note_from_staged_main),
+    ("invalidate_main", "invariants_invalidate_main", _invalidate_main),
+):
+    globals()[_guideline_cli] = partial(_handler, kind=GUIDELINES)
+    globals()[_invariant_cli] = partial(_handler, kind=INVARIANTS)
 # pyright: reportArgumentType=false
 # lint-env-via-config-constant: IMPLEMENT_TMPDIR is read in CLI entry points.
 # larch-lint: allow-subprocess-run

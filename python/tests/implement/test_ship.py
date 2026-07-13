@@ -7099,12 +7099,13 @@ def test_prepared_invariant_result_maps_shared_materialization_status(tmp_path: 
         guidelines_path="ARCHITECTURAL_INVARIANTS.md",
     )
 
-    result = ship_guidelines._prepared_invariant_result(
+    result = ship_guidelines._prepared_result(
         prepared=prepared,
         tmpdir=tmp_path,
         head_sha="abc123",
         base_ref="origin/main",
         repo_root=None,
+        kind=ship_guidelines.INVARIANTS,
     )
 
     assert result.invariants_status == prepared.guidelines_status
@@ -7723,7 +7724,7 @@ def test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcom
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
-    monkeypatch.setattr(ship, "_committed_guideline_outcome_matches", lambda **_kwargs: True)
+    monkeypatch.setattr(ship, "_committed_outcome_matches", lambda **_kwargs: True)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
 
     result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -7762,7 +7763,7 @@ def test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcom
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
-    monkeypatch.setattr(ship, "_committed_guideline_outcome_matches", lambda **_kwargs: False)
+    monkeypatch.setattr(ship, "_committed_outcome_matches", lambda **_kwargs: False)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
 
@@ -8042,7 +8043,7 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship, "write_guideline_ship_outcome", lambda **_kw: None)
-    monkeypatch.setattr(ship, "clear_guideline_ship_outcome_sidecar", lambda **_kw: None)
+    monkeypatch.setattr(ship, "_clear_ship_outcome_sidecar", lambda **_kw: None)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(
@@ -8285,7 +8286,7 @@ def test_guidelines_warning_append_failure_warns_stderr(
 
 
 def test_guideline_ship_outcome_classifies_note_states() -> None:
-    deterministic = ship_guidelines._classify_ship_outcome(
+    deterministic = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.GuidelinesGateResult(
             note="mechanical clean",
             guidelines_status="present",
@@ -8293,8 +8294,9 @@ def test_guideline_ship_outcome_classifies_note_states() -> None:
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.GUIDELINES,
     )
-    unavailable = ship_guidelines._classify_ship_outcome(
+    unavailable = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.GuidelinesGateResult(
             note="unavailable",
             guidelines_status="present",
@@ -8302,6 +8304,7 @@ def test_guideline_ship_outcome_classifies_note_states() -> None:
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.GUIDELINES,
     )
 
     assert (deterministic.outcome, deterministic.reason, deterministic.assessment_kind) == (
@@ -8317,7 +8320,7 @@ def test_guideline_ship_outcome_classifies_note_states() -> None:
 
 
 def test_invariant_unavailable_state_is_not_a_violation() -> None:
-    outcome = ship_guidelines._classify_invariant_ship_outcome(
+    outcome = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.InvariantsGateResult(
             note="unavailable",
             invariants_status="present",
@@ -8325,6 +8328,7 @@ def test_invariant_unavailable_state_is_not_a_violation() -> None:
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.INVARIANTS,
     )
 
     assert outcome.outcome == ship_guidelines.OUTCOME_DROPPED
@@ -8333,7 +8337,7 @@ def test_invariant_unavailable_state_is_not_a_violation() -> None:
 
 
 def test_guideline_ship_outcome_authored_state_clean() -> None:
-    result = ship_guidelines._classify_ship_outcome(
+    result = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.GuidelinesGateResult(
             note=ship.architectural_guidelines.CLEAN_PRESENTATION_NOTE,
             guidelines_status="present",
@@ -8342,6 +8346,7 @@ def test_guideline_ship_outcome_authored_state_clean() -> None:
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.GUIDELINES,
     )
     assert result.outcome == ship_guidelines.OUTCOME_CLEAN
     assert result.reason == ship_guidelines.REASON_CLEAN_NOTE
@@ -8349,7 +8354,7 @@ def test_guideline_ship_outcome_authored_state_clean() -> None:
 
 
 def test_guideline_ship_outcome_authored_state_deviation() -> None:
-    result = ship_guidelines._classify_ship_outcome(
+    result = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.GuidelinesGateResult(
             note="G-Py-1: deviates because of X",
             guidelines_status="present",
@@ -8358,6 +8363,7 @@ def test_guideline_ship_outcome_authored_state_deviation() -> None:
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.GUIDELINES,
     )
     assert result.outcome == ship_guidelines.OUTCOME_PINNED
     assert result.reason == ship_guidelines.REASON_NOTE_PINNED
@@ -8365,7 +8371,7 @@ def test_guideline_ship_outcome_authored_state_deviation() -> None:
 
 
 def test_invariant_authored_violation_takes_precedence_over_unavailable() -> None:
-    unavailable = ship_guidelines._classify_invariant_ship_outcome(
+    unavailable = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.InvariantsGateResult(
             note="unavailable",
             invariants_status="present",
@@ -8373,8 +8379,9 @@ def test_invariant_authored_violation_takes_precedence_over_unavailable() -> Non
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.INVARIANTS,
     )
-    violation = ship_guidelines._classify_invariant_ship_outcome(
+    violation = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.InvariantsGateResult(
             note="I-Test-1: violated",
             invariants_status="present",
@@ -8383,6 +8390,7 @@ def test_invariant_authored_violation_takes_precedence_over_unavailable() -> Non
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.INVARIANTS,
     )
     assert unavailable.outcome == ship_guidelines.OUTCOME_DROPPED
     assert violation.outcome == ship_guidelines.OUTCOME_VIOLATION
@@ -8395,10 +8403,15 @@ def test_invariant_assessment_kind_tolerates_verbose_clean_note() -> None:
         ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
         + "\nThe adapter realizes I-Stale-1 by caching the fingerprint."
     )
-    assert ship_guidelines._invariant_assessment_kind(verbose_clean) == "clean"
-    assert ship_guidelines._invariant_assessment_kind("I-Stale-1: violated") == "violation"
-    assert ship_guidelines._invariant_assessment_kind(
-        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
+    assert ship.architectural_guidelines.classify_note_for_kind(
+        verbose_clean, kind=ship_guidelines.INVARIANTS
+    ) == "clean"
+    assert ship.architectural_guidelines.classify_note_for_kind(
+        "I-Stale-1: violated", kind=ship_guidelines.INVARIANTS
+    ) == "violation"
+    assert ship.architectural_guidelines.classify_note_for_kind(
+        ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE,
+        kind=ship_guidelines.INVARIANTS,
     ) == "clean"
 
 
@@ -8407,8 +8420,12 @@ def test_guideline_assessment_kind_tolerates_verbose_clean_note() -> None:
         ship.architectural_guidelines.CLEAN_PRESENTATION_NOTE
         + "\nThis path respects G-Py-1 by avoiding shell composition."
     )
-    assert ship_guidelines._assessment_kind(verbose_clean) == "clean"
-    assert ship_guidelines._assessment_kind("G-Py-1: deviates because of X") == "deviation"
+    assert ship.architectural_guidelines.classify_note_for_kind(
+        verbose_clean, kind=ship_guidelines.GUIDELINES
+    ) == "clean"
+    assert ship.architectural_guidelines.classify_note_for_kind(
+        "G-Py-1: deviates because of X", kind=ship_guidelines.GUIDELINES
+    ) == "deviation"
 
 
 def test_invariant_ship_outcome_verbose_clean_note_is_clean_not_violation() -> None:
@@ -8418,7 +8435,7 @@ def test_invariant_ship_outcome_verbose_clean_note_is_clean_not_violation() -> N
         ship.architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE
         + "\nThe adapter realizes I-Stale-1 by caching the fingerprint."
     )
-    outcome = ship_guidelines._classify_invariant_ship_outcome(
+    outcome = ship_guidelines._classify_assessment_ship_outcome(
         result=ship_guidelines.InvariantsGateResult(
             note=verbose_clean,
             invariants_status="present",
@@ -8427,6 +8444,7 @@ def test_invariant_ship_outcome_verbose_clean_note_is_clean_not_violation() -> N
         ),
         head_sha="abc",
         base_ref="origin/main",
+        kind=ship_guidelines.INVARIANTS,
     )
     assert outcome.outcome == ship_guidelines.OUTCOME_CLEAN
     assert outcome.reason == ship_guidelines.REASON_CLEAN_NOTE

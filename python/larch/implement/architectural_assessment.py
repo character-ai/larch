@@ -19,9 +19,14 @@ from typing import Final, Protocol, cast
 
 from larch import io as larch_io
 from larch.core import architectural_guidelines, config, external_defaults, logging_util, redact
+from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.implement import ship_guidelines
 
 _AGENT_PROMPT: Final = Path(__file__).parents[3] / "skills/implement/references/architectural-assessment-agent.md"
+
+
+def _descriptor_for_kind(kind: str) -> AssessmentKind:
+    return INVARIANTS if kind == config.ASSESSMENT_KIND_INVARIANTS else GUIDELINES
 _PY_CLI: Final = Path(__file__).parents[2] / "cli.py"
 _MAX_SANITIZE_DETAIL_BYTES: Final = 8 * 1024
 _MAX_ASSESSMENT_CHARS: Final = 12000
@@ -790,47 +795,50 @@ def _write_outcome(
     note_state: str = config.NOTE_STATE_AUTHORED,
     detail: str = "",
 ) -> None:
-    if kind == config.ASSESSMENT_KIND_INVARIANTS:
-        gate = ship_guidelines.InvariantsGateResult(
-            note=result.assessment, detail=detail, invariants_status="present", assessment_kind=result.state, note_state=note_state
-        )
-        _ = ship_guidelines.write_invariant_ship_outcome(
-            implement_tmpdir=str(implement_tmpdir), result=gate, head_sha=result.head_sha, base_ref=result.base_ref
-        )
-    else:
-        gate = ship_guidelines.GuidelinesGateResult(
-            note=result.assessment, detail=detail, guidelines_status="present", assessment_kind=result.state, note_state=note_state
-        )
-        _ = ship_guidelines.write_guideline_ship_outcome(
-            implement_tmpdir=str(implement_tmpdir), result=gate, head_sha=result.head_sha, base_ref=result.base_ref
-        )
+    descriptor = _descriptor_for_kind(kind)
+    gate = ship_guidelines._gate(
+        kind=descriptor,
+        note=result.assessment,
+        detail=detail,
+        status="present",
+        assessment_kind=result.state,
+        note_state=note_state,
+    )
+    _ = ship_guidelines._write_ship_outcome(
+        implement_tmpdir=str(implement_tmpdir),
+        result=gate,
+        head_sha=result.head_sha,
+        base_ref=result.base_ref,
+        kind=descriptor,
+    )
 
 
 def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpdir: Path) -> None:
     current_head: str = _git_read(repo_root, ["rev-parse", "HEAD"])
     if current_head != result.head_sha:
         raise _HeadDrift("HEAD changed after architectural assessment launch")
-    if result.kind == config.ASSESSMENT_KIND_INVARIANTS:
-        try:
-            architectural_guidelines.write_invariant_compose_assessment(
-                implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, outcome=result.state, repo_root=repo_root
-            )
-        except architectural_guidelines.AssessmentReauthorRequired as exc:
-            raise _ReauthorRequired(str(exc)) from exc
-    else:
-        try:
-            architectural_guidelines.write_compose_assessment(
-                implement_tmpdir=implement_tmpdir, assessment_text=result.assessment, outcome=result.state, repo_root=repo_root
-            )
-        except architectural_guidelines.AssessmentReauthorRequired as exc:
-            raise _ReauthorRequired(str(exc)) from exc
-    _write_outcome(result.kind, implement_tmpdir=implement_tmpdir, result=result)
-    metadata = (
-        architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir)
-        if result.kind == config.ASSESSMENT_KIND_INVARIANTS
-        else architectural_guidelines.durable_note_metadata(implement_tmpdir)
+    descriptor = _descriptor_for_kind(result.kind)
+    write_compose = (
+        architectural_guidelines.write_invariant_compose_assessment
+        if descriptor.is_invariant
+        else architectural_guidelines.write_compose_assessment
     )
-    if not _outcome_valid(result.kind, implement_tmpdir, metadata):
+    try:
+        write_compose(
+            implement_tmpdir=implement_tmpdir,
+            assessment_text=result.assessment,
+            outcome=result.state,
+            repo_root=repo_root,
+        )
+    except architectural_guidelines.AssessmentReauthorRequired as exc:
+        raise _ReauthorRequired(str(exc)) from exc
+    _write_outcome(result.kind, implement_tmpdir=implement_tmpdir, result=result)
+    metadata_reader = (
+        architectural_guidelines.invariant_durable_note_metadata
+        if descriptor.is_invariant
+        else architectural_guidelines.durable_note_metadata
+    )
+    if not _outcome_valid(result.kind, implement_tmpdir, metadata_reader(implement_tmpdir)):
         raise _ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA)
     if (
         result.kind == config.ASSESSMENT_KIND_GUIDELINES
@@ -843,15 +851,15 @@ def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpd
 def _persist_clean(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path) -> None:
     if _git_read(repo_root, ["rev-parse", "HEAD"]) != evidence.head_sha:
         raise _HeadDrift("HEAD changed before deterministic-clean persistence")
-    invariant: bool = evidence.kind == config.ASSESSMENT_KIND_INVARIANTS
+    descriptor = _descriptor_for_kind(evidence.kind)
     architectural_guidelines.write_deterministic_clean_note(
         implement_tmpdir=implement_tmpdir,
         head_sha=evidence.head_sha,
         base_ref=evidence.base_ref,
         diff_text=evidence.diff_text,
-        invariant=invariant,
+        kind=descriptor,
     )
-    clean_text: str = architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE if invariant else architectural_guidelines.CLEAN_PRESENTATION_NOTE
+    clean_text: str = descriptor.clean_presentation_note
     result = AssessmentResult(evidence.kind, "clean", clean_text, (), evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
     _write_outcome(evidence.kind, implement_tmpdir=implement_tmpdir, result=result, note_state=config.NOTE_STATE_DETERMINISTIC_CLEAN)
 
@@ -860,19 +868,24 @@ def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Pat
     """Repair a missing outcome sidecar without replacing a current durable note."""
     if _git_read(repo_root, ["rev-parse", "HEAD"]) != head_sha:
         raise _HeadDrift("HEAD changed before current-outcome repair")
-    # A note the repair path cannot certify is stale: invalidate it so the next pass
-    # re-materializes and re-authors (mirroring _persist_authored_results), and return
-    # a bounded re-author reason the Step 8 adapter grammar accepts, not a bare token
-    # that the grammar rejects and hard-stops the run as fail-closed. See #7144.
+    descriptor = _descriptor_for_kind(kind)
     invalidator = (
         architectural_guidelines.invalidate_invariant_implement_note
-        if kind == config.ASSESSMENT_KIND_INVARIANTS
+        if descriptor.is_invariant
         else architectural_guidelines.invalidate_implement_note
     )
-    metadata = architectural_guidelines.invariant_durable_note_metadata(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_metadata(implement_tmpdir)
-    note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if kind == config.ASSESSMENT_KIND_INVARIANTS else architectural_guidelines.durable_note_path(implement_tmpdir)
+    metadata = (
+        architectural_guidelines.invariant_durable_note_metadata
+        if descriptor.is_invariant
+        else architectural_guidelines.durable_note_metadata
+    )(implement_tmpdir)
+    note_path = (
+        architectural_guidelines.invariant_durable_note_path
+        if descriptor.is_invariant
+        else architectural_guidelines.durable_note_path
+    )(implement_tmpdir)
     state = metadata.get("ASSESSMENT_KIND", "")
-    allowed = {"clean", "violation"} if kind == config.ASSESSMENT_KIND_INVARIANTS else {"clean", "deviation"}
+    allowed = {config.ASSESSMENT_OUTCOME_CLEAN, descriptor.non_clean_authored_outcome}
     if state not in allowed:
         invalidator(implement_tmpdir)
         return _reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)
@@ -884,7 +897,7 @@ def _repair_current_outcome(kind: str, *, repo_root: Path, implement_tmpdir: Pat
     if not architectural_guidelines.authored_outcome_valid(
         note=note,
         outcome=state,
-        invariant=kind == config.ASSESSMENT_KIND_INVARIANTS,
+        invariant=descriptor.is_invariant,
     ):
         invalidator(implement_tmpdir)
         return _reauthor_status(
@@ -915,19 +928,30 @@ def sanitize_detail(text: str, *, implement_tmpdir: Path) -> str:
 
 
 def _persist_unavailable(evidence: MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path, detail: str) -> None:
-    invariant: bool = evidence.kind == config.ASSESSMENT_KIND_INVARIANTS
-    if invariant and _preserved_invariant_violation(evidence, repo_root=repo_root, implement_tmpdir=implement_tmpdir):
+    descriptor = _descriptor_for_kind(evidence.kind)
+    if descriptor.is_invariant and _preserved_invariant_violation(evidence, repo_root=repo_root, implement_tmpdir=implement_tmpdir):
         return
     architectural_guidelines.write_unavailable_note(
-        implement_tmpdir=implement_tmpdir, head_sha=evidence.head_sha, base_ref=evidence.base_ref, invariant=invariant
+        implement_tmpdir=implement_tmpdir,
+        head_sha=evidence.head_sha,
+        base_ref=evidence.base_ref,
+        kind=descriptor,
     )
     safe_detail: str = sanitize_detail(detail, implement_tmpdir=implement_tmpdir)
     result = AssessmentResult(evidence.kind, "clean", "Architectural assessment unavailable.", (), evidence.head_sha, evidence.base_ref, evidence.diff_fingerprint, evidence.knowledge_sha256)
     _write_outcome(
         evidence.kind, implement_tmpdir=implement_tmpdir, result=result, note_state=config.NOTE_STATE_UNAVAILABLE, detail=safe_detail
     )
-    note_path = architectural_guidelines.invariant_durable_note_path(implement_tmpdir) if invariant else architectural_guidelines.durable_note_path(implement_tmpdir)
-    outcome_path = architectural_guidelines.invariant_ship_outcome_path(implement_tmpdir) if invariant else architectural_guidelines.guideline_ship_outcome_path(implement_tmpdir)
+    note_path = (
+        architectural_guidelines.invariant_durable_note_path
+        if descriptor.is_invariant
+        else architectural_guidelines.durable_note_path
+    )(implement_tmpdir)
+    outcome_path = (
+        architectural_guidelines.invariant_ship_outcome_path
+        if descriptor.is_invariant
+        else architectural_guidelines.guideline_ship_outcome_path
+    )(implement_tmpdir)
     receipt: dict[str, object] = {
         "schema_version": "1",
         "kind": evidence.kind,

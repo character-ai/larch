@@ -7,6 +7,7 @@ import json
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import ClassVar, cast
 
@@ -137,28 +138,34 @@ def _outcome(*, kind: AssessmentKind, status: str, **values: object) -> ShipOutc
     )
 
 
-def _assessment_kind(note: str) -> str:
-    """Compatibility alias for the shared prose consistency classifier."""
-    return architectural_guidelines.classify_assessment_prose(
-        note,
-        clean_lead=architectural_guidelines.CLEAN_PRESENTATION_NOTE,
-        identifier_pattern=architectural_guidelines.NOTE_GUIDELINE_ID_RE,
-        non_clean_outcome=config.ASSESSMENT_OUTCOME_DEVIATION,
-    )
-
-
-def _invariant_assessment_kind(note: str) -> str:
-    """Compatibility alias for the shared prose consistency classifier."""
-    return architectural_guidelines.classify_assessment_prose(
-        note,
-        clean_lead=architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE,
-        identifier_pattern=architectural_guidelines.NOTE_INVARIANT_ID_RE,
-        non_clean_outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
-    )
-
-
-def _authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool:
-    return architectural_guidelines.authored_outcome_valid(note=note, outcome=outcome, invariant=invariant)
+_CONSUMABLE_BY_KIND = {
+    GUIDELINES: architectural_guidelines.note_consumable,
+    INVARIANTS: architectural_guidelines.invariant_note_consumable,
+}
+_DURABLE_PATH_BY_KIND = {
+    GUIDELINES: architectural_guidelines.durable_note_path,
+    INVARIANTS: architectural_guidelines.invariant_durable_note_path,
+}
+_METADATA_BY_KIND = {
+    GUIDELINES: architectural_guidelines.durable_note_metadata,
+    INVARIANTS: architectural_guidelines.invariant_durable_note_metadata,
+}
+_STALE_BY_KIND = {
+    GUIDELINES: architectural_guidelines.note_fingerprint_stale,
+    INVARIANTS: architectural_guidelines.invariant_note_fingerprint_stale,
+}
+_CLEAR_OUTCOME_BY_KIND = {
+    GUIDELINES: architectural_guidelines.clear_guideline_ship_outcome,
+    INVARIANTS: architectural_guidelines.clear_invariant_ship_outcome,
+}
+_OUTCOME_PATH_BY_KEY = {
+    GUIDELINES.key: architectural_guidelines.guideline_ship_outcome_path,
+    INVARIANTS.key: architectural_guidelines.invariant_ship_outcome_path,
+}
+_OUTCOME_VALIDATOR_BY_KEY = {
+    GUIDELINES.key: architectural_guidelines.validate_guideline_ship_outcome_record,
+    INVARIANTS.key: architectural_guidelines.validate_invariant_ship_outcome_record,
+}
 
 
 def _bounded_detail(text: str) -> str:
@@ -170,15 +177,11 @@ def read_unavailable_outcome_detail(
     *, implement_tmpdir: str, kind: str, head_sha: str, base_ref: str
 ) -> str:
     """Read diagnostic detail from a current, valid unavailable outcome."""
-    tmpdir = Path(implement_tmpdir)
-    if kind == config.ASSESSMENT_KIND_INVARIANTS:
-        path = architectural_guidelines.invariant_ship_outcome_path(tmpdir)
-        validator = architectural_guidelines.validate_invariant_ship_outcome_record
-    elif kind == config.ASSESSMENT_KIND_GUIDELINES:
-        path = architectural_guidelines.guideline_ship_outcome_path(tmpdir)
-        validator = architectural_guidelines.validate_guideline_ship_outcome_record
-    else:
+    path_fn = _OUTCOME_PATH_BY_KEY.get(kind)
+    validator = _OUTCOME_VALIDATOR_BY_KEY.get(kind)
+    if path_fn is None or validator is None:
         return ""
+    path = path_fn(Path(implement_tmpdir))
     try:
         mode: int = path.lstat().st_mode
         if path.is_symlink() or not stat.S_ISREG(mode):
@@ -215,20 +218,12 @@ def mark_operator_waived_outcomes(
         return frozenset()
     tmpdir = Path(implement_tmpdir)
     marked: set[str] = set()
-    paths = {
-        config.ASSESSMENT_KIND_INVARIANTS: architectural_guidelines.invariant_ship_outcome_path(
-            tmpdir
-        ),
-        config.ASSESSMENT_KIND_GUIDELINES: architectural_guidelines.guideline_ship_outcome_path(
-            tmpdir
-        ),
-    }
-    validators = {
-        config.ASSESSMENT_KIND_INVARIANTS: architectural_guidelines.validate_invariant_ship_outcome_record,
-        config.ASSESSMENT_KIND_GUIDELINES: architectural_guidelines.validate_guideline_ship_outcome_record,
-    }
     for kind in kinds:
-        path = paths[kind]
+        path_fn = _OUTCOME_PATH_BY_KEY.get(kind)
+        validator = _OUTCOME_VALIDATOR_BY_KEY.get(kind)
+        if path_fn is None or validator is None:
+            continue
+        path = path_fn(tmpdir)
         try:
             if not larch_io.trusted_file_present(path, root=tmpdir):
                 continue
@@ -240,7 +235,7 @@ def mark_operator_waived_outcomes(
         if not isinstance(raw, dict):
             continue
         data = cast("dict[str, object]", raw)
-        if validators[kind](data) is not None:
+        if validator(data) is not None:
             continue
         if (
             data.get("outcome") != OUTCOME_DROPPED
@@ -318,27 +313,13 @@ def _classify_assessment_ship_outcome(  # noqa: C901 - descriptor policies prese
     )
 
 
-def _classify_ship_outcome(
-    *, result: GuidelinesGateResult, head_sha: str, base_ref: str
-) -> GuidelinesShipOutcome:
-    outcome = _classify_assessment_ship_outcome(
-        result=result, head_sha=head_sha, base_ref=base_ref, kind=GUIDELINES,
-    )
-    assert isinstance(outcome, GuidelinesShipOutcome)
-    return outcome
-
-
 def _clear_ship_outcome_sidecar(*, implement_tmpdir: str, kind: AssessmentKind) -> None:
     if implement_tmpdir:
-        path = Path(implement_tmpdir) / kind.ship_outcome_sidecar
-        if kind.is_invariant:
-            architectural_guidelines.clear_invariant_ship_outcome(path.parent)
-        else:
-            architectural_guidelines.clear_guideline_ship_outcome(path.parent)
+        _CLEAR_OUTCOME_BY_KIND[kind](Path(implement_tmpdir))
 
 
-def clear_guideline_ship_outcome_sidecar(*, implement_tmpdir: str) -> None:
-    _clear_ship_outcome_sidecar(implement_tmpdir=implement_tmpdir, kind=GUIDELINES)
+clear_guideline_ship_outcome_sidecar = partial(_clear_ship_outcome_sidecar, kind=GUIDELINES)
+clear_invariant_ship_outcome_sidecar = partial(_clear_ship_outcome_sidecar, kind=INVARIANTS)
 
 
 def _write_ship_outcome(
@@ -365,52 +346,29 @@ def _write_ship_outcome(
     return outcome
 
 
-def write_guideline_ship_outcome(
-    *, implement_tmpdir: str, result: GuidelinesGateResult, head_sha: str, base_ref: str
-) -> GuidelinesShipOutcome | None:
-    """Write the durable Step 8 guideline outcome sidecar for terminal gate results."""
-    outcome = _write_ship_outcome(
-        implement_tmpdir=implement_tmpdir,
-        result=result,
-        head_sha=head_sha, base_ref=base_ref, kind=GUIDELINES,
-    )
-    if outcome is None:
-        return None
-    assert isinstance(outcome, GuidelinesShipOutcome)
-    return outcome
+def _exported_ship_writer(
+    kind: AssessmentKind, outcome_type: type[ShipOutcome]
+) -> Callable[..., ShipOutcome | None]:
+    def write(
+        *, implement_tmpdir: str, result: GateResult, head_sha: str, base_ref: str
+    ) -> ShipOutcome | None:
+        outcome = _write_ship_outcome(
+            implement_tmpdir=implement_tmpdir,
+            result=result,
+            head_sha=head_sha,
+            base_ref=base_ref,
+            kind=kind,
+        )
+        if outcome is None:
+            return None
+        assert isinstance(outcome, outcome_type)
+        return outcome
+
+    return write
 
 
-def _classify_invariant_ship_outcome(
-    *, result: InvariantsGateResult, head_sha: str, base_ref: str
-) -> InvariantsShipOutcome:
-    outcome = _classify_assessment_ship_outcome(
-        result=result, head_sha=head_sha, base_ref=base_ref, kind=INVARIANTS,
-    )
-    assert isinstance(outcome, InvariantsShipOutcome)
-    return outcome
-
-
-def clear_invariant_ship_outcome_sidecar(*, implement_tmpdir: str) -> None:
-    _clear_ship_outcome_sidecar(implement_tmpdir=implement_tmpdir, kind=INVARIANTS)
-
-
-def write_invariant_ship_outcome(
-    *,
-    implement_tmpdir: str,
-    result: InvariantsGateResult,
-    head_sha: str,
-    base_ref: str,
-) -> InvariantsShipOutcome | None:
-    """Write the durable Step 8 invariant outcome sidecar for terminal gate results."""
-    outcome = _write_ship_outcome(
-        implement_tmpdir=implement_tmpdir,
-        result=result,
-        head_sha=head_sha, base_ref=base_ref, kind=INVARIANTS,
-    )
-    if outcome is None:
-        return None
-    assert isinstance(outcome, InvariantsShipOutcome)
-    return outcome
+write_guideline_ship_outcome = _exported_ship_writer(GUIDELINES, GuidelinesShipOutcome)
+write_invariant_ship_outcome = _exported_ship_writer(INVARIANTS, InvariantsShipOutcome)
 
 
 def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> bool:
@@ -469,20 +427,11 @@ def _read_current_note(
     *, tmpdir: Path, head_sha: str, kind: AssessmentKind,
     base_ref: str = "", repo_root: str | None = None,
 ) -> GateResult:
-    consumable = (
-        architectural_guidelines.invariant_note_consumable
-        if kind.is_invariant
-        else architectural_guidelines.note_consumable
-    )
-    if not consumable(
+    if not _CONSUMABLE_BY_KIND[kind](
         implement_tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root
     ):
         return _gate(kind=kind)
-    note_path = (
-        architectural_guidelines.invariant_durable_note_path(tmpdir)
-        if kind.is_invariant
-        else architectural_guidelines.durable_note_path(tmpdir)
-    )
+    note_path = _DURABLE_PATH_BY_KIND[kind](tmpdir)
     try:
         note = note_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
@@ -496,14 +445,10 @@ def _read_current_note(
         )
     try:
         redacted_note = pr_body.redact_pr_body(note).strip()
-        metadata = (
-            architectural_guidelines.invariant_durable_note_metadata(tmpdir)
-            if kind.is_invariant
-            else architectural_guidelines.durable_note_metadata(tmpdir)
-        )
+        metadata = _METADATA_BY_KIND[kind](tmpdir)
         note_state = metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED
         assessment_kind = metadata.get("ASSESSMENT_KIND", "")
-        if note_state == config.NOTE_STATE_AUTHORED and not _authored_outcome_valid(
+        if note_state == config.NOTE_STATE_AUTHORED and not architectural_guidelines.authored_outcome_valid(
             note=redacted_note, outcome=assessment_kind, invariant=kind.is_invariant
         ):
             return _gate(
@@ -540,11 +485,7 @@ def _current_note_result(
     repo_root: str | None, kind: AssessmentKind,
 ) -> GateResult | None:
     if current.note:
-        stale = (
-            architectural_guidelines.invariant_note_fingerprint_stale
-            if kind.is_invariant
-            else architectural_guidelines.note_fingerprint_stale
-        )
+        stale = _STALE_BY_KIND[kind]
         if repo_root is not None and base_ref and stale(
             tmpdir, base_ref=base_ref, repo_root=repo_root
         ):
@@ -643,104 +584,27 @@ def _load_or_prepare_note(  # noqa: PLR0913 - snapshot factory is the compose-ti
     )
 
 
-def _read_current_guidelines_note(
-    *, tmpdir: Path, head_sha: str, base_ref: str = "", repo_root: str | None = None
-) -> GuidelinesGateResult:
-    result = _read_current_note(
-        tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, kind=GUIDELINES,
-    )
-    assert isinstance(result, GuidelinesGateResult)
-    return result
+def _load_or_prepare_typed(
+    kind: AssessmentKind, result_type: type[GateResult]
+) -> Callable[..., GateResult]:
+    def loader(  # noqa: PLR0913 - compatibility API
+        *, implement_tmpdir: str, head_sha: str, base_ref: str, repo_root: str | None = None,
+        forked_target: bool = False,
+        compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
+    ) -> GateResult:
+        result = _load_or_prepare_note(
+            implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref,
+            repo_root=repo_root, forked_target=forked_target,
+            compose_snapshot_factory=compose_snapshot_factory, kind=kind,
+        )
+        assert isinstance(result, result_type)
+        return result
+
+    return loader
 
 
-def _current_guidelines_result(
-    *, current: GuidelinesGateResult, tmpdir: Path, base_ref: str, repo_root: str | None
-) -> GuidelinesGateResult | None:
-    result = _current_note_result(
-        current=current, tmpdir=tmpdir,
-        base_ref=base_ref, repo_root=repo_root, kind=GUIDELINES,
-    )
-    if result is None:
-        return None
-    assert isinstance(result, GuidelinesGateResult)
-    return result
-
-
-def _prepared_guidelines_result(
-    *, prepared: architectural_guidelines.ComposeMaterializationResult, tmpdir: Path,
-    head_sha: str, base_ref: str, repo_root: str | None,
-) -> GuidelinesGateResult:
-    result = _prepared_result(
-        prepared=prepared, tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, kind=GUIDELINES,
-    )
-    assert isinstance(result, GuidelinesGateResult)
-    return result
-
-
-def load_or_prepare_guidelines_note(  # noqa: PLR0913 - compatibility API
-    *, implement_tmpdir: str, head_sha: str, base_ref: str, repo_root: str | None = None,
-    forked_target: bool = False,
-    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
-) -> GuidelinesGateResult:
-    result = _load_or_prepare_note(
-        implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, forked_target=forked_target,
-        compose_snapshot_factory=compose_snapshot_factory, kind=GUIDELINES,
-    )
-    assert isinstance(result, GuidelinesGateResult)
-    return result
-
-
-def _read_current_invariant_note(
-    *, tmpdir: Path, head_sha: str, base_ref: str = "", repo_root: str | None = None
-) -> InvariantsGateResult:
-    result = _read_current_note(
-        tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, kind=INVARIANTS,
-    )
-    assert isinstance(result, InvariantsGateResult)
-    return result
-
-
-def _current_invariant_result(
-    *, current: InvariantsGateResult, tmpdir: Path, base_ref: str, repo_root: str | None
-) -> InvariantsGateResult | None:
-    result = _current_note_result(
-        current=current, tmpdir=tmpdir,
-        base_ref=base_ref, repo_root=repo_root, kind=INVARIANTS,
-    )
-    if result is None:
-        return None
-    assert isinstance(result, InvariantsGateResult)
-    return result
-
-
-def _prepared_invariant_result(
-    *, prepared: architectural_guidelines.ComposeMaterializationResult, tmpdir: Path,
-    head_sha: str, base_ref: str, repo_root: str | None,
-) -> InvariantsGateResult:
-    result = _prepared_result(
-        prepared=prepared, tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, kind=INVARIANTS,
-    )
-    assert isinstance(result, InvariantsGateResult)
-    return result
-
-
-def load_or_prepare_invariants_note(  # noqa: PLR0913 - compatibility API
-    *, implement_tmpdir: str, head_sha: str, base_ref: str, repo_root: str | None = None,
-    forked_target: bool = False,
-    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
-) -> InvariantsGateResult:
-    result = _load_or_prepare_note(
-        implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref,
-        repo_root=repo_root, forked_target=forked_target,
-        compose_snapshot_factory=compose_snapshot_factory, kind=INVARIANTS,
-    )
-    assert isinstance(result, InvariantsGateResult)
-    return result
+load_or_prepare_guidelines_note = _load_or_prepare_typed(GUIDELINES, GuidelinesGateResult)
+load_or_prepare_invariants_note = _load_or_prepare_typed(INVARIANTS, InvariantsGateResult)
 
 
 # Backward-compatible alias for old unit tests. It no longer pins staged notes.

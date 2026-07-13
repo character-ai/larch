@@ -2416,7 +2416,7 @@ def test_validate_invariant_ship_outcome_record_accepts_violation() -> None:
     ],
 )
 def test_invariant_assessment_kind_tolerates_verbose_clean_notes(note: str, expected: str) -> None:
-    assert ag._invariant_assessment_kind(note) == expected
+    assert ag.classify_note_for_kind(note, kind=ag.INVARIANTS) == expected
 
 
 @pytest.mark.parametrize(
@@ -2464,7 +2464,7 @@ def test_unavailable_note_is_head_pinned_and_has_no_synthetic_identity(tmp_path:
         implement_tmpdir=tmpdir,
         head_sha="head-a",
         base_ref="origin/main",
-        invariant=True,
+        kind=ag.INVARIANTS,
     )
 
     metadata = ag.invariant_durable_note_metadata(tmpdir)
@@ -2506,7 +2506,7 @@ def test_unavailable_invariant_refresh_replaces_authored_violation(tmp_path: Pat
         implement_tmpdir=tmpdir,
         head_sha="head-b",
         base_ref="origin/main",
-        invariant=True,
+        kind=ag.INVARIANTS,
     )
 
     assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "Architectural assessment unavailable."
@@ -2716,7 +2716,7 @@ def test_invariant_coverage_advancement_logs_only_reuses_compose_assessment(tmp_
         head_sha=h1,
         base_ref="origin/main",
         diff_text=ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main"),
-        invariant=True,
+        kind=ag.INVARIANTS,
     )
     (repo / "larch-logs").mkdir()
     (repo / "larch-logs" / "run.log").write_text("log\n", encoding="utf-8")
