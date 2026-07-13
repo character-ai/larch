@@ -5560,7 +5560,7 @@ def test_round_coder_delta_paths_since_committed_uses_diff_base_for_enumeration(
 
     assert enum_refs == ["post"]    # _tracked_paths_vs_ref called with diff_base
     assert match_refs == ["pre"]     # _path_matches_snapshot called with snapshot_head
-    assert result == []              # a.py excluded because it matched the snapshot
+    assert not result                # a.py excluded because it matched the snapshot
 
 
 @pytest.mark.commit_fixes
@@ -5594,7 +5594,7 @@ def test_self_review_delta_paths_probe_policy(tmp_path: Path, monkeypatch: pytes
 
     deltas = snapshot._self_review_delta_paths(implement_tmpdir=impl, pre_head="abc")
 
-    assert trvr_called == []           # _tracked_paths_vs_ref never called for self-review
+    assert not trvr_called             # _tracked_paths_vs_ref never called for self-review
     assert deltas == ["unstaged.py"]   # staged-only idx.py not collected; only worktree change present
 
 
@@ -5624,7 +5624,7 @@ def test_self_review_delta_paths_excludes_staged_only_when_worktree_is_empty(
 
     monkeypatch.setattr(snapshot, "_tracked_paths_vs_ref", tracked_paths_vs_ref_must_not_be_called)
 
-    assert snapshot._self_review_delta_paths(implement_tmpdir=impl, pre_head="abc") == []
+    assert not snapshot._self_review_delta_paths(implement_tmpdir=impl, pre_head="abc")
 
 
 @pytest.mark.commit_fixes
@@ -5637,7 +5637,7 @@ def test_collect_self_review_stage_paths_rejects_hostile_tracked_inventory(tmp_p
     (snap / "pre-self-review-tracked-paths.txt").write_text("../unsafe.py\n", encoding="utf-8")
     (snap / "pre-self-review-untracked-paths.txt").write_text("", encoding="utf-8")
 
-    assert snapshot._collect_self_review_stage_paths(impl) == []
+    assert not snapshot._collect_self_review_stage_paths(impl)
 
 
 @pytest.mark.commit_fixes
@@ -5650,7 +5650,7 @@ def test_collect_self_review_stage_paths_rejects_invalid_untracked_inventory(tmp
     (snap / "pre-self-review-tracked-paths.txt").write_text("", encoding="utf-8")
     (snap / "pre-self-review-untracked-paths.txt").write_text("new.py\nnew.py\n", encoding="utf-8")
 
-    assert snapshot._collect_self_review_stage_paths(impl) == []
+    assert not snapshot._collect_self_review_stage_paths(impl)
 
 
 @pytest.mark.commit_fixes
