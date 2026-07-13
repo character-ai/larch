@@ -36,7 +36,7 @@ ASSESSMENT_KIND=<kind>
 ASSESSMENT_STATE=<state>
 ```
 
-followed immediately by one Markdown fenced block (```markdown ... ```) holding the note body for that kind. Nothing else follows a kind's fenced block except the next kind's `ASSESSMENT_KIND=` line.
+followed immediately by one fenced Markdown block (a `markdown`-tagged code fence) holding the note body for that kind. Nothing else follows a kind's fenced block except the next kind's `ASSESSMENT_KIND=` line.
 
 - `<kind>` is `invariants` or `guidelines`.
 - `<state>` is `clean` or `violation` (invariants); `clean` or `deviation` (guidelines).
