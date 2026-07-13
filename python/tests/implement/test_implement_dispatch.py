@@ -27,6 +27,7 @@ from larch.report import exec_issue_detail
 from larch.implement import implement_dispatch
 from larch.implement import ship_guidelines
 from larch.implement import (
+    checks_result_identity,
     dispatch_commit_route,
     dispatch_leg,
     dispatch_manifest,
@@ -289,6 +290,126 @@ def test_step5_review_stale_result_is_cleared_but_unsafe_result_is_refused(
     result.mkdir()
     assert dispatch_commit_route.step5_review_main([]) == 2
     assert result.is_dir()
+
+
+def _fixed_step5_identity(repo_root: Path) -> checks_result_identity.ChecksInputIdentity:
+    return checks_result_identity.ChecksInputIdentity(
+        head_sha="a" * 40,
+        tree_fingerprint="b" * 64,
+        fingerprint_schema=config.CHECKS_INPUT_FP_SCHEMA_V1,
+        repo_root=repo_root,
+    )
+
+
+def _write_step5_review_result(
+    tmp_path: Path, *, identity_rows: list[tuple[str, str]], status: str = "complete"
+) -> None:
+    bgjob = tmp_path / "bgjob"
+    bgjob.mkdir(exist_ok=True)
+    result = bgjob / "implement-step5-review.result.env"
+    rows = [
+        ("STEP5_REVIEW_STATUS", status),
+        ("STALL_TRACKING", "false"),
+        ("STALL_REASON", "none"),
+        ("ROUNDS_COMPLETED", "2"),
+        ("FINAL_ROUND_NUM", "2"),
+        ("FINAL_REVIEW_AND_FIX_STATUS", "complete"),
+        ("CODER_STATUS", "ok"),
+        ("FILES_CHANGED_HINT", "abc1234"),
+        ("EFFECTIVE_ROUND_CAP", "2"),
+        ("BGJOB_RC", "0"),
+        ("STEP", "implement-step5-review"),
+        *identity_rows,
+    ]
+    larch_io.write_kvs(path=result, values=rows)
+
+
+def test_step5_canonical_classifier_reuses_only_on_matching_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live = _fixed_step5_identity(tmp_path)
+    monkeypatch.setattr(dispatch_commit_route, "_checks_launch_identity", lambda **_kwargs: live)
+
+    _write_step5_review_result(tmp_path, identity_rows=live.as_rows())
+    assert dispatch_commit_route.step5_canonical_result_env_state(tmpdir=tmp_path) == "complete"
+
+    stale_rows = [
+        (config.CHECKS_INPUT_HEAD_SHA_KEY, "c" * 40),
+        (config.CHECKS_INPUT_TREE_FP_KEY, "b" * 64),
+        (config.CHECKS_INPUT_FP_SCHEMA_KEY, config.CHECKS_INPUT_FP_SCHEMA_V1),
+    ]
+    _write_step5_review_result(tmp_path, identity_rows=stale_rows)
+    assert dispatch_commit_route.step5_canonical_result_env_state(tmpdir=tmp_path) == "stale"
+
+    _write_step5_review_result(tmp_path, identity_rows=[])
+    assert dispatch_commit_route.step5_canonical_result_env_state(tmpdir=tmp_path) == "stale"
+
+
+def test_step5_canonical_classifier_fails_closed_when_identity_uncomputable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live = _fixed_step5_identity(tmp_path)
+
+    def raise_identity(**_kwargs: object) -> checks_result_identity.ChecksInputIdentity:
+        raise checks_result_identity.ChecksIdentityError("no session repo root")
+
+    monkeypatch.setattr(dispatch_commit_route, "_checks_launch_identity", raise_identity)
+    _write_step5_review_result(tmp_path, identity_rows=live.as_rows())
+    assert dispatch_commit_route.step5_canonical_result_env_state(tmpdir=tmp_path) == "stale"
+
+
+def test_step5_resume_classifier_reuses_only_on_matching_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live = _fixed_step5_identity(tmp_path)
+    monkeypatch.setattr(dispatch_commit_route, "_checks_launch_identity", lambda **_kwargs: live)
+    bgjob = tmp_path / "bgjob"
+    bgjob.mkdir(exist_ok=True)
+    result = bgjob / "implement-step5-resume.result.env"
+
+    base = [
+        ("STEP5_REVIEW_STATUS", "complete"),
+        ("BGJOB_RC", "0"),
+        ("STEP", "implement-step5-resume"),
+    ]
+    larch_io.write_kvs(path=result, values=[*base, *live.as_rows()])
+    assert dispatch_commit_route.step5_resume_result_env_state(tmpdir=tmp_path) == "complete"
+
+    stale_rows = [
+        (config.CHECKS_INPUT_HEAD_SHA_KEY, "c" * 40),
+        (config.CHECKS_INPUT_TREE_FP_KEY, "b" * 64),
+        (config.CHECKS_INPUT_FP_SCHEMA_KEY, config.CHECKS_INPUT_FP_SCHEMA_V1),
+    ]
+    larch_io.write_kvs(path=result, values=[*base, *stale_rows])
+    assert dispatch_commit_route.step5_resume_result_env_state(tmpdir=tmp_path) == "stale"
+
+    larch_io.write_kvs(path=result, values=base)
+    assert dispatch_commit_route.step5_resume_result_env_state(tmpdir=tmp_path) == "stale"
+
+
+def test_step5_review_child_appends_result_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    live = _fixed_step5_identity(tmp_path)
+    monkeypatch.setattr(dispatch_commit_route, "_checks_launch_identity", lambda **_kwargs: live)
+    merge = tmp_path / "bgjob" / "implement-step5-review.merge.env"
+    merge.parent.mkdir(parents=True, exist_ok=True)
+
+    def fake_worker(_tmpdir: Path) -> int:
+        print("STEP5_REVIEW_STATUS=complete")
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route, "_step5_review_worker", fake_worker)
+
+    assert dispatch_commit_route.step5_review_main(
+        ["--bgjob-child", "--merge-result-env", str(merge)]
+    ) == 0
+    text = merge.read_text(encoding="utf-8")
+    assert "STEP5_REVIEW_STATUS=complete\n" in text
+    for key, value in live.as_rows():
+        assert f"{key}={value}\n" in text
 
 
 def test_resolve_implement_rater_model_prefers_codex_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
