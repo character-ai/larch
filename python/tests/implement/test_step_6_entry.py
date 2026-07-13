@@ -5,12 +5,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from larch.implement import checks_result_identity as identity
 from larch.implement import dispatch_commit_route as route
 
 if TYPE_CHECKING:
-    import pytest
-
     from larch.bgjob import model
 
 
@@ -113,3 +113,68 @@ def test_matching_completed_result_is_reused_without_seed_rewrite(
 
     assert route.step6_entry_main([]) == 0
     assert result.is_file()
+
+
+def test_live_step6_job_reattaches_only_when_its_seed_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    launch = identity.compute_identity(repo_root=repo)
+    merge = impl / "bgjob" / "implement-step6-checks.merge.env"
+    merge.parent.mkdir()
+    _ = merge.write_text("".join(f"{key}={value}\n" for key, value in launch.as_rows()), encoding="utf-8")
+    monkeypatch.setattr(route, "_live_registry_entry", lambda **_kwargs: object())
+
+    route._prepare_checks_rejoin(
+        tmpdir=impl,
+        step="implement-step6-checks",
+        merge_env=merge,
+        identity=launch,
+    )
+
+    _ = merge.write_text("CHECKS_INPUT_HEAD_SHA=stale\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="live checks job identity mismatch"):
+        route._prepare_checks_rejoin(
+            tmpdir=impl,
+            step="implement-step6-checks",
+            merge_env=merge,
+            identity=launch,
+        )
+
+
+def test_step6_refuses_an_unsafe_completed_result_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, _repo = _session(tmp_path, monkeypatch)
+    result = impl / "bgjob" / "implement-step6-checks.result.env"
+    result.parent.mkdir()
+    result.mkdir()
+
+    assert route.step6_entry_main([]) == 2
+    assert result.is_dir()
+
+
+def test_step6_child_success_publishes_output_and_identity_together(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    launch = identity.compute_identity(repo_root=repo)
+    merge = impl / "bgjob" / "implement-step6-checks.merge.env"
+    merge.parent.mkdir()
+    monkeypatch.setattr(route, "_step6_entry_worker", lambda _args, _tmpdir: print("NEXT_ACTION=skip-to-7a") or 0)
+
+    assert route.step6_entry_main([
+        "--bgjob-child",
+        "--merge-result-env", str(merge),
+        "--repo-root", str(repo),
+        "--launch-head", launch.head_sha,
+        "--launch-fp", launch.tree_fingerprint,
+        "--launch-schema", launch.fingerprint_schema,
+    ]) == 0
+
+    rows = dict(line.split("=", 1) for line in merge.read_text(encoding="utf-8").splitlines())
+    assert rows["NEXT_ACTION"] == "skip-to-7a"
+    assert rows["CHECKS_INPUT_HEAD_SHA"] == launch.head_sha

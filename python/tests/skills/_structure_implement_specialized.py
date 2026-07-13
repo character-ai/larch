@@ -192,33 +192,20 @@ def run(repo_root: Path) -> list[str]:
             if not md.is_file(): checks.append(f"missing {md}")
             if sh.is_file() and not os.access(sh, os.X_OK): checks.append(f"{sh} is not executable")
 
-        # Existing wrappers that gained behavior.
-        require("skills/implement/scripts/step-5-review.sh", "bgjob start", "step-5-review starts bgjob")
-        require("skills/implement/scripts/step-5-review.sh", "review-and-fix step5", "step-5-review child calls review-and-fix step5")
-        require("skills/implement/scripts/run-step-checks.sh", "step_checks_live_registry_exists", "run-step-checks live registry helper present")
-        require("skills/implement/scripts/run-step-checks.sh", "checks-result-identity", "run-step-checks shared identity classifier integration")
-        require("skills/implement/scripts/run-step-checks.sh", "CHECKS_INPUT_HEAD_SHA", "run-step-checks identity-bearing merge envelope seeding")
-        require("skills/implement/scripts/run-step-checks.sh", "validate_child_identity", "run-step-checks child-side identity revalidation")
-        require("skills/implement/scripts/run-step-checks.sh", "--repo-root", "run-step-checks validated-root propagation")
-        require("skills/implement/scripts/run-step-checks.sh", 'RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"', "run-step-checks canonical result env pin")
-        require("skills/implement/scripts/run-step-checks.sh", 'rm -f "$RESULT_ENV"', "run-step-checks clears stale canonical result env before fresh start")
-        require("skills/implement/scripts/run-step-checks.sh", 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0', "run-step-checks rejoin wait pin")
-        require("skills/implement/scripts/step-6-entry.sh", "checks-result-identity", "step-6-entry shared identity classifier integration")
-        require("skills/implement/scripts/step-6-entry.sh", "CHECKS_INPUT_HEAD_SHA", "step-6-entry identity-bearing merge envelope seeding")
-        require("skills/implement/scripts/step-6-entry.sh", "validate_child_identity", "step-6-entry child-side identity revalidation")
-        require("skills/implement/scripts/step-6-entry.sh", "skip-to-7a", "step-6-entry preserves skip-to-7a terminal action")
+        # Python owns the converted adapters; their Bash siblings remain thin delegates.
+        require("python/larch/implement/dispatch_commit_route.py", "step5_review_main", "Step 5 review Python adapter present")
+        require("python/larch/implement/dispatch_commit_route.py", "run_step_checks_main", "checks Python adapter present")
+        require("python/larch/implement/dispatch_commit_route.py", "_live_registry_entry", "checks live-job reuse stays Python-owned")
+        require("python/larch/implement/dispatch_commit_route.py", "validate_child_identity", "checks child identity validation stays Python-owned")
+        require("python/larch/implement/dispatch_commit_route.py", "step6_entry_main", "Step 6 Python adapter present")
+        require("python/larch/implement/dispatch_commit_route.py", "skip-to-7a", "Step 6 preserves skip-to-7a terminal action")
         require("python/larch/implement/dispatch_commit_route.py", "--repo-root", "commit-route forwards --repo-root to checks run-relevant")
         require("python/larch/implement/dispatch_commit_route.py", "_session_validated_repo_root", "commit-route validates persisted REPO_ROOT")
         require("python/larch/implement/checks_result_identity.py", "CHECKS_TERMINAL_ACTIONS", "checks identity helper uses shared terminal-action set")
 
-        for needle, label in [
-            ('--merge-result-env "$MERGE_RESULT_ENV"', "step-5-review passes merge result env to bgjob"),
-                ("step5_live_registry_exists", "step-5-review checks live registry before fresh start"),
-            ("bgjob wait --step implement-step5-review", "step-5-review rejoins live bgjob instead of relaunching"),
-            (".step5-wrapper-detached", "step-5-review removes legacy detached sidecar"),
-        ]:
-            require("skills/implement/scripts/step-5-review.sh", needle, label)
         step5_text = Path("skills/implement/scripts/step-5-review.sh").read_text()
+        require("skills/implement/scripts/step-5-review.sh", 'implement step-5-review "$@"', "step-5-review wrapper delegates to Python")
+        forbid("skills/implement/scripts/step-5-review.sh", "bgjob start", "step-5-review wrapper must not retain bgjob lifecycle logic")
         if "write-loop-identity" in step5_text or "await-loop-identity" in step5_text or "teardown-loop-identity" in step5_text:
             checks.append("step-5-review must not retain legacy detach/reattach identity helpers")
         if "--new-process-group" in step5_text or "--orphan-timeout-s" in step5_text:
@@ -541,15 +528,11 @@ def run(repo_root: Path) -> list[str]:
             "read_session_key CODEX_BINARY_FOUND", "read_session_key CURSOR_BINARY_FOUND",
         ]:
             require("skills/implement/scripts/step-0-degraded-gate.sh", needle, f"step-0-degraded-gate legacy {needle}")
-        require("skills/implement/scripts/step-5-resume.sh", 'commit_output="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement commit-route --site step5-resume-handoff)"', "step-5-resume errexit-safe commit-route capture")
-        require("skills/implement/scripts/step-5-resume.sh", "awk -F= '$1 == \"NEXT_ACTION\" || $1 == \"COMMITTED\" || $1 == \"ERROR\" || $1 == \"SHA\" || $1 == \"COMMIT_OUTCOME\" { print }'", "step-5-resume NEXT_ACTION KV relay")
-        require("skills/implement/scripts/step-5-resume.sh", "next_action_count=\"$(printf '%s\\n' \"$commit_output\" | commit_kv_count NEXT_ACTION)\"", "step-5-resume line-anchored NEXT_ACTION count")
-        require("skills/implement/scripts/step-5-resume.sh", "1:continue)", "step-5-resume NEXT_ACTION continue gate")
-        require("skills/implement/scripts/step-5-resume.sh", "1:stall)", "step-5-resume NEXT_ACTION stall relay")
-        require("skills/implement/scripts/step-5-resume.sh", "printf '%s\\n' \"$commit_output\" | relay_commit_kvs_without_next_action", "step-5-resume commit KVs after NEXT_ACTION")
-        forbid("skills/implement/scripts/step-5-resume.sh", 'porcelain="$(git status --porcelain)"', "step-5-resume porcelain probe moved to commit-route")
-        forbid("skills/implement/scripts/step-5-resume.sh", "review-and-fix commit-fixes --stage-all || true", "step-5-resume must not mask commit failure")
-        require("skills/implement/scripts/step-5-resume.sh", "review-and-fix step5", "step-5-resume review loop resume")
+        require("python/larch/implement/dispatch_commit_route.py", "_step5_resume_commit_phase", "step-5-resume commit routing stays Python-owned")
+        require("python/larch/implement/dispatch_commit_route.py", "_parse_line_anchored_commit_kv", "step-5-resume parses commit KVs line-anchored")
+        require("python/larch/implement/dispatch_commit_route.py", "_relay_commit_kvs", "step-5-resume relays the commit envelope")
+        forbid("skills/implement/scripts/step-5-resume.sh", "commit-route --site", "step-5-resume wrapper must not retain commit routing")
+        forbid("skills/implement/scripts/step-5-resume.sh", "review-and-fix step5", "step-5-resume wrapper must not retain review-loop logic")
         require(skill, "Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`, and exactly one line-anchored composite `NEXT_ACTION=` record from the final `DONE` stdout and/or bgjob result env.", "SKILL line-anchored composite NEXT_ACTION parse")
         require(skill, "Whitespace-token-scan only the first physical line for checks keys", "SKILL composite checks parsing slice")
         require(checks_ref, "re-run the section 2-pinned composite launcher with identical argv before any success-path routing", "checks repair-loop folded-site re-capture authority")
@@ -1024,4 +1007,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 363
+LEGACY_ASSERTION_LABEL_COUNT = 353

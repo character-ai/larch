@@ -269,6 +269,26 @@ def test_bgjob_contract_unification_resume_child_publishes_all_rows(
     assert merge.read_text(encoding="utf-8") == capsys.readouterr().out
 
 
+def test_step5_review_stale_result_is_cleared_but_unsafe_result_is_refused(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    bgjob = tmp_path / "bgjob"
+    bgjob.mkdir()
+    result = bgjob / "implement-step5-review.result.env"
+    _ = result.write_text("STEP=wrong-step\nBGJOB_RC=0\n", encoding="utf-8")
+    monkeypatch.setattr(dispatch_commit_route, "_run_adapter", lambda _spec: 0)
+
+    assert dispatch_commit_route.step5_review_main([]) == 0
+    assert not result.exists()
+
+    result.mkdir()
+    assert dispatch_commit_route.step5_review_main([]) == 2
+    assert result.is_dir()
+
+
 def test_resolve_implement_rater_model_prefers_codex_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     tmp = make_implement_tmpdir(tmp_path, overrides={"LARCH_CODEX_MODEL": "codex-session-model"})
     _clear_rater_model_env(monkeypatch)
@@ -6086,7 +6106,43 @@ def test_step5_resume_commit_stall_returns_zero_and_relays(
     out = capsys.readouterr().out
     assert "COMMIT_OUTCOME=failed" in out
     assert "NEXT_ACTION=stall" in out
+    assert "STEP5_REVIEW_STATUS=stall" in out
     assert not resume_calls
+
+
+def test_step5_resume_does_not_emit_completion_when_commit_route_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    resume_calls = _setup_step5_resume(tmp_path, monkeypatch, route_stdout="", route_rc=1)
+
+    assert _step5_resume_worker_main(["--final-round-num", "2", "--ready-to-commit"]) == 1
+
+    assert "STEP5_REVIEW_STATUS=complete" not in capsys.readouterr().out
+    assert not resume_calls
+
+
+def test_step5_resume_child_accepts_relay_values_with_spaces(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    merge = tmp_path / "bgjob" / "implement-step5-resume.merge.env"
+    merge.parent.mkdir()
+
+    def fake_worker(_args: object, _tmpdir: Path) -> int:
+        print("SITE=implement Step 5")
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route, "_step5_resume_worker", fake_worker)
+
+    assert dispatch_commit_route.step5_resume_main([
+        "--final-round-num", "2",
+        "--bgjob-child",
+        "--merge-result-env", str(merge),
+    ]) == 0
+    assert merge.read_text(encoding="utf-8") == capsys.readouterr().out
 
 
 def test_step5_resume_absent_outcome_fails_closed(

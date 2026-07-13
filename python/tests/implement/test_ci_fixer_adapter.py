@@ -130,6 +130,27 @@ def test_start_translates_adapter_done_to_legacy_started(
     assert captured[0].merge_result_env == context.bgjob_dir / f"{launch.step}.merge.env"
 
 
+def test_start_uses_parent_pid_when_claude_pid_is_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _context(tmp_path)
+    launch = _launch(context)
+    captured_owner_pids: list[str | None] = []
+    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
+    monkeypatch.setattr(ci_fixer_adapter.os, "getppid", lambda: 789)
+    monkeypatch.setattr(ci_fixer_adapter, "_new_launch", _fixed_launch(launch))
+    monkeypatch.setattr(
+        ci_fixer_adapter.daemon,
+        "owner_identity_from_env",
+        lambda pid: captured_owner_pids.append(pid) or object(),
+    )
+    monkeypatch.setattr(ci_fixer_adapter.adapt, "start_or_reattach", lambda _spec: 0)
+
+    assert ci_fixer_adapter._start(context) == 0
+    assert captured_owner_pids == ["789"]
+
+
 def test_finalize_records_lineage_idempotently(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -189,6 +210,29 @@ def test_finalize_missing_result_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(ci_fixer_adapter.CiFixerAdapterError, match="missing-bgjob-result"):
         _ = ci_fixer_adapter._finalize(context, launch.step)
+
+
+def test_finalize_nonzero_bgjob_routes_to_crash_finalization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _context(tmp_path)
+    launch = _launch(context)
+    _write_launch(context, launch)
+    _ = (context.bgjob_dir / f"{launch.step}.result.env").write_text(
+        f"STEP={launch.step}\nBGJOB_RC=1\nBGJOB_ELAPSED_S=3\n",
+        encoding="utf-8",
+    )
+    calls: list[list[str]] = []
+    monkeypatch.setattr(
+        ci_fixer_adapter.ci_fixer_lane,
+        "main",
+        lambda argv: calls.append(argv) or 0,
+    )
+
+    assert ci_fixer_adapter._finalize(context, launch.step) == 0
+    assert calls[0][0] == "--finalize-crash"
+    assert calls[0][calls[0].index("--step") + 1] == launch.step
 
 
 def test_finalize_rejects_final_head_drift(

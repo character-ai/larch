@@ -332,12 +332,12 @@ def _start(context: Context) -> int:
         if rc != 0:
             raise CiFixerAdapterError("invariant-evidence-failed")
     log_dir, _, _ = model.log_paths(tmpdir=context.tmpdir, log_dir=None, step=launch.step)
-    owner_pid = os.environ.get("LARCH_CLAUDE_PID", "")
-    owner = (
-        daemon.owner_identity_from_env(owner_pid)
-        if owner_pid
-        else model.OwnerIdentity(recorded=None)
-    )
+    try:
+        owner = daemon.owner_identity_from_env(
+            os.environ.get("LARCH_CLAUDE_PID", "") or str(os.getppid())
+        )
+    except RuntimeError:
+        owner = model.OwnerIdentity(recorded=None)
     cli_path = Path(__file__).resolve().parents[2] / "cli.py"
     spec = model.JobSpec(
         step=launch.step,

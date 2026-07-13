@@ -81,6 +81,31 @@ def test_self_review_uses_distinct_step_and_budget(
     assert captured[0].budget_s == 14700
 
 
+def test_bgjob_spec_uses_parent_pid_when_claude_pid_is_unset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_owner_pids: list[str | None] = []
+    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
+    monkeypatch.setattr(route.os, "getppid", lambda: 456)
+    monkeypatch.setattr(
+        route.bgjob_daemon,
+        "owner_identity_from_env",
+        lambda pid: captured_owner_pids.append(pid) or object(),
+    )
+
+    _ = route._bgjob_spec(route.BgjobRequest(
+        tmpdir=tmp_path,
+        step="implement-step3-checks",
+        budget_s=1,
+        verb="run-step-checks",
+        public_args=(),
+        merge_result_env=tmp_path / "result.env",
+    ))
+
+    assert captured_owner_pids == ["456"]
+
+
 def test_child_requires_complete_launch_identity(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

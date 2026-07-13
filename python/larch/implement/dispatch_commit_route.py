@@ -113,12 +113,12 @@ def _bgjob_spec(request: BgjobRequest) -> bgjob_model.JobSpec:
         log_dir=None,
         step=request.step,
     )
-    owner_pid = os.environ.get("LARCH_CLAUDE_PID", "")
-    owner = (
-        bgjob_daemon.owner_identity_from_env(owner_pid)
-        if owner_pid
-        else bgjob_model.OwnerIdentity(recorded=None)
-    )
+    try:
+        owner = bgjob_daemon.owner_identity_from_env(
+            os.environ.get("LARCH_CLAUDE_PID", "") or str(os.getppid())
+        )
+    except RuntimeError:
+        owner = bgjob_model.OwnerIdentity(recorded=None)
     command = (
         sys.executable,
         str(_current_cli_path()),
@@ -169,11 +169,8 @@ def _stdout_is_merge_rows(text: str) -> bool:
     for line in text.splitlines():
         if not line:
             continue
-        tokens = line.split()
-        if not tokens or any(
-            "=" not in token or re.fullmatch(r"[A-Z0-9_]+", token.split("=", 1)[0]) is None
-            for token in tokens
-        ):
+        key, separator, _value = line.partition("=")
+        if not separator or re.fullmatch(r"[A-Z0-9_]+", key) is None:
             return False
     return True
 
@@ -1488,14 +1485,14 @@ def _step5_resume_worker(args: argparse.Namespace, implement_tmpdir: Path) -> in
         final_round_num=args.final_round_num,
     )
     if args.checks_site:
-        _emit_kv(key="STEP5_REVIEW_STATUS", value="complete")
         return checks_step5_resume_main(
             ["--checks-site", args.checks_site, "--final-round-num", args.final_round_num]
         )
     if args.ready_to_commit or os.environ.get("STEP5_HANDOFF_READY_TO_COMMIT") == "true":
-        _emit_kv(key="STEP5_REVIEW_STATUS", value="complete")
         commit_rc = _step5_resume_commit_phase()
         if commit_rc is not None:
+            if commit_rc == 0:
+                _emit_kv(key="STEP5_REVIEW_STATUS", value="stall")
             return commit_rc
     command = [
         "review-and-fix",
