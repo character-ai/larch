@@ -849,8 +849,10 @@ def _write_plan_voter_waterfall_manifest(
                 "output": str(design / policy.output_name),
                 "prompt_files": dict(prompt_files.get(policy.slot_name, {})),
                 "payload_files": dict(payload_files.get(policy.slot_name, {})),
+                "model_role": "vote",
             }
-            _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
+            attributed = with_manifest_attribution(row)
+            _ = handle.write(json.dumps(attributed, separators=(",", ":")) + "\n")
     return manifest
 
 
@@ -994,7 +996,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         paths_file = design / "plan-review-voter-paths.txt"
         kept = [str(voter_1_path)] if voter_1_status != "failed" and _file_nonempty(voter_1_path) else []
         _ = paths_file.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
-        print("DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.** quota hit")
+        degraded_warning = "**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.** quota hit"
         state = DispatchState(
             voter_1_path=voter_1_path,
             voter_2_path=design / policies_by_slot["voter-2"].output_name,
@@ -1010,6 +1012,8 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             voter_3_parse_rate_status="not-run",
         )
         _emit_final_kvs(state=state, voter_paths_file=paths_file, dispatch_ok="true" if voter_1_status == "launched" else "false")
+        logging_util.emit_kv(key="DEGRADED_PANEL_WARNING", value=degraded_warning)
+        _emit(key="DEGRADED_PANEL", value="1")
         _emit(key="VOTER_1_RETRIED", value=voter_1_retried)
         return 0
 
@@ -1139,6 +1143,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         cwd=str(_REPO_ROOT),
     )
     effective = int(effective_proc.stdout.strip() or "0") if effective_proc.returncode == 0 else 0
+    degraded_warning = ""
     if effective < _PLAN_VOTER_PANEL_SIZE:
         warn_proc = larch_proc.run(
             [
@@ -1152,9 +1157,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             ],
             cwd=str(_REPO_ROOT),
         )
-        if warn_proc.stdout.strip():
-            print(warn_proc.stdout.strip())
-        _emit(key="DEGRADED_PANEL", value="1")
+        degraded_warning = _parse_kv(warn_proc.stdout).get("DEGRADED_PANEL_WARNING", "")
 
     paths_file = design / "plan-review-voter-paths.txt"
     kept: list[str] = []
@@ -1168,6 +1171,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     _ = paths_file.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
     dispatch_ok = "false" if effective == 0 or wf_kv.get("DISPATCH_OK") == "false" else "true"
     _emit_final_kvs(state=state, voter_paths_file=paths_file, dispatch_ok=dispatch_ok)
+    if degraded_warning:
+        logging_util.emit_kv(key="DEGRADED_PANEL_WARNING", value=degraded_warning)
+        _emit(key="DEGRADED_PANEL", value="1")
     _emit(key="VOTER_1_RETRIED", value="false")
     return 0 if dispatch_ok == "true" else 1
 

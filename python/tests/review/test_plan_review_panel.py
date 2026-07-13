@@ -793,6 +793,8 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
         prompt_files = row.get("prompt_files")
         assert isinstance(prompt_files, dict)
         assert set(prompt_files) == expected_tools  # type: ignore[arg-type]
+        assert row.get("model_role") == "vote"
+        assert row.get("resolved_model") == config.CODEX_VOTE_MODEL_DEFAULT
     waterfall = next(a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
     # Plan voters now waterfall through their cross-vendor + Claude tiers (issue #5817).
     assert "--no-fallback" not in waterfall
@@ -1451,28 +1453,41 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
     design.mkdir()
     ballot = design / "ballot.txt"
     _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
-    proc = run_cli(
-        "plan-review",
-        "voter-dispatch",
-        "--ballot-file",
-        str(ballot),
-        "--design-tmpdir",
-        str(design),
-        "--codex-available",
-        "false",
-        "--cursor-available",
-        "false",
-        "--round-num",
-        "1",
-        env={
-            "LARCH_QUIET_DISABLE": "1",
-            "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
-            "PLAN_REVIEW_PANEL_REAL_PYTHON": sys.executable,
-        },
+    env = os.environ.copy()
+    env.update({
+        "LARCH_QUIET_DISABLE": "",
+        "LARCH_QUIET_ACTIVE": "",
+        "LARCH_QUIET_PID": "",
+        "LARCH_QUIET_LOG_FILE": "",
+        "DESIGN_TMPDIR": str(design),
+        "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
+        "PLAN_REVIEW_PANEL_REAL_PYTHON": sys.executable,
+        "PYTHONPATH": str(ROOT / "python"),
+    })
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from larch.review.plan_review_panel import dispatch_voters_main; import sys; raise SystemExit(dispatch_voters_main(sys.argv[1:]))",
+            "--ballot-file",
+            str(ballot),
+            "--design-tmpdir",
+            str(design),
+            "--codex-available",
+            "false",
+            "--cursor-available",
+            "false",
+            "--round-num",
+            "1",
+        ],
+        cwd=ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
     expected = [
-        "DEGRADED_PANEL_WARNING",
         "VOTER_1_PATH",
         "VOTER_1_TOOL",
         "VOTER_1_STATUS",
@@ -1487,9 +1502,14 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "VOTER_2_PARSE_RATE_STATUS",
         "VOTER_3_PARSE_RATE_STATUS",
         "DISPATCH_OK",
+        "DEGRADED_PANEL_WARNING",
+        "DEGRADED_PANEL",
         "VOTER_1_RETRIED",
     ]
     assert _stdout_key_order(proc.stdout) == expected
+    quiet_logs = list(design.glob("larch-quiet-*.log"))
+    assert quiet_logs
+    assert "DEGRADED_PANEL_WARNING=" not in quiet_logs[0].read_text(encoding="utf-8")
 
 
 def test_voter_dispatch_claude_failure_codex_cursor_succeed(
@@ -1571,6 +1591,8 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
     assert "DEGRADED_PANEL_WARNING=" in stdout
     assert "DEGRADED_PANEL=1" in stdout
     assert "DISPATCH_OK=true" in stdout
+    keys = _stdout_key_order(stdout)
+    assert keys.index("DISPATCH_OK") < keys.index("DEGRADED_PANEL_WARNING") < keys.index("DEGRADED_PANEL")
     paths_content = (design / "plan-review-voter-paths.txt").read_text(encoding="utf-8")
     voter_lines = [ln for ln in paths_content.splitlines() if ln.strip()]
     assert len(voter_lines) == 3
