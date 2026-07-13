@@ -13,5 +13,6 @@ if grep -Fq 'bgjob start' "$WRAPPER"; then exit 1; fi
 if grep -Fq 'python3 - ' "$WRAPPER"; then exit 1; fi
 
 PYTHONPATH=python python3 -m pytest -q python/tests/implement/test_ci_fixer_adapter.py
+PYTHONPATH=python python3 -m pytest -q python/tests/implement/test_ci_fixer_lane.py
 
 echo 'PASS: Step 8 CI fixer delegates start and finalize boundaries to Python'

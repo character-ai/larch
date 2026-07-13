@@ -17,6 +17,8 @@ done
 PYTHONPATH=python python3 -m pytest -q python/tests/bgjob/test_bgjob_adapt.py
 PYTHONPATH=python python3 -m pytest -q \
   python/tests/implement/test_implement_dispatch.py \
-  -k 'bgjob_contract_unification'
+  -k 'bgjob_contract_unification or step5 or step6 or checks_step5_resume'
+PYTHONPATH=python python3 -m pytest -q python/tests/implement/test_run_step_checks.py
+PYTHONPATH=python python3 -m pytest -q python/tests/implement/test_step_6_entry.py
 
 echo 'PASS: Step 5 wrappers delegate lifecycle and publication to Python'

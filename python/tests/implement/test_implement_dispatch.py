@@ -205,6 +205,7 @@ def test_bgjob_contract_unification_step5_review_uses_custom_merge_spec(
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    monkeypatch.setattr(dispatch_commit_route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
     captured: list[bgjob_model.JobSpec] = []
 
     def fake_start(spec: bgjob_model.JobSpec) -> int:
@@ -275,6 +276,7 @@ def test_step5_review_stale_result_is_cleared_but_unsafe_result_is_refused(
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    monkeypatch.setattr(dispatch_commit_route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
     bgjob = tmp_path / "bgjob"
     bgjob.mkdir()
     result = bgjob / "implement-step5-review.result.env"

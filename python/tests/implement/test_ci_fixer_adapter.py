@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -113,8 +114,9 @@ def test_start_translates_adapter_done_to_legacy_started(
     context = _context(tmp_path)
     launch = _launch(context)
     captured: list[model.JobSpec] = []
-    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
+    monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
     monkeypatch.setattr(ci_fixer_adapter, "_new_launch", _fixed_launch(launch))
+    monkeypatch.setattr(ci_fixer_adapter.daemon, "owner_identity_from_env", lambda _pid: object())
 
     def fake_adapt(spec: model.JobSpec) -> int:
         captured.append(spec)
@@ -149,6 +151,23 @@ def test_start_uses_parent_pid_when_claude_pid_is_unset(
 
     assert ci_fixer_adapter._start(context) == 0
     assert captured_owner_pids == ["789"]
+
+
+def test_start_propagates_stale_claude_owner_capture_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _context(tmp_path)
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "stale")
+    monkeypatch.setattr(ci_fixer_adapter, "_new_launch", _fixed_launch(_launch(context)))
+    monkeypatch.setattr(
+        ci_fixer_adapter.daemon,
+        "owner_identity_from_env",
+        lambda _pid: (_ for _ in ()).throw(RuntimeError("stale owner")),
+    )
+
+    with pytest.raises(RuntimeError, match="stale owner"):
+        _ = ci_fixer_adapter._start(context)
 
 
 def test_finalize_records_lineage_idempotently(
@@ -321,6 +340,27 @@ def test_new_launch_selects_tier_and_hashes_dynamic_step(
     assert launch.tier in ci_fixer_adapter.external_defaults.tool_order("implement.ci_recovery_fixer")
     assert launch.step.startswith(f"implement-step8-ci-fixer-1-{launch.tier}-")
     assert (context.handoff_dir / f"launch-{launch.step}.env").is_file()
+
+
+def test_new_launch_reuses_pending_completed_launch_before_deriving_another(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = _context(tmp_path)
+    launch = _launch(context)
+    _write_launch(context, launch)
+    _ = (context.bgjob_dir / f"{launch.step}.result.env").write_text(
+        f"STEP={launch.step}\nBGJOB_RC=0\nBGJOB_ELAPSED_S=1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ci_fixer_adapter, "_select_route", _fixed_route)
+    monkeypatch.setattr(
+        ci_fixer_adapter,
+        "_start_identity",
+        lambda _context: (_ for _ in ()).throw(AssertionError("must reuse pending launch")),
+    )
+
+    assert ci_fixer_adapter._new_launch(context) == launch
 
 
 def test_new_launch_reports_tier_exhaustion(

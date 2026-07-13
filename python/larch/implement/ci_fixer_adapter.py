@@ -190,6 +190,26 @@ def _read_launch(context: Context, step: str) -> Launch:
     return launch
 
 
+def _pending_launch(context: Context, *, mode: str, run_id: str) -> Launch | None:
+    """Return the oldest unfinalized launch for the current CI-fix lineage."""
+    pending: list[Launch] = []
+    for path in context.handoff_dir.glob("launch-*.env"):
+        if path.is_symlink() or not path.is_file():
+            raise CiFixerAdapterError("unsafe-launch-envelope")
+        match = re.fullmatch(r"launch-(.+)\.env", path.name)
+        if match is None:
+            continue
+        launch = _read_launch(context, match.group(1))
+        if launch.mode != mode or launch.run_id != run_id:
+            continue
+        if any(row[0] == str(launch.attempt) for row in _lineage_rows(launch.lineage)):
+            continue
+        pending.append(launch)
+    if not pending:
+        return None
+    return min(pending, key=lambda launch: launch.attempt)
+
+
 def _lineage_rows(path: Path) -> list[tuple[str, ...]]:
     if not path.exists():
         return []
@@ -248,8 +268,11 @@ def _select_route(context: Context) -> tuple[str, str]:
 
 
 def _new_launch(context: Context) -> Launch:
-    starting_head, fingerprint = _start_identity(context)
     mode, run_id = _select_route(context)
+    pending = _pending_launch(context, mode=mode, run_id=run_id)
+    if pending is not None:
+        return pending
+    starting_head, fingerprint = _start_identity(context)
     lineage_key = hashlib.sha256(f"{mode}\0{run_id}".encode()).hexdigest()[:20]
     lineage = _safe_file(
         context.handoff_dir / f"lineage-{lineage_key}.tsv",
@@ -332,12 +355,10 @@ def _start(context: Context) -> int:
         if rc != 0:
             raise CiFixerAdapterError("invariant-evidence-failed")
     log_dir, _, _ = model.log_paths(tmpdir=context.tmpdir, log_dir=None, step=launch.step)
-    try:
-        owner = daemon.owner_identity_from_env(
-            os.environ.get("LARCH_CLAUDE_PID", "") or str(os.getppid())
-        )
-    except RuntimeError:
-        owner = model.OwnerIdentity(recorded=None)
+    owner_pid = os.environ.get("LARCH_CLAUDE_PID")
+    owner = daemon.owner_identity_from_env(
+        str(os.getppid()) if owner_pid is None else owner_pid
+    )
     cli_path = Path(__file__).resolve().parents[2] / "cli.py"
     spec = model.JobSpec(
         step=launch.step,

@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import pytest
 
 from larch.implement import checks_result_identity as identity
 from larch.implement import dispatch_commit_route as route
 
 if TYPE_CHECKING:
-    import pytest
-
     from larch.bgjob import model
 
 
@@ -40,7 +41,8 @@ def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
     _ = (impl / "session-env.sh").write_text(f"REPO_ROOT={repo.resolve()}\n", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
+    monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
+    monkeypatch.setattr(route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
     return impl, repo.resolve()
 
 
@@ -104,6 +106,28 @@ def test_bgjob_spec_uses_parent_pid_when_claude_pid_is_unset(
     ))
 
     assert captured_owner_pids == ["456"]
+
+
+def test_bgjob_spec_propagates_stale_claude_owner_capture_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "stale")
+    monkeypatch.setattr(
+        route.bgjob_daemon,
+        "owner_identity_from_env",
+        lambda _pid: (_ for _ in ()).throw(RuntimeError("stale owner")),
+    )
+
+    with pytest.raises(RuntimeError, match="stale owner"):
+        _ = route._bgjob_spec(route.BgjobRequest(
+            tmpdir=tmp_path,
+            step="implement-step3-checks",
+            budget_s=1,
+            verb="run-step-checks",
+            public_args=(),
+            merge_result_env=tmp_path / "result.env",
+        ))
 
 
 def test_child_requires_complete_launch_identity(

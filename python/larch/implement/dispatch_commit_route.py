@@ -113,12 +113,10 @@ def _bgjob_spec(request: BgjobRequest) -> bgjob_model.JobSpec:
         log_dir=None,
         step=request.step,
     )
-    try:
-        owner = bgjob_daemon.owner_identity_from_env(
-            os.environ.get("LARCH_CLAUDE_PID", "") or str(os.getppid())
-        )
-    except RuntimeError:
-        owner = bgjob_model.OwnerIdentity(recorded=None)
+    owner_pid = os.environ.get("LARCH_CLAUDE_PID")
+    owner = bgjob_daemon.owner_identity_from_env(
+        str(os.getppid()) if owner_pid is None else owner_pid
+    )
     command = (
         sys.executable,
         str(_current_cli_path()),

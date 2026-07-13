@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -44,7 +45,8 @@ def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
     _ = (impl / "session-env.sh").write_text(f"REPO_ROOT={repo.resolve()}\n", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
+    monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
+    monkeypatch.setattr(route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
     return impl, repo.resolve()
 
 
@@ -113,6 +115,33 @@ def test_matching_completed_result_is_reused_without_seed_rewrite(
 
     assert route.step6_entry_main([]) == 0
     assert result.is_file()
+
+
+def test_stale_completed_result_is_cleared_before_parent_relaunch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    prior = identity.compute_identity(repo_root=repo)
+    bgjob = impl / "bgjob"
+    bgjob.mkdir()
+    result = bgjob / "implement-step6-checks.result.env"
+    merge = bgjob / "implement-step6-checks.merge.env"
+    rows = [
+        ("STEP", "implement-step6-checks"),
+        ("BGJOB_RC", "0"),
+        ("NEXT_ACTION", "skip-to-7a"),
+        *prior.as_rows(),
+    ]
+    _ = result.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
+    _ = merge.write_text("stale\n", encoding="utf-8")
+    _ = (repo / "tracked").write_text("drift\n", encoding="utf-8")
+    captured: list[model.JobSpec] = []
+    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _capture_spec(captured))
+
+    assert route.step6_entry_main([]) == 0
+    assert not result.exists()
+    assert captured[0].step == "implement-step6-checks"
 
 
 def test_live_step6_job_reattaches_only_when_its_seed_matches(
