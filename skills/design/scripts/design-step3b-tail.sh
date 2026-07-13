@@ -118,9 +118,13 @@ if [ "$BGJOB_CHILD" = false ]; then
   [ -n "${SESSION_ENV_PATH:-}" ] && _adapt_args[${#_adapt_args[@]}]=--session-env-path && _adapt_args[${#_adapt_args[@]}]="$SESSION_ENV_PATH"
   _step3_sidecar="$DESIGN_TMPDIR/.step3-review-result.env"
   if [ -f "$_step3_sidecar" ] && [ ! -L "$_step3_sidecar" ]; then
-    _tail_input_fp="$(shasum -a 256 "$_step3_sidecar" 2>/dev/null | awk '{print $1}')" || _tail_input_fp=""
-    [ -n "$_tail_input_fp" ] && _adapt_args[${#_adapt_args[@]}]=--input-fingerprint && _adapt_args[${#_adapt_args[@]}]="$_tail_input_fp"
+    _tail_input_fp="$(shasum -a 256 "$_step3_sidecar" 2>/dev/null | awk '{print $1}')" || _tail_input_fp="compute-failed"
+    [ -z "$_tail_input_fp" ] && _tail_input_fp="compute-failed"
+  else
+    _tail_input_fp="source-absent"
   fi
+  _adapt_args[${#_adapt_args[@]}]=--input-fingerprint
+  _adapt_args[${#_adapt_args[@]}]="$_tail_input_fp"
   exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob adapt "${_adapt_args[@]}" -- bash "$0" "${ORIGINAL_ARGS[@]}"
 fi
 

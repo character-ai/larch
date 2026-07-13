@@ -125,9 +125,13 @@ _adapt_args=(
 [ "$FRESH_ATTEMPT" = true ] && _adapt_args[${#_adapt_args[@]}]=--replace-completed-result
 _step3_sidecar="$DESIGN_TMPDIR/.step3-review-result.env"
 if [ -f "$_step3_sidecar" ] && [ ! -L "$_step3_sidecar" ]; then
-  _step5c_input_fp="$(shasum -a 256 "$_step3_sidecar" 2>/dev/null | awk '{print $1}')" || _step5c_input_fp=""
-  [ -n "$_step5c_input_fp" ] && _adapt_args[${#_adapt_args[@]}]=--input-fingerprint && _adapt_args[${#_adapt_args[@]}]="$_step5c_input_fp"
+  _step5c_input_fp="$(shasum -a 256 "$_step3_sidecar" 2>/dev/null | awk '{print $1}')" || _step5c_input_fp="compute-failed"
+  [ -z "$_step5c_input_fp" ] && _step5c_input_fp="compute-failed"
+else
+  _step5c_input_fp="source-absent"
 fi
+_adapt_args[${#_adapt_args[@]}]=--input-fingerprint
+_adapt_args[${#_adapt_args[@]}]="$_step5c_input_fp"
 if [ "${#FORWARD_ARGS[@]}" -gt 0 ]; then
   exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob adapt "${_adapt_args[@]}" -- bash "$0" "${FORWARD_ARGS[@]}"
 else

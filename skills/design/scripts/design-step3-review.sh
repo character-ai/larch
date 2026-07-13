@@ -335,9 +335,13 @@ if [ "$BGJOB_CHILD" = false ]; then
   _adapt_args[${#_adapt_args[@]}]="$DESIGN_TMPDIR/.completed/step-3"
   _plan_file="$DESIGN_TMPDIR/plan.txt"
   if [ -f "$_plan_file" ] && [ ! -L "$_plan_file" ]; then
-    _step3_input_fp="$(shasum -a 256 "$_plan_file" 2>/dev/null | awk '{print $1}')" || _step3_input_fp=""
-    [ -n "$_step3_input_fp" ] && _adapt_args[${#_adapt_args[@]}]=--input-fingerprint && _adapt_args[${#_adapt_args[@]}]="$_step3_input_fp"
+    _step3_input_fp="$(shasum -a 256 "$_plan_file" 2>/dev/null | awk '{print $1}')" || _step3_input_fp="compute-failed"
+    [ -z "$_step3_input_fp" ] && _step3_input_fp="compute-failed"
+  else
+    _step3_input_fp="source-absent"
   fi
+  _adapt_args[${#_adapt_args[@]}]=--input-fingerprint
+  _adapt_args[${#_adapt_args[@]}]="$_step3_input_fp"
   exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob adapt "${_adapt_args[@]}" -- bash "$0" "${ORIGINAL_ARGS[@]}"
 fi
 
