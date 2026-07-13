@@ -1665,7 +1665,7 @@
     "file": "larch/design/design_step5c.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 122
+    "metric": 125
   },
   {
     "file": "larch/design/design_step6.py",
@@ -4143,7 +4143,7 @@
     "file": "larch/rendering/rendering.py",
     "code": "C901",
     "qualified_symbol": "render_plan_review_main",
-    "metric": 15
+    "metric": 14
   },
   {
     "file": "larch/rendering/rendering.py",
@@ -4179,7 +4179,7 @@
     "file": "larch/rendering/rendering.py",
     "code": "PLR0912",
     "qualified_symbol": "render_plan_review_main",
-    "metric": 15
+    "metric": 14
   },
   {
     "file": "larch/rendering/rendering.py",
@@ -4203,7 +4203,7 @@
     "file": "larch/rendering/rendering.py",
     "code": "PLR0915",
     "qualified_symbol": "render_plan_review_main",
-    "metric": 65
+    "metric": 63
   },
   {
     "file": "larch/rendering/rendering.py",
