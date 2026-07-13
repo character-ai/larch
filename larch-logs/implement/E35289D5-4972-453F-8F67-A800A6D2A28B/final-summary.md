@@ -63,15 +63,25 @@ codex/apply                  │                                  ████�
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (0):
-Warnings (1):
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (2):
   1. Step 7a.1 — 2 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: skills/design/scripts/test-step3-orchestrator-fence.sh, scripts/test-design-struct...
+  2. Completed-result reattachment can silently reuse stale Step 5c or Step 4-tail output after relevant inputs change, rather than converging on a rerun.
+
+## Architectural invariants
+
+No violations identified.
+
+## Architectural guidelines
+
+No deviations identified.
 
 ## /implement run E35289D5-4972-453F-8F67-A800A6D2A28B: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:11:31
-- **Cost**: 💰 TOTAL ~$46.89: Claude $1.23, Codex-5.6 $29.71, Codex-mini $0.08, Cursor $13.67 (Composer $13.67, Grok $0.00), Claude (subprocess) $2.20  |  Tokens: 70623k
+- **Cost**: 💰 TOTAL ~$57.61: Claude $10.49, Codex-5.6 $30.78, Codex-mini $0.08, Cursor $14.02 (Composer $14.02, Grok $0.00), Claude (subprocess) $2.24  |  Tokens: 97184k
 - **Issue**: #7036: https://github.com/character-ai/larch/issues/7036
 - **Plan review**: N/A
 - **Plan coverage**: 22/23 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -80,8 +90,8 @@ Warnings (1):
 - **Code review**: 11/13 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7172
-- **Exec issues**: 0
-- **Warnings**: 1
+- **Exec issues**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/E35289D5-4972-453F-8F67-A800A6D2A28B/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max

@@ -1,2 +1,4 @@
 site	attempt	redacted_bytes	digest_bytes	redacted_tokens	digest_tokens	saved_bytes	saved_tokens	digest_truncated
 step6	1	5948	359	1487	90	5589	1397	false
+ci-fix-inline	1	5176	516	1294	129	4660	1165	false
+ci-fix-inline	2	4260	361	1065	91	3899	974	false
