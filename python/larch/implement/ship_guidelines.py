@@ -203,13 +203,6 @@ def read_unavailable_outcome_detail(
     return _bounded_detail(detail)
 
 
-def _write_json_atomic(*, path: Path, data: dict[str, object]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    _ = tmp.write_text(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
-    _ = tmp.replace(path)
-
-
 def mark_operator_waived_outcomes(
     *, implement_tmpdir: str, kinds: frozenset[str]
 ) -> frozenset[str]:
@@ -339,9 +332,11 @@ def _write_ship_outcome(
     outcome = _classify_assessment_ship_outcome(
         result=result, head_sha=head_sha, base_ref=base_ref, kind=kind
     )
-    _write_json_atomic(
-        path=Path(implement_tmpdir) / kind.ship_outcome_sidecar,
-        data=outcome.as_json(),
+    tmpdir = Path(implement_tmpdir)
+    larch_io.trusted_atomic_write(
+        tmpdir / kind.ship_outcome_sidecar,
+        json.dumps(outcome.as_json(), sort_keys=True, separators=(",", ":")) + "\n",
+        root=tmpdir,
     )
     return outcome
 

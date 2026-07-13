@@ -386,6 +386,58 @@ def test_write_design_env_source_safe_and_home_symlink(tmp_path: Path) -> None:
     assert 'design step-final-summary --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' in launcher_text
 
 
+def test_resolve_trusted_design_env_refuses_swapped_symlink(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    sessions = home / ".cache" / "larch" / "sessions"
+    sessions.mkdir(parents=True)
+    real_target = sessions / "real-env-12345.sh"
+    real_target.write_text("export DESIGN_TMPDIR=/tmp\n", encoding="utf-8")
+    link = sessions / "current-design-env-12345.sh"
+    link.symlink_to(real_target)
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg")}
+
+    valid = run_cli(
+        "resolve-trusted-design-env",
+        "--session-env-path",
+        str(link),
+        "--claude-pid",
+        "12345",
+        env=env,
+    )
+    assert valid.returncode == 0, valid.stderr
+    assert valid.stdout.startswith("TRUSTED_SOURCE=")
+    resolved_path = Path(valid.stdout[len("TRUSTED_SOURCE=") :].strip())
+    assert resolved_path.is_file()
+    assert resolved_path.samefile(real_target)
+
+    swapped = sessions / "current-design-env-99999.sh"
+    swapped.symlink_to(real_target)
+    refused = run_cli(
+        "resolve-trusted-design-env",
+        "--session-env-path",
+        str(swapped),
+        "--claude-pid",
+        "12345",
+        env=env,
+    )
+    assert refused.returncode == 1
+
+    link.unlink()
+    link.symlink_to(sessions / "missing.sh")
+    refused_target = run_cli(
+        "resolve-trusted-design-env",
+        "--session-env-path",
+        str(link),
+        "--claude-pid",
+        "12345",
+        env=env,
+    )
+    assert refused_target.returncode == 1
+
+    no_pid = run_cli("resolve-trusted-design-env", "--session-env-path", str(swapped), env=env)
+    assert no_pid.returncode == 1
+
+
 def test_write_design_env_exports_explicit_repo_root(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

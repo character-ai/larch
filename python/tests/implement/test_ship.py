@@ -7143,6 +7143,45 @@ def test_guideline_ship_outcome_blank_head_sha_raises_before_write(tmp_path: Pat
     assert not (tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).exists()
 
 
+def test_guideline_ship_outcome_sidecar_rejects_swapped_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "evil-guideline.json"
+    target.write_text("pwned", encoding="utf-8")
+    link = tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
+    link.symlink_to(target)
+
+    with pytest.raises(OSError, match="not a regular file"):
+        ship_guidelines.write_guideline_ship_outcome(
+            implement_tmpdir=str(tmp_path),
+            result=ship.GuidelinesGateResult(guidelines_status="absent"),
+            head_sha="abc123",
+            base_ref="origin/main",
+        )
+
+    assert link.is_symlink()
+    assert target.read_text(encoding="utf-8") == "pwned"
+
+
+def test_invariant_ship_outcome_sidecar_rejects_swapped_symlink(tmp_path: Path) -> None:
+    target = tmp_path / "evil-invariant.json"
+    target.write_text("pwned", encoding="utf-8")
+    link = tmp_path / ship.architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR
+    link.symlink_to(target)
+
+    with pytest.raises(OSError, match="not a regular file"):
+        ship_guidelines.write_invariant_ship_outcome(
+            implement_tmpdir=str(tmp_path),
+            result=ship_guidelines.InvariantsGateResult(
+                invariants_status="present",
+                assessment_kind="clean",
+                reason=ship_guidelines.REASON_INVARIANTS_EMPTY,
+            ),
+            head_sha="abc123",
+            base_ref="origin/main",
+        )
+
+    assert link.is_symlink()
+    assert target.read_text(encoding="utf-8") == "pwned"
+
 def test_load_or_prepare_guidelines_note_skips_assessment_on_prepare_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
