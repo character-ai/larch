@@ -56,11 +56,25 @@ cursor/apply             │              ████████████�
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (1):
+  1. assessment_kind._parse_entries re-derives Markdown fence state instead of reusing _balanced_fence_line_indices.
+
+## Architectural invariants
+
+No violations identified.
+
+## Architectural guidelines
+
+assessment_kind._parse_entries re-derives Markdown fence state instead of reusing _balanced_fence_line_indices.
+
 ## /implement run E9EF765D-F7AF-4E58-AFC1-FF0F5EEFC809: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 02:01:30
-- **Cost**: 💰 TOTAL ~$32.84: Claude $14.20, Codex-5.6 $11.59, Codex-mini $0.04, Cursor $6.63 (Composer $6.63, Grok $0.00), Claude (subprocess) $0.38  |  Tokens: 63817k
+- **Cost**: 💰 TOTAL ~$34.24: Claude $14.68, Codex-5.6 $12.11, Codex-mini $0.04, Cursor $6.99 (Composer $6.99, Grok $0.00), Claude (subprocess) $0.42  |  Tokens: 66472k
 - **Issue**: #6998: https://github.com/character-ai/larch/issues/6998
 - **Plan review**: N/A
 - **Plan coverage**: 9/9 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -69,8 +83,8 @@ cursor/apply             │              ████████████�
 - **Code review**: 5/6 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/7176
-- **Exec issues**: 0
-- **Warnings**: 0
+- **Exec issues**: 1
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/E9EF765D-F7AF-4E58-AFC1-FF0F5EEFC809/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
