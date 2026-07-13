@@ -1141,6 +1141,7 @@ def _derive_progress_label(
         "cursor-plan-autofix": "cursor/apply",
         "gate-b-apply": "gate-b/apply",
         "voter-dispatch-prep": "voter-dispatch-prep",
+        "reviewer-collect": "reviewer-collect",
     }
     if kind in kind_labels:
         return kind_labels[kind]

@@ -67,6 +67,36 @@ def path_for_wire(path: Path | None) -> str:
     return "" if path is None else str(path)
 
 
+def _record_pipeline_span(  # noqa: PLR0913 - the six span fields are all load-bearing and not worth bundling for two callers
+    *,
+    ledger: Path | None,
+    skill: str,
+    task_kind: str,
+    start_s: float,
+    end_s: float,
+    output: str,
+) -> None:
+    """Best-effort append of one synthetic pipeline-phase vendor row.
+
+    Shared by the recorders that model a serial span running between two instrumented model
+    calls (voter dispatch prep before the voters, reviewer collection before the aggregator).
+    The row carries the neutral ``claude`` vendor and a ``complete`` status so the Gantt draws
+    it as a labeled bar filling what would otherwise be a blank band. Timing is diagnostic, so
+    a missing ledger or a write error is skipped rather than raised.
+    """
+    if ledger is None or not ledger.is_file():
+        return
+    with suppress(OSError, ValueError):
+        TimingLedger(ledger, skill=skill).record_vendor_task(
+            vendor="claude",
+            task_kind=task_kind,
+            start_s=start_s,
+            end_s=end_s,
+            output=output,
+            status="complete",
+        )
+
+
 def record_voter_dispatch_prep(
     *,
     ledger: Path | None,
@@ -84,17 +114,43 @@ def record_voter_dispatch_prep(
     bars instead of the render work that fills it (issue #7166). Timing is diagnostic, so a
     missing ledger or a write error is skipped rather than raised.
     """
-    if ledger is None or not ledger.is_file():
-        return
-    with suppress(OSError, ValueError):
-        TimingLedger(ledger, skill=skill).record_vendor_task(
-            vendor="claude",
-            task_kind="voter-dispatch-prep",
-            start_s=prep_start,
-            end_s=prep_end,
-            output=f"voter-dispatch-prep-round-{round_num}.out",
-            status="complete",
-        )
+    _record_pipeline_span(
+        ledger=ledger,
+        skill=skill,
+        task_kind="voter-dispatch-prep",
+        start_s=prep_start,
+        end_s=prep_end,
+        output=f"voter-dispatch-prep-round-{round_num}.out",
+    )
+
+
+def record_reviewer_collect(
+    *,
+    ledger: Path | None,
+    skill: str,
+    collect_start: float,
+    collect_end: float,
+    round_num: int,
+) -> None:
+    """Record the reviewers-to-aggregator window as a ``reviewer-collect`` vendor row.
+
+    The window covers the serial work each review round runs after the last reviewer finishes
+    and before the aggregator model call starts: waiting for reviewer stragglers, collecting
+    and de-duplicating reviewer outputs, the failure-threshold check, and nit pruning. A
+    reviewer captures its ``end_s`` when its model call finishes and the aggregator captures
+    its ``start_s`` only when its model call begins, so without this row the Gantt shows a
+    blank band between the reviewer bars and the aggregator bar instead of the collection work
+    that fills it (issue #7179). Timing is diagnostic, so a missing ledger or a write error is
+    skipped rather than raised.
+    """
+    _record_pipeline_span(
+        ledger=ledger,
+        skill=skill,
+        task_kind="reviewer-collect",
+        start_s=collect_start,
+        end_s=collect_end,
+        output=f"reviewer-collect-round-{round_num}.out",
+    )
 
 
 def topology_slots(topology_key: str) -> tuple[config.SlotDefault, ...]:

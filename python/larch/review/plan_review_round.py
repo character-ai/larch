@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import cast
 
@@ -18,6 +19,7 @@ from larch import io as larch_io
 from larch.core import config, logging_util
 from larch.report import progress_file
 from larch.review import review_aggregate
+from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_types import is_canonical_heading, parse_blocks
 from larch.review import voting
 from larch.review.plan_review_common import resolve_plan_review_tier
@@ -889,6 +891,10 @@ def execute_round(
         step="3",
         text=f"round {round_num}: launching reviewers",
     )
+    # panel-dispatch returns once the last reviewer finishes, so this stamp opens the
+    # reviewers-to-aggregator window: collection, dedup, and nit-prune below runs here, before
+    # the aggregator model call records its own start_s (issue #7179).
+    collect_start = time.time()
     out_lines.append(panel.stdout)
     if panel.returncode != 0:
         # Do not swallow the panel dispatcher's stderr (issue #4747): re-surface it so
@@ -990,6 +996,16 @@ def execute_round(
     in_scope = findings_path.read_text(encoding="utf-8", errors="replace") if findings_path.is_file() else ""
     oos_md = oos_path.read_text(encoding="utf-8", errors="replace") if oos_path.is_file() else ""
 
+    # The reviewers-to-aggregator window closes here, just before the aggregator model call.
+    # Record it against the design timing ledger the reviewers and aggregator use so the /design
+    # Gantt shows the collection work as a labeled bar instead of a blank gap (issue #7179).
+    record_reviewer_collect(
+        ledger=design / "timing-ledger.tsv",
+        skill="design",
+        collect_start=collect_start,
+        collect_end=time.time(),
+        round_num=round_num,
+    )
     agg = _run_cli_with_progress(
         argv=[
             "review",

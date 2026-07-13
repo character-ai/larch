@@ -259,6 +259,52 @@ def test_review_core_body_fix_required_returns_duplicate_classification(tmp_path
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
 
 
+def _reviewer_collect_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, name: str) -> Path:
+    # Point resolve_timing_ledger_path at a pre-created ledger through REVIEW_TMPDIR (its last
+    # fallback key, and the only one with no other side effect in the review-core body), so the
+    # test drives the real resolution the reviewers and aggregator use rather than a patched
+    # binding. Clear the higher-priority keys so REVIEW_TMPDIR is the one that resolves.
+    ledger_dir = tmp_path / name
+    ledger_dir.mkdir()
+    ledger = ledger_dir / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")  # reviewers create this in prod; pre-create to pass the is_file gate
+    for key in ("LARCH_TIMING_LEDGER", "LARCH_TIMING_SKILL", "IMPLEMENT_TMPDIR", "SESSION_ENV_PATH", "DESIGN_TMPDIR"):
+        monkeypatch.delenv(key, raising=False)
+    return ledger
+
+
+def test_review_core_body_records_reviewer_collect_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Issue #7179: on the aggregating path, the reviewers-to-aggregator window lands as a
+    # reviewer-collect vendor row in the same timing ledger the reviewers and aggregator use, so
+    # the Gantt shows it instead of a blank gap between the reviewer bars and the aggregator bar.
+    ledger = _reviewer_collect_ledger(tmp_path, monkeypatch, name="timing-home")
+
+    result = _run_review_core_body_direct(
+        tmp_path, monkeypatch, findings=1, accepted=1, outdir_name="body-collect",
+        extra_env={"REVIEW_TMPDIR": str(ledger.parent)},
+    )
+
+    assert result.status == review_pipeline.ReviewCoreStatus.fix_required
+    collect_row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "reviewer-collect" in line).split("\t")
+    assert collect_row[3] == "implement"
+    assert collect_row[5:7] == ["claude", "reviewer-collect"]
+    assert collect_row[10] == "reviewer-collect-round-1.out"
+
+
+def test_review_core_body_skips_reviewer_collect_on_zero_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The zero-findings path returns before the aggregator, so there is no reviewers-to-aggregator
+    # gap to fill and no reviewer-collect row should be written (issue #7179).
+    ledger = _reviewer_collect_ledger(tmp_path, monkeypatch, name="timing-home-zero")
+
+    result = _run_review_core_body_direct(
+        tmp_path, monkeypatch, findings=0, accepted=0, outdir_name="body-collect-zero",
+        extra_env={"REVIEW_TMPDIR": str(ledger.parent)},
+    )
+
+    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
+    assert "reviewer-collect" not in ledger.read_text(encoding="utf-8")
+
+
 def test_review_core_body_forwards_parse_failed_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(
         tmp_path,
