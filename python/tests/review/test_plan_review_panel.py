@@ -814,6 +814,62 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
         assert (design / basename).is_file()
 
 
+def test_dispatch_voters_records_voter_dispatch_prep_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Issue #7166 (open question 3): the design plan-review voter dispatch shares the serial
+    # pre-dispatch phase, so it records a voter-dispatch-prep vendor row into the design timing
+    # ledger, keeping the /design Gantt from showing a blank gap before the voter bars.
+    design = tmp_path / "design-prep"
+    design.mkdir()
+    _ = (design / "source-env.sh").write_text(f"REPO_ROOT={tmp_path}\n", encoding="utf-8")
+    ledger = design / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")  # voters create this in prod; pre-create to pass the is_file gate
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            outs: list[str] = []
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        out = str(json.loads(line)["output"])
+                        _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
+                        outs.append(out)
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(["codex"] * len(outs)) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="3\n", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "0")
+    monkeypatch.delenv("LARCH_CONSUMER_REPO", raising=False)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
+
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+        "--round-num", "1",
+    ])
+
+    assert rc == 0
+    prep_row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "voter-dispatch-prep" in line).split("\t")
+    assert prep_row[3] == "design"
+    assert prep_row[5:7] == ["claude", "voter-dispatch-prep"]
+    assert prep_row[10] == "voter-dispatch-prep-round-1.out"
+
+
 def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     # issue #5817: with Codex down but Cursor up, voter-2 (Codex-primary) is no
     # longer dropped -- both slots are enqueued and the waterfall (no

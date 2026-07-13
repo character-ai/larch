@@ -241,6 +241,31 @@ def _state(tmp_path: Path) -> dispatch_shared.DispatchState:
     )
 
 
+def test_record_voter_dispatch_prep_appends_row_to_existing_ledger(tmp_path: Path) -> None:
+    # Issue #7166: the pre-dispatch window lands as a claude/voter-dispatch-prep vendor row.
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")
+    dispatch_shared.record_voter_dispatch_prep(
+        ledger=ledger, skill="implement", prep_start=40, prep_end=207, round_num=3
+    )
+    row = ledger.read_text(encoding="utf-8").strip().split("\t")
+    assert row[0:2] == ["v1", "vendor"]
+    assert row[5:11] == ["claude", "voter-dispatch-prep", "40", "207", "167", "voter-dispatch-prep-round-3.out"]
+
+
+def test_record_voter_dispatch_prep_skips_when_ledger_missing(tmp_path: Path) -> None:
+    # A diagnostic row must never create a stray ledger when the real ledger is absent
+    # (e.g. a bare /review with no timing ledger), and a None ledger is a silent no-op.
+    absent = tmp_path / "timing-ledger.tsv"
+    dispatch_shared.record_voter_dispatch_prep(
+        ledger=absent, skill="implement", prep_start=1, prep_end=2, round_num=1
+    )
+    assert not absent.exists()
+    dispatch_shared.record_voter_dispatch_prep(
+        ledger=None, skill="design", prep_start=1, prep_end=2, round_num=1
+    )
+
+
 def test_final_emitter_uses_logging_and_code_review_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[tuple[str, str]] = []
 

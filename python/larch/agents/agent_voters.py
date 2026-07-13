@@ -9,6 +9,7 @@ import os
 import re
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
@@ -27,10 +28,12 @@ from larch.review.dispatch_shared import (
     emit_final_voter_kvs,
     fresh_calibration_snapshot,
     path_for_wire,
+    record_voter_dispatch_prep,
     resolved_model_for_row,
     topology_voter_policies,
     validate_parse_rate_result,
 )
+from larch.report.timing import resolve_timing_ledger_path
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes, resolve_panel_artifact_dir
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -413,6 +416,7 @@ def _state_from_bindings(*, bindings: Mapping[str, agent_waterfall.SlotOutputBin
 
 
 def dispatch_voters(opts: Options) -> int:
+    prep_start = time.time()
     _validate_options(opts)
     if not _cli_path().is_file():
         _err(f"agent dispatch-voters: missing python/cli.py at {_cli_path()}")
@@ -446,7 +450,18 @@ def dispatch_voters(opts: Options) -> int:
         calibration_stats_file=calibration_stats_file,
     )
     manifest = _write_voter_waterfall_manifest(review_tmpdir=review_tmpdir, policies=launched_policies, prompt_files=prompt_files, payload_files=payload_files, tier=opts.tier)
+    # The serial calibration + render + manifest work above is the pre-dispatch window; a voter
+    # records its start_s only after the waterfall spawns it, so record the window explicitly to
+    # keep the Gantt from showing a blank gap between the aggregator and the voters (issue #7166).
+    prep_end = time.time()
     waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args, review_tmpdir=review_tmpdir)
+    record_voter_dispatch_prep(
+        ledger=resolve_timing_ledger_path(),
+        skill=os.environ.get("LARCH_TIMING_SKILL", "implement"),
+        prep_start=prep_start,
+        prep_end=prep_end,
+        round_num=opts.round_num,
+    )
     _outputs, _tools, dispatch_ok = _parse_waterfall_output(waterfall_output)
     bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
 
