@@ -7,68 +7,43 @@ import json
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
-from typing import cast
+from typing import ClassVar, cast
 
 from larch import io as larch_io
 from larch.core import architectural_guidelines
 from larch.core import config
 from larch.core import logging_util
 from larch.core import redact
+from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.errors import ShipError
 from larch.git import pr_body
 from larch.report import run_logs
 
-OUTCOME_PINNED = "pinned"
-OUTCOME_CLEAN = "clean"
-OUTCOME_VIOLATION = "violation"
+OUTCOME_PINNED = GUIDELINES.non_clean_ship_outcome
+OUTCOME_CLEAN = config.ASSESSMENT_OUTCOME_CLEAN
+OUTCOME_VIOLATION = INVARIANTS.non_clean_ship_outcome
 OUTCOME_DROPPED = "dropped"
-GUIDELINE_SHIP_OUTCOMES = frozenset({OUTCOME_PINNED, OUTCOME_CLEAN, OUTCOME_DROPPED})
-INVARIANT_SHIP_OUTCOMES = frozenset({OUTCOME_CLEAN, OUTCOME_VIOLATION, OUTCOME_DROPPED})
+GUIDELINE_SHIP_OUTCOMES = GUIDELINES.ship_outcomes
+INVARIANT_SHIP_OUTCOMES = INVARIANTS.ship_outcomes
 
-REASON_NOTE_PINNED = "note-pinned"
+REASON_NOTE_PINNED = GUIDELINES.non_clean_note_reason
 REASON_CLEAN_NOTE = "clean-note"
-REASON_GUIDELINES_ABSENT = "guidelines-absent"
-REASON_GUIDELINES_INVALID = "guidelines-invalid"
-REASON_INVARIANTS_ABSENT = "invariants-absent"
-REASON_INVARIANTS_EMPTY = "invariants-empty"
-REASON_INVARIANTS_INVALID = "invariants-invalid"
-REASON_VIOLATION_NOTE = "violation-note"
+REASON_GUIDELINES_ABSENT = GUIDELINES.absent_reason
+REASON_GUIDELINES_INVALID = GUIDELINES.invalid_reason
+REASON_INVARIANTS_ABSENT = INVARIANTS.absent_reason
+REASON_INVARIANTS_EMPTY = INVARIANTS.empty_reason
+REASON_INVARIANTS_INVALID = INVARIANTS.invalid_reason
+REASON_VIOLATION_NOTE = INVARIANTS.non_clean_note_reason
 REASON_NOTE_READ_FAILED = "note-read-failed"
 REASON_NOTE_REDACTION_FAILED = "note-redaction-failed"
 REASON_COMPOSE_MATERIALIZATION_FAILED = "compose-materialization-failed"
 REASON_UNKNOWN = "unknown"
 REASON_DETERMINISTIC_CLEAN = config.REASON_DETERMINISTIC_CLEAN
 REASON_UNAVAILABLE = config.REASON_UNAVAILABLE
-GUIDELINE_SHIP_REASON_TOKENS = frozenset(
-    {
-        REASON_NOTE_PINNED,
-        REASON_CLEAN_NOTE,
-        REASON_GUIDELINES_ABSENT,
-        REASON_GUIDELINES_INVALID,
-        REASON_NOTE_READ_FAILED,
-        REASON_NOTE_REDACTION_FAILED,
-        REASON_COMPOSE_MATERIALIZATION_FAILED,
-        REASON_DETERMINISTIC_CLEAN,
-        REASON_UNAVAILABLE,
-        REASON_UNKNOWN,
-    }
-)
-INVARIANT_SHIP_REASON_TOKENS = frozenset(
-    {
-        REASON_CLEAN_NOTE,
-        REASON_INVARIANTS_ABSENT,
-        REASON_INVARIANTS_EMPTY,
-        REASON_INVARIANTS_INVALID,
-        REASON_NOTE_READ_FAILED,
-        REASON_NOTE_REDACTION_FAILED,
-        REASON_COMPOSE_MATERIALIZATION_FAILED,
-        REASON_VIOLATION_NOTE,
-        REASON_DETERMINISTIC_CLEAN,
-        REASON_UNAVAILABLE,
-        REASON_UNKNOWN,
-    }
-)
+GUIDELINE_SHIP_REASON_TOKENS = GUIDELINES.ship_reason_tokens
+INVARIANT_SHIP_REASON_TOKENS = INVARIANTS.ship_reason_tokens
 
 
 @dataclass(frozen=True)
@@ -83,8 +58,24 @@ class GuidelinesGateResult:
     note_state: str = config.NOTE_STATE_AUTHORED
 
 
+class _ShipOutcomeJson:
+    """Shared serializer for the two public compatibility records."""
+
+    status_field: ClassVar[str]
+
+    def as_json(self) -> dict[str, object]:
+        return {
+            name: getattr(self, name)
+            for name in (
+                "schema_version", "phase", "step", "outcome", "reason", "detail",
+                self.status_field, "head_sha", "base_ref", "assessment_kind", "operator_waived",
+            )
+        }
+
+
 @dataclass(frozen=True)
-class GuidelinesShipOutcome:
+class GuidelinesShipOutcome(_ShipOutcomeJson):
+    status_field: ClassVar[str] = "guidelines_status"
     schema_version: str
     phase: str
     step: str
@@ -96,22 +87,6 @@ class GuidelinesShipOutcome:
     base_ref: str
     assessment_kind: str
     operator_waived: bool = False
-
-    def as_json(self) -> dict[str, object]:
-        return {
-            "schema_version": self.schema_version,
-            "phase": self.phase,
-            "step": self.step,
-            "outcome": self.outcome,
-            "reason": self.reason,
-            "detail": self.detail,
-            "guidelines_status": self.guidelines_status,
-            "head_sha": self.head_sha,
-            "base_ref": self.base_ref,
-            "assessment_kind": self.assessment_kind,
-            "operator_waived": self.operator_waived,
-        }
-
 
 @dataclass(frozen=True)
 class InvariantsGateResult:
@@ -126,7 +101,8 @@ class InvariantsGateResult:
 
 
 @dataclass(frozen=True)
-class InvariantsShipOutcome:
+class InvariantsShipOutcome(_ShipOutcomeJson):
+    status_field: ClassVar[str] = "invariants_status"
     schema_version: str
     phase: str
     step: str
@@ -139,44 +115,57 @@ class InvariantsShipOutcome:
     assessment_kind: str
     operator_waived: bool = False
 
-    def as_json(self) -> dict[str, object]:
-        return {
-            "schema_version": self.schema_version,
-            "phase": self.phase,
-            "step": self.step,
-            "outcome": self.outcome,
-            "reason": self.reason,
-            "detail": self.detail,
-            "invariants_status": self.invariants_status,
-            "head_sha": self.head_sha,
-            "base_ref": self.base_ref,
-            "assessment_kind": self.assessment_kind,
-            "operator_waived": self.operator_waived,
-        }
+GateResult = GuidelinesGateResult | InvariantsGateResult
+ShipOutcome = GuidelinesShipOutcome | InvariantsShipOutcome
 
 
-def _assessment_kind(note: str) -> str:
-    """Compatibility alias for the shared prose consistency classifier."""
-    return architectural_guidelines.classify_assessment_prose(
-        note,
-        clean_lead=architectural_guidelines.CLEAN_PRESENTATION_NOTE,
-        identifier_pattern=architectural_guidelines.NOTE_GUIDELINE_ID_RE,
-        non_clean_outcome=config.ASSESSMENT_OUTCOME_DEVIATION,
+def _status(result: GateResult, *, kind: AssessmentKind) -> str:
+    if kind.is_invariant != isinstance(result, InvariantsGateResult):
+        raise TypeError(f"{kind.singular} descriptor requires its matching gate result")
+    return str(getattr(result, kind.status_field))
+
+
+def _gate(*, kind: AssessmentKind, status: str = "", **values: object) -> GateResult:
+    result_type = InvariantsGateResult if kind.is_invariant else GuidelinesGateResult
+    return result_type(**values, **{kind.status_field: status})  # type: ignore[arg-type]  # reason: descriptor selects the matching compatibility dataclass and status keyword
+
+
+def _outcome(*, kind: AssessmentKind, status: str, **values: object) -> ShipOutcome:
+    result_type = InvariantsShipOutcome if kind.is_invariant else GuidelinesShipOutcome
+    return result_type(  # type: ignore[arg-type]  # reason: descriptor selects the matching compatibility dataclass and status keyword
+        schema_version="1", phase="implement", step="8",
+        **values, **{kind.status_field: status},  # type: ignore[arg-type]  # reason: values dict is untyped; descriptor-driven constructor validates correctness
     )
 
 
-def _invariant_assessment_kind(note: str) -> str:
-    """Compatibility alias for the shared prose consistency classifier."""
-    return architectural_guidelines.classify_assessment_prose(
-        note,
-        clean_lead=architectural_guidelines.CLEAN_INVARIANT_PRESENTATION_NOTE,
-        identifier_pattern=architectural_guidelines.NOTE_INVARIANT_ID_RE,
-        non_clean_outcome=config.ASSESSMENT_OUTCOME_VIOLATION,
-    )
-
-
-def _authored_outcome_valid(*, note: str, outcome: str, invariant: bool) -> bool:
-    return architectural_guidelines.authored_outcome_valid(note=note, outcome=outcome, invariant=invariant)
+_CONSUMABLE_BY_KIND = {
+    GUIDELINES: architectural_guidelines.note_consumable,
+    INVARIANTS: architectural_guidelines.invariant_note_consumable,
+}
+_DURABLE_PATH_BY_KIND = {
+    GUIDELINES: architectural_guidelines.durable_note_path,
+    INVARIANTS: architectural_guidelines.invariant_durable_note_path,
+}
+_METADATA_BY_KIND = {
+    GUIDELINES: architectural_guidelines.durable_note_metadata,
+    INVARIANTS: architectural_guidelines.invariant_durable_note_metadata,
+}
+_STALE_BY_KIND = {
+    GUIDELINES: architectural_guidelines.note_fingerprint_stale,
+    INVARIANTS: architectural_guidelines.invariant_note_fingerprint_stale,
+}
+_CLEAR_OUTCOME_BY_KIND = {
+    GUIDELINES: architectural_guidelines.clear_guideline_ship_outcome,
+    INVARIANTS: architectural_guidelines.clear_invariant_ship_outcome,
+}
+_OUTCOME_PATH_BY_KEY = {
+    GUIDELINES.key: architectural_guidelines.guideline_ship_outcome_path,
+    INVARIANTS.key: architectural_guidelines.invariant_ship_outcome_path,
+}
+_OUTCOME_VALIDATOR_BY_KEY = {
+    GUIDELINES.key: architectural_guidelines.validate_guideline_ship_outcome_record,
+    INVARIANTS.key: architectural_guidelines.validate_invariant_ship_outcome_record,
+}
 
 
 def _bounded_detail(text: str) -> str:
@@ -188,15 +177,11 @@ def read_unavailable_outcome_detail(
     *, implement_tmpdir: str, kind: str, head_sha: str, base_ref: str
 ) -> str:
     """Read diagnostic detail from a current, valid unavailable outcome."""
-    tmpdir = Path(implement_tmpdir)
-    if kind == config.ASSESSMENT_KIND_INVARIANTS:
-        path = architectural_guidelines.invariant_ship_outcome_path(tmpdir)
-        validator = architectural_guidelines.validate_invariant_ship_outcome_record
-    elif kind == config.ASSESSMENT_KIND_GUIDELINES:
-        path = architectural_guidelines.guideline_ship_outcome_path(tmpdir)
-        validator = architectural_guidelines.validate_guideline_ship_outcome_record
-    else:
+    path_fn = _OUTCOME_PATH_BY_KEY.get(kind)
+    validator = _OUTCOME_VALIDATOR_BY_KEY.get(kind)
+    if path_fn is None or validator is None:
         return ""
+    path = path_fn(Path(implement_tmpdir))
     try:
         mode: int = path.lstat().st_mode
         if path.is_symlink() or not stat.S_ISREG(mode):
@@ -233,20 +218,12 @@ def mark_operator_waived_outcomes(
         return frozenset()
     tmpdir = Path(implement_tmpdir)
     marked: set[str] = set()
-    paths = {
-        config.ASSESSMENT_KIND_INVARIANTS: architectural_guidelines.invariant_ship_outcome_path(
-            tmpdir
-        ),
-        config.ASSESSMENT_KIND_GUIDELINES: architectural_guidelines.guideline_ship_outcome_path(
-            tmpdir
-        ),
-    }
-    validators = {
-        config.ASSESSMENT_KIND_INVARIANTS: architectural_guidelines.validate_invariant_ship_outcome_record,
-        config.ASSESSMENT_KIND_GUIDELINES: architectural_guidelines.validate_guideline_ship_outcome_record,
-    }
     for kind in kinds:
-        path = paths[kind]
+        path_fn = _OUTCOME_PATH_BY_KEY.get(kind)
+        validator = _OUTCOME_VALIDATOR_BY_KEY.get(kind)
+        if path_fn is None or validator is None:
+            continue
+        path = path_fn(tmpdir)
         try:
             if not larch_io.trusted_file_present(path, root=tmpdir):
                 continue
@@ -258,7 +235,7 @@ def mark_operator_waived_outcomes(
         if not isinstance(raw, dict):
             continue
         data = cast("dict[str, object]", raw)
-        if validators[kind](data) is not None:
+        if validator(data) is not None:
             continue
         if (
             data.get("outcome") != OUTCOME_DROPPED
@@ -278,15 +255,15 @@ def mark_operator_waived_outcomes(
     return frozenset(marked)
 
 
-def _classify_ship_outcome(
+def _classify_assessment_ship_outcome(  # noqa: C901 - descriptor policies preserve each legacy outcome branch
     *,
-    result: GuidelinesGateResult,
+    result: GateResult,
     head_sha: str,
     base_ref: str,
-) -> GuidelinesShipOutcome:
-    guidelines_status = result.guidelines_status
-    if guidelines_status not in {"present", "absent", "invalid"}:
-        guidelines_status = "absent"
+    kind: AssessmentKind,
+) -> ShipOutcome:
+    result_status = _status(result, kind=kind)
+    status = result_status if result_status in {"present", "absent", "invalid"} else "absent"
     assessment_kind = result.assessment_kind
     reason = result.reason
     if result.note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
@@ -297,150 +274,101 @@ def _classify_ship_outcome(
         outcome = OUTCOME_DROPPED
         reason = REASON_UNAVAILABLE
         assessment_kind = ""
-    elif guidelines_status == "absent":
+    elif status == "absent":
         outcome = OUTCOME_CLEAN
-        reason = REASON_GUIDELINES_ABSENT
+        reason = kind.absent_reason
         assessment_kind = ""
-    elif guidelines_status == "invalid":
+    elif status == "invalid":
         outcome = OUTCOME_CLEAN
-        reason = REASON_GUIDELINES_INVALID
+        reason = kind.invalid_reason
         assessment_kind = ""
+    elif kind.empty_reason and reason == kind.empty_reason:
+        outcome = OUTCOME_CLEAN
+        assessment_kind = config.ASSESSMENT_OUTCOME_CLEAN
     elif result.note and assessment_kind == "clean":
         outcome = OUTCOME_CLEAN
         reason = reason or REASON_CLEAN_NOTE
     elif result.note:
-        outcome = OUTCOME_PINNED
-        reason = reason or REASON_NOTE_PINNED
+        outcome = kind.non_clean_ship_outcome
+        reason = reason or kind.non_clean_note_reason
+        if kind.is_invariant:
+            assessment_kind = kind.non_clean_authored_outcome
     else:
         outcome = OUTCOME_DROPPED
         reason = reason or REASON_COMPOSE_MATERIALIZATION_FAILED
-    if reason not in GUIDELINE_SHIP_REASON_TOKENS:
+        if kind.is_invariant:
+            assessment_kind = ""
+    if reason not in kind.ship_reason_tokens:
         reason = REASON_UNKNOWN
-    return GuidelinesShipOutcome(
-        schema_version="1",
-        phase="implement",
-        step="8",
+    allowed_kinds = {config.ASSESSMENT_OUTCOME_CLEAN, kind.non_clean_authored_outcome}
+    return _outcome(
+        kind=kind,
         outcome=outcome,
         reason=reason,
         detail=_bounded_detail(result.detail),
-        guidelines_status=guidelines_status,
+        status=status,
         head_sha=_bounded_detail(head_sha),
         base_ref=_bounded_detail(base_ref),
-        assessment_kind=assessment_kind if assessment_kind in {"clean", "deviation"} else "",
+        assessment_kind=assessment_kind if assessment_kind in allowed_kinds else "",
     )
 
 
-def clear_guideline_ship_outcome_sidecar(*, implement_tmpdir: str) -> None:
-    if not implement_tmpdir:
-        return
-    architectural_guidelines.clear_guideline_ship_outcome(Path(implement_tmpdir))
+def _clear_ship_outcome_sidecar(*, implement_tmpdir: str, kind: AssessmentKind) -> None:
+    if implement_tmpdir:
+        _CLEAR_OUTCOME_BY_KIND[kind](Path(implement_tmpdir))
 
 
-def write_guideline_ship_outcome(
+clear_guideline_ship_outcome_sidecar = partial(_clear_ship_outcome_sidecar, kind=GUIDELINES)
+clear_invariant_ship_outcome_sidecar = partial(_clear_ship_outcome_sidecar, kind=INVARIANTS)
+
+
+def _write_ship_outcome(
     *,
     implement_tmpdir: str,
-    result: GuidelinesGateResult,
+    result: GateResult,
     head_sha: str,
     base_ref: str,
-) -> GuidelinesShipOutcome | None:
-    """Write the durable Step 8 guideline outcome sidecar for terminal gate results."""
+    kind: AssessmentKind,
+) -> ShipOutcome | None:
     if result.needs_assessment or not implement_tmpdir:
         return None
     if not head_sha.strip():
-        message = "architectural-guidelines outcome head_sha is empty"
+        message = f"architectural-{kind.key} outcome head_sha is empty"
         _log_guidelines_ship_warning(implement_tmpdir=Path(implement_tmpdir), message=message)
         raise OSError(message)
-    outcome = _classify_ship_outcome(result=result, head_sha=head_sha, base_ref=base_ref)
+    outcome = _classify_assessment_ship_outcome(
+        result=result, head_sha=head_sha, base_ref=base_ref, kind=kind
+    )
     _write_json_atomic(
-        path=architectural_guidelines.guideline_ship_outcome_path(Path(implement_tmpdir)),
+        path=Path(implement_tmpdir) / kind.ship_outcome_sidecar,
         data=outcome.as_json(),
     )
     return outcome
 
 
-def _classify_invariant_ship_outcome(
-    *,
-    result: InvariantsGateResult,
-    head_sha: str,
-    base_ref: str,
-) -> InvariantsShipOutcome:
-    invariants_status = result.invariants_status
-    if invariants_status not in {"present", "absent", "invalid"}:
-        invariants_status = "absent"
-    assessment_kind = result.assessment_kind
-    reason = result.reason
-    if result.note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
-        outcome = OUTCOME_CLEAN
-        reason = REASON_DETERMINISTIC_CLEAN
-        assessment_kind = "clean"
-    elif result.note_state == config.NOTE_STATE_UNAVAILABLE:
-        outcome = OUTCOME_DROPPED
-        reason = REASON_UNAVAILABLE
-        assessment_kind = ""
-    elif invariants_status == "absent":
-        outcome = OUTCOME_CLEAN
-        reason = REASON_INVARIANTS_ABSENT
-        assessment_kind = ""
-    elif invariants_status == "invalid":
-        outcome = OUTCOME_CLEAN
-        reason = REASON_INVARIANTS_INVALID
-        assessment_kind = ""
-    elif reason == REASON_INVARIANTS_EMPTY:
-        outcome = OUTCOME_CLEAN
-        assessment_kind = "clean"
-    elif result.note and assessment_kind == "clean":
-        outcome = OUTCOME_CLEAN
-        reason = reason or REASON_CLEAN_NOTE
-    elif result.note:
-        outcome = OUTCOME_VIOLATION
-        reason = reason or REASON_VIOLATION_NOTE
-        assessment_kind = "violation"
-    else:
-        outcome = OUTCOME_DROPPED
-        reason = reason or REASON_COMPOSE_MATERIALIZATION_FAILED
-        assessment_kind = ""
-    if reason not in INVARIANT_SHIP_REASON_TOKENS:
-        reason = REASON_UNKNOWN
-    return InvariantsShipOutcome(
-        schema_version="1",
-        phase="implement",
-        step="8",
-        outcome=outcome,
-        reason=reason,
-        detail=_bounded_detail(result.detail),
-        invariants_status=invariants_status,
-        head_sha=_bounded_detail(head_sha),
-        base_ref=_bounded_detail(base_ref),
-        assessment_kind=assessment_kind if assessment_kind in {"clean", "violation"} else "",
-    )
+def _exported_ship_writer(
+    kind: AssessmentKind, outcome_type: type[ShipOutcome]
+) -> Callable[..., ShipOutcome | None]:
+    def write(
+        *, implement_tmpdir: str, result: GateResult, head_sha: str, base_ref: str
+    ) -> ShipOutcome | None:
+        outcome = _write_ship_outcome(
+            implement_tmpdir=implement_tmpdir,
+            result=result,
+            head_sha=head_sha,
+            base_ref=base_ref,
+            kind=kind,
+        )
+        if outcome is None:
+            return None
+        assert isinstance(outcome, outcome_type)
+        return outcome
+
+    return write
 
 
-def clear_invariant_ship_outcome_sidecar(*, implement_tmpdir: str) -> None:
-    if not implement_tmpdir:
-        return
-    architectural_guidelines.clear_invariant_ship_outcome(Path(implement_tmpdir))
-
-
-def write_invariant_ship_outcome(
-    *,
-    implement_tmpdir: str,
-    result: InvariantsGateResult,
-    head_sha: str,
-    base_ref: str,
-) -> InvariantsShipOutcome | None:
-    """Write the durable Step 8 invariant outcome sidecar for terminal gate results."""
-    if result.needs_assessment or not implement_tmpdir:
-        return None
-    if not head_sha.strip():
-        message = "architectural-invariants outcome head_sha is empty"
-        _log_guidelines_ship_warning(implement_tmpdir=Path(implement_tmpdir), message=message)
-        raise OSError(message)
-    outcome = _classify_invariant_ship_outcome(result=result, head_sha=head_sha, base_ref=base_ref)
-    _write_json_atomic(
-        path=architectural_guidelines.invariant_ship_outcome_path(Path(implement_tmpdir)),
-        data=outcome.as_json(),
-    )
-    return outcome
+write_guideline_ship_outcome = _exported_ship_writer(GUIDELINES, GuidelinesShipOutcome)
+write_invariant_ship_outcome = _exported_ship_writer(INVARIANTS, InvariantsShipOutcome)
 
 
 def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> bool:
@@ -495,90 +423,71 @@ def _pin_or_invalidate_guidelines_note(
     return False
 
 
-def _read_current_guidelines_note(
-    *,
-    tmpdir: Path,
-    head_sha: str,
-    base_ref: str = "",
-    repo_root: str | None = None,
-) -> GuidelinesGateResult:
-    if not architectural_guidelines.note_consumable(
-        implement_tmpdir=tmpdir,
-        head_sha=head_sha,
-        base_ref=base_ref,
-        repo_root=repo_root,
+def _read_current_note(
+    *, tmpdir: Path, head_sha: str, kind: AssessmentKind,
+    base_ref: str = "", repo_root: str | None = None,
+) -> GateResult:
+    if not _CONSUMABLE_BY_KIND[kind](
+        implement_tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root
     ):
-        return GuidelinesGateResult()
+        return _gate(kind=kind)
+    note_path = _DURABLE_PATH_BY_KIND[kind](tmpdir)
     try:
-        note = architectural_guidelines.durable_note_path(tmpdir).read_text(
-            encoding="utf-8",
-            errors="replace",
-        )
+        note = note_path.read_text(encoding="utf-8", errors="replace")
     except OSError as exc:
-        warning_logged = _log_guidelines_ship_warning(
-            implement_tmpdir=tmpdir,
-            message=f"architectural-guidelines note read failed: {exc}",
-        )
-        return GuidelinesGateResult(
-            needs_assessment=False,
-            warning_logged=warning_logged,
-            detail=f"architectural-guidelines note read failed: {exc}",
-            guidelines_status="present",
-            reason=REASON_NOTE_READ_FAILED,
+        message = f"architectural-{kind.key} note read failed: {exc}"
+        return _gate(
+            kind=kind,
+            warning_logged=_log_guidelines_ship_warning(
+                implement_tmpdir=tmpdir, message=message
+            ),
+            detail=message, status="present", reason=REASON_NOTE_READ_FAILED,
         )
     try:
         redacted_note = pr_body.redact_pr_body(note).strip()
-        metadata = architectural_guidelines.durable_note_metadata(tmpdir)
-        note_state: str = metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED
-        assessment_kind: str = metadata.get("ASSESSMENT_KIND", "")
-        if note_state == config.NOTE_STATE_AUTHORED and not _authored_outcome_valid(
-            note=redacted_note, outcome=assessment_kind, invariant=False
+        metadata = _METADATA_BY_KIND[kind](tmpdir)
+        note_state = metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED
+        assessment_kind = metadata.get("ASSESSMENT_KIND", "")
+        if note_state == config.NOTE_STATE_AUTHORED and not architectural_guidelines.authored_outcome_valid(
+            note=redacted_note, outcome=assessment_kind, invariant=kind.is_invariant
         ):
-            return GuidelinesGateResult(
+            return _gate(
+                kind=kind,
                 needs_assessment=True,
                 detail=config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
-                guidelines_status=metadata.get("GUIDELINES_STATUS", "present") or "present",
+                status=metadata.get(kind.status_env_key, "present") or "present",
                 reason=config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED,
             )
-        return GuidelinesGateResult(
+        reason = ""
+        if note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
+            reason = REASON_DETERMINISTIC_CLEAN
+        elif note_state == config.NOTE_STATE_UNAVAILABLE:
+            reason = REASON_UNAVAILABLE
+        return _gate(
+            kind=kind,
             note=redacted_note,
-            guidelines_status=metadata.get("GUIDELINES_STATUS", "present") or "present",
-            assessment_kind=assessment_kind,
-            note_state=note_state,
-            reason=(
-                REASON_DETERMINISTIC_CLEAN
-                if metadata.get("NOTE_STATE") == config.NOTE_STATE_DETERMINISTIC_CLEAN
-                else REASON_UNAVAILABLE
-                if metadata.get("NOTE_STATE") == config.NOTE_STATE_UNAVAILABLE
-                else ""
-            ),
+            status=metadata.get(kind.status_env_key, "present") or "present",
+            assessment_kind=assessment_kind, note_state=note_state, reason=reason,
         )
     except ShipError as exc:
-        warning_logged = _log_guidelines_ship_warning(
-            implement_tmpdir=tmpdir,
-            message=f"architectural-guidelines note redaction failed: {exc}",
-        )
-        return GuidelinesGateResult(
-            needs_assessment=False,
-            warning_logged=warning_logged,
-            detail=f"architectural-guidelines note redaction failed: {exc}",
-            guidelines_status="present",
-            reason=REASON_NOTE_REDACTION_FAILED,
+        message = f"architectural-{kind.key} note redaction failed: {exc}"
+        return _gate(
+            kind=kind,
+            warning_logged=_log_guidelines_ship_warning(
+                implement_tmpdir=tmpdir, message=message
+            ),
+            detail=message, status="present", reason=REASON_NOTE_REDACTION_FAILED,
         )
 
 
-def _current_guidelines_result(
-    *,
-    current: GuidelinesGateResult,
-    tmpdir: Path,
-    base_ref: str,
-    repo_root: str | None,
-) -> GuidelinesGateResult | None:
+def _current_note_result(
+    *, current: GateResult, tmpdir: Path, base_ref: str,
+    repo_root: str | None, kind: AssessmentKind,
+) -> GateResult | None:
     if current.note:
-        if repo_root is not None and base_ref and architectural_guidelines.note_fingerprint_stale(
-            tmpdir,
-            base_ref=base_ref,
-            repo_root=repo_root,
+        stale = _STALE_BY_KIND[kind]
+        if repo_root is not None and base_ref and stale(
+            tmpdir, base_ref=base_ref, repo_root=repo_root
         ):
             return None
         return current
@@ -587,265 +496,115 @@ def _current_guidelines_result(
     return None
 
 
-def _warning_for_prepared(*, tmpdir: Path, warning: str) -> bool:
+def _warning_for_prepared(
+    *, tmpdir: Path, warning: str, kind: AssessmentKind = GUIDELINES
+) -> bool:
     if not warning:
         return False
     return _log_guidelines_ship_warning(
         implement_tmpdir=tmpdir,
-        message=f"architectural-guidelines compose materialization skipped: {warning}",
+        message=f"architectural-{kind.key} compose materialization skipped: {warning}",
     )
 
 
-def _prepared_guidelines_result(
-    *,
-    prepared: architectural_guidelines.ComposeMaterializationResult,
-    tmpdir: Path,
-    head_sha: str,
-    base_ref: str,
-    repo_root: str | None,
-) -> GuidelinesGateResult:
+def _prepared_result(  # noqa: PLR0913 - prepared evidence carries the complete note identity
+    *, prepared: architectural_guidelines.ComposeMaterializationResult,
+    tmpdir: Path, head_sha: str, base_ref: str, repo_root: str | None,
+    kind: AssessmentKind,
+) -> GateResult:
     if prepared.status == "current":
-        return _read_current_guidelines_note(
-            tmpdir=tmpdir,
-            head_sha=head_sha,
-            base_ref=base_ref,
-            repo_root=repo_root,
+        return _read_current_note(
+            tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref,
+            repo_root=repo_root, kind=kind,
         )
     if prepared.status == "assessment-required":
-        return GuidelinesGateResult(
+        return _gate(
+            kind=kind,
             needs_assessment=True,
-            detail="architectural-guidelines assessment required before PR body compose",
-            guidelines_status=prepared.guidelines_status,
+            detail=f"architectural-{kind.key} assessment required before PR body compose",
+            status=prepared.guidelines_status,
+        )
+    if prepared.status == "present-empty" and kind.ship_present_empty:
+        return _gate(
+            kind=kind,
+            status=prepared.guidelines_status or "present",
+            assessment_kind=config.ASSESSMENT_OUTCOME_CLEAN,
+            reason=kind.empty_reason,
         )
     if prepared.status in {"absent", "invalid"}:
-        return GuidelinesGateResult(
-            warning_logged=_warning_for_prepared(tmpdir=tmpdir, warning=prepared.warning),
-            detail=prepared.warning,
-            guidelines_status=prepared.guidelines_status or prepared.status,
-            reason=REASON_GUIDELINES_INVALID if prepared.status == "invalid" else REASON_GUIDELINES_ABSENT,
-        )
-    return GuidelinesGateResult(
-        warning_logged=_warning_for_prepared(tmpdir=tmpdir, warning=prepared.warning),
-        detail=prepared.warning,
-        guidelines_status=prepared.guidelines_status or "present",
-        reason=REASON_COMPOSE_MATERIALIZATION_FAILED,
-    )
-
-
-def load_or_prepare_guidelines_note(  # noqa: PLR0913 - snapshot factory is an optional compose-time seam on the existing gate contract.
-    *,
-    implement_tmpdir: str,
-    head_sha: str,
-    base_ref: str,
-    repo_root: str | None = None,
-    forked_target: bool = False,
-    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
-) -> GuidelinesGateResult:
-    """Return the current durable note or prepare compose-time assessment input."""
-    if not implement_tmpdir or not head_sha:
-        return GuidelinesGateResult()
-    tmpdir = Path(implement_tmpdir)
-    current = _current_guidelines_result(
-        current=_read_current_guidelines_note(
-            tmpdir=tmpdir,
-            head_sha=head_sha,
-            base_ref=base_ref,
-            repo_root=repo_root,
-        ),
-        tmpdir=tmpdir,
-        base_ref=base_ref,
-        repo_root=repo_root,
-    )
-    if current is not None:
-        return current
-    prepared = architectural_guidelines.prepare_compose_assessment(
-        implement_tmpdir=tmpdir,
-        repo_root=repo_root,
-        forked_target=forked_target,
-        expected_head_sha=head_sha,
-        compose_snapshot_factory=compose_snapshot_factory,
-    )
-    return _prepared_guidelines_result(
-        prepared=prepared,
-        tmpdir=tmpdir,
-        head_sha=head_sha,
-        base_ref=base_ref,
-        repo_root=repo_root,
-    )
-
-
-def _read_current_invariant_note(
-    *,
-    tmpdir: Path,
-    head_sha: str,
-    base_ref: str = "",
-    repo_root: str | None = None,
-) -> InvariantsGateResult:
-    if not architectural_guidelines.invariant_note_consumable(
-        implement_tmpdir=tmpdir,
-        head_sha=head_sha,
-        base_ref=base_ref,
-        repo_root=repo_root,
-    ):
-        return InvariantsGateResult()
-    try:
-        note = architectural_guidelines.invariant_durable_note_path(tmpdir).read_text(
-            encoding="utf-8",
-            errors="replace",
-        )
-    except OSError as exc:
-        warning_logged = _log_guidelines_ship_warning(
-            implement_tmpdir=tmpdir,
-            message=f"architectural-invariants note read failed: {exc}",
-        )
-        return InvariantsGateResult(
-            warning_logged=warning_logged,
-            detail=f"architectural-invariants note read failed: {exc}",
-            invariants_status="present",
-            reason=REASON_NOTE_READ_FAILED,
-        )
-    try:
-        redacted_note = pr_body.redact_pr_body(note).strip()
-        metadata = architectural_guidelines.invariant_durable_note_metadata(tmpdir)
-        note_state: str = metadata.get("NOTE_STATE", "") or config.NOTE_STATE_AUTHORED
-        assessment_kind: str = metadata.get("ASSESSMENT_KIND", "")
-        if note_state == config.NOTE_STATE_AUTHORED and not _authored_outcome_valid(
-            note=redacted_note, outcome=assessment_kind, invariant=True
-        ):
-            return InvariantsGateResult(
-                needs_assessment=True,
-                detail=config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
-                invariants_status=metadata.get("INVARIANTS_STATUS", "present") or "present",
-                reason=config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED,
-            )
-        return InvariantsGateResult(
-            note=redacted_note,
-            invariants_status=metadata.get("INVARIANTS_STATUS", "present") or "present",
-            assessment_kind=assessment_kind,
-            note_state=note_state,
-            reason=(
-                REASON_DETERMINISTIC_CLEAN
-                if metadata.get("NOTE_STATE") == config.NOTE_STATE_DETERMINISTIC_CLEAN
-                else REASON_UNAVAILABLE
-                if metadata.get("NOTE_STATE") == config.NOTE_STATE_UNAVAILABLE
-                else ""
+        return _gate(
+            kind=kind,
+            warning_logged=_warning_for_prepared(
+                tmpdir=tmpdir, warning=prepared.warning, kind=kind
             ),
-        )
-    except ShipError as exc:
-        warning_logged = _log_guidelines_ship_warning(
-            implement_tmpdir=tmpdir,
-            message=f"architectural-invariants note redaction failed: {exc}",
-        )
-        return InvariantsGateResult(
-            warning_logged=warning_logged,
-            detail=f"architectural-invariants note redaction failed: {exc}",
-            invariants_status="present",
-            reason=REASON_NOTE_REDACTION_FAILED,
-        )
-
-
-def _current_invariant_result(
-    *,
-    current: InvariantsGateResult,
-    tmpdir: Path,
-    base_ref: str,
-    repo_root: str | None,
-) -> InvariantsGateResult | None:
-    if current.note:
-        if repo_root is not None and base_ref and architectural_guidelines.invariant_note_fingerprint_stale(
-            tmpdir,
-            base_ref=base_ref,
-            repo_root=repo_root,
-        ):
-            return None
-        return current
-    if current.needs_assessment or current.reason:
-        return current
-    return None
-
-
-def _prepared_invariant_result(
-    *,
-    prepared: architectural_guidelines.ComposeMaterializationResult,
-    tmpdir: Path,
-    head_sha: str,
-    base_ref: str,
-    repo_root: str | None,
-) -> InvariantsGateResult:
-    if prepared.status == "current":
-        return _read_current_invariant_note(
-            tmpdir=tmpdir,
-            head_sha=head_sha,
-            base_ref=base_ref,
-            repo_root=repo_root,
-        )
-    if prepared.status == "assessment-required":
-        return InvariantsGateResult(
-            needs_assessment=True,
-            detail="architectural-invariants assessment required before PR body compose",
-            invariants_status=prepared.guidelines_status,
-        )
-    if prepared.status == "present-empty":
-        return InvariantsGateResult(
-            invariants_status=prepared.guidelines_status or "present",
-            assessment_kind="clean",
-            reason=REASON_INVARIANTS_EMPTY,
-        )
-    if prepared.status in {"absent", "invalid"}:
-        return InvariantsGateResult(
-            warning_logged=_warning_for_prepared(tmpdir=tmpdir, warning=prepared.warning),
             detail=prepared.warning,
-            invariants_status=prepared.guidelines_status or prepared.status,
-            reason=REASON_INVARIANTS_INVALID if prepared.status == "invalid" else REASON_INVARIANTS_ABSENT,
+            status=prepared.guidelines_status or prepared.status,
+            reason=kind.invalid_reason if prepared.status == "invalid" else kind.absent_reason,
         )
-    return InvariantsGateResult(
-        warning_logged=_warning_for_prepared(tmpdir=tmpdir, warning=prepared.warning),
+    return _gate(
+        kind=kind,
+        warning_logged=_warning_for_prepared(
+            tmpdir=tmpdir, warning=prepared.warning, kind=kind
+        ),
         detail=prepared.warning,
-        invariants_status=prepared.guidelines_status or "present",
+        status=prepared.guidelines_status or "present",
         reason=REASON_COMPOSE_MATERIALIZATION_FAILED,
     )
 
 
-def load_or_prepare_invariants_note(  # noqa: PLR0913 - snapshot factory is an optional compose-time seam on the existing gate contract.
-    *,
-    implement_tmpdir: str,
-    head_sha: str,
-    base_ref: str,
-    repo_root: str | None = None,
-    forked_target: bool = False,
+def _load_or_prepare_note(  # noqa: PLR0913 - snapshot factory is the compose-time seam
+    *, implement_tmpdir: str, head_sha: str, base_ref: str, kind: AssessmentKind,
+    repo_root: str | None = None, forked_target: bool = False,
     compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
-) -> InvariantsGateResult:
-    """Return the current durable invariant note or prepare compose-time assessment input."""
+) -> GateResult:
     if not implement_tmpdir or not head_sha:
-        return InvariantsGateResult()
+        return _gate(kind=kind)
     tmpdir = Path(implement_tmpdir)
-    current = _current_invariant_result(
-        current=_read_current_invariant_note(
-            tmpdir=tmpdir,
-            head_sha=head_sha,
-            base_ref=base_ref,
-            repo_root=repo_root,
+    current = _current_note_result(
+        current=_read_current_note(
+            tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref,
+            repo_root=repo_root, kind=kind,
         ),
-        tmpdir=tmpdir,
-        base_ref=base_ref,
-        repo_root=repo_root,
+        tmpdir=tmpdir, base_ref=base_ref, repo_root=repo_root, kind=kind,
     )
     if current is not None:
         return current
-    prepared = architectural_guidelines.prepare_invariant_compose_assessment(
-        implement_tmpdir=tmpdir,
-        repo_root=repo_root,
-        forked_target=forked_target,
-        expected_head_sha=head_sha,
-        compose_snapshot_factory=compose_snapshot_factory,
+    prepare = (
+        architectural_guidelines.prepare_invariant_compose_assessment
+        if kind.is_invariant
+        else architectural_guidelines.prepare_compose_assessment
     )
-    return _prepared_invariant_result(
-        prepared=prepared,
-        tmpdir=tmpdir,
-        head_sha=head_sha,
-        base_ref=base_ref,
-        repo_root=repo_root,
+    prepared = prepare(
+        implement_tmpdir=tmpdir, repo_root=repo_root, forked_target=forked_target,
+        expected_head_sha=head_sha, compose_snapshot_factory=compose_snapshot_factory,
     )
+    return _prepared_result(
+        prepared=prepared, tmpdir=tmpdir, head_sha=head_sha, base_ref=base_ref,
+        repo_root=repo_root, kind=kind,
+    )
+
+
+def _load_or_prepare_typed(
+    kind: AssessmentKind, result_type: type[GateResult]
+) -> Callable[..., GateResult]:
+    def loader(  # noqa: PLR0913 - compatibility API
+        *, implement_tmpdir: str, head_sha: str, base_ref: str, repo_root: str | None = None,
+        forked_target: bool = False,
+        compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
+    ) -> GateResult:
+        result = _load_or_prepare_note(
+            implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref,
+            repo_root=repo_root, forked_target=forked_target,
+            compose_snapshot_factory=compose_snapshot_factory, kind=kind,
+        )
+        assert isinstance(result, result_type)
+        return result
+
+    return loader
+
+
+load_or_prepare_guidelines_note = _load_or_prepare_typed(GUIDELINES, GuidelinesGateResult)
+load_or_prepare_invariants_note = _load_or_prepare_typed(INVARIANTS, InvariantsGateResult)
 
 
 # Backward-compatible alias for old unit tests. It no longer pins staged notes.

@@ -356,10 +356,10 @@ def _reader_population(normalized: str, pattern: re.Pattern[str]) -> tuple[tuple
 
 def _assert_reader_indexer_parity(root: Path, *, guidelines_text: str, invariants_text: str) -> None:
     expected_guidelines: tuple[tuple[str, str], ...] = tuple(
-        (match.group(1), match.group(2)) for match in ag.GUIDELINE_HEADING_RE.finditer(guidelines_text)
+        (match.group(1), match.group(2)) for match in ag.GUIDELINE_HEADING_RE.finditer(guidelines_text)  # pylint: disable=no-member
     )
     expected_invariants: tuple[tuple[str, str], ...] = tuple(
-        (match.group(1), match.group(2)) for match in ag.INVARIANT_HEADING_RE.finditer(invariants_text)
+        (match.group(1), match.group(2)) for match in ag.INVARIANT_HEADING_RE.finditer(invariants_text)  # pylint: disable=no-member
     )
     reader_guidelines: tuple[tuple[str, str], ...] = _reader_population(
         ag.parse_guideline_entries(guidelines_text), ag.GUIDELINE_HEADING_RE

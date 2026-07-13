@@ -2684,8 +2684,8 @@
   {
     "file": "larch/implement/ship.py",
     "code": "C901",
-    "qualified_symbol": "_invariants_gate_before_pr",
-    "metric": 12
+    "qualified_symbol": "_assessment_gate_before_pr",
+    "metric": 15
   },
   {
     "file": "larch/implement/ship.py",
@@ -2726,8 +2726,20 @@
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
+    "qualified_symbol": "_assessment_gate_before_pr",
+    "metric": 17
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0912",
     "qualified_symbol": "run_ship",
     "metric": 64
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_assessment_gate_before_pr",
+    "metric": 8
   },
   {
     "file": "larch/implement/ship.py",

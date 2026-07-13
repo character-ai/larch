@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import architectural_guidelines
+from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.implement import ci_monitor
 from larch.implement import main_health
 from larch.implement import scope_disposition
@@ -105,8 +106,7 @@ from larch.implement.ship_guidelines import (
     InvariantsShipOutcome,
     REASON_UNAVAILABLE,
     _pin_and_load_guidelines_note,
-    clear_guideline_ship_outcome_sidecar,
-    clear_invariant_ship_outcome_sidecar,
+    _clear_ship_outcome_sidecar,
     load_or_prepare_guidelines_note,
     load_or_prepare_invariants_note,
     mark_operator_waived_outcomes,
@@ -237,29 +237,14 @@ def _normalize_hook_fixed_bytes(content: bytes) -> bytes:
     return ("\n".join(lines) + "\n").encode("utf-8")
 
 
-def _committed_guideline_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
+def _committed_outcome_matches(
+    *, ctx: RunContext, cwd: str, kind: AssessmentKind
+) -> bool:
     run_id = run_logs.effective_run_id(ctx)
     if not run_id:
         return False
-    sidecar = architectural_guidelines.guideline_ship_outcome_path(Path(ctx.tmpdir))
-    committed = Path(cwd) / "larch-logs" / "implement" / run_id / architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
-    try:
-        return (
-            sidecar.is_file()
-            and committed.is_file()
-            and _normalize_hook_fixed_bytes(sidecar.read_bytes())
-            == _normalize_hook_fixed_bytes(committed.read_bytes())
-        )
-    except OSError:
-        return False
-
-
-def _committed_invariant_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
-    run_id = run_logs.effective_run_id(ctx)
-    if not run_id:
-        return False
-    sidecar = architectural_guidelines.invariant_ship_outcome_path(Path(ctx.tmpdir))
-    committed = Path(cwd) / "larch-logs" / "implement" / run_id / architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR
+    sidecar = Path(ctx.tmpdir) / kind.ship_outcome_sidecar
+    committed = Path(cwd) / "larch-logs" / "implement" / run_id / kind.ship_outcome_sidecar
     try:
         return (
             sidecar.is_file()
@@ -360,10 +345,10 @@ def _flush_guideline_outcome_before_pr(
         return
     if (
         refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY
-        and _committed_guideline_outcome_matches(ctx=ctx, cwd=cwd)
+        and _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=GUIDELINES)
         and (
             not require_invariant_match
-            or _committed_invariant_outcome_matches(ctx=ctx, cwd=cwd)
+            or _committed_outcome_matches(ctx=ctx, cwd=cwd, kind=INVARIANTS)
         )
     ):
         _breadcrumb(step="warning", detail="guideline outcome refresh skipped: volatile-only with matching committed artifact")
@@ -379,57 +364,6 @@ def _flush_guideline_outcome_before_pr(
         transient_retries=resume.transient_retries,
     )
     raise Stalled(f"architectural-guidelines outcome run-log refresh skipped: {reason}")
-
-
-def _flush_invariant_outcome_before_pr(  # type: ignore[reportUnusedFunction]
-    *,
-    runner: Runner,
-    ctx: RunContext,
-    cwd: str,
-    resume: ResumePlan,
-) -> None:
-    step = "pr-create-invariant-outcome-refresh"
-    try:
-        refresh = run_logs.flush_logs_pre(
-            runner=runner,
-            ctx=ctx.with_(state_file=None),
-            cwd=cwd,
-        )
-    except (OSError, ShipError) as exc:
-        detail = logging_util.sanitize_diagnostic_line(str(exc).strip())
-        refresh = run_logs.RefreshSkip(
-            skipped=True,
-            reason=config.REFRESH_SKIP_COMMIT_FAILED,
-            error=detail,
-        )
-    if not refresh.skipped:
-        return
-    reason = refresh.reason or "unknown"
-    if refresh.error:
-        reason = f"{reason}: {logging_util.sanitize_diagnostic_line(refresh.error)}"
-    if refresh.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
-        _breadcrumb(
-            step="warning",
-            detail=f"invariant outcome refresh skipped: {reason} (outcome cannot be committed)",
-        )
-        return
-    if refresh.reason == config.REFRESH_SKIP_RUN_LOG_INCOMPLETE:
-        _breadcrumb(step="warning", detail=f"invariant outcome refresh skipped: {reason}")
-        return
-    if refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY and _committed_invariant_outcome_matches(ctx=ctx, cwd=cwd):
-        _breadcrumb(step="warning", detail="invariant outcome refresh skipped: volatile-only with matching committed artifact")
-        return
-    _breadcrumb(step="warning", detail=f"invariant outcome refresh skipped: {reason}")
-    _write_terminal_state(
-        ctx=ctx.with_(stall_tracking=True, stall_step=step),
-        result=Outcome.STALLED,
-        step=step,
-        iteration=resume.iteration,
-        rebase_count=resume.rebase_count,
-        fix_attempts=resume.fix_attempts,
-        transient_retries=resume.transient_retries,
-    )
-    raise Stalled(f"architectural-invariants outcome run-log refresh skipped: {reason}")
 
 
 def _compose_pr_body_for_pr_create(
@@ -463,35 +397,46 @@ def _persisted_repo_root_for_pr(pr_context: RunContext) -> Path:
     return Path.cwd().resolve()
 
 
-def _invariants_gate_before_pr(
-    *,
-    runner: Runner,
-    pr_context: RunContext,
-    repo_root: str,
-    base_ref: str,
-    resume: ResumePlan,
-    flush_outcome: bool = True,
+def _assessment_gate_before_pr(
+    *, runner: Runner, pr_context: RunContext, repo_root: str, base_ref: str,
+    resume: ResumePlan, kind: AssessmentKind, flush_outcome: bool = True,
     compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
-) -> InvariantsGateResult:
+) -> GuidelinesGateResult | InvariantsGateResult:
     compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
-    compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
-    unavailable_detail = read_unavailable_outcome_detail(
-        implement_tmpdir=pr_context.tmpdir, kind=config.ASSESSMENT_KIND_INVARIANTS, head_sha=compose_head_sha, base_ref=compose_base_ref
+    compose_base_ref = (
+        f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
     )
-    clear_invariant_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir)
-    invariant_file = architectural_guidelines.read_invariants(repo_root=repo_root)
-    if invariant_file.status == "absent":
-        result = InvariantsGateResult(invariants_status="absent", reason="invariants-absent")
-    elif invariant_file.status == "invalid":
-        result = InvariantsGateResult(invariants_status="invalid", reason="invariants-invalid", detail=invariant_file.warning)
-    elif not invariant_file.content.strip():
-        result = InvariantsGateResult(invariants_status="present", assessment_kind="clean", reason="invariants-empty")
+    unavailable_detail = read_unavailable_outcome_detail(
+        implement_tmpdir=pr_context.tmpdir, kind=kind.key,
+        head_sha=compose_head_sha, base_ref=compose_base_ref,
+    )
+    _clear_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir, kind=kind)
+    if kind.is_invariant:
+        invariant_file = architectural_guidelines.read_invariants(repo_root=repo_root)
+        if invariant_file.status == "absent":
+            result: GuidelinesGateResult | InvariantsGateResult = InvariantsGateResult(
+                invariants_status="absent", reason=kind.absent_reason
+            )
+        elif invariant_file.status == "invalid":
+            result = InvariantsGateResult(
+                invariants_status="invalid", reason=kind.invalid_reason,
+                detail=invariant_file.warning,
+            )
+        elif not invariant_file.content.strip():
+            result = InvariantsGateResult(
+                invariants_status="present", assessment_kind="clean", reason=kind.empty_reason
+            )
+        else:
+            result = load_or_prepare_invariants_note(
+                implement_tmpdir=pr_context.tmpdir, head_sha=compose_head_sha,
+                base_ref=compose_base_ref, repo_root=repo_root,
+                forked_target=pr_context.forked or pr_context.forked_target,
+                compose_snapshot_factory=compose_snapshot_factory,
+            )
     else:
-        result = load_or_prepare_invariants_note(
-            implement_tmpdir=pr_context.tmpdir,
-            head_sha=compose_head_sha,
-            base_ref=compose_base_ref,
-            repo_root=repo_root,
+        result = load_or_prepare_guidelines_note(
+            implement_tmpdir=pr_context.tmpdir, head_sha=compose_head_sha,
+            base_ref=compose_base_ref, repo_root=repo_root,
             forked_target=pr_context.forked or pr_context.forked_target,
             compose_snapshot_factory=compose_snapshot_factory,
         )
@@ -499,126 +444,90 @@ def _invariants_gate_before_pr(
         result = replace(result, detail=unavailable_detail)
     if result.needs_assessment:
         return result
-    if not compose_head_sha and not result.note:
+    if kind.is_invariant and not compose_head_sha and not result.note:
         return result
     if not flush_outcome:
         return result
-    outcome: InvariantsShipOutcome | None = None
+    outcome: GuidelinesShipOutcome | InvariantsShipOutcome | None
     try:
-        outcome = write_invariant_ship_outcome(
-            implement_tmpdir=pr_context.tmpdir,
-            result=result,
-            head_sha=compose_head_sha,
-            base_ref=compose_base_ref,
-        )
+        if kind.is_invariant:
+            assert isinstance(result, InvariantsGateResult)
+            outcome = write_invariant_ship_outcome(
+                implement_tmpdir=pr_context.tmpdir, result=result,
+                head_sha=compose_head_sha, base_ref=compose_base_ref,
+            )
+        else:
+            assert isinstance(result, GuidelinesGateResult)
+            outcome = write_guideline_ship_outcome(
+                implement_tmpdir=pr_context.tmpdir, result=result,
+                head_sha=compose_head_sha, base_ref=compose_base_ref,
+            )
     except OSError as exc:
         if pr_context.no_logs_commit:
-            _breadcrumb(step="warning", detail=f"invariant outcome sidecar write skipped: {logging_util.sanitize_diagnostic_line(str(exc))}")
+            _breadcrumb(
+                step="warning",
+                detail=(
+                    f"{kind.singular} outcome sidecar write skipped: "
+                    f"{logging_util.sanitize_diagnostic_line(str(exc))}"
+                ),
+            )
             return result
+        step = f"pr-create-{kind.singular}-outcome-write"
         _write_terminal_state(
-            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-invariant-outcome-write"),
-            result=Outcome.STALLED,
-            step="pr-create-invariant-outcome-write",
-            iteration=resume.iteration,
-            rebase_count=resume.rebase_count,
-            fix_attempts=resume.fix_attempts,
+            ctx=pr_context.with_(stall_tracking=True, stall_step=step),
+            result=Outcome.STALLED, step=step, iteration=resume.iteration,
+            rebase_count=resume.rebase_count, fix_attempts=resume.fix_attempts,
             transient_retries=resume.transient_retries,
         )
-        raise Stalled(f"architectural-invariants outcome sidecar write failed: {logging_util.sanitize_diagnostic_line(str(exc))}") from exc
+        detail = logging_util.sanitize_diagnostic_line(str(exc))
+        raise Stalled(
+            f"architectural-{kind.key} outcome sidecar write failed: {detail}"
+        ) from exc
     if pr_context.no_logs_commit:
         return result
-    # A `dropped` outcome with reason `unavailable` is a transient assessor
-    # failure (non-violation fallback per docs/run-logs.md), not a code defect.
-    # Do not hard-stall it here; `_combined_assessment_result` routes it to
-    # operator-bail so the run does not loop on futile reships (issue #7022).
+    if kind.flush_outcome:
+        _flush_guideline_outcome_before_pr(
+            runner=runner, ctx=pr_context, cwd=repo_root, resume=resume
+        )
+    # Unavailable is a transient non-violation fallback. The combined gate
+    # routes it to operator input instead of replaying an identical reship.
     if outcome is not None and outcome.outcome == "dropped" and outcome.reason != REASON_UNAVAILABLE:
+        step = f"pr-create-{kind.singular}-outcome-dropped"
         _write_terminal_state(
-            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-invariant-outcome-dropped"),
-            result=Outcome.STALLED,
-            step="pr-create-invariant-outcome-dropped",
-            iteration=resume.iteration,
-            rebase_count=resume.rebase_count,
-            fix_attempts=resume.fix_attempts,
+            ctx=pr_context.with_(stall_tracking=True, stall_step=step),
+            result=Outcome.STALLED, step=step, iteration=resume.iteration,
+            rebase_count=resume.rebase_count, fix_attempts=resume.fix_attempts,
             transient_retries=resume.transient_retries,
         )
-        raise Stalled(f"architectural-invariants outcome dropped: {outcome.reason}")
+        raise Stalled(f"architectural-{kind.key} outcome dropped: {outcome.reason}")
+    return result
+
+
+def _invariants_gate_before_pr(
+    *, runner: Runner, pr_context: RunContext, repo_root: str, base_ref: str,
+    resume: ResumePlan, flush_outcome: bool = True,
+    compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
+) -> InvariantsGateResult:
+    result = _assessment_gate_before_pr(
+        runner=runner, pr_context=pr_context, repo_root=repo_root, base_ref=base_ref,
+        resume=resume, flush_outcome=flush_outcome,
+        compose_snapshot_factory=compose_snapshot_factory, kind=INVARIANTS,
+    )
+    assert isinstance(result, InvariantsGateResult)
     return result
 
 
 def _guidelines_gate_before_pr(
-    *,
-    runner: Runner,
-    pr_context: RunContext,
-    repo_root: str,
-    base_ref: str,
-    resume: ResumePlan,
-    flush_outcome: bool = True,
+    *, runner: Runner, pr_context: RunContext, repo_root: str, base_ref: str,
+    resume: ResumePlan, flush_outcome: bool = True,
     compose_snapshot_factory: Callable[[], architectural_guidelines.ComposeAssessmentSnapshot] | None = None,
 ) -> GuidelinesGateResult:
-    compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
-    compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
-    unavailable_detail = read_unavailable_outcome_detail(
-        implement_tmpdir=pr_context.tmpdir, kind=config.ASSESSMENT_KIND_GUIDELINES, head_sha=compose_head_sha, base_ref=compose_base_ref
+    result = _assessment_gate_before_pr(
+        runner=runner, pr_context=pr_context, repo_root=repo_root, base_ref=base_ref,
+        resume=resume, flush_outcome=flush_outcome,
+        compose_snapshot_factory=compose_snapshot_factory, kind=GUIDELINES,
     )
-    clear_guideline_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir)
-    result = load_or_prepare_guidelines_note(
-        implement_tmpdir=pr_context.tmpdir,
-        head_sha=compose_head_sha,
-        base_ref=compose_base_ref,
-        repo_root=repo_root,
-        forked_target=pr_context.forked or pr_context.forked_target,
-        compose_snapshot_factory=compose_snapshot_factory,
-    )
-    if result.note_state == config.NOTE_STATE_UNAVAILABLE and unavailable_detail:
-        result = replace(result, detail=unavailable_detail)
-    if result.needs_assessment:
-        return result
-    if not flush_outcome:
-        return result
-    outcome: GuidelinesShipOutcome | None = None
-    try:
-        outcome = write_guideline_ship_outcome(
-            implement_tmpdir=pr_context.tmpdir,
-            result=result,
-            head_sha=compose_head_sha,
-            base_ref=compose_base_ref,
-        )
-    except OSError as exc:
-        if pr_context.no_logs_commit:
-            _breadcrumb(step="warning", detail=f"guideline outcome sidecar write skipped: {logging_util.sanitize_diagnostic_line(str(exc))}")
-            return result
-        _write_terminal_state(
-            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-guideline-outcome-write"),
-            result=Outcome.STALLED,
-            step="pr-create-guideline-outcome-write",
-            iteration=resume.iteration,
-            rebase_count=resume.rebase_count,
-            fix_attempts=resume.fix_attempts,
-            transient_retries=resume.transient_retries,
-        )
-        raise Stalled(f"architectural-guidelines outcome sidecar write failed: {logging_util.sanitize_diagnostic_line(str(exc))}") from exc
-    if pr_context.no_logs_commit:
-        return result
-    _flush_guideline_outcome_before_pr(
-        runner=runner,
-        ctx=pr_context,
-        cwd=repo_root,
-        resume=resume,
-    )
-    # See `_invariants_gate_before_pr`: a `dropped` outcome with reason
-    # `unavailable` is a transient assessor failure routed to operator-bail by
-    # `_combined_assessment_result`, not a hard-stall (issue #7022).
-    if outcome is not None and outcome.outcome == "dropped" and outcome.reason != REASON_UNAVAILABLE:
-        _write_terminal_state(
-            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-guideline-outcome-dropped"),
-            result=Outcome.STALLED,
-            step="pr-create-guideline-outcome-dropped",
-            iteration=resume.iteration,
-            rebase_count=resume.rebase_count,
-            fix_attempts=resume.fix_attempts,
-            transient_retries=resume.transient_retries,
-        )
-        raise Stalled(f"architectural-guidelines outcome dropped: {outcome.reason}")
+    assert isinstance(result, GuidelinesGateResult)
     return result
 
 

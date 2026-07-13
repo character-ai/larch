@@ -513,16 +513,9 @@
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: C901, PLR0911, PLR0912",
+    "text": "noqa: F401",
     "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: C901, PLR0911, PLR0912",
-    "occurrence": 2,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+    "reason": "re-export: _MARKDOWN_HEADING_RE re-exported for backward-compatible lint_guideline_no_exception import"
   },
   {
     "file": "larch/core/architectural_guidelines.py",
@@ -611,42 +604,7 @@
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 5,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 6,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 7,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok content blocks must match issue-wire format.",
-    "occurrence": 8,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
     "text": "noqa: PLC0415 # lint-layering: ok validate-design-tmpdir must stay co-located with arg-parsing logic.",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "noqa",
-    "text": "noqa: PLC0415 # lint-layering: ok validator needs ship_guidelines constants",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
@@ -680,6 +638,13 @@
   },
   {
     "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "pylint-disable",
+    "text": "pylint: disable=unused-import",
+    "occurrence": 1,
+    "reason": "re-export: _MARKDOWN_HEADING_RE re-exported for backward-compat lint_guideline_no_exception import; pylint cannot detect re-export intent from noqa"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportArgumentType=false",
     "occurrence": 1,
@@ -690,20 +655,6 @@
     "suppression_kind": "pyright-report",
     "text": "pyright: reportUnusedCallResult=false, reportPrivateUsage=false",
     "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[assignment]",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[assignment]",
-    "occurrence": 2,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
@@ -2457,13 +2408,6 @@
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
   },
   {
-    "file": "larch/implement/ship.py",
-    "suppression_kind": "type-ignore",
-    "text": "type: ignore[reportUnusedFunction]",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
     "file": "larch/implement/ship_guidelines.py",
     "suppression_kind": "pylint-disable",
     "text": "pylint: disable=broad-exception-caught",
@@ -3134,6 +3078,13 @@
     "text": "ruff: noqa: PLC0415, PLW0603, SLF001",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/lint/lint_guideline_no_exception.py",
+    "suppression_kind": "pylint-disable",
+    "text": "pylint: disable=no-member",
+    "occurrence": 1,
+    "reason": "Pattern type from re.compile via dataclass field loses methods in pylint's static analysis; Pattern.match/finditer are valid re.Pattern methods"
   },
   {
     "file": "larch/lint/lint_keyword_only.py",

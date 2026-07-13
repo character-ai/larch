@@ -1,33 +1,5 @@
 [
   {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "parse_guideline_entries",
-    "pattern_name": "GUIDELINE_HEADING_RE",
-    "occurrence": 1,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "parse_guideline_entries",
-    "pattern_name": "_MARKDOWN_HEADING_RE",
-    "occurrence": 2,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "parse_invariant_entries",
-    "pattern_name": "INVARIANT_HEADING_RE",
-    "occurrence": 1,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
-    "file": "larch/core/architectural_guidelines.py",
-    "qualified_symbol": "parse_invariant_entries",
-    "pattern_name": "_MARKDOWN_HEADING_RE",
-    "occurrence": 2,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  },
-  {
     "file": "larch/review/voting.py",
     "qualified_symbol": "ballot_text_is_neutralized",
     "pattern_name": "BALLOT_HEADING_RE",
