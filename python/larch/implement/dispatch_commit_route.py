@@ -1649,18 +1649,30 @@ def step6_entry_main(argv: list[str] | None = None) -> int:
         try:
             merge_env = _safe_merge_env(tmpdir=implement_tmpdir, raw=args.merge_result_env)
             launch = _identity_from_child_args(args)
+            _old_repo_root = os.environ.get("REPO_ROOT")
+            _old_cpd = os.environ.get("CLAUDE_PROJECT_DIR")
             os.environ["REPO_ROOT"] = str(launch.repo_root)
             os.environ["CLAUDE_PROJECT_DIR"] = str(launch.repo_root)
-            return _publish_identity_child(
-                IdentityChildRequest(
-                    tmpdir=implement_tmpdir,
-                    step=_STEP6_CHECKS_STEP,
-                    merge_env=merge_env,
-                    launch=launch,
-                    worker=lambda: _step6_entry_worker(args, implement_tmpdir),
-                    allow_post_mutation=True,
+            try:
+                return _publish_identity_child(
+                    IdentityChildRequest(
+                        tmpdir=implement_tmpdir,
+                        step=_STEP6_CHECKS_STEP,
+                        merge_env=merge_env,
+                        launch=launch,
+                        worker=lambda: _step6_entry_worker(args, implement_tmpdir),
+                        allow_post_mutation=True,
+                    )
                 )
-            )
+            finally:
+                if _old_repo_root is None:
+                    os.environ.pop("REPO_ROOT", None)
+                else:
+                    os.environ["REPO_ROOT"] = _old_repo_root
+                if _old_cpd is None:
+                    os.environ.pop("CLAUDE_PROJECT_DIR", None)
+                else:
+                    os.environ["CLAUDE_PROJECT_DIR"] = _old_cpd
         except (OSError, RuntimeError, UnicodeError, ValueError):
             return 2
     public_args = (
@@ -1758,22 +1770,34 @@ def run_step_checks_main(argv: list[str] | None = None) -> int:
         try:
             merge_env = _safe_merge_env(tmpdir=implement_tmpdir, raw=args.merge_result_env)
             launch = _identity_from_child_args(args)
+            _old_repo_root = os.environ.get("REPO_ROOT")
+            _old_cpd = os.environ.get("CLAUDE_PROJECT_DIR")
             os.environ["REPO_ROOT"] = str(launch.repo_root)
             os.environ["CLAUDE_PROJECT_DIR"] = str(launch.repo_root)
-            return _publish_identity_child(
-                IdentityChildRequest(
-                    tmpdir=implement_tmpdir,
-                    step=step,
-                    merge_env=merge_env,
-                    launch=launch,
-                    worker=lambda: _run_step_checks_worker(
-                        args,
-                        implement_tmpdir,
-                        launch.repo_root,
-                    ),
-                    allow_post_mutation=bool(args.commit_site),
+            try:
+                return _publish_identity_child(
+                    IdentityChildRequest(
+                        tmpdir=implement_tmpdir,
+                        step=step,
+                        merge_env=merge_env,
+                        launch=launch,
+                        worker=lambda: _run_step_checks_worker(
+                            args,
+                            implement_tmpdir,
+                            launch.repo_root,
+                        ),
+                        allow_post_mutation=bool(args.commit_site),
+                    )
                 )
-            )
+            finally:
+                if _old_repo_root is None:
+                    os.environ.pop("REPO_ROOT", None)
+                else:
+                    os.environ["REPO_ROOT"] = _old_repo_root
+                if _old_cpd is None:
+                    os.environ.pop("CLAUDE_PROJECT_DIR", None)
+                else:
+                    os.environ["CLAUDE_PROJECT_DIR"] = _old_cpd
         except (OSError, RuntimeError, UnicodeError, ValueError):
             return 2
     try:
