@@ -953,9 +953,13 @@ def _normalize_assessment_handoff(*, implement_tmpdir: Path) -> tuple[str, tuple
         raise ValueError("assessment kinds must not contain empty or duplicate tokens")
     kinds = normalize_kinds(requested)
     canonical = ",".join(kinds)
+    # #7171: strip the stale NEEDS_USER_REASON while normalizing so the assessment
+    # reship does not read it as a terminal needs-user bail. This gate is being
+    # resolved by running the assessments; a genuine bail (unavailable or violation)
+    # bypasses this path and re-emits its own reason on a fresh route-exit.
     rewritten = [
         line for line in lines
-        if not line.startswith(("NEXT_ACTION=", "DETAIL=", "DETAIL_FILE="))
+        if not line.startswith(("NEXT_ACTION=", "DETAIL=", "DETAIL_FILE=", "NEEDS_USER_REASON="))
     ]
     rewritten.extend(("NEXT_ACTION=assessments", f"DETAIL={canonical}"))
     try:
