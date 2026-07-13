@@ -55,18 +55,28 @@ cursor/edge-cases │███████████████████�
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (4):
+Exec Issues (5):
   1. Step 2 — orchestrator-envelope-invalid: STATUS= AUTH= reason=dispatcher-killed-by-bash-timeout-no-envelope (two attempts; codex inner.done=99 both times; working-tree edits present but uncommitted)
   2. utc: `2026-07-12T23:06:37Z`
   3. helper: `python/cli.py stall-recovery record-escalation`
   4. reason: `token-validation-failed`
-Warnings (0):
+  5. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+Warnings (1):
+  1. The new shared voter-status layout and paths-policy tokens are duplicated raw cross-module strings rather than config-owned constants, and new test-only pyright suppressions lack inline reasons.
+
+## Architectural invariants
+
+No violations identified.
+
+## Architectural guidelines
+
+The new shared voter-status layout and paths-policy tokens are duplicated raw cross-module strings rather than config-owned constants, and new test-only pyright suppressions lack inline reasons.
 
 ## /implement run D3637FD5-DF7F-4DF7-9E41-AF7ED6469419: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:32:15
-- **Cost**: 💰 TOTAL ~$35.84: Claude $8.80, Codex-5.6 $10.87, Codex-mini $0.02, Cursor $10.08 (Composer $10.08, Grok $0.00), Claude (subprocess) $6.07  |  Tokens: 58172k
+- **Cost**: 💰 TOTAL ~$36.84: Claude $9.17, Codex-5.6 $11.42, Codex-mini $0.02, Cursor $10.15 (Composer $10.15, Grok $0.00), Claude (subprocess) $6.08  |  Tokens: 59768k
 - **Issue**: #7114: https://github.com/character-ai/larch/issues/7114
 - **Plan review**: N/A
 - **Plan coverage**: 6/6 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -75,8 +85,8 @@ Warnings (0):
 - **Code review**: 4/5 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 4
-- **Warnings**: 0
+- **Exec issues**: 5
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/D3637FD5-DF7F-4DF7-9E41-AF7ED6469419/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
