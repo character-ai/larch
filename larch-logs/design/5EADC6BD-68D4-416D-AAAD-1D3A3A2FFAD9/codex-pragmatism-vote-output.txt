@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already requires coherent optional-field use and rejection of mixed baseline-active shapes; this also duplicates a prior OOS finding.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Canonical ordering, trailing newline, and exact intended-byte read-back are already required; serializer formatting details are optional.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The plan explicitly rejects mixed row shapes in baseline-active modes.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan states strict-stale failures return exit 2 and mandates a test for new-findings-plus-stale precedence; this duplicates prior OOS.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- This repeats a prior OOS finding without materially new evidence.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of a prior OOS entry.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Mutable serialization rows are not a concrete defect or demonstrated drift.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- CLI wiring is explicitly excluded from this piece, so no downstream contract is presently required.
