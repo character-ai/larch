@@ -156,17 +156,16 @@ def _snapshot_inventory(path: Path) -> tuple[str, ...]:
 
 def _snapshot_artifact_identity(root: Path) -> tuple[tuple[str, tuple[int, int]], ...]:
     identity: list[tuple[str, tuple[int, int]]] = []
-    for name in (
-        "pre-coder-head.txt",
-        "pre-coder-tracked-paths.txt",
-        "pre-coder-untracked-paths.txt",
+    for path in (
+        _snap_head_path(root, "pre-coder"),
+        _snap_tracked_paths_file(root, "pre-coder"),
+        _snap_untracked_paths_file(root, "pre-coder"),
     ):
-        path = root / name
         if path.is_symlink():
             raise OSError(f"unsafe snapshot artifact: {path}")
         if path.is_file():
-            identity.append((name, (path.stat().st_size, zlib.crc32(path.read_bytes()))))
-    diffs_dir = root / "pre-coder-path-diffs"
+            identity.append((path.name, (path.stat().st_size, zlib.crc32(path.read_bytes()))))
+    diffs_dir = _snap_patch_dir(root, "pre-coder")
     if diffs_dir.exists() or diffs_dir.is_symlink():
         larch_io.validate_trusted_directory(diffs_dir, root=root)
         for path in sorted(diffs_dir.iterdir()):
@@ -185,13 +184,16 @@ def _validate_pre_coder_snapshot_dir(snap_dir: Path) -> ValidatedPreCoderSnapsho
         return ValidatedPreCoderSnapshot(mode="missing", root=snap_dir)
     _validate_snapshot_root(snap_dir)
     allowed_root_entries = {
-        "pre-coder-head.txt",
-        "pre-coder-tracked-paths.txt",
-        "pre-coder-untracked-paths.txt",
-        "pre-coder-path-diffs",
-        "attempt-pre-tracked-paths.txt",
-        "attempt-pre-untracked-paths.txt",
-        "attempt-pre-path-diffs",
+        path.name
+        for path in (
+            _snap_head_path(snap_dir, "pre-coder"),
+            _snap_tracked_paths_file(snap_dir, "pre-coder"),
+            _snap_untracked_paths_file(snap_dir, "pre-coder"),
+            _snap_patch_dir(snap_dir, "pre-coder"),
+            _snap_tracked_paths_file(snap_dir, "attempt-pre"),
+            _snap_untracked_paths_file(snap_dir, "attempt-pre"),
+            _snap_patch_dir(snap_dir, "attempt-pre"),
+        )
     }
     for artifact in snap_dir.iterdir():
         if artifact.name not in allowed_root_entries:
@@ -200,9 +202,9 @@ def _validate_pre_coder_snapshot_dir(snap_dir: Path) -> ValidatedPreCoderSnapsho
             larch_io.validate_trusted_directory(artifact, root=snap_dir)
         elif not larch_io.trusted_file_present(artifact, root=snap_dir):
             raise OSError(f"unsafe snapshot root artifact: {artifact}")
-    head_path = snap_dir / "pre-coder-head.txt"
-    tracked_path = snap_dir / "pre-coder-tracked-paths.txt"
-    untracked_path = snap_dir / "pre-coder-untracked-paths.txt"
+    head_path = _snap_head_path(snap_dir, "pre-coder")
+    tracked_path = _snap_tracked_paths_file(snap_dir, "pre-coder")
+    untracked_path = _snap_untracked_paths_file(snap_dir, "pre-coder")
     head_present = larch_io.trusted_file_present(head_path, root=snap_dir)
     tracked_present = larch_io.trusted_file_present(tracked_path, root=snap_dir)
     untracked_present = larch_io.trusted_file_present(untracked_path, root=snap_dir)
@@ -214,7 +216,8 @@ def _validate_pre_coder_snapshot_dir(snap_dir: Path) -> ValidatedPreCoderSnapsho
     untracked = _snapshot_inventory(untracked_path)
     if not tracked_present:
         mode: Literal["head_untracked", "full"] = "head_untracked"
-        if (snap_dir / "pre-coder-path-diffs").exists() or (snap_dir / "pre-coder-path-diffs").is_symlink():
+        diffs_dir = _snap_patch_dir(snap_dir, "pre-coder")
+        if diffs_dir.exists() or diffs_dir.is_symlink():
             raise OSError("head-untracked snapshot has unexpected tracked patches")
         tracked: tuple[str, ...] = ()
     else:
@@ -223,7 +226,7 @@ def _validate_pre_coder_snapshot_dir(snap_dir: Path) -> ValidatedPreCoderSnapsho
         safe_names = tuple(_safe_patch_name(path) for path in tracked)
         if len(safe_names) != len(set(safe_names)):
             raise OSError("tracked snapshot paths collide after patch-name encoding")
-        diffs_dir = snap_dir / "pre-coder-path-diffs"
+        diffs_dir = _snap_patch_dir(snap_dir, "pre-coder")
         expected = {f"{safe}.patch" for safe in safe_names} | {f"{safe}.cached.patch" for safe in safe_names}
         actual: set[str] = set()
         if diffs_dir.exists() or diffs_dir.is_symlink():
@@ -323,9 +326,7 @@ def _path_matches_snapshot(
     idx_diff = _git_stdout(["diff", "--cached", patch_match_ref, "--", path])
     wt_saved = _read_text(wt_snap)
     idx_saved = _read_text(idx_snap)
-    return (wt_diff == wt_saved or wt_diff.strip() == wt_saved) and (
-        idx_diff == idx_saved or idx_diff.strip() == idx_saved
-    )
+    return wt_diff == wt_saved and idx_diff == idx_saved
 
 
 def _classify_tracked_delta_paths(
@@ -1039,7 +1040,7 @@ def _write_pre_coder_snapshot(round_dir: Path) -> str:
     head = _git_head()
     if not head:
         raise OSError("cannot create pre-coder snapshot without HEAD")
-    pre_head = snap_dir / "pre-coder-head.txt"
+    pre_head = _snap_head_path(snap_dir, "pre-coder")
     _write_text(path=pre_head, text=head + "\n")
     _snapshot_pre_coder_tracked_state(
         _round_dir=round_dir, pre_head=head, snap_dir=snap_dir
