@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	26923	6731	14214	3554	12709	3178		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	19418	4855	13926	3482	5492	1373		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	19278	4820	13786	3447	5492	1373		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	26783	6696	14074	3519	12709	3178		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	19302	4826	13810	3453	5492	1373		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	26807	6702	14098	3525	12709	3178		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	26805	6702	14096	3524	12709	3178		0	0
+design Step 3	phase1	1	dyn-codex-plan-guarded-baseline-io	plan-review	codex	dyn-codex-plan-guarded-baseline-io.txt	19593	4899	13661	3416	5932	1483		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	19300	4825	13808	3452	5492	1373		0	0
+design Step 3	phase1	1	dyn-cursor-plan-guarded-baseline-io	plan-review	cursor	dyn-cursor-plan-guarded-baseline-io.txt	27098	6775	13949	3488	13149	3288		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	38160	9540	4601	1151	33559	8390	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	14377	3595	9131	2283	5246	1312		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14377	3595	9131	2283	5246	1312		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	14377	3595	9131	2283	5246	1312		0	0

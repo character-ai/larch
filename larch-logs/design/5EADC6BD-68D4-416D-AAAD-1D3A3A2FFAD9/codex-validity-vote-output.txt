@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires schema projection and rejection of mixed baseline-active row shapes.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Canonical serialization is required, but pinning formatting details is not necessary to deliver the feature.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan explicitly rejects mixed shapes in baseline-active modes.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan states strict stale rows return exit 2.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- This duplicates a prior OOS observation and the plan already requires operational errors to return exit 2.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of an existing OOS ledger item.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Frozen carriers are not required for typed baseline projection rows.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The plan already specifies run_rule keyword options for these controls.

@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Duplicate of prior OOS ledger item.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Intended serialized bytes make read-back deterministic without pinning extra formatting details.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already rejects mixed baseline-active shapes; homogeneous baseline arrays are not otherwise required.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Duplicate of prior OOS ledger item.
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Duplicate of prior OOS ledger item.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Duplicate of an already accepted OOS ledger item.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Internal JSON row carriers need not be frozen dataclasses.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Future CLI wiring does not require precommitting keyword names in this unregistered piece.
