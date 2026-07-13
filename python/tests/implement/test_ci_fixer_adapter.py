@@ -116,7 +116,7 @@ def test_start_translates_adapter_done_to_legacy_started(
     captured: list[model.JobSpec] = []
     monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
     monkeypatch.setattr(ci_fixer_adapter, "_new_launch", _fixed_launch(launch))
-    monkeypatch.setattr(ci_fixer_adapter.daemon, "owner_identity_from_env", lambda _pid: object())
+    monkeypatch.setattr(ci_fixer_adapter.daemon, "owner_identity_from_env", lambda _pid: object())  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     def fake_adapt(spec: model.JobSpec) -> int:
         captured.append(spec)
@@ -145,9 +145,9 @@ def test_start_uses_parent_pid_when_claude_pid_is_unset(
     monkeypatch.setattr(
         ci_fixer_adapter.daemon,
         "owner_identity_from_env",
-        lambda pid: captured_owner_pids.append(pid) or object(),
+        lambda pid: captured_owner_pids.append(pid) or object(),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
-    monkeypatch.setattr(ci_fixer_adapter.adapt, "start_or_reattach", lambda _spec: 0)
+    monkeypatch.setattr(ci_fixer_adapter.adapt, "start_or_reattach", lambda _spec: 0)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     assert ci_fixer_adapter._start(context) == 0
     assert captured_owner_pids == ["789"]
@@ -163,7 +163,7 @@ def test_start_propagates_stale_claude_owner_capture_failure(
     monkeypatch.setattr(
         ci_fixer_adapter.daemon,
         "owner_identity_from_env",
-        lambda _pid: (_ for _ in ()).throw(RuntimeError("stale owner")),
+        lambda _pid: (_ for _ in ()).throw(RuntimeError("stale owner")),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     with pytest.raises(RuntimeError, match="stale owner"):
@@ -246,7 +246,7 @@ def test_finalize_nonzero_bgjob_routes_to_crash_finalization(
     monkeypatch.setattr(
         ci_fixer_adapter.ci_fixer_lane,
         "main",
-        lambda argv: calls.append(argv) or 0,
+        lambda argv: calls.append(argv) or 0,  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     assert ci_fixer_adapter._finalize(context, launch.step) == 0
@@ -357,7 +357,7 @@ def test_new_launch_reuses_pending_completed_launch_before_deriving_another(
     monkeypatch.setattr(
         ci_fixer_adapter,
         "_start_identity",
-        lambda _context: (_ for _ in ()).throw(AssertionError("must reuse pending launch")),
+        lambda _context: (_ for _ in ()).throw(AssertionError("must reuse pending launch")),  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
 
     assert ci_fixer_adapter._new_launch(context) == launch

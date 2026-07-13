@@ -46,7 +46,7 @@ def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Pat
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
-    monkeypatch.setattr(route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())
+    monkeypatch.setattr(route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     return impl, repo.resolve()
 
 
@@ -153,9 +153,9 @@ def test_live_step6_job_reattaches_only_when_its_seed_matches(
     merge = impl / "bgjob" / "implement-step6-checks.merge.env"
     merge.parent.mkdir()
     _ = merge.write_text("".join(f"{key}={value}\n" for key, value in launch.as_rows()), encoding="utf-8")
-    monkeypatch.setattr(route, "_live_registry_entry", lambda **_kwargs: object())
+    monkeypatch.setattr(route, "_live_registry_entry", lambda **_kwargs: object())  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
-    route._prepare_checks_rejoin(
+    route._prepare_checks_rejoin(  # pyright: ignore[reportPrivateUsage]
         tmpdir=impl,
         step="implement-step6-checks",
         merge_env=merge,
@@ -164,7 +164,7 @@ def test_live_step6_job_reattaches_only_when_its_seed_matches(
 
     _ = merge.write_text("CHECKS_INPUT_HEAD_SHA=stale\n", encoding="utf-8")
     with pytest.raises(ValueError, match="live checks job identity mismatch"):
-        route._prepare_checks_rejoin(
+        route._prepare_checks_rejoin(  # pyright: ignore[reportPrivateUsage]
             tmpdir=impl,
             step="implement-step6-checks",
             merge_env=merge,
@@ -193,7 +193,7 @@ def test_step6_child_success_publishes_output_and_identity_together(
     launch = identity.compute_identity(repo_root=repo)
     merge = impl / "bgjob" / "implement-step6-checks.merge.env"
     merge.parent.mkdir()
-    monkeypatch.setattr(route, "_step6_entry_worker", lambda _args, _tmpdir: print("NEXT_ACTION=skip-to-7a") or 0)
+    monkeypatch.setattr(route, "_step6_entry_worker", lambda _args, _tmpdir: print("NEXT_ACTION=skip-to-7a") or 0)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     assert route.step6_entry_main([
         "--bgjob-child",
