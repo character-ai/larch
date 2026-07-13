@@ -60,19 +60,28 @@ codex/apply              │                                         ███�
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (5):
+Exec Issues (6):
   1. Step implement Step 2: cursor-implement failed (exit 1, non-auth) ×2
   2. utc: `2026-07-12T22:36:14Z`
   3. helper: `python/cli.py stall-recovery record-escalation`
   4. reason: `token-validation-failed`
+  5. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
 Warnings (1):
   1. Step 2 (cursor bailed): Cursor bailed: cursor-runtime-failure
 
+## Architectural invariants
+
+No violations identified.
+
+## Architectural guidelines
+
+No deviations identified.
+
 ## /implement run BB1350EF-5DC0-499E-94F3-8118594F155B: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:32:05
-- **Cost**: 💰 TOTAL ~$22.04: Claude $10.46, Codex-5.6 $5.51, Codex-mini $0.56, Cursor $5.14 (Composer $5.14, Grok $0.00), Claude (subprocess) $0.37  |  Tokens: 42181k
+- **Cost**: 💰 TOTAL ~$23.12: Claude $10.97, Codex-5.6 $5.98, Codex-mini $0.56, Cursor $5.19 (Composer $5.19, Grok $0.00), Claude (subprocess) $0.42  |  Tokens: 44133k
 - **Issue**: #7116: https://github.com/character-ai/larch/issues/7116
 - **Plan review**: N/A
 - **Plan coverage**: 1/1 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -81,7 +90,7 @@ Warnings (1):
 - **Code review**: 8/8 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 5
+- **Exec issues**: 6
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/BB1350EF-5DC0-499E-94F3-8118594F155B/`
 - **Main agent model**: claude-sonnet-4-6
