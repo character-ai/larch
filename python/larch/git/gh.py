@@ -266,7 +266,10 @@ def _as_int(value: object, *, context: str, field: str) -> int:
 
 
 def _fail_closed_redacted(text: str, *, context: str) -> str:
-    redacted = redact.redact(text)
+    # redact_outbound preserves the caller's trailing-newline intent so a
+    # body composed without one (e.g. triage's marked_comment) reads back
+    # byte-identical; redact() would append "\n" and break exact read-back.
+    redacted = redact.redact_outbound(text)
     if "[content truncated" in redacted:
         msg = f"redaction failed for {context}"
         raise ShipError(msg)

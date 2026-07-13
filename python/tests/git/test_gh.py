@@ -1189,6 +1189,27 @@ def test_body_file_args_fail_closed_on_truncation(
         _ = gh.pr_edit_body(runner, 1, "secret", repo="o/r")
 
 
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<!-- larch:triage-verdict:duplicate -->\nDuplicate of #8.",
+        "issue body with an intentional trailing newline\n",
+    ],
+)
+def test_body_file_args_preserves_caller_trailing_newline_intent(body: str) -> None:
+    """A gh body is written byte-identically, newline-terminated or not.
+
+    Regression for the triage close read-back failure: redact() appended a
+    trailing newline to every gh body write, so triage's `marked_comment`
+    (stripped, so it has none) failed exact read-back with EXIT_POSTCONDITION
+    and left the issue open with an orphan verdict comment. redact_outbound()
+    preserves the caller's newline intent so the comment reads back as posted.
+    """
+    with gh._body_file_args(body) as (flag, path):  # pyright: ignore[reportPrivateUsage]
+        assert flag == "--body-file"
+        assert Path(path).read_text(encoding="utf-8") == body
+
+
 def test_pr_checks_text_fallback_word_boundaries() -> None:
     assert gh._pr_checks_text_all_pass("ci\tpass\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
     assert not gh._pr_checks_text_all_pass("ci\tfail\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
