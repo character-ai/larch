@@ -4464,30 +4464,31 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     run_step_checks = (root / "skills" / "implement" / "scripts" / "run-step-checks.sh").read_text(
         encoding="utf-8"
     )
+    step6_entry_sh = (root / "skills" / "implement" / "scripts" / "step-6-entry.sh").read_text(
+        encoding="utf-8"
+    )
     self_review_ref = (root / "skills" / "implement" / "references" / "self-review.md").read_text(
+        encoding="utf-8"
+    )
+    dispatch_commit = (root / "python" / "larch" / "implement" / "dispatch_commit_route.py").read_text(
         encoding="utf-8"
     )
     step6_launcher = "skills/implement/scripts/step-6-entry.sh"
     assert step6_launcher in skill
     assert "implement-step6-checks" in skill
     assert "skills/implement/references/self-review.md" in skill
-    assert 'BUDGET_S="14700"' in run_step_checks
-    assert "step_checks_live_registry_exists" in run_step_checks
-    assert "checks-result-identity" in run_step_checks
-    assert "CHECKS_INPUT_HEAD_SHA" in run_step_checks
-    assert "validate_child_identity" in run_step_checks
-    assert "step_checks_result_env_state" not in run_step_checks
-    assert 'RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.result.env"' in run_step_checks
-    assert 'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0' in run_step_checks
-    step6_entry = (root / "skills" / "implement" / "scripts" / "step-6-entry.sh").read_text(encoding="utf-8")
-    assert "checks-result-identity" in step6_entry
-    assert "CHECKS_INPUT_HEAD_SHA" in step6_entry
-    assert "validate_child_identity" in step6_entry
-    assert "skip-to-7a" in step6_entry
-    assert "step6_result_env_state" not in step6_entry
-    dispatch_commit = (root / "python" / "larch" / "implement" / "dispatch_commit_route.py").read_text(
-        encoding="utf-8"
-    )
+    assert 'implement run-step-checks "$@"' in run_step_checks
+    assert "bgjob start" not in run_step_checks
+    assert '"implement-checks-step5-self-review", 14700' in dispatch_commit
+    assert "_live_registry_entry" in dispatch_commit
+    assert "checks_result_identity" in dispatch_commit
+    assert "_prepare_checks_rejoin" in dispatch_commit
+    assert "_bgjob_result_path" in dispatch_commit
+    assert "step_checks_result_env_state" not in dispatch_commit
+    assert 'implement step-6-entry "$@"' in step6_entry_sh
+    assert "bgjob start" not in step6_entry_sh
+    assert "skip-to-7a" in dispatch_commit
+    assert "step6_result_env_state" not in dispatch_commit
     assert "_session_validated_repo_root" in dispatch_commit
     assert '"--repo-root"' in dispatch_commit or "'--repo-root'" in dispatch_commit
     assert "CLAUDE_PROJECT_DIR" in dispatch_commit
