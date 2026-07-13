@@ -560,6 +560,81 @@ def test_write_state_cli_preserves_newer_existing_proposals(tmp_path: Path) -> N
     assert written.proposals == (remote_proposal, remote_only)
 
 
+def test_write_state_cli_applies_refresh_when_base_matches_published(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    # Fetched default branch still shows the pre-refresh pending status.
+    learn_from_bugs.write_state(
+        marker,
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/r",
+            search="x",
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=3,
+            proposals=(_proposal(status="pending"),),
+        ),
+    )
+    base_file = tmp_path / "base-proposals.jsonl"
+    base_file.write_text(
+        json.dumps(_proposal(status="pending").to_json()) + "\n", encoding="utf-8"
+    )
+    proposals_file = tmp_path / "reconciled-proposals.jsonl"
+    proposals_file.write_text(
+        json.dumps(_proposal(status="adopted").to_json()) + "\n", encoding="utf-8"
+    )
+
+    assert learn_from_bugs.write_state_main([
+        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
+        "--selected-count", "1", "--highest-closed-issue-number-scanned", "4",
+        "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
+        "--proposals-file", str(proposals_file),
+        "--base-proposals-file", str(base_file),
+    ]) == 0
+
+    written = learn_from_bugs.read_state(marker)
+    assert written is not None
+    assert written.proposals[0].status == "adopted"
+
+
+def test_write_state_cli_keeps_concurrent_publication_over_stale_refresh(tmp_path: Path) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    # A concurrent run already published adopted on the default branch.
+    learn_from_bugs.write_state(
+        marker,
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/r",
+            search="x",
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=3,
+            proposals=(_proposal(status="adopted"),),
+        ),
+    )
+    # Scan start saw pending; this run's local refresh is a stale pending.
+    base_file = tmp_path / "base-proposals.jsonl"
+    base_file.write_text(
+        json.dumps(_proposal(status="pending").to_json()) + "\n", encoding="utf-8"
+    )
+    proposals_file = tmp_path / "reconciled-proposals.jsonl"
+    proposals_file.write_text(
+        json.dumps(_proposal(status="pending").to_json()) + "\n", encoding="utf-8"
+    )
+
+    assert learn_from_bugs.write_state_main([
+        "--root", str(tmp_path), "--repo", "o/r", "--search", "x", "--state", "closed",
+        "--selected-count", "1", "--highest-closed-issue-number-scanned", "4",
+        "--run-date", "2026-07-10T12:00:00Z", "--scan-started-at", "2026-07-10T11:00:00Z",
+        "--proposals-file", str(proposals_file),
+        "--base-proposals-file", str(base_file),
+    ]) == 0
+
+    written = learn_from_bugs.read_state(marker)
+    assert written is not None
+    assert written.proposals[0].status == "adopted"
+
+
 def test_read_state_cli_reports_missing_without_crashing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert learn_from_bugs.read_state_main(["--root", str(tmp_path)]) == 0
     out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
@@ -1130,6 +1205,54 @@ def test_reconcile_rejects_same_id_with_changed_run_date() -> None:
         learn_from_bugs.reconcile_proposals((historical,), (residual,))
 
 
+def test_reconcile_applies_same_run_refresh_when_published_matches_base() -> None:
+    # Scan start saw pending; this run refreshed it to adopted; the fetched
+    # default branch still shows pending (no concurrent publication), so the
+    # refresh must survive publication.
+    base = _proposal(status="pending")
+    remote = _proposal(status="pending")
+    local = _proposal(status="adopted")
+
+    (merged,) = learn_from_bugs.reconcile_proposals((remote,), (local,), (base,))
+
+    assert merged.status == "adopted"
+
+
+def test_reconcile_keeps_concurrent_publication_that_diverged_from_base() -> None:
+    # Scan start saw pending; a concurrent run published adopted; this run's
+    # residual is a stale pending. The concurrent adopted must win.
+    base = _proposal(status="pending")
+    remote = _proposal(status="adopted")
+    local = _proposal(status="pending")
+
+    (merged,) = learn_from_bugs.reconcile_proposals((remote,), (local,), (base,))
+
+    assert merged.status == "adopted"
+
+
+def test_reconcile_without_base_keeps_published_status() -> None:
+    # No base (empty) preserves the prior keep-published behavior.
+    remote = _proposal(status="adopted")
+    local = _proposal(status="pending")
+
+    (merged,) = learn_from_bugs.reconcile_proposals((remote,), (local,))
+
+    assert merged.status == "adopted"
+
+
+def test_reconcile_three_way_preserves_filed_issue_when_keeping_concurrent() -> None:
+    # A concurrent publication advanced pending -> adopted and recorded the
+    # filed issue; the stale local refresh must revert neither.
+    base = _proposal("fix-one", "fix", "fix:x", "pending", 55)
+    remote = _proposal("fix-one", "fix", "fix:x", "adopted", 55)
+    local = _proposal("fix-one", "fix", "fix:x", "pending", None)
+
+    (merged,) = learn_from_bugs.reconcile_proposals((remote,), (local,), (base,))
+
+    assert merged.status == "adopted"
+    assert merged.filed_issue == 55
+
+
 @pytest.mark.parametrize(
     "patch",
     [
@@ -1289,6 +1412,126 @@ def test_check_proposals_main_rejects_repository_mismatch(tmp_path: Path) -> Non
                 str(tmp_path / "adoption.md"),
             ]
         )
+
+
+def test_check_proposals_main_writes_pre_refresh_base_proposals(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    marker = tmp_path / config.LEARN_FROM_BUGS_STATE_RELPATH
+    learn_from_bugs.write_state(
+        marker,
+        learn_from_bugs.LearnFromBugsState(
+            run_date="2026-07-09T12:00:00Z",
+            repo="o/r",
+            search="x",
+            state="closed",
+            selected_count=1,
+            highest_closed_issue_number_scanned=3,
+            proposals=(_proposal(status="pending", filed_issue=9),),
+        ),
+    )
+    # The filed issue is closed-completed, so the refresh advances pending ->
+    # adopted; the base artifact must still record the pre-refresh pending.
+    monkeypatch.setattr(
+        learn_from_bugs,
+        "_runner",
+        lambda: RecordingRunner(
+            responses=[
+                _result(
+                    stdout=json.dumps(
+                        {"number": 9, "state": "CLOSED", "stateReason": "COMPLETED"}
+                    )
+                )
+            ],
+            strict=True,
+        ),
+    )
+    base_out = tmp_path / "base.jsonl"
+    checked_out = tmp_path / "checked.jsonl"
+
+    rc = learn_from_bugs.check_proposals_main(
+        [
+            "--root", str(tmp_path), "--repo", "o/r",
+            "--proposals-out", str(checked_out),
+            "--adoption-out", str(tmp_path / "adoption.md"),
+            "--base-proposals-out", str(base_out),
+        ]
+    )
+    assert rc == 0
+
+    base_rows = [
+        json.loads(line) for line in base_out.read_text().splitlines() if line.strip()
+    ]
+    checked_rows = [
+        json.loads(line) for line in checked_out.read_text().splitlines() if line.strip()
+    ]
+    assert base_rows[0]["status"] == "pending"
+    assert base_rows[0]["filed_issue"] == 9
+    assert checked_rows[0]["status"] == "adopted"
+
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert "BASE_PROPOSALS_PATH" in out
+    assert Path(out["BASE_PROPOSALS_PATH"]).exists()
+
+
+def test_verify_origin_main_accepts_matching_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        learn_from_bugs,
+        "_runner",
+        lambda: RecordingRunner(
+            responses=[_result(stdout="git@github.com:o/r.git\n")], strict=True
+        ),
+    )
+    assert learn_from_bugs.verify_origin_main(["--root", str(tmp_path), "--repo", "o/r"]) == 0
+    out = dict(line.split("=", 1) for line in capsys.readouterr().out.splitlines())
+    assert out["ORIGIN_MATCHES_REPO"] == "true"
+    assert out["ORIGIN_REPO"] == "o/r"
+
+
+def test_verify_origin_main_accepts_case_insensitive_slug(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        learn_from_bugs,
+        "_runner",
+        lambda: RecordingRunner(
+            responses=[_result(stdout="https://github.com/Owner/Repo\n")], strict=True
+        ),
+    )
+    assert (
+        learn_from_bugs.verify_origin_main(["--root", str(tmp_path), "--repo", "owner/repo"])
+        == 0
+    )
+
+
+def test_verify_origin_main_rejects_mismatched_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        learn_from_bugs,
+        "_runner",
+        lambda: RecordingRunner(
+            responses=[_result(stdout="git@github.com:other/elsewhere.git\n")], strict=True
+        ),
+    )
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="does not identify"):
+        learn_from_bugs.verify_origin_main(["--root", str(tmp_path), "--repo", "o/r"])
+
+
+def test_verify_origin_main_rejects_unresolvable_origin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        learn_from_bugs,
+        "_runner",
+        lambda: RecordingRunner(
+            responses=[_result(rc=1, stderr="no such remote")], strict=True
+        ),
+    )
+    with pytest.raises(learn_from_bugs.LearnFromBugsError, match="OWNER/REPO slug"):
+        learn_from_bugs.verify_origin_main(["--root", str(tmp_path), "--repo", "o/r"])
 
 
 # --- Out-path canonicalization (macOS default TMPDIR symlink) ---------------

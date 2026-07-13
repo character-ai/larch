@@ -1353,9 +1353,21 @@ def pending_proposal_by_id(
 
 
 def reconcile_proposals(
-    prior: tuple[Proposal, ...], residuals: tuple[Proposal, ...]
+    prior: tuple[Proposal, ...],
+    residuals: tuple[Proposal, ...],
+    base: tuple[Proposal, ...] = (),
 ) -> tuple[Proposal, ...]:
-    """Append new residuals while preserving stable pending identities."""
+    """Three-way merge published state with this run's refreshed residuals.
+
+    ``prior`` is the freshly fetched default-branch state, ``residuals`` is this
+    run's refreshed history plus any genuinely new proposals, and ``base`` is the
+    state as this run observed it at scan start. When a published status still
+    equals its scan-start base, this run's refresh is applied; when it has
+    diverged from base, a concurrent publication changed it and the published
+    status is kept. An empty ``base`` preserves the prior keep-published
+    behavior.
+    """
+    base_status_by_id = {proposal.id: proposal.status for proposal in base}
     out = list(prior)
     positions = {proposal.id: index for index, proposal in enumerate(out)}
     for residual in residuals:
@@ -1379,12 +1391,17 @@ def reconcile_proposals(
             and historical.filed_issue != residual.filed_issue
         ):
             raise LearnFromBugsError(f"conflicting filed issues for {residual.id}")
+        scan_start_status = base_status_by_id.get(residual.id)
+        published_unchanged = (
+            scan_start_status is not None and historical.status == scan_start_status
+        )
+        status = residual.status if published_unchanged else historical.status
         out[index] = Proposal(
             id=historical.id,
             type=historical.type,
             target=historical.target,
             run_date=historical.run_date,
-            status=historical.status,
+            status=status,
             filed_issue=historical.filed_issue or residual.filed_issue,
         )
     return tuple(out)
@@ -1398,6 +1415,7 @@ def check_proposals_main(argv: list[str]) -> int:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--proposals-out", required=True)
     parser.add_argument("--adoption-out", required=True)
+    parser.add_argument("--base-proposals-out")
     args = parser.parse_args(argv)
     root = Path(args.root).expanduser().resolve()
     state = _read_existing_state(state_path(root))
@@ -1423,16 +1441,28 @@ def check_proposals_main(argv: list[str]) -> int:
         prefix=f".{adoption_out.name}.",
         nofollow=True,
     )
-    _print_kv(
-        {
-            "PROPOSALS_COUNT": len(checked),
-            "PROPOSALS_ADOPTED": sum(item.status == "adopted" for item in checked),
-            "PROPOSALS_PENDING": sum(item.status == "pending" for item in checked),
-            "PROPOSALS_ORPHANED": sum(item.status == "orphaned" for item in checked),
-            "CHECKED_PROPOSALS_PATH": str(proposals_out),
-            "ADOPTION_SUMMARY_PATH": str(adoption_out),
-        }
-    )
+    rows: dict[str, object] = {
+        "PROPOSALS_COUNT": len(checked),
+        "PROPOSALS_ADOPTED": sum(item.status == "adopted" for item in checked),
+        "PROPOSALS_PENDING": sum(item.status == "pending" for item in checked),
+        "PROPOSALS_ORPHANED": sum(item.status == "orphaned" for item in checked),
+        "CHECKED_PROPOSALS_PATH": str(proposals_out),
+        "ADOPTION_SUMMARY_PATH": str(adoption_out),
+    }
+    if args.base_proposals_out:
+        # Persist the pre-refresh (scan-start) proposals so that ``write-state``
+        # can three-way merge and keep this run's refreshed statuses without
+        # clobbering genuinely concurrent publications.
+        raw_base_out = Path(args.base_proposals_out).expanduser()
+        base_out = raw_base_out.parent.resolve() / raw_base_out.name
+        larch_io.atomic_write(
+            base_out,
+            "".join(json.dumps(item.to_json()) + "\n" for item in proposals),
+            prefix=f".{base_out.name}.",
+            nofollow=True,
+        )
+        rows["BASE_PROPOSALS_PATH"] = str(base_out)
+    _print_kv(rows)
     return 0
 
 
@@ -1487,6 +1517,7 @@ def write_state_main(argv: list[str]) -> int:
     parser.add_argument("--run-date", required=True)
     parser.add_argument("--scan-started-at", required=True)
     parser.add_argument("--proposals-file")
+    parser.add_argument("--base-proposals-file")
     args = parser.parse_args(argv)
     root = Path(args.root).expanduser().resolve()
     path = state_path(root)
@@ -1495,9 +1526,17 @@ def write_state_main(argv: list[str]) -> int:
         proposals = load_proposals_jsonl(Path(args.proposals_file), root=root)
         if existing is not None:
             # The state worktree is based on a freshly fetched default branch.
-            # Retain any proposal records or lifecycle updates published since
-            # the scan assembled its local reconciliation artifact.
-            proposals = reconcile_proposals(existing.proposals, proposals)
+            # Three-way merge against the scan-start base so this run's refreshed
+            # lifecycle statuses survive, while statuses that diverged from base
+            # (genuinely concurrent publications) are retained.
+            base_proposals: tuple[Proposal, ...] = ()
+            if args.base_proposals_file:
+                base_proposals = load_proposals_jsonl(
+                    Path(args.base_proposals_file), root=root
+                )
+            proposals = reconcile_proposals(
+                existing.proposals, proposals, base_proposals
+            )
     elif existing is not None and existing.proposals:
         raise LearnFromBugsError("--proposals-file is required to preserve proposal history")
     else:
@@ -1522,6 +1561,43 @@ def write_state_main(argv: list[str]) -> int:
             "HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED": state.highest_closed_issue_number_scanned,
             "SCHEMA_VERSION": state.schema_version,
             "PROPOSAL_COUNT": len(state.proposals),
+        }
+    )
+    return 0
+
+
+def verify_origin_main(argv: list[str]) -> int:
+    """Fail closed unless the checkout's ``origin`` remote identifies ``--repo``.
+
+    The state-publication fence pushes and admin-merges through ``origin`` on the
+    ``--repo`` given to ``gh``. This guard mechanically confirms that ``origin``
+    and ``--repo`` name the same GitHub repository before any branch is created,
+    so a ``--root`` whose origin points elsewhere cannot land the state branch in
+    one repository while a stale same-named PR is reused on another.
+    """
+    parser = argparse.ArgumentParser(
+        prog="learn-from-bugs verify-origin", allow_abbrev=False
+    )
+    parser.add_argument("--root", required=True)
+    parser.add_argument("--repo", required=True)
+    args = parser.parse_args(argv)
+    root = Path(args.root).expanduser().resolve()
+    origin = gh.remote_repo(_runner(), "origin", cwd=str(root))
+    if origin is None:
+        raise LearnFromBugsError(
+            "state publication requires the origin remote to resolve to a GitHub "
+            "OWNER/REPO slug"
+        )
+    if origin.lower() != args.repo.lower():
+        raise LearnFromBugsError(
+            f"origin remote {origin!r} does not identify publication repository "
+            f"{args.repo!r}"
+        )
+    _print_kv(
+        {
+            "ORIGIN_REPO": origin,
+            "PUBLICATION_REPO": args.repo,
+            "ORIGIN_MATCHES_REPO": "true",
         }
     )
     return 0
