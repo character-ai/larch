@@ -177,7 +177,7 @@ Abort on non-zero exit. On success, print the report to the operator and the `RU
 
 ### Shared state-publication fragment
 
-Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout whose `origin` remote identifies `$REPO`; the fence verifies this mechanically before creating any branch.
+Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote whose slug identifies `$REPO`; the fence verifies this mechanically before creating any branch.
 
 This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
 
