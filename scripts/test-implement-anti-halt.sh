@@ -91,6 +91,8 @@ check_contains "Assessment invariant hard stop has no waiver" "skills/implement/
   "there is no waiver and the run must not create or merge the PR"
 check_contains "Assessment fixes never routed to ci-fixer" "skills/implement/SKILL.md" \
   "Never route invariant or guideline fixes to the ci-fixer subagent."
+check_contains "Assessment tier-1 coder spawn carries plan, note, and evidence paths" "skills/implement/SKILL.md" \
+  'carrying paths to the plan (`$IMPLEMENT_TMPDIR/plan.txt`), the assessor note (`$IMPLEMENT_TMPDIR/assessment-note-<kind>.md`), and the materialized evidence'
 check_contains "Recovery blocks reporting until reconciliation" "skills/implement/SKILL.md" \
   'do not start Steps 16, 16a, 17, or 18 until `ship reconcile-manual-merge` returns verified `RECONCILE_STATUS=ok`, including the bail-overlay post-read'
 check_contains "Manual recovery clears in-memory stall" "skills/implement/SKILL.md" \

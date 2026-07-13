@@ -8,7 +8,6 @@ from larch.core import config
 def test_fixer_tier_order() -> None:
     assert config.FIXER_TIER_ORDER == ("codex", "cursor", "claude")
     assert config.CLAUDE_CI_FIX_MODEL == "claude-opus-4-8"
-    assert config.CI_FIXER_INVARIANT_EVIDENCE_MAX_BYTES == 262_144
     assert config.FIXER_LANE_TIMEOUT_SEC == 1800
     assert config.FIXER_TIER_ACTION_SELECTED == "selected"
     assert config.FIXER_TIER_ACTION_UNAVAILABLE == "unavailable"

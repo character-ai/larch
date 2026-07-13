@@ -27,7 +27,7 @@ Exit 3 reason routing:
 - `oos-filing` maps to `oos-pipeline`.
 - `architectural-assessments` maps to `assessments`; `DETAIL` is a comma-separated kind list containing `invariants`, `guidelines`, or `invariants,guidelines`.
 - `architectural-invariants-assessment` maps to `invariants-assessment`.
-- `architectural-invariants-violation` maps to `ci-fix` for autonomous repair from `DETAIL` / `DETAIL_FILE`, without requiring `FAILED_RUN_ID`.
+- `architectural-invariants-violation` maps to `invariants-assessment` (normalized to `assessments` with `DETAIL=invariants`) so the compose-time violation re-enters the Step 8 fix ladder (materialize, tier-1 coder, fresh-assessor re-judge through `submit`, tier-2 main agent, terminal `invariant-violation-unresolved` hard stop) without requiring `FAILED_RUN_ID`; it never reaches the ci-fixer subagent.
 - `architectural-guidelines-assessment` maps to `guidelines-assessment`.
 - `first-fixer-non-health`, `main-ci-fail`, `flaky-defect-unfixed`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable` map to `ci-fix`.
 - `postmerge-main-ci-fail` maps to `postmerge-repair`; load only `postmerge-emergency-repair.md`.
