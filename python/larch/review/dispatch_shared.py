@@ -13,6 +13,7 @@ from typing import Literal, Protocol, cast
 
 from larch.agents import _launch_failure
 from larch.core import config, external_defaults, logging_util
+from larch.report.timing import TimingLedger
 from larch.review import _voting_calibration, voting
 
 VoterRowLayout = Literal["code_review_sequential", "plan_review_interleaved"]
@@ -64,6 +65,36 @@ class DispatchState:
 def path_for_wire(path: Path | None) -> str:
     """Serialize an optional path only when it crosses a wire boundary."""
     return "" if path is None else str(path)
+
+
+def record_voter_dispatch_prep(
+    *,
+    ledger: Path | None,
+    skill: str,
+    prep_start: float,
+    prep_end: float,
+    round_num: int,
+) -> None:
+    """Record the serial voter pre-dispatch window as a ``voter-dispatch-prep`` vendor row.
+
+    The window covers the blocking work each dispatcher runs before the waterfall spawns any
+    voter: the calibration snapshot, the per-slot/tool ``render voter`` subprocess calls, and
+    the manifest write. A voter captures its own ``start_s`` only after that phase completes,
+    so without this row the Gantt shows a blank band between the aggregator bar and the voter
+    bars instead of the render work that fills it (issue #7166). Timing is diagnostic, so a
+    missing ledger or a write error is skipped rather than raised.
+    """
+    if ledger is None or not ledger.is_file():
+        return
+    with suppress(OSError, ValueError):
+        TimingLedger(ledger, skill=skill).record_vendor_task(
+            vendor="claude",
+            task_kind="voter-dispatch-prep",
+            start_s=prep_start,
+            end_s=prep_end,
+            output=f"voter-dispatch-prep-round-{round_num}.out",
+            status="complete",
+        )
 
 
 def topology_slots(topology_key: str) -> tuple[config.SlotDefault, ...]:

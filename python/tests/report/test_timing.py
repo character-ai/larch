@@ -45,6 +45,23 @@ def test_timing_vendor_task_accepts_gate_b_apply(tmp_path: Path, capsys: pytest.
     assert row[5:11] == ["claude", "gate-b-apply", "20", "35", "15", "gate-b-apply-round-1.out"]
 
 
+def test_timing_vendor_task_accepts_voter_dispatch_prep(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # Issue #7166: the serial voter pre-dispatch phase is recorded as its own vendor row so the
+    # Gantt shows it instead of a blank gap between the aggregator and the voters.
+    ledger = tmp_path / "timing-ledger.tsv"
+    timing.TimingLedger(ledger, skill="implement").record_vendor_task(
+        vendor="claude",
+        task_kind="voter-dispatch-prep",
+        start_s=40,
+        end_s=207,
+        output="voter-dispatch-prep-round-2.out",
+    )
+    assert "unknown task-kind" not in capsys.readouterr().err
+    row = ledger.read_text(encoding="utf-8").strip().split("\t")
+    assert row[0:2] == ["v1", "vendor"]
+    assert row[5:11] == ["claude", "voter-dispatch-prep", "40", "207", "167", "voter-dispatch-prep-round-2.out"]
+
+
 def test_timing_report_design_omits_workflow_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text(

@@ -270,6 +270,40 @@ def test_voter_prompts_use_nested_implement_ledger_root(tmp_path: Path, monkeypa
 
 
 @pytest.mark.voter_happy
+def test_dispatch_records_voter_dispatch_prep_row(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Issue #7166: the serial pre-dispatch phase (calibration + render + manifest) lands as a
+    # voter-dispatch-prep vendor row in the same timing ledger the voters use, so the Gantt
+    # shows it instead of a blank gap between the aggregator bar and the voter bars.
+    impl = tmp_path / "impl"
+    review = impl / "round-1"
+    review.mkdir(parents=True)
+    ledger = impl / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")  # voters create this in prod; pre-create to pass the is_file gate
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    _install_harness(monkeypatch, tmp_path, review)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.delenv("LARCH_TIMING_LEDGER", raising=False)
+    monkeypatch.delenv("LARCH_TIMING_SKILL", raising=False)
+    clock = {"n": 0}
+    stamps = [1000.0, 1167.0]
+
+    def _fake_time() -> float:
+        value = stamps[min(clock["n"], len(stamps) - 1)]
+        clock["n"] += 1
+        return value
+
+    monkeypatch.setattr(agent_voters.time, "time", _fake_time)
+
+    assert agent_voters.dispatch_voters(_opts(ballot, review)) == 0
+
+    text = ledger.read_text(encoding="utf-8")
+    prep_row = next(line for line in text.splitlines() if "voter-dispatch-prep" in line).split("\t")
+    assert prep_row[3] == "implement"
+    assert prep_row[5:11] == ["claude", "voter-dispatch-prep", "1000", "1167", "167", "voter-dispatch-prep-round-1.out"]
+
+
+@pytest.mark.voter_happy
 def test_render_failure_aborts_before_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     review = tmp_path / "review"
     ballot = tmp_path / "ballot.md"

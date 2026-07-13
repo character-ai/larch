@@ -12,6 +12,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
@@ -34,6 +35,7 @@ from larch.review.dispatch_shared import (
     VoterSlotPolicy,
     emit_final_voter_kvs,
     fresh_calibration_snapshot,
+    record_voter_dispatch_prep,
     resolved_model_for_row,
     topology_slots,
     topology_voter_policies,
@@ -933,6 +935,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         parser.exit(2, "cli.py plan-review voter-dispatch: --round-num must be positive\n")
     if ns.codex_available not in {"true", "false"} or ns.cursor_available not in {"true", "false"}:
         parser.exit(2, "cli.py plan-review voter-dispatch: availability flags must be true or false\n")
+    prep_start = time.time()
     round_dir = design / "plan-review" / f"round-{ns.round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     panel_env = build_panel_dispatch_env(
@@ -1057,10 +1060,22 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         "--claude-read-tools-add-dir",
         str(design),
     ]
+    # Pre-dispatch window closes here: the calibration snapshot, serial render voter calls, and
+    # manifest write are done, and the waterfall is about to spawn the voters that record their
+    # own start_s. Record the window so the design Gantt shows it instead of a blank gap between
+    # the aggregator and the voters (issue #7166).
+    prep_end = time.time()
     wf = larch_proc.run(
         wf_args,
         cwd=str(_REPO_ROOT),
         env=panel_env,
+    )
+    record_voter_dispatch_prep(
+        ledger=design / "timing-ledger.tsv",
+        skill="design",
+        prep_start=prep_start,
+        prep_end=prep_end,
+        round_num=ns.round_num,
     )
     waterfall_output = wf.stdout
     wf_kv = _parse_kv(waterfall_output)

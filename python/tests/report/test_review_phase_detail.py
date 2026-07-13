@@ -547,6 +547,9 @@ def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> Non
     )
     assert progress_report._derive_progress_label(output="coder-codex.log", vendor="codex", kind="codex-review-fix") == "codex/apply"
     assert progress_report._derive_progress_label(output="coder-cursor.log", vendor="cursor", kind="cursor-review-fix") == "cursor/apply"
+    # Issue #7166: the synthetic voter pre-dispatch row keeps its label from the task kind
+    # regardless of the neutral claude vendor stamped on the row.
+    assert progress_report._derive_progress_label(output="voter-dispatch-prep-round-1.out", vendor="claude", kind="voter-dispatch-prep") == "voter-dispatch-prep"
 
     output = tmp_path / "codex-output.txt"
     manifest = tmp_path / "panel-manifest.ndjson"
@@ -1498,6 +1501,28 @@ def test_render_phase_detail_design_gantt_labels_gate_b_apply(tmp_path: Path) ->
     assert "### Round 1 reviewer timing" in rendered
     assert "gate-b/apply" in rendered
     assert "window 0:00-2:20 (140s)" in rendered
+
+
+def test_render_phase_detail_gantt_labels_voter_dispatch_prep(tmp_path: Path) -> None:
+    # Issue #7166: the serial pre-dispatch render window is recorded as a voter-dispatch-prep
+    # vendor row so the Gantt fills the band between the aggregator bar and the voter bars
+    # instead of leaving it blank.
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=300)
+    _write_vendor_timing(timing, "aggregator-output.txt", 120, 160, vendor="claude", kind="claude-phase3-aggregator")
+    _write_vendor_timing(timing, "voter-dispatch-prep-round-1.out", 160, 260, vendor="claude", kind="voter-dispatch-prep")
+    _write_vendor_timing(timing, "codex-validity-vote-output.txt", 260, 290, vendor="codex", kind="codex-review-voter")
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
+
+    assert "### Round 1 reviewer timing" in rendered
+    assert "aggregator" in rendered
+    assert "voter-dispatch-prep" in rendered
+    assert "codex/validity-vote" in rendered
+    prep_line = next(line for line in rendered.splitlines() if "voter-dispatch-prep" in line)
+    assert "█" in prep_line
 
 
 def test_render_phase_detail_splits_gantt_per_attempt(tmp_path: Path) -> None:

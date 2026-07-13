@@ -29,7 +29,7 @@ TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "cursor-plan-arch", "cursor-plan-innovation", "cursor-plan-pragmatic", "cursor-plan-requirements",
     "codex-plan-voter", "cursor-plan-voter", "claude-plan-voter", "claude-plan-draft",
     "claude-code-voter", "claude-plan-generic", "claude-decomp-generic", "claude-voter-1-parse-retry",
-    "codex-plan-autofix", "cursor-plan-autofix", "gate-b-apply",
+    "codex-plan-autofix", "cursor-plan-autofix", "gate-b-apply", "voter-dispatch-prep",
     "codex-review-voter", "cursor-review-voter",
     "claude-phase3-correctness", "claude-phase3-edge-cases", "claude-phase3-testing",
     "claude-phase3-structure", "claude-phase3-plan-fidelity", "claude-phase3-aggregator",
