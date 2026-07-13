@@ -75,7 +75,33 @@ design_require_plugin_root() {
 }
 
 design_source_env_optional() {
-  if [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
+  if [ -z "${SESSION_ENV_PATH:-}" ]; then
+    return 0
+  fi
+  if [ -L "$SESSION_ENV_PATH" ]; then
+    # PID-keyed symlink: resolve through the trusted session resolver so a
+    # swapped link or replaced target cannot redirect what gets dot-sourced.
+    if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] || [ -z "${CLAUDE_PID:-}" ]; then
+      printf '%s\n' "/design wrapper: refusing session-env symlink without plugin root and PID" >&2
+      exit 1
+    fi
+    _resolved_env_line="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session resolve-trusted-design-env \
+      --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" 2>/dev/null)" || {
+      printf '%s\n' "/design wrapper: refusing untrusted session-env symlink: $SESSION_ENV_PATH" >&2
+      exit 1
+    }
+    case "$_resolved_env_line" in
+      TRUSTED_SOURCE=*) ;;
+      *) printf '%s\n' "/design wrapper: unresolvable session-env symlink: $SESSION_ENV_PATH" >&2; exit 1 ;;
+    esac
+    _resolved_env="${_resolved_env_line#TRUSTED_SOURCE=}"
+    if [ -f "$_resolved_env" ]; then
+      # shellcheck source=/dev/null
+      . "$_resolved_env"
+    fi
+    return 0
+  fi
+  if [ -f "$SESSION_ENV_PATH" ]; then
     # shellcheck source=/dev/null
     . "$SESSION_ENV_PATH"
   fi

@@ -1121,6 +1121,34 @@ def resolve_trusted_design_session_env_source(*, path: Path, claude_pid: str) ->
     return resolved if resolved.is_file() else None
 
 
+def resolve_trusted_design_env_main(argv: list[str]) -> int:
+    """Resolve a PID-keyed design session-env symlink to a trusted regular file.
+
+    Wraps :func:`resolve_trusted_design_session_env_source` for the design
+    wrappers, which dot-source the resolved target instead of the raw symlink so
+    a swapped link or replaced target cannot redirect what gets sourced.
+    Prints ``TRUSTED_SOURCE=<path>`` on success and exits non-zero when the link
+    is absent or fails the trusted-link validation.
+    """
+    parser = argparse.ArgumentParser(prog="session resolve-trusted-design-env", add_help=False)
+    parser.add_argument("--session-env-path", required=True)
+    parser.add_argument("--claude-pid", default="")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit:
+        return 2
+    if args.claude_pid and not re.match(r"^[1-9][0-9]{0,6}$", args.claude_pid):
+        _plain_err("Invalid --claude-pid: must be a positive integer of at most 7 decimal digits")
+        return 2
+    resolved = resolve_trusted_design_session_env_source(
+        path=Path(args.session_env_path), claude_pid=args.claude_pid
+    )
+    if resolved is None:
+        return 1
+    print(f"TRUSTED_SOURCE={resolved}")
+    return 0
+
+
 def write_design_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-design-env", add_help=False)
     for flag in ("output", "design-tmpdir", "session-id", "run-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "repo-root", "issue-number", "claude-pid", "claude-source-file", "live-mutation-ok"):
