@@ -63,24 +63,27 @@ codex/apply              │                                      ████�
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (2):
+Exec Issues (3):
   1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
   2. ship route: merge and CI watch skipped — needs user (reason: first-fixer-non-health; pending NEXT_ACTION=ci-fix)
-Warnings (2):
+  3. ship route: merge and CI watch skipped — needs user (reason: architectural-invariants-violation; pending NEXT_ACTION=ci-fix)
+Warnings (4):
   1. Step 7a.1 — 2 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: scripts/test-implement-structure.sh, scripts/test-implement-fence-shape.sh
   2. ci_fixer_adapter._upper_rows manually parses KEY=value wire files for session, launch, status, and result data instead of using an larch.io wire-file parser.
+  3. The new adapters reimplement env-wire parsing and publish unchecked carriage-return values, use cross-module wire literals inline, and fall back to ambient cwd for run identity.
+  4. `ci_fixer_adapter._upper_rows` manually parses KEY=value session, state, launch, result, and status wire files instead of using the larch.io wire-file parser.
 
 ## Architectural invariants
 
-No violations identified.
+Step 5 reuses completed bgjob result environments based only on status grammar; `step5_canonical_result_env_state` and `step5_resume_result_env_state` do not validate a HEAD SHA or input fingerprint against live inputs.
 
 ## Architectural guidelines
 
-ci_fixer_adapter._upper_rows manually parses KEY=value wire files for session, launch, status, and result data instead of using an larch.io wire-file parser.
+`ci_fixer_adapter._upper_rows` manually parses KEY=value session, state, launch, result, and status wire files instead of using the larch.io wire-file parser.
 
 ## /implement run 2B267A12-AF10-47EB-8F9C-FF188C5B625A: pr-created
 
-- **Outcome**: ✅ DONE
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-invariants-violation; pending: ci-fix)
 - **Duration**: 01:53:04
 - **Cost**: 💰 TOTAL ~$63.66: Claude $4.91, Codex-5.6 $35.94, Codex-mini $0.07, Cursor $14.34 (Composer $14.34, Grok $0.00), Claude (subprocess) $8.40  |  Tokens: 96581k
 - **Issue**: #7035: https://github.com/character-ai/larch/issues/7035
@@ -90,10 +93,10 @@ ci_fixer_adapter._upper_rows manually parses KEY=value wire files for session, l
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 17/20 accepted
-- **Lines (PR diff)**: code +2339/-2903, larch-logs +1338/-0
+- **Lines (PR diff)**: code +2357/-2920, larch-logs +1354/-0
 - **OOS filed**: 0
-- **Exec issues**: 2
-- **Warnings**: 2
+- **Exec issues**: 3
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/2B267A12-AF10-47EB-8F9C-FF188C5B625A/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
