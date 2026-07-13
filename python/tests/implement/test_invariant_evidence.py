@@ -79,6 +79,28 @@ def test_rejects_symlinked_route_handoff_without_partial_artifacts(tmp_path: Pat
     assert not (tmp_path / "architectural-invariants.md.identity.env").exists()
 
 
+def test_tolerates_lowercase_ledger_keys_in_route_handoff(tmp_path: Path) -> None:
+    argv = _args(tmp_path)
+    _ = (tmp_path / ".ship-route-exit-handoff.env").write_text(
+        "DETAIL=invariant failure\n"
+        "\n"
+        "ledger_ready=false\n"
+        "ledger_site=\n"
+        "ledger_trigger=\n"
+        "ledger_step=\n"
+        "ledger_phase=\n"
+        "ledger_dispatcher=\n"
+        "ledger_exit_code=\n"
+        "ledger_failure_detail_log=\n",
+        encoding="utf-8",
+    )
+    assert invariant_evidence.main(argv) == 0
+    body = (tmp_path / "architectural-invariants.md").read_text(encoding="utf-8")
+    assert "I-Test-1 was violated." in body
+    assert "invariant failure" in body
+    assert "ledger_" not in body
+
+
 def test_ignores_symlinked_legacy_identity_sidecar_temp(tmp_path: Path) -> None:
     argv = _args(tmp_path)
     outside = tmp_path.parent / "outside-identity.env"
