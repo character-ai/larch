@@ -95,6 +95,7 @@ def _adapt_parser() -> _MachineArgumentParser:
     _ = parser.add_argument("--session-env-path", default="")
     _ = parser.add_argument("--clear-on-fresh", default="")
     _ = parser.add_argument("--replace-completed-result", action="store_true")
+    _ = parser.add_argument("--input-fingerprint", default="")
     _ = parser.add_argument("command", nargs=argparse.REMAINDER)
     return parser
 
@@ -159,6 +160,7 @@ def adapt_main(argv: list[str] | None = None) -> int:
         options = adapt.AdaptOptions(
             clear_on_fresh=Path(args.clear_on_fresh) if args.clear_on_fresh else None,
             replace_completed_result=bool(args.replace_completed_result),
+            input_fingerprint=str(args.input_fingerprint),
         )
         return adapt.start_or_reattach(_build_spec(args), options=options)
     except adapt.AdaptError as exc:

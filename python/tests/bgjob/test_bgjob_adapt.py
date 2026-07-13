@@ -1294,3 +1294,106 @@ def test_merge_env_rows_are_published_after_child_writes(tmp_path: Path) -> None
     rows = larch_io.read_kvs(model.result_env_path(tmpdir=tmp_path, step=spec.step))
     assert rows["PRESEEDED"] == "yes"
     assert rows["CHILD_WRITTEN"] == "ok"
+
+
+def test_stale_completed_result_launches_fresh_when_fingerprint_mismatches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    fp_path = adapt._input_fp_path(spec=spec)
+    fp_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = fp_path.write_text("old-fingerprint\n", encoding="utf-8")
+    launched: list[int] = []
+
+    def counting_start(_spec: model.JobSpec) -> int:
+        launched.append(1)
+        return 0
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", counting_start)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="new-fingerprint"),
+    ) == 0
+    assert len(launched) == 1
+    assert not result.exists()  # stale result was invalidated before relaunch
+
+
+def test_completed_result_reattaches_when_fingerprint_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    fp_path = adapt._input_fp_path(spec=spec)
+    fp_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = fp_path.write_text("same-fingerprint\n", encoding="utf-8")
+
+    def fail_start(_spec: model.JobSpec) -> int:
+        pytest.fail("matched fingerprint must reattach without launch")
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", fail_start)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="same-fingerprint"),
+    ) == 0
+    assert "BGJOB_STATUS=DONE" in capsys.readouterr().out
+
+
+def test_completed_result_reattaches_when_no_fingerprint_stored_and_none_provided(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+
+    def fail_start(_spec: model.JobSpec) -> int:
+        pytest.fail("no fingerprint option must reattach without launch")
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", fail_start)
+    assert adapt.start_or_reattach(spec) == 0
+
+
+def test_completed_result_treats_missing_sidecar_as_stale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    launched: list[int] = []
+
+    def counting_start(_spec: model.JobSpec) -> int:
+        launched.append(1)
+        return 0
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", counting_start)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="any-fingerprint"),
+    ) == 0
+    assert len(launched) == 1
+
+
+def test_fresh_launch_writes_input_fingerprint_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _start_ok)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="abc123"),
+    ) == 0
+    fp_path = adapt._input_fp_path(spec=spec)
+    assert fp_path.is_file()
+    assert fp_path.read_text(encoding="utf-8").strip() == "abc123"

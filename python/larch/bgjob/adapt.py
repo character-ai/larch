@@ -51,6 +51,7 @@ class AdaptOptions:
 
     clear_on_fresh: Path | None = None
     replace_completed_result: bool = False
+    input_fingerprint: str = ""  # hex digest; if non-empty, stale on mismatch
 
 
 def _close_adapter_locks_after_fork() -> None:
@@ -418,6 +419,37 @@ def _invalidate_completed_result(*, spec: model.JobSpec) -> None:
         raise AdaptError("unsafe-path") from exc
 
 
+def _input_fp_path(*, spec: model.JobSpec) -> Path:
+    root = model.bgjob_dir(spec.tmpdir)
+    step = model.validate_slug(spec.step, label="step")
+    return root / f"{step}{config.BGJOB_INPUT_FP_SUFFIX}"
+
+
+def _read_stored_input_fp(*, spec: model.JobSpec) -> str:
+    """Return the stored input fingerprint, or '' if absent or unreadable."""
+    path = _input_fp_path(spec=spec)
+    root = model.bgjob_dir(spec.tmpdir)
+    try:
+        if not larch_io.trusted_file_present(path, root=root):
+            return ""
+        text = larch_io.read_trusted_text(path, root=root, errors="strict", reject_cr=True)
+        return text.strip()
+    except (OSError, UnicodeError, ValueError):
+        return ""
+
+
+def _write_input_fp(*, spec: model.JobSpec, fingerprint: str) -> None:
+    """Write the input fingerprint sidecar; non-fatal on failure."""
+    if not fingerprint:
+        return
+    try:
+        root = model.bgjob_dir(spec.tmpdir)
+        path = _input_fp_path(spec=spec)
+        larch_io.trusted_atomic_write(path=path, text=fingerprint + "\n", root=root, mode=0o600)
+    except (OSError, ValueError):
+        pass
+
+
 def _plugin_root_from_file(*, path: Path, key: str) -> str:
     if path.is_symlink() or (path.exists() and not path.is_file()):
         raise AdaptError("plugin-root-invalid")
@@ -486,6 +518,7 @@ def _start_fresh(spec: model.JobSpec, *, options: AdaptOptions) -> int:
     if rc != 0:
         _restore_cleared_path(spec=spec, path=cleared_path)
         raise AdaptError("daemon-start-failed")
+    _write_input_fp(spec=spec, fingerprint=options.input_fingerprint)
     return 0
 
 
@@ -554,11 +587,22 @@ def _replacement_registry_check(*, spec: model.JobSpec, snapshot: RegistrySnapsh
     _clear_verified_dead_registry(spec=spec, snapshot=snapshot)
 
 
+def _completed_is_stale(*, spec: model.JobSpec, options: AdaptOptions) -> bool:
+    """Return True when a provided input fingerprint does not match the stored one."""
+    if not options.input_fingerprint:
+        return False
+    return _read_stored_input_fp(spec=spec) != options.input_fingerprint
+
+
 def _decide_locked(spec: model.JobSpec, *, options: AdaptOptions) -> int:
     completed = _read_completed_result(spec=spec)
     if completed is not None and not options.replace_completed_result:
-        _emit_done(completed)
-        return 0
+        if _completed_is_stale(spec=spec, options=options):
+            _invalidate_completed_result(spec=spec)
+            completed = None
+        if completed is not None:
+            _emit_done(completed)
+            return 0
     snapshot = _snapshot_registry(spec=spec)
     if options.replace_completed_result:
         _replacement_registry_check(spec=spec, snapshot=snapshot)
