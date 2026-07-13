@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pytest
 
-from larch.core import config
 from larch.errors import ShipError
 from larch.git.gh import PullRequest
 from larch.implement import ship_recovery
@@ -44,100 +43,6 @@ def _merged_pr(number: int = 7049) -> PullRequest:
         "feat",
         "2026-07-12T00:00:00Z",
     )
-
-
-def test_waive_assessment_writes_run_bound_artifact(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    _session(tmp_path)
-
-    rc = ship_recovery.waive_assessment_main(
-        ["--implement-tmpdir", str(tmp_path), "--kinds", "guidelines,invariants"],
-    )
-
-    assert rc == 0
-    assert capsys.readouterr().out == "WAIVER_STATUS=ok\n"
-    artifact = json.loads(
-        (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).read_text(
-            encoding="utf-8"
-        )
-    )
-    assert artifact == {
-        "schema_version": "1",
-        "kinds": ["invariants", "guidelines"],
-        "run_id": "RUN-123",
-    }
-    assert ship_recovery.load_assessment_waiver(str(tmp_path)) == frozenset(
-        {"invariants", "guidelines"}
-    )
-    assert not tuple(
-        tmp_path.glob(f".{config.ASSESSMENT_OPERATOR_WAIVER_FILENAME}.*.tmp")
-    )
-
-
-@pytest.mark.parametrize(
-    "kinds", ["", "unknown", "invariants,invariants", " invariants"]
-)
-def test_waive_assessment_rejects_invalid_kinds(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-    kinds: str,
-) -> None:
-    _session(tmp_path)
-
-    rc = ship_recovery.waive_assessment_main(
-        ["--implement-tmpdir", str(tmp_path), "--kinds", kinds],
-    )
-
-    assert rc == 1
-    assert capsys.readouterr().out == "WAIVER_STATUS=failed\nERROR=invalid-kinds\n"
-    assert not (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).exists()
-
-
-def test_waiver_run_mismatch_is_ignored(tmp_path: Path) -> None:
-    _session(tmp_path)
-    (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).write_text(
-        '{"schema_version":"1","kinds":["invariants"],"run_id":"OTHER"}\n',
-        encoding="utf-8",
-    )
-
-    assert ship_recovery.load_assessment_waiver(str(tmp_path)) == frozenset()
-
-
-def test_waive_assessment_refuses_symlinked_artifact(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    _session(tmp_path)
-    target = tmp_path / "outside.json"
-    target.write_text("keep\n", encoding="utf-8")
-    (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).symlink_to(target)
-
-    rc = ship_recovery.waive_assessment_main(
-        ["--implement-tmpdir", str(tmp_path), "--kinds", "invariants"],
-    )
-
-    assert rc == 1
-    assert capsys.readouterr().out.startswith("WAIVER_STATUS=failed\nERROR=")
-    assert target.read_text(encoding="utf-8") == "keep\n"
-    assert ship_recovery.load_assessment_waiver(str(tmp_path)) == frozenset()
-
-
-def test_waive_assessment_requires_trusted_session_run_id(
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    (tmp_path / "session-env.sh").write_text(
-        "LARCH_RUN_ID=bad run id\n", encoding="utf-8"
-    )
-
-    rc = ship_recovery.waive_assessment_main(
-        ["--implement-tmpdir", str(tmp_path), "--kinds", "invariants"],
-    )
-
-    assert rc == 1
-    assert capsys.readouterr().out == "WAIVER_STATUS=failed\nERROR=invalid-run-id\n"
 
 
 def test_reconcile_manual_merge_clears_every_layer(
@@ -465,9 +370,6 @@ def test_bd267d84_operator_waiver_manual_merge_replay_writes_merged_final_summar
     manifest = _manifest(tmp_path)
     (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=RUN-123\n", encoding="utf-8")
     (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
-    assert ship_recovery.waive_assessment_main(
-        ["--implement-tmpdir", str(tmp_path), "--kinds", "invariants,guidelines"]
-    ) == 0
     monkeypatch.setattr(
         ship_recovery.gh, "pr_view", lambda *_args, **_kwargs: _merged_pr()
     )

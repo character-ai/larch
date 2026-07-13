@@ -19,7 +19,6 @@ from typing import cast
 from larch.issue import execution_issues
 from larch.issue import file_oos
 from larch.issue import oos_filer
-from larch.report import progress_file
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
@@ -27,8 +26,7 @@ from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from larch.git import git, gh, rebase
 from larch.implement import ship
-from larch.implement.architectural_assessment import normalize_kinds, validate_materialization
-from larch.implement.ship_guidelines import read_unavailable_outcome_detail
+from larch.implement.architectural_assessment import normalize_kinds
 from larch.implement import scope_disposition
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
@@ -56,8 +54,6 @@ SHIP_ROUTE_EXIT_STALLED = 4
 SHIP_ROUTE_EXIT_TRANSIENT = 6
 SHIP_ROUTE_TRANSIENT_STALL_RETRY = 4
 SHIP_ROUTE_DETAIL_FILE_MAX = 300
-ASSESSMENT_UNAVAILABLE_DETAIL_MAX = 500
-
 _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS = {
     config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
     config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
@@ -338,63 +334,6 @@ def _ship_route_safe_line(value: object) -> str:
 
 def _ship_route_detail_needs_file(detail: str) -> bool:
     return "\n" in detail or "\r" in detail or len(detail) > SHIP_ROUTE_DETAIL_FILE_MAX
-
-
-def _assessment_unavailable_kinds(payload: Mapping[str, object]) -> tuple[str, ...]:
-    if payload.get("needs_user_reason") != "architectural-assessment-unavailable":
-        return ()
-    raw_kinds = payload.get("detail")
-    if not isinstance(raw_kinds, str) or not raw_kinds or raw_kinds.strip() != raw_kinds:
-        return ()
-    try:
-        kinds = normalize_kinds(raw_kinds.split(","))
-    except ValueError:
-        return ()
-    return kinds if ",".join(kinds) == raw_kinds else ()
-
-
-def _current_unavailable_details(
-    *, implement_tmpdir: Path, repo_root: Path, kinds: tuple[str, ...]
-) -> list[tuple[str, str]]:
-    details: list[tuple[str, str]] = []
-    for kind in kinds:
-        try:
-            evidence = validate_materialization(kind=kind, repo_root=repo_root, implement_tmpdir=implement_tmpdir)
-        except (OSError, TypeError, ValueError):
-            continue
-        detail = read_unavailable_outcome_detail(
-            implement_tmpdir=str(implement_tmpdir), kind=kind, head_sha=evidence.head_sha, base_ref=evidence.base_ref
-        )
-        if detail:
-            details.append((kind, detail))
-    return details
-
-
-def _format_unavailable_details(*, details: list[tuple[str, str]], requested_count: int) -> str:
-    if not details:
-        return ""
-    unique_details = {detail for _, detail in details}
-    if (len(unique_details) == 1 and len(details) == requested_count) or (len(details) == 1 and requested_count == 1):
-        combined = details[0][1]
-    else:
-        combined = "; ".join(f"{kind}: {detail}" for kind, detail in details)
-    return _ship_route_safe_line(combined)[:ASSESSMENT_UNAVAILABLE_DETAIL_MAX]
-
-
-def _assessment_unavailable_handoff_detail(*, implement_tmpdir: Path, payload: Mapping[str, object]) -> str:
-    kinds = _assessment_unavailable_kinds(payload)
-    repo_root = progress_file.resolve_persisted_repo_root(tmpdir=implement_tmpdir)
-    if not kinds or repo_root is None:
-        return ""
-    details = _current_unavailable_details(implement_tmpdir=implement_tmpdir, repo_root=repo_root, kinds=kinds)
-    return _format_unavailable_details(details=details, requested_count=len(kinds))
-
-
-def _route_fields_with_unavailable_detail(
-    *, implement_tmpdir: Path, payload: Mapping[str, object], route_fields: Mapping[str, str]
-) -> dict[str, str]:
-    unavailable_detail = _assessment_unavailable_handoff_detail(implement_tmpdir=implement_tmpdir, payload=payload)
-    return {**route_fields, "ASSESSMENT_UNAVAILABLE_DETAIL": unavailable_detail} if unavailable_detail else dict(route_fields)
 
 
 def _write_ship_route_handoff(
@@ -871,9 +810,6 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
         payload=payload,
         exit_code=exit_code,
         action=action,
-    )
-    route_fields = _route_fields_with_unavailable_detail(
-        implement_tmpdir=implement_tmpdir, payload=payload, route_fields=route_fields
     )
     delay_seconds = 0
     if action == "transient":

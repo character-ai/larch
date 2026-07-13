@@ -1,15 +1,14 @@
-"""Tests for the Step 8 architectural assessment coordinator."""
+"""Tests for the Step 8 architectural assessment materialize/submit coordinator."""
 
 from __future__ import annotations
 
 import io
-import json
 import sys
 from pathlib import Path
 
 import pytest
 
-from larch.core import config, external_defaults
+from larch.core import config
 from larch.implement import architectural_assessment as assessment
 
 
@@ -25,6 +24,27 @@ def _evidence(kind: str = config.ASSESSMENT_KIND_GUIDELINES) -> assessment.Mater
         knowledge_sha256="c" * 64,
         identifiers=frozenset({"G-Py-4"} if kind == config.ASSESSMENT_KIND_GUIDELINES else {"I-Stale-1"}),
     )
+
+
+def _run_evidence(tmp_path: Path, kind: str = config.ASSESSMENT_KIND_GUIDELINES, *, docs_diff: bool = False) -> assessment.MaterializedEvidence:
+    diff = tmp_path / f"{kind}-diff.txt"
+    knowledge = tmp_path / f"{kind}-knowledge.md"
+    diff_text = "diff --git a/docs/a.md b/docs/a.md\n" if docs_diff else "diff --git a/python/a.py b/python/a.py\n"
+    _ = diff.write_text(diff_text, encoding="utf-8")
+    _ = knowledge.write_text("### G-Py-4: Fail loudly\n" if kind == "guidelines" else "### I-Stale-1: Reject stale inputs\n", encoding="utf-8")
+    base = _evidence(kind)
+    return assessment.MaterializedEvidence(
+        kind, base.head_sha, base.base_ref, diff, diff.read_text(encoding="utf-8"),
+        base.diff_fingerprint, knowledge, assessment._sha256(knowledge.read_text(encoding="utf-8")),  # pyright: ignore[reportPrivateUsage]
+        base.identifiers,
+    )
+
+
+def _stub_materialization(monkeypatch: pytest.MonkeyPatch, evidence_by_kind: dict[str, assessment.MaterializedEvidence]) -> None:
+    head_sha = next(iter(evidence_by_kind.values())).head_sha
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args, **_kwargs: head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_materialize_current", lambda kind, **_kwargs: evidence_by_kind[kind])  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
 
 
 def test_normalize_kinds_deduplicates_and_orders() -> None:
@@ -52,247 +72,158 @@ def test_deterministic_filter_is_conservative(diff_text: str, expected: bool) ->
     assert assessment.deterministic_out_of_scope(diff_text) is expected
 
 
-def test_parse_combined_results_orders_and_validates_identity() -> None:
-    invariant = _evidence(config.ASSESSMENT_KIND_INVARIANTS)
-    guideline = _evidence()
-    payload: dict[str, object] = {
-        "schema_version": "1",
-        "results": [
-            {
-                "kind": "guidelines",
-                "state": "deviation",
-                "assessment": "G-Py-4 applies.",
-                "identifiers": ["G-Py-4"],
-                "head_sha": guideline.head_sha,
-                "base_ref": guideline.base_ref,
-                "diff_fingerprint": guideline.diff_fingerprint,
-                "knowledge_sha256": guideline.knowledge_sha256,
-            },
-            {
-                "kind": "invariants",
-                "state": "clean",
-                "assessment": "No violations identified.",
-                "identifiers": [],
-                "head_sha": invariant.head_sha,
-                "base_ref": invariant.base_ref,
-                "diff_fingerprint": invariant.diff_fingerprint,
-                "knowledge_sha256": invariant.knowledge_sha256,
-            },
-        ],
-    }
-    parsed = assessment._parse_results(json.dumps(payload), [guideline, invariant])  # pyright: ignore[reportPrivateUsage]
-    assert [row.kind for row in parsed] == ["invariants", "guidelines"]
+def test_materialize_returns_pending_evidence_and_deterministic_status(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    inv = _run_evidence(tmp_path, config.ASSESSMENT_KIND_INVARIANTS)
+    guide = _run_evidence(tmp_path, docs_diff=True)
+    _stub_materialization(monkeypatch, {inv.kind: inv, guide.kind: guide})
+    cleaned: list[str] = []
 
+    def _fake_clean(evidence: assessment.MaterializedEvidence, *, repo_root: Path, implement_tmpdir: Path) -> None:
+        _ = (repo_root, implement_tmpdir)
+        cleaned.append(evidence.kind)
 
-def test_parse_results_rejects_extra_prose_and_unknown_identifier() -> None:
-    evidence = _evidence()
-    payload = {
-        "schema_version": "1",
-        "results": [{
-            "kind": "guidelines", "state": "clean", "assessment": "Clean.",
-            "identifiers": ["G-Unknown-1"], "head_sha": evidence.head_sha,
-            "base_ref": evidence.base_ref, "diff_fingerprint": evidence.diff_fingerprint,
-            "knowledge_sha256": evidence.knowledge_sha256,
-        }],
-    }
-    with pytest.raises(ValueError, match="exactly one JSON object"):
-        _ = assessment._parse_results(json.dumps(payload) + " trailing", [evidence])  # pyright: ignore[reportPrivateUsage]
-    with pytest.raises(ValueError, match="unknown architectural identifier"):
-        _ = assessment._parse_results(json.dumps(payload), [evidence])  # pyright: ignore[reportPrivateUsage]
-
-
-def test_parse_results_independently_preserves_valid_rows() -> None:
-    invariant = _evidence(config.ASSESSMENT_KIND_INVARIANTS)
-    guideline = _evidence()
-    payload: dict[str, object] = {  # type: ignore[reportUnknownVariableType]
-        "schema_version": "1",
-        "results": [
-            {
-                "kind": "invariants", "state": "clean", "assessment": "Clean.", "identifiers": [],
-                "head_sha": invariant.head_sha, "base_ref": invariant.base_ref,
-                "diff_fingerprint": invariant.diff_fingerprint, "knowledge_sha256": invariant.knowledge_sha256,
-            },
-            {
-                "kind": "guidelines", "state": "deviation", "assessment": "Missing identity.", "identifiers": [],
-                "head_sha": guideline.head_sha, "base_ref": guideline.base_ref,
-                "diff_fingerprint": "wrong", "knowledge_sha256": guideline.knowledge_sha256,
-            },
-        ],
-    }
-    parsed, invalid = assessment._parse_results_independently(json.dumps(payload), [invariant, guideline])  # pyright: ignore[reportPrivateUsage]
-    assert [result.kind for result in parsed] == ["invariants"]
-    assert set(invalid) == {"guidelines"}
-    assert "identity mismatch" in invalid["guidelines"]
-
-
-def test_parse_results_independently_discards_valid_row_after_malformed_duplicate() -> None:
-    evidence = _evidence()
-    valid = json.loads(_payload([evidence]))["results"][0]
-    malformed = dict(valid)
-    malformed["state"] = "deviation"
-    parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
-        json.dumps({"schema_version": "1", "results": [valid, malformed]}), [evidence]
+    monkeypatch.setattr(assessment, "_persist_clean", _fake_clean)
+    statuses, pending = assessment.materialize(
+        kinds=[config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES],
+        repo_root=tmp_path, implement_tmpdir=tmp_path,
     )
-    assert not parsed
-    assert set(invalid) == {"guidelines"}
+    assert pending == [inv]
+    assert statuses == {config.ASSESSMENT_KIND_GUIDELINES: "deterministic-clean"}
+    assert cleaned == [config.ASSESSMENT_KIND_GUIDELINES]
 
 
-def test_parse_results_independently_rejects_unknown_extra_row() -> None:
-    evidence = _evidence()
-    valid = json.loads(_payload([evidence]))["results"][0]
-    extra = dict(valid)
-    extra["kind"] = "unexpected"
-    parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
-        json.dumps({"schema_version": "1", "results": [valid, extra]}), [evidence]
+def test_materialize_main_emits_per_kind_paths_and_identity(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_materialization(monkeypatch, {evidence.kind: evidence})
+    assert assessment.materialize_main([
+        "--kind", "guidelines", "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
+    ]) == config.EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "ASSESSMENT_MATERIALIZE_STATUS=ok"
+    assert "ASSESSMENT_REQUESTED_KINDS=guidelines" in out
+    assert "ASSESSMENT_PENDING_KINDS=guidelines" in out
+    assert f"ASSESSMENT_KIND_GUIDELINES_DIFF_PATH={evidence.diff_path}" in out
+    assert f"ASSESSMENT_KIND_GUIDELINES_KNOWLEDGE_PATH={evidence.knowledge_path}" in out
+    assert f"ASSESSMENT_KIND_GUIDELINES_HEAD_SHA={evidence.head_sha}" in out
+    assert f"ASSESSMENT_KIND_GUIDELINES_DIFF_FINGERPRINT={evidence.diff_fingerprint}" in out
+
+
+def test_materialize_main_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
+    assert assessment.materialize_main([]) == config.EXIT_USAGE
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "ASSESSMENT_MATERIALIZE_STATUS=usage-error"
+
+
+def _stub_submit(monkeypatch: pytest.MonkeyPatch, evidence: assessment.MaterializedEvidence, *, head_sha: str | None = None) -> list[assessment.AssessmentResult]:
+    monkeypatch.setattr(assessment, "validate_materialization", lambda *_args, **_kwargs: evidence)
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args, **_kwargs: head_sha if head_sha is not None else evidence.head_sha)
+    persisted: list[assessment.AssessmentResult] = []
+    monkeypatch.setattr(assessment, "_persist_result", lambda result, **_kwargs: persisted.append(result))
+    return persisted
+
+
+def test_submit_persists_valid_note_and_emits_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    persisted = _stub_submit(monkeypatch, evidence)
+    result = assessment.submit(
+        kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note="No deviations identified.",
+        repo_root=tmp_path, implement_tmpdir=tmp_path,
     )
-    assert not parsed
-    assert set(invalid) == {"guidelines"}
+    assert result.kind == config.ASSESSMENT_KIND_GUIDELINES
+    assert result.state == "clean"
+    assert result.head_sha == evidence.head_sha
+    assert result.diff_fingerprint == evidence.diff_fingerprint
+    assert persisted
+    assert persisted[0].assessment == "No deviations identified."
 
 
-def test_strip_json_fence_unwraps_optional_markdown_fence() -> None:
-    payload = '{"schema_version": "1", "results": []}'
-    assert assessment._strip_json_fence(f"```json\n{payload}\n```") == payload  # pyright: ignore[reportPrivateUsage]
-    assert assessment._strip_json_fence(f"```\n{payload}\n```") == payload  # pyright: ignore[reportPrivateUsage]
-    assert assessment._strip_json_fence(f"```json\n{payload}\n```\ntrailing note") == payload  # pyright: ignore[reportPrivateUsage]
-    assert assessment._strip_json_fence(payload) == payload  # pyright: ignore[reportPrivateUsage]
-    assert assessment._strip_json_fence("prose, not a fence") == "prose, not a fence"  # pyright: ignore[reportPrivateUsage]
+def test_submit_rejects_head_drift_with_distinct_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_submit(monkeypatch, evidence, head_sha="z" * 40)
+    with pytest.raises(assessment._HeadDrift):  # pyright: ignore[reportPrivateUsage]
+        assessment.submit(
+            kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note="clean",
+            repo_root=tmp_path, implement_tmpdir=tmp_path,
+        )
 
 
-def test_parse_results_accepts_markdown_fenced_envelope() -> None:
-    invariant = _evidence(config.ASSESSMENT_KIND_INVARIANTS)
-    guideline = _evidence()
-    fenced = "```json\n" + _payload([invariant, guideline]) + "\n```"
-    parsed = assessment._parse_results(fenced, [guideline, invariant])  # pyright: ignore[reportPrivateUsage]
-    assert [row.kind for row in parsed] == ["invariants", "guidelines"]
+def test_submit_rejects_invalid_state_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    guide = _run_evidence(tmp_path)
+    _stub_submit(monkeypatch, guide)
+    with pytest.raises(ValueError, match="unsupported"):
+        assessment.submit(kind=config.ASSESSMENT_KIND_GUIDELINES, state="violation", note="x", repo_root=tmp_path, implement_tmpdir=tmp_path)
+    inv = _run_evidence(tmp_path, config.ASSESSMENT_KIND_INVARIANTS)
+    _stub_submit(monkeypatch, inv)
+    with pytest.raises(ValueError, match="unsupported"):
+        assessment.submit(kind=config.ASSESSMENT_KIND_INVARIANTS, state="deviation", note="x", repo_root=tmp_path, implement_tmpdir=tmp_path)
 
 
-def test_parse_results_independently_accepts_fenced_json_with_trailing_prose() -> None:
-    evidence = _evidence()
-    fenced = "```json\n" + _payload([evidence]) + "\n```\nThat completes the review."
-    parsed, invalid = assessment._parse_results_independently(fenced, [evidence])  # pyright: ignore[reportPrivateUsage]
-    assert [row.kind for row in parsed] == ["guidelines"]
-    assert not invalid
+@pytest.mark.parametrize("note", ["", "   ", "x" * (assessment._MAX_ASSESSMENT_CHARS + 1)])  # pyright: ignore[reportPrivateUsage]
+def test_submit_rejects_empty_or_oversized_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, note: str) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_submit(monkeypatch, evidence)
+    with pytest.raises(ValueError, match="empty or oversized"):
+        assessment.submit(kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=note, repo_root=tmp_path, implement_tmpdir=tmp_path)
 
 
-def test_parse_results_independently_rejects_unfenced_prose() -> None:
-    evidence = _evidence()
-    parsed, invalid = assessment._parse_results_independently(  # pyright: ignore[reportPrivateUsage]
-        "Here is my assessment: everything looks clean.", [evidence]
+def test_submit_redacts_note_before_persist(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    persisted = _stub_submit(monkeypatch, evidence)
+    token = "ghp_" + "x" * 30
+    assessment.submit(
+        kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=f"clean note {token}",
+        repo_root=tmp_path, implement_tmpdir=tmp_path,
     )
-    assert not parsed
-    assert set(invalid) == {"guidelines"}
+    assert persisted
+    assert token not in persisted[0].assessment
+    assert "<REDACTED-TOKEN>" in persisted[0].assessment
 
 
-def test_prompt_evidence_paths_must_stay_under_granted_root(tmp_path: Path) -> None:
-    evidence_dir = tmp_path / "evidence"
-    evidence_dir.mkdir()
-    valid = "contract\n\nREQUESTS_JSON=" + json.dumps([
-        {"diff_path": str(evidence_dir / "diff"), "knowledge_path": str(evidence_dir / "knowledge")}
+def test_submit_main_returns_head_drift_exit_code(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    note = tmp_path / "note.md"
+    _ = note.write_text("clean", encoding="utf-8")
+    _stub_submit(monkeypatch, evidence, head_sha="z" * 40)
+    rc = assessment.submit_main([
+        "--kind", "guidelines", "--state", "clean", "--note-file", str(note),
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
     ])
-    assessment._validate_prompt_evidence_paths(valid, evidence_dir=evidence_dir)  # pyright: ignore[reportPrivateUsage]
-    escaped = valid.replace(str(evidence_dir / "diff"), str(tmp_path / "outside"))
-    with pytest.raises(ValueError, match="outside"):
-        assessment._validate_prompt_evidence_paths(escaped, evidence_dir=evidence_dir)  # pyright: ignore[reportPrivateUsage]
+    assert rc == 10
+    assert "ASSESSMENT_STATUS=head-drift" in capsys.readouterr().out
 
 
-def test_shared_launcher_sidecars_fail_closed_when_missing_or_inconsistent(tmp_path: Path) -> None:
-    output = tmp_path / "result.txt"
-    _ = output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
-    _ = output.with_suffix(output.suffix + ".meta").write_text(
-        f"TOOL=codex\nOUTPUT_FILE={output}\n",
-        encoding="utf-8",
-    )
-    sidecar = output.with_suffix(output.suffix + ".sidecar")
-    _ = sidecar.write_text("status ok\n", encoding="utf-8")
-
-    assert assessment._shared_launcher_artifact_error(  # pyright: ignore[reportPrivateUsage]
-        output=output, tool="codex", launcher_exit=0
-    ) == ""
-    _ = output.with_suffix(output.suffix + ".done").write_text("7\n", encoding="utf-8")
-    assert "inconsistent" in assessment._shared_launcher_artifact_error(  # pyright: ignore[reportPrivateUsage]
-        output=output, tool="codex", launcher_exit=0
-    )
-    sidecar.unlink()
-    assert "omitted" in assessment._shared_launcher_artifact_error(  # pyright: ignore[reportPrivateUsage]
-        output=output, tool="codex", launcher_exit=0
-    )
+def test_submit_main_complete_stdout_contract(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    note = tmp_path / "note.md"
+    _ = note.write_text("No deviations identified.", encoding="utf-8")
+    _stub_submit(monkeypatch, evidence)
+    assert assessment.submit_main([
+        "--kind", "guidelines", "--state", "clean", "--note-file", str(note),
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
+    ]) == config.EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == "ASSESSMENT_STATUS=complete"
+    assert "ASSESSMENT_KIND=guidelines" in out
+    assert "ASSESSMENT_STATE=clean" in out
+    assert "ASSESSMENT_RESULTS=guidelines:clean" in out
 
 
-def test_lane_output_rejects_dangling_symlink_before_existence_check(tmp_path: Path) -> None:
-    output = tmp_path / "architectural-assessment-codex-result.json"
-    output.symlink_to(tmp_path / "outside")
-
-    with pytest.raises(OSError, match="unsafe stale codex result artifact"):
-        _ = assessment._lane_output_path(tool="codex", implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_atomic_assessment_sidecar_write_rejects_symlink(tmp_path: Path) -> None:
-    receipt = tmp_path / "architectural-assessment-unavailable-guidelines.json"
-    receipt.symlink_to(tmp_path / "outside")
-
-    with pytest.raises(OSError, match="regular file"):
-        assessment._write_json_atomic(receipt, {"schema_version": "1"})  # pyright: ignore[reportPrivateUsage]
-
-
-def test_shared_launcher_preflight_sidecar_surfaces_operator_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    output = tmp_path / "result.json"
-    reason = "codex auth setup failed"
-
-    def fake_run(_argv: list[str], **_kwargs: object) -> object:
-        _ = output.with_suffix(output.suffix + ".done").write_text("1\n", encoding="utf-8")
-        _ = output.with_suffix(output.suffix + ".meta").write_text(
-            f"TOOL=codex\nOUTPUT_FILE={output}\n", encoding="utf-8"
-        )
-        _ = output.with_suffix(output.suffix + ".sidecar").write_text(reason + "\n", encoding="utf-8")
-        _ = output.with_suffix(output.suffix + ".diag").write_text(
-            f"STATUS=FAILED\nFAILURE_REASON={reason}\n", encoding="utf-8"
-        )
-        return type("Completed", (), {"stdout": f"LAUNCHER_EXIT=1\nOUTPUT={output}\n", "stderr": "", "returncode": 0})()
-
-    monkeypatch.setattr(assessment.subprocess, "run", fake_run)
-    request = assessment.LaunchRequest(assessment._LANES["codex"], tmp_path, "prompt", tmp_path, output)  # pyright: ignore[reportPrivateUsage]
-    result = assessment.SharedReviewLauncher().launch(request)
-
-    detail = assessment._launch_failure_detail("codex", result, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert reason in detail
-    assert "omitted a required result sidecar" not in detail
-
-
-def test_main_usage_and_success_stdout_contract(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    assert assessment.main([]) == config.EXIT_USAGE
-    assert capsys.readouterr().out.splitlines() == [
-        "ARCHITECTURAL_ASSESSMENT_STATUS=usage-error",
-        "ARCHITECTURAL_ASSESSMENT_DETAIL=at least one --kind is required",
-    ]
-
-    monkeypatch.setattr(assessment, "run", lambda **_kwargs: ("guidelines:clean",))  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    assert assessment.main(["--kind", "guidelines", "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK
-    assert capsys.readouterr().out.splitlines() == [
-        "ARCHITECTURAL_ASSESSMENT_STATUS=ok",
-        "ARCHITECTURAL_ASSESSMENT_RESULTS=guidelines:clean",
-    ]
-
-
-def test_main_preserves_bounded_reauthor_reason(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
-    monkeypatch.setattr(
-        assessment,
-        "run",
-        lambda **_kwargs: ("guidelines:re-author-required:clean-outcome-prose-mismatch",),  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    )
-
-    assert assessment.main(["--kind", "guidelines", "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK
-    assert capsys.readouterr().out.splitlines() == [
-        "ARCHITECTURAL_ASSESSMENT_STATUS=re-author-required",
-        "ARCHITECTURAL_ASSESSMENT_RESULTS=guidelines:re-author-required:clean-outcome-prose-mismatch",
-    ]
+def test_submit_main_rejects_note_file_outside_tmpdir(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+    evidence = _run_evidence(tmp_path)
+    _stub_submit(monkeypatch, evidence)
+    outside = Path("/tmp/assessment-note-outside.md")
+    rc = assessment.submit_main([
+        "--kind", "guidelines", "--state", "clean", "--note-file", str(outside),
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == config.EXIT_USAGE
+    assert "ASSESSMENT_STATUS=usage-error" in capsys.readouterr().out
 
 
 def test_sanitize_detail_main_reads_stdin_and_emits_one_safe_line(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     token = "ghp_" + "x" * 30
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"first\n{tmp_path}\t{token}"))
-
-    rc = assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)])  # pyright: ignore[reportAttributeAccessIssue]
-
+    rc = assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)])
     output = capsys.readouterr().out
     assert rc == config.EXIT_OK
     assert output.count("\n") == 1
@@ -316,584 +247,9 @@ def test_sanitize_detail_main_caps_stdin_before_sanitizing(monkeypatch: pytest.M
 
     stdin = _Stdin()
     monkeypatch.setattr(sys, "stdin", stdin)
-
-    assert assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK  # pyright: ignore[reportAttributeAccessIssue]
-    assert stdin.buffer.size == assessment._MAX_SANITIZE_DETAIL_BYTES  # pyright: ignore[reportAttributeAccessIssue, reportPrivateUsage]
+    assert assessment.sanitize_detail_main(["--implement-tmpdir", str(tmp_path)]) == config.EXIT_OK
+    assert stdin.buffer.size == assessment._MAX_SANITIZE_DETAIL_BYTES  # pyright: ignore[reportPrivateUsage]
     assert capsys.readouterr().out == "bounded diagnostic\n"
-
-
-@pytest.mark.parametrize("kind", [config.ASSESSMENT_KIND_INVARIANTS, config.ASSESSMENT_KIND_GUIDELINES])
-def test_persist_unavailable_reuses_sanitized_detail_in_receipt_and_outcome(tmp_path: Path, kind: str) -> None:
-    token = "ghp_" + "x" * 30
-    diagnostic = f"launcher failed\n{tmp_path}\t{token} " + "z" * 600
-
-    assessment._persist_unavailable(  # pyright: ignore[reportPrivateUsage]
-        _evidence(kind), repo_root=tmp_path, implement_tmpdir=tmp_path, detail=diagnostic
-    )
-
-    receipt = json.loads((tmp_path / f"architectural-assessment-unavailable-{kind}.json").read_text(encoding="utf-8"))
-    outcome_name = (
-        assessment.architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR
-        if kind == config.ASSESSMENT_KIND_INVARIANTS
-        else assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
-    )
-    outcome = json.loads((tmp_path / outcome_name).read_text(encoding="utf-8"))
-    assert receipt["detail"] == outcome["detail"]
-    assert len(receipt["detail"]) == 500
-    assert "\n" not in receipt["detail"]
-    assert str(tmp_path) not in receipt["detail"]
-    assert token not in receipt["detail"]
-
-
-def test_launcher_uses_exact_read_only_argv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_run(argv: list[str], **kwargs: object) -> object:
-        captured["argv"] = argv
-        captured.update(kwargs)
-        return type("Completed", (), {"returncode": 0, "stdout": "{}", "stderr": ""})()
-
-    monkeypatch.setattr(assessment.subprocess, "run", fake_run)
-    request = assessment.LaunchRequest(
-        assessment.AssessmentLane("claude", "claude-sonnet-4-6"),
-        tmp_path,
-        "prompt",
-        tmp_path,
-        tmp_path / "result.json",
-    )
-    result = assessment.DirectClaudeLauncher().launch(request)
-    assert result.returncode == 0
-    assert captured["argv"] == [
-        "claude", "--print", "--model", "claude-sonnet-4-6", "--add-dir", str(tmp_path),
-        "--allowedTools", "Read", "--permission-mode", "plan",
-    ]
-    assert captured["cwd"] == request.evidence_dir
-    assert captured["input"] == "prompt"
-
-
-class _SequenceLauncher:
-    """Launcher stub returning a scripted result sequence, repeating the final entry."""
-
-    def __init__(self, results: list[assessment.LaunchResult]) -> None:
-        self._results = results
-        self.calls = 0
-        self.requests: list[assessment.LaunchRequest] = []
-
-    def launch(self, request: assessment.LaunchRequest) -> assessment.LaunchResult:
-        self.requests.append(request)
-        self.calls += 1
-        result = self._results[min(self.calls - 1, len(self._results) - 1)]
-        if request.lane.tool == "cursor" and result.dirty_tree_path is None:
-            dirty_path = request.output_path.with_suffix(request.output_path.suffix + ".dirty-tree")
-            _ = dirty_path.write_text("STATUS=clean\n", encoding="utf-8")
-            return assessment.LaunchResult(result.returncode, result.stdout, result.stderr, dirty_path)
-        return result
-
-
-def _payload(
-    evidences: list[assessment.MaterializedEvidence],
-    *,
-    states: dict[str, str] | None = None,
-    assessments: dict[str, str] | None = None,
-) -> str:
-    outcomes = states or {}
-    texts = assessments or {}
-    rows: list[dict[str, object]] = []
-    for evidence in evidences:
-        state = outcomes.get(evidence.kind, "clean")
-        default_text = "No violations identified." if state == "clean" else "An architectural requirement applies."
-        rows.append({
-            "kind": evidence.kind,
-            "state": state,
-            "assessment": texts.get(evidence.kind, default_text),
-            "identifiers": [] if state == "clean" else sorted(evidence.identifiers),
-            "head_sha": evidence.head_sha,
-            "base_ref": evidence.base_ref,
-            "diff_fingerprint": evidence.diff_fingerprint,
-            "knowledge_sha256": evidence.knowledge_sha256,
-        })
-    return json.dumps({"schema_version": "1", "results": rows})
-
-
-def _run_evidence(tmp_path: Path, kind: str = config.ASSESSMENT_KIND_GUIDELINES) -> assessment.MaterializedEvidence:
-    diff = tmp_path / f"{kind}-diff.txt"
-    knowledge = tmp_path / f"{kind}-knowledge.md"
-    _ = diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
-    _ = knowledge.write_text("### G-Py-4: Fail loudly\n" if kind == "guidelines" else "### I-Stale-1: Reject stale inputs\n", encoding="utf-8")
-    base = _evidence(kind)
-    return assessment.MaterializedEvidence(
-        kind, base.head_sha, base.base_ref, diff, diff.read_text(encoding="utf-8"),
-        base.diff_fingerprint, knowledge, assessment._sha256(knowledge.read_text(encoding="utf-8")),  # pyright: ignore[reportPrivateUsage]
-        base.identifiers,
-    )
-
-
-def _stub_materialization(monkeypatch: pytest.MonkeyPatch, evidence_by_kind: dict[str, assessment.MaterializedEvidence]) -> None:
-    monkeypatch.setattr(assessment, "_git_read", lambda *_args: next(iter(evidence_by_kind.values())).head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_materialize_current", lambda kind, **_kwargs: evidence_by_kind[kind])  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-
-
-def _ignore_persisted_result(
-    _result: assessment.AssessmentResult,
-    *,
-    repo_root: Path,
-    implement_tmpdir: Path,
-) -> None:
-    _ = (repo_root, implement_tmpdir)
-
-
-def test_waterfall_advances_once_per_lane_and_stops_after_valid_codex_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    persisted: list[str] = []
-    monkeypatch.setattr(assessment, "_persist_result", lambda result, **_kwargs: persisted.append(result.kind))  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    cursor = _SequenceLauncher([assessment.LaunchResult(0, "", "empty primary")])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
-    claude = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex, "claude": claude},
-        availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    assert result == ("guidelines:clean",)
-    assert (cursor.calls, codex.calls, claude.calls) == (1, 1, 0)
-
-
-def test_waterfall_retries_invalid_json_then_stops_on_valid_deviation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
-    cursor = _SequenceLauncher([assessment.LaunchResult(0, "not-json", "")])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], states={"guidelines": "deviation"}), "")])
-    claude = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex, "claude": claude},
-        availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    assert result == ("guidelines:deviation",)
-    assert (cursor.calls, codex.calls, claude.calls) == (1, 1, 0)
-
-
-def test_waterfall_accepts_markdown_fenced_clean_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
-    fenced = "```json\n" + _payload([evidence]) + "\n```"
-    cursor = _SequenceLauncher([assessment.LaunchResult(0, fenced, "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor},
-        availability={"cursor": True, "codex": False, "claude": False},
-    )
-
-    assert result == ("guidelines:clean",)
-    assert cursor.calls == 1
-
-
-def test_waterfall_persists_unavailable_when_all_lanes_are_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={}, availability={"cursor": False, "codex": False, "claude": False},
-    )
-
-    assert result == ("guidelines:unavailable",)
-
-
-def test_waterfall_attempts_each_available_lane_once_in_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
-    order: list[str] = []
-
-    class _OrderedLauncher:
-        def __init__(self, tool: str, result: assessment.LaunchResult) -> None:
-            self.tool = tool
-            self.result = result
-
-        def launch(self, request: assessment.LaunchRequest) -> assessment.LaunchResult:
-            order.append(request.lane.tool)
-            if self.tool == "cursor":
-                dirty = request.output_path.with_suffix(request.output_path.suffix + ".dirty-tree")
-                _ = dirty.write_text("STATUS=clean\n", encoding="utf-8")
-                return assessment.LaunchResult(self.result.returncode, self.result.stdout, self.result.stderr, dirty)
-            return self.result
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={
-            "cursor": _OrderedLauncher("cursor", assessment.LaunchResult(0, "", "cursor empty")),
-            "codex": _OrderedLauncher("codex", assessment.LaunchResult(9, "", "codex failed")),
-            "claude": _OrderedLauncher("claude", assessment.LaunchResult(0, _payload([evidence]), "")),
-        },
-        availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    assert result == ("guidelines:clean",)
-    assert order == ["cursor", "codex", "claude"]
-
-
-def _persist_rejecting_clean_prose_with_identifier(
-    result: assessment.AssessmentResult, *, repo_root: Path, implement_tmpdir: Path
-) -> None:
-    """Mirror the real validator: clean prose citing a G-*/I-* ID is a clean-mismatch."""
-    _ = (repo_root, implement_tmpdir)
-    if result.state == "clean" and ("G-" in result.assessment or "I-" in result.assessment):
-        raise assessment._ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_CLEAN_MISMATCH)  # pyright: ignore[reportPrivateUsage]
-
-
-def test_waterfall_retries_clean_outcome_prose_mismatch_then_succeeds(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
-    # First launch affirms clean but cites a G-* identifier (clean-mismatch); the
-    # retry drops the identifier and passes the validator.
-    cursor = _SequenceLauncher([
-        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
-        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "No deviations identified."}), ""),
-    ])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor}, availability={"cursor": True, "codex": False, "claude": False},
-    )
-
-    assert result == ("guidelines:clean",)
-    assert cursor.calls == 2
-    # The retry launch carried the tightened clean-prose constraint.
-    assert assessment._CLEAN_PROSE_CONSTRAINT in cursor.requests[-1].prompt  # pyright: ignore[reportPrivateUsage]
-    assert assessment._CLEAN_PROSE_CONSTRAINT not in cursor.requests[0].prompt  # pyright: ignore[reportPrivateUsage]
-
-
-def test_waterfall_caps_clean_outcome_retry_at_one_attempt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
-    # Cursor's fresh attempt and its one in-lane retry both cite a G-* identifier.
-    # After the retry fails the kind returns to the waterfall so Codex gets one
-    # fresh attempt (issue #7143); the retry itself stays capped at one per kind.
-    cursor = _SequenceLauncher([
-        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
-        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Still clean per G-Py-4."}), ""),
-    ])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Still clean per G-Py-4."}), "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex}, availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    # Codex's fresh attempt also mismatches; with no retry left the kind is terminal re-author-required.
-    assert result == ("guidelines:re-author-required:clean-outcome-prose-mismatch",)
-    # Cursor: one fresh attempt plus one capped retry. Codex: one fresh attempt, no retry.
-    assert (cursor.calls, codex.calls) == (2, 1)
-
-
-def test_waterfall_clean_mismatch_retry_re_mismatch_routes_kind_to_next_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
-    # Cursor mismatches and its retry also mismatches; the kind returns to the
-    # waterfall and Codex resolves it with clean, identifier-free prose (#7143).
-    cursor = _SequenceLauncher([
-        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
-        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Still clean per G-Py-4."}), ""),
-    ])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "No deviations identified."}), "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex}, availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    assert result == ("guidelines:clean",)
-    assert (cursor.calls, codex.calls) == (2, 1)
-
-
-def test_waterfall_clean_mismatch_retry_launch_failure_routes_kind_to_next_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _persist_rejecting_clean_prose_with_identifier)
-    # Cursor's fresh attempt mismatches; its in-lane retry launch fails outright
-    # (empty stdout). The kind must still return to the waterfall so Codex can
-    # resolve it, instead of stranding on the re-author-required terminal (#7143).
-    cursor = _SequenceLauncher([
-        assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "Clean; G-Py-4 is satisfied."}), ""),
-        assessment.LaunchResult(0, "", "cursor retry launch returned empty output"),
-    ])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence], assessments={"guidelines": "No deviations identified."}), "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex}, availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    assert result == ("guidelines:clean",)
-    assert (cursor.calls, codex.calls) == (2, 1)
-
-
-def test_waterfall_does_not_retry_non_clean_mismatch_reauthor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-
-    def persist(_result: assessment.AssessmentResult, *, repo_root: Path, implement_tmpdir: Path) -> None:
-        _ = (repo_root, implement_tmpdir)
-        raise assessment._ReauthorRequired(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)  # pyright: ignore[reportPrivateUsage]
-
-    monkeypatch.setattr(assessment, "_persist_result", persist)
-    cursor = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor}, availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    # A non-clean-mismatch reauthor reason is terminal: no retry, lane called once.
-    assert result == (f"guidelines:{assessment._reauthor_status(config.ASSESSMENT_REAUTHOR_REASON_INVALID_OUTCOME)}",)  # pyright: ignore[reportPrivateUsage]
-    assert cursor.calls == 1
-
-
-def test_recorded_binary_availability_outranks_path_drift(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    _ = (tmp_path / "session-env.sh").write_text(
-        "CURSOR_BINARY_FOUND=true\nCODEX_BINARY_FOUND=false\nCLAUDE_BINARY_FOUND=true\n",
-        encoding="utf-8",
-    )
-    for key in (config.ENV_CURSOR_BINARY_FOUND, config.ENV_CODEX_BINARY_FOUND, config.ENV_CLAUDE_BINARY_FOUND):
-        monkeypatch.delenv(key, raising=False)
-    def fake_which(binary: str) -> str | None:
-        return "/bin/tool" if binary == "codex" else None
-
-    monkeypatch.setattr(external_defaults.shutil, "which", fake_which)
-
-    assert assessment._lane_availability(tmp_path) == {  # pyright: ignore[reportPrivateUsage]
-        "cursor": True,
-        "codex": False,
-        "claude": True,
-    }
-
-    monkeypatch.setenv(config.ENV_CURSOR_BINARY_FOUND, "false")
-    assert assessment._lane_availability(tmp_path)["cursor"] is False  # pyright: ignore[reportPrivateUsage]
-
-
-@pytest.mark.parametrize("text", ["STATUS=dirty\n", "STATUS=unknown\n", "broken\n"])
-def test_cursor_dirty_tree_sidecar_must_be_trusted_clean(tmp_path: Path, text: str) -> None:
-    path = tmp_path / "cursor.dirty-tree"
-    _ = path.write_text(text, encoding="utf-8")
-    clean, _detail = assessment._cursor_dirty_tree_clean(path, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert clean is False
-
-
-def test_per_kind_success_removes_kind_from_later_prompt(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    invariant = _run_evidence(tmp_path, config.ASSESSMENT_KIND_INVARIANTS)
-    guideline = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {invariant.kind: invariant, guideline.kind: guideline})
-    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
-    cursor_payload = json.loads(_payload([invariant, guideline]))
-    cursor_payload["results"][1]["diff_fingerprint"] = "wrong"
-    cursor = _SequenceLauncher([assessment.LaunchResult(0, json.dumps(cursor_payload), "")])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([guideline]), "")])
-
-    result = assessment.run(
-        kinds=[invariant.kind, guideline.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex},
-        availability={"cursor": True, "codex": True, "claude": False},
-    )
-
-    assert result == ("invariants:clean", "guidelines:clean")
-    assert '"kind":"invariants"' not in codex.requests[0].prompt
-    assert '"kind":"guidelines"' in codex.requests[0].prompt
-
-
-def test_invalid_explicit_outcome_falls_through_to_next_lane(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
-    payload = json.loads(_payload([evidence]))
-    payload["results"][0]["state"] = "violation"
-    cursor = _SequenceLauncher([assessment.LaunchResult(0, json.dumps(payload), "")])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([evidence]), "")])
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex},
-        availability={"cursor": True, "codex": True, "claude": False},
-    )
-
-    assert result == ("guidelines:clean",)
-    assert (cursor.calls, codex.calls) == (1, 1)
-
-
-def test_full_exhaustion_persists_last_lane_diagnostic(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    launchers = {
-        "cursor": _SequenceLauncher([assessment.LaunchResult(1, "", "cursor diagnostic")]),
-        "codex": _SequenceLauncher([assessment.LaunchResult(2, "", "codex diagnostic")]),
-        "claude": _SequenceLauncher([assessment.LaunchResult(3, "", "final Claude diagnostic")]),
-    }
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers=launchers,
-        availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    outcome = json.loads(
-        (tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8")
-    )
-    assert result == ("guidelines:unavailable",)
-    assert outcome["detail"] == "final Claude diagnostic"
-
-
-def test_timeout_advances_through_each_lane_then_persists_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {evidence.kind: evidence})
-    launchers = {
-        "cursor": _SequenceLauncher([assessment.LaunchResult(config.EXIT_TIMEOUT, "", "Cursor timed out")]),
-        "codex": _SequenceLauncher([assessment.LaunchResult(config.EXIT_TIMEOUT, "", "Codex timed out")]),
-        "claude": _SequenceLauncher([assessment.LaunchResult(config.EXIT_TIMEOUT, "", "Claude timed out")]),
-    }
-
-    result = assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers=launchers,
-        availability={"cursor": True, "codex": True, "claude": True},
-    )
-
-    outcome = json.loads(
-        (tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8")
-    )
-    assert result == ("guidelines:unavailable",)
-    assert tuple(launcher.calls for launcher in launchers.values()) == (1, 1, 1)
-    assert outcome["detail"] == "Claude timed out"
-
-
-def test_invariant_violation_stops_waterfall_without_launching_later_lanes(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    invariant = _run_evidence(tmp_path, config.ASSESSMENT_KIND_INVARIANTS)
-    guideline = _run_evidence(tmp_path)
-    _stub_materialization(monkeypatch, {invariant.kind: invariant, guideline.kind: guideline})
-    monkeypatch.setattr(assessment, "_persist_result", _ignore_persisted_result)
-    payload = json.loads(_payload([invariant, guideline], states={"invariants": "violation"}))
-    payload["results"][1]["diff_fingerprint"] = "wrong"
-    cursor = _SequenceLauncher([assessment.LaunchResult(0, json.dumps(payload), "")])
-    codex = _SequenceLauncher([assessment.LaunchResult(0, _payload([guideline]), "")])
-
-    result = assessment.run(
-        kinds=[invariant.kind, guideline.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": cursor, "codex": codex},
-        availability={"cursor": True, "codex": True, "claude": False},
-    )
-
-    assert result == ("invariants:violation", "guidelines:unavailable")
-    assert (cursor.calls, codex.calls) == (1, 0)
-
-
-def test_head_drift_during_persistence_rematerializes_and_retries(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    evidence = _run_evidence(tmp_path)
-    preparations = 0
-    waterfall_calls = 0
-
-    def prepare(*_args: object, **_kwargs: object) -> tuple[dict[str, str], list[assessment.MaterializedEvidence]]:
-        nonlocal preparations
-        preparations += 1
-        return {}, [evidence]
-
-    def waterfall(*_args: object, **_kwargs: object) -> dict[str, str]:
-        nonlocal waterfall_calls
-        waterfall_calls += 1
-        if waterfall_calls == 1:
-            raise assessment._HeadDrift("post-CI-fix persistence changed HEAD")  # pyright: ignore[reportPrivateUsage]
-        return {evidence.kind: "clean"}
-
-    monkeypatch.setattr(assessment, "_prepare_pending", prepare)
-    monkeypatch.setattr(assessment, "_run_waterfall", waterfall)
-
-    assert assessment.run(
-        kinds=[evidence.kind], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={}, availability={},
-    ) == ("guidelines:clean",)
-    assert (preparations, waterfall_calls) == (2, 2)
-
-
-def test_run_persists_sanitized_stderr_after_empty_stdout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    diff = tmp_path / "diff.txt"
-    knowledge = tmp_path / "guidelines.md"
-    _ = diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
-    _ = knowledge.write_text("# G-Py-4\n", encoding="utf-8")
-    evidence = assessment.MaterializedEvidence(
-        kind=config.ASSESSMENT_KIND_GUIDELINES,
-        head_sha="a" * 40,
-        base_ref="origin/main",
-        diff_path=diff,
-        diff_text=diff.read_text(encoding="utf-8"),
-        diff_fingerprint="b" * 64,
-        knowledge_path=knowledge,
-        knowledge_sha256=assessment._sha256(knowledge.read_text(encoding="utf-8")),  # pyright: ignore[reportPrivateUsage]
-        identifiers=frozenset({"G-Py-4"}),
-    )
-    token = "ghp_" + "x" * 30
-    launcher = _SequenceLauncher([assessment.LaunchResult(0, "", f"auth failed {tmp_path} {token}")])
-    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-
-    assert assessment.run(
-        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": launcher}, availability={"cursor": True, "codex": False, "claude": False},
-    ) == ("guidelines:unavailable",)
-
-    outcome_path = tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
-    outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
-    assert launcher.calls == 1
-    assert outcome["detail"] == "auth failed <implement-tmpdir> <REDACTED-TOKEN>"
-
-
-def test_run_persists_sanitized_stderr_after_nonzero_launcher_exit(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    diff = tmp_path / "diff.txt"
-    knowledge = tmp_path / "guidelines.md"
-    _ = diff.write_text("diff --git a/python/a.py b/python/a.py\n", encoding="utf-8")
-    _ = knowledge.write_text("# G-Py-4\n", encoding="utf-8")
-    evidence = assessment.MaterializedEvidence(
-        kind=config.ASSESSMENT_KIND_GUIDELINES,
-        head_sha="a" * 40,
-        base_ref="origin/main",
-        diff_path=diff,
-        diff_text=diff.read_text(encoding="utf-8"),
-        diff_fingerprint="b" * 64,
-        knowledge_path=knowledge,
-        knowledge_sha256=assessment._sha256(knowledge.read_text(encoding="utf-8")),  # pyright: ignore[reportPrivateUsage]
-        identifiers=frozenset({"G-Py-4"}),
-    )
-    token = "ghp_" + "x" * 30
-    launcher = _SequenceLauncher([assessment.LaunchResult(1, "", f"launcher failed {tmp_path} {token}")])
-    monkeypatch.setattr(assessment, "_git_read", lambda *_args: evidence.head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_already_handled", lambda *_args, **_kwargs: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_discard_unavailable_coverage", lambda *_args, **_kwargs: None)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "_materialize_current", lambda *_args, **_kwargs: evidence)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-    monkeypatch.setattr(assessment, "deterministic_out_of_scope", lambda _diff: False)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
-
-    assert assessment.run(
-        kinds=[config.ASSESSMENT_KIND_GUIDELINES], repo_root=tmp_path, implement_tmpdir=tmp_path,
-        launchers={"cursor": launcher}, availability={"cursor": True, "codex": False, "claude": False},
-    ) == ("guidelines:unavailable",)
-
-    outcome_path = tmp_path / assessment.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
-    outcome = json.loads(outcome_path.read_text(encoding="utf-8"))
-    assert launcher.calls == 1
-    assert outcome["detail"] == "launcher failed <implement-tmpdir> <REDACTED-TOKEN>"
 
 
 def _true_kwargs(**_kwargs: object) -> bool:
@@ -933,44 +289,6 @@ def test_already_handled_accepts_valid_authored_note(monkeypatch: pytest.MonkeyP
         config.ASSESSMENT_KIND_INVARIANTS, repo_root=tmp_path, implement_tmpdir=tmp_path, head_sha="a" * 40
     )
     assert handled is True
-
-
-def test_discard_unavailable_coverage_invalidates_only_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    invalidated: list[Path] = []
-
-    def _fake_invalidate(tmpdir: Path) -> None:
-        invalidated.append(tmpdir)
-
-    def _meta(state: str) -> object:
-        def _read(_tmpdir: Path) -> dict[str, str]:
-            return {"NOTE_STATE": state}
-        return _read
-
-    monkeypatch.setattr(assessment.architectural_guidelines, "invalidate_invariant_implement_note", _fake_invalidate)
-
-    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _meta(config.NOTE_STATE_UNAVAILABLE))
-    assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_INVARIANTS, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert invalidated == [tmp_path]
-
-    invalidated.clear()
-    monkeypatch.setattr(assessment.architectural_guidelines, "invariant_durable_note_metadata", _meta(config.NOTE_STATE_AUTHORED))
-    assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_INVARIANTS, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert not invalidated
-
-
-def test_discard_unavailable_coverage_uses_guideline_invalidator(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    invalidated: list[Path] = []
-
-    def _fake_invalidate(tmpdir: Path) -> None:
-        invalidated.append(tmpdir)
-
-    def _unavailable_meta(_tmpdir: Path) -> dict[str, str]:
-        return {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE}
-
-    monkeypatch.setattr(assessment.architectural_guidelines, "durable_note_metadata", _unavailable_meta)
-    monkeypatch.setattr(assessment.architectural_guidelines, "invalidate_implement_note", _fake_invalidate)
-    assessment._discard_unavailable_coverage(config.ASSESSMENT_KIND_GUIDELINES, implement_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert invalidated == [tmp_path]
 
 
 def _repair_stubs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *, kind: str, state: str, invalidated: list[Path]) -> None:

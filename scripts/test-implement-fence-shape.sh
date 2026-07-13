@@ -34,7 +34,7 @@ CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
 LAUNCHER_PREFIX = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 EXPECTED_OLD = 2
-EXPECTED_NEW = 29
+EXPECTED_NEW = 30
 
 def old_logical_commands(body):
     commands = []
@@ -237,13 +237,12 @@ try:
     reship_start = skill_text.index('- **`reship`**:', assessments_start)
     assessments_slice = skill_text[assessments_start:reship_start]
     normalization = assessments_slice.index('python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"')
-    adapter = assessments_slice.index('skills/implement/scripts/step-8-assessment.sh')
-    validation = assessments_slice.index('After a normal return, require adapter exit success')
+    materialize = assessments_slice.index('python/cli.py architectural-assessment materialize')
+    assessor = assessments_slice.index('`larch:arch-assessor`')
+    submit = assessments_slice.index('python/cli.py architectural-assessment submit')
     relaunch = assessments_slice.index('return to the Step 8 ship launcher above exactly once')
-    if not (normalization < adapter < validation < relaunch):
-        errors.append('assessment branch must normalize, invoke one adapter, validate, then allow one Step 8 ship relaunch')
-    if assessments_slice.count('skills/implement/scripts/step-8-assessment.sh') != 1:
-        errors.append('assessment branch must contain exactly one step-8-assessment.sh launcher')
+    if not (normalization < materialize < assessor < submit < relaunch):
+        errors.append('assessment branch must normalize, materialize, spawn one arch-assessor subagent, submit, then allow one Step 8 ship relaunch')
     if assessments_slice.count('python/cli.py ship normalize-assessment-handoff --implement-tmpdir "$IMPLEMENT_TMPDIR"') != 1:
         errors.append('assessment branch must contain exactly one normalize-assessment-handoff launcher')
     if 'python/cli.py bgjob wait --step implement-step8-assessment' in assessments_slice:
@@ -252,7 +251,7 @@ try:
         if forbidden in assessments_slice:
             errors.append(f'assessment branch must not retain legacy prompt-side work: {forbidden}')
 except ValueError as exc:
-    errors.append(f'assessment branch must document adapter-first ordering: {exc}')
+    errors.append(f'assessment branch must document subagent-first ordering: {exc}')
 
 
 resume_text = Path('skills/implement/references/bootstrap-recovery.md').read_text()

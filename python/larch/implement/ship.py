@@ -47,7 +47,7 @@ import re
 import traceback
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -108,14 +108,12 @@ from larch.implement.ship_guidelines import (
     REASON_UNAVAILABLE,
     _pin_and_load_guidelines_note,
     _clear_ship_outcome_sidecar,
+    guideline_deviation_exception_present,
     load_or_prepare_guidelines_note,
     load_or_prepare_invariants_note,
-    mark_operator_waived_outcomes,
-    read_unavailable_outcome_detail,
     write_guideline_ship_outcome,
     write_invariant_ship_outcome,
 )
-from larch.implement.ship_recovery import load_assessment_waiver
 from larch.implement.ship_pr import (
     _postmerge_should_flush,
     _pr_title,
@@ -407,10 +405,6 @@ def _assessment_gate_before_pr(
     compose_base_ref = (
         f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
     )
-    unavailable_detail = read_unavailable_outcome_detail(
-        implement_tmpdir=pr_context.tmpdir, kind=kind.key,
-        head_sha=compose_head_sha, base_ref=compose_base_ref,
-    )
     _clear_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir, kind=kind)
     if kind.is_invariant:
         invariant_file = architectural_guidelines.read_invariants(repo_root=repo_root)
@@ -441,8 +435,6 @@ def _assessment_gate_before_pr(
             forked_target=pr_context.forked or pr_context.forked_target,
             compose_snapshot_factory=compose_snapshot_factory,
         )
-    if result.note_state == config.NOTE_STATE_UNAVAILABLE and unavailable_detail:
-        result = replace(result, detail=unavailable_detail)
     if result.needs_assessment:
         return result
     if kind.is_invariant and not compose_head_sha and not result.note:
@@ -589,45 +581,18 @@ def _combined_assessment_result(
             pr_number=pr_context.pr_number,
             pr_url=pr_context.pr_url,
         )
-    # A transient assessor failure leaves a durable `unavailable` note (a
-    # non-violation fallback per docs/run-logs.md). The ship gate no longer
-    # hard-stalls it; route to operator-bail so the operator decides whether it
-    # is safe to proceed instead of looping on futile reships to the attempt
-    # cap (issue #7022). The adapter already retried before declaring
-    # `unavailable`, so an automated reship is not a useful recovery here.
-    unavailable_kinds: list[str] = []
-    if gates.invariants.note_state == config.NOTE_STATE_UNAVAILABLE:
-        unavailable_kinds.append(config.ASSESSMENT_KIND_INVARIANTS)
-    if gates.guidelines.note_state == config.NOTE_STATE_UNAVAILABLE:
-        unavailable_kinds.append(config.ASSESSMENT_KIND_GUIDELINES)
-    waived = load_assessment_waiver(pr_context.tmpdir)
-    requested = frozenset(unavailable_kinds) & waived
-    if requested:
-        applied = mark_operator_waived_outcomes(
-            implement_tmpdir=pr_context.tmpdir,
-            kinds=requested,
-        )
-    else:
-        applied = frozenset[str]()
-    if applied:
-        ordered_applied = [
-            kind
-            for kind in (
-                config.ASSESSMENT_KIND_INVARIANTS,
-                config.ASSESSMENT_KIND_GUIDELINES,
-            )
-            if kind in applied
-        ]
-        _breadcrumb(
-            step="assessment-waiver",
-            detail=f"assessment waiver applied: {','.join(ordered_applied)}",
-        )
-        unavailable_kinds = [kind for kind in unavailable_kinds if kind not in applied]
-    if unavailable_kinds:
+    # A guideline deviation is accepted only when its durable note carries the
+    # documented-exception block recorded by the fix ladder. A bare deviation
+    # (ladder did not run or declined without recording) fails closed: the run
+    # must not proceed to PR (#7193 item 6).
+    if (
+        gates.guidelines.assessment_kind == config.ASSESSMENT_OUTCOME_DEVIATION
+        and not guideline_deviation_exception_present(gates.guidelines.note)
+    ):
         return ShipResult(
             Outcome.NEEDS_USER_INPUT,
-            needs_user_reason="architectural-assessment-unavailable",
-            detail=",".join(unavailable_kinds),
+            needs_user_reason="architectural-guideline-deviation-unresolved",
+            detail=gates.guidelines.note or gates.guidelines.detail,
             pr_number=pr_context.pr_number,
             pr_url=pr_context.pr_url,
         )
@@ -673,17 +638,6 @@ def _compose_assessment_gate_before_pr(
     )
     gates = _AssessmentGatePair(invariants=invariants_gate, guidelines=guidelines_gate)
     assessment_result = _combined_assessment_result(gates=gates, pr_context=pr_context)
-    # A waiver mutates the assessment sidecar after each gate's initial flush.
-    # Refresh it before PR creation so the committed audit artifact records the
-    # operator decision.
-    if assessment_result is None and load_assessment_waiver(pr_context.tmpdir):
-        _flush_guideline_outcome_before_pr(
-            runner=runner,
-            ctx=pr_context,
-            cwd=repo_root,
-            resume=resume,
-            require_invariant_match=True,
-        )
     return gates, assessment_result
 
 

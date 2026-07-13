@@ -390,11 +390,13 @@ def test_timing_record_vendor_task_accepts_checks_task_kinds(
 
 
 @pytest.mark.parametrize("task_kind", ["codex-architectural-assessment", "cursor-architectural-assessment"])
-def test_timing_record_vendor_task_accepts_architectural_assessment_task_kinds(
+def test_timing_record_vendor_task_rejects_retired_assessment_lane_kinds(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     task_kind: str,
 ) -> None:
+    # The per-lane architectural-assessment timing kinds retired with the vendor
+    # waterfall (#7193); the assessor subagent bills to the main Claude session.
     ledger = tmp_path / "timing-ledger.tsv"
     vendor = task_kind.split("-", 1)[0]
     timing.TimingLedger(ledger).record_vendor_task(
@@ -404,7 +406,7 @@ def test_timing_record_vendor_task_accepts_architectural_assessment_task_kinds(
         end_s=2,
         output=f"{vendor}-architectural-assessment.out",
     )
-    assert "unknown task-kind" not in capsys.readouterr().err
+    assert "unknown task-kind" in capsys.readouterr().err
 
 
 def test_timing_record_vendor_task_normalizes_status_aliases(tmp_path: Path) -> None:
