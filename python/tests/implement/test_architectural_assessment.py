@@ -220,6 +220,110 @@ def test_submit_main_rejects_note_file_outside_tmpdir(monkeypatch: pytest.Monkey
     assert "ASSESSMENT_STATUS=usage-error" in capsys.readouterr().out
 
 
+def test_submit_rejects_deviation_note_with_exception_block_on_first_submit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    evidence = _run_evidence(tmp_path)
+    _ = _stub_submit(monkeypatch, evidence)
+    note = (
+        "G-Py-4 applies; deferring the structured wrap.\n"
+        "Exception: pragmatic for this PR (author: main-agent, date: 2026-07-13)"
+    )
+    with pytest.raises(ValueError, match="documented-exception"):
+        _ = assessment.submit(
+            kind=config.ASSESSMENT_KIND_GUIDELINES, state="deviation", note=note,
+            repo_root=tmp_path, implement_tmpdir=tmp_path,
+        )
+
+
+def test_submit_persists_deviation_note_with_exception_block_on_ladder_resubmit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    evidence = _run_evidence(tmp_path)
+    persisted = _stub_submit(monkeypatch, evidence)
+    note = (
+        "G-Py-4 applies; deferring the structured wrap.\n"
+        "Exception: pragmatic for this PR (author: main-agent, date: 2026-07-13)"
+    )
+    result = assessment.submit(
+        kind=config.ASSESSMENT_KIND_GUIDELINES, state="deviation", note=note,
+        repo_root=tmp_path, implement_tmpdir=tmp_path, allow_exception=True,
+    )
+    assert result.kind == config.ASSESSMENT_KIND_GUIDELINES
+    assert result.state == "deviation"
+    assert persisted
+    assert persisted[0].assessment == note
+
+
+def test_submit_rejects_clean_note_with_exception_line_only_when_deviation(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    evidence = _run_evidence(tmp_path)
+    persisted = _stub_submit(monkeypatch, evidence)
+    # A `clean` guideline note carrying an `Exception:` line is out of scope for
+    # the deviation-only provenance gate; it persists normally.
+    note = "clean\nException: stray line (author: main-agent, date: 2026-07-13)"
+    result = assessment.submit(
+        kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=note,
+        repo_root=tmp_path, implement_tmpdir=tmp_path,
+    )
+    assert result.state == "clean"
+    assert persisted
+
+
+def test_submit_rejects_note_exceeding_cap_after_redaction(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    evidence = _run_evidence(tmp_path)
+    _ = _stub_submit(monkeypatch, evidence)
+
+    def _oversized_redaction(_text: str) -> str:
+        return "<REDACTED-TOKEN>" * (assessment._MAX_ASSESSMENT_CHARS + 1)  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setattr(assessment.redact, "redact_outbound", _oversized_redaction)
+    with pytest.raises(ValueError, match="after redaction"):
+        _ = assessment.submit(
+            kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note="clean note",
+            repo_root=tmp_path, implement_tmpdir=tmp_path,
+        )
+
+
+def test_submit_main_rejects_deviation_block_without_allow_exception_flag(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path,
+) -> None:
+    evidence = _run_evidence(tmp_path)
+    _ = _stub_submit(monkeypatch, evidence)
+    note = tmp_path / "note.md"
+    _ = note.write_text(
+        "G-Py-4 applies.\nException: pragmatic (author: main-agent, date: 2026-07-13)",
+        encoding="utf-8",
+    )
+    rc = assessment.submit_main([
+        "--kind", "guidelines", "--state", "deviation", "--note-file", str(note),
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
+    ])
+    assert rc == config.EXIT_INTERNAL_ERROR
+    assert "ASSESSMENT_STATUS=failed" in capsys.readouterr().out
+
+
+def test_submit_main_allow_exception_flag_permits_deviation_with_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    evidence = _run_evidence(tmp_path)
+    persisted = _stub_submit(monkeypatch, evidence)
+    note = tmp_path / "note.md"
+    _ = note.write_text(
+        "G-Py-4 applies.\nException: pragmatic (author: main-agent, date: 2026-07-13)",
+        encoding="utf-8",
+    )
+    assert assessment.submit_main([
+        "--kind", "guidelines", "--state", "deviation", "--note-file", str(note),
+        "--allow-exception",
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
+    ]) == config.EXIT_OK
+    assert persisted
+
+
 def test_sanitize_detail_main_reads_stdin_and_emits_one_safe_line(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     token = "ghp_" + "x" * 30
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"first\n{tmp_path}\t{token}"))

@@ -6539,6 +6539,72 @@ def test_combined_assessment_result_deviation_with_exception_block_proceeds(tmp_
     assert ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path)) is None
 
 
+def test_combined_assessment_result_unavailable_routes_to_assessment(tmp_path: Path) -> None:
+    # A legacy unavailable durable note at matching HEAD is routed by the compose
+    # read path to needs_assessment; the combined gate must send it back through
+    # the assessments route rather than letting an unassessed PR proceed (#7216).
+    gates = ship._AssessmentGatePair(
+        invariants=ship.InvariantsGateResult(),
+        guidelines=ship.GuidelinesGateResult(
+            guidelines_status="present",
+            needs_assessment=True,
+            note_state=config.NOTE_STATE_UNAVAILABLE,
+            detail="architectural-guidelines durable note is unavailable",
+            reason=config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED,
+        ),
+    )
+    result = ship._combined_assessment_result(gates=gates, pr_context=_ctx(tmp_path))
+    assert result is not None
+    assert result.needs_user_reason == config.NEEDS_USER_ARCHITECTURAL_ASSESSMENTS
+
+
+def test_load_or_prepare_guidelines_note_routes_legacy_unavailable_to_assessment(
+    tmp_path: Path,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    ship.architectural_guidelines.write_unavailable_note(
+        implement_tmpdir=tmpdir, head_sha="head-a", base_ref="origin/main",
+    )
+    result = ship_guidelines.load_or_prepare_guidelines_note(
+        implement_tmpdir=str(tmpdir), head_sha="head-a", base_ref="origin/main",
+    )
+    assert result.needs_assessment
+    assert not result.note
+
+
+@pytest.mark.parametrize(
+    ("note", "expected"),
+    [
+        # Ladder-authored block with rationale and a plausible date is accepted.
+        (
+            "Deviation noted.\n\nException: pragmatic for this PR (author: main-agent, date: 2026-07-13)",
+            True,
+        ),
+        # Single-character rationale still counts as non-empty.
+        ("Exception: x (author: main-agent, date: 2026-07-13)", True),
+        # Empty rationale is rejected.
+        ("Exception:  (author: main-agent, date: 2026-07-13)", False),
+        # Implausible calendar date (Feb 30) is rejected even with a valid format.
+        ("Exception: pragmatic (author: main-agent, date: 2026-02-30)", False),
+        # Out-of-range month is rejected by the format.
+        ("Exception: pragmatic (author: main-agent, date: 2026-13-01)", False),
+        # Out-of-range day is rejected by the format.
+        ("Exception: pragmatic (author: main-agent, date: 2026-07-32)", False),
+        # Wrong author is rejected.
+        ("Exception: pragmatic (author: subagent, date: 2026-07-13)", False),
+        # A blockquote excerpt line does not start with `Exception:`, so it cannot
+        # satisfy the gate on its own (quoted-excerpt hardening, #7216).
+        ("> Exception: pragmatic (author: main-agent, date: 2026-07-13)", False),
+        # A partial `Exception:` line without the author/date suffix is rejected.
+        ("Exception: see override policy elsewhere", False),
+        # Bare deviation with no exception block is rejected.
+        ("G-Py-4 applies; deferring the structured wrap.", False),
+    ],
+)
+def test_guideline_deviation_exception_present_property_cases(note: str, expected: bool) -> None:
+    assert ship_guidelines.guideline_deviation_exception_present(note) is expected
+
+
 @pytest.mark.parametrize(
     ("kind", "gate_result", "writer_name", "expected_flushes"),
     [

@@ -39,6 +39,12 @@ _DIFF_HEADER_RE: Final = re.compile(r"^diff --git a/(\S+) b/(\S+)$")
 _IDENTIFIER_RE: Final = re.compile(r"^#{1,6}\s+((?:I|G)-[A-Za-z0-9-]+-\d+):", re.MULTILINE)
 _COMMIT_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 _BASE_REF_RE: Final = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]*$")
+# A first-submission (assessor-authored) guideline deviation note must not
+# already carry a documented-exception block: only the fix-ladder decline
+# re-submission, which passes --allow-exception, may persist one. This blocks
+# untrusted guideline/reference content from clearing the gate with a forged
+# Exception: line (#7216).
+_EXCEPTION_LINE_RE: Final = re.compile(r"(?m)^\s*Exception:")
 # submit exits with this code only when HEAD moved between materialize and
 # submit. The orchestrator treats it as "re-materialize and spawn a fresh
 # assessor", bounded at two attempts per kind (issue #7193 item 5).
@@ -591,13 +597,14 @@ def materialize(
     return _prepare_pending(normalized, repo_root=root, implement_tmpdir=tmpdir)
 
 
-def submit(
+def submit(  # noqa: PLR0913 - allow_exception is the smallest sufficient provenance flag for the documented-exception gate (#7216)
     *,
     kind: str,
     state: str,
     note: str,
     repo_root: Path,
     implement_tmpdir: Path,
+    allow_exception: bool = False,
 ) -> AssessmentResult:
     """Revalidate identity fail-closed and persist one authored assessment note."""
     normalized = normalize_kinds([kind])
@@ -608,6 +615,16 @@ def submit(
         raise ValueError(f"unsupported {single} assessment state: {state}")
     if not note.strip() or len(note) > _MAX_ASSESSMENT_CHARS:
         raise ValueError("assessment note is empty or oversized")
+    if (
+        single == config.ASSESSMENT_KIND_GUIDELINES
+        and state == config.ASSESSMENT_OUTCOME_DEVIATION
+        and not allow_exception
+        and _EXCEPTION_LINE_RE.search(note) is not None
+    ):
+        raise ValueError(
+            "guideline deviation note carries a documented-exception block; "
+            "only the fix-ladder decline re-submission (--allow-exception) may persist it"
+        )
     root: Path = repo_root.resolve(strict=True)
     tmpdir: Path = implement_tmpdir.resolve(strict=True)
     if root.is_symlink() or tmpdir.is_symlink() or not root.is_dir() or not tmpdir.is_dir():
@@ -616,6 +633,8 @@ def submit(
     if _git_read(root, ["rev-parse", "HEAD"]) != evidence.head_sha:
         raise _HeadDrift("HEAD changed between architectural assessment materialize and submit")
     redacted_note = redact.redact_outbound(note)
+    if len(redacted_note) > _MAX_ASSESSMENT_CHARS:
+        raise ValueError("assessment note exceeds size cap after redaction")
     result = AssessmentResult(
         single, state, redacted_note, (), evidence.head_sha, evidence.base_ref,
         evidence.diff_fingerprint, evidence.knowledge_sha256,
@@ -674,6 +693,11 @@ def submit_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--kind", required=True)
     _ = parser.add_argument("--state", required=True)
     _ = parser.add_argument("--note-file", required=True)
+    _ = parser.add_argument(
+        "--allow-exception", action="store_true",
+        help="permit a deviation note carrying a documented-exception block "
+        "(fix-ladder decline re-submission only)",
+    )
     _ = parser.add_argument("--repo-root", default=os.environ.get(config.ENV_REPO, ""))
     _ = parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
@@ -697,6 +721,7 @@ def submit_main(argv: list[str] | None = None) -> int:
             note=note,
             repo_root=Path(args.repo_root),
             implement_tmpdir=implement_tmpdir,
+            allow_exception=args.allow_exception,
         )
     except _HeadDrift as exc:
         print("ASSESSMENT_STATUS=head-drift")
