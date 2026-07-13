@@ -8,9 +8,9 @@ from collections.abc import Sequence
 
 import pytest
 
-from larch.agents import agent_voters, agent_waterfall
+from larch.agents import _launch_failure, agent_voters, agent_waterfall
 from larch.core import config, proc
-from larch.review import dispatch_shared, plan_review_panel, voting
+from larch.review import _voting_calibration, dispatch_shared, plan_review_panel, voting
 
 
 def _result(argv: Sequence[str], returncode: int = 0, stdout: str = "") -> proc.CommandResult:
@@ -26,7 +26,7 @@ def test_model_resolution_normalizes_roles_and_preserves_defaults(monkeypatch: p
         flag = "--model" if tool == "cursor" else "-m"
         return SimpleNamespace(argv=(flag, default_model or f"{tool}-{codex_role}"))
 
-    monkeypatch.setattr(dispatch_shared, "resolve_model_args", fake_resolve)
+    monkeypatch.setattr(_launch_failure, "resolve_model_args", fake_resolve)
     assert dispatch_shared.resolved_model_for_row("cursor") == "cursor-default"
     for role in ("default", "review", "vote", "fix"):
         assert dispatch_shared.resolved_model_for_row("codex", role) == f"codex-{role}"
@@ -39,7 +39,7 @@ def test_model_resolution_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     def fail_resolve(*_args: object, **_kwargs: object) -> object:
         raise ValueError("bad role")
 
-    monkeypatch.setattr(dispatch_shared, "resolve_model_args", fail_resolve)
+    monkeypatch.setattr(_launch_failure, "resolve_model_args", fail_resolve)
     assert dispatch_shared.resolved_model_for_row("codex", "vote") == "unknown"
 
 
@@ -163,7 +163,7 @@ def test_calibration_snapshot_forwards_family_log_root_and_replaces_atomically(
         return _result(argv)
 
     monkeypatch.setenv(config.ENV_LARCH_VOTER_CALIBRATION_FEEDBACK, "1")
-    monkeypatch.setattr(dispatch_shared.voting, "_resolve_voter_calibration_log_root", resolve_root)
+    monkeypatch.setattr(_voting_calibration, "_resolve_voter_calibration_log_root", resolve_root)
     if family == "design":
         result = dispatch_shared.fresh_calibration_snapshot(
             work_dir=tmp_path,
@@ -194,7 +194,7 @@ def test_calibration_snapshot_failure_or_empty_cleans_temporary_file(
     def resolve_root(**_kwargs: Path | None) -> Path:
         return tmp_path / "logs"
 
-    monkeypatch.setattr(dispatch_shared.voting, "_resolve_voter_calibration_log_root", resolve_root)
+    monkeypatch.setattr(_voting_calibration, "_resolve_voter_calibration_log_root", resolve_root)
 
     def runner(argv: Sequence[str], **_kwargs: object) -> proc.CommandResult:
         _ = Path(argv[argv.index("--out") + 1]).write_text(write_text, encoding="utf-8")

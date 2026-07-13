@@ -11,9 +11,9 @@ from pathlib import Path
 from collections.abc import Callable, Mapping, Sequence
 from typing import Literal, Protocol, cast
 
-from larch.agents._launch_failure import resolve_model_args
+from larch.agents import _launch_failure
 from larch.core import config, external_defaults, logging_util
-from larch.review import voting
+from larch.review import _voting_calibration, voting
 
 VoterRowLayout = Literal["code_review_sequential", "plan_review_interleaved"]
 PathsFilePolicy = Literal["always", "nonempty"]
@@ -80,7 +80,14 @@ def _resolved_model_for_row(tool: str, model_role: str = "", default_model: str 
     """Resolve one manifest model using the canonical role normalization."""
     role = cast("Literal['default', 'review', 'vote', 'fix']", model_role if model_role in {"default", "review", "vote", "fix"} else "default")
     try:
-        argv = list(resolve_model_args(tool, with_effort=tool == "codex", default_model=default_model, codex_role=role).argv)
+        argv = list(
+            _launch_failure.resolve_model_args(
+                tool,
+                with_effort=tool == "codex",
+                default_model=default_model,
+                codex_role=role,
+            ).argv
+        )
     except (KeyError, ValueError):
         return "unknown"
     flag = "--model" if tool == "cursor" else "-m" if tool == "codex" else ""
@@ -143,7 +150,7 @@ def fresh_calibration_snapshot(  # noqa: PLR0913 - family-specific roots and inj
         os.close(fd)
         tmp_path = Path(tmp)
         tmp_path.unlink()
-        log_root = voting._resolve_voter_calibration_log_root(  # noqa: SLF001 - reuse voting internal calibration log-root resolver  # pyright: ignore[reportPrivateUsage]  # sibling-module private helper, no public resolver exists
+        log_root = _voting_calibration._resolve_voter_calibration_log_root(  # noqa: SLF001 - reuse voting internal calibration log-root resolver  # pyright: ignore[reportPrivateUsage]  # sibling-module private helper, no public resolver exists
             design_tmpdir=design_tmpdir,
             review_tmpdir=review_tmpdir,
         )
