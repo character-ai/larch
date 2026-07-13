@@ -66,24 +66,25 @@ Warnings (1):
 
 ## Architectural invariants
 
-No violations identified.
+No invariant violations identified.
 
 ## Architectural guidelines
 
-The new shared voter-status layout and paths-policy tokens are duplicated raw cross-module strings rather than config-owned constants, and new test-only pyright suppressions lack inline reasons.
+No guideline deviations identified.
 
-## /implement run D3637FD5-DF7F-4DF7-9E41-AF7ED6469419: shipping
+## /implement run D3637FD5-DF7F-4DF7-9E41-AF7ED6469419: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:32:15
-- **Cost**: 💰 TOTAL ~$36.84: Claude $9.17, Codex-5.6 $11.42, Codex-mini $0.02, Cursor $10.15 (Composer $10.15, Grok $0.00), Claude (subprocess) $6.08  |  Tokens: 59768k
+- **Cost**: 💰 TOTAL ~$38.43: Claude $10.14, Codex-5.6 $11.88, Codex-mini $0.02, Cursor $10.22 (Composer $10.22, Grok $0.00), Claude (subprocess) $6.17  |  Tokens: 63392k
 - **Issue**: #7114: https://github.com/character-ai/larch/issues/7114
+- **PR**: #7174: https://github.com/character-ai/larch/pull/7174
 - **Plan review**: N/A
 - **Plan coverage**: 6/6 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/5 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +739/-421, larch-logs +938/-0
 - **OOS filed**: 0
 - **Exec issues**: 5
 - **Warnings**: 1
