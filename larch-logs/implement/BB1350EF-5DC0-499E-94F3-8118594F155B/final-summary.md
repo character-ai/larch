@@ -77,18 +77,19 @@ No violations identified.
 
 No deviations identified.
 
-## /implement run BB1350EF-5DC0-499E-94F3-8118594F155B: shipping
+## /implement run BB1350EF-5DC0-499E-94F3-8118594F155B: pr-created
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:32:05
-- **Cost**: 💰 TOTAL ~$23.12: Claude $10.97, Codex-5.6 $5.98, Codex-mini $0.56, Cursor $5.19 (Composer $5.19, Grok $0.00), Claude (subprocess) $0.42  |  Tokens: 44133k
+- **Cost**: 💰 TOTAL ~$24.81: Claude $12.19, Codex-5.6 $6.34, Codex-mini $0.56, Cursor $5.23 (Composer $5.23, Grok $0.00), Claude (subprocess) $0.49  |  Tokens: 48235k
 - **Issue**: #7116: https://github.com/character-ai/larch/issues/7116
+- **PR**: #7173: https://github.com/character-ai/larch/pull/7173
 - **Plan review**: N/A
 - **Plan coverage**: 1/1 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 8/8 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +366/-118, larch-logs +1048/-0
 - **OOS filed**: 0
 - **Exec issues**: 6
 - **Warnings**: 1
