@@ -9,12 +9,15 @@ import contextlib
 import os
 import re
 import shutil
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from larch.core import config, logging_util, proc
 from larch.calibration import difficulty
 from larch.report import progress_file
+from larch.report.timing import resolve_timing_ledger_path
+from larch.review.dispatch_shared import record_reviewer_collect
 from larch.review.review_pipeline_shared import (
     ReviewCommands,
     ReviewCoreBranchContext,
@@ -837,6 +840,10 @@ def _review_core_body(
         dispatch_args.extend(["--competition-notice-file", str(competition)])
     _progress_note(tmpdir=progress_tmpdir, step="5", text=f"round {round_num}: reviewer panel dispatch running")
     dispatch_result = _call_maybe_override(command=commands.dispatch, review_name="dispatch-panel", args=dispatch_args)
+    # dispatch-panel returns once the last reviewer's model call finishes, so this stamp opens the
+    # reviewers-to-aggregator window: the collection, threshold, and nit-prune work below runs here,
+    # before the aggregator model call records its own start_s (issue #7179).
+    collect_start = time.time()
     dispatch_out = review_tmpdir / "review-core-dispatch.env"
     _write_text(path=dispatch_out, text=dispatch_result.stdout)
     if dispatch_result.returncode != 0:
@@ -1038,6 +1045,17 @@ def _review_core_body(
     if _get(parsed=parsed, key="--plan-file"):
         aggregate_args.extend(["--plan-file", _get(parsed=parsed, key="--plan-file")])
     _progress_note(tmpdir=progress_tmpdir, step="5", text=f"round {round_num}: aggregating reviewer findings")
+    # The reviewers-to-aggregator window closes here, just before the aggregator model call starts.
+    # Record it against the same ledger the reviewers and aggregator use so the Gantt shows the
+    # collection work as a labeled bar instead of a blank gap (issue #7179). Reached only on the
+    # aggregating path; the earlier zero-findings and threshold returns never open a gap to fill.
+    record_reviewer_collect(
+        ledger=resolve_timing_ledger_path(),
+        skill=os.environ.get("LARCH_TIMING_SKILL", "implement"),
+        collect_start=collect_start,
+        collect_end=time.time(),
+        round_num=round_num,
+    )
     aggregate_result = _run_command_string(command=commands.aggregate, args=aggregate_args) if commands.aggregate else _call_maybe_override(command="", review_name="aggregate-findings", args=aggregate_args)
     aggregate_out = review_tmpdir / "review-core-aggregate.env"
     _write_text(path=aggregate_out, text=aggregate_result.stdout)

@@ -661,6 +661,92 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
     assert values["INVALID_SLOT_PANEL_WARNING"] == "panel degraded"
 
 
+def test_execute_round_records_reviewer_collect_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Issue #7179: the /design plan-review round records the reviewers-to-aggregator window as a
+    # reviewer-collect vendor row in the design timing ledger, so the /design Gantt shows the
+    # collection work as a labeled bar instead of a blank gap before the aggregator bar.
+    design = tmp_path
+    plan = design / "plan.txt"
+    feature = design / "feature-description.txt"
+    _ = plan.write_text("plan\n", encoding="utf-8")
+    _ = feature.write_text("feature\n", encoding="utf-8")
+    ledger = design / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")  # reviewers create this in prod; pre-create to pass the is_file gate
+    paths = design / "panel-paths.txt"
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    sidecar = design / "cursor-plan-arch.sidecar.tsv"
+    _write_sidecar(
+        sidecar,
+        [
+            {
+                "scope": "in_scope",
+                "severity": "major",
+                "focus_area": "correctness",
+                "location": "python/x.py:1",
+                "what": "Real finding",
+                "scenario_or_breakage": "breaks the plan",
+                "suggested_fix": "fix it",
+            }
+        ],
+    )
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        _ = env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            _ = paths.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            _ = (design / "plan-review-slots.ndjson").write_text(
+                f'{{"slot":"cursor-plan-arch","output":"{reviewer_file}"}}\n',
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths}\n", "")
+        if argv[:2] == ["agent", "collect-results"]:
+            record = collect_results.CollectorRecord(
+                reviewer_file=str(reviewer_file),
+                tool="cursor",
+                status="OK",
+                exit_code="0",
+                structured_sidecar=str(sidecar),
+            )
+            return subprocess.CompletedProcess(argv, 0, _collector_text([record]), "")
+        if argv[:2] == ["review", "aggregate-findings"]:
+            _ = (design / "ballot.txt").write_text("### FINDING_1:\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return _prune_nit_findings_fake(argv)
+        if argv[:2] == ["plan-review", "voter-dispatch"]:
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"DISPATCH_OK=true\nVOTER_1_PATH={design / 'codex-validity-vote-output.txt'}\nVOTER_1_TOOL=codex-validity\nVOTER_1_STATUS=launched\n",
+                "",
+            )
+        if argv[:2] == ["plan-review", "tally"]:
+            _ = (design / "accepted-plan-findings.md").write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "TALLY_PLAN_REVIEW_STATUS=ok\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    rc, _values = plan_review_round.execute_round(
+        design=design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="true",
+        cursor_present="true",
+        plan_file=plan,
+        feature_file=feature,
+    )
+
+    assert rc == 0
+    collect_row = next(line for line in ledger.read_text(encoding="utf-8").splitlines() if "reviewer-collect" in line).split("\t")
+    assert collect_row[3] == "design"
+    assert collect_row[5:7] == ["claude", "reviewer-collect"]
+    assert collect_row[10] == "reviewer-collect-round-1.out"
+
+
 def test_parse_collector_records_keyvalue_anchored() -> None:
     """parse_collector_records reads KEY=VALUE blocks by key and ignores leading diagnostics."""
     rec_a = collect_results.CollectorRecord(

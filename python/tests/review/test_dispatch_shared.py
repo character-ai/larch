@@ -266,6 +266,31 @@ def test_record_voter_dispatch_prep_skips_when_ledger_missing(tmp_path: Path) ->
     )
 
 
+def test_record_reviewer_collect_appends_row_to_existing_ledger(tmp_path: Path) -> None:
+    # Issue #7179: the reviewers-to-aggregator window lands as a claude/reviewer-collect vendor row.
+    ledger = tmp_path / "timing-ledger.tsv"
+    _ = ledger.write_text("", encoding="utf-8")
+    dispatch_shared.record_reviewer_collect(
+        ledger=ledger, skill="implement", collect_start=164, collect_end=348, round_num=2
+    )
+    row = ledger.read_text(encoding="utf-8").strip().split("\t")
+    assert row[0:2] == ["v1", "vendor"]
+    assert row[5:11] == ["claude", "reviewer-collect", "164", "348", "184", "reviewer-collect-round-2.out"]
+
+
+def test_record_reviewer_collect_skips_when_ledger_missing(tmp_path: Path) -> None:
+    # A diagnostic row must never create a stray ledger when the real ledger is absent
+    # (e.g. a bare /review with no timing ledger), and a None ledger is a silent no-op.
+    absent = tmp_path / "timing-ledger.tsv"
+    dispatch_shared.record_reviewer_collect(
+        ledger=absent, skill="implement", collect_start=1, collect_end=2, round_num=1
+    )
+    assert not absent.exists()
+    dispatch_shared.record_reviewer_collect(
+        ledger=None, skill="design", collect_start=1, collect_end=2, round_num=1
+    )
+
+
 def test_final_emitter_uses_logging_and_code_review_order(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     emitted: list[tuple[str, str]] = []
 

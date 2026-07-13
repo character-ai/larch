@@ -550,6 +550,8 @@ def test_progress_label_fallbacks_and_manifest_precedence(tmp_path: Path) -> Non
     # Issue #7166: the synthetic voter pre-dispatch row keeps its label from the task kind
     # regardless of the neutral claude vendor stamped on the row.
     assert progress_report._derive_progress_label(output="voter-dispatch-prep-round-1.out", vendor="claude", kind="voter-dispatch-prep") == "voter-dispatch-prep"
+    # Issue #7179: the synthetic reviewer-collect row likewise labels from the task kind.
+    assert progress_report._derive_progress_label(output="reviewer-collect-round-1.out", vendor="claude", kind="reviewer-collect") == "reviewer-collect"
 
     output = tmp_path / "codex-output.txt"
     manifest = tmp_path / "panel-manifest.ndjson"
@@ -1523,6 +1525,28 @@ def test_render_phase_detail_gantt_labels_voter_dispatch_prep(tmp_path: Path) ->
     assert "codex/validity-vote" in rendered
     prep_line = next(line for line in rendered.splitlines() if "voter-dispatch-prep" in line)
     assert "█" in prep_line
+
+
+def test_render_phase_detail_gantt_labels_reviewer_collect(tmp_path: Path) -> None:
+    # Issue #7179: the reviewers-to-aggregator window is recorded as a reviewer-collect vendor
+    # row so the Gantt fills the band between the reviewer bars and the aggregator bar instead
+    # of leaving it blank. Reviewers finish at 160, aggregator starts at 260, and the
+    # reviewer-collect bar fills the [160, 260] gap that would otherwise be empty.
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=320)
+    _write_vendor_timing(timing, "codex-correctness-output.txt", 100, 160, vendor="codex", kind="codex-review")
+    _write_vendor_timing(timing, "reviewer-collect-round-1.out", 160, 260, vendor="claude", kind="reviewer-collect")
+    _write_vendor_timing(timing, "aggregator-output.txt", 260, 300, vendor="claude", kind="claude-phase3-aggregator")
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
+
+    assert "### Round 1 reviewer timing" in rendered
+    assert "reviewer-collect" in rendered
+    assert "aggregator" in rendered
+    collect_line = next(line for line in rendered.splitlines() if "reviewer-collect" in line)
+    assert "█" in collect_line
 
 
 def test_render_phase_detail_splits_gantt_per_attempt(tmp_path: Path) -> None:

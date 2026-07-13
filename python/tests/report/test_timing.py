@@ -62,6 +62,23 @@ def test_timing_vendor_task_accepts_voter_dispatch_prep(tmp_path: Path, capsys: 
     assert row[5:11] == ["claude", "voter-dispatch-prep", "40", "207", "167", "voter-dispatch-prep-round-2.out"]
 
 
+def test_timing_vendor_task_accepts_reviewer_collect(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # Issue #7179: the reviewers-to-aggregator collection phase is recorded as its own vendor row
+    # so the Gantt shows it instead of a blank gap between the reviewers and the aggregator.
+    ledger = tmp_path / "timing-ledger.tsv"
+    timing.TimingLedger(ledger, skill="implement").record_vendor_task(
+        vendor="claude",
+        task_kind="reviewer-collect",
+        start_s=164,
+        end_s=348,
+        output="reviewer-collect-round-2.out",
+    )
+    assert "unknown task-kind" not in capsys.readouterr().err
+    row = ledger.read_text(encoding="utf-8").strip().split("\t")
+    assert row[0:2] == ["v1", "vendor"]
+    assert row[5:11] == ["claude", "reviewer-collect", "164", "348", "184", "reviewer-collect-round-2.out"]
+
+
 def test_timing_report_design_omits_workflow_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text(
