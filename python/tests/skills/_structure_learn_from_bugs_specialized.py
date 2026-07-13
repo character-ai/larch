@@ -190,6 +190,8 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(Q.2) publication must validate ANALYSIS_ROOT as a repository checkout")
     if 'git -C "$ANALYSIS_ROOT" remote get-url origin' not in text:
         failures.append("(Q.3) publication must validate the origin remote")
+    if "learn-from-bugs verify-origin" not in text:
+        failures.append("(Q.3a) publication must mechanically verify origin identifies $REPO")
     if 'gh repo view "$REPO" --json defaultBranchRef --jq \'.defaultBranchRef.name\'' not in text:
         failures.append("(Q.4) publication must resolve the repository default branch")
     if '"+refs/heads/$DEFAULT_BRANCH:refs/remotes/origin/$DEFAULT_BRANCH"' not in text:

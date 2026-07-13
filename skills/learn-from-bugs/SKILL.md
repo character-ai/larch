@@ -120,10 +120,11 @@ CHECK_OUT=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs check-
   --root "$ANALYSIS_ROOT" \
   --repo "$REPO" \
   --proposals-out "$RUN_DIR/checked-proposals.jsonl" \
-  --adoption-out "$RUN_DIR/adoption-summary.md") || CHECK_RC=$?
+  --adoption-out "$RUN_DIR/adoption-summary.md" \
+  --base-proposals-out "$RUN_DIR/base-proposals.jsonl") || CHECK_RC=$?
 ```
 
-Stop if `CHECK_RC` is non-zero. Parse only these whole-line records from `CHECK_OUT`: `PROPOSALS_COUNT`, `PROPOSALS_ADOPTED`, `PROPOSALS_PENDING`, `PROPOSALS_ORPHANED`, `CHECKED_PROPOSALS_PATH`, and `ADOPTION_SUMMARY_PATH`. Require both artifact paths to be present and readable, then retain them for Step 4. Do not infer a status after a failed or malformed repository or GitHub check. Filed-issue state takes precedence over repository-target evidence.
+Stop if `CHECK_RC` is non-zero. Parse only these whole-line records from `CHECK_OUT`: `PROPOSALS_COUNT`, `PROPOSALS_ADOPTED`, `PROPOSALS_PENDING`, `PROPOSALS_ORPHANED`, `CHECKED_PROPOSALS_PATH`, `ADOPTION_SUMMARY_PATH`, and `BASE_PROPOSALS_PATH`. Require both artifact paths to be present and readable, then retain them for Step 4. `BASE_PROPOSALS_PATH` records the pre-refresh scan-start proposals at `$RUN_DIR/base-proposals.jsonl`; the state-publication fence feeds it back to `write-state` so a three-way merge keeps this run's refreshed statuses without clobbering concurrent publications. Do not infer a status after a failed or malformed repository or GitHub check. Filed-issue state takes precedence over repository-target evidence.
 
 <!-- step:3 - Read and cluster -->
 ## Step 3 - Read and cluster
@@ -176,7 +177,7 @@ Abort on non-zero exit. On success, print the report to the operator and the `RU
 
 ### Shared state-publication fragment
 
-Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote.
+Use this one fragment for all three marker-producing paths: default mode after Step 4 reconciliation, filing mode with no new proposals, and filing mode after a successful `/issue` create pass. Use the already captured `RUN_DATE` and the Step 2 `SCAN_STARTED_AT`; do not recapture either boundary. `ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote whose slug identifies `$REPO`; the fence verifies this mechanically before creating any branch.
 
 This is a shared definition, not an immediate Step 4 action: first branch on `FILE_MODE` below. Default mode runs it before Step 5; filing mode runs it only after the no-residual or successful-create path has finished. Do not publish before that mode-specific work completes.
 
@@ -202,6 +203,11 @@ if [ "$(git -C "$ANALYSIS_ROOT" rev-parse --is-inside-work-tree 2>/dev/null)" !=
 fi
 if ! git -C "$ANALYSIS_ROOT" remote get-url origin >/dev/null 2>&1; then
   printf '%s\n' "State publication requires the origin remote." >&2
+  exit 2
+fi
+if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs verify-origin \
+  --root "$ANALYSIS_ROOT" --repo "$REPO" >/dev/null; then
+  printf '%s\n' "State publication requires the ANALYSIS_ROOT origin to identify $REPO." >&2
   exit 2
 fi
 
@@ -282,7 +288,8 @@ set +e
     --highest-closed-issue-number-scanned "$HIGHEST_CLOSED_ISSUE_NUMBER_SCANNED" \
     --run-date "$RUN_DATE" \
     --scan-started-at "$SCAN_STARTED_AT" \
-    --proposals-file "$RECONCILED_PROPOSALS_PATH" >"$STATE_OUT_PATH" || exit 2
+    --proposals-file "$RECONCILED_PROPOSALS_PATH" \
+    --base-proposals-file "$RUN_DIR/base-proposals.jsonl" >"$STATE_OUT_PATH" || exit 2
   STATE_RELPATH_COUNT=$(sed -n 's/^STATE_RELPATH=//p' "$STATE_OUT_PATH" | wc -l | tr -d ' ')
   STATE_RELPATH=$(sed -n 's/^STATE_RELPATH=//p' "$STATE_OUT_PATH")
   if [ "$STATE_RELPATH_COUNT" -ne 1 ] || [ -z "$STATE_RELPATH" ]; then

@@ -6741,19 +6741,19 @@
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
     "code": "C901",
     "qualified_symbol": "run",
-    "metric": 132
+    "metric": 133
   },
   {
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
     "code": "PLR0912",
     "qualified_symbol": "run",
-    "metric": 131
+    "metric": 132
   },
   {
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 267
+    "metric": 269
   },
   {
     "file": "tests/skills/_structure_research_specialized.py",
