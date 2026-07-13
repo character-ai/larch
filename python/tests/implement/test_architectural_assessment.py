@@ -115,10 +115,10 @@ def test_materialize_main_usage_error(capsys: pytest.CaptureFixture[str]) -> Non
 
 
 def _stub_submit(monkeypatch: pytest.MonkeyPatch, evidence: assessment.MaterializedEvidence, *, head_sha: str | None = None) -> list[assessment.AssessmentResult]:
-    monkeypatch.setattr(assessment, "validate_materialization", lambda *_args, **_kwargs: evidence)
-    monkeypatch.setattr(assessment, "_git_read", lambda *_args, **_kwargs: head_sha if head_sha is not None else evidence.head_sha)
+    monkeypatch.setattr(assessment, "validate_materialization", lambda *_args, **_kwargs: evidence)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
+    monkeypatch.setattr(assessment, "_git_read", lambda *_args, **_kwargs: head_sha if head_sha is not None else evidence.head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     persisted: list[assessment.AssessmentResult] = []
-    monkeypatch.setattr(assessment, "_persist_result", lambda result, **_kwargs: persisted.append(result))
+    monkeypatch.setattr(assessment, "_persist_result", lambda result, **_kwargs: persisted.append(result))  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     return persisted
 
 
@@ -139,9 +139,9 @@ def test_submit_persists_valid_note_and_emits_identity(monkeypatch: pytest.Monke
 
 def test_submit_rejects_head_drift_with_distinct_signal(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     evidence = _run_evidence(tmp_path)
-    _stub_submit(monkeypatch, evidence, head_sha="z" * 40)
+    _ = _stub_submit(monkeypatch, evidence, head_sha="z" * 40)
     with pytest.raises(assessment._HeadDrift):  # pyright: ignore[reportPrivateUsage]
-        assessment.submit(
+        _ = assessment.submit(
             kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note="clean",
             repo_root=tmp_path, implement_tmpdir=tmp_path,
         )
@@ -149,28 +149,28 @@ def test_submit_rejects_head_drift_with_distinct_signal(monkeypatch: pytest.Monk
 
 def test_submit_rejects_invalid_state_token(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     guide = _run_evidence(tmp_path)
-    _stub_submit(monkeypatch, guide)
+    _ = _stub_submit(monkeypatch, guide)
     with pytest.raises(ValueError, match="unsupported"):
-        assessment.submit(kind=config.ASSESSMENT_KIND_GUIDELINES, state="violation", note="x", repo_root=tmp_path, implement_tmpdir=tmp_path)
+        _ = assessment.submit(kind=config.ASSESSMENT_KIND_GUIDELINES, state="violation", note="x", repo_root=tmp_path, implement_tmpdir=tmp_path)
     inv = _run_evidence(tmp_path, config.ASSESSMENT_KIND_INVARIANTS)
-    _stub_submit(monkeypatch, inv)
+    _ = _stub_submit(monkeypatch, inv)
     with pytest.raises(ValueError, match="unsupported"):
-        assessment.submit(kind=config.ASSESSMENT_KIND_INVARIANTS, state="deviation", note="x", repo_root=tmp_path, implement_tmpdir=tmp_path)
+        _ = assessment.submit(kind=config.ASSESSMENT_KIND_INVARIANTS, state="deviation", note="x", repo_root=tmp_path, implement_tmpdir=tmp_path)
 
 
 @pytest.mark.parametrize("note", ["", "   ", "x" * (assessment._MAX_ASSESSMENT_CHARS + 1)])  # pyright: ignore[reportPrivateUsage]
 def test_submit_rejects_empty_or_oversized_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, note: str) -> None:
     evidence = _run_evidence(tmp_path)
-    _stub_submit(monkeypatch, evidence)
+    _ = _stub_submit(monkeypatch, evidence)
     with pytest.raises(ValueError, match="empty or oversized"):
-        assessment.submit(kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=note, repo_root=tmp_path, implement_tmpdir=tmp_path)
+        _ = assessment.submit(kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=note, repo_root=tmp_path, implement_tmpdir=tmp_path)
 
 
 def test_submit_redacts_note_before_persist(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     evidence = _run_evidence(tmp_path)
     persisted = _stub_submit(monkeypatch, evidence)
     token = "ghp_" + "x" * 30
-    assessment.submit(
+    _ = assessment.submit(
         kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=f"clean note {token}",
         repo_root=tmp_path, implement_tmpdir=tmp_path,
     )
@@ -183,7 +183,7 @@ def test_submit_main_returns_head_drift_exit_code(monkeypatch: pytest.MonkeyPatc
     evidence = _run_evidence(tmp_path)
     note = tmp_path / "note.md"
     _ = note.write_text("clean", encoding="utf-8")
-    _stub_submit(monkeypatch, evidence, head_sha="z" * 40)
+    _ = _stub_submit(monkeypatch, evidence, head_sha="z" * 40)
     rc = assessment.submit_main([
         "--kind", "guidelines", "--state", "clean", "--note-file", str(note),
         "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
@@ -196,7 +196,7 @@ def test_submit_main_complete_stdout_contract(monkeypatch: pytest.MonkeyPatch, c
     evidence = _run_evidence(tmp_path)
     note = tmp_path / "note.md"
     _ = note.write_text("No deviations identified.", encoding="utf-8")
-    _stub_submit(monkeypatch, evidence)
+    _ = _stub_submit(monkeypatch, evidence)
     assert assessment.submit_main([
         "--kind", "guidelines", "--state", "clean", "--note-file", str(note),
         "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
@@ -210,7 +210,7 @@ def test_submit_main_complete_stdout_contract(monkeypatch: pytest.MonkeyPatch, c
 
 def test_submit_main_rejects_note_file_outside_tmpdir(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
     evidence = _run_evidence(tmp_path)
-    _stub_submit(monkeypatch, evidence)
+    _ = _stub_submit(monkeypatch, evidence)
     outside = Path("/tmp/assessment-note-outside.md")
     rc = assessment.submit_main([
         "--kind", "guidelines", "--state", "clean", "--note-file", str(outside),
