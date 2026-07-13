@@ -638,6 +638,13 @@
   },
   {
     "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "pylint-disable",
+    "text": "pylint: disable=unused-import",
+    "occurrence": 1,
+    "reason": "re-export: _MARKDOWN_HEADING_RE re-exported for backward-compat lint_guideline_no_exception import; pylint cannot detect re-export intent from noqa"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "pyright-report",
     "text": "pyright: reportArgumentType=false",
     "occurrence": 1,
@@ -3071,6 +3078,13 @@
     "text": "ruff: noqa: PLC0415, PLW0603, SLF001",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
+  },
+  {
+    "file": "larch/lint/lint_guideline_no_exception.py",
+    "suppression_kind": "pylint-disable",
+    "text": "pylint: disable=no-member",
+    "occurrence": 1,
+    "reason": "Pattern type from re.compile via dataclass field loses methods in pylint's static analysis; Pattern.match/finditer are valid re.Pattern methods"
   },
   {
     "file": "larch/lint/lint_keyword_only.py",

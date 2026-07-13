@@ -23,7 +23,7 @@ from typing import cast
 
 from larch import io as larch_io
 from larch.core import config
-from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS, _MARKDOWN_HEADING_RE  # noqa: F401  # pyright: ignore[reportUnusedImport]  # re-export: lint consumers import _MARKDOWN_HEADING_RE from this module
+from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS, _MARKDOWN_HEADING_RE  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]  # re-export: lint consumers import _MARKDOWN_HEADING_RE from this module
 from larch.errors import ShipError
 
 GUIDELINES_FILENAME = GUIDELINES.filename
@@ -53,8 +53,8 @@ LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = GUIDELINES.materialize_env
 INVARIANT_MATERIALIZE_ENV = INVARIANTS.materialize_env
 _STATUS_VALUES = {"present", "absent", "invalid"}
-GUIDELINE_HEADING_RE = GUIDELINES.heading_re
-INVARIANT_HEADING_RE = INVARIANTS.heading_re
+GUIDELINE_HEADING_RE: re.Pattern[str] = GUIDELINES.heading_re
+INVARIANT_HEADING_RE: re.Pattern[str] = INVARIANTS.heading_re
 # Loose id matchers for assessment-note classification: any I-*/G-* entry referenced
 # anywhere in a note's prose, not just as a Markdown heading. See issue #6882.
 NOTE_INVARIANT_ID_RE = INVARIANTS.identifier_re

@@ -1,4 +1,5 @@
 """Flag no-exception guideline entries that should be promoted or baselined."""
+# pylint: disable=no-member
 
 from __future__ import annotations
 
