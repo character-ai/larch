@@ -319,15 +319,28 @@ def _prepare_launch_spec(spec: model.JobSpec) -> model.JobSpec:
     if root.is_symlink() or not root.is_dir():
         raise AdaptError("unsafe-path")
     try:
-        merge_env = _merge_env_path(spec=spec)
+        candidate = spec.merge_result_env or _merge_env_path(spec=spec)
+        merge_env = model.validate_merge_result_env(path=candidate, tmpdir=spec.tmpdir)
+        initial_rows = model.validate_initial_merge_rows(spec.initial_merge_rows)
     except (OSError, ValueError) as exc:
         raise AdaptError("unsafe-path") from exc
     try:
-        larch_io.trusted_atomic_write(path=merge_env, text="", root=root, mode=0o600)
+        write_root = root if merge_env.parent == root else model.checked_dir(spec.tmpdir, label="tmpdir")
+        larch_io.trusted_atomic_write(
+            path=merge_env,
+            text=larch_io.format_kvs(initial_rows),
+            root=write_root,
+            mode=0o600,
+        )
     except (OSError, ValueError) as exc:
         raise AdaptError("unsafe-path") from exc
     command = (*spec.command, "--bgjob-child", "--merge-result-env", str(merge_env))
-    return replace(spec, command=command, merge_result_env=merge_env)
+    return replace(
+        spec,
+        command=command,
+        merge_result_env=merge_env,
+        initial_merge_rows=initial_rows,
+    )
 
 
 def _validated_clear_path(*, spec: model.JobSpec, candidate: Path) -> Path:

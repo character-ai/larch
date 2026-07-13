@@ -42,13 +42,11 @@ if errors:
     sys.exit(1)
 PY
 
-# Invariant B moved into wrappers: telemetry consumers self-rehydrate session keys.
-for wrapper in \
-  skills/implement/scripts/step-5-resume.sh \
-  skills/implement/scripts/step-18.sh; do
-  command grep -Fq 'LARCH_TIMING_LEDGER' "$wrapper" || fail "$wrapper does not resolve LARCH_TIMING_LEDGER"
-  command grep -Fq 'LARCH_TIMING_SKILL=implement' "$wrapper" || fail "$wrapper does not mark timing with LARCH_TIMING_SKILL=implement"
-done
+# Invariant B: the Python Step 5 adapter and the Step 18 wrapper own telemetry.
+command grep -Fq '_rehydrate_larch_triplet(implement_tmpdir)' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not rehydrate telemetry keys'
+command grep -Fq '"LARCH_TIMING_SKILL": "implement"' python/larch/implement/dispatch_commit_route.py || fail 'Step 5 Python adapter does not mark implement timing'
+command grep -Fq 'LARCH_TIMING_LEDGER' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not resolve LARCH_TIMING_LEDGER'
+command grep -Fq 'LARCH_TIMING_SKILL=implement' skills/implement/scripts/step-18.sh || fail 'step-18.sh does not mark implement timing'
 
 # run_dispatch_main now lives in dispatch_step2.py; check there and fall back to implement_dispatch.py
 ( command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/dispatch_step2.py || command grep -Fq '_rehydrate_larch_triplet(tmpdir)' python/larch/implement/implement_dispatch.py ) || fail 'run_dispatch_main does not rehydrate telemetry keys'
@@ -109,12 +107,12 @@ command grep -Fq 'print_summary_markers' "$finalizer" || fail 'step-18.sh lacks 
 command grep -Fq 'set +e' "$finalizer" || fail 'step-18.sh lacks set +e tolerance blocks'
 
 # Invariant F (#4286): round timing duplicate probe returns success when the row exists.
-step5_resume="skills/implement/scripts/step-5-resume.sh"
+step5_resume="python/larch/implement/dispatch_commit_route.py"
 python3 - "$step5_resume" <<'PY'
 from pathlib import Path
 import sys
 text = Path(sys.argv[1]).read_text()
-required = 'END { exit found ? 0 : 1 }'
+required = 'if _step5_round_timing_row_exists(cols, round_decimal=round_decimal, start_s=start_s):'
 forbidden = 'END { exit found }'
 errors = []
 if required not in text:
@@ -126,4 +124,4 @@ if errors:
     sys.exit(1)
 PY
 
-echo "PASS: test-implement-timing-rehydration.sh (wrappers self-rehydrate; closing marks line $done_mark_line < teardown line $teardown_line)"
+echo "PASS: test-implement-timing-rehydration.sh (Python adapter rehydrates Step 5; closing marks line $done_mark_line < teardown line $teardown_line)"

@@ -155,6 +155,65 @@ def test_fresh_start_builds_adapter_daemon_spec(
     assert expected_merge.stat().st_mode & 0o777 == 0o600
 
 
+def test_fresh_start_preserves_selected_merge_path_and_seed_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    selected = tmp_path / ".legacy-result.env"
+    spec = replace(
+        _spec(tmp_path),
+        merge_result_env=selected,
+        initial_merge_rows=(("CHECKS_INPUT_HEAD_SHA", "abc1234"),),
+    )
+    captured: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(captured))
+
+    assert adapt.start_or_reattach(spec) == 0
+
+    assert captured[0].merge_result_env == selected
+    assert captured[0].command[-2:] == ("--merge-result-env", str(selected))
+    assert selected.read_text(encoding="utf-8") == "CHECKS_INPUT_HEAD_SHA=abc1234\n"
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        (("bad-key", "value"),),
+        (("GOOD", "one"), ("GOOD", "two")),
+        (("BGJOB_RC", "0"),),
+    ],
+)
+def test_fresh_start_rejects_invalid_initial_merge_rows(
+    rows: tuple[tuple[str, str], ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launches: list[model.JobSpec] = []
+    spec = replace(_spec(tmp_path), initial_merge_rows=rows)
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    with pytest.raises(adapt.AdaptError, match="unsafe-path"):
+        _ = adapt.start_or_reattach(spec)
+    assert not launches
+
+
+def test_fresh_start_rejects_selected_merge_path_under_symlink_parent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real_parent = tmp_path / "real"
+    real_parent.mkdir()
+    linked_parent = tmp_path / "linked"
+    _ = linked_parent.symlink_to(real_parent, target_is_directory=True)
+    spec = replace(_spec(tmp_path), merge_result_env=linked_parent / "merge.env")
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    with pytest.raises(adapt.AdaptError, match="unsafe-path"):
+        _ = adapt.start_or_reattach(spec)
+    assert not launches
+
+
 def test_adapt_main_strips_leading_delimiter_and_uses_tmpdir_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

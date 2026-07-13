@@ -1,200 +1,209 @@
-# pyright: reportUnusedCallResult=false
-"""Subprocess regressions for production step-6-entry.sh identity-aware rejoin."""
-
 from __future__ import annotations
 
-import os
-import stat
 import subprocess
-import textwrap
+import os
+from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from larch.implement import checks_result_identity as cri
+import pytest
 
-ROOT = Path(__file__).resolve().parents[3]
-LAUNCHER = ROOT / "skills" / "implement" / "scripts" / "step-6-entry.sh"
+from larch.implement import checks_result_identity as identity
+from larch.implement import dispatch_commit_route as route
+
+if TYPE_CHECKING:
+    from larch.bgjob import model
+
+
+def _capture_spec(captured: list[model.JobSpec]) -> Callable[[model.JobSpec], int]:
+    def fake_start(spec: model.JobSpec) -> int:
+        captured.append(spec)
+        return 0
+
+    return fake_start
+
+
+def _start_ok(_spec: model.JobSpec) -> int:
+    return 0
 
 
 def _git(repo: Path, *args: str) -> None:
-    subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True, text=True)
+    _ = subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
 
 
-def _init_repo(tmp_path: Path) -> Path:
+def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
     _git(repo, "config", "user.email", "test@example.com")
     _git(repo, "config", "user.name", "Test")
-    (repo / "README").write_text("base\n", encoding="utf-8")
-    _git(repo, "add", "README")
-    _git(repo, "commit", "-m", "init")
-    return repo.resolve()
+    _ = (repo / "tracked").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "tracked")
+    _git(repo, "commit", "-m", "base")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    _ = (impl / "session-env.sh").write_text(f"REPO_ROOT={repo.resolve()}\n", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    monkeypatch.setenv("LARCH_CLAUDE_PID", str(os.getpid()))
+    monkeypatch.setattr(route.bgjob_daemon, "owner_identity_from_env", lambda _pid: object())  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    return impl, repo.resolve()
 
 
-def _write_stub_cli(plugin_root: Path, *, start_marker: Path) -> None:
-    cli = plugin_root / "python" / "cli.py"
-    cli.parent.mkdir(parents=True, exist_ok=True)
-    real_cli = ROOT / "python" / "cli.py"
-    (plugin_root / "python" / "larch").mkdir(parents=True, exist_ok=True)
-    script = textwrap.dedent(
-        f"""\
-        #!/usr/bin/env python3
-        import os, subprocess, sys
-        sys.path.insert(0, {str(ROOT / "python")!r})
-        argv = sys.argv[1:]
-        if argv[:1] == ["bgjob"] and len(argv) > 1 and argv[1] == "start":
-            step = ""
-            for i, tok in enumerate(argv):
-                if tok == "--step" and i + 1 < len(argv):
-                    step = argv[i + 1]
-            open({str(start_marker)!r}, "w", encoding="utf-8").write("started:" + step + "\\n")
-            print(f"BGJOB_STATUS=STARTED STEP={{step}} PGID=1")
-            raise SystemExit(0)
-        if argv[:1] == ["bgjob"] and len(argv) > 1 and argv[1] == "wait":
-            tmpdir = ""
-            step = ""
-            for i, tok in enumerate(argv):
-                if tok == "--tmpdir" and i + 1 < len(argv):
-                    tmpdir = argv[i + 1]
-                if tok == "--step" and i + 1 < len(argv):
-                    step = argv[i + 1]
-            result = os.path.join(tmpdir, "bgjob", f"{{step}}.result.env")
-            print("BGJOB_STATUS=DONE")
-            if os.path.isfile(result):
-                sys.stdout.write(open(result, encoding="utf-8").read())
-            raise SystemExit(0)
-        raise SystemExit(subprocess.call([sys.executable, {str(real_cli)!r}, *argv]))
-        """
-    )
-    cli.write_text(script, encoding="utf-8")
-    cli.chmod(cli.stat().st_mode | stat.S_IXUSR)
+def test_parent_seeds_identity_and_forwards_child_arguments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _impl, repo = _session(tmp_path, monkeypatch)
+    captured: list[model.JobSpec] = []
+    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _capture_spec(captured))
 
+    assert route.step6_entry_main(["--forked-target", "true"]) == 0
 
-def _session(tmpdir: Path, repo: Path) -> None:
-    (tmpdir / "session-env.sh").write_text(
-        f"REPO_ROOT={repo}\nLARCH_TOKEN_SESSION_ID=\nLARCH_CLAUDE_SOURCE_FILE=\nLARCH_TIMING_LEDGER=\n",
-        encoding="utf-8",
-    )
-    (tmpdir / "bgjob").mkdir(parents=True, exist_ok=True)
-
-
-def _run_launcher(*, tmpdir: Path, plugin_root: Path, extra: list[str] | None = None) -> subprocess.CompletedProcess[str]:
-    env = {
-        **os.environ,
-        "IMPLEMENT_TMPDIR": str(tmpdir),
-        "CLAUDE_PLUGIN_ROOT": str(plugin_root),
-        "PYTHONPATH": str(ROOT / "python"),
-    }
-    return subprocess.run(
-        ["bash", str(LAUNCHER), *(extra or [])],
-        cwd=str(ROOT),
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
+    launch = identity.compute_identity(repo_root=repo)
+    spec = captured[0]
+    assert spec.step == "implement-step6-checks"
+    assert spec.initial_merge_rows == tuple(launch.as_rows())
+    assert spec.command[-8:] == (
+        "--repo-root", str(repo),
+        "--launch-head", launch.head_sha,
+        "--launch-fp", launch.tree_fingerprint,
+        "--launch-schema", launch.fingerprint_schema,
     )
 
 
-def test_step6_stale_failed_result_relaunches_after_drift(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    tmpdir = tmp_path / "impl"
-    tmpdir.mkdir()
-    _session(tmpdir, repo)
-    live = cri.compute_identity(repo_root=repo)
-    step = "implement-step6-checks"
-    result = tmpdir / "bgjob" / f"{step}.result.env"
-    result.write_text(
-        "\n".join(
-            [
-                f"STEP={step}",
-                "BGJOB_RC=0",
-                "NEXT_ACTION=checks-failed",
-                *[f"{k}={v}" for k, v in live.as_rows()],
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    (repo / "README").write_text("fixed\n", encoding="utf-8")
-    plugin = tmp_path / "plugin"
-    start_marker = tmp_path / "started"
-    _write_stub_cli(plugin, start_marker=start_marker)
-    proc = _run_launcher(tmpdir=tmpdir, plugin_root=plugin, extra=["--force-checks", "true"])
-    assert proc.returncode == 0, proc.stderr
-    assert "BGJOB_STATUS=STARTED" in proc.stdout
-    assert start_marker.exists()
+def test_child_precheck_drift_publishes_integrity_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    launch = identity.compute_identity(repo_root=repo)
+    _ = (repo / "tracked").write_text("drift\n", encoding="utf-8")
+    merge = impl / "bgjob" / "implement-step6-checks.merge.env"
+    merge.parent.mkdir()
+
+    rc = route.step6_entry_main([
+        "--bgjob-child",
+        "--merge-result-env", str(merge),
+        "--repo-root", str(repo),
+        "--launch-head", launch.head_sha,
+        "--launch-fp", launch.tree_fingerprint,
+        "--launch-schema", launch.fingerprint_schema,
+    ])
+
+    assert rc == 1
+    assert "NEXT_ACTION=identity-integrity-failed" in merge.read_text(encoding="utf-8")
+
+
+def test_matching_completed_result_is_reused_without_seed_rewrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    launch = identity.compute_identity(repo_root=repo)
+    bgjob = impl / "bgjob"
+    bgjob.mkdir()
+    result = bgjob / "implement-step6-checks.result.env"
+    rows = [
+        ("STEP", "implement-step6-checks"),
+        ("BGJOB_RC", "0"),
+        ("NEXT_ACTION", "skip-to-7a"),
+        *launch.as_rows(),
+    ]
+    _ = result.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
+    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _start_ok)
+
+    assert route.step6_entry_main([]) == 0
+    assert result.is_file()
+
+
+def test_stale_completed_result_is_cleared_before_parent_relaunch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    prior = identity.compute_identity(repo_root=repo)
+    bgjob = impl / "bgjob"
+    bgjob.mkdir()
+    result = bgjob / "implement-step6-checks.result.env"
+    merge = bgjob / "implement-step6-checks.merge.env"
+    rows = [
+        ("STEP", "implement-step6-checks"),
+        ("BGJOB_RC", "0"),
+        ("NEXT_ACTION", "skip-to-7a"),
+        *prior.as_rows(),
+    ]
+    _ = result.write_text("".join(f"{key}={value}\n" for key, value in rows), encoding="utf-8")
+    _ = merge.write_text("stale\n", encoding="utf-8")
+    _ = (repo / "tracked").write_text("drift\n", encoding="utf-8")
+    captured: list[model.JobSpec] = []
+    monkeypatch.setattr(route.bgjob_adapt, "start_or_reattach", _capture_spec(captured))
+
+    assert route.step6_entry_main([]) == 0
     assert not result.exists()
+    assert captured[0].step == "implement-step6-checks"
 
 
-def test_step6_skip_to_7a_rejoins_when_identity_matches(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    tmpdir = tmp_path / "impl"
-    tmpdir.mkdir()
-    _session(tmpdir, repo)
-    live = cri.compute_identity(repo_root=repo)
-    step = "implement-step6-checks"
-    result = tmpdir / "bgjob" / f"{step}.result.env"
-    result.write_text(
-        "\n".join(
-            [
-                f"STEP={step}",
-                "BGJOB_RC=0",
-                "NEXT_ACTION=skip-to-7a",
-                *[f"{k}={v}" for k, v in live.as_rows()],
-            ]
+def test_live_step6_job_reattaches_only_when_its_seed_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    launch = identity.compute_identity(repo_root=repo)
+    merge = impl / "bgjob" / "implement-step6-checks.merge.env"
+    merge.parent.mkdir()
+    _ = merge.write_text("".join(f"{key}={value}\n" for key, value in launch.as_rows()), encoding="utf-8")
+    monkeypatch.setattr(route, "_live_registry_entry", lambda **_kwargs: object())  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    route._prepare_checks_rejoin(  # pyright: ignore[reportPrivateUsage]
+        tmpdir=impl,
+        step="implement-step6-checks",
+        merge_env=merge,
+        identity=launch,
+    )
+
+    _ = merge.write_text("CHECKS_INPUT_HEAD_SHA=stale\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="live checks job identity mismatch"):
+        route._prepare_checks_rejoin(  # pyright: ignore[reportPrivateUsage]
+            tmpdir=impl,
+            step="implement-step6-checks",
+            merge_env=merge,
+            identity=launch,
         )
-        + "\n",
-        encoding="utf-8",
-    )
-    plugin = tmp_path / "plugin"
-    start_marker = tmp_path / "started"
-    _write_stub_cli(plugin, start_marker=start_marker)
-    proc = _run_launcher(tmpdir=tmpdir, plugin_root=plugin)
-    assert proc.returncode == 0, proc.stderr
-    assert "BGJOB_STATUS=DONE" in proc.stdout
-    assert "NEXT_ACTION=skip-to-7a" in proc.stdout
-    assert not start_marker.exists()
 
 
-def test_step6_child_drift_before_checks(tmp_path: Path) -> None:
-    repo = _init_repo(tmp_path)
-    tmpdir = tmp_path / "impl"
-    tmpdir.mkdir()
-    _session(tmpdir, repo)
-    live = cri.compute_identity(repo_root=repo)
-    merge = tmpdir / "bgjob" / "implement-step6-checks.merge.env"
-    merge.parent.mkdir(parents=True, exist_ok=True)
-    (repo / "README").write_text("child-drift\n", encoding="utf-8")
-    env = {
-        **os.environ,
-        "IMPLEMENT_TMPDIR": str(tmpdir),
-        "CLAUDE_PLUGIN_ROOT": str(ROOT),
-        "PYTHONPATH": str(ROOT / "python"),
-    }
-    proc = subprocess.run(
-        [
-            "bash",
-            str(LAUNCHER),
-            "--bgjob-child",
-            "--merge-result-env",
-            str(merge),
-            "--repo-root",
-            str(repo),
-            "--launch-head",
-            live.head_sha,
-            "--launch-fp",
-            live.tree_fingerprint,
-            "--launch-schema",
-            live.fingerprint_schema,
-            "--force-checks",
-            "true",
-        ],
-        cwd=str(ROOT),
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert proc.returncode == 1
-    text = merge.read_text(encoding="utf-8")
-    assert "NEXT_ACTION=identity-integrity-failed" in text
+def test_step6_refuses_an_unsafe_completed_result_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, _repo = _session(tmp_path, monkeypatch)
+    result = impl / "bgjob" / "implement-step6-checks.result.env"
+    result.parent.mkdir()
+    result.mkdir()
+
+    assert route.step6_entry_main([]) == 2
+    assert result.is_dir()
+
+
+def test_step6_child_success_publishes_output_and_identity_together(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl, repo = _session(tmp_path, monkeypatch)
+    launch = identity.compute_identity(repo_root=repo)
+    merge = impl / "bgjob" / "implement-step6-checks.merge.env"
+    merge.parent.mkdir()
+    monkeypatch.setattr(route, "_step6_entry_worker", lambda _args, _tmpdir: print("NEXT_ACTION=skip-to-7a") or 0)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    assert route.step6_entry_main([
+        "--bgjob-child",
+        "--merge-result-env", str(merge),
+        "--repo-root", str(repo),
+        "--launch-head", launch.head_sha,
+        "--launch-fp", launch.tree_fingerprint,
+        "--launch-schema", launch.fingerprint_schema,
+    ]) == 0
+
+    rows = dict(line.split("=", 1) for line in merge.read_text(encoding="utf-8").splitlines())
+    assert rows["NEXT_ACTION"] == "skip-to-7a"
+    assert rows["CHECKS_INPUT_HEAD_SHA"] == launch.head_sha
