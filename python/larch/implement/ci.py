@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from larch.implement import ci_fixer_lane, ci_monitor
+from larch.implement import ci_monitor
 from larch.implement import main_health
 from larch import io as larch_io
 from larch.core import config
@@ -437,6 +437,17 @@ class _DistillArgs:
     output: Path
 
 
+@dataclass(frozen=True)
+class DistillOutcome:
+    """Structured result of a CI-log distill, usable without emitting KVs."""
+
+    exit_code: int
+    status: str
+    output: str
+    failed_jobs_count: int
+    bail_class: str
+
+
 def _distill_usage(message: str) -> int:
     print(message, file=sys.stderr)
     return config.EXIT_USAGE
@@ -664,27 +675,33 @@ def _distill_validate_args(args: argparse.Namespace) -> tuple[_DistillArgs | Non
     return _DistillArgs(run_id=run_id, repo=repo, output=output), None
 
 
-def _distill_from_gh(args: _DistillArgs) -> int:
+def _distill_from_gh(args: _DistillArgs) -> DistillOutcome:
     result = gh.run_log_failed_read(proc, args.run_id, repo=args.repo)
     combined = result.stdout + result.stderr
     if result.returncode != 0 and _IN_PROGRESS_MSG in combined:
-        _emit_kv(key="STATUS", value="in_progress")
-        _emit_kv(key="OUTPUT", value=str(args.output))
-        _emit_kv(key="FAILED_JOBS_COUNT", value=0)
-        _emit_kv(key="BAIL_CLASS", value="in_progress")
-        return config.EXIT_GH_RUN_LOGS_IN_PROGRESS
+        return DistillOutcome(
+            exit_code=config.EXIT_GH_RUN_LOGS_IN_PROGRESS,
+            status="in_progress",
+            output=str(args.output),
+            failed_jobs_count=0,
+            bail_class="in_progress",
+        )
     if result.returncode != 0 and _HEALTH_FAILURE_RE.search(combined):
-        _emit_kv(key="STATUS", value="error")
-        _emit_kv(key="OUTPUT", value=str(args.output))
-        _emit_kv(key="FAILED_JOBS_COUNT", value=0)
-        _emit_kv(key="BAIL_CLASS", value=config.CI_FIXER_STATUS_HEALTH_BAIL)
-        return config.EXIT_GH_RUN_LOGS_HEALTH_BAIL
+        return DistillOutcome(
+            exit_code=config.EXIT_GH_RUN_LOGS_HEALTH_BAIL,
+            status="error",
+            output=str(args.output),
+            failed_jobs_count=0,
+            bail_class=config.CI_FIXER_STATUS_HEALTH_BAIL,
+        )
     if result.returncode != 0:
-        _emit_kv(key="STATUS", value="error")
-        _emit_kv(key="OUTPUT", value=str(args.output))
-        _emit_kv(key="FAILED_JOBS_COUNT", value=0)
-        _emit_kv(key="BAIL_CLASS", value="github-log-failure")
-        return config.EXIT_INTERNAL_ERROR
+        return DistillOutcome(
+            exit_code=config.EXIT_INTERNAL_ERROR,
+            status="error",
+            output=str(args.output),
+            failed_jobs_count=0,
+            bail_class="github-log-failure",
+        )
 
     failed_jobs = _failed_job_names(args.run_id, args.repo)
     blocks = _add_missing_job_placeholders(_parse_log_blocks(result.stdout), failed_jobs)
@@ -693,24 +710,37 @@ def _distill_from_gh(args: _DistillArgs) -> int:
         larch_io.atomic_write(args.output, digest, mode=0o600, nofollow=True)
     except OSError as exc:
         print(f"ERROR: failed to write digest: {exc}", file=sys.stderr)
-        _emit_kv(key="STATUS", value="error")
-        _emit_kv(key="OUTPUT", value=str(args.output))
-        _emit_kv(key="FAILED_JOBS_COUNT", value=len(failed_jobs))
-        _emit_kv(key="BAIL_CLASS", value="write-failure")
-        return config.EXIT_INTERNAL_ERROR
-    _emit_kv(key="STATUS", value="ok")
-    _emit_kv(key="OUTPUT", value=str(args.output))
-    _emit_kv(key="FAILED_JOBS_COUNT", value=len(failed_jobs))
-    _emit_kv(key="BAIL_CLASS", value="")
-    return config.EXIT_OK
+        return DistillOutcome(
+            exit_code=config.EXIT_INTERNAL_ERROR,
+            status="error",
+            output=str(args.output),
+            failed_jobs_count=len(failed_jobs),
+            bail_class="write-failure",
+        )
+    return DistillOutcome(
+        exit_code=config.EXIT_OK,
+        status="ok",
+        output=str(args.output),
+        failed_jobs_count=len(failed_jobs),
+        bail_class="",
+    )
 
 
-def fixer_lane_main(argv: list[str]) -> int:
-    """Run one validated dormant CI fixer tier."""
-    try:
-        return ci_fixer_lane.main(argv)
-    except SystemExit as exc:
-        return int(exc.code or 0)
+def distill_log(*, run_id: str, repo: str, output: Path) -> DistillOutcome:
+    """Programmatic distill entry: validate and run without emitting KVs.
+
+    Lets callers (the ship driver) route on the distill result without parsing
+    CLI stdout. ``output`` must resolve under ``IMPLEMENT_TMPDIR``, exactly like
+    the CLI form.
+    """
+    if not run_id.isdigit():
+        return DistillOutcome(config.EXIT_USAGE, "error", str(output), 0, "invalid-run-id")
+    if not repo or "/" not in repo:
+        return DistillOutcome(config.EXIT_USAGE, "error", str(output), 0, "invalid-repo")
+    resolved = _distill_output_path(str(output))
+    if resolved is None:
+        return DistillOutcome(config.EXIT_USAGE, "error", str(output), 0, "invalid-output-path")
+    return _distill_from_gh(_DistillArgs(run_id=run_id, repo=repo, output=resolved))
 
 
 def distill_log_main(argv: list[str]) -> int:
@@ -727,7 +757,12 @@ def distill_log_main(argv: list[str]) -> int:
     distill_args, error = _distill_validate_args(args)
     if distill_args is None:
         return _distill_usage(error or "ERROR: invalid ci distill-log arguments")
-    return _distill_from_gh(distill_args)
+    outcome = _distill_from_gh(distill_args)
+    _emit_kv(key="STATUS", value=outcome.status)
+    _emit_kv(key="OUTPUT", value=outcome.output)
+    _emit_kv(key="FAILED_JOBS_COUNT", value=outcome.failed_jobs_count)
+    _emit_kv(key="BAIL_CLASS", value=outcome.bail_class)
+    return outcome.exit_code
 
 
 def behind_count_main(argv: list[str]) -> int:

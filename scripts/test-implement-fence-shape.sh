@@ -227,11 +227,11 @@ try:
     conflict_start = skill_text.index('- **`conflict-fix`**', ci_fix_start)
     ci_fix_slice = skill_text[ci_fix_start:conflict_start]
     ci_fix_pre_fix = ci_fix_slice.index('ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"')
-    ci_fix_load = ci_fix_slice.index('Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md`')
-    if ci_fix_pre_fix > ci_fix_load:
-        errors.append('ci-fix branch must require ship pre-fix-rebase before loading ship-pr-ci-fix.md')
+    ci_fix_loop = ci_fix_slice.index('`larch:ci-fixer`')
+    if ci_fix_pre_fix > ci_fix_loop:
+        errors.append('ci-fix branch must run ship pre-fix-rebase before the ci-fixer subagent loop')
 except ValueError as exc:
-    errors.append(f'ci-fix branch must document ship pre-fix-rebase before ci-fix load: {exc}')
+    errors.append(f'ci-fix branch must document ship pre-fix-rebase before the subagent loop: {exc}')
 try:
     assessments_start = skill_text.index('- **`assessments`**, **`invariants-assessment`**, or **`guidelines-assessment`**:')
     reship_start = skill_text.index('- **`reship`**:', assessments_start)

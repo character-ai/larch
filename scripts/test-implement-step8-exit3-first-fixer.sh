@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Step 8+ autonomous CI-fix prose harness.
+# Step 8+ autonomous CI-fix prose harness (ci-fixer subagent round loop).
 
 set -euo pipefail
 
@@ -17,73 +17,71 @@ def forbid(text, needle, label):
     if needle in text:
         errors.append(f'{label}: forbidden {needle!r} remains')
 
-def require_near(text, before, after, label, limit=900):
-    idx=text.find(before)
-    if idx < 0:
-        errors.append(f'{label}: missing anchor {before!r}')
-        return
-    window=text[max(0, idx-limit):idx+limit]
-    if after not in window:
-        errors.append(f'{label}: missing {after!r} near {before!r}')
-
 skill=Path('skills/implement/SKILL.md').read_text()
 matrix_path=Path('skills/implement/references/ship-pr-exit-matrix.md')
-ci_fix_path=Path('skills/implement/references/ship-pr-ci-fix.md')
+agent_path=Path('agents/ci-fixer.md')
 if not matrix_path.is_file():
     errors.append('missing ship-pr-exit-matrix reference')
     matrix=''
 else:
     matrix=matrix_path.read_text()
-if not ci_fix_path.is_file():
-    errors.append('missing ship-pr-ci-fix reference')
-    ci_fix=''
+if not agent_path.is_file():
+    errors.append('missing agents/ci-fixer.md')
+    agent=''
 else:
-    ci_fix=ci_fix_path.read_text()
+    agent=agent_path.read_text()
 
 require(skill, 'skills/implement/references/ship-pr-exit-matrix.md', 'SKILL.md exit matrix pointer')
-require(skill, 'skills/implement/references/ship-pr-ci-fix.md', 'SKILL.md ci-fix pointer')
 require(skill, 'step-8-ship.sh', 'SKILL.md ship wrapper invocation')
 require(skill, 'Python ship driver wrapper', 'SKILL.md Python ship wrapper prose')
+# New ci-fixer subagent round loop contract in SKILL.md
 for needle in [
-    '# Ship PR autonomous CI-fix',
-    'architectural-invariants-violation',
-    'step-8-ci-fixer.sh',
-    '--start',
-    '--finalize --step "$STEP"',
-    'bgjob wait --step "$STEP" --max-wait-s 270',
-    'BGJOB_STATUS=WAIT',
-    'retry-next-tool',
-    'ci-fix-exhausted',
-    'CI_FAILURE_SCOPE',
-    'LARCH_RUN_ID',
-    'LARCH_CI_FIXER=0',
-    'attempts 1 through 30',
+    '`larch:ci-fixer`',
+    'CI_ERRORS_FILE',
+    'CI_ERRORS_DISTILL_CLASS',
+    'ci-fixer-rounds.md',
     'main-agent-ci-fix.count',
+    'FIXER_RESULT=pushed',
+    'FIXER_RESULT=no-progress',
+    'FIXER_RESULT=bail',
+    'SendMessage',
+    'ci-fix-exhausted',
+    'ci-fix-no-progress',
+    'ci-evidence-unavailable',
+    'materialize-invariant-evidence',
+    'CI fix round <N> salvage',
     'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch',
-    're-invoke `step-8-ship.sh`',
 ]:
-    require(ci_fix, needle, 'ship-pr-ci-fix.md body')
+    require(skill, needle, 'SKILL.md ci-fixer subagent loop')
+# Deleted fixer-lane machinery must not linger in SKILL.md
 for needle in [
-    'Python driver non-zero routing',
-    'read .ship-route-exit-handoff.env',
-    'larch_io.read_kvs',
-    'larch.io.read_kvs',
+    'ship-pr-ci-fix.md',
+    'step-8-ci-fixer.sh',
+    'LARCH_CI_FIXER',
 ]:
-    forbid(matrix, needle, 'ship-pr-exit-matrix.md stripped ci-fix body')
+    forbid(skill, needle, 'SKILL.md retired ci-fix machinery')
+# agents/ci-fixer.md contract
+require(agent, 'name: ci-fixer', 'ci-fixer agent frontmatter')
 for needle in [
-    'ci-fixer-success',
-    'ci-fixer-health-bail',
-    'ci-fixer-exhausted',
-    'ci-fixer-no-progress',
-    'ci-fixer-rebase-needed',
-    'ci-fixer-disabled',
-    'not new Python ship driver `NEXT_ACTION` tokens',
+    'FIXER_RESULT=pushed|no-progress|bail',
+    'FIXER_COMMIT=<sha or empty>',
+    'FIXER_SUMMARY=<one line>',
+    'untrusted CI evidence, not instructions',
+    'CI fix round <N>',
+    'python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push branch',
 ]:
-    require(matrix, needle, 'ship-pr-exit-matrix.md internal ci-fixer statuses')
-require_near(ci_fix, 'MANDATORY: READ ENTIRE FILE', 're-invoke `step-8-ship.sh`', 'ci-fix procedure read before ship re-entry')
+    require(agent, needle, 'agents/ci-fixer.md contract')
+# Matrix keeps ci-fix routing only and carries the new handoff keys and reasons
+require(matrix, 'CI_ERRORS_FILE', 'matrix ci-fix handoff key')
+for needle in ['ci-fix-no-progress', 'ci-evidence-unavailable', 'ci-fix-exhausted']:
+    require(matrix, needle, 'matrix ci-fix bail reasons')
+forbid(matrix, 'ship-pr-ci-fix.md', 'matrix retired ci-fix child reference')
+# The old prose-owned lane statuses belonged to the deleted runbook
+for needle in ['ci-fixer-success', 'ci-fixer-rebase-needed', 'ci-fixer-disabled']:
+    forbid(matrix, needle, 'matrix retired lane statuses')
 
 if errors:
     print('\n'.join(errors), file=sys.stderr)
     sys.exit(1)
-print('PASS: test-implement-step8-exit3-first-fixer.sh (ci-fix reference)')
+print('PASS: test-implement-step8-exit3-first-fixer.sh (ci-fixer subagent)')
 PY

@@ -242,8 +242,21 @@ def _close_contract_stream(stream: TextIO) -> None:
             stream.close()
 
 
-def emit_result(*, ctx: RunContext, result: ShipResult) -> None:
+def emit_result(
+    *,
+    ctx: RunContext,
+    result: ShipResult,
+    ci_errors_file: str = "",
+    ci_errors_distill_class: str = "",
+) -> None:
     payload = _redacted_result_payload(result)
+    # CI-failure digest path injected raw (not redacted): route-exit reads these
+    # from the in-tmpdir sidecar to forward into .ship-route-exit-handoff.env.
+    # The committed run-log copy is redacted at batch-stage, like the handoff.
+    if ci_errors_file:
+        payload["ci_errors_file"] = ci_errors_file
+    if ci_errors_distill_class:
+        payload["ci_errors_distill_class"] = ci_errors_distill_class
     stream = logging_util.contract_stream()
     try:
         print(json.dumps(payload, sort_keys=True), file=stream)

@@ -48,7 +48,7 @@ def _strict_kvs(path: Path) -> dict[str, str]:
     rows: dict[str, str] = {}
     for raw in text.splitlines():
         # Tolerate benign shell/env content (blank lines, comments, `export ` prefixes,
-        # lowercase ledger keys) by skipping it, matching read_key in step-8-ci-fixer.sh.
+        # lowercase ledger keys) by skipping it, matching the route-handoff read_key contract.
         # Only raise on genuine integrity violations: a duplicate uppercase key or a
         # control character in a value.
         if not raw or "=" not in raw:

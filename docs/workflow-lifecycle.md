@@ -111,7 +111,7 @@ Repository tests or lints that fail and then pass without an authored fix are no
 
 ## CI-fix push sequencing
 
-When the active Step 8+ driver (`python/cli.py ship pr` delegating to `python/ship.py`) commits a CI-fix locally, it checks staleness via `python/cli.py ci behind-count` (shared with `python/cli.py ci status`) before pushing. If the branch is behind `origin/main` (or `upstream/main` on forked targets), it reuses `run_rebase_rebump` with deferred push, re-verifies failed jobs and lint on the rebased tree, then pushes with `python/cli.py push force` (force-with-lease). When already current, it uses plain `python/cli.py push branch`. The next `ci-wait` poll should see `BEHIND_COUNT=0`, so the separate `ACTION=rebase` path remains a no-op fallback rather than a second rebase.
+When a required CI run fails, the active Step 8+ driver (`python/cli.py ship pr` delegating to `python/larch/implement/ship.py`) distills the failure to `$IMPLEMENT_TMPDIR/ci-errors-<run-id>.md` and bails to `NEXT_ACTION=ci-fix` without committing a fix. The `/implement` Step 8 ci-fixer subagent (`agents/ci-fixer.md`) reads the digest, commits the repair as `CI fix round <N>: <summary>`, and pushes via `python/cli.py push branch`. The pre-fix rebase gate runs before the round loop, so the subagent pushes onto a current branch and the next `ci-wait` poll should see `BEHIND_COUNT=0`. The invariant-inline recovery path (main-agent fix for `architectural-invariants-violation`) also commits and pushes via `python/cli.py push branch`.
 
 ## Pre-push Clean-Tree Invariant
 

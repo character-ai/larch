@@ -550,7 +550,6 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "normalize-coder-scout")] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("larch.implement.implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-6-entry")] == ("larch.implement.implement_dispatch", "step6_entry_main")
-    assert _REGISTRY[("implement", "step-8-ci-fixer")] == ("larch.implement.ci_fixer_adapter", "main")
     assert _REGISTRY[("implement", "step-8-ship")] == ("larch.implement.implement_dispatch", "step8_ship_main")
     assert _REGISTRY[("implement", "step-18-gate-finalize")] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
     assert _REGISTRY[("implement", "run-step-checks")] == ("larch.implement.implement_dispatch", "run_step_checks_main")
@@ -765,6 +764,69 @@ def test_ship_route_exit_routes_persisted_conflict_handoff(
     assert "CALLER_KIND=ship_pr_pre_push\n" in env
     assert "CONFLICT_FILES=python/a.py,docs/b.md\n" in env
     assert "NEXT_ACTION=conflict-fix\n" in env
+
+
+def test_ship_route_exit_ci_fix_forwards_ci_errors_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # #7192: the ship driver distills the CI failure and injects ci_errors_file
+    # into the result payload; route-exit forwards it into the ci-fix handoff.
+    tmp = make_implement_tmpdir(tmp_path)
+    digest = tmp / "ci-errors-12345.md"
+    digest.write_text("digest", encoding="utf-8")
+
+    exit_rc, out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        3,
+        {
+            "outcome": "NEEDS_USER_INPUT",
+            "needs_user_reason": "main-ci-fail",
+            "failed_run_id": "12345",
+            "ci_errors_file": str(digest),
+        },
+    )
+
+    assert exit_rc == 0
+    assert out == "NEXT_ACTION=ci-fix\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "NEXT_ACTION=ci-fix\n" in env
+    assert "CI_FAILURE_SCOPE=main\n" in env
+    assert f"CI_ERRORS_FILE={digest}\n" in env
+    assert "CI_ERRORS_DISTILL_CLASS" not in env
+
+
+def test_ship_route_exit_ci_fix_forwards_distill_class_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # #7192: when distill fails the driver sends a bail class and an empty file;
+    # route-exit emits CI_ERRORS_FILE= plus CI_ERRORS_DISTILL_CLASS=<class>.
+    tmp = make_implement_tmpdir(tmp_path)
+
+    exit_rc, out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        3,
+        {
+            "outcome": "NEEDS_USER_INPUT",
+            "needs_user_reason": "flaky-defect-unfixed",
+            "failed_run_id": "67890",
+            "ci_errors_distill_class": "github-log-failure",
+        },
+    )
+
+    assert exit_rc == 0
+    assert out == "NEXT_ACTION=ci-fix\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "CI_FAILURE_SCOPE=pr\n" in env
+    assert "CI_ERRORS_FILE=\n" in env
+    assert "CI_ERRORS_DISTILL_CLASS=github-log-failure\n" in env
 
 
 @pytest.mark.parametrize(
@@ -8715,21 +8777,3 @@ def test_resolve_implement_rater_model_moderate_codex_fallback_stays_sol(
         difficulty_tier=difficulty.MODERATE,
     ) == "gpt-5.6-sol"
     assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[difficulty.MODERATE] == "gpt-5.6-sol"
-
-
-def test_active_ci_fixer_wrapper_delegates_typed_adapter_and_skill_wiring() -> None:
-    root: Path = Path(__file__).resolve().parents[3]
-    wrapper = root / "skills/implement/scripts/step-8-ci-fixer.sh"
-    harness = root / "skills/implement/scripts/test-step-8-ci-fixer.sh"
-    assert wrapper.is_file()
-    source = wrapper.read_text(encoding="utf-8")
-    assert 'implement step-8-ci-fixer "$@"' in source
-    assert "bgjob start" not in source
-    adapter = (root / "python/larch/implement/ci_fixer_adapter.py").read_text(encoding="utf-8")
-    assert "ci_fixer_lane.main" in adapter
-    assert "adapt.start_or_reattach" in adapter
-    assert '"--bgjob-result-env"' in adapter
-    assert harness.is_file()
-    assert "step-8-ci-fixer.sh" in (root / "skills/implement/SKILL.md").read_text(encoding="utf-8")
-    for path in (root / "skills/implement/scripts/step-8-ship.sh", root / "python/larch/implement/ship.py"):
-        assert "step-8-ci-fixer.sh" not in path.read_text(encoding="utf-8")

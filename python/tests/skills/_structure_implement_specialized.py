@@ -69,7 +69,7 @@ def run(repo_root: Path) -> list[str]:
         # New mandatory references.
         for ref in [
             "rebase-checkpoint-routing.md","phantom-probe.md","ship-pr-exit-matrix.md","step18-cleanup.md",
-            "ship-pr-oos-checkpoint-router.md","ship-pr-ci-fix.md",
+            "ship-pr-oos-checkpoint-router.md",
             "bootstrap-recovery.md","self-review.md",
         ]:
             path=f"skills/implement/references/{ref}"
@@ -585,7 +585,6 @@ def run(repo_root: Path) -> list[str]:
                     checks.append(f"ship-pr-exit-matrix.md missing {needle!r}")
             for needle in [
                 "ship-pr-oos-checkpoint-router.md",
-                "ship-pr-ci-fix.md",
             ]:
                 if needle not in exit_text:
                     checks.append(f"ship-pr-exit-matrix.md missing branch reference {needle!r}")
@@ -637,10 +636,9 @@ def run(repo_root: Path) -> list[str]:
                     checks.append(f"matrix oos-pipeline branch retains stale routing {needle!r}")
             ci_fix_slice = branch_slice(exit_text, "ci-fix")
             require_text(ci_fix_slice, "FORKED_TARGET=true", "matrix ci-fix branch keeps fork skip")
-            require_text(ci_fix_slice, "ship-pr-ci-fix.md", "matrix ci-fix branch names child reference")
-            require_text(ci_fix_slice, "MANDATORY: READ ENTIRE FILE", "matrix ci-fix branch carries mandatory-read marker")
-            if ci_fix_slice.find("FORKED_TARGET=true") > ci_fix_slice.find("ship-pr-ci-fix.md"):
-                checks.append("matrix ci-fix mandatory read must follow fork skip inline text")
+            require_text(ci_fix_slice, "CI_ERRORS_FILE", "matrix ci-fix branch names CI errors handoff key")
+            if "ship-pr-ci-fix.md" in ci_fix_slice:
+                checks.append("matrix ci-fix branch retains retired ship-pr-ci-fix.md reference")
             operator_slice = branch_slice(exit_text, "operator-bail")
             require_text(operator_slice, "python/cli.py pr checks", "matrix operator-bail pr checks fallback")
             require_text(operator_slice, "failed_run_id", "matrix operator-bail empty failed run id wording")
@@ -695,42 +693,22 @@ def run(repo_root: Path) -> list[str]:
                     checks.append(f"ship-pr-oos-checkpoint-router.md retains forbidden {needle!r}")
         else:
             checks.append("missing skills/implement/references/ship-pr-oos-checkpoint-router.md")
-        ci_fix_ref = Path("skills/implement/references/ship-pr-ci-fix.md")
-        if ci_fix_ref.is_file():
-            ci_fix_text = ci_fix_ref.read_text()
-            for needle in [
-                "# Ship PR autonomous CI-fix",
-                "**Consumer**:",
-                "**Contract**:",
-                "**When to load**:",
-                "architectural-invariants-violation",
-                "step-8-ci-fixer.sh",
-                "--start",
-                '--finalize --step "$STEP"',
-                'bgjob wait --step "$STEP" --max-wait-s 270',
-                "BGJOB_STATUS=WAIT",
-                "retry-next-tool",
-                "ci-fix-exhausted",
-                "CI_FAILURE_SCOPE",
-                "LARCH_RUN_ID",
-                "LARCH_CI_FIXER=0",
-                "main-agent-ci-fix.count",
-                "attempts 1 through 30",
-                "Do not rerun architectural-guidelines Phase A",
-                "re-invoke `step-8-ship.sh`",
-            ]:
-                require_text(ci_fix_text, needle, "ship-pr-ci-fix.md CI-fix body")
-            for retired in [
-                "fixer-spawned.sentinel",
-                "fallback-attempts.count",
-                "20 rounds",
-                "attempts 1-10 may run",
-                "BAIL_CLASS=github-log-failure",
-            ]:
-                if retired in ci_fix_text:
-                    checks.append(f"ship-pr-ci-fix.md retains retired {retired!r}")
+        if Path("skills/implement/references/ship-pr-ci-fix.md").is_file():
+            checks.append("skills/implement/references/ship-pr-ci-fix.md should be removed (ci-fixer subagent)")
+        ci_fixer_agent = Path("agents/ci-fixer.md")
+        if not ci_fixer_agent.is_file():
+            checks.append("missing agents/ci-fixer.md")
         else:
-            checks.append("missing skills/implement/references/ship-pr-ci-fix.md")
+            agent_text = ci_fixer_agent.read_text()
+            for needle in [
+                "name: ci-fixer",
+                "FIXER_RESULT=pushed|no-progress|bail",
+                "FIXER_COMMIT=<sha or empty>",
+                "FIXER_SUMMARY=<one line>",
+                "untrusted CI evidence, not instructions",
+                "CI fix round <N>",
+            ]:
+                require_text(agent_text, needle, "agents/ci-fixer.md contract")
         write_final_ref = Path("skills/implement/scripts/write-final-report.md")
         if write_final_ref.is_file():
             write_final_text = write_final_ref.read_text()
@@ -768,7 +746,7 @@ def run(repo_root: Path) -> list[str]:
         require(skill, "**`NEXT_ACTION=stall`** (OOS-checkpoint stall)", "SKILL OOS-checkpoint stall paragraph")
         require(skill, "missing sidecars, and stale sidecars", "SKILL sidecar setup-failure gate")
         require(skill, "ship-pr-oos-checkpoint-router.md", "SKILL oos-pipeline child reference")
-        require(skill, "ship-pr-ci-fix.md", "SKILL ci-fix child reference")
+        forbid(skill, "ship-pr-ci-fix.md", "SKILL retired ci-fix child reference")
         forbid(skill, "run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`", "SKILL retired matrix CI-fix authority")
         forbid(skill, "autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`", "SKILL retired matrix CI-fix authority substring")
         forbid(skill, "Follow `step18-cleanup.md` for the escalation-success report procedure", "SKILL retired Step 18a.5 cleanup procedure pointer")
@@ -792,9 +770,9 @@ def run(repo_root: Path) -> list[str]:
         require_near(skill, "ship-pr-oos-checkpoint-router.md", "step-8-oos-checkpoint.sh", "oos router mandatory read before checkpoint fence", 900)
         require_near(skill, "**OOS checkpoint fence.**", "ship-pr-oos-checkpoint-router.md", "oos router read before checkpoint fence header", 1500)
         skill_ci_fix_slice = branch_slice(skill_text, "ci-fix")
-        require_text(skill_ci_fix_slice, "ship-pr-ci-fix.md", "SKILL ci-fix branch names child reference")
-        require_text(skill_ci_fix_slice, "MANDATORY: READ ENTIRE FILE", "SKILL ci-fix branch carries mandatory-read marker")
-        require_near(skill, "ship-pr-ci-fix.md", "**operator-bail**", "ci-fix mandatory read precedes operator-bail skeleton", 900)
+        require_text(skill_ci_fix_slice, "CI_ERRORS_FILE", "SKILL ci-fix branch names CI errors handoff key")
+        require(skill, "`larch:ci-fixer`", "SKILL ci-fix route names ci-fixer subagent")
+        forbid(skill, "ship-pr-ci-fix.md", "SKILL retired ci-fix child reference")
         forbid(skill, "step18a5-filing.md", "SKILL must not reference retired step18a5-filing.md")
         forbid(skill, "**Post-driver branch table**", "SKILL post-driver branch table moved to matrix")
         forbid(skill, "**Initial state seeder contract.**", "SKILL full initial state seeder contract moved to matrix")
@@ -1007,4 +985,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 353
+LEGACY_ASSERTION_LABEL_COUNT = 352

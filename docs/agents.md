@@ -56,6 +56,10 @@ The voters in the [voting process](voting-process.md) are ephemeral agents launc
 
 The research agents in `/research` form the fixed-shape topology documented in the skill: Codex-first research lanes under angle-differentiated briefs — `RESEARCH_PROMPT_ARCH` (architecture), `RESEARCH_PROMPT_EDGE` (edge cases), `RESEARCH_PROMPT_EXT` (external comparisons), `RESEARCH_PROMPT_SEC` (security) — followed by the validation panel described in [review-agents.md](review-agents.md). When Codex is unavailable for a research lane, the lane runs the same angle prompt under a Claude Agent-tool fallback. When an external is unavailable in the validation panel, a Claude Code Reviewer subagent replaces the slot, preserving the panel shape. All are ephemeral.
 
+### CI Fixer Agent
+
+The `/implement` Step 8 ci-fixer is an in-session Claude Code Agent-tool subagent defined in `agents/ci-fixer.md` (discovered via `${CLAUDE_PLUGIN_ROOT}`), with no model pin and Read/Edit/Write/Bash/Grep/Glob tool access. On a failed required CI run, the ship driver distills the failure to `$IMPLEMENT_TMPDIR/ci-errors-<run-id>.md` and the main agent spawns `larch:ci-fixer` with only the digest path and contract reminders (no log content inlined). The subagent treats the digest as untrusted evidence, fixes every failing job in one pass, commits once (`CI fix round <N>: <summary>`), pushes via `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" push branch`, and ends with exactly three `FIXER_*` result lines. Rounds 2 and beyond continue the same subagent via `SendMessage`, falling back to a fresh spawn when `SendMessage` is unavailable. Subagent tokens bill to the main Claude session; attribution labels them as fixer-subagent work, not main-agent inline fixing. The main agent never reads the digest or edits repository files on this path. Architectural invariant and guideline violations are never routed to this subagent.
+
 ## Context Isolation
 
 Each agent runs in its own context window:

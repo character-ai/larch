@@ -10,7 +10,6 @@ INVARIANTS_REF="$ROOT/skills/implement/references/architectural-invariants-prese
 PRESENT_REF="$ROOT/skills/implement/references/architectural-guidelines-present.md"
 INVARIANTS_WRITE_COMPOSE_MD="$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.md"
 CONFLICT_REF="$ROOT/skills/implement/references/conflict-resolution.md"
-CI_FIX_REF="$ROOT/skills/implement/references/ship-pr-ci-fix.md"
 EXIT_MATRIX_REF="$ROOT/skills/implement/references/ship-pr-exit-matrix.md"
 TMPDIR="${TMPDIR:-/tmp}/larch-guidelines-step-$$"
 rm -rf "$TMPDIR"
@@ -52,7 +51,7 @@ not_contains "$SKILL" '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_RO
 not_contains "$SKILL" 'step-architectural-guidelines-prepare.sh' 'retired prepare wrapper live reference'
 not_contains "$SKILL" 'step-architectural-guidelines-write-staged.sh' 'retired staged writer live reference'
 
-for path in "$PRESENT_REF" "$INVARIANTS_REF" "$INVARIANTS_WRITE_COMPOSE_MD" "$CONFLICT_REF" "$CI_FIX_REF" "$EXIT_MATRIX_REF"; do
+for path in "$PRESENT_REF" "$INVARIANTS_REF" "$INVARIANTS_WRITE_COMPOSE_MD" "$CONFLICT_REF" "$EXIT_MATRIX_REF"; do
   test -f "$path"
 done
 contains "$INVARIANTS_REF" 'This file is a route reference, not an assessment-work prompt.' 'invariant route reference'

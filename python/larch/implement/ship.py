@@ -54,6 +54,7 @@ from typing import cast
 from larch.core import architectural_guidelines
 from larch.core.assessment_kind import AssessmentKind, GUIDELINES, INVARIANTS
 from larch.implement import ci_monitor
+from larch.implement import ci
 from larch.implement import main_health
 from larch.implement import scope_disposition
 from larch.core import config
@@ -2142,6 +2143,46 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
     return ctx
 
 
+_CI_FIX_AUTONOMOUS_REASONS = frozenset({
+    config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+    config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+    config.NEEDS_USER_LOCAL_UNFIXABLE,
+    config.NEEDS_USER_MAIN_CI_FAIL,
+    config.NEEDS_USER_FLAKY_DEFECT_UNFIXED,
+})
+
+
+def _distill_ci_errors_for_result(*, ctx: RunContext, result: ShipResult) -> tuple[str, str]:
+    """Distill CI failure evidence for a ci-fix ``NEEDS_USER`` result.
+
+    Returns ``(ci_errors_file, distill_class)``: the absolute digest path with
+    an empty class on success; an empty path with a bail class when distill is
+    skipped (no run id, non-ci-fix reason) or fails. Distill failure never
+    blocks the bail. Issue #7192.
+    """
+    reason = result.needs_user_reason
+    run_id = result.failed_run_id
+    eligible = (
+        result.outcome is Outcome.NEEDS_USER_INPUT
+        and run_id.isdigit()
+        and (reason in _CI_FIX_AUTONOMOUS_REASONS or reason.startswith(f"{config.NEEDS_USER_CI_LOCAL_UNFIXABLE}:"))
+        and bool(ctx.repo)
+        and "/" in ctx.repo
+        and _tmpdir_under_allowed_root(ctx.tmpdir)
+    )
+    if not eligible:
+        return "", ""
+    output = Path(ctx.tmpdir) / f"ci-errors-{run_id}.md"
+    try:
+        outcome = ci.distill_log(run_id=run_id, repo=ctx.repo, output=output)
+    except Exception as exc:  # pylint: disable=broad-exception-caught  # distill must never block the ci-fix bail
+        logging_util.BreadcrumbWriter().emit(f"ship.py: ci distill-log failed: {exc}")
+        return "", "distill-exception"
+    if outcome.status == "ok":
+        return str(output), ""
+    return "", outcome.bail_class or "distill-failed"
+
+
 def main(argv: list[str] | None = None) -> int:
     ctx = RunContext.from_env(env={})
     result: ShipResult
@@ -2168,7 +2209,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
     _persist_stall_metadata_if_needed(ctx=ctx, result=result, tmpdir=Path(ctx.tmpdir))
-    emit_result(ctx=ctx, result=result)
+    ci_errors_file, ci_errors_distill_class = _distill_ci_errors_for_result(ctx=ctx, result=result)
+    emit_result(
+        ctx=ctx,
+        result=result,
+        ci_errors_file=ci_errors_file,
+        ci_errors_distill_class=ci_errors_distill_class,
+    )
     return config.OUTCOME_EXIT_MAP[result.outcome]
 
 
