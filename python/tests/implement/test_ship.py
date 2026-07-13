@@ -1,4 +1,4 @@
-# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedCallResult=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedCallResult=false, reportAttributeAccessIssue=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 """Tests for ship.py."""
 
 from __future__ import annotations

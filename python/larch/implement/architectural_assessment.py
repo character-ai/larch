@@ -795,22 +795,24 @@ def _write_outcome(
     note_state: str = config.NOTE_STATE_AUTHORED,
     detail: str = "",
 ) -> None:
-    descriptor = _descriptor_for_kind(kind)
-    gate = ship_guidelines._gate(
-        kind=descriptor,
-        note=result.assessment,
-        detail=detail,
-        status="present",
-        assessment_kind=result.state,
-        note_state=note_state,
-    )
-    _ = ship_guidelines._write_ship_outcome(
-        implement_tmpdir=str(implement_tmpdir),
-        result=gate,
-        head_sha=result.head_sha,
-        base_ref=result.base_ref,
-        kind=descriptor,
-    )
+    if kind == config.ASSESSMENT_KIND_INVARIANTS:
+        gate = ship_guidelines.InvariantsGateResult(
+            note=result.assessment, detail=detail, invariants_status="present",
+            assessment_kind=result.state, note_state=note_state,
+        )
+        _ = ship_guidelines.write_invariant_ship_outcome(
+            implement_tmpdir=str(implement_tmpdir), result=gate,
+            head_sha=result.head_sha, base_ref=result.base_ref,
+        )
+    else:
+        gate = ship_guidelines.GuidelinesGateResult(
+            note=result.assessment, detail=detail, guidelines_status="present",
+            assessment_kind=result.state, note_state=note_state,
+        )
+        _ = ship_guidelines.write_guideline_ship_outcome(
+            implement_tmpdir=str(implement_tmpdir), result=gate,
+            head_sha=result.head_sha, base_ref=result.base_ref,
+        )
 
 
 def _persist_result(result: AssessmentResult, *, repo_root: Path, implement_tmpdir: Path) -> None:
