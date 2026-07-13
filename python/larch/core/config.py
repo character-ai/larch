@@ -680,7 +680,6 @@ SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME: Final = "ship-pr-rrr-after-phase14.flag
 
 # Environment variable names
 ENV_LARCH_CI_LOCAL_FIX_ITER: Final = "LARCH_CI_LOCAL_FIX_ITER"
-ENV_LARCH_CI_FIXER: Final = "LARCH_CI_FIXER"
 ENV_LARCH_NO_LOGS_COMMIT: Final = "LARCH_NO_LOGS_COMMIT"
 ENV_LARCH_RUN_ID: Final = "LARCH_RUN_ID"
 ENV_DESIGN_TMPDIR: Final = "DESIGN_TMPDIR"
@@ -856,7 +855,6 @@ CI_MONITOR_STATUS_FAILURE_BAIL: Final = 3
 CI_MONITOR_LOG_TAIL_LINES: Final = 100
 CI_MONITOR_IN_PROGRESS_POLL_INTERVAL: Final = 15
 CI_MONITOR_IN_PROGRESS_TIMEOUT: Final = 3600
-CI_FIXER_KILL_SWITCH_INLINE_MAX_ATTEMPTS: Final = 30
 CI_FIXER_DISTILL_STEP_HEAD_LINES: Final = 80
 CI_FIXER_DISTILL_STEP_TAIL_LINES: Final = 80
 CI_FIXER_DISTILL_STEP_CONTEXT_LINES: Final = 4
@@ -864,28 +862,10 @@ CI_FIXER_DISTILL_TOTAL_BYTES: Final = 60000
 CI_FIXER_INVARIANT_EVIDENCE_MAX_BYTES: Final = 262_144
 CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT: Final = 2
 CI_FIXER_EVIDENCE_DIGEST_ATTEMPTS: Final = 3
-CI_FIXER_STATUS_SUCCESS: Final = "ci-fixer-success"
+# Distill bail class surfaced when gh itself is unavailable (auth/quota/binary).
+# Emitted by the ci distill-log health-bail branch and forwarded as
+# CI_ERRORS_DISTILL_CLASS in the ship route-exit handoff (#7192).
 CI_FIXER_STATUS_HEALTH_BAIL: Final = "ci-fixer-health-bail"
-CI_FIXER_STATUS_EXHAUSTED: Final = "ci-fixer-exhausted"
-CI_FIXER_STATUS_NO_PROGRESS: Final = "ci-fixer-no-progress"
-CI_FIXER_STATUS_REBASE_NEEDED: Final = "ci-fixer-rebase-needed"
-CI_FIXER_STATUS_DISABLED: Final = "ci-fixer-disabled"
-CI_FIXER_STATUS_TOKENS: Final[tuple[str, ...]] = (
-    CI_FIXER_STATUS_SUCCESS,
-    CI_FIXER_STATUS_HEALTH_BAIL,
-    CI_FIXER_STATUS_EXHAUSTED,
-    CI_FIXER_STATUS_NO_PROGRESS,
-    CI_FIXER_STATUS_REBASE_NEEDED,
-    CI_FIXER_STATUS_DISABLED,
-)
-CI_FIXER_DISTILLED_FAILURE_FILE: Final = "distilled-failure.md"
-CI_FIXER_STATUS_FILE: Final = "fixer-status.env"
-CI_FIXER_ROUNDS_FILE: Final = "fixer-rounds.tsv"
-CI_FIXER_BAIL_FILE: Final = "fixer-bail.md"
-# Persisted failing-job signature for cross-cycle no-progress detection. Keyed
-# stably by mode+repo (one PR per implement session), NOT by the failed CI run
-# id, so it survives the reship that triggers a fresh CI run (#7122).
-CI_FIXER_SIGNATURE_FILE: Final = "fixer-signature"
 CI_FIX_ROLE: Final = "fix"
 CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "lint",

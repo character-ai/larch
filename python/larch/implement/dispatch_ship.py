@@ -420,6 +420,12 @@ def _write_ship_route_handoff(
         reason = _ship_route_safe_line(payload.get("needs_user_reason", ""))
         scope = "main" if reason == config.NEEDS_USER_MAIN_CI_FAIL else "pr"
         lines.append(f"CI_FAILURE_SCOPE={scope}")
+        ci_errors_file = _ship_route_safe_line(payload.get("ci_errors_file", ""))
+        if ci_errors_file:
+            lines.append(f"CI_ERRORS_FILE={ci_errors_file}")
+        else:
+            lines.append("CI_ERRORS_FILE=")
+            lines.append(f"CI_ERRORS_DISTILL_CLASS={_ship_route_safe_line(payload.get('ci_errors_distill_class', ''))}")
     detail_raw = payload.get("detail", "")
     detail = detail_raw if isinstance(detail_raw, str) else str(detail_raw or "")
     if detail:

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
-import re
 from pathlib import Path
 
 from larch.core import config
@@ -273,15 +271,3 @@ def test_fixer_lane_budget_reserves_a_full_timeout_per_configured_tier() -> None
             len(external_defaults.tool_order(role_id))
             * config.FIXER_LANE_TIMEOUT_SEC
         )
-
-
-def test_step8_ci_fixer_adapter_reads_canonical_tier_fields() -> None:
-    """Guard the typed CI-fixer tier selection against dataclass drift."""
-    source = (
-        Path(__file__).resolve().parents[3]
-        / "python/larch/implement/ci_fixer_adapter.py"
-    ).read_text(encoding="utf-8")
-    referenced = set(re.findall(r"selected\.([a-z_]+)", source))
-    valid = {f.name for f in dataclasses.fields(external_defaults.TierSelectResult)}
-    assert referenced == {"action", "selected_tier"}
-    assert referenced <= valid
