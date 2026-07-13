@@ -513,6 +513,13 @@
   {
     "file": "larch/core/architectural_guidelines.py",
     "suppression_kind": "noqa",
+    "text": "noqa: F401",
+    "occurrence": 1,
+    "reason": "re-export: _MARKDOWN_HEADING_RE re-exported for backward-compatible lint_guideline_no_exception import"
+  },
+  {
+    "file": "larch/core/architectural_guidelines.py",
+    "suppression_kind": "noqa",
     "text": "noqa: PLC0415 # lint-layering: ok append helper must match run-log flush chunking and dedupe.",
     "occurrence": 1,
     "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
