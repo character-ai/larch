@@ -89,6 +89,7 @@ skills/design/scripts/test-design-clarify.sh
 skills/design/scripts/test-design-step3-entry.sh
 skills/design/scripts/test-design-step3-mav.sh
 skills/design/scripts/test-design-step3-review.sh
+skills/design/scripts/test-design-step3b-tail.sh
 skills/design/scripts/test-design-step5c.sh
 skills/design/scripts/test-findings-classification.sh
 skills/design/scripts/test-gate-b-apply-mode.sh

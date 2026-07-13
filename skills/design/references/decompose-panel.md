@@ -88,6 +88,6 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose close-original \
 
 `close-original` revalidates the migration sentinel and live postcondition, including every declared intra-piece edge, before comment or close. Any partial filing, denied authorization, stale state, or verification failure preserves the original issue and tmpdir. On resume after filing, if migration is absent, incomplete, or stale, rerun `migrate-deps` before `close-original`.
 
-For Step 5c size refusal, accepted Partition is terminal. Export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block, and exit `0`. Do not rerun Step 5c or continue against the closed original. Only Override reruns `design-step5c.sh`.
+For Step 5c size refusal, accepted Partition is terminal. Export `SUMMARY_OUTCOME=approved-partition`, run the Final summary block, and exit `0`. Do not rerun Step 5c or continue against the closed original. Only Override reruns `design-step5c.sh --fresh-attempt`.
 
 Panel dispatch and aggregate CLI commands remain available to their existing non-Split callers.

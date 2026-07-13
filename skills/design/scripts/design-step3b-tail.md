@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Bgjob launcher for `/design` Step 4 rejected-findings output and Gate C preview setup.
+Adapter-backed `/design` Step 4 rejected-findings and Gate C preview tail.
 
 ## Primary callers
 
@@ -10,17 +10,14 @@ Bgjob launcher for `/design` Step 4 rejected-findings output and Gate C preview 
 
 ## Invariants
 
-- Accepts launcher-owned `--session-env-path` and `--claude-pid`; never derives the root Claude PID from `$PPID`.
-- Fresh launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step4-tail PGID=<n>`.
-- Before fresh `bgjob start`, reuses a live identity-valid `design-step4-tail` registry row or regular `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`; stale or dead rows are cleared.
-- Recreates `$DESIGN_TMPDIR/.design-step4-tail-result.env`, removes stale `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env`, then passes that merge env to `bgjob start`; the child writes `.completed/step-4` after successful preview generation.
-- `$DESIGN_TMPDIR/bgjob/design-step4-tail.result.env` is completion truth for `SKIP_APPROVE_REQUESTED_GATEC`, rejected-findings marker KVs, `REJECTED_FINDINGS_BODY_PATH`, `GATEC_PREVIEW_PATH`, and optional `DIALECTIC_GATEC_DIGEST_PATH`.
-- Thin launcher stdout is not a data source for `SKIP_APPROVE_REQUESTED_GATEC` or rejected findings.
-- Filters rejected findings through `plan-review emit-rejected --report-framing`, with the legacy considered-not-adopted fallback on failure; leaves `rejected-findings.md` unchanged.
-- Owns the Step 4 compatibility FINALIZE guard, `skip_approve_requested` read, foreground `design dialectic-gatec`, `.completed/dialectic-gatec-terminal`, and Gate C preview file.
-- Exits early after preview when `.pause-save-complete` exists.
-- Does not depend on architecture diagram artifacts and must not mutate repository files.
+- Resolves a supplied session env through the trusted bgjob resolver before pause handling or tmpdir use. It never sources the file.
+- Delegates lifecycle decisions to `bgjob adapt` with step `design-step4-tail`, explicit tmpdir, 900-second budget, session path, and optional owner PID.
+- Accepts child mode only as the terminal `--bgjob-child --merge-result-env <path>` suffix.
+- Ordinary duplicate calls reattach a valid completed result when the input fingerprint matches. When `.step3-review-result.env` is present, the wrapper passes its sha256 as `--input-fingerprint` to `bgjob adapt`; a fingerprint mismatch (or no stored sidecar for a prior result) is treated as stale and launches fresh. The wrapper does not inspect registry liveness or delete lifecycle artifacts.
+- Keeps FINALIZE, rejected-finding rendering, Gate C, preview generation, and completion markers in child mode.
+- Atomically publishes `STEP4_STATUS`, `SKIP_APPROVE_REQUESTED_GATEC`, rejected-body paths, preview paths, and an optional dialectic digest to the adapter merge env.
+- A pause race runs pause-save, publishes `STEP4_STATUS=pause-save`, and exits zero. Publication failure exits non-zero.
 
 ## Harness
 
-Covered by `make test-design-structure`.
+Covered by `make test-design-step3b-tail` and `make test-design-structure`.

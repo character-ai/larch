@@ -161,7 +161,8 @@ def test_adapt_main_strips_leading_delimiter_and_uses_tmpdir_env(
 ) -> None:
     captured: list[model.JobSpec] = []
 
-    def fake_adapt(spec: model.JobSpec) -> int:
+    def fake_adapt(spec: model.JobSpec, *, options: adapt.AdaptOptions) -> int:
+        assert options == adapt.AdaptOptions()
         captured.append(spec)
         return 0
 
@@ -190,6 +191,134 @@ def test_adapt_main_strips_leading_delimiter_and_uses_tmpdir_env(
     assert captured[0].tmpdir == tmp_path
     assert captured[0].command[0] == sys.executable
     assert captured[0].command[0] != "--"
+
+
+def test_session_env_resolver_emits_wrapper_safe_exports(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "session-env.sh"
+    _ = source.write_text(
+        f"export DESIGN_TMPDIR={tmp_path}\nexport SESSION_ID='session one'\n",
+        encoding="utf-8",
+    )
+
+    assert cli.adapt_main(
+        ["--resolve-session-env", "--session-env-path", str(source)]
+    ) == 0
+
+    assert capsys.readouterr().out == (
+        f"export DESIGN_TMPDIR={tmp_path}\n"
+        "export SESSION_ID='session one'\n"
+    )
+
+
+def test_adapt_resolves_tmpdir_from_session_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "session-env.sh"
+    _ = source.write_text(f"export DESIGN_TMPDIR={tmp_path}\n", encoding="utf-8")
+    captured: list[model.JobSpec] = []
+
+    def fake_adapt(spec: model.JobSpec, *, options: adapt.AdaptOptions) -> int:
+        assert options == adapt.AdaptOptions()
+        captured.append(spec)
+        return 0
+
+    monkeypatch.delenv(config.ENV_DESIGN_TMPDIR, raising=False)
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", _owner_none)
+    monkeypatch.setattr(cli.adapt, "start_or_reattach", fake_adapt)
+
+    assert cli.adapt_main(
+        [
+            "--step", "demo-step", "--budget-s", "10",
+            "--session-env-path", str(source), "--", "true",
+        ]
+    ) == 0
+    assert captured[0].tmpdir == tmp_path
+
+
+def test_session_env_cannot_override_validated_plugin_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "session-env.sh"
+    untrusted_root = tmp_path / "untrusted-plugin"
+    untrusted_root.mkdir()
+    _ = source.write_text(
+        f"export DESIGN_TMPDIR={tmp_path}\nexport CLAUDE_PLUGIN_ROOT={untrusted_root}\n",
+        encoding="utf-8",
+    )
+    trusted_root = os.environ[config.ENV_CLAUDE_PLUGIN_ROOT]
+
+    def fake_adapt(spec: model.JobSpec, *, options: adapt.AdaptOptions) -> int:
+        assert spec.tmpdir == tmp_path
+        assert options == adapt.AdaptOptions()
+        assert os.environ[config.ENV_CLAUDE_PLUGIN_ROOT] == trusted_root
+        return 0
+
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", _owner_none)
+    monkeypatch.setattr(cli.adapt, "start_or_reattach", fake_adapt)
+
+    assert cli.adapt_main(
+        [
+            "--step", "demo-step", "--budget-s", "10",
+            "--session-env-path", str(source), "--", "true",
+        ]
+    ) == 0
+
+
+@pytest.mark.parametrize("source_kind", ["wrong-pid", "unexpected-symlink"])
+def test_session_env_resolver_rejects_untrusted_symlink_sources(
+    source_kind: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target = tmp_path / "session-env-target.sh"
+    _ = target.write_text(f"export DESIGN_TMPDIR={tmp_path}\n", encoding="utf-8")
+    expected = tmp_path / "current-design-env-123.sh"
+    expected.symlink_to(target)
+    unexpected = tmp_path / "current-design-env-456.sh"
+    unexpected.symlink_to(target)
+    monkeypatch.setattr(cli.session_env, "_design_symlink_path", lambda pid: tmp_path / f"current-design-env-{pid}.sh")  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    source = expected if source_kind == "wrong-pid" else unexpected
+    owner_pid = "456" if source_kind == "wrong-pid" else "123"
+
+    assert cli.adapt_main(
+        [
+            "--resolve-session-env", "--session-env-path", str(source),
+            "--owner-pid", owner_pid,
+        ]
+    ) == 2
+
+    assert capsys.readouterr().out == "BGJOB_ERROR=session-env-unsafe\n"
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("export SESSION_ID=demo\n", "design-tmpdir-missing"),
+        ("export DESIGN_TMPDIR='unterminated\n", "session-env-malformed"),
+        ("UNTRUSTED=value\n", "session-env-malformed"),
+        ("export DESIGN_TMPDIR=/does/not/exist\n", "design-tmpdir-invalid"),
+    ],
+)
+def test_session_env_resolver_rejects_invalid_inputs(
+    body: str,
+    expected: str,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source = tmp_path / "session-env.sh"
+    _ = source.write_text(body, encoding="utf-8")
+
+    assert cli.adapt_main(
+        ["--resolve-session-env", "--session-env-path", str(source)]
+    ) == 2
+    assert capsys.readouterr().out == f"BGJOB_ERROR={expected}\n"
 
 
 @pytest.mark.parametrize(
@@ -253,6 +382,203 @@ def test_completed_result_emits_wait_compatible_rows_without_launch(
     assert capsys.readouterr().out == (
         "BGJOB_STATUS=DONE\nBGJOB_RC=0\nSTEP=demo-step\nCUSTOM=merged\n"
     )
+
+
+def test_completed_result_preserves_clear_on_fresh_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.touch()
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _start_ok)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(clear_on_fresh=marker),
+    ) == 0
+    assert marker.is_file()
+
+
+def test_fresh_launch_clears_requested_regular_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.touch()
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _start_ok)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(clear_on_fresh=marker),
+    ) == 0
+    assert not marker.exists()
+
+
+def test_fresh_launch_failure_preserves_completion_marker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.touch()
+    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: 2)  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    with pytest.raises(adapt.AdaptError, match="daemon-start-failed"):
+        _ = adapt.start_or_reattach(
+            spec,
+            options=adapt.AdaptOptions(clear_on_fresh=marker),
+        )
+
+    assert marker.is_file()
+
+
+def test_clear_on_fresh_failure_prevents_daemon_start(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.mkdir()
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    with pytest.raises(adapt.AdaptError, match="unsafe-path"):
+        _ = adapt.start_or_reattach(
+            spec,
+            options=adapt.AdaptOptions(clear_on_fresh=marker),
+        )
+
+    assert not launches
+    assert capsys.readouterr().out == ""
+
+
+def test_live_job_preserves_completion_marker_without_launch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    marker = tmp_path / ".completed" / "step-3"
+    marker.parent.mkdir()
+    marker.touch()
+    _ = registry.write_entry(_entry(spec))
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.daemon, "start_daemon", lambda _spec: pytest.fail("live job must reattach"))  # pyright: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(clear_on_fresh=marker),
+    ) == 0
+
+    assert marker.is_file()
+    assert capsys.readouterr().out == "BGJOB_STATUS=STARTED STEP=demo-step PGID=303\n"
+
+
+def test_explicit_retry_replaces_completed_result(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(replace_completed_result=True),
+    ) == 0
+    assert len(launches) == 1
+    assert not result.exists()
+
+
+def test_explicit_retry_clears_verified_dead_registry_before_relaunch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    old_path = registry.write_entry(_entry(spec))
+    dead = _verdict(live=False, reason="missing-pid")
+    launches: list[model.JobSpec] = []
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(dead))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(dead))
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _record_start(launches))
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(replace_completed_result=True),
+    ) == 0
+
+    assert not old_path.exists()
+    assert not result.exists()
+    assert len(launches) == 1
+
+
+def test_explicit_retry_refuses_live_registry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    _ = registry.write_entry(_entry(spec))
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(_verdict(live=True)))
+
+    with pytest.raises(adapt.AdaptError, match="replace-active"):
+        _ = adapt.start_or_reattach(
+            spec,
+            options=adapt.AdaptOptions(replace_completed_result=True),
+        )
+    assert result.is_file()
+
+
+def test_explicit_retry_without_result_still_refuses_live_registry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    _ = registry.write_entry(_entry(spec))
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(_verdict(live=True)))
+
+    with pytest.raises(adapt.AdaptError, match="replace-active"):
+        _ = adapt.start_or_reattach(
+            spec,
+            options=adapt.AdaptOptions(replace_completed_result=True),
+        )
+
+
+def test_explicit_retry_refuses_unverifiable_registry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    _ = registry.write_entry(_entry(spec))
+    unverifiable = _verdict(live=False, reason="identity-probe-timeout")
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(unverifiable))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(unverifiable))
+
+    with pytest.raises(adapt.AdaptError, match="registry-identity-unverifiable"):
+        _ = adapt.start_or_reattach(
+            spec,
+            options=adapt.AdaptOptions(replace_completed_result=True),
+        )
+    assert result.is_file()
 
 
 def test_completed_result_accepts_blank_lines_like_wait(
@@ -901,6 +1227,54 @@ def test_concurrent_adapter_decisions_launch_once(
     assert "BGJOB_STATUS=STARTED STEP=demo-step PGID=303" in capsys.readouterr().out
 
 
+def test_concurrent_explicit_retries_launch_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    launch_count = 0
+    launch_started = threading.Event()
+    release_launch = threading.Event()
+
+    def fake_start(_spec: model.JobSpec) -> int:
+        nonlocal launch_count
+        launch_count += 1
+        launch_started.set()
+        assert release_launch.wait(timeout=2)
+        _ = registry.write_entry(_entry(spec))
+        return 0
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", fake_start)
+    monkeypatch.setattr(adapt.registry, "daemon_liveness", _return_verdict(_verdict(live=True)))
+    monkeypatch.setattr(adapt.registry, "child_liveness", _return_verdict(_verdict(live=True)))
+    errors: list[BaseException] = []
+
+    def invoke() -> None:
+        try:
+            _ = adapt.start_or_reattach(
+                spec,
+                options=adapt.AdaptOptions(replace_completed_result=True),
+            )
+        except BaseException as exc:  # test thread must report failures to the parent
+            errors.append(exc)
+
+    first = threading.Thread(target=invoke)
+    second = threading.Thread(target=invoke)
+    first.start()
+    assert launch_started.wait(timeout=2)
+    second.start()
+    release_launch.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+
+    assert len(errors) == 1
+    assert isinstance(errors[0], adapt.AdaptError)
+    assert errors[0].token == "replace-active"
+    assert launch_count == 1
+
+
 def test_merge_env_rows_are_published_after_child_writes(tmp_path: Path) -> None:
     spec = replace(
         _spec(tmp_path),
@@ -920,3 +1294,106 @@ def test_merge_env_rows_are_published_after_child_writes(tmp_path: Path) -> None
     rows = larch_io.read_kvs(model.result_env_path(tmpdir=tmp_path, step=spec.step))
     assert rows["PRESEEDED"] == "yes"
     assert rows["CHILD_WRITTEN"] == "ok"
+
+
+def test_stale_completed_result_launches_fresh_when_fingerprint_mismatches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    fp_path = adapt._input_fp_path(spec=spec)
+    fp_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = fp_path.write_text("old-fingerprint\n", encoding="utf-8")
+    launched: list[int] = []
+
+    def counting_start(_spec: model.JobSpec) -> int:
+        launched.append(1)
+        return 0
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", counting_start)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="new-fingerprint"),
+    ) == 0
+    assert len(launched) == 1
+    assert not result.exists()  # stale result was invalidated before relaunch
+
+
+def test_completed_result_reattaches_when_fingerprint_matches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    fp_path = adapt._input_fp_path(spec=spec)
+    fp_path.parent.mkdir(parents=True, exist_ok=True)
+    _ = fp_path.write_text("same-fingerprint\n", encoding="utf-8")
+
+    def fail_start(_spec: model.JobSpec) -> int:
+        pytest.fail("matched fingerprint must reattach without launch")
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", fail_start)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="same-fingerprint"),
+    ) == 0
+    assert "BGJOB_STATUS=DONE" in capsys.readouterr().out
+
+
+def test_completed_result_reattaches_when_no_fingerprint_stored_and_none_provided(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+
+    def fail_start(_spec: model.JobSpec) -> int:
+        pytest.fail("no fingerprint option must reattach without launch")
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", fail_start)
+    assert adapt.start_or_reattach(spec) == 0
+
+
+def test_completed_result_treats_missing_sidecar_as_stale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    result = model.result_env_path(tmpdir=tmp_path, step=spec.step)
+    larch_io.write_kvs(path=result, values=[("BGJOB_RC", "0"), ("STEP", spec.step)])
+    launched: list[int] = []
+
+    def counting_start(_spec: model.JobSpec) -> int:
+        launched.append(1)
+        return 0
+
+    monkeypatch.setattr(adapt.daemon, "start_daemon", counting_start)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="any-fingerprint"),
+    ) == 0
+    assert len(launched) == 1
+
+
+def test_fresh_launch_writes_input_fingerprint_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    spec = _spec(tmp_path)
+    monkeypatch.setattr(adapt.daemon, "start_daemon", _start_ok)
+
+    assert adapt.start_or_reattach(
+        spec,
+        options=adapt.AdaptOptions(input_fingerprint="abc123"),
+    ) == 0
+    fp_path = adapt._input_fp_path(spec=spec)
+    assert fp_path.is_file()
+    assert fp_path.read_text(encoding="utf-8").strip() == "abc123"
