@@ -139,6 +139,16 @@ def identity_from_rows(
     )
 
 
+def result_identity_matches(rows: dict[str, str], *, live: ChecksInputIdentity) -> bool:
+    """True when a result env's identity rows match the live repository identity.
+
+    For result grammars without a terminal ``NEXT_ACTION`` row (e.g. Step 5), where
+    ``classify_completed_result`` does not apply.
+    """
+    persisted = identity_from_rows(rows, repo_root=live.repo_root)
+    return persisted is not None and identities_match(persisted, live)
+
+
 def read_env_rows(path: Path) -> dict[str, str]:
     """Parse a checks result/merge env through larch.io; raise on unsafe files."""
     if path.is_symlink():

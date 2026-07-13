@@ -403,6 +403,48 @@ def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
         path.write_text("", encoding="utf-8")
 
 
+def _step5_result_identity_rows(tmpdir: Path) -> str:
+    """Result-write-time identity rows for Step 5 reuse validation.
+
+    Step 5 mutates the tree (the coder commits fixes), so the identity is computed
+    at publish time, not launch time, to permit exact reuse when nothing changed
+    since the review completed. Returns "" when identity cannot be computed, so the
+    result is published without identity and a later re-entry fails closed to a re-run.
+    """
+    try:
+        identity = _checks_launch_identity(tmpdir=tmpdir)
+    except checks_result_identity.ChecksIdentityError:
+        return ""
+    return larch_io.format_kvs(identity.as_rows())
+
+
+def _publish_step5_child(*, tmpdir: Path, merge_env_raw: str, output: str) -> bool:
+    """Publish Step 5 child output plus result-write-time identity; True on success."""
+    identity_rows = _step5_result_identity_rows(tmpdir)
+    merged = output
+    if identity_rows:
+        if merged and not merged.endswith("\n"):
+            merged += "\n"
+        merged += identity_rows
+    try:
+        _publish_child_output(
+            tmpdir=tmpdir,
+            merge_env=_safe_merge_env(tmpdir=tmpdir, raw=merge_env_raw),
+            text=merged,
+        )
+    except (OSError, UnicodeError, ValueError):
+        return False
+    return True
+
+
+def _step5_result_identity_ok(*, tmpdir: Path, rows: dict[str, str]) -> bool:
+    """True when a completed Step 5 result env matches the live repository identity."""
+    try:
+        live = _checks_launch_identity(tmpdir=tmpdir)
+    except checks_result_identity.ChecksIdentityError:
+        return False
+    return checks_result_identity.result_identity_matches(rows, live=live)
+
 
 def step5_canonical_result_env_state(*, tmpdir: Path) -> str:
     """Classify only the canonical Step 5 review result grammar."""
@@ -427,6 +469,8 @@ def step5_canonical_result_env_state(*, tmpdir: Path) -> str:
     if rows.get("STEP") != _STEP5_REVIEW_STEP or not required.issubset(rows):
         return "stale"
     if rows.get(config.BGJOB_RC_KEY) == "0" and status == "complete":
+        if not _step5_result_identity_ok(tmpdir=tmpdir, rows=rows):
+            return "stale"
         return "complete"
     if status == "stall":
         return "stall"
@@ -446,6 +490,8 @@ def step5_resume_result_env_state(*, tmpdir: Path) -> str:
         and rows.get(config.BGJOB_RC_KEY) == "0"
         and rows.get("STEP5_REVIEW_STATUS") in {"complete", "stall"}
     ):
+        if not _step5_result_identity_ok(tmpdir=tmpdir, rows=rows):
+            return "stale"
         return "complete"
     return "stale"
 
@@ -508,13 +554,11 @@ def step5_review_main(argv: list[str] | None = None) -> int:
             print("step-5-review: --merge-result-env is required in child mode", file=sys.stderr)
             return 2
         rc, output = _capture_worker(lambda: _step5_review_worker(implement_tmpdir))
-        try:
-            _publish_child_output(
-                tmpdir=implement_tmpdir,
-                merge_env=_safe_merge_env(tmpdir=implement_tmpdir, raw=args.merge_result_env),
-                text=output,
-            )
-        except (OSError, UnicodeError, ValueError):
+        if not _publish_step5_child(
+            tmpdir=implement_tmpdir,
+            merge_env_raw=args.merge_result_env,
+            output=output,
+        ):
             return 2
         sys.stdout.write(output)
         return rc
@@ -1513,13 +1557,11 @@ def _step5_resume_child(args: argparse.Namespace, implement_tmpdir: Path) -> int
         print("step-5-resume: --merge-result-env is required in child mode", file=sys.stderr)
         return 2
     rc, output = _capture_worker(lambda: _step5_resume_worker(args, implement_tmpdir))
-    try:
-        _publish_child_output(
-            tmpdir=implement_tmpdir,
-            merge_env=_safe_merge_env(tmpdir=implement_tmpdir, raw=args.merge_result_env),
-            text=output,
-        )
-    except (OSError, UnicodeError, ValueError):
+    if not _publish_step5_child(
+        tmpdir=implement_tmpdir,
+        merge_env_raw=args.merge_result_env,
+        output=output,
+    ):
         return 2
     sys.stdout.write(output)
     return rc
