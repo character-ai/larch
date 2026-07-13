@@ -559,6 +559,7 @@ def _dispatch_via_cli(
     round_num: str = "1",
     diff_file: str = "",
     plan_file: str = "",
+    quiet: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     merged = os.environ.copy()
     merged.update(
@@ -573,6 +574,13 @@ def _dispatch_via_cli(
     merged.pop("LARCH_EXECUTION_ISSUES_LOG", None)
     merged.pop("SESSION_ENV_PATH", None)
     merged.pop("IMPLEMENT_TMPDIR", None)
+    if quiet:
+        merged["LARCH_QUIET_DISABLE"] = ""
+        merged["LARCH_QUIET_ACTIVE"] = ""
+        merged["LARCH_QUIET_PID"] = ""
+        merged["LARCH_QUIET_LOG_FILE"] = ""
+        merged["IMPLEMENT_TMPDIR"] = str(review)
+        merged["PYTHONPATH"] = str(REPO_ROOT / "python")
     if plugin_root is not None:
         merged["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     else:
@@ -581,9 +589,7 @@ def _dispatch_via_cli(
         merged.update(env)
     args = [
         sys.executable,
-        str(CLI),
-        "agent",
-        "dispatch-voters",
+        *( ["-c", "from larch.agents.agent_voters import dispatch_voters_main; import sys; raise SystemExit(dispatch_voters_main(sys.argv[1:]))"] if quiet else [str(CLI), "agent", "dispatch-voters"] ),
         "--ballot-file",
         str(ballot),
         "--review-tmpdir",
@@ -887,6 +893,24 @@ def test_retry_fail_codex_degrades_panel(tmp_path: Path) -> None:
     assert "DEGRADED_PANEL_WARNING=" in result.stdout
     assert (review / "codex-plan-fidelity-vote-output-parse-rate-diag.txt").is_file()
     assert not (review / "codex-plan-fidelity-vote-output-first-pass.txt").exists()
+
+
+@pytest.mark.voter_retry_codex_fail_and_fallback
+def test_quiet_dispatch_routes_final_kvs_to_contract_stream(tmp_path: Path) -> None:
+    stub_bin = _make_voter_stub_bin(tmp_path)
+    review = _harness_review_tmpdir(tmp_path, "quiet-degraded")
+    ballot = _standard_ballot(tmp_path)
+    result = _dispatch_via_cli(
+        review,
+        ballot,
+        stub_bin=stub_bin,
+        quiet=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "DISPATCH_OK=true" in result.stdout
+    quiet_logs = list(review.glob("larch-quiet-*.log"))
+    assert quiet_logs
+    assert "DISPATCH_OK=true" not in quiet_logs[0].read_text(encoding="utf-8")
 
 
 @pytest.mark.voter_retry_codex_fail_and_fallback

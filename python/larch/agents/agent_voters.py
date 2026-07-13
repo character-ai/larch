@@ -9,20 +9,28 @@ import os
 import re
 import sys
 import tempfile
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
+from typing import cast
 
 from larch.agents import agent_waterfall
-from larch.agents._launch_failure import resolve_model_args
 from larch.calibration import difficulty
-from larch.core import external_defaults
 from larch.review import findings_ledger
-from larch.review import voting
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch.review.dispatch_shared import (
+    DispatchState,
+    VoterPromptResult,
+    VoterSlotPolicy,
+    emit_final_voter_kvs,
+    fresh_calibration_snapshot,
+    path_for_wire,
+    resolved_model_for_row,
+    topology_voter_policies,
+    validate_parse_rate_result,
+)
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes, resolve_panel_artifact_dir
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -30,37 +38,7 @@ DISPATCH_LABEL = "agent dispatch-voters"
 MODE = "description"
 VOTER_PANEL_ROLE = "scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted"
 
-@dataclass(frozen=True)
-class VoterSlotPolicy:
-    slot_num: str
-    slot_name: str
-    primary_tool: str
-    default_label: str
-    archetype: str
-    prompt_label: str
-    output_name: str
-    semantic_labels: Mapping[str, str]
-
-
-@dataclass(frozen=True)
-class VoterPromptResult:
-    prompt_file: str
-    payload_bytes: int = 0
-
-
-VOTER_SLOT_POLICIES = tuple(
-    VoterSlotPolicy(
-        policy.slot_num,
-        policy.slot_name,
-        policy.primary_tool,
-        policy.default_label,
-        policy.archetype,
-        policy.prompt_label,
-        policy.output_name,
-        dict(policy.semantic_labels),
-    )
-    for policy in external_defaults.voter_policies("review.voters")
-)
+VOTER_SLOT_POLICIES = topology_voter_policies("review.voters")
 
 
 @dataclass(frozen=True)
@@ -75,23 +53,6 @@ class Options:
     round_num: int = 1
     site: str = "review Step 2"
     tier: str = ""
-
-
-# Mutable: per-voter status / parse-rate fields are updated in place as voters resolve.
-@dataclass
-class DispatchState:
-    voter_1_path: str
-    voter_2_path: str = ""
-    voter_3_path: str = ""
-    voter_1_tool: str = "codex-validity"
-    voter_2_tool: str = "codex-plan-fidelity"
-    voter_3_tool: str = "codex-pragmatism"
-    voter_1_status: str = "launched"
-    voter_2_status: str = "launched"
-    voter_3_status: str = "launched"
-    voter_1_parse_rate_status: str = "SKIPPED"
-    voter_2_parse_rate_status: str = "SKIPPED"
-    voter_3_parse_rate_status: str = "SKIPPED"
 
 
 class ValidationError(RuntimeError):
@@ -165,42 +126,13 @@ def _panel_artifact_context(*, review_tmpdir: Path, round_num: int, site: str) -
     return artifact_dir, round_dir, env
 
 
-def _feedback_enabled() -> bool:
-    return os.environ.get(config.ENV_LARCH_VOTER_CALIBRATION_FEEDBACK, "").strip() != "0"
-
-
 def _fresh_calibration_stats_file(*, review_tmpdir: Path) -> str | None:
-    target = review_tmpdir / "voter-calibration-stats.tsv"
-    with suppress(FileNotFoundError):
-        target.unlink()
-    if not _feedback_enabled():
-        return None
-    fd, tmp = tempfile.mkstemp(prefix=".voter-calibration-stats.", suffix=".tsv", dir=str(review_tmpdir))
-    os.close(fd)
-    tmp_path = Path(tmp)
-    with suppress(FileNotFoundError):
-        tmp_path.unlink()
-    try:
-        log_root = voting._resolve_voter_calibration_log_root(design_tmpdir=None, review_tmpdir=review_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    except Exception:
-        with suppress(FileNotFoundError):
-            tmp_path.unlink()
-        return None
-    result = proc.run(
-        [
-            *_cli_argv("voter-calibration", "snapshot"),
-            "--log-root",
-            str(log_root),
-            "--out",
-            str(tmp_path),
-        ]
+    return fresh_calibration_snapshot(
+        work_dir=review_tmpdir,
+        snapshot_argv=_cli_argv("voter-calibration", "snapshot"),
+        runner=proc.run,
+        review_tmpdir=review_tmpdir,
     )
-    if result.returncode != 0 or not tmp_path.is_file() or tmp_path.stat().st_size <= 0:
-        with suppress(FileNotFoundError):
-            tmp_path.unlink()
-        return None
-    tmp_path.replace(target)
-    return str(target)
 
 
 def _launchable_base_tools_for_slot(
@@ -222,7 +154,7 @@ def _launchable_base_tools_for_slot(
         tools.append("claude")
     if primary == "claude" and "claude" not in tools:
         tools.append("claude")
-    semantic_tools = set(policy.semantic_labels)
+    semantic_tools = {tool for tool, _label in policy.semantic_labels}
     return [tool for tool in dict.fromkeys(tools) if tool in semantic_tools]
 
 
@@ -302,7 +234,7 @@ def _build_voter_prompt_files(
                 voter_tool=tool,
                 output_basename=f"{policy.prompt_label}-vote-prompt-{tool}.txt",
             )
-            prompt_files[policy.prompt_label][tool] = rendered.prompt_file
+            prompt_files[policy.prompt_label][tool] = str(rendered.prompt_file)
             payload_files[policy.prompt_label][tool] = rendered.payload_bytes
     return prompt_files, payload_files
 
@@ -321,32 +253,11 @@ def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[V
             }
             vote_model = config.CODEX_VOTE_MODEL_BY_DIFFICULTY.get(tier, "")
             if policy.primary_tool == "codex":
-                row["resolved_model"] = _resolved_model_for_row("codex", vote_model)
+                row["resolved_model"] = resolved_model_for_row("codex", model_role="vote", default_model=vote_model)
             elif policy.primary_tool == "cursor":
-                row["resolved_model"] = _resolved_model_for_row("cursor")
+                row["resolved_model"] = resolved_model_for_row("cursor")
             _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     return str(manifest)
-
-
-def _resolved_model_for_row(tool: str, default_model: str = "") -> str:
-    try:
-        argv = list(
-            resolve_model_args(
-                tool,
-                with_effort=(tool == "codex"),
-                default_model=default_model,
-                codex_role="vote" if tool == "codex" else "default",
-            ).argv
-        )
-    except (ValueError, KeyError):
-        return "unknown"
-    if tool == "cursor" and "--model" in argv:
-        idx = argv.index("--model")
-        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
-    if tool == "codex" and "-m" in argv:
-        idx = argv.index("-m")
-        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
-    return "unknown"
 
 
 def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str], review_tmpdir: Path) -> str:
@@ -404,17 +315,17 @@ def _parse_waterfall_output(output: str) -> tuple[list[str], list[str], str]:
     return all_outputs.split(), all_tools.split(), dispatch_ok
 
 
-def _read_done_exit_code(path: str) -> str:
-    if not path or not Path(path).is_file():
+def _read_done_exit_code(path: Path | None) -> str:
+    if path is None or not path.is_file():
         return ""
     try:
-        return Path(path).read_text(encoding="utf-8", errors="replace").splitlines()[0]
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()[0]
     except (OSError, IndexError):
         return ""
 
 
 def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str, voter_tool: str) -> str:
-    result = proc.run(
+    return validate_parse_rate_result(
         [
             *_cli_argv("voting", "parse-rate-retry"),
             *vpr_args,
@@ -424,21 +335,13 @@ def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str
             voter_file,
             "--voter-tool",
             voter_tool,
-        ]
+        ],
+        runner=proc.run,
     )
-    if result.returncode != 0:
-        return "NOT_SUBSTANTIVE"
-    lines = [line for line in result.stdout.splitlines() if line]
-    if not lines:
-        return "NOT_SUBSTANTIVE"
-    status = lines[-1]
-    if status not in {"OK", "NOT_SUBSTANTIVE"}:
-        return "NOT_SUBSTANTIVE"
-    return status
 
 
-def _file_nonempty(path: str) -> bool:
-    return bool(path) and Path(path).is_file() and Path(path).stat().st_size > 0
+def _file_nonempty(path: Path | None) -> bool:
+    return path is not None and Path(path).is_file() and Path(path).stat().st_size > 0
 
 
 def _effective_judges(state: DispatchState) -> int:
@@ -458,46 +361,40 @@ def _write_voter_paths_file(*, review_tmpdir: Path, state: DispatchState) -> str
     fd, tmp = tempfile.mkstemp(prefix=".code-voter-paths.", dir=str(review_tmpdir))
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         if state.voter_1_path:
-            _ = handle.write(state.voter_1_path + "\n")
+            _ = handle.write(path_for_wire(state.voter_1_path) + "\n")
         if state.voter_2_status != "skipped" and state.voter_2_path:
-            _ = handle.write(state.voter_2_path + "\n")
+            _ = handle.write(path_for_wire(state.voter_2_path) + "\n")
         if state.voter_3_status != "skipped" and state.voter_3_path:
-            _ = handle.write(state.voter_3_path + "\n")
+            _ = handle.write(path_for_wire(state.voter_3_path) + "\n")
     Path(tmp).replace(paths_file)
     return str(paths_file)
 
 
 def _emit_final_kvs(*, state: DispatchState, voter_paths_file: str, dispatch_ok: str) -> None:
-    logging_util.emit_kv(key="VOTER_1_PATH", value=state.voter_1_path)
-    logging_util.emit_kv(key="VOTER_1_TOOL", value=state.voter_1_tool)
-    logging_util.emit_kv(key="VOTER_1_STATUS", value=state.voter_1_status)
-    logging_util.emit_kv(key="VOTER_1_PARSE_RATE_STATUS", value=state.voter_1_parse_rate_status)
-    logging_util.emit_kv(key="VOTER_2_PATH", value=state.voter_2_path)
-    logging_util.emit_kv(key="VOTER_2_TOOL", value=state.voter_2_tool)
-    logging_util.emit_kv(key="VOTER_2_STATUS", value=state.voter_2_status)
-    logging_util.emit_kv(key="VOTER_2_PARSE_RATE_STATUS", value=state.voter_2_parse_rate_status)
-    logging_util.emit_kv(key="VOTER_3_PATH", value=state.voter_3_path)
-    logging_util.emit_kv(key="VOTER_3_TOOL", value=state.voter_3_tool)
-    logging_util.emit_kv(key="VOTER_3_STATUS", value=state.voter_3_status)
-    logging_util.emit_kv(key="VOTER_3_PARSE_RATE_STATUS", value=state.voter_3_parse_rate_status)
-    logging_util.emit_kv(key="VOTER_PATHS_FILE", value=voter_paths_file)
-    logging_util.emit_kv(key="DISPATCH_OK", value=dispatch_ok)
+    emit_final_voter_kvs(
+        state=state,
+        voter_paths_file=Path(voter_paths_file),
+        dispatch_ok=dispatch_ok,
+        row_layout="code_review_sequential",
+        paths_file_policy="always",
+    )
 
 
 def _semantic_label(*, policy: VoterSlotPolicy, tool: str) -> str:
-    return policy.semantic_labels.get(tool, policy.default_label)
+    return dict(policy.semantic_labels).get(tool, policy.default_label)
 
 
 def _state_from_bindings(*, bindings: Mapping[str, agent_waterfall.SlotOutputBinding], launched_policies: Sequence[VoterSlotPolicy]) -> DispatchState:
     launched = {policy.slot_name for policy in launched_policies}
 
-    def _resolve(policy: VoterSlotPolicy) -> tuple[str, str, str]:
+    def _resolve(policy: VoterSlotPolicy) -> tuple[Path | None, str, str]:
         if policy.slot_name not in launched:
-            return "", policy.default_label, "skipped"
+            return None, policy.default_label, "skipped"
         binding = bindings.get(policy.slot_name, agent_waterfall.SlotOutputBinding())
         if binding.dropped or not binding.path:
-            return "", policy.default_label, "failed"
-        return binding.path, _semantic_label(policy=policy, tool=binding.tool or policy.primary_tool), "launched"
+            return None, policy.default_label, "failed"
+        # SlotOutputBinding remains a string wire type at runtime for compatibility.
+        return cast("Path", binding.path), _semantic_label(policy=policy, tool=binding.tool or policy.primary_tool), "launched"
 
     path1, tool1, status1 = _resolve(VOTER_SLOT_POLICIES[0])
     path2, tool2, status2 = _resolve(VOTER_SLOT_POLICIES[1])
@@ -555,9 +452,9 @@ def dispatch_voters(opts: Options) -> int:
 
     state = _state_from_bindings(bindings=bindings, launched_policies=launched_policies)
 
-    voter1_done_rc = _read_done_exit_code(f"{state.voter_1_path}.done")
-    voter2_done_rc = _read_done_exit_code(f"{state.voter_2_path}.done")
-    voter3_done_rc = _read_done_exit_code(f"{state.voter_3_path}.done")
+    voter1_done_rc = _read_done_exit_code(None if state.voter_1_path is None else Path(f"{state.voter_1_path}.done"))
+    voter2_done_rc = _read_done_exit_code(None if state.voter_2_path is None else Path(f"{state.voter_2_path}.done"))
+    voter3_done_rc = _read_done_exit_code(None if state.voter_3_path is None else Path(f"{state.voter_3_path}.done"))
     if state.voter_1_status != "skipped" and not (_file_nonempty(state.voter_1_path) and voter1_done_rc == "0"):
         state.voter_1_status = "failed"
     if state.voter_2_status != "skipped" and not (_file_nonempty(state.voter_2_path) and voter2_done_rc == "0"):
@@ -579,11 +476,11 @@ def dispatch_voters(opts: Options) -> int:
         *_parse_rate_ctx_args(bounded_diff=bounded_diff, bounded_plan=bounded_plan),
     ]
     if state.voter_1_status not in {"failed", "skipped"}:
-        state.voter_1_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="1", voter_file=state.voter_1_path, voter_tool=state.voter_1_tool)
+        state.voter_1_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="1", voter_file=path_for_wire(state.voter_1_path), voter_tool=state.voter_1_tool)
     if state.voter_2_status not in {"failed", "skipped"}:
-        state.voter_2_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="2", voter_file=state.voter_2_path, voter_tool=state.voter_2_tool)
+        state.voter_2_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="2", voter_file=path_for_wire(state.voter_2_path), voter_tool=state.voter_2_tool)
     if state.voter_3_status not in {"failed", "skipped"}:
-        state.voter_3_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool)
+        state.voter_3_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="3", voter_file=path_for_wire(state.voter_3_path), voter_tool=state.voter_3_tool)
 
     expected_judges = len(launched_policies)
     effective_judges = _effective_judges(state)

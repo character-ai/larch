@@ -12,7 +12,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping, Sequence
@@ -22,13 +21,25 @@ from larch.review import findings_ledger
 from larch.agents import agent_waterfall
 from larch.core import external_defaults
 from larch.calibration import difficulty
-from larch.agents._launch_failure import resolve_model_args
 from larch.review import review_pipeline
 from larch.review import voting
 from larch import io as larch_io
 from larch.core import config
+from larch.core import logging_util
 from larch.core import proc as larch_proc
 from larch.core import redact
+from larch.review.dispatch_shared import (
+    DispatchState,
+    VoterPromptResult,
+    VoterSlotPolicy,
+    emit_final_voter_kvs,
+    fresh_calibration_snapshot,
+    resolved_model_for_row,
+    topology_slots,
+    topology_voter_policies,
+    validate_parse_rate_result,
+    with_manifest_attribution,
+)
 from larch.report import run_logs
 from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.state.session_env import validate_design_tmpdir
@@ -55,28 +66,6 @@ class VoterPromptRenderOptions:
     calibration_stats_file: str | None = None
     voter_tool: str | None = None
     output_path: Path | None = None
-
-
-@dataclass(frozen=True)
-class VoterPromptResult:
-    prompt_file: Path
-    payload_bytes: int = 0
-
-
-@dataclass
-class DispatchState:
-    voter_1_path: Path
-    voter_2_path: Path
-    voter_3_path: Path
-    voter_1_tool: str
-    voter_2_tool: str
-    voter_3_tool: str
-    voter_1_status: str
-    voter_2_status: str
-    voter_3_status: str
-    voter_1_parse_rate_status: str = "SKIPPED"
-    voter_2_parse_rate_status: str = "SKIPPED"
-    voter_3_parse_rate_status: str = "SKIPPED"
 
 
 _DEFAULT_VOTER_PROMPT_RENDER_OPTIONS = VoterPromptRenderOptions()
@@ -113,7 +102,7 @@ def _static_slot_rows(
     rows: list[dict[str, object]] = []
     codex_slots = codex_present == "true"
     cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
-    static_slots = [slot for slot in external_defaults.slot_defaults("design.plan_review_panel") if slot.archetype != "generic"]
+    static_slots = [slot for slot in topology_slots("design.plan_review_panel") if slot.archetype != "generic"]
     for slot in static_slots:
         if slot.tool == "codex" and not codex_slots:
             continue
@@ -165,13 +154,13 @@ def _static_slot_rows(
             )
             codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
             row["model_role"] = role
-            row["resolved_model"] = _resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
+            row["resolved_model"] = resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
         elif slot.tool == "cursor":
             if slot.cursor_model:
                 row["cursor_model"] = slot.cursor_model
                 row["resolved_model"] = slot.cursor_model
             else:
-                row["resolved_model"] = _resolved_model_for_row("cursor")
+                row["resolved_model"] = resolved_model_for_row("cursor")
         rows.append(row)
     generic = _generic_plan_codex_row(
         design=design,
@@ -198,7 +187,7 @@ def _generic_plan_codex_row(
     policy = external_defaults.panel_dispatch_policy("design.plan_review_panel")
     if not policy or round_num not in policy.generic_codex_rounds:
         return None
-    slot = next(row for row in external_defaults.slot_defaults("design.plan_review_panel") if row.archetype == "generic")
+    slot = next(row for row in topology_slots("design.plan_review_panel") if row.archetype == "generic")
     body_file = round_dir / "render-plan-codex-generic.body"
     _ = body_file.write_text(_GENERIC_CODEX_PLAN_REVIEW_ROLE + "\n", encoding="utf-8")
     prompt_path = round_dir / "render-plan-codex-generic.prompt"
@@ -228,7 +217,7 @@ def _generic_plan_codex_row(
             "--difficulty",
             tier,
         ],
-        cwd=str(_REPO_ROOT),
+        cwd=_REPO_ROOT,
         text=True,
         capture_output=True,
         check=False,
@@ -246,35 +235,7 @@ def _generic_plan_codex_row(
     role = difficulty.codex_review_model_role(tier)
     codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
     row["model_role"] = role
-    row["resolved_model"] = _resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
-    return row
-
-def _resolved_model_for_row(tool: str, model_role: str = "", default_model: str = "") -> str:
-    try:
-        if model_role == "review":
-            role = "review"
-        elif model_role == "vote":
-            role = "vote"
-        elif model_role == "fix":
-            role = "fix"
-        else:
-            role = "default"
-        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), default_model=default_model, codex_role=role).argv)
-    except (ValueError, KeyError):
-        return "unknown"
-    if tool == "cursor" and "--model" in argv:
-        idx = argv.index("--model")
-        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
-    if tool == "codex" and "-m" in argv:
-        idx = argv.index("-m")
-        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
-    return "unknown"
-
-def _with_attribution(row: dict[str, object]) -> dict[str, object]:
-    tool = str(row.get("tool") or "unknown")
-    role = str(row.get("model_role") or "default")
-    _ = row.setdefault("vendor", tool)
-    _ = row.setdefault("resolved_model", _resolved_model_for_row(tool, role))
+    row["resolved_model"] = resolved_model_for_row(slot.tool, role, default_model=codex_panel_model)
     return row
 
 def _plugin_root() -> Path:
@@ -282,7 +243,7 @@ def _plugin_root() -> Path:
 
 
 def _emit(*, key: str, value: object = "") -> None:
-    print(f"{key}={value}")
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _validate_tmpdir(*, parser: argparse.ArgumentParser, value: str, create: bool = False) -> Path:
@@ -316,7 +277,7 @@ def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Pa
     }
     if payload_bytes > 0:
         row["payload_bytes"] = payload_bytes
-    return _with_attribution(row)
+    return with_manifest_attribution(row)
 
 
 def _load_dynamic_rows(design: Path) -> list[tuple[str, str, str, str]]:
@@ -408,9 +369,9 @@ def _dynamic_slot_rows(
             role = "review"
             row["model_role"] = role
             codex_panel_model = config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY.get(tier, "") or config.CODEX_REVIEW_MODEL_DEFAULT
-            row["resolved_model"] = _resolved_model_for_row(tool, role, default_model=codex_panel_model)
+            row["resolved_model"] = resolved_model_for_row(tool, role, default_model=codex_panel_model)
         elif tool == "cursor":
-            row["resolved_model"] = _resolved_model_for_row("cursor")
+            row["resolved_model"] = resolved_model_for_row("cursor")
         rows.append(row)
     return rows, failures
 
@@ -522,7 +483,7 @@ def _filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tup
             "--out",
             str(out),
         ],
-        cwd=str(_REPO_ROOT),
+        cwd=_REPO_ROOT,
         text=True,
         capture_output=True,
         check=False,
@@ -679,46 +640,19 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     return proc.returncode
 
 
-def _feedback_enabled() -> bool:
-    return os.environ.get(config.ENV_LARCH_VOTER_CALIBRATION_FEEDBACK, "").strip() != "0"
-
-
 def _fresh_calibration_stats_file(*, design: Path) -> str | None:
-    target = design / "voter-calibration-stats.tsv"
-    with contextlib.suppress(FileNotFoundError):
-        target.unlink()
-    if not _feedback_enabled():
-        return None
-    fd, tmp = tempfile.mkstemp(prefix=".voter-calibration-stats.", suffix=".tsv", dir=str(design))
-    os.close(fd)
-    tmp_path = Path(tmp)
-    with contextlib.suppress(FileNotFoundError):
-        tmp_path.unlink()
-    try:
-        log_root = voting._resolve_voter_calibration_log_root(design_tmpdir=design, review_tmpdir=None)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-    except Exception:
-        with contextlib.suppress(FileNotFoundError):
-            tmp_path.unlink()
-        return None
-    result = larch_proc.run(
-        [
+    return fresh_calibration_snapshot(
+        work_dir=design,
+        snapshot_argv=[
             sys.executable,
             str(_plugin_root() / "python" / "cli.py"),
             "voter-calibration",
             "snapshot",
-            "--log-root",
-            str(log_root),
-            "--out",
-            str(tmp_path),
         ],
-        cwd=str(_REPO_ROOT),
+        runner=larch_proc.run,
+        cwd=_REPO_ROOT,
+        design_tmpdir=design,
     )
-    if result.returncode != 0 or not tmp_path.is_file() or tmp_path.stat().st_size <= 0:
-        with contextlib.suppress(FileNotFoundError):
-            tmp_path.unlink()
-        return None
-    _ = tmp_path.replace(target)
-    return str(target)
 
 
 def _make_voter_prompt(
@@ -762,7 +696,7 @@ def _make_voter_prompt(
 
 
 def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path, voter_tool: str, prompt_file: Path) -> str:
-    proc = subprocess.run(
+    return validate_parse_rate_result(
         [
             sys.executable,
             str(_plugin_root() / "python" / "cli.py"),
@@ -791,20 +725,10 @@ def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path
             "--prompt-file",
             str(prompt_file),
         ],
-        cwd=str(_REPO_ROOT),
-        text=True,
-        capture_output=True,
-        check=False,
+        runner=subprocess.run,
+        cwd=_REPO_ROOT,
+        runner_kwargs={"text": True, "capture_output": True, "check": False},
     )
-    if proc.returncode != 0:
-        return "NOT_SUBSTANTIVE"
-    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
-    if not lines:
-        return "NOT_SUBSTANTIVE"
-    status = lines[-1]
-    if status not in {"OK", "NOT_SUBSTANTIVE"}:
-        return "NOT_SUBSTANTIVE"
-    return status
 
 
 def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path, env: dict[str, str] | None = None) -> int:
@@ -850,7 +774,7 @@ def _voter_needs_retry(*, rc: int, output: Path) -> bool:
 
 
 def _launchable_voter_tools(
-    policy: config.VoterPolicyDefault,
+    policy: VoterSlotPolicy,
     *,
     codex_present: bool,
     cursor_present: bool,
@@ -882,7 +806,7 @@ class _PlanVoterPromptInputs:
 def _build_plan_voter_prompt_files(
     *,
     inputs: _PlanVoterPromptInputs,
-    policies: Sequence[config.VoterPolicyDefault],
+    policies: Sequence[VoterSlotPolicy],
     codex_present: bool,
     cursor_present: bool,
 ) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, int]]]:
@@ -912,7 +836,7 @@ def _build_plan_voter_prompt_files(
 def _write_plan_voter_waterfall_manifest(
     *,
     design: Path,
-    policies: Sequence[config.VoterPolicyDefault],
+    policies: Sequence[VoterSlotPolicy],
     prompt_files: Mapping[str, Mapping[str, str]],
     payload_files: Mapping[str, Mapping[str, int]],
 ) -> Path:
@@ -925,21 +849,23 @@ def _write_plan_voter_waterfall_manifest(
                 "output": str(design / policy.output_name),
                 "prompt_files": dict(prompt_files.get(policy.slot_name, {})),
                 "payload_files": dict(payload_files.get(policy.slot_name, {})),
+                "model_role": "vote",
             }
-            _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
+            attributed = with_manifest_attribution(row)
+            _ = handle.write(json.dumps(attributed, separators=(",", ":")) + "\n")
     return manifest
 
 
-def _semantic_label(policy: config.VoterPolicyDefault, tool: str) -> str:
+def _semantic_label(policy: VoterSlotPolicy, tool: str) -> str:
     return dict(policy.semantic_labels).get(tool, policy.default_label)
 
 
 def _state_from_bindings(
     *,
     design: Path,
-    policies: Sequence[config.VoterPolicyDefault],
+    policies: Sequence[VoterSlotPolicy],
     bindings: Mapping[str, agent_waterfall.SlotOutputBinding],
-    launched_policies: Sequence[config.VoterPolicyDefault],
+    launched_policies: Sequence[VoterSlotPolicy],
 ) -> DispatchState:
     launched = {policy.slot_name for policy in launched_policies}
     policy_by_slot = {policy.slot_name: policy for policy in policies}
@@ -970,12 +896,12 @@ def _state_from_bindings(
     )
 
 
-def _file_nonempty(path: Path) -> bool:
-    return path.is_file() and path.stat().st_size > 0
+def _file_nonempty(path: Path | None) -> bool:
+    return path is not None and path.is_file() and path.stat().st_size > 0
 
 
-def _read_done_exit_code(path: Path) -> str:
-    if not path.is_file():
+def _read_done_exit_code(path: Path | None) -> str:
+    if path is None or not path.is_file():
         return ""
     try:
         return path.read_text(encoding="utf-8", errors="replace").splitlines()[0]
@@ -984,30 +910,13 @@ def _read_done_exit_code(path: Path) -> str:
 
 
 def _emit_final_kvs(*, state: DispatchState, voter_paths_file: Path, dispatch_ok: str) -> None:
-    status_proc = larch_proc.run(
-        [
-            sys.executable,
-            str(_plugin_root() / "python" / "cli.py"),
-            "voting",
-            "voter-status-block",
-            str(state.voter_1_path),
-            state.voter_1_tool,
-            state.voter_1_status,
-            state.voter_1_parse_rate_status,
-            str(state.voter_2_path),
-            state.voter_2_tool,
-            state.voter_2_status,
-            state.voter_2_parse_rate_status,
-            str(state.voter_3_path),
-            state.voter_3_tool,
-            state.voter_3_status,
-            state.voter_3_parse_rate_status,
-            str(voter_paths_file),
-        ],
-        cwd=str(_REPO_ROOT),
+    emit_final_voter_kvs(
+        state=state,
+        voter_paths_file=voter_paths_file,
+        dispatch_ok=dispatch_ok,
+        row_layout="plan_review_interleaved",
+        paths_file_policy="nonempty",
     )
-    print(status_proc.stdout, end="")
-    _emit(key="DISPATCH_OK", value=dispatch_ok)
 
 
 def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,RUF100
@@ -1034,7 +943,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         phase="plan-review-voters",
     )
     ballot = Path(ns.ballot_file)
-    policies = list(external_defaults.voter_policies("design.plan_voters"))
+    policies = list(topology_voter_policies("design.plan_voters"))
     policies_by_slot = {policy.slot_name: policy for policy in policies}
     scope_anchor = ns.scope_anchor_file or str(design / "plan-review-scope-anchor.txt")
     if scope_anchor and not Path(scope_anchor).is_file():
@@ -1087,7 +996,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         paths_file = design / "plan-review-voter-paths.txt"
         kept = [str(voter_1_path)] if voter_1_status != "failed" and _file_nonempty(voter_1_path) else []
         _ = paths_file.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
-        print("DEGRADED_PANEL_WARNING=**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.** quota hit")
+        degraded_warning = "**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.** quota hit"
         state = DispatchState(
             voter_1_path=voter_1_path,
             voter_2_path=design / policies_by_slot["voter-2"].output_name,
@@ -1103,6 +1012,8 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             voter_3_parse_rate_status="not-run",
         )
         _emit_final_kvs(state=state, voter_paths_file=paths_file, dispatch_ok="true" if voter_1_status == "launched" else "false")
+        logging_util.emit_kv(key="DEGRADED_PANEL_WARNING", value=degraded_warning)
+        _emit(key="DEGRADED_PANEL", value="1")
         _emit(key="VOTER_1_RETRIED", value=voter_1_retried)
         return 0
 
@@ -1160,6 +1071,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         bindings=bindings,
         launched_policies=launched_policies,
     )
+    assert state.voter_1_path is not None
+    assert state.voter_2_path is not None
+    assert state.voter_3_path is not None
     voter_1_done_rc = _read_done_exit_code(state.voter_1_path.with_name(state.voter_1_path.name + ".done"))
     voter_2_done_rc = _read_done_exit_code(state.voter_2_path.with_name(state.voter_2_path.name + ".done"))
     voter_3_done_rc = _read_done_exit_code(state.voter_3_path.with_name(state.voter_3_path.name + ".done"))
@@ -1229,6 +1143,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         cwd=str(_REPO_ROOT),
     )
     effective = int(effective_proc.stdout.strip() or "0") if effective_proc.returncode == 0 else 0
+    degraded_warning = ""
     if effective < _PLAN_VOTER_PANEL_SIZE:
         warn_proc = larch_proc.run(
             [
@@ -1242,9 +1157,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             ],
             cwd=str(_REPO_ROOT),
         )
-        if warn_proc.stdout.strip():
-            print(warn_proc.stdout.strip())
-        _emit(key="DEGRADED_PANEL", value="1")
+        degraded_warning = _parse_kv(warn_proc.stdout).get("DEGRADED_PANEL_WARNING", "")
 
     paths_file = design / "plan-review-voter-paths.txt"
     kept: list[str] = []
@@ -1258,6 +1171,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     _ = paths_file.write_text("".join(f"{line}\n" for line in kept), encoding="utf-8")
     dispatch_ok = "false" if effective == 0 or wf_kv.get("DISPATCH_OK") == "false" else "true"
     _emit_final_kvs(state=state, voter_paths_file=paths_file, dispatch_ok=dispatch_ok)
+    if degraded_warning:
+        logging_util.emit_kv(key="DEGRADED_PANEL_WARNING", value=degraded_warning)
+        _emit(key="DEGRADED_PANEL", value="1")
     _emit(key="VOTER_1_RETRIED", value="false")
     return 0 if dispatch_ok == "true" else 1
 
@@ -1266,4 +1182,5 @@ def dispatch_panel_main(argv: list[str] | None = None) -> int:
 
 
 def dispatch_voters_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="plan-review voter-dispatch")
     return dispatch_voters(argv or [])
