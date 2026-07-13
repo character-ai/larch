@@ -63,8 +63,9 @@ codex/apply              │                                      ████�
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (1):
+Exec Issues (2):
   1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+  2. ship route: merge and CI watch skipped — needs user (reason: first-fixer-non-health; pending NEXT_ACTION=ci-fix)
 Warnings (2):
   1. Step 7a.1 — 2 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: scripts/test-implement-structure.sh, scripts/test-implement-fence-shape.sh
   2. ci_fixer_adapter._upper_rows manually parses KEY=value wire files for session, launch, status, and result data instead of using an larch.io wire-file parser.
@@ -77,20 +78,21 @@ No violations identified.
 
 ci_fixer_adapter._upper_rows manually parses KEY=value wire files for session, launch, status, and result data instead of using an larch.io wire-file parser.
 
-## /implement run 2B267A12-AF10-47EB-8F9C-FF188C5B625A: shipping
+## /implement run 2B267A12-AF10-47EB-8F9C-FF188C5B625A: pr-created
 
-- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
+- **Outcome**: ✅ DONE
 - **Duration**: 01:53:04
-- **Cost**: 💰 TOTAL ~$59.55: Claude $2.23, Codex-5.6 $35.94, Codex-mini $0.07, Cursor $13.38 (Composer $13.38, Grok $0.00), Claude (subprocess) $7.93  |  Tokens: 86540k
+- **Cost**: 💰 TOTAL ~$63.66: Claude $4.91, Codex-5.6 $35.94, Codex-mini $0.07, Cursor $14.34 (Composer $14.34, Grok $0.00), Claude (subprocess) $8.40  |  Tokens: 96581k
 - **Issue**: #7035: https://github.com/character-ai/larch/issues/7035
+- **PR**: #7175: https://github.com/character-ai/larch/pull/7175
 - **Plan review**: N/A
 - **Plan coverage**: 22/24 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 17/20 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +2339/-2903, larch-logs +1338/-0
 - **OOS filed**: 0
-- **Exec issues**: 1
+- **Exec issues**: 2
 - **Warnings**: 2
 - **Run logs**: `larch-logs/implement/2B267A12-AF10-47EB-8F9C-FF188C5B625A/`
 - **Main agent model**: claude-sonnet-4-6
