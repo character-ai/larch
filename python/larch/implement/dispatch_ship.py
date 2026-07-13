@@ -239,10 +239,14 @@ def _classify_ship_needs_user_reason(reason: str) -> str:
         action = "oos-pipeline"
     elif reason == config.NEEDS_USER_ARCHITECTURAL_ASSESSMENTS:
         action = config.SHIP_ROUTE_ACTION_ASSESSMENTS
-    elif reason == "architectural-invariants-assessment":
+    # #7217: both the dormant invariants-assessment alias and a compose-time
+    # invariant violation route here. The violation re-enters the Step 8 fix
+    # ladder (materialize, tier-1 coder, fresh-assessor re-judge, tier-2 main
+    # agent, terminal invariant-violation-unresolved hard stop) via the same
+    # invariants-assessment normalization path as a requested assessment; it
+    # never reaches the ci-fixer subagent.
+    elif reason in ("architectural-invariants-assessment", "architectural-invariants-violation"):
         action = "invariants-assessment"
-    elif reason == "architectural-invariants-violation":
-        action = "ci-fix"
     elif reason == "architectural-guidelines-assessment":
         action = "guidelines-assessment"
     elif reason in _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS or reason.startswith("ci-local-unfixable:"):

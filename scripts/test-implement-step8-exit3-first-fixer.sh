@@ -48,7 +48,6 @@ for needle in [
     'ci-fix-exhausted',
     'ci-fix-no-progress',
     'ci-evidence-unavailable',
-    'materialize-invariant-evidence',
     'CI fix round <N> salvage',
     'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch',
 ]:

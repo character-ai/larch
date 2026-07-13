@@ -1046,7 +1046,7 @@ def test_ship_route_exit_reships_no_checks_when_phase14_flag_pending(
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"}, "oos-pipeline"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-assessments"}, "assessments"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-invariants-assessment"}, "invariants-assessment"),
-        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-invariants-violation"}, "ci-fix"),
+        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-invariants-violation"}, "invariants-assessment"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "architectural-guidelines-assessment"}, "guidelines-assessment"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "first-fixer-non-health"}, "ci-fix"),
         (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "ship-pr-internal-lint-fix"}, "ci-fix"),
