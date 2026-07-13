@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import json
+import re
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import ClassVar, cast
+from typing import ClassVar, Final, cast
 
 from larch import io as larch_io
 from larch.core import architectural_guidelines
@@ -44,6 +45,19 @@ REASON_DETERMINISTIC_CLEAN = config.REASON_DETERMINISTIC_CLEAN
 REASON_UNAVAILABLE = config.REASON_UNAVAILABLE
 GUIDELINE_SHIP_REASON_TOKENS = GUIDELINES.ship_reason_tokens
 INVARIANT_SHIP_REASON_TOKENS = INVARIANTS.ship_reason_tokens
+
+# A guideline deviation is accepted at the ship gate only when its durable note
+# carries a machine-checkable documented-exception block recording the rationale,
+# the author (main-agent, the documented-exception tier of the fix ladder), and
+# the date. A bare deviation after fix-ladder exhaustion fails closed (#7193).
+_DEVIATION_EXCEPTION_RE: Final = re.compile(
+    r"(?m)^\s*Exception:.*\bauthor:\s*main-agent\b.*\bdate:\s*\d{4}-\d{2}-\d{2}\b"
+)
+
+
+def guideline_deviation_exception_present(note: str) -> bool:
+    """True when a guideline deviation note carries the documented exception block."""
+    return _DEVIATION_EXCEPTION_RE.search(note) is not None
 
 
 @dataclass(frozen=True)

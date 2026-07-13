@@ -119,8 +119,10 @@ launcher diagnostic in `detail`. Historical outcome files may omit `detail` or
 store it as an empty string.
 
 Durable notes record `NOTE_STATE` as `authored`, `deterministic-clean`, or
-`unavailable`. Authored and deterministic-clean notes keep separate
-`AUTHORED_DIFF_FINGERPRINT` and `COVERED_DIFF_FINGERPRINT` values.
+`unavailable`. `unavailable` is a `/design`-only fallback; the `/implement`
+Step 8 subagent path never produces it (a subagent spawn failure gets one
+respawn, then Tool Failure). Authored and deterministic-clean notes keep
+separate `AUTHORED_DIFF_FINGERPRINT` and `COVERED_DIFF_FINGERPRINT` values.
 `DIFF_FINGERPRINT` remains the covered-input compatibility field. Safe HEAD
 advancement compares the stored covered `HEAD_SHA` with current HEAD using a
 rename-suppressed NUL-delimited path diff. It advances only when every added or
@@ -650,9 +652,19 @@ For `/design`, `python/cli.py design log-publish` renders the committed `larch-l
 
 Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
 
-## Assessment waivers and manual-merge reconciliation
+## Assessment retirement and manual-merge reconciliation
 
-`ship waive-assessment` writes `assessment-operator-waiver.json` only inside the validated implement tmpdir. The artifact uses schema version `1`, carries only the configured `invariants` and `guidelines` kinds, and binds them to `LARCH_RUN_ID` read from trusted `session-env.sh`. Invalid, duplicate, unknown, stale, malformed, or unsafe waivers are ignored. Waivers apply only to `unavailable` outcomes. They never waive an invariant violation.
+`/implement` Step 8 architectural assessment is authored by a read-only
+`larch:arch-assessor` subagent and persisted fail-closed by
+`architectural-assessment submit`; there is no per-kind vendor waterfall, no
+`unavailable` state, no `architectural-assessment-unavailable` operator-bail,
+and no `ship waive-assessment` verb on this path. A guideline `deviation` is
+accepted at the ship gate only when its durable note carries the documented
+`Exception:` block the fix ladder records; a bare deviation fails closed with
+`architectural-guideline-deviation-unresolved`. A tier-2 invariant `violation`
+re-judge HARD STOPs with `invariant-violation-unresolved` and creates no PR.
+Historical `assessment-operator-waiver.json` artifacts and `unavailable`
+outcomes from older runs remain readable but are no longer produced or waived.
 
 `ship reconcile-manual-merge` first verifies the nominated PR is merged in the trusted repository. It then converges `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh` on terminal `PHASE=done` state. Reconciliation clears `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, `IMPLEMENT_BAIL_REASON`, `BAIL_NEEDS_USER_INPUT`, `BAIL_FAILURE_DETAIL_LOG`, `FAILED_RUN_ID`, and nonzero `EXIT_CODE`. It re-reads all three layers, the post-merge sentinel, and the run manifest before emitting `RECONCILE_STATUS=ok`.
 

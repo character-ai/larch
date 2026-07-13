@@ -44,7 +44,9 @@ AGENT_EXPECTED = {
     ("agent", "launch-claude-drafter"): ("larch.agents.agents", "launch_claude_drafter_main"),
 }
 ARCHITECTURAL_ASSESSMENT_EXPECTED = {
-    ("architectural-assessment", "run"): ("larch.implement.architectural_assessment", "main"),
+    ("architectural-assessment", "materialize"): ("larch.implement.architectural_assessment", "materialize_main"),
+    ("architectural-assessment", "submit"): ("larch.implement.architectural_assessment", "submit_main"),
+    ("architectural-assessment", "sanitize-detail"): ("larch.implement.architectural_assessment", "sanitize_detail_main"),
 }
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main"),

@@ -85,12 +85,12 @@ check_contains "Post-preflight boundary — silent halt covered" "skills/impleme
   "do NOT end the turn on the audit-pass envelope"
 check_contains "Post-/review boundary — silent halt covered" "skills/implement/SKILL.md" \
   "Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn"
-check_contains "Assessment proceed writes waiver" "skills/implement/SKILL.md" \
-  'ship waive-assessment --implement-tmpdir "$IMPLEMENT_TMPDIR" --kinds "$DETAIL"'
-check_contains "Assessment proceed directly relaunches Step 8" "skills/implement/SKILL.md" \
-  "directly relaunches the existing Step 8 ship bgjob start/wait pair"
-check_contains "Assessment proceed forbids reship and stall seed" "skills/implement/SKILL.md" \
-  'must not set `NEXT_ACTION=reship`, run pre-fix rebase, enter Step 12d, or seed `STALL_TRACKING`'
+check_contains "Assessment fix ladder bars ci-fixer" "skills/implement/SKILL.md" \
+  "The ci-fixer subagent never fixes architectural violations or deviations; the coder does, then the main agent."
+check_contains "Assessment invariant hard stop has no waiver" "skills/implement/SKILL.md" \
+  "there is no waiver and the run must not create or merge the PR"
+check_contains "Assessment fixes never routed to ci-fixer" "skills/implement/SKILL.md" \
+  "Never route invariant or guideline fixes to the ci-fixer subagent."
 check_contains "Recovery blocks reporting until reconciliation" "skills/implement/SKILL.md" \
   'do not start Steps 16, 16a, 17, or 18 until `ship reconcile-manual-merge` returns verified `RECONCILE_STATUS=ok`, including the bail-overlay post-read'
 check_contains "Manual recovery clears in-memory stall" "skills/implement/SKILL.md" \

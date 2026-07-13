@@ -21,7 +21,7 @@ from pathlib import Path
 from larch.state import dirty_tree
 from larch.review import findings_ledger
 from larch.git import git
-from larch.core import config, logging_util
+from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
 from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, read_panel_payload_bytes, _panel_logging_enabled
@@ -115,9 +115,6 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--default-model", default="")
     parser.add_argument("--cursor-model", default=None)
     parser.add_argument("--difficulty", default="")
-    parser.add_argument("--assessment-contract", action="store_true")
-    parser.add_argument("--assessment-evidence-dir", default="")
-    parser.add_argument("--assessment-repo-root", default="")
     parser.add_argument("--single-attempt", action="store_true")
     return parser
 
@@ -166,30 +163,6 @@ def _review_validate_args(args: argparse.Namespace) -> int:
         return 2
     if _CTRL_RE.search(args.site):
         _err("agent launch-review: --site must not contain control characters")
-        return 2
-    assessment_values = (args.assessment_evidence_dir, args.assessment_repo_root)
-    if args.assessment_contract:
-        if not all(assessment_values):
-            _err("agent launch-review: assessment mode requires evidence and repository roots")
-            return 2
-        for label, raw in zip(("--assessment-evidence-dir", "--assessment-repo-root"), assessment_values, strict=True):
-            path = Path(raw)
-            try:
-                resolved = path.resolve(strict=True)
-            except OSError:
-                _err(f"agent launch-review: {label} must name an existing directory")
-                return 2
-            if path.is_symlink() or not resolved.is_dir():
-                _err(f"agent launch-review: {label} must name a non-symlink directory")
-                return 2
-        if args.tool == "cursor" and args.cursor_model != config.ARCHITECTURAL_ASSESSMENT_CURSOR_MODEL:
-            _err("agent launch-review: assessment Cursor model must use the canonical pin")
-            return 2
-        if args.tool == "codex" and args.default_model != config.ARCHITECTURAL_ASSESSMENT_CODEX_MODEL:
-            _err("agent launch-review: assessment Codex model must use the canonical pin")
-            return 2
-    elif any(assessment_values) or args.single_attempt:
-        _err("agent launch-review: assessment-only options require --assessment-contract")
         return 2
     return 0
 
@@ -830,8 +803,7 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
     paths = LauncherPaths.from_output(output)
     timing_kind = args.timing_task_kind or "codex-review"
     site = getattr(args, "site", "review Step 2")
-    assessment_contract = bool(getattr(args, "assessment_contract", False))
-    trusted_preamble = "Read the supplied architectural-assessment evidence only and do not modify files." if assessment_contract else _CODEX_REVIEW_STRICT_PREAMBLE
+    trusted_preamble = _CODEX_REVIEW_STRICT_PREAMBLE
     if "'''" in trusted_preamble:
         _err("agent launch-review: hardening preamble contains TOML triple-single-quote delimiter")
         return 2
@@ -864,13 +836,10 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
             _review_emit_launcher_result(output=output, tool="codex", launcher_exit=auth_rc, stderr_sink=args.stderr_sink)
             return 0
         try:
-            if assessment_contract:
-                model_args = ["-m", config.ARCHITECTURAL_ASSESSMENT_CODEX_MODEL, "-c", 'model_reasoning_effort="high"']
-            else:
-                try:
-                    model_args = list(resolve_model_args("codex", with_effort=True, default_model=getattr(args, "default_model", ""), codex_role=getattr(args, "model_role", "default")).argv)
-                except TypeError:
-                    model_args = list(resolve_model_args("codex", with_effort=True).argv)
+            try:
+                model_args = list(resolve_model_args("codex", with_effort=True, default_model=getattr(args, "default_model", ""), codex_role=getattr(args, "model_role", "default")).argv)
+            except TypeError:
+                model_args = list(resolve_model_args("codex", with_effort=True).argv)
         except ValueError as exc:
             _review_record_timing(vendor="codex", task_kind=timing_kind, start_s=start, output=output, exit_code=1)
             _review_write_preflight_bundle(output=output, args=args, failure_reason=f"agent model-args failed (exit 1): {exc}", tool="codex", prompt_sidecar=prompt_sidecar)
@@ -878,12 +847,8 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
             _review_write_preflight_done(output=output, launcher_exit=1)
             _review_emit_launcher_result(output=output, tool="codex", launcher_exit=1, stderr_sink=args.stderr_sink)
             return 1
-        workdir = str(Path(args.assessment_repo_root).resolve()) if assessment_contract else _resolve_review_codex_workdir(str(Path.cwd()))
+        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         add_dirs = [str(sandbox_dir)]
-        if assessment_contract:
-            # Assessment agents need only the validated evidence directory;
-            # granting the output parent exposes the whole session tmpdir.
-            add_dirs = [str(Path(args.assessment_evidence_dir).resolve())]
         add_dir_args = [value for directory in add_dirs for value in ("--add-dir", directory)]
         cmd = [
             "codex",
@@ -1160,30 +1125,6 @@ def _review_cursor_postprocess(*, output: Path, transient_attempt: int, model: s
         _write(path=output.with_suffix(output.suffix + ".diag"), text=diag_text)
 
 
-def _review_cursor_postprocess_assessment(*, output: Path, model: str = "") -> None:
-    """Extract Cursor's assessment payload without review normalization."""
-    if not output.is_file() or output.stat().st_size == 0:
-        return
-    raw = output.read_bytes()
-    json_sidecar = output.with_suffix(output.suffix + ".json")
-    with contextlib.suppress(FileNotFoundError):
-        json_sidecar.unlink()
-    json_sidecar.write_bytes(raw)
-    try:
-        obj = json.loads(raw.decode("utf-8", "replace"))
-    except json.JSONDecodeError:
-        return
-    if not isinstance(obj, dict):
-        return
-    result = obj.get("result")
-    if isinstance(result, str):
-        _review_atomic_write_text(path=output, text=result)
-    _record_cursor_usage_from_output(output=json_sidecar, label="cursor_review", model=model)
-    token_record = json_sidecar.with_suffix(json_sidecar.suffix + ".token-record")
-    if token_record.is_file():
-        token_record.replace(output.with_suffix(output.suffix + ".token-record"))
-
-
 def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> int:
     paths = LauncherPaths.from_output(output := Path(args.output))
     timing_kind = args.timing_task_kind or "cursor-review"
@@ -1207,8 +1148,7 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
         _review_write_preflight_done(output=output, launcher_exit=1)
         _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=1, stderr_sink=args.stderr_sink)
         return 1
-    assessment_contract = bool(getattr(args, "assessment_contract", False))
-    baseline_workdir = str(Path(args.assessment_repo_root).resolve()) if assessment_contract else ""
+    baseline_workdir = ""
     baseline = _review_capture_cursor_dirty_baseline(output, workdir=baseline_workdir)
     verdict = cursor_auth_preflight(caller="agent launch-review")
     if not verdict.ok:
@@ -1240,14 +1180,14 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
         _review_emit_launcher_result(output=output, tool="cursor", launcher_exit=CURSOR_PREREAD_FAIL_RC, stderr_sink=args.stderr_sink)
         return CURSOR_PREREAD_FAIL_RC
     cursor_auth_export_env()
-    prompt = original_prompt if assessment_contract else f"{_CURSOR_REVIEW_STRICT_PREAMBLE}\n\n{original_prompt}"
-    wrapped = prompt if assessment_contract else f" /max-mode on. Prompt: {prompt}"
+    prompt = f"{_CURSOR_REVIEW_STRICT_PREAMBLE}\n\n{original_prompt}"
+    wrapped = f" /max-mode on. Prompt: {prompt}"
     cfg_tmp, old_cfg = _review_setup_cursor_config_dir()
     _review_cursor_jitter()
     sidecar_path = paths.sidecar
     _write(path=sidecar_path, text="")
     try:
-        workdir = str(Path(args.assessment_evidence_dir).resolve()) if assessment_contract else _resolve_review_codex_workdir(str(Path.cwd()))
+        workdir = _resolve_review_codex_workdir(str(Path.cwd()))
         cmd = [
             "cursor",
             "agent",
@@ -1293,10 +1233,7 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
     _review_run_test_trap_after_inner_done_if_enabled()
     resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
     if result.exit_code == 0:
-        if assessment_contract:
-            _review_cursor_postprocess_assessment(output=output, model=resolved_model)
-        else:
-            _review_cursor_postprocess(output=output, transient_attempt=transient_attempt, model=resolved_model)
+        _review_cursor_postprocess(output=output, transient_attempt=transient_attempt, model=resolved_model)
     _review_write_cursor_dirty_tree_from_baseline(output=output, baseline=baseline, workdir=baseline_workdir)
     _review_record_timing(vendor="cursor", task_kind=timing_kind, start_s=start, output=output, exit_code=result.exit_code)
     _promote_inner_done(output)
