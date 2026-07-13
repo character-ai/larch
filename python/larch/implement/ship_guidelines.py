@@ -8,6 +8,7 @@ import re
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import date
 from functools import partial
 from pathlib import Path
 from typing import ClassVar, Final, cast
@@ -47,17 +48,37 @@ GUIDELINE_SHIP_REASON_TOKENS = GUIDELINES.ship_reason_tokens
 INVARIANT_SHIP_REASON_TOKENS = INVARIANTS.ship_reason_tokens
 
 # A guideline deviation is accepted at the ship gate only when its durable note
-# carries a machine-checkable documented-exception block recording the rationale,
-# the author (main-agent, the documented-exception tier of the fix ladder), and
-# the date. A bare deviation after fix-ladder exhaustion fails closed (#7193).
+# carries a machine-checkable documented-exception block recording a non-empty
+# rationale, the author (main-agent, the documented-exception tier of the fix
+# ladder), and a plausible calendar date. A bare deviation after fix-ladder
+# exhaustion fails closed (#7193, #7216).
 _DEVIATION_EXCEPTION_RE: Final = re.compile(
-    r"(?m)^\s*Exception:.*\bauthor:\s*main-agent\b.*\bdate:\s*\d{4}-\d{2}-\d{2}\b"
+    r"(?m)^\s*Exception:\s+(?P<rationale>\S[^\n]*?)\s+"
+    r"\(author:\s*main-agent,\s+date:\s*"
+    r"(?P<date>\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\)"
 )
 
 
+def _exception_date_plausible(date_text: str) -> bool:
+    """True when ``date_text`` parses as a real calendar date (rejects Feb 30, etc.)."""
+    try:
+        year_text, month_text, day_text = date_text.split("-")
+        _ = date(int(year_text), int(month_text), int(day_text))
+    except ValueError:
+        return False
+    return True
+
+
 def guideline_deviation_exception_present(note: str) -> bool:
-    """True when a guideline deviation note carries the documented exception block."""
-    return _DEVIATION_EXCEPTION_RE.search(note) is not None
+    """True when a guideline deviation note carries the documented exception block.
+
+    The block must record a non-empty rationale, the main-agent author, and a date
+    that parses as a plausible calendar date (#7193, #7216).
+    """
+    for match in _DEVIATION_EXCEPTION_RE.finditer(note):
+        if match.group("rationale").strip() and _exception_date_plausible(match.group("date")):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -467,11 +488,20 @@ def _read_current_note(
                 status=metadata.get(kind.status_env_key, "present") or "present",
                 reason=config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED,
             )
-        reason = ""
-        if note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN:
-            reason = REASON_DETERMINISTIC_CLEAN
-        elif note_state == config.NOTE_STATE_UNAVAILABLE:
-            reason = REASON_UNAVAILABLE
+        if note_state == config.NOTE_STATE_UNAVAILABLE:
+            # A legacy unavailable note records a transient capture failure, not
+            # durable coverage; the operator routing that once consumed it was
+            # removed (#7200). Route it to a fresh assessment so a resumed
+            # pre-upgrade tmpdir re-materializes and re-assesses instead of
+            # composing and merging a PR with zero assessment (#7216).
+            return _gate(
+                kind=kind,
+                needs_assessment=True,
+                detail=config.ASSESSMENT_REAUTHOR_REASON_MISSING_METADATA,
+                status=metadata.get(kind.status_env_key, "present") or "present",
+                reason=config.ASSESSMENT_RESULT_REAUTHOR_REQUIRED,
+            )
+        reason = REASON_DETERMINISTIC_CLEAN if note_state == config.NOTE_STATE_DETERMINISTIC_CLEAN else ""
         return _gate(
             kind=kind,
             note=redacted_note,

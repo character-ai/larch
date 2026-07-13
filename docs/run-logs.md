@@ -660,11 +660,19 @@ Content: final run status (`STALL_TRACKING` value), PR URL, and log directory pa
 `unavailable` state, no `architectural-assessment-unavailable` operator-bail,
 and no `ship waive-assessment` verb on this path. A guideline `deviation` is
 accepted at the ship gate only when its durable note carries the documented
-`Exception:` block the fix ladder records; a bare deviation fails closed with
-`architectural-guideline-deviation-unresolved`. A tier-2 invariant `violation`
-re-judge HARD STOPs with `invariant-violation-unresolved` and creates no PR.
-Historical `assessment-operator-waiver.json` artifacts and `unavailable`
-outcomes from older runs remain readable but are no longer produced or waived.
+`Exception:` block the fix ladder records: a non-empty rationale, the
+`author: main-agent` tier, and a date that parses as a plausible calendar date.
+A first submission that already carries an `Exception:` line is rejected
+fail-closed; only the fix-ladder decline re-submission, which passes
+`--allow-exception`, may persist one, so a forged block induced by untrusted
+guideline or reference content cannot clear the gate (#7216). A bare deviation
+fails closed with `architectural-guideline-deviation-unresolved`. A tier-2
+invariant `violation` re-judge HARD STOPs with `invariant-violation-unresolved`
+and creates no PR. Historical `assessment-operator-waiver.json` artifacts and
+`unavailable` outcomes from older runs remain readable but are no longer
+produced or waived; a legacy `unavailable` durable note resumed at a matching
+HEAD routes back through the assessments route instead of composing an
+unassessed PR (#7216).
 
 `ship reconcile-manual-merge` first verifies the nominated PR is merged in the trusted repository. It then converges `ship-pr-state.sh`, `finalize-state.sh`, and `session-env.sh` on terminal `PHASE=done` state. Reconciliation clears `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, `IMPLEMENT_BAIL_REASON`, `BAIL_NEEDS_USER_INPUT`, `BAIL_FAILURE_DETAIL_LOG`, `FAILED_RUN_ID`, and nonzero `EXIT_CODE`. It re-reads all three layers, the post-merge sentinel, and the run manifest before emitting `RECONCILE_STATUS=ok`.
 

@@ -844,6 +844,16 @@ def run(repo_root: Path) -> list[str]:
             checks.append("stall-recovery.md must not retain escalation-success compose procedure")
         require(skill, "Step 8 uses bgjob wait/rejoin", "NEVER #8 Step 8 bgjob re-entry")
         require(skill, "Do not require `BGJOB_RC=0`; the numeric driver rc in `.step-8-ship-handoff.rc` is authoritative for route-exit.", "SKILL Step 8 route-exit authoritative rc pin")
+        require(
+            skill,
+            "re-run submit with state `deviation` and the `--allow-exception` flag",
+            "SKILL fix-ladder decline re-submission passes --allow-exception (#7216)",
+        )
+        require(
+            skill,
+            'architectural-assessment submit --implement-tmpdir "$IMPLEMENT_TMPDIR" --repo-root "$REPO_ROOT" --kind <kind> --state <state> --note-file "$IMPLEMENT_TMPDIR/assessment-note-<kind>.md"',
+            "SKILL first-submit command must stay unchanged and free of --allow-exception (#7216)",
+        )
         for needle in [
             "_restore_finalize=false",
             "restore-finalize-state",
@@ -985,4 +995,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 352
+LEGACY_ASSERTION_LABEL_COUNT = 354

@@ -105,7 +105,6 @@ from larch.implement.ship_guidelines import (
     GuidelinesShipOutcome,
     InvariantsGateResult,
     InvariantsShipOutcome,
-    REASON_UNAVAILABLE,
     _pin_and_load_guidelines_note,
     _clear_ship_outcome_sidecar,
     guideline_deviation_exception_present,
@@ -482,9 +481,10 @@ def _assessment_gate_before_pr(
         _flush_guideline_outcome_before_pr(
             runner=runner, ctx=pr_context, cwd=repo_root, resume=resume
         )
-    # Unavailable is a transient non-violation fallback. The combined gate
-    # routes it to operator input instead of replaying an identical reship.
-    if outcome is not None and outcome.outcome == "dropped" and outcome.reason != REASON_UNAVAILABLE:
+    # A dropped outcome (any reason) cannot proceed to PR creation; stall rather
+    # than replay an identical reship. The legacy `unavailable` exemption was
+    # removed because the operator routing it relied on no longer exists (#7216).
+    if outcome is not None and outcome.outcome == "dropped":
         step = f"pr-create-{kind.singular}-outcome-dropped"
         _write_terminal_state(
             ctx=pr_context.with_(stall_tracking=True, stall_step=step),
