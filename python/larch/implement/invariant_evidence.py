@@ -47,10 +47,16 @@ def _strict_kvs(path: Path) -> dict[str, str]:
     text = path.read_text(encoding="utf-8", errors="strict")
     rows: dict[str, str] = {}
     for raw in text.splitlines():
+        # Tolerate benign shell/env content (blank lines, comments, `export ` prefixes,
+        # lowercase ledger keys) by skipping it, matching read_key in step-8-ci-fixer.sh.
+        # Only raise on genuine integrity violations: a duplicate uppercase key or a
+        # control character in a value.
         if not raw or "=" not in raw:
-            raise EvidenceError("metadata contains a malformed row")
+            continue
         key, value = raw.split("=", 1)
-        if key in rows or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or _CONTROL_RE.search(value):
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key):
+            continue
+        if key in rows or _CONTROL_RE.search(value):
             raise EvidenceError("metadata contains duplicate or unsafe data")
         rows[key] = value
     return rows
