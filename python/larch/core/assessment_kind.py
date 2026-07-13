@@ -89,12 +89,12 @@ def _parse_entries(  # noqa: C901 - fence-state tracking and entry assembly each
 
 _parse_guideline_entries = partial(
     _parse_entries,
-    heading_re=re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$"),
+    heading_re=re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$"),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.GUIDELINE_HEADING_RE derives from this field
     preserve_body=False,
 )
 _parse_invariant_entries = partial(
     _parse_entries,
-    heading_re=re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$"),
+    heading_re=re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$"),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.INVARIANT_HEADING_RE derives from this field
     preserve_body=True,
 )
 
@@ -174,7 +174,7 @@ GUIDELINES = AssessmentKind(
     dropped_note_artifact="architectural-guideline-drop-notice.txt",
     ship_outcome_sidecar="architectural-guideline-outcome.json",
     materialize_env="architectural-guideline-materialize.env",
-    heading_re=re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE),
+    heading_re=re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.GUIDELINE_HEADING_RE derives from this field
     identifier_re=re.compile(r"G-[A-Za-z0-9-]+-\d+"),
     parse_entries=_parse_guideline_entries,
     authored_outcomes=config.GUIDELINE_ASSESSMENT_OUTCOMES,
@@ -211,7 +211,7 @@ INVARIANTS = AssessmentKind(
     dropped_note_artifact="architectural-invariant-drop-notice.txt",
     ship_outcome_sidecar="architectural-invariant-outcome.json",
     materialize_env="architectural-invariant-materialize.env",
-    heading_re=re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE),
+    heading_re=re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$", re.MULTILINE),  # lint-shared-convention-regex: ok canonical definition; architectural_guidelines.INVARIANT_HEADING_RE derives from this field
     identifier_re=re.compile(r"I-[A-Za-z0-9-]+-\d+"),
     parse_entries=_parse_invariant_entries,
     authored_outcomes=config.INVARIANT_ASSESSMENT_OUTCOMES,

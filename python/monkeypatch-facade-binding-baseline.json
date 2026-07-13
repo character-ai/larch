@@ -5500,6 +5500,51 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_materialize_oos",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 6,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
+    "facade_module": "larch.implement.dispatch_step2",
+    "attribute": "_normalize_scout",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 4,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
+    "facade_module": "larch.implement.implement_dispatch",
+    "attribute": "_materialize_oos",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 5,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
+    "facade_module": "larch.implement.implement_dispatch",
+    "attribute": "_normalize_scout",
+    "defining_module": "larch.implement.dispatch_manifest",
+    "occurrence": 3,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
+    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
+    "facade_module": "larch.implement.implement_dispatch",
+    "attribute": "_run_launcher",
+    "defining_module": "larch.implement.dispatch_step2",
+    "occurrence": 1,
+    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope",
     "facade_module": "larch.implement.dispatch_step2",
     "attribute": "_materialize_oos",
@@ -5627,51 +5672,6 @@
   {
     "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope",
-    "facade_module": "larch.implement.implement_dispatch",
-    "attribute": "_run_launcher",
-    "defining_module": "larch.implement.dispatch_step2",
-    "occurrence": 1,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
-    "facade_module": "larch.implement.dispatch_step2",
-    "attribute": "_materialize_oos",
-    "defining_module": "larch.implement.dispatch_manifest",
-    "occurrence": 6,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
-    "facade_module": "larch.implement.dispatch_step2",
-    "attribute": "_normalize_scout",
-    "defining_module": "larch.implement.dispatch_manifest",
-    "occurrence": 4,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
-    "facade_module": "larch.implement.implement_dispatch",
-    "attribute": "_materialize_oos",
-    "defining_module": "larch.implement.dispatch_manifest",
-    "occurrence": 5,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
-    "facade_module": "larch.implement.implement_dispatch",
-    "attribute": "_normalize_scout",
-    "defining_module": "larch.implement.dispatch_manifest",
-    "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_step2_dispatch_plan_coverage_counts_firm_heading_without_files_section",
     "facade_module": "larch.implement.implement_dispatch",
     "attribute": "_run_launcher",
     "defining_module": "larch.implement.dispatch_step2",
@@ -6382,6 +6382,24 @@
   },
   {
     "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_assessment_gate_flushes_only_guideline_outcomes_before_pr_creation",
+    "facade_module": "larch.implement.ship",
+    "attribute": "load_or_prepare_guidelines_note",
+    "defining_module": "larch.implement.ship_guidelines",
+    "occurrence": 3,
+    "reason": "review-added facade patch; ship.py binds these via from import, patching facade is correct (#7177)"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
+    "qualified_symbol": "test_assessment_gate_flushes_only_guideline_outcomes_before_pr_creation",
+    "facade_module": "larch.implement.ship",
+    "attribute": "load_or_prepare_invariants_note",
+    "defining_module": "larch.implement.ship_guidelines",
+    "occurrence": 2,
+    "reason": "review-added facade patch; ship.py binds these via from import, patching facade is correct (#7177)"
+  },
+  {
+    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_changed_ci_not_ready_detail_resets_stall_guard",
     "facade_module": "larch.implement.ship",
     "attribute": "run_postmerge_phase",
@@ -6933,10 +6951,10 @@
     "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_open_pr_resume_runs_guidelines_gate_before_compose",
     "facade_module": "larch.implement.ship",
-    "attribute": "clear_guideline_ship_outcome_sidecar",
+    "attribute": "_clear_ship_outcome_sidecar",
     "defining_module": "larch.implement.ship_guidelines",
     "occurrence": 3,
-    "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+    "reason": "review-added facade patch; ship.py binds these via from import, patching facade is correct (#7177)"
   },
   {
     "file": "tests/implement/test_ship.py",
