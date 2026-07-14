@@ -15,6 +15,19 @@ def test_parse_kv_first_wins() -> None:
     assert larch_io.parse_kv("A=1\nA=2\n", first_wins=True) == {"A": "1"}
 
 
+def test_parse_kv_explicit_duplicate_policies_and_boolean_compatibility() -> None:
+    text = "A=1\nA=2\n"
+    assert larch_io.parse_kv(text, duplicate_policy="first") == {"A": "1"}
+    assert larch_io.parse_kv(text, duplicate_policy="last") == {"A": "2"}
+    assert larch_io.parse_kv(text, duplicate_policy="all") == {"A": ["1", "2"]}
+    assert larch_io.parse_kv("A=1\nA=\n", duplicate_policy="last-non-empty") == {"A": "1"}
+    assert larch_io.parse_kv(text, first_wins=False) == {"A": "2"}
+    with pytest.raises(ValueError, match="conflicting duplicate policy"):
+        _ = larch_io.parse_kv(text, duplicate_policy="last", first_wins=True)
+    with pytest.raises(ValueError, match="unsupported duplicate_policy"):
+        _ = larch_io.parse_kv(text, duplicate_policy="middle")  # type: ignore[arg-type]  # invalid-input coverage
+
+
 def test_parse_kv_empty_key_policy() -> None:
     assert larch_io.parse_kv("=value\n") == {"": "value"}
     assert not larch_io.parse_kv("=value\n", skip_empty_key=True)
@@ -35,10 +48,19 @@ def test_parse_kv_cr_strip_modes() -> None:
     assert larch_io.parse_kv(text, cr_strip="strip")["A"] == "value"
 
 
+def test_parse_kv_lone_cr_is_value_data() -> None:
+    assert larch_io.parse_kv("PHASE=one\rRUN_ID=two\r") == {
+        "PHASE": "one\rRUN_ID=two\r",
+    }
+
+
 def test_kv_value_first_and_last() -> None:
     text = "A=1\nA=2\n"
     assert larch_io.kv_value(text=text, key="A") == "1"
     assert larch_io.kv_value(text=text, key="A", first_match=False) == "2"
+    assert larch_io.kv_value(text=text, key="A", duplicate_policy="last") == "2"
+    with pytest.raises(ValueError, match="requires a multi-value"):
+        _ = larch_io.kv_value(text=text, key="A", duplicate_policy="all")  # type: ignore[arg-type]  # invalid-input coverage
 
 
 def test_read_kv_modes(tmp_path: Path) -> None:
@@ -72,6 +94,16 @@ def test_reject_cr_raises(tmp_path: Path) -> None:
         _ = larch_io.read_kvs(path, reject_cr=True)
 
 
+def test_read_kvs_allowlist_duplicates_and_embedded_equals(tmp_path: Path) -> None:
+    path = tmp_path / "env"
+    _ = path.write_bytes(b"KEEP=one=two\r\nDROP=no\nKEEP=last=part\n")
+    assert larch_io.read_kvs(
+        path,
+        duplicate_policy="last",
+        allowed_keys={"KEEP"},
+    ) == {"KEEP": "last=part"}
+
+
 def test_missing_and_error_defaults(tmp_path: Path) -> None:
     missing = tmp_path / "missing"
     assert not larch_io.read_kvs(missing)
@@ -86,6 +118,17 @@ def test_missing_and_error_defaults(tmp_path: Path) -> None:
     )
     with pytest.raises(UnicodeDecodeError):
         _ = larch_io.read_kv(path=bad, key="A", errors="strict")
+
+
+def test_read_kvs_preserves_defaults_after_partial_read(tmp_path: Path) -> None:
+    path = tmp_path / "partial.env"
+    _ = path.write_text("PRESENT=override\n", encoding="utf-8")
+
+    assert larch_io.read_kvs(
+        path,
+        default={"PRESENT": "fallback", "MISSING": "fallback"},
+        duplicate_policy="last-non-empty",
+    ) == {"PRESENT": "override", "MISSING": "fallback"}
 
 
 def test_format_kvs_ordering() -> None:

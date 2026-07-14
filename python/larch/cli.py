@@ -256,6 +256,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("untrusted", "xml-escape-attr"): ("larch.issue.issue_wire", "untrusted_xml_escape_attr_main"),
     ("lint", "p3119-fence-absence"): ("larch.issue.issue_wire", "lint_p3119_main"),
     ("lint", "duplicate-code"): ("larch.lint.duplicate_code", "duplicate_code_main"),
+    ("lint", "kv-codec"): ("larch.lint.lint_kv_codec", "main"),
     ("issue", "parse-input"): ("larch.issue.issue_create", "parse_input_main"),
     ("issue", "create-one"): ("larch.issue.issue_create", "create_one_main"),
     ("issue", "allocate-candidates"): ("larch.issue.issue_create", "allocate_candidates_main"),

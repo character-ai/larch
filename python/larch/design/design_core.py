@@ -213,37 +213,27 @@ def _read_env_value(*, path: Path, key: str, default: str = "") -> str:
 
 
 def _read_env_value_last(*, path: Path, key: str, default: str = "") -> str:
-    if path.is_symlink() or not path.is_file():
-        return default
-    prefix = f"{key}="
-    value = default
-    try:
-        lines = larch_io.read_text(path, errors="replace").splitlines()
-    except OSError:
-        return default
-    for raw in lines:
-        if raw.startswith(prefix):
-            candidate = raw[len(prefix) :]
-            if candidate:
-                value = candidate
-    return value
+    return larch_io.read_kv(
+        path=path,
+        key=key,
+        default=default,
+        duplicate_policy="last-non-empty",
+        reject_symlink=True,
+        on_error_default=True,
+        errors="replace",
+    )
 
 
 def _read_env_values(*, path: Path, defaults: Mapping[str, str]) -> dict[str, str]:
-    out = dict(defaults)
-    if path.is_symlink() or not path.is_file():
-        return out
-    try:
-        lines = larch_io.read_text(path, errors="replace").splitlines()
-    except OSError:
-        return out
-    for line in lines:
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        if key in out and value:
-            out[key] = value
-    return out
+    return larch_io.read_kvs(
+        path,
+        default=defaults,
+        duplicate_policy="last-non-empty",
+        allowed_keys=defaults,
+        reject_symlink=True,
+        on_error_default=True,
+        errors="replace",
+    )
 
 
 

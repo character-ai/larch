@@ -1389,6 +1389,21 @@ def test_read_key_emits_on_fd3_under_quiet_mode(tmp_path: Path, monkeypatch: pyt
     assert contract == "secret-value\n"
 
 
+def test_read_key_pins_first_match_duplicate_and_empty_value_policy(tmp_path: Path) -> None:
+    session = tmp_path / "session-env.sh"
+    session.write_text("TOKEN=\nTOKEN=second\nOTHER=value\n", encoding="utf-8")
+
+    fallback = run_cli(
+        "read-key", "--file", str(session), "--key", "TOKEN", "--default", "fallback"
+    )
+    empty = run_cli("read-key", "--file", str(session), "--key", "TOKEN")
+
+    assert fallback.returncode == 0
+    assert fallback.stdout == "fallback\n"
+    assert empty.returncode == 0
+    assert empty.stdout == "\n"
+
+
 def test_setup_writes_session_id_and_keepalive(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))

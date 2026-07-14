@@ -61,19 +61,15 @@ def phase_driver_read_result_env(*, path: str | Path, allow_keys: Iterable[str])
     if source.is_symlink() or not source.is_file():
         raise OSError(f"result env is not a regular file: {source}")
     allow = set(allow_keys)
-    pairs: list[tuple[str, str]] = []
-    for raw in source.read_bytes().decode("utf-8", errors="replace").split("\n"):
-        if raw == "":
-            continue
-        if "=" not in raw:
-            continue
-        key, value = raw.split("=", 1)
-        if key not in allow:
-            continue
-        if "\n" in value or "\r" in value:
-            continue
-        pairs.append((key, value))
-    return pairs
+    text = source.read_bytes().decode("utf-8", errors="replace")
+    clean_lines = [line for line in text.split("\n") if "\r" not in line]
+    text = "\n".join(clean_lines)
+    rows = larch_io.parse_kv(
+        text,
+        duplicate_policy="all",
+        allowed_keys=allow,
+    )
+    return [(key, value) for key, values in rows.items() for value in values]
 
 
 def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, str] | str]) -> None:
@@ -92,7 +88,7 @@ def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, 
         if isinstance(item, str):
             if "=" not in item:
                 raise ValueError(f"result env row is missing '=': {item}")
-            key, value = item.split("=", 1)
+            key, _, value = item.partition("=")
         else:
             key, value = item
         if key not in PHASE_RESULT_ENV_ALLOW_KEYS or not _valid_var_name(key):
@@ -159,13 +155,13 @@ def json_get_bool_main(argv: Sequence[str]) -> int:
 
 
 def _replay_warn_error(path: Path) -> None:
-    for raw in path.read_bytes().decode("utf-8", errors="replace").split("\n"):
-        if raw == "":
-            continue
-        if "=" not in raw:
-            continue
-        key, value = raw.split("=", 1)
-        if key in {"WARN", "ERROR"}:
+    rows = larch_io.parse_kv(
+        path.read_bytes().decode("utf-8", errors="replace"),
+        duplicate_policy="all",
+        allowed_keys={"WARN", "ERROR"},
+    )
+    for key, values in rows.items():
+        for value in values:
             print(f"{key}={value}")
 
 
@@ -459,7 +455,7 @@ def _ledger_row_has_escalation_evidence(row: str) -> bool:
     for field in row.split("\t"):
         if "=" not in field:
             continue
-        key, value = field.split("=", 1)
+        key, _, value = field.partition("=")
         values[key] = value
     site = values.get("site", "")
     trigger = values.get("trigger", "")
@@ -1148,11 +1144,7 @@ def _is_terminal_publish_outcome(outcome: str) -> bool:
 
 
 def _parse_contract_value(text: str, key: str) -> str:
-    value = ""
-    for line in text.splitlines():
-        if line.startswith(f"{key}="):
-            value = line.split("=", 1)[1]
-    return value
+    return larch_io.kv_value(text=text, key=key, duplicate_policy="last")
 
 
 def _has_nonempty_final_summary(path: Path) -> bool:

@@ -205,8 +205,8 @@ if [ "$MODE" = resume ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
         _sentinel="$IMPLEMENT_TMPDIR/parent-issue.md"
         if [ -f "$_sentinel" ]; then
             _sentinel_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" tracking-issue read --sentinel "$_sentinel" 2>/dev/null || true)
-            _sentinel_issue=$(printf '%s\n' "$_sentinel_out" | grep '^ISSUE_NUMBER=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-            _sentinel_run_id=$(printf '%s\n' "$_sentinel_out" | grep '^RUN_ID=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
+            _sentinel_issue=$(printf '%s\n' "$_sentinel_out" | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --key ISSUE_NUMBER --match last 2>/dev/null || true)
+            _sentinel_run_id=$(printf '%s\n' "$_sentinel_out" | python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --key RUN_ID --match last 2>/dev/null || true)
             [ -n "$_sentinel_issue" ] && TARGET_ISSUE_NUMBER="$_sentinel_issue" && ISSUE_NUMBER="$_sentinel_issue"
             if [ -z "${RUN_ID:-}" ] && [ -n "$_sentinel_run_id" ]; then
                 RUN_ID="$_sentinel_run_id"

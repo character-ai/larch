@@ -166,9 +166,9 @@ if [[ "$JQ_AVAILABLE" == "true" && "$GIT_AVAILABLE" == "true" ]]; then
             sentinel_path=""
         fi
         if [[ -n "$sentinel_path" && -f "$sentinel_path" ]]; then
-            issue_number=$(awk -F= '$1 == "ISSUE_NUMBER" {print substr($0, index($0, "=") + 1); exit}' "$sentinel_path" 2>/dev/null || true)
-            stall_step=$(awk -F= '$1 == "STALL_STEP" {print substr($0, index($0, "=") + 1); exit}' "$sentinel_path" 2>/dev/null || true)
-            stash_ref=$(awk -F= '$1 == "STASH_REF" {print substr($0, index($0, "=") + 1); exit}' "$sentinel_path" 2>/dev/null || true)
+            issue_number=$(python3 "$SCRIPT_DIR/../python/cli.py" kv get --file "$sentinel_path" --key ISSUE_NUMBER --match first 2>/dev/null || true)
+            stall_step=$(python3 "$SCRIPT_DIR/../python/cli.py" kv get --file "$sentinel_path" --key STALL_STEP --match first 2>/dev/null || true)
+            stash_ref=$(python3 "$SCRIPT_DIR/../python/cli.py" kv get --file "$sentinel_path" --key STASH_REF --match first 2>/dev/null || true)
             issue_number=${issue_number:-unknown}
             stall_step=${stall_step:-unknown}
             # Branch on whether a stash was actually recorded — empty STASH_REF

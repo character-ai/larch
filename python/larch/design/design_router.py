@@ -247,9 +247,11 @@ def init_runparams_main(argv: Sequence[str]) -> int:
         check=False,
     )
     if rename.returncode == 0:
-        for line in rename.stdout.splitlines():
-            if line.startswith("RENAMED="):
-                renamed = line.split("=", 1)[1]
+        renamed = larch_io.kv_value(
+            text=rename.stdout,
+            key="RENAMED",
+            duplicate_policy="last",
+        )
     else:
         warn_lines.append(
             "**⚠ 0b: [DESIGNING] rename failed (python3 python/cli.py tracking-issue rename); continuing with run-params write. Re-invoke /design or rename manually if the title is still wrong.**"
@@ -308,13 +310,11 @@ def _write_kv_file(*, path: Path, rows: list[tuple[str, str]]) -> bool:
 
 
 def _parse_stdout_kv(text: str) -> dict[str, list[str]]:
-    out: dict[str, list[str]] = {}
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        out.setdefault(key, []).append(value)
-    return out
+    return larch_io.parse_kv(
+        text,
+        duplicate_policy="all",
+        skip_empty_key=True,
+    )
 
 
 def _merge_router_flags(

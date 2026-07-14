@@ -82,6 +82,14 @@ def test_emit_kv_writes_key_equals_value(capsys: pytest.CaptureFixture[str]) -> 
     assert captured.out == "STATUS=ok\n"
 
 
+def test_emit_kv_normalizes_boolean_and_integer_scalars(capsys: pytest.CaptureFixture[str]) -> None:
+    logging_util.reset_quiet_state()
+    logging_util.emit_kv(key="ENABLED", value=True)
+    logging_util.emit_kv(key="ATTEMPTS", value=2)
+    captured = capsys.readouterr()
+    assert captured.out == "ENABLED=true\nATTEMPTS=2\n"
+
+
 def test_emit_kv_uses_inherited_quiet_fd3(monkeypatch: pytest.MonkeyPatch) -> None:
     logging_util.reset_quiet_state()
     read_fd, write_fd = os.pipe()

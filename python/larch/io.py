@@ -18,10 +18,39 @@ import stat
 import tempfile
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import TypeAlias, cast
+from typing import Literal, TypeAlias, cast, overload
 
 KvRows: TypeAlias = Mapping[str, object] | Iterable[tuple[str, object]]
+DuplicatePolicy: TypeAlias = Literal["first", "last", "last-non-empty", "all"]
 _CR_MODES = {"none", "suffix", "rstrip", "strip"}
+_DUPLICATE_POLICIES = {"first", "last", "last-non-empty", "all"}
+
+
+def _duplicate_policy(
+    *,
+    duplicate_policy: DuplicatePolicy | None,
+    legacy_first: bool | None,
+    legacy_name: str,
+    default: DuplicatePolicy,
+    allow_all: bool,
+) -> DuplicatePolicy:
+    """Resolve a new duplicate policy and its temporary boolean adapter."""
+    if duplicate_policy is not None and duplicate_policy not in _DUPLICATE_POLICIES:
+        msg = f"unsupported duplicate_policy: {duplicate_policy}"
+        raise ValueError(msg)
+    if duplicate_policy == "all" and not allow_all:
+        msg = "duplicate_policy='all' requires a multi-value codec read"
+        raise ValueError(msg)
+    if legacy_first is None:
+        return duplicate_policy or default
+    legacy_policy: DuplicatePolicy = "first" if legacy_first else "last"
+    if duplicate_policy is not None and duplicate_policy != legacy_policy:
+        msg = (
+            f"conflicting duplicate policy: {legacy_name}={legacy_first!r} "
+            f"and duplicate_policy={duplicate_policy!r}"
+        )
+        raise ValueError(msg)
+    return duplicate_policy or legacy_policy
 
 
 def assert_no_symlink_path_or_ancestors(path: Path) -> None:
@@ -271,7 +300,17 @@ def _strip_cr(*, value: str, mode: str) -> str:
 
 
 def _line_iter(text: str) -> list[str]:
-    return [line.removesuffix("\r") for line in text.split("\n")]
+    """Split the KEY=value wire format on LF without treating lone CR as a row.
+
+    The format accepts CRLF input, so the single CR immediately before an LF is
+    framing rather than value data.  A lone CR, however, is part of the value
+    and must not create a synthetic second record.
+    """
+    lines = text.split("\n")
+    return [
+        line.removesuffix("\r") if index < len(lines) - 1 else line
+        for index, line in enumerate(lines)
+    ]
 
 
 def _read_utf8(path: Path, *, errors: str) -> str:
@@ -279,17 +318,51 @@ def _read_utf8(path: Path, *, errors: str) -> str:
         return handle.read()
 
 
+@overload
 def parse_kv(
     text: str,
     *,
-    first_wins: bool = False,
+    duplicate_policy: Literal["all"],
+    first_wins: bool | None = None,
     skip_empty_key: bool = False,
     cr_strip: str = "none",
     strip_value: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     skip_comments: bool = False,
-) -> dict[str, str]:
+) -> dict[str, list[str]]: ...
+
+
+@overload
+def parse_kv(
+    text: str,
+    *,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
+    first_wins: bool | None = None,
+    skip_empty_key: bool = False,
+    cr_strip: str = "none",
+    strip_value: bool = False,
+    strip_key: bool = False,
+    key_pattern: str | re.Pattern[str] | None = None,
+    allowed_keys: Iterable[str] | None = None,
+    skip_comments: bool = False,
+) -> dict[str, str]: ...
+
+
+def parse_kv(
+    text: str,
+    *,
+    duplicate_policy: DuplicatePolicy | None = None,
+    first_wins: bool | None = None,
+    skip_empty_key: bool = False,
+    cr_strip: str = "none",
+    strip_value: bool = False,
+    strip_key: bool = False,
+    key_pattern: str | re.Pattern[str] | None = None,
+    allowed_keys: Iterable[str] | None = None,
+    skip_comments: bool = False,
+) -> dict[str, str] | dict[str, list[str]]:
     """Parse already-decoded ``KEY=value`` text into a dict.
 
     Defaults match the broadest larch envelope grammar: duplicate keys use the
@@ -304,7 +377,14 @@ def parse_kv(
         re.compile(key_pattern) if isinstance(key_pattern, str) else key_pattern
     )
     allow: set[str] | None = set(allowed_keys) if allowed_keys is not None else None
-    out: dict[str, str] = {}
+    policy = _duplicate_policy(
+        duplicate_policy=duplicate_policy,
+        legacy_first=first_wins,
+        legacy_name="first_wins",
+        default="last",
+        allow_all=True,
+    )
+    out: dict[str, str] | dict[str, list[str]] = {}
     for raw in _line_iter(text):
         if not raw:
             continue
@@ -313,6 +393,8 @@ def parse_kv(
         if "=" not in raw:
             continue
         key, value = raw.split("=", 1)
+        if strip_key:
+            key = key.strip()
         if skip_empty_key and not key:
             continue
         if allow is not None and key not in allow:
@@ -322,7 +404,13 @@ def parse_kv(
         value = _strip_cr(value=value, mode=cr_strip)
         if strip_value:
             value = value.strip()
-        if first_wins and key in out:
+        if policy == "all":
+            values = cast("dict[str, list[str]]", out)
+            values.setdefault(key, []).append(value)
+            continue
+        if policy == "first" and key in out:
+            continue
+        if policy == "last-non-empty" and not value:
             continue
         out[key] = value
     return out
@@ -333,20 +421,30 @@ def kv_value(
     text: str,
     key: str,
     default: str = "",
-    first_match: bool = True,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
+    first_match: bool | None = None,
     cr_strip: str = "none",
 ) -> str:
     """Return one key's value from decoded ``KEY=value`` text."""
     if cr_strip not in _CR_MODES:
         msg = f"unsupported cr_strip mode: {cr_strip}"
         raise ValueError(msg)
+    policy = _duplicate_policy(
+        duplicate_policy=duplicate_policy,
+        legacy_first=first_match,
+        legacy_name="first_match",
+        default="first",
+        allow_all=False,
+    )
     prefix = f"{key}="
     found = default
     for raw in _line_iter(text):
         if raw.startswith(prefix):
             found = _strip_cr(value=raw[len(prefix) :], mode=cr_strip)
-            if first_match:
+            if policy == "first":
                 return found
+            if policy == "last-non-empty" and not found:
+                continue
     return found
 
 
@@ -377,7 +475,8 @@ def read_kv(
     path: str | Path,
     key: str,
     default: str = "",
-    first_match: bool = True,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
+    first_match: bool | None = None,
     cr_strip: str = "none",
     errors: str = "replace",
     on_error_default: bool = False,
@@ -396,6 +495,13 @@ def read_kv(
         if on_error_default:
             return default
         raise
+    policy = _duplicate_policy(
+        duplicate_policy=duplicate_policy,
+        legacy_first=first_match,
+        legacy_name="first_match",
+        default="first",
+        allow_all=False,
+    )
     prefix = f"{key}="
     found: str | None = None
     for raw in _line_iter(text):
@@ -403,28 +509,70 @@ def read_kv(
             value = _strip_cr(value=raw[len(prefix) :], mode=cr_strip)
             if empty_value_means_default and value == "":
                 value = default
-            if first_match:
+            if policy == "first":
                 return value
+            if policy == "last-non-empty" and not value:
+                continue
             found = value
     return default if found is None else found
 
 
+@overload
 def read_kvs(
     path: str | Path,
     *,
-    default: Mapping[str, str] | None = None,
-    first_wins: bool = False,
+    duplicate_policy: Literal["all"],
+    default: Mapping[str, list[str]] | None = None,
+    first_wins: bool | None = None,
     cr_strip: str = "none",
     skip_comments: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     errors: str = "replace",
     reject_cr: bool = False,
     reject_symlink: bool = False,
     on_error_default: bool = False,
-) -> dict[str, str]:
+) -> dict[str, list[str]]: ...
+
+
+@overload
+def read_kvs(
+    path: str | Path,
+    *,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
+    default: Mapping[str, str] | None = None,
+    first_wins: bool | None = None,
+    cr_strip: str = "none",
+    skip_comments: bool = False,
+    strip_key: bool = False,
+    key_pattern: str | re.Pattern[str] | None = None,
+    allowed_keys: Iterable[str] | None = None,
+    errors: str = "replace",
+    reject_cr: bool = False,
+    reject_symlink: bool = False,
+    on_error_default: bool = False,
+) -> dict[str, str]: ...
+
+
+def read_kvs(
+    path: str | Path,
+    *,
+    default: Mapping[str, str] | Mapping[str, list[str]] | None = None,
+    duplicate_policy: DuplicatePolicy | None = None,
+    first_wins: bool | None = None,
+    cr_strip: str = "none",
+    skip_comments: bool = False,
+    strip_key: bool = False,
+    key_pattern: str | re.Pattern[str] | None = None,
+    allowed_keys: Iterable[str] | None = None,
+    errors: str = "replace",
+    reject_cr: bool = False,
+    reject_symlink: bool = False,
+    on_error_default: bool = False,
+) -> dict[str, str] | dict[str, list[str]]:
     """Read a ``KEY=value`` file into a dict, preserving caller fallbacks."""
-    fallback = dict(default or {})
+    fallback = cast("dict[str, str] | dict[str, list[str]]", dict(default or {}))
     p = Path(path)
     if reject_symlink and p.is_symlink():
         return fallback
@@ -439,14 +587,26 @@ def read_kvs(
     if reject_cr and "\r" in text:
         msg = f"carriage return not allowed in {p}"
         raise ValueError(msg)
-    return parse_kv(
+    parsed = parse_kv(
         text,
+        duplicate_policy=duplicate_policy,
         first_wins=first_wins,
         cr_strip=cr_strip,
         skip_comments=skip_comments,
+        strip_key=strip_key,
         key_pattern=key_pattern,
         allowed_keys=allowed_keys,
     )
+    # ``default`` supplies per-key recovery values, not merely the result for
+    # an unreadable file.  Preserve omitted defaults after a successful partial
+    # read while allowing parsed records to override their matching keys.
+    if duplicate_policy == "all":
+        list_fallback = cast("dict[str, list[str]]", fallback)
+        list_fallback.update(cast("dict[str, list[str]]", parsed))
+        return list_fallback
+    scalar_fallback = cast("dict[str, str]", fallback)
+    scalar_fallback.update(cast("dict[str, str]", parsed))
+    return scalar_fallback
 
 
 def format_kvs(values: KvRows, *, sort_keys: bool = False) -> str:

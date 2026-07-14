@@ -1978,6 +1978,18 @@ def test_review_provenance_remains_importable() -> None:
     assert callable(review_provenance)
 
 
+def test_review_provenance_propagates_read_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    result_env = tmp_path / ".step3-review-result.env"
+    _ = result_env.write_text("LOOP_STATUS=complete\n", encoding="utf-8")
+
+    def fail_read(*_args: object, **_kwargs: object) -> dict[str, str]:
+        raise OSError("read failed")
+
+    monkeypatch.setattr(design_publish.larch_io, "read_kvs", fail_read)
+    with pytest.raises(OSError, match="read failed"):
+        _ = design_publish.review_provenance(tmp_path)
+
+
 def test_review_provenance_falls_back_to_round_count_file_when_keys_absent(tmp_path: Path) -> None:
     # #5210: a result env that omits ROUNDS_COMPLETED/REVIEW_ROUND_COUNT must recover
     # the launched-round count from review-round-count.txt rather than read rounds=0
