@@ -1161,7 +1161,7 @@ def _step4_noop(reason: str) -> tuple[CommitRouteOutcome, str]:
     commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
     if commit.returncode == 0 and commit.stdout.strip():
         commit_sha = commit.stdout.strip()
-    print(f"⏩ 4: commit (impl) status=skip reason={reason} sha={commit_sha} elapsed=0s")
+    print(f"⏩ 4: commit (impl) status=skip reason={reason} sha={commit_sha} elapsed=0s", file=sys.stderr)
     return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
 
 
@@ -1408,7 +1408,7 @@ def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,PLR0912,RUF100
         _emit_kv(key="NEXT_ACTION", value="checks-failed")
         return 0
     if args.emit_step7_breadcrumb:
-        print("> **🔶 /implement 7: commit (review)**")
+        print("> **🔶 /implement 7: commit (review)**", file=sys.stderr)
     if args.commit_site == "step4":
         recompute_rc = _run_step4_recovery_recompute(implement_tmpdir, repo_root=repo_root)
         if recompute_rc != 0:

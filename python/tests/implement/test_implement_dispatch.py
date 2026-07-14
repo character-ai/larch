@@ -4597,6 +4597,42 @@ def test_checks_commit_route_ok_envelope_continues_through_real_helper(
     assert [line for line in out.splitlines() if line == "NEXT_ACTION=continue"] == ["NEXT_ACTION=continue"]
 
 
+def test_checks_commit_route_emit_step7_breadcrumb_goes_to_stderr(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """emit_step7_breadcrumb=True must print the step-7 breadcrumb to stderr, not stdout."""
+    impl = make_implement_tmpdir(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 0, "RELEVANT_CHECKS_OK=true SITE=step6\n", "")
+
+    def fake_commit(**_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
+        return "continue", "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n"
+
+    def fake_7r(_forked_target: str) -> int:
+        return 0
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fake_commit)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", fake_commit)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fake_7r)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", fake_7r)  # lint-monkeypatch-binding: ok mirrors existing test pattern; both facades patched for coverage
+
+    rc = implement_dispatch.checks_commit_route_main(
+        ["--checks-site", "step6", "--commit-site", "step7", "--emit-step7-breadcrumb", "--rebase-checkpoint-7r"]
+    )
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    breadcrumb = "> **🔶 /implement 7: commit (review)**"
+    assert breadcrumb not in captured.out, "step-7 breadcrumb must not appear on stdout"
+    assert breadcrumb in captured.err, "step-7 breadcrumb must appear on stderr"
+
+
 def test_checks_step5_resume_ok_envelope_runs_resume_without_continue_action(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -5077,7 +5113,7 @@ def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
     captured = capsys.readouterr()
     assert outcome == "noop"
     assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
-    assert "dispatcher-committed" in captured.out
+    assert "dispatcher-committed" in captured.err
 
 
 def test_run_step4_commit_leg_dispatcher_committed_commits_later_dirty_paths(
@@ -5165,7 +5201,7 @@ def test_run_step4_commit_leg_already_committed_by_main_agent_short_circuits_noo
     captured = capsys.readouterr()
     assert outcome == "noop"
     assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
-    assert "already-committed" in captured.out
+    assert "already-committed" in captured.err
     assert not calls
 
 
