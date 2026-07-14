@@ -447,7 +447,8 @@ assert_contains 'Tokens: ' "$cost_line" 'per-agent stdout cost has token count'
 # Retired renderer failure fallback coverage is omitted here; the final report
 # wrapper now delegates to the in-process Python writer.
 
-# Step 18 shell-wrapper body-emission coverage moved to test-step-18.sh.
+# Step 18 shell-wrapper body-emission coverage moved to
+# python/tests/implement/test_implement_shell_scripts.py (Step 18 finalize/marker nodes).
 
 # Bail + manifest.json: reconcile keys step8 off on-disk final-summary.md and hard-fails on manifest error
 impl_mfb="$TMP_ROOT/impl-mfb"; mkdir -p "$impl_mfb/larch-logs/implement/run-mfb"

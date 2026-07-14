@@ -106,9 +106,10 @@ Stall KVs, `STALL_RECOVERY_REQUIRED`, Step 18b KVs, marker lines, and teardown t
 
 ## Harness
 
-`test-step-18.sh` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, the execution-issues and transcript safety nets, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
-Shell-wrapper cases previously housed in `test-write-final-report.sh` moved to this harness.
+`python/tests/implement/test_implement_shell_scripts.py` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, the execution-issues and transcript safety nets, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
+Shell-wrapper cases previously housed in `test-write-final-report.sh` moved to that pytest module.
+SKILL.md missing-marker and no-Read prose pins remain owned by structure/callsite harnesses, not the Step 18 pytest nodes.
 
 ## Edit in sync
 
-Update `skills/implement/SKILL.md`, `make test-implement-structure`, `scripts/test-implement-timing-rehydration.sh`, `scripts/test-implement-fence-shape.sh`, `scripts/test-render-cost-line-callsites.sh`, `skills/implement/scripts/test-write-final-report.sh`, `agent-lint.toml`, `python/migrated-scripts.tsv`, and `docs/linting.md` when this contract changes.
+Update `skills/implement/SKILL.md`, `make test-implement-structure`, `scripts/test-implement-timing-rehydration.sh`, `scripts/test-implement-fence-shape.sh`, `scripts/test-render-cost-line-callsites.sh`, `skills/implement/scripts/test-write-final-report.sh`, `python/tests/implement/test_implement_shell_scripts.py`, `agent-lint.toml`, `python/migrated-scripts.tsv`, and `docs/linting.md` when this contract changes.

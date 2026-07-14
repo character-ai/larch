@@ -27,4 +27,4 @@ Normal continuation requires `BGJOB_RC=0`, `STEP5_REVIEW_STATUS=complete`, and t
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, `skills/implement/scripts/test-step-5-review.sh`, and Python Step 5 wrapper tests when this contract or argv changes.
+Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, `python/tests/implement/test_implement_shell_scripts.py` (Step 5 wrapper-shape nodes), and Python Step 5 wrapper tests when this contract or argv changes.

@@ -1175,7 +1175,6 @@ exclude = [
   "python/test_review_and_fix.py",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
-  "skills/implement/scripts/test-step-18.sh",
   "skills/implement/scripts/test-step-18.md",
   "python/test_stall_recovery.py",
   "python/test_pr_body.py",
