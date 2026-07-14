@@ -2452,8 +2452,10 @@ def test_scrub_run_tree_fail_closed_on_residual(
         encoding="utf-8",
     )
 
-    def _never_scrubs(text: str) -> tuple[str, dict[str, int]]:
-        return text, {"cursor-api-key": 1}
+    def _never_scrubs(text: str) -> run_logs.redact.ScrubLogSecretsResult:
+        return run_logs.redact.ScrubLogSecretsResult(
+            scrubbed=text, findings={"cursor-api-key": 1}
+        )
 
     monkeypatch.setattr(run_logs.redact, "scrub_log_secrets", _never_scrubs)
     with pytest.raises(ShipError, match="secret survived scrubbing"):

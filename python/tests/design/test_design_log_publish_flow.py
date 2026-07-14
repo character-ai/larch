@@ -1232,8 +1232,12 @@ def test_copy_tree_redacted_fail_closed_on_residual(
     )
     dest = tmp_path / "dest.txt"
 
-    def _never_scrubs(text: str) -> tuple[str, dict[str, int]]:
-        return text, {"cursor-api-key": 1}
+    def _never_scrubs(
+        text: str,
+    ) -> design_log_publish_flow.redact.ScrubLogSecretsResult:
+        return design_log_publish_flow.redact.ScrubLogSecretsResult(
+            scrubbed=text, findings={"cursor-api-key": 1}
+        )
 
     monkeypatch.setattr(
         design_log_publish_flow.redact, "scrub_log_secrets", _never_scrubs
