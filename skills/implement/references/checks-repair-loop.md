@@ -10,8 +10,7 @@ Structural reasons include `tmpdir-validation`, `site-validation`, `repo-root-un
 
 Act on the reason.
 Do not invoke repair-loop when no `REDACTED_LOG_FILE` exists.
-For prompt-side diagnosis, prefer `DIGEST_FILE` when it is present and readable. Fall back to `REDACTED_LOG_FILE` when the digest is absent, unreadable, or insufficient.
-At folded sites, key-scan the full composite stdout for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical composite line. Bind `DIGEST_FILE` for diagnosis and reserve `REDACTED_LOG_FILE` for repair-loop input.
+At folded sites, key-scan the full composite stdout for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical composite line. Do not Read either file on this path. Reserve `REDACTED_LOG_FILE` for repair-loop input and later bounded evidence materialization.
 Before skipping to Step 18 on this no-log path, whitespace-token-scan the first physical line of captured composite stdout for `EXIT_CODE`, `FAILURE_REASON`, and `PHASE`. Mirror `FAILURE_REASON` into `IMPLEMENT_BAIL_REASON` and `FINAL_BAIL_REASON`. Set `STALL_STEP` from the pinned site (`3` for `--site step3`, `6` for `--site step6`, `5` for Step 5 self-review). Default `PHASE` to `checks` when the composite line omits it.
 Then route to the default stall semantics in section 4: set `STALL_TRACKING=true`, skip to Step 18, and do not proceed on the site success path.
 
@@ -67,7 +66,7 @@ Use this site split as the sole normative rule.
 
 ### `NEXT_ACTION=main-agent-edit`
 
-When `LINT_FIX_LEDGER_READY=true`, record one escalation before Main Claude Edit/Write. Pass the parsed `LINT_FIX_LEDGER_*` fields from section 3 verbatim; do not invent site/trigger tokens. See **Escalation recording owners** in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md` for ownership and dedup rules.
+When `LINT_FIX_LEDGER_READY=true`, record one escalation before the ci-fixer handoff. Pass the parsed `LINT_FIX_LEDGER_*` fields from section 3 verbatim; do not invent site/trigger tokens. See **Escalation recording owners** in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md` for ownership and dedup rules.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" stall-recovery record-escalation --implement-tmpdir "$IMPLEMENT_TMPDIR" --site "$LINT_FIX_LEDGER_SITE" --trigger "$LINT_FIX_LEDGER_TRIGGER" --step "$LINT_FIX_LEDGER_STEP" --phase "$LINT_FIX_LEDGER_PHASE" --dispatcher "$LINT_FIX_LEDGER_DISPATCHER" --exit-code "$LINT_FIX_LEDGER_EXIT_CODE" --failure-detail-log "$LINT_FIX_LEDGER_FAILURE_DETAIL_LOG"
@@ -75,25 +74,25 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" stall-recovery record-escalation -
 
 Stable lint-fix site/trigger tokens come from repair-loop stdout (for example `step3` / `main-agent-required`, `step5-self-review` / `main-agent-required`, `step5-mav` / `main-agent-required`, `step6` / `main-agent-required`). Use the parsed values, not the capture-site label.
 
-When `LOOP_STATUS=exhausted` and `LINT_FIX_LEDGER_READY=true`, supported sites enter this branch with `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` set to the final repair-loop failure log. Treat that log as the sole repair diagnosis, superseding any earlier `DIGEST_FILE` binding until the main agent reruns the pinned composite launcher. Use `STDERR_TAIL_PATH` and `CODER_LOG_FILE` only as optional context when present. Apply inline repairs, then rerun the pinned composite launcher.
+This branch is a ci-fixer subagent handoff. It is never a main-agent repair path. The main agent does not Read `DIGEST_FILE`, `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG`, `STDERR_TAIL_PATH`, or `CODER_LOG_FILE`, and it does not Edit/Write repository files.
 
-Read tail paths when present.
-Repair via main-agent Edit/Write.
-
-Then refresh any orchestrator-owned artifacts changed by the repair. Step 3 main-agent fallback rebinds repo root and reruns `recovery-paths` in one fence, then rewrites the implementation commit message before re-entry:
+Keep `$IMPLEMENT_TMPDIR/checks-fix-round-<site>.count`, starting at 1 and capped at 10. Exhaustion follows the existing terminal stall path. Bind `CHECKS_FIX_SITE` to the parsed `LINT_FIX_LEDGER_SITE` when present, otherwise the pinned lint site. For each allowed round, use the parsed `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` as the source when it is present; otherwise use the current `REDACTED_LOG_FILE`. Materialize the bounded, redacted evidence file before spawning the fixer. The command verifies session containment and does not expose the evidence to the main agent:
 
 ```bash
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-if [ -n "$REPO_ROOT" ]; then
-  "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
-fi
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py checks fixer-evidence --tmpdir "$IMPLEMENT_TMPDIR" --site "$CHECKS_FIX_SITE" --round "$CHECKS_FIX_ROUND" --checks-log "$CHECKS_FIX_SOURCE_LOG"
 ```
 
-After the pathspec refresh fence succeeds, rewrite `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message synthesized from the current plan/issue context (same contract as Step 2.4 in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md`).
+Require `CHECKS_FIXER_EVIDENCE_STATUS=ok` and bind `CHECKS_FIXER_EVIDENCE_FILE`. A failed or malformed evidence envelope follows the existing terminal stall path; do not substitute a raw log, tail, or prompt-side diagnosis.
 
-If `REPO_ROOT` is empty, follow the Step 2.4 `repo-root-unresolved` bail contract in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` instead of calling `recovery-paths`. Then re-run the section 2-pinned composite launcher with identical argv and the section 4 bgjob wait gate when the site is Step 3 or Step 6. For Step 6 after main-agent repair edits, re-run `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`, wait on `implement-step6-checks` until `DONE`, and require `BGJOB_RC=0` plus required KVs before any success-path routing or subsequent `checks repair-loop` invocation; when `CHECKPOINT_NEXT=load-routing` is present, allow the non-zero child rc and route through the rebase macro before treating the probe as failed. Do not reuse the initial orchestrator argv without `--force-checks true`.
+Spawn `larch:ci-fixer` with only: `REPO_ROOT`, `BRANCH_NAME`, `MODE=checks`, the lint site token, `CHECKS_FIXER_EVIDENCE_FILE`, `$IMPLEMENT_TMPDIR/checks-fixer-rounds.md`, and `CHECKS_FIX_ROUND`. No evidence contents are inlined. Record `MODE=subagent` and `TIER=subagent` using the existing subagent-attribution shape. Parse only the three trailing `FIXER_*` lines.
+
+- `FIXER_RESULT=committed`: require a full `FIXER_COMMIT` SHA, append `FIXER_SUMMARY` to the rounds file, and re-run the section 2-pinned composite launcher.
+- `FIXER_RESULT=no-progress`, `FIXER_RESULT=bail`, or a malformed trailer: use the existing terminal stall path.
+- After a fixer return or death, inspect only `git status --porcelain`. If the tree is dirty, salvage one `CI fix round <N> salvage` commit. In `MODE=checks`, never push the salvage commit. Do not discard fixer work.
+
+For Step 6 after a checks-fixer commit, re-run `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`, wait on `implement-step6-checks` until `DONE`, and require `BGJOB_RC=0` plus required KVs before any success-path routing or subsequent `checks repair-loop` invocation; when `CHECKPOINT_NEXT=load-routing` is present, allow the non-zero child rc and route through the rebase macro before treating the probe as failed. Do not reuse the initial orchestrator argv without `--force-checks true`.
 On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
-If a new `DIGEST_FILE` is present on re-entry, replace the previous digest for prompt-side diagnosis. Keep the updated `REDACTED_LOG_FILE` as the repair-loop input.
+Keep the updated `REDACTED_LOG_FILE` as the repair-loop input; do not Read a new `DIGEST_FILE` on re-entry.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.
 Repeat until repair-loop `NEXT_ACTION` is `continue`, `main-agent-edit`, or `stall`; `continue` still means re-run the same composite launcher before success routing. On bgjob `WAIT`, run the identical wait again with no intervening prose or tools. On Step 6, both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`; never re-enter Step 6 repair via bare `checks-commit-route`.

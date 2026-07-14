@@ -138,7 +138,7 @@ Standardizes post-step rebase checkpoints 1.r, 4.r, 7.r, and 7a.r. Step 4.r is f
 ## Checks Failure Entry Macro
 
 Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEXT_ACTION=checks-failed`; the failure path remains in-step. Call sites should invoke **Checks Failure Entry Macro** by name with their pinned `--site` / `--checks-site` arguments instead of restating these read steps.
-1. At folded sites, key-scan the full composite stdout for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical composite line. Read `DIGEST_FILE` first when it is present and readable. Fall back to `REDACTED_LOG_FILE` when the digest is absent, unreadable, or insufficient. Never read raw `LOG_FILE`. `REDACTED_LOG_FILE` remains the input passed to `checks repair-loop`.
+1. At folded sites, key-scan the full composite stdout for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical composite line. Do not Read either file on the checks-repair path; never read raw `LOG_FILE`. `REDACTED_LOG_FILE` remains the input passed to `checks repair-loop`, and a later `NEXT_ACTION=main-agent-edit` handoff materializes bounded subagent evidence from it.
 2. **MANDATORY: READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.
 3. Follow that reference's pinned site split for the call site, including re-entry and folded-site recapture rules.
 
