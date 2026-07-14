@@ -24,6 +24,8 @@ python_path = str(plugin_root / "python")
 if python_path not in sys.path:
     sys.path.insert(0, python_path)
 
+from larch.core import proc  # noqa: E402
+from larch.git import gh  # noqa: E402
 from larch.issue.analyze_issues import (  # noqa: E402
     GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER,
     _fetch_filed_oos_issue_details,
@@ -175,44 +177,32 @@ def _resolve_incentive_repo(plugin_root_path: Path) -> str | None:
     return _slug_owner_repo_from_remote_url(result.stdout.strip())
 
 
-def _run_gh_json(args: list[str]) -> tuple[int, object | None]:
-    try:
-        result = subprocess.run(args, text=True, capture_output=True, check=False)
-    except FileNotFoundError:
-        return 127, None
-    if result.returncode != 0:
-        return result.returncode, None
-    if not (result.stdout or "").strip():
-        return result.returncode, None
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return result.returncode, None
-    if not isinstance(payload, Mapping) or not payload:
-        return result.returncode, None
-    return result.returncode, payload
-
-
 def _resolve_era_boundary_auto(plugin_root_path: Path) -> BoundaryResult:
     repo = _resolve_incentive_repo(plugin_root_path)
     if repo is None:
         return BoundaryResult(None, "gh-issue-closedAt", unavailable_reason="repo_unresolved")
 
     issue_fields = "number,state,stateReason,labels,body,closedAt,closedByPullRequestsReferences"
-    code, payload = _run_gh_json(
-        [
-            "gh",
-            "issue",
-            "view",
-            str(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER),
-            "--repo",
-            repo,
-            "--json",
-            issue_fields,
-        ]
+    result = gh.issue_view_field_read(
+        proc,
+        str(GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER),
+        issue_fields,
+        repo=repo,
     )
-    if code != 0 or not isinstance(payload, Mapping):
-        return BoundaryResult(None, "gh-issue-closedAt", repo=repo, unavailable_reason="gh_issue_view_unavailable")
+    if result.returncode != 0 or not (result.stdout or "").strip():
+        return BoundaryResult(
+            None, "gh-issue-closedAt", repo=repo, unavailable_reason="gh_issue_view_unavailable"
+        )
+    try:
+        payload: object = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return BoundaryResult(
+            None, "gh-issue-closedAt", repo=repo, unavailable_reason="gh_issue_view_unavailable"
+        )
+    if not isinstance(payload, Mapping) or not payload:
+        return BoundaryResult(
+            None, "gh-issue-closedAt", repo=repo, unavailable_reason="gh_issue_view_unavailable"
+        )
 
     normalized = {**payload, "number": GROUND_TRUTH_VERDICT_INCENTIVE_ISSUE_NUMBER}
     shipped, reason = _ground_truth_calibration_incentive_shipped(issues=[normalized], repo=None)
