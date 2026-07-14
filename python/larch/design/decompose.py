@@ -419,6 +419,7 @@ def prepare_partition_issues(
     feat_path = design_tmpdir / "feature-description.txt"
     feat = feat_path.read_text(encoding="utf-8") if feat_path.is_file() else ""
     feat = _neutralize_markdown_h3_line_starts(feat)
+    feat = issue_wire.neutralize_named_block_markers(text=feat, marker="plan")
     orig = f"#{issue_number}" if issue_number.isdigit() else "(original issue — set ISSUE_NUMBER in session)"
     original_title = _route_state_value(design_tmpdir, "ISSUE_TITLE")
     lines: list[str] = []
@@ -441,13 +442,16 @@ def prepare_partition_issues(
             f"**Acceptance**:\n\n{acceptance_text}\n\n"
             f"**Dependencies (from proposal)**: {dep_lines[i]}\n\n"
             "```\n"
-            + issue_wire.compose_named_block(
-                marker="plan",
-                inner=(
-                    "## Plan\n\n"
-                    "(needs /design — operator runs `/design` on this filed piece "
-                    "and reaches Gate C approval before `[DESIGNED]` or `/implement`.)\n"
+            + issue_wire.neutralize_named_block_markers(
+                text=issue_wire.compose_named_block(
+                    marker="plan",
+                    inner=(
+                        "## Plan\n\n"
+                        "(needs /design — operator runs `/design` on this filed piece "
+                        "and reaches Gate C approval before `[DESIGNED]` or `/implement`.)\n"
+                    ),
                 ),
+                marker="plan",
             )
             + "```\n\n"
             f"**Original feature context (excerpt)**:\n\n{feat[:4000]}\n"

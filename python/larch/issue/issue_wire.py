@@ -77,8 +77,17 @@ class _BlockSpan:
 
 
 def _classify_named_block_lines(*, lines: Sequence[str], marker: str) -> _BlockSpan:
-    start_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line=line, marker=marker, kind="start")]
-    end_indexes: list[int] = [idx for idx, line in enumerate(lines) if _line_is_marker(line=line, marker=marker, kind="end")]
+    fenced_lines = plan_grammar.balanced_fence_line_indices(list(lines))
+    start_indexes: list[int] = [
+        idx
+        for idx, line in enumerate(lines)
+        if idx not in fenced_lines and _line_is_marker(line=line, marker=marker, kind="start")
+    ]
+    end_indexes: list[int] = [
+        idx
+        for idx, line in enumerate(lines)
+        if idx not in fenced_lines and _line_is_marker(line=line, marker=marker, kind="end")
+    ]
     if not start_indexes and not end_indexes:
         return _BlockSpan(None, None, "")
     if len(start_indexes) > 1:
@@ -124,6 +133,18 @@ def compose_named_block(*, marker: str, inner: str) -> str:
     if stripped:
         block += stripped + "\n"
     return block + f"<!-- larch:{marker}:end -->\n"
+
+
+def neutralize_named_block_markers(*, text: str, marker: str) -> str:
+    """Render named-block marker examples inert before embedding them in prose."""
+    if marker not in _ALLOWED_MARKERS:
+        msg = f"unsupported marker: {marker}"
+        raise ValueError(msg)
+    pattern = re.compile(
+        rf"(^[ \t]*)<!--[ \t]+larch:{re.escape(marker)}:(?:start|end)[ \t]+-->[ \t]*$",
+        re.MULTILINE,
+    )
+    return pattern.sub(lambda match: match.group(0).replace("<!--", "<!--\u200b", 1), text)
 
 
 def _single_line_redacted(text: str) -> str:

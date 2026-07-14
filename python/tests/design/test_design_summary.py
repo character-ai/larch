@@ -752,6 +752,15 @@ def test_render_final_summary_empty_identity_argv_does_not_fallback_to_ambient_e
     assert render_args[render_args.index("--run-logs-path") + 1] == "N/A"
 
 
+def test_published_run_logs_path_requires_completed_log_publication(tmp_path: Path) -> None:
+    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "N/A"  # pyright: ignore[reportPrivateUsage]
+    result = tmp_path / ".design-publish-result.env"
+    _ = result.write_text("LOG_PUBLISH_COMPLETED=false\n", encoding="utf-8")
+    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "N/A"  # pyright: ignore[reportPrivateUsage]
+    _ = result.write_text("LOG_PUBLISH_COMPLETED=true\n", encoding="utf-8")
+    assert design_summary._published_run_logs_path(design_tmpdir=tmp_path, run_id="run-1") == "larch-logs/design/run-1/"  # pyright: ignore[reportPrivateUsage]
+
+
 def test_render_final_summary_redacts_spliced_detail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

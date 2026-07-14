@@ -3349,6 +3349,19 @@ def _panel_init_stage_args(design: Path, detail_log: Path) -> list[str]:
     ]
 
 
+def test_stage_failed_plan_write_records_terminal_state_before_failure_report(tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    design_publish._stage_failed_plan_write(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=design,
+        kvs=[("PLAN_WRITE_OK", "false"), ("PUBLISH_ATTEMPT_ID", "attempt-1")],
+    )
+    state = (design / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    assert "FAILURE_OUTCOME=failed-plan-write" in state
+    assert "TRIGGER=plan-write-failed" in state
+    assert "SUMMARY_OUTCOME=failed-plan-write" in state
+
+
 def _stage_terminal_for_report(tmp_path: Path, outcome: str = "failed-clarify") -> None:
     rc, _ = design_lifecycle.stage_terminal_state_core(_stage_args(tmp_path, "--outcome", outcome, "--summary-outcome", outcome))
     assert rc == 0

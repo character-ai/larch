@@ -551,6 +551,25 @@ def test_step3_normalizer_static_contract_pins() -> None:
     assert "_step3_next_action" in body
     assert "file=sys.stderr" in body
 
+
+@pytest.mark.parametrize(
+    ("reason", "evidence_ref"),
+    [
+        ("strip-body-failure", "prelaunch-strip-body-failure"),
+        ("scope-anchor-empty", "prelaunch-scope-anchor-empty"),
+        ("snapshot-pre-review-failure", "prelaunch-snapshot-pre-review-failure"),
+        ("unexpected reason", "prelaunch-unexpected-reason"),
+    ],
+)
+def test_stage_panel_init_failed_records_canonical_tokens_for_prelaunch_reason(
+    tmp_path: Path, reason: str, evidence_ref: str
+) -> None:
+    assert plan_review_normalize.stage_panel_init_failed(design_tmpdir=tmp_path, trigger=reason) == 0
+    state = (tmp_path / "design-failure-terminal-state.env").read_text(encoding="utf-8")
+    assert "TRIGGER=panel-init-failed" in state
+    assert "BAIL_REASON=panel-init-failed" in state
+    assert f"EVIDENCE_REF={evidence_ref}" in state
+
 def test_step3_loop_persist_envelope_merges_and_strips_reason(tmp_path: Path) -> None:
     _ = (tmp_path / ".step3-review-result.env").write_text(
         "TALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nPLAN_REVIEW_CONTINUE_REASON=again\r\n",

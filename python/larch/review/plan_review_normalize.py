@@ -621,6 +621,9 @@ def stage_panel_init_failed(*, design_tmpdir: str | Path, trigger: str = "panel-
     sentinel = tmpdir / ".step3-panel-init-terminal-state.recorded"
     if sentinel.exists() or sentinel.is_symlink():
         return 0
+    evidence_ref = "prelaunch-" + re.sub(r"[^A-Za-z0-9_-]+", "-", trigger).strip("-")
+    if evidence_ref == "prelaunch-":
+        evidence_ref = "prelaunch-unknown"
     stdout = tmpdir / "step3-panel-init-terminal-state.stdout.log"
     stderr = tmpdir / "step3-panel-init-terminal-state.stderr.log"
     rc = capture_contract_stream_to_paths(
@@ -639,15 +642,17 @@ def stage_panel_init_failed(*, design_tmpdir: str | Path, trigger: str = "panel-
             "--site",
             "step3-review",
             "--trigger",
-            trigger,
+            "panel-init-failed",
             "--bail-reason",
-            trigger,
+            "panel-init-failed",
             "--exit-code",
             "1",
             "--source-script",
             "design-step3-review",
             "--summary-outcome",
             "failed-judge-panel",
+            "--evidence-ref",
+            evidence_ref,
         ],
     )
     if rc == 0:

@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+from larch import io as larch_io
 from larch.calibration import difficulty
 from larch.core import architectural_guidelines, redact
 from larch.report import exec_issue_detail
@@ -170,6 +171,22 @@ def _build_cost_args(buckets: dict[str, int]) -> list[str]:
         if key in buckets:
             args += [flag, str(buckets[key])]
     return args
+
+
+def _published_run_logs_path(*, design_tmpdir: Path, run_id: str) -> str:
+    """Return a run-log link only after the publisher recorded completion."""
+    if not run_id or run_id == "unknown":
+        return "N/A"
+    result_env = design_tmpdir / ".design-publish-result.env"
+    if not result_env.is_file() or result_env.is_symlink():
+        return "N/A"
+    try:
+        values = larch_io.parse_kv(result_env.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return "N/A"
+    if values.get("LOG_PUBLISH_COMPLETED") != "true":
+        return "N/A"
+    return f"larch-logs/design/{run_id}/"
 
 
 def _duration(design_tmpdir: Path) -> str:
@@ -768,7 +785,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     cost_args = _build_cost_args(buckets)
     duration = _duration(design_tmpdir)
     oos_count, oos_urls = _oos_info(design_tmpdir)
-    run_logs_path = f"larch-logs/design/{run_id}/" if run_id and run_id != "unknown" else "N/A"
+    run_logs_path = _published_run_logs_path(design_tmpdir=design_tmpdir, run_id=run_id)
     out_file = design_tmpdir / "final-summary.md"
     _run_design_failure_report_gate(design_tmpdir=design_tmpdir, phase=phase, outcome=outcome, repo=repo, issue=issue, run_id=run_id)
     load_result = exec_issue_detail.load_issue_detail_groups(design_tmpdir, run_dir=None)

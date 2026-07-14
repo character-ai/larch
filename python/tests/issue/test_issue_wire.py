@@ -51,6 +51,27 @@ after
     assert issue_wire.parse_named_block(body=body, marker="other") == (None, "")
 
 
+def test_parse_named_block_ignores_marker_examples_inside_fences() -> None:
+    body = (
+        "```\n"
+        "<!-- larch:plan:start -->\n"
+        "example\n"
+        "<!-- larch:plan:end -->\n"
+        "```\n\n"
+        "<!-- larch:plan:start -->\n"
+        "live plan\n"
+        "<!-- larch:plan:end -->\n"
+    )
+    assert issue_wire.parse_named_block(body=body, marker="plan") == ("live plan\n", "")
+
+
+def test_neutralize_named_block_markers_keeps_examples_out_of_wire_parser() -> None:
+    example = issue_wire.compose_named_block(marker="plan", inner="example")
+    neutralized = issue_wire.neutralize_named_block_markers(text=example, marker="plan")
+    assert "<!--\u200b larch:plan:start -->" in neutralized
+    assert issue_wire.parse_named_block(body=neutralized, marker="plan") == (None, "")
+
+
 @pytest.mark.parametrize(
     ("body", "token"),
     [

@@ -324,7 +324,7 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 ],
             )
             if rc != 0:
-                raise _CoreUsageError(f"{kind} is not a valid token")
+                raise _CoreUsageError(f"{kind} is not a valid token: {value}")
         for kind, value in (("root-cause", ns.root_cause_hint), ("outcome", ns.summary_outcome)):
             if not value:
                 continue
@@ -339,7 +339,7 @@ def stage_terminal_state_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                 ],
             )
             if rc != 0:
-                raise _CoreUsageError(f"{kind} is not a valid token")
+                raise _CoreUsageError(f"{kind} is not a valid token: {value}")
         if ns.exit_code != "unknown" and not ns.exit_code.isdigit():
             raise _CoreUsageError("--exit-code must be an integer or unknown")
         _safe_failure_detail_log(raw=ns.failure_detail_log, design_tmpdir=design_tmpdir)
