@@ -36,8 +36,6 @@ REVIEW_RESERVED = {
     "reviewer-security",
     "reviewer-edge-cases",
     "reviewer-plan-fidelity",
-    "architectural-compliance",
-    "reviewer-architectural-compliance",
 }
 PLAN_RESERVED = REVIEW_RESERVED | {"arch", "edge", "innovation", "pragmatic", "requirements"}
 MAX_CONTEXT_BYTES = 262144
@@ -457,7 +455,7 @@ def scout_dynamic_archetypes(  # noqa: PLR0913,PLR0915,RUF100
                 f'Return at most {max_archetypes} archetypes. Return {{"archetypes":[]}} when the static panel is sufficient.\n'
                 "Output ONLY the raw JSON object — no markdown code fences, no backticks, no prose.\n"
                 'The "rationale" field must be a single line with no embedded newlines.\n'
-                "Use short lowercase slug names. Do not duplicate active static reviewers: correctness, edge-cases, testing, architectural-compliance. Security is folded into edge-cases and must not be emitted separately. The historical folded slugs structure and plan-fidelity are reserved and MUST NOT be emitted as dynamic archetypes.\n"
+                "Use short lowercase slug names. Do not duplicate active static reviewers: correctness, edge-cases, testing. Security is folded into edge-cases and must not be emitted separately. The historical folded slugs structure and plan-fidelity are reserved and MUST NOT be emitted as dynamic archetypes.\n"
                 'The "prompt_body" field must be 2-6 sentences describing what aspect of the diff (or description) to investigate.\n'
                 + difficulty.render_rubric() + "\n"
                 "CONSTRAINTS on prompt_body content:\n"

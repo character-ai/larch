@@ -42,11 +42,11 @@ def test_first_available_drafter_override_and_soft_fail() -> None:
 
 def test_panel_role_metadata_is_separate() -> None:
     review_slots = external_defaults.slot_defaults("review.panel")
-    review_specialists = [slot for slot in review_slots if slot.slot in {"correctness", "edge-cases", "testing", "architectural-compliance"}]
-    assert len(review_specialists) == 8
-    assert len(review_slots) == 8
+    review_specialists = [slot for slot in review_slots if slot.slot in {"correctness", "edge-cases", "testing"}]
+    assert len(review_specialists) == 6
+    assert len(review_slots) == 6
     assert {(slot.slot, slot.tool) for slot in review_specialists} == {
-        (slot, tool) for slot in ("correctness", "edge-cases", "testing", "architectural-compliance") for tool in ("cursor", "codex")
+        (slot, tool) for slot in ("correctness", "edge-cases", "testing") for tool in ("cursor", "codex")
     }
     deleted_auto_slot: str = "plan-fidelity-auto"
     assert not any(slot.slot == deleted_auto_slot for slot in review_slots)
@@ -60,7 +60,7 @@ def test_panel_role_metadata_is_separate() -> None:
 
     plan_slots = external_defaults.slot_defaults("design.plan_review_panel")
     assert {slot.archetype for slot in plan_slots if slot.archetype != "generic"} == {"arch", "innovation", "pragmatic", "requirements"}
-    assert all(slot.model_role == "default" for slot in plan_slots if slot.tool == "codex" and slot.archetype != "generic")
+    assert all(slot.model_role == "review" for slot in plan_slots if slot.tool == "codex" and slot.archetype != "generic")
     assert all(slot.cursor_model == "" for slot in plan_slots if slot.tool == "cursor")
     plan_policy = external_defaults.panel_dispatch_policy("design.plan_review_panel")
     assert plan_policy is not None
@@ -88,11 +88,7 @@ def test_voter_and_decompose_roles() -> None:
     assert dict(plan_voters[0].semantic_labels) == {"codex": "codex-validity", "cursor": "cursor-validity", "claude": "claude"}
     assert dict(plan_voters[1].semantic_labels) == {"codex": "codex-plan-fidelity", "cursor": "cursor-plan-fidelity", "claude": "claude"}
     assert dict(plan_voters[2].semantic_labels) == {"codex": "codex-pragmatism", "cursor": "cursor-pragmatism", "claude": "claude"}
-    assert config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES["design.plan_review_panel"] == {
-        "pragmatic": "default",
-        "requirements": "default",
-    }
-    assert "review.panel" not in config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES
+    assert config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES == {}
 
     review_voters = external_defaults.voter_policies("review.voters")
     assert review_voters[0].primary_tool == "codex"

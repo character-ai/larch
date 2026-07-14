@@ -89,7 +89,6 @@
       "agents/codex-implementer.md",
       "agents/cursor-implementer.md",
       "agents/orchestrator-aggregator.md",
-      "agents/reviewer-architectural-compliance.md",
       "agents/reviewer-code-robustness.md",
       "agents/reviewer-correctness.md",
       "agents/reviewer-edge-cases.md",

@@ -139,7 +139,7 @@ def run(repo_root: Path) -> list[str]:
     require(file("python/larch/rendering/rendering.py"), "--mode", "(14) python/rendering.py does not accept '--mode' — diff/description mode handling is missing")
     renderer = file("python/larch/rendering/rendering.py")
     if not renderer.is_file(): failures.append("(15) python/rendering.py does not exist — specialist prompt rendering is broken")
-    for name in ("reviewer-structure", "reviewer-correctness", "reviewer-testing", "reviewer-security", "reviewer-edge-cases", "reviewer-architectural-compliance"):
+    for name in ("reviewer-structure", "reviewer-correctness", "reviewer-testing", "reviewer-security", "reviewer-edge-cases"):
         agent = file(f"agents/{name}.md")
         if not agent.is_file():
             failures.append(f"(15) agents/{name}.md does not exist — specialist agent definition is missing")
