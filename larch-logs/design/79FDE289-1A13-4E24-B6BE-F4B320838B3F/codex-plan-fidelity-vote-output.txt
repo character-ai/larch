@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The plan already specifies compact deterministic NDJSON, terminal newlines, path serialization, row order, zero rows, and pinned outputs.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan already covers canonical finding/OOS blocks, optional fields, and singular/plural reviewer labels while retaining noncanonical literals.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Optional plan-review framing, exact spacing, and representative full-string assertions are already specified.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- More exhaustive helper-shape contracts would be robustness beyond the required canonical migrations.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
