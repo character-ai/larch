@@ -338,6 +338,14 @@
   {
     "file": "larch/agents/_drafter.py",
     "code": "PLR0913",
+    "qualified_symbol": "_codex_drafter_run",
+    "metric": 8,
+    "added_at": "2026-07-14",
+    "history": []
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
     "qualified_symbol": "_codex_exec_promote",
     "metric": 9,
     "added_at": "2026-07-14",
@@ -347,14 +355,6 @@
     "file": "larch/agents/_drafter.py",
     "code": "PLR0913",
     "qualified_symbol": "_codex_external_agent_execute",
-    "metric": 8,
-    "added_at": "2026-07-14",
-    "history": []
-  },
-  {
-    "file": "larch/agents/_drafter.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_codex_drafter_run",
     "metric": 8,
     "added_at": "2026-07-14",
     "history": []
