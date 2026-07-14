@@ -9,15 +9,16 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
-from larch.design.plan_grammar import TrailerKey, compose_trailer_lines
+from larch.design.plan_grammar import HeadingKind, TrailerKey, compose_trailer_lines
 from larch.io import atomic_write, format_kvs
 from tests.support.session import run_params_text
 
 _KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 PlanHeadingKind = Literal["NEW", "UPDATED"]
+_PLAN_HEADING_KINDS: frozenset[HeadingKind] = frozenset(get_args(PlanHeadingKind))
 PlanSection = tuple[PlanHeadingKind, str]
 ResultEnvRows = Mapping[str, str] | Sequence[tuple[str, str]]
 
@@ -90,7 +91,7 @@ def plan_body(  # noqa: PLR0913 - plan fixture fields map directly to the wire f
     if sections:
         chunks.append("\n")
         for kind, path in sections:
-            if kind not in ("NEW", "UPDATED"):
+            if kind not in _PLAN_HEADING_KINDS:
                 msg = f"unsupported plan heading kind: {kind!r}"
                 raise ValueError(msg)
             _validate_section_path(path)
