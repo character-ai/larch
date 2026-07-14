@@ -552,6 +552,13 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     if not Path(args.feature_file).is_file():
         _err(f"implement step2-dispatch: --feature-file not found: {args.feature_file}")
         return 2
+    repo_result = _run(["git", "rev-parse", "--show-toplevel"])
+    repo_root: Path | None = None
+    if repo_result.returncode == 0 and repo_result.stdout.strip():
+        repo_root = Path(repo_result.stdout.strip()).resolve()
+        larch_io.trusted_atomic_write(
+            tmpdir / "repo-root.txt", str(repo_root) + "\n", root=tmpdir
+        )
     if args.coder == "claude":
         _ensure_step2_baseline(tmpdir)
         _clear_external_scout_state(tmpdir)
@@ -577,14 +584,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         return 0
 
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("LARCH_CLAUDE_PLUGIN_ROOT") or _PLUGIN_ROOT).resolve()
-    repo_result = _run(["git", "rev-parse", "--show-toplevel"])
-    if repo_result.returncode != 0 or not repo_result.stdout.strip():
+    if repo_root is None:
         _err("implement step2-dispatch: must be invoked from within a git working tree (git rev-parse --show-toplevel failed)")
         return 2
-    repo_root = Path(repo_result.stdout.strip()).resolve()
-    larch_io.trusted_atomic_write(
-        tmpdir / "repo-root.txt", str(repo_root) + "\n", root=tmpdir
-    )
     st = _dispatch_state(args=args, repo_root=repo_root, tmpdir=tmpdir, plugin_root=plugin_root)
     _append_architectural_knowledge_warnings(st)
     if not (plugin_root / "agents" / f"{st.tool_tag}-implementer.md").is_file():

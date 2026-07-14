@@ -3031,6 +3031,37 @@ def test_step2_dispatch_claude_fallback(tmp_path: Path, capsys: pytest.CaptureFi
     assert "ORCHESTRATOR_EDIT_AUTHORITY=allowed" in out
 
 
+@pytest.mark.parametrize(
+    ("coder", "availability_flag"),
+    [
+        ("claude", None),
+        ("cursor", "--cursor-binary-found"),
+        ("codex", "--codex-binary-found"),
+    ],
+)
+def test_step2_dispatch_fallback_persists_repo_root(
+    repo: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    coder: str,
+    availability_flag: str | None,
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    args = [
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", coder,
+    ]
+    if availability_flag is not None:
+        args.extend([availability_flag, "false"])
+
+    assert implement_dispatch.step2_dispatch_main(args) == 0
+
+    assert "STATUS=claude_fallback" in capsys.readouterr().out
+    assert (tmp / "repo-root.txt").read_text(encoding="utf-8") == f"{repo}\n"
+
+
 def test_step2_dispatch_claude_fallback_clears_scout_sidecars(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = make_implement_tmpdir(tmp_path)
     (tmp / "scout-coder-manifest.json").write_text('{"archetypes":[]}\n', encoding="utf-8")
