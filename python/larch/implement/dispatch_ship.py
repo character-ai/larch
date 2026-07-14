@@ -14,7 +14,6 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 
 from larch.issue import execution_issues
 from larch.issue import file_oos
@@ -177,55 +176,63 @@ def _ship_route_exit_fail(*, message: str, handoff: Path) -> int:
     return 2
 
 
-def _read_ship_route_exit_code(*, args: argparse.Namespace, default_file: Path) -> tuple[int | None, str]:
-    file_path = Path(args.exit_code_file) if args.exit_code_file else default_file
-    if file_path.is_file():
-        raw = file_path.read_text(encoding="utf-8", errors="replace").strip()
-        try:
-            return int(raw), ""
-        except ValueError:
-            return None, f"invalid exit-code sidecar: {file_path}"
-    if args.exit_code is not None:
-        return int(args.exit_code), ""
-    return None, f"missing exit-code sidecar: {file_path}"
+_SHIP_ROUTE_RESULT_ENV_KEYS = {
+    "outcome": "outcome",
+    "NEEDS_USER_REASON": "needs_user_reason",
+    "FAILED_RUN_ID": "failed_run_id",
+    "DETAIL": "detail",
+    "CI_ERRORS_FILE": "ci_errors_file",
+    "CI_ERRORS_DISTILL_CLASS": "ci_errors_distill_class",
+    "FAILED_JOBS_COUNT": "failed_jobs_count",
+    "ledger_ready": "ledger_ready",
+    "ledger_site": "ledger_site",
+    "ledger_trigger": "ledger_trigger",
+    "ledger_step": "ledger_step",
+    "ledger_phase": "ledger_phase",
+    "ledger_dispatcher": "ledger_dispatcher",
+    "ledger_exit_code": "ledger_exit_code",
+    "ledger_failure_detail_log": "ledger_failure_detail_log",
+    **{key: key for key in _SHIP_ROUTE_EXIT_HANDOFF_KEYS},
+}
 
 
-def _ship_route_bgjob_result_error(*, implement_tmpdir: Path, exit_code: int, json_file: Path) -> str:
+def _read_ship_route_bgjob_result(*, implement_tmpdir: Path) -> tuple[int | None, dict[str, object] | None, str]:
     result_env = implement_tmpdir / "bgjob" / "implement-step8-ship.result.env"
-    error: str = ""
-    if result_env.is_symlink() or (result_env.exists() and not result_env.is_file()):
-        error = "invalid bgjob result env for route-exit"
-    elif result_env.is_file():
-        bgjob_rc: str = _read_kv_file(path=result_env, key=config.BGJOB_RC_KEY, default="")
-        recorded_rc: str = _read_kv_file(path=result_env, key="STEP8_HANDOFF_RC", default="")
-        json_present: str = _read_kv_file(path=result_env, key="STEP8_HANDOFF_JSON_PRESENT", default="")
-        if bgjob_rc in {config.BGJOB_RC_TIMEOUT, config.BGJOB_RC_ORPHANED}:
-            error = f"bgjob result blocks route-exit: BGJOB_RC={bgjob_rc}"
-        elif recorded_rc and recorded_rc != str(exit_code):
-            error = "stale handoff sidecar: exit-code does not match bgjob result env"
-        elif json_present == "true" and not json_file.is_file():
-            error = "stale handoff sidecar: bgjob result expected json sidecar"
-        elif json_present == "false" and json_file.is_file():
-            error = "stale handoff sidecar: bgjob result expected rc-only handoff"
-    return error
-
-
-def _read_ship_route_json(path: Path) -> tuple[dict[str, object] | None, str]:
-    if not path.is_file():
-        return None, f"missing json sidecar: {path}"
     try:
-        raw: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        return None, f"malformed json sidecar: {exc}"
-    if not isinstance(raw, dict):
-        return None, "json sidecar is not an object"
-    return cast("dict[str, object]", raw), ""
+        text = larch_io.read_trusted_text(
+            result_env,
+            root=implement_tmpdir,
+            reject_cr=True,
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        return None, None, f"invalid bgjob result env for route-exit: {exc}"
+    fields: dict[str, str] = {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if not sep or not key or key in fields:
+            return None, None, "malformed bgjob result env for route-exit"
+        fields[key] = value
+    if fields.get("STEP") != "implement-step8-ship":
+        return None, None, "bgjob result env has an unexpected step"
+    raw_exit_code = fields.get(config.BGJOB_RC_KEY, "")
+    if raw_exit_code in {config.BGJOB_RC_TIMEOUT, config.BGJOB_RC_ORPHANED}:
+        return None, None, f"bgjob result blocks route-exit: BGJOB_RC={raw_exit_code}"
+    try:
+        exit_code = int(raw_exit_code)
+    except ValueError:
+        return None, None, f"invalid BGJOB_RC in bgjob result env: {raw_exit_code!r}"
+    payload: dict[str, object] = {
+        payload_key: fields[wire_key]
+        for wire_key, payload_key in _SHIP_ROUTE_RESULT_ENV_KEYS.items()
+        if wire_key in fields
+    }
+    return exit_code, payload, ""
 
 
 def _ship_route_required_str(*, payload: Mapping[str, object], key: str) -> tuple[str, str]:
     value = payload.get(key)
     if not isinstance(value, str) or not value.strip():
-        return "", f"missing required JSON field: {key}"
+        return "", f"missing required result field: {key}"
     return value, ""
 
 
@@ -340,6 +347,13 @@ def _ship_route_detail_needs_file(detail: str) -> bool:
     return "\n" in detail or "\r" in detail or len(detail) > SHIP_ROUTE_DETAIL_FILE_MAX
 
 
+def _ship_route_failed_jobs_count(payload: Mapping[str, object]) -> int:
+    try:
+        return max(int(str(payload.get("failed_jobs_count", 0))), 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _write_ship_route_handoff(
     *,
     implement_tmpdir: Path,
@@ -363,8 +377,7 @@ def _write_ship_route_handoff(
         reason = _ship_route_safe_line(payload.get("needs_user_reason", ""))
         scope = "main" if reason == config.NEEDS_USER_MAIN_CI_FAIL else "pr"
         lines.append(f"CI_FAILURE_SCOPE={scope}")
-        raw_count = payload.get("failed_jobs_count", 0)
-        failed_jobs_count = raw_count if isinstance(raw_count, int) and raw_count >= 0 else 0
+        failed_jobs_count = _ship_route_failed_jobs_count(payload)
         lines.append(f"FAILED_JOBS_COUNT={failed_jobs_count}")
         ci_errors_file = _ship_route_safe_line(payload.get("ci_errors_file", ""))
         if ci_errors_file:
@@ -781,9 +794,6 @@ def ship_pre_fix_rebase_main(argv: list[str] | None = None) -> int:
 def ship_route_exit_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ship route-exit")
     parser.add_argument("--implement-tmpdir", default="")
-    parser.add_argument("--json-file", default="")
-    parser.add_argument("--exit-code-file", default="")
-    parser.add_argument("--exit-code", type=int)
     args = parser.parse_args(argv)
     raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
@@ -791,25 +801,11 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
         return 2
     implement_tmpdir = Path(raw_tmpdir)
     handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
-    json_file = Path(args.json_file) if args.json_file else implement_tmpdir / ".step-8-ship-handoff.json"
-    exit_code_file = implement_tmpdir / ".step-8-ship-handoff.rc"
-    exit_code, error = _read_ship_route_exit_code(args=args, default_file=exit_code_file)
-    payload = None
-    if not error and exit_code is not None:
-        payload, error = _read_ship_route_json(json_file)
+    exit_code, payload, error = _read_ship_route_bgjob_result(implement_tmpdir=implement_tmpdir)
     if error or exit_code is None or payload is None:
-        message = error or ("missing exit code" if exit_code is None else "missing json")
+        message = error or "missing ship outcome from bgjob result env"
         return _ship_route_exit_fail(message=message, handoff=handoff)
-    bgjob_error: str = _ship_route_bgjob_result_error(
-        implement_tmpdir=implement_tmpdir,
-        exit_code=exit_code,
-        json_file=json_file,
-    )
-    action: str = ""
-    if bgjob_error:
-        error = bgjob_error
-    else:
-        action, error = _classify_ship_route_exit(exit_code=exit_code, payload=payload)
+    action, error = _classify_ship_route_exit(exit_code=exit_code, payload=payload)
     if error:
         return _ship_route_exit_fail(message=error, handoff=handoff)
     action, route_fields = _ship_route_adjust_stalled_action(

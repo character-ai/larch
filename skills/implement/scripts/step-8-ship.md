@@ -6,15 +6,13 @@ Step 8+ Python ship-driver bgjob launcher. Foreground mode starts or rejoins bgj
 
 `skills/implement/SKILL.md` invokes this wrapper from Step 8+ as a foreground bgjob launcher. Pre-driver orchestration may run guard, initial seeding, and `oos file` first; post-driver continuations invoke only this wrapper.
 
-## Stdout and sidecar contract
+## Stdout and result-env contract
 
-Foreground wrapper stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=<n>` on a fresh start, or a bgjob wait envelope on live/completed rejoin. Child stdout remains the single schema JSON object emitted by the guard or `python/cli.py ship pr`. The child truncates `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.stdout-capture` at entry, captures guard and driver stdout through a synchronous `tee` pipeline, and extracts the JSON sidecar only after the producing pipeline has closed.
+Foreground mode delegates start-or-reattach, result replacement, and merge-result publication to `python/cli.py bgjob adapt`. The child rehydrates the durable ship argv, runs the Python-version guard and advisory phantom probe, then invokes `ship pr` with its adapter-provided `--merge-result-env` as `--result-env-path`.
 
-At entry, the wrapper clears stale `.step-8-ship-handoff.rc` and `.step-8-ship-handoff.json` before arming the marker. On every exit, the trap writes `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc`. It writes `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` only when the current capture contains a schema JSON object, such as guard `STALLED` JSON or ship-driver JSON. If the current capture has no schema JSON, setup failures such as missing durable inputs or `clone-tag` failure produce rc-only sidecars and the trap unlinks any stale `.step-8-ship-handoff.json` from a previous attempt.
+`ship pr` writes its outcome KVs before it emits its human-readable JSON contract. The bgjob daemon merges those KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; `ship route-exit` reads that one authoritative result env after bgjob `DONE`.
 
-Fresh foreground launch clears stale handoff sidecars, removes stale canonical bgjob result envs, and recreates `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.merge.env` before `bgjob start`. `persist_handoff` writes rc/json and merge-result KVs (`STEP8_HANDOFF_RC`, `STEP8_HANDOFF_JSON_PRESENT`, and sidecar paths). Merge-result publication is fail-closed: if the merge-result env write fails, the child aborts instead of pretending the handoff succeeded.
-
-`python/cli.py ship route-exit` consumes the `.rc` and `.json` sidecars after bgjob `DONE`. It does not consume launcher stdout. `persist_handoff` records the real driver rc in `.step-8-ship-handoff.rc`; the child exits 0 after successful handoff persistence so generic bgjob success is not confused with the driver route. Step 8 is persist-and-resume by design and uses bgjob live-registry rejoin instead of a second driver start.
+Result-env publication is fail-closed: a result write failure gives the bgjob no ship outcome to route, so `route-exit` stops rather than using stdout. Step 8 is persist-and-resume by design; `bgjob adapt` owns live-job reattachment and completed-result replacement.
 
 ## Invariants
 
@@ -22,12 +20,11 @@ Fresh foreground launch clears stale handoff sidecars, removes stale canonical b
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Self-rehydrates `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `REPO`, `MERGE`, `DRAFT`, `FORKED_TARGET`, `REPO_UNAVAILABLE`, `MANIFEST_PATH`, `TOOL_LABEL`, `NO_ADMIN_FALLBACK`, and `NO_LOGS_COMMIT` from `ship-pr-state.sh` before invoking the active driver.
 - `EXPECTED_TMPDIR_BASENAME_PREFIX` comes from `python/cli.py implement clone-tag`; the ship wrapper and initial state seeder must share the same prefix.
-- Guard rc 4 and `ship pr` JSON are capture-backed so `ship route-exit` can classify `NEXT_ACTION=stall` or another post-driver token.
-- Foreground launch refuses a second start when a live identity-valid `implement-step8-ship` registry row exists and rejoins with `bgjob wait`.
-- Fresh launch clears stale handoff sidecars itself; prompt-side stale-clear fences are retired.
-- Setup failures without schema JSON are intentionally rc-only. The SKILL halts with Tool Failures before `route-exit` when the `.json` sidecar is absent.
+- `ship pr` owns the ship-outcome wire format; Bash neither captures nor parses it.
+- `bgjob adapt` refuses a second start when an identity-valid `implement-step8-ship` job is live and replaces only a completed result on a deliberate reship.
+- Guard or setup failures without a ship outcome do not reach `route-exit`; they use the existing bgjob failure branch.
 - The Python version guard lives in `step-8-python-guard.sh`.
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md`, `step-8-seed-initial.md`, `skills/implement/references/ship-pr-exit-matrix.md`, and `python/tests/implement/test_implement_shell_scripts.py` (Step 8 static pins, seeder argv, rejoin, handoff, guard, merge-result fail-closed, and symlink-rejection nodes) when this contract or argv changes.
+Update `skills/implement/SKILL.md`, `step-8-seed-initial.md`, `skills/implement/references/ship-pr-exit-matrix.md`, and `python/tests/implement/test_implement_shell_scripts.py` when this contract or argv changes.

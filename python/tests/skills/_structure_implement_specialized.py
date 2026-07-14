@@ -808,7 +808,7 @@ def run(repo_root: Path) -> list[str]:
         require("python/larch/cli.py", '("implement", "step-8-oos-checkpoint"),', "step-8-oos-checkpoint machine stdout")
         require(skill, "**`stall`** (post-driver only)", "SKILL post-driver stall paragraph")
         require(skill, "**`NEXT_ACTION=stall`** (OOS-checkpoint stall)", "SKILL OOS-checkpoint stall paragraph")
-        require(skill, "missing sidecars, and stale sidecars", "SKILL sidecar setup-failure gate")
+        require(skill, "missing/malformed ship outcome", "SKILL result-env setup-failure gate")
         require(skill, "ship-pr-oos-checkpoint-router.md", "SKILL oos-pipeline child reference")
         forbid(skill, "ship-pr-ci-fix.md", "SKILL retired ci-fix child reference")
         forbid(skill, "run the autonomous CI-fix sub-procedure from `ship-pr-exit-matrix.md`", "SKILL retired matrix CI-fix authority")
@@ -906,8 +906,8 @@ def run(repo_root: Path) -> list[str]:
             checks.append("stall-recovery.md must not re-enter ship via direct python/cli.py prose")
         if "compose-report --report-kind escalation-success" in stall_ref:
             checks.append("stall-recovery.md must not retain escalation-success compose procedure")
-        require(skill, "Step 8 uses bgjob wait/rejoin", "NEVER #8 Step 8 bgjob re-entry")
-        require(skill, "Do not require `BGJOB_RC=0`; the numeric driver rc in `.step-8-ship-handoff.rc` is authoritative for route-exit.", "SKILL Step 8 route-exit authoritative rc pin")
+        require(skill, "Step 8 reads the merged ship outcome KVs from its result env on `DONE`", "NEVER #8 Step 8 result-env handoff")
+        require(skill, "Do not require `BGJOB_RC=0`; the numeric driver rc in the result env is authoritative for route-exit.", "SKILL Step 8 route-exit authoritative rc pin")
         require(
             skill,
             "re-run submit with state `deviation` and the `--allow-exception` flag",
@@ -951,10 +951,10 @@ def run(repo_root: Path) -> list[str]:
         ]:
             if retired in skill_text:
                 checks.append(f"SKILL.md must not retain retired surface {retired!r}")
-        require("skills/implement/scripts/step-8-ship.sh", ': >"$HANDOFF_CAPTURE"', "step-8-ship truncates capture")
-        require("skills/implement/scripts/step-8-ship.sh", 'tee -a "$HANDOFF_CAPTURE"', "step-8-ship captures stdout through tee")
-        require("skills/implement/scripts/step-8-ship.sh", 'rm -f "$HANDOFF_JSON"', "step-8-ship unlinks stale json on rc-only exit")
-        require("skills/implement/scripts/step-8-ship.sh", "trap 'persist_handoff \"$?\"' EXIT", "step-8-ship persists setup failures via EXIT trap")
+        require("skills/implement/scripts/step-8-ship.sh", "bgjob adapt", "step-8-ship delegates outer launch to bgjob adapter")
+        forbid("skills/implement/scripts/step-8-ship.sh", "HANDOFF_", "step-8-ship must not retain retired handoff sidecars")
+        forbid("skills/implement/scripts/step-8-ship.sh", "persist_handoff", "step-8-ship must not retain retired handoff writer")
+        forbid("skills/implement/scripts/step-8-ship.sh", "tee -a", "step-8-ship must not retain retired handoff stdout capture")
         require("skills/implement/scripts/step-8-oos-checkpoint.sh", "implement step-8-oos-checkpoint", "step-8-oos-checkpoint delegates to Python authority")
         forbid("skills/implement/scripts/step-8-oos-checkpoint.sh", "oos disposition-checkpoint", "step-8-oos-checkpoint wrapper does not call disposition directly")
 

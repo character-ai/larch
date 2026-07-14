@@ -174,11 +174,11 @@ def test_shared_implement_bgjob_launchers_use_stable_owner_pid(
     root: Path = Path(__file__).resolve().parents[3]
     source: str = (root / script_relpath).read_text(encoding="utf-8")
 
-    assert "bgjob start" in source
+    assert "bgjob adapt" in source
     assert slug_literal in source
     assert step_arg_literal in source
     assert '--owner-pid "${LARCH_CLAUDE_PID:-$PPID}"' in source
-    assert '--merge-result-env "$MERGE_RESULT_ENV"' in source
+    assert "--replace-completed-result" in source
     assert "--sentinel" not in source
 
 
@@ -717,8 +717,27 @@ def test_recovery_paths_root_relative_argv_rebases_to_tmpdir(
 
 
 def _write_ship_handoff(tmp: Path, rc: int, payload: dict[str, object]) -> None:
-    (tmp / ".step-8-ship-handoff.rc").write_text(f"{rc}\n", encoding="utf-8")
-    (tmp / ".step-8-ship-handoff.json").write_text(json.dumps(payload), encoding="utf-8")
+    """Write the canonical Step 8 result env consumed by ship route-exit."""
+    wire_keys = {
+        "outcome": "outcome",
+        "needs_user_reason": "NEEDS_USER_REASON",
+        "failed_run_id": "FAILED_RUN_ID",
+        "detail": "DETAIL",
+        "ci_errors_file": "CI_ERRORS_FILE",
+        "ci_errors_distill_class": "CI_ERRORS_DISTILL_CLASS",
+        "failed_jobs_count": "FAILED_JOBS_COUNT",
+    }
+    rows = [
+        ("BGJOB_RC", str(rc)),
+        ("STEP", "implement-step8-ship"),
+        *[(wire_keys.get(key, key), str(value).lower() if isinstance(value, bool) else str(value)) for key, value in payload.items()],
+    ]
+    bgjob = tmp / "bgjob"
+    bgjob.mkdir(exist_ok=True)
+    (bgjob / "implement-step8-ship.result.env").write_text(
+        "".join(f"{key}={value}\n" for key, value in rows),
+        encoding="utf-8",
+    )
 
 
 def _route_exit(
@@ -1192,44 +1211,6 @@ def test_ship_route_exit_preserves_dormant_assessment_aliases_for_prompt_normali
     assert f"NEEDS_USER_REASON={reason}\n" in env
 
 
-@pytest.mark.parametrize(
-    ("bgjob_rc", "payload", "expected_action"),
-    [
-        (3, {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"}, "oos-pipeline"),
-        (6, {"outcome": "TRANSIENT"}, "reship"),
-    ],
-)
-def test_ship_route_exit_allows_nonzero_bgjob_rc_with_current_sidecars(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-    bgjob_rc: int,
-    payload: dict[str, object],
-    expected_action: str,
-) -> None:
-    tmp = make_implement_tmpdir(tmp_path)
-    bgjob = tmp / "bgjob"
-    bgjob.mkdir()
-    (bgjob / "implement-step8-ship.result.env").write_text(
-        f"BGJOB_RC={bgjob_rc}\n"
-        "STEP=implement-step8-ship\n"
-        f"STEP8_HANDOFF_RC={bgjob_rc}\n"
-        "STEP8_HANDOFF_JSON_PRESENT=true\n",
-        encoding="utf-8",
-    )
-
-    exit_rc, out, _err = _route_exit(
-        tmp,
-        capsys,
-        monkeypatch,
-        int(bgjob_rc),
-        payload,
-    )
-
-    assert exit_rc == 0
-    assert out == f"NEXT_ACTION={expected_action}\n"
-
-
 @pytest.mark.parametrize("bgjob_rc", ["timeout", "orphaned"])
 def test_ship_route_exit_blocks_terminal_bgjob_failures(
     tmp_path: Path,
@@ -1243,28 +1224,23 @@ def test_ship_route_exit_blocks_terminal_bgjob_failures(
     (bgjob / "implement-step8-ship.result.env").write_text(
         f"BGJOB_RC={bgjob_rc}\n"
         "STEP=implement-step8-ship\n"
-        "STEP8_HANDOFF_RC=3\n"
-        "STEP8_HANDOFF_JSON_PRESENT=true\n",
+        "outcome=NEEDS_USER_INPUT\n"
+        "NEEDS_USER_REASON=oos-filing\n",
         encoding="utf-8",
     )
 
-    exit_rc, out, err = _route_exit(
-        tmp,
-        capsys,
-        monkeypatch,
-        3,
-        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"},
-    )
+    monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
+    exit_rc = implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)])
+    captured = capsys.readouterr()
 
     assert exit_rc != 0
-    assert "NEXT_ACTION=" not in out
-    assert f"BGJOB_RC={bgjob_rc}" in err
+    assert "NEXT_ACTION=" not in captured.out
+    assert f"BGJOB_RC={bgjob_rc}" in captured.err
     assert not (tmp / ".ship-route-exit-handoff.env").exists()
 
 
-def test_ship_route_exit_blocks_stale_bgjob_handoff_rc(
+def test_ship_route_exit_rejects_malformed_bgjob_result_env(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
@@ -1273,27 +1249,21 @@ def test_ship_route_exit_blocks_stale_bgjob_handoff_rc(
     (bgjob / "implement-step8-ship.result.env").write_text(
         "BGJOB_RC=0\n"
         "STEP=implement-step8-ship\n"
-        "STEP8_HANDOFF_RC=6\n"
-        "STEP8_HANDOFF_JSON_PRESENT=true\n",
+        "outcome=OK\n"
+        "outcome=NEEDS_USER_INPUT\n",
         encoding="utf-8",
     )
 
-    exit_rc, out, err = _route_exit(
-        tmp,
-        capsys,
-        monkeypatch,
-        3,
-        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"},
-    )
+    exit_rc = implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)])
+    captured = capsys.readouterr()
 
     assert exit_rc != 0
-    assert "NEXT_ACTION=" not in out
-    assert "stale handoff sidecar" in err
+    assert "NEXT_ACTION=" not in captured.out
+    assert "malformed bgjob result env" in captured.err
 
 
-def test_ship_route_exit_blocks_stale_bgjob_handoff_json_presence(
+def test_ship_route_exit_rejects_missing_ship_outcome(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
@@ -1301,23 +1271,16 @@ def test_ship_route_exit_blocks_stale_bgjob_handoff_json_presence(
     bgjob.mkdir()
     (bgjob / "implement-step8-ship.result.env").write_text(
         "BGJOB_RC=0\n"
-        "STEP=implement-step8-ship\n"
-        "STEP8_HANDOFF_RC=3\n"
-        "STEP8_HANDOFF_JSON_PRESENT=false\n",
+        "STEP=implement-step8-ship\n",
         encoding="utf-8",
     )
 
-    exit_rc, out, err = _route_exit(
-        tmp,
-        capsys,
-        monkeypatch,
-        3,
-        {"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "oos-filing"},
-    )
+    exit_rc = implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)])
+    captured = capsys.readouterr()
 
     assert exit_rc != 0
-    assert "NEXT_ACTION=" not in out
-    assert "stale handoff sidecar" in err
+    assert "NEXT_ACTION=" not in captured.out
+    assert "missing required result field: outcome" in captured.err
 
 
 @pytest.mark.parametrize(
@@ -1329,7 +1292,7 @@ def test_ship_route_exit_blocks_stale_bgjob_handoff_json_presence(
         (0, {}),
     ],
 )
-def test_ship_route_exit_fails_closed_without_required_json(
+def test_ship_route_exit_fails_closed_without_required_outcome(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1415,27 +1378,22 @@ def test_ship_route_exit_fourth_transient_seeds_stall(
     ]]
 
 
-def test_ship_route_exit_rc_file_wins_and_multiline_detail_uses_file(
+def test_ship_route_exit_long_detail_uses_file(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = make_implement_tmpdir(tmp_path)
-    payload: dict[str, object] = {"outcome": "STALLED", "detail": "line one\nline two", "ledger_ready": True}
+    payload: dict[str, object] = {"outcome": "STALLED", "detail": "x" * 301, "ledger_ready": True}
     _write_ship_handoff(tmp, 4, payload)
     monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
 
-    assert implement_dispatch.ship_route_exit_main([
-        "--implement-tmpdir",
-        str(tmp),
-        "--exit-code",
-        "0",
-    ]) == 0
+    assert implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)]) == 0
 
     assert capsys.readouterr().out == "NEXT_ACTION=stall\n"
     env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
     assert "DETAIL_FILE=" in env
-    assert "DETAIL=line one" not in env
+    assert "DETAIL=" not in env
     assert "ledger_ready=true" in env
 
 
