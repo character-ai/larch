@@ -11,25 +11,26 @@ Warnings (3):
 
 ## Architectural invariants
 
-The changed surfaces relocate final-report harness coverage into pytest and thin the Bash wrapper smoke; nothing in the diff touches gate disarmament, pause/resume artifacts, stale result consumption, run-log flush or commit integrity, panel slots, agent evidence contracts, or ship recovery mutations.
+The changed harness and docs only relocate final-report coverage into pytest and thin the Bash smoke; nothing touches gates, pause/resume, stale consumption, run-log integrity, panel slots, agent evidence, or ship recovery.
 
 ## Architectural guidelines
 
-The noqa on the malformed token-report fixture now carries an inline reason, and the rest of the harness move keeps Bash thin, updates companion docs, and matches surrounding pytest patterns without a meaningful guideline deviation.
+The harness move keeps behavioral authority in pytest, leaves a thin Bash delegation smoke, updates companion docs in the same change, and follows surrounding test patterns without a meaningful guideline deviation.
 
-## /implement run 30289A42-7C5F-4335-AF44-3DC8E1A8C97D: shipping
+## /implement run 30289A42-7C5F-4335-AF44-3DC8E1A8C97D: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 00:32:41
 - **Cost**: 💰 TOTAL ~$1.32: Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $1.32  |  Tokens: 969k
 - **Issue**: #7269: https://github.com/character-ai/larch/issues/7269
+- **PR**: #7350: https://github.com/character-ai/larch/pull/7350
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: 1/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +849/-960, larch-logs +233/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 3
