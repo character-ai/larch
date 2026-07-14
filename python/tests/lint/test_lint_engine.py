@@ -1827,7 +1827,7 @@ def test_write_baseline_readback_parse_failure_fails_without_rollback(
     _write_files(tmp_path, {"a.py": "x = 1\n"})
     baseline = tmp_path / "baseline.json"
     _write_baseline(baseline, [_baseline_row("removed.py", reason="old")])
-    original_parse = lint_engine._parse_baseline_text  # pyright: ignore[reportPrivateUsage]
+    original_parse = lint_engine._parse_baseline_text  # pyright: ignore[reportPrivateUsage]  # accessing internal parse helper for test assertion
     calls = 0
 
     def malformed_parse(*args: object, **kwargs: object) -> list[lint_engine.BaselineRow]:
