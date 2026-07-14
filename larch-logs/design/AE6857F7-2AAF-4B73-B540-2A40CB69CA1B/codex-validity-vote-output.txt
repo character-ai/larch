@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- The plan requires tokenized scanning for skip-file directives, not a preamble-only parser.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Pylint requires an equals sign after disable; the proposed space-only form is invalid.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- Duplicate of the prior-round OOS observation.
