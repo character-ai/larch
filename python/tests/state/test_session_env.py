@@ -2251,7 +2251,7 @@ def test_write_env_direct_returns_frozen_result(tmp_path: Path, monkeypatch: pyt
     assert "REPO=owner/repo\n" in text
     assert "REPO_UNAVAILABLE=false\n" in text
     with pytest.raises(FrozenInstanceError):
-        result.wrote = False  # pyright: ignore[reportAttributeAccessIssue]
+        result.wrote = False  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_write_env_direct_dev_null_does_not_write(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2290,7 +2290,7 @@ def test_write_id_direct_writes_then_preserves(tmp_path: Path) -> None:
     assert second.session_id == "keep"
     assert out.read_text(encoding="utf-8") == "keep\n"
     with pytest.raises(FrozenInstanceError):
-        second.wrote = True  # pyright: ignore[reportAttributeAccessIssue]
+        second.wrote = True  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_write_id_direct_rejects_disallowed_root() -> None:
@@ -2307,7 +2307,7 @@ def test_read_key_direct_resolves_and_defaults(tmp_path: Path) -> None:
     assert session_env.read_key(file=str(session), key="EMPTY", default="fb", file_flag_present=True).value == "fb"
     assert session_env.read_key(file=str(tmp_path / "missing"), key="TOKEN", default="fb", file_flag_present=True).value == "fb"
     with pytest.raises(FrozenInstanceError):
-        result.value = "x"  # pyright: ignore[reportAttributeAccessIssue]
+        result.value = "x"  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_read_key_direct_error_paths(tmp_path: Path) -> None:
@@ -2330,7 +2330,7 @@ def test_entry_gate_direct_returns_frozen_result() -> None:
     assert strict.entry_gate == "strict"
     assert strict.skip_branch_check == "false"
     with pytest.raises(FrozenInstanceError):
-        strict.entry_gate = "continue"  # pyright: ignore[reportAttributeAccessIssue]
+        strict.entry_gate = "continue"  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_entry_gate_direct_error_paths() -> None:
@@ -2370,7 +2370,7 @@ def test_setup_direct_returns_emission_envelope(tmp_path: Path, monkeypatch: pyt
     assert "REPO" not in kv_keys
     assert "CLAUDE_BINARY_FOUND" in kv_keys
     with pytest.raises(FrozenInstanceError):
-        result.exit_code = 1  # pyright: ignore[reportAttributeAccessIssue]
+        result.exit_code = 1  # pyright: ignore[reportAttributeAccessIssue]  # assign to frozen field to assert FrozenInstanceError
 
 
 def test_setup_direct_writes_session_env_and_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
