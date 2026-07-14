@@ -72,12 +72,19 @@ SWEEP_PENDING_CAP: Final = 1_000
 SWEEP_STATE_FILENAME: Final = "sweep-state.json"
 SWEEP_FINDER_RAW_NAME: Final = "sweep-finder.jsonl"
 SWEEP_REFUTER_RAW_NAME: Final = "sweep-refuter.jsonl"
+SWEEP_REFUTER_QUEUE_NAME: Final = "sweep-refuter-queue.jsonl"
+SWEEP_VALIDATED_NAME: Final = "sweep-validated.json"
 SWEEP_SELECTED_MANIFEST_NAME: Final = "sweep-selected-merges.json"
 SWEEP_BUNDLE_MANIFEST_NAME: Final = "sweep-bundle-paths.json"
 SWEEP_PREPARE_SUMMARY_NAME: Final = "sweep-prepare.json"
 SWEEP_SEVERITIES: Final = ("high", "medium", "low")
 SWEEP_CONFIDENCES: Final = ("high", "medium", "low")
 SWEEP_REFUTER_VERDICTS: Final = ("survives", "refuted")
+SWEEP_FINDINGS_PER_MERGE_CAP: Final = 10
+SWEEP_FINDING_FILE_CAP: Final = 512
+SWEEP_FINDING_SYMBOL_CAP: Final = 200
+SWEEP_FINDING_DESC_CAP: Final = 2000
+SWEEP_PRINTABLE_MIN: Final = 0x20
 SWEEP_LOG_FIELDS: Final = 3
 FULL_SHA_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 SWEEP_TIMESTAMP_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
@@ -2623,6 +2630,338 @@ def sweep_prepare(
     }
 
 
+def _read_strict_jsonl(path: Path, *, desc: str) -> list[dict[str, Any]]:
+    """Read a line-oriented JSONL capture, rejecting blank-only and malformed rows."""
+    rows: list[dict[str, Any]] = []
+    for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            raw = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise AnalyzeBugsError(f"{desc} line {lineno}: not JSON: {exc}") from exc
+        if not isinstance(raw, dict):
+            raise AnalyzeBugsError(f"{desc} line {lineno}: row is not an object")
+        rows.append(cast("dict[str, Any]", raw))
+    return rows
+
+
+def _valid_repo_relative_path(value: str) -> bool:
+    """Return True for a non-empty, bounded, in-repo relative path with no traversal escapes."""
+    if not value or len(value) > SWEEP_FINDING_FILE_CAP:
+        return False
+    if value[0] in ("/", "~") or "\x00" in value or "\\" in value:
+        return False
+    parts = [part for part in value.split("/") if part]
+    if not parts:
+        return False
+    for part in parts:
+        if part in {".", ".."} or any(ord(ch) < SWEEP_PRINTABLE_MIN for ch in part):
+            return False
+    return True
+
+
+def _normalize_agent_text(value: str) -> str:
+    """Strip C0 control chars (except tab/newline) and surrounding whitespace from agent text."""
+    cleaned = "".join(ch for ch in value if ch in "\t\n" or ord(ch) >= SWEEP_PRINTABLE_MIN)
+    return cleaned.strip()
+
+
+def _parse_finder_finding(raw: Mapping[str, Any]) -> SweepFinding | str:
+    if set(raw.keys()) != {"file", "symbol", "description", "severity", "confidence"}:
+        return "finder finding has unexpected or missing fields"
+    file_value = raw.get("file")
+    if not isinstance(file_value, str) or not _valid_repo_relative_path(file_value):
+        return "finder finding file must be a repository-relative path"
+    symbol = raw.get("symbol")
+    if not isinstance(symbol, str) or len(symbol) > SWEEP_FINDING_SYMBOL_CAP or "\x00" in symbol:
+        return "finder finding symbol must be a bounded string"
+    description = raw.get("description")
+    if not isinstance(description, str) or len(description) > SWEEP_FINDING_DESC_CAP or "\x00" in description:
+        return "finder finding description must be a bounded string"
+    severity = raw.get("severity")
+    if not isinstance(severity, str) or severity not in SWEEP_SEVERITIES:
+        return "finder finding severity is unknown"
+    confidence = raw.get("confidence")
+    if not isinstance(confidence, str) or confidence not in SWEEP_CONFIDENCES:
+        return "finder finding confidence is unknown"
+    return SweepFinding(
+        file=file_value,
+        symbol=_normalize_agent_text(symbol),
+        description=_normalize_agent_text(description),
+        severity=severity,
+        confidence=confidence,
+    )
+
+
+def _parse_finder_row(raw: Mapping[str, Any]) -> SweepFinderRow | str:
+    if set(raw.keys()) != {"merge_sha", "findings"}:
+        return "finder row has unexpected or missing fields"
+    merge_sha = raw.get("merge_sha")
+    if not isinstance(merge_sha, str) or not FULL_SHA_RE.fullmatch(merge_sha):
+        return "finder merge_sha must be a full 40-character SHA"
+    findings_raw = raw.get("findings")
+    if not isinstance(findings_raw, list):
+        return "finder findings must be a list"
+    if len(findings_raw) > SWEEP_FINDINGS_PER_MERGE_CAP:
+        return f"finder findings exceed per-merge cap {SWEEP_FINDINGS_PER_MERGE_CAP}"
+    findings: list[SweepFinding] = []
+    for item in findings_raw:
+        if not isinstance(item, dict):
+            return "finder finding must be an object"
+        parsed = _parse_finder_finding(cast("Mapping[str, Any]", item))
+        if isinstance(parsed, str):
+            return parsed
+        findings.append(parsed)
+    return SweepFinderRow(merge_sha=merge_sha, findings=tuple(findings))
+
+
+def _parse_refuter_queue_row(raw: Mapping[str, Any]) -> SweepRefuterQueueRow | str:
+    required = {"merge_sha", "finding_index", "file", "symbol", "description", "severity", "confidence"}
+    if set(raw.keys()) != required:
+        return "refuter queue row has unexpected or missing fields"
+    merge_sha = raw.get("merge_sha")
+    if not isinstance(merge_sha, str) or not FULL_SHA_RE.fullmatch(merge_sha):
+        return "queue merge_sha must be a full 40-character SHA"
+    finding_index = raw.get("finding_index")
+    if isinstance(finding_index, bool) or not isinstance(finding_index, int) or finding_index < 0:
+        return "queue finding_index must be a non-negative integer"
+    return SweepRefuterQueueRow(
+        merge_sha=merge_sha,
+        finding_index=finding_index,
+        file=str(raw.get("file") or ""),
+        symbol=str(raw.get("symbol") or ""),
+        description=str(raw.get("description") or ""),
+        severity=str(raw.get("severity") or ""),
+        confidence=str(raw.get("confidence") or ""),
+    )
+
+
+def _parse_refuter_result(raw: Mapping[str, Any]) -> SweepRefutationResult | str:
+    if set(raw.keys()) != {"merge_sha", "finding_index", "verdict"}:
+        return "refuter row has unexpected or missing fields"
+    merge_sha = raw.get("merge_sha")
+    if not isinstance(merge_sha, str) or not FULL_SHA_RE.fullmatch(merge_sha):
+        return "refuter merge_sha must be a full 40-character SHA"
+    finding_index = raw.get("finding_index")
+    if isinstance(finding_index, bool) or not isinstance(finding_index, int) or finding_index < 0:
+        return "refuter finding_index must be a non-negative integer"
+    verdict = raw.get("verdict")
+    if not isinstance(verdict, str) or verdict not in SWEEP_REFUTER_VERDICTS:
+        return "refuter verdict is unknown"
+    return SweepRefutationResult(merge_sha=merge_sha, finding_index=finding_index, verdict=verdict)
+
+
+def _load_selected_manifest(run_dir: Path) -> tuple[str, tuple[str, ...], dict[str, object]]:
+    """Load the prepared selected-merge manifest and return (pinned_tip, ordered SHAs, raw summary)."""
+    manifest_path = run_dir / SWEEP_SELECTED_MANIFEST_NAME
+    if not manifest_path.is_file():
+        raise AnalyzeBugsError(f"selected-merge manifest missing: {manifest_path}")
+    manifest = _load_json(manifest_path)
+    pinned_tip = _full_sha(manifest.get("pinned_tip"), label="selected manifest pinned_tip")
+    selected_raw = manifest.get("selected")
+    if not isinstance(selected_raw, list):
+        raise AnalyzeBugsError(f"selected manifest lacks selected array: {manifest_path}")
+    selected_shas: list[str] = []
+    for item in selected_raw:
+        if not isinstance(item, dict):
+            raise AnalyzeBugsError(f"selected manifest entry is not an object: {manifest_path}")
+        selected_shas.append(_full_sha(item.get("merge_sha"), label="selected merge_sha"))
+    summary: dict[str, object] = {
+        "manifest_path": str(manifest_path),
+        "pinned_tip": pinned_tip,
+        "selected_count": len(selected_shas),
+        "skipped_count": int(manifest.get("skipped_count", 0) or 0) if str(manifest.get("skipped_count", 0) or 0).lstrip("-").isdigit() else 0,
+        "coverage_incomplete": bool(manifest.get("coverage_incomplete", False)),
+        "pending_shas": _manifest_pending_shas(manifest),
+    }
+    return pinned_tip, tuple(selected_shas), summary
+
+
+def _manifest_pending_shas(manifest: Mapping[str, Any]) -> tuple[str, ...]:
+    pending_raw = manifest.get("pending_shas")
+    if not isinstance(pending_raw, list):
+        return ()
+    return tuple(_full_sha(item, label="pending_shas entry") for item in pending_raw)
+
+
+def _write_sweep_refuter_queue(path: Path, rows: Sequence[SweepRefuterQueueRow]) -> None:
+    text = "".join(json.dumps(asdict(row), sort_keys=True) + "\n" for row in rows)
+    _atomic_write_text(path, text)
+
+
+def sweep_ingest_finder(*, run_dir: Path) -> dict[str, object]:
+    """Validate raw finder JSONL against the prepared manifest; write the deterministic refuter queue."""
+    pinned_tip, selected_shas, summary = _load_selected_manifest(run_dir)
+    queue_path = run_dir / SWEEP_REFUTER_QUEUE_NAME
+    finder_raw_path = run_dir / SWEEP_FINDER_RAW_NAME
+    selected_set = set(selected_shas)
+
+    if not selected_shas:
+        # Zero selected merges: bypass finder-file parsing and dispatch.
+        _atomic_write_text(queue_path, "")
+        return {
+            "PINNED_TIP": pinned_tip,
+            "SELECTED_MERGE_MANIFEST": summary["manifest_path"],
+            "INGEST_ACCEPTED": 0,
+            "REFUTER_QUEUE_PATH": str(queue_path),
+            "REFUTER_QUEUE_COUNT": 0,
+        }
+
+    if not finder_raw_path.is_file():
+        raise AnalyzeBugsError(f"finder raw capture missing: {finder_raw_path}")
+    raw_rows = _read_strict_jsonl(finder_raw_path, desc="finder raw")
+    if not raw_rows:
+        raise AnalyzeBugsError(f"finder raw capture is empty: {finder_raw_path}")
+
+    accepted: dict[str, SweepFinderRow] = {}
+    for lineno, raw in enumerate(raw_rows, 1):
+        parsed = _parse_finder_row(cast("Mapping[str, Any]", raw))
+        if isinstance(parsed, str):
+            raise AnalyzeBugsError(f"finder raw line {lineno}: {parsed}")
+        if parsed.merge_sha in accepted:
+            raise AnalyzeBugsError(f"finder raw line {lineno}: duplicate merge_sha {parsed.merge_sha}")
+        if parsed.merge_sha not in selected_set:
+            raise AnalyzeBugsError(f"finder raw line {lineno}: foreign merge_sha {parsed.merge_sha}")
+        accepted[parsed.merge_sha] = parsed
+
+    missing = [sha for sha in selected_shas if sha not in accepted]
+    if missing:
+        raise AnalyzeBugsError(f"finder raw missing selected merges: {', '.join(missing)}")
+
+    queue_rows: list[SweepRefuterQueueRow] = []
+    for sha in selected_shas:
+        for index, finding in enumerate(accepted[sha].findings):
+            queue_rows.append(
+                SweepRefuterQueueRow(
+                    merge_sha=sha,
+                    finding_index=index,
+                    file=finding.file,
+                    symbol=finding.symbol,
+                    description=finding.description,
+                    severity=finding.severity,
+                    confidence=finding.confidence,
+                )
+            )
+    _write_sweep_refuter_queue(queue_path, queue_rows)
+    return {
+        "PINNED_TIP": pinned_tip,
+        "SELECTED_MERGE_MANIFEST": summary["manifest_path"],
+        "INGEST_ACCEPTED": len(accepted),
+        "REFUTER_QUEUE_PATH": str(queue_path),
+        "REFUTER_QUEUE_COUNT": len(queue_rows),
+    }
+
+
+def _write_sweep_validated(path: Path, artifact: SweepValidatedArtifact) -> None:
+    _write_json(path, asdict(artifact))
+
+
+def sweep_ingest_refuter(*, run_dir: Path) -> dict[str, object]:
+    """Validate raw refuter JSONL against the prepared queue; write the validated sweep-result artifact."""
+    pinned_tip, _selected_shas, summary = _load_selected_manifest(run_dir)
+    queue_path = run_dir / SWEEP_REFUTER_QUEUE_NAME
+    refuter_raw_path = run_dir / SWEEP_REFUTER_RAW_NAME
+    if not queue_path.is_file():
+        raise AnalyzeBugsError(f"refuter queue missing: {queue_path}")
+    queue_raw = _read_strict_jsonl(queue_path, desc="refuter queue")
+
+    queue_order: list[tuple[str, int]] = []
+    queue_by_key: dict[tuple[str, int], SweepRefuterQueueRow] = {}
+    for lineno, raw in enumerate(queue_raw, 1):
+        parsed = _parse_refuter_queue_row(cast("Mapping[str, Any]", raw))
+        if isinstance(parsed, str):
+            raise AnalyzeBugsError(f"refuter queue line {lineno}: {parsed}")
+        key = (parsed.merge_sha, parsed.finding_index)
+        if key in queue_by_key:
+            raise AnalyzeBugsError(f"refuter queue line {lineno}: duplicate queue key")
+        queue_by_key[key] = parsed
+        queue_order.append(key)
+    expected_keys = set(queue_by_key)
+
+    def _empty_artifact() -> SweepValidatedArtifact:
+        return SweepValidatedArtifact(
+            pinned_tip=pinned_tip,
+            selected_manifest_path=str(summary["manifest_path"]),
+            selected_count=int(summary["selected_count"]),
+            skipped_count=int(summary["skipped_count"]),
+            pending_shas=cast("tuple[str, ...]", summary["pending_shas"]),
+            coverage_incomplete=bool(summary["coverage_incomplete"]),
+            candidates=(),
+        )
+
+    if not expected_keys:
+        # Empty queue: a successful zero-candidate result; no refuter file required.
+        validated_path = run_dir / SWEEP_VALIDATED_NAME
+        _write_sweep_validated(validated_path, _empty_artifact())
+        return {
+            "PINNED_TIP": pinned_tip,
+            "SELECTED_MERGE_MANIFEST": summary["manifest_path"],
+            "SWEEP_VALIDATED_PATH": str(validated_path),
+            "CANDIDATE_COUNT": 0,
+            "REFUTER_QUEUE_COUNT": 0,
+        }
+
+    if not refuter_raw_path.is_file():
+        raise AnalyzeBugsError(f"refuter raw capture missing: {refuter_raw_path}")
+    result_rows = _read_strict_jsonl(refuter_raw_path, desc="refuter raw")
+    if not result_rows:
+        raise AnalyzeBugsError(f"refuter raw capture is empty: {refuter_raw_path}")
+
+    verdict_by_key: dict[tuple[str, int], str] = {}
+    seen_keys: set[tuple[str, int]] = set()
+    for lineno, raw in enumerate(result_rows, 1):
+        parsed = _parse_refuter_result(cast("Mapping[str, Any]", raw))
+        if isinstance(parsed, str):
+            raise AnalyzeBugsError(f"refuter raw line {lineno}: {parsed}")
+        key = (parsed.merge_sha, parsed.finding_index)
+        if key in seen_keys:
+            raise AnalyzeBugsError(f"refuter raw line {lineno}: duplicate verdict for key")
+        if key not in expected_keys:
+            raise AnalyzeBugsError(f"refuter raw line {lineno}: foreign verdict key")
+        seen_keys.add(key)
+        verdict_by_key[key] = parsed.verdict
+
+    missing_keys = expected_keys - seen_keys
+    if missing_keys:
+        raise AnalyzeBugsError(f"refuter raw missing {len(missing_keys)} queued verdict(s)")
+
+    candidates: list[SweepCandidate] = []
+    for key in queue_order:
+        if verdict_by_key[key] != "survives":
+            continue
+        row = queue_by_key[key]
+        candidates.append(
+            SweepCandidate(
+                merge_sha=row.merge_sha,
+                file=row.file,
+                symbol=row.symbol,
+                description=row.description,
+                severity=row.severity,
+                confidence=row.confidence,
+            )
+        )
+    artifact = SweepValidatedArtifact(
+        pinned_tip=pinned_tip,
+        selected_manifest_path=str(summary["manifest_path"]),
+        selected_count=int(summary["selected_count"]),
+        skipped_count=int(summary["skipped_count"]),
+        pending_shas=cast("tuple[str, ...]", summary["pending_shas"]),
+        coverage_incomplete=bool(summary["coverage_incomplete"]),
+        candidates=tuple(candidates),
+    )
+    validated_path = run_dir / SWEEP_VALIDATED_NAME
+    _write_sweep_validated(validated_path, artifact)
+    return {
+        "PINNED_TIP": pinned_tip,
+        "SELECTED_MERGE_MANIFEST": summary["manifest_path"],
+        "SWEEP_VALIDATED_PATH": str(validated_path),
+        "CANDIDATE_COUNT": len(candidates),
+        "REFUTED_COUNT": len(expected_keys) - len(candidates),
+        "REFUTER_QUEUE_COUNT": len(expected_keys),
+    }
+
+
 def sweep_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="python/cli.py analyze-bugs sweep")
     sub = parser.add_subparsers(dest="subphase", required=True)
@@ -2640,36 +2979,59 @@ def sweep_main(argv: list[str]) -> int:
         type=lambda value: _positive_int(value, name="--diff-cap"),
         default=SWEEP_DIFF_CAP,
     )
-    # Follow-up piece registers ingest-finder / ingest-refuter against this dispatcher.
-    args = parser.parse_args(argv)
-    if args.subphase != "prepare":
-        return _fail(f"unknown sweep subphase: {args.subphase}")
-    try:
-        runner = _runner()
-        repo = resolve_repo(runner, args.repo)
-        payload = sweep_prepare(
-            runner=runner,
-            run_dir=Path(args.run_dir),
-            ledger_path=Path(args.ledger_path),
-            repo=repo,
-            sweep_max=args.sweep_max,
-            diff_cap=args.diff_cap,
-        )
-    except AnalyzeBugsError as exc:
-        return _fail(str(exc))
-    _emit_kvs(
-        {
-            "PINNED_TIP": payload["PINNED_TIP"],
-            "SELECTED_MERGE_MANIFEST": payload["SELECTED_MERGE_MANIFEST"],
-            "BUNDLE_PATH_MANIFEST": payload["BUNDLE_PATH_MANIFEST"],
-            "SELECTED_COUNT": payload["SELECTED_COUNT"],
-            "SKIPPED_COUNT": payload["SKIPPED_COUNT"],
-            "PENDING_SHAS": payload["PENDING_SHAS"],
-            "COVERAGE_INCOMPLETE": payload["COVERAGE_INCOMPLETE"],
-            "STATE_PATH": payload["STATE_PATH"],
-            "RUN_DIR": payload["RUN_DIR"],
-            "SWEEP_FINDER_RAW_PATH": payload["SWEEP_FINDER_RAW_PATH"],
-            "SWEEP_REFUTER_RAW_PATH": payload["SWEEP_REFUTER_RAW_PATH"],
-        }
+    ingest_finder = sub.add_parser(
+        "ingest-finder",
+        help="validate raw finder JSONL against the prepared manifest and write the refuter queue",
     )
-    return 0
+    ingest_finder.add_argument("--run-dir", required=True)
+    ingest_refuter = sub.add_parser(
+        "ingest-refuter",
+        help="validate raw refuter JSONL against the prepared queue and write the sweep-result artifact",
+    )
+    ingest_refuter.add_argument("--run-dir", required=True)
+    args = parser.parse_args(argv)
+    if args.subphase == "prepare":
+        try:
+            runner = _runner()
+            repo = resolve_repo(runner, args.repo)
+            payload = sweep_prepare(
+                runner=runner,
+                run_dir=Path(args.run_dir),
+                ledger_path=Path(args.ledger_path),
+                repo=repo,
+                sweep_max=args.sweep_max,
+                diff_cap=args.diff_cap,
+            )
+        except AnalyzeBugsError as exc:
+            return _fail(str(exc))
+        _emit_kvs(
+            {
+                "PINNED_TIP": payload["PINNED_TIP"],
+                "SELECTED_MERGE_MANIFEST": payload["SELECTED_MERGE_MANIFEST"],
+                "BUNDLE_PATH_MANIFEST": payload["BUNDLE_PATH_MANIFEST"],
+                "SELECTED_COUNT": payload["SELECTED_COUNT"],
+                "SKIPPED_COUNT": payload["SKIPPED_COUNT"],
+                "PENDING_SHAS": payload["PENDING_SHAS"],
+                "COVERAGE_INCOMPLETE": payload["COVERAGE_INCOMPLETE"],
+                "STATE_PATH": payload["STATE_PATH"],
+                "RUN_DIR": payload["RUN_DIR"],
+                "SWEEP_FINDER_RAW_PATH": payload["SWEEP_FINDER_RAW_PATH"],
+                "SWEEP_REFUTER_RAW_PATH": payload["SWEEP_REFUTER_RAW_PATH"],
+            }
+        )
+        return 0
+    if args.subphase == "ingest-finder":
+        try:
+            payload = sweep_ingest_finder(run_dir=Path(args.run_dir))
+        except AnalyzeBugsError as exc:
+            return _fail(str(exc))
+        _emit_kvs(payload)
+        return 0
+    if args.subphase == "ingest-refuter":
+        try:
+            payload = sweep_ingest_refuter(run_dir=Path(args.run_dir))
+        except AnalyzeBugsError as exc:
+            return _fail(str(exc))
+        _emit_kvs(payload)
+        return 0
+    return _fail(f"unknown sweep subphase: {args.subphase}")
