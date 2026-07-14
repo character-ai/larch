@@ -600,8 +600,16 @@ def test_skip_approve_guideline_prompt_contracts_bind_repo_root() -> None:
     assert approval.index("INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true") < approval.index("**Clean**: only when invariants are `present`")
     assert "reason=persist-design-assessment-failed" in approval
     assert approval.index("reason=persist-design-assessment-failed") < approval.index("Do not fire `AskUserQuestion`, approve, auto-approve, or transition to Step 5.")
+    assert "`architectural-invariants read` is for Step 2b plan drafting; Gate C requires `architectural-invariants present-note` followed by `persist-design-assessment`" in approval
+    assert "Using `read` here is insufficient" in approval
     assert "**Step 5c missing-invariant-assessment.**" in skill
     assert skill.index("**Step 5c missing-invariant-assessment.**") < skill.index("**Step 5c missing-guideline-assessment.**")
+    assert "run `architectural-invariants present-note` + `persist-design-assessment`" in skill
+    assert "run `architectural-guidelines present-note` + `persist-design-assessment`" in skill
+    assert "Use Gate C `present-note` (not Step 2b `read`) for both kinds" in skill
+    assert skill.index("run `architectural-invariants present-note` + `persist-design-assessment`") < skill.index(
+        "run `architectural-guidelines present-note` + `persist-design-assessment`"
+    )
     assert '. "$DESIGN_TMPDIR/source-env.sh"' in outline
     assert 'present-note --repo-root "$REPO_ROOT"' in outline
     assert "auto-approved (--skip-approve)" in outline
