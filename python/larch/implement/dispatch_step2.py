@@ -18,6 +18,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.agents._launch_failure import detect_codex_cli_gate, is_quota_failure
 from larch.agents._types import CodexGateDetail
+from larch.bgjob import model as bgjob_model
 from larch.core import config
 from larch.core import architectural_guidelines
 from larch.core import logging_util
@@ -65,10 +66,29 @@ from larch.implement.dispatch_manifest import (
     _validate_manifest_paths,
     _write_prelaunch_baseline,
 )
+from larch.implement.dispatch_recovery import RecoveryPorcelainInputs, compute_recovery_paths
+from larch.implement.dispatch_helpers import _capture_postlaunch_porcelain
 
 _ASCII_CONTROL_MAX = 31
 _ASCII_DELETE = 127
 _ARCH_KNOWLEDGE_SNAPSHOT = "step2-architectural-knowledge.env"
+_PRIOR_ATTEMPT_REASON = "prior-attempt-unfinalized"
+
+
+def _publish_bgjob_envelope(*, tmpdir: Path, path: str, text: str) -> bool:
+    """Publish the child envelope for daemon result-env merging.
+
+    The adapter pre-creates this path. Validate it again here because the child
+    must never write an arbitrary caller-controlled path while it owns a live
+    dispatch.
+    """
+    candidate = Path(path)
+    try:
+        merge_env = bgjob_model.validate_merge_result_env(path=candidate, tmpdir=tmpdir)
+        larch_io.trusted_atomic_write(path=merge_env, text=text, root=tmpdir)
+    except (OSError, ValueError):
+        return False
+    return True
 
 
 def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
@@ -78,7 +98,12 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
     parser.add_argument("--coder", required=True)
     parser.add_argument("--answers", default="")
     parser.add_argument("--difficulty", choices=("", *config.DIFFICULTY_TIERS), default="")
+    parser.add_argument("--bgjob-child", action="store_true")
+    parser.add_argument("--merge-result-env", default="")
     args = parser.parse_args(argv)
+    if args.bgjob_child != bool(args.merge_result_env):
+        _err("implement run-dispatch: --bgjob-child and --merge-result-env must be supplied together")
+        return 2
     raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
         _err("implement run-dispatch: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set")
@@ -176,6 +201,11 @@ def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR09
             _write_step2_telemetry_sentinel(tmpdir)
     finally:
         lock_fd.close()
+    if args.bgjob_child and result.returncode == 0 and not _publish_bgjob_envelope(
+        tmpdir=tmpdir, path=args.merge_result_env, text=result.stdout
+    ):
+        _err("implement run-dispatch: could not publish bgjob result envelope")
+        return 2
     if result.stdout:
         stream = logging_util.contract_stream()
         stream.write(result.stdout)
@@ -491,6 +521,33 @@ def _ensure_step2_baseline(tmpdir: Path) -> None:
         _write_text_atomic(path=baseline_file, text=head.stdout.strip() + "\n")
 
 
+def _prior_attempt_unfinalized(st: DispatchState) -> bool:
+    """Detect edits from an interrupted external dispatch before re-baselining.
+
+    A normal Q/A redispatch shares the original prelaunch snapshot.  Only a
+    content delta relative to that snapshot is unsafe: it could be an external
+    implementer's stranded changes, so a second launch must not claim it as
+    pre-existing work.
+    """
+    if st.answers_file is not None or not st.prelaunch_porcelain.is_file() or not st.prelaunch_digests.is_file():
+        return False
+    if _capture_postlaunch_porcelain(repo_root=st.repo_root, implement_tmpdir=st.tmpdir) != 0:
+        return True
+    try:
+        return compute_recovery_paths(
+            repo_root=st.repo_root,
+            tmpdir=st.tmpdir,
+            porcelain=RecoveryPorcelainInputs(
+                prelaunch_porcelain=st.prelaunch_porcelain,
+                postlaunch_porcelain=st.postlaunch_porcelain,
+                prelaunch_digests=st.prelaunch_digests,
+            ),
+            out_file=st.recovery_paths_file,
+        )
+    except (OSError, ValueError):
+        return True
+
+
 def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement step2-dispatch")
@@ -629,6 +686,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         _write_text_atomic(path=st.resume_count_file, text=f"{resume_count}\n")
     if resume_count > RESUME_CAP:
         return st.emit_bailed("qa-loop-exceeded")
+
+    if _prior_attempt_unfinalized(st):
+        return st.emit_bailed(_PRIOR_ATTEMPT_REASON)
 
     for path in (st.manifest_path, st.manifest_raw_path, st.qa_pending_path, st.transcript_path, st.sidecar_log, st.launch_scout_manifest):
         with contextlib.suppress(OSError):

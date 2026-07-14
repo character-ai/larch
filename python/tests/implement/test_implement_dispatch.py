@@ -3187,6 +3187,108 @@ def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pyt
     assert str(answers) in argv
 
 
+def test_run_dispatch_bgjob_child_publishes_full_envelope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    merge = tmp / "bgjob" / "implement-step2-dispatch.merge.env"
+    merge.parent.mkdir()
+    _ = merge.write_text("", encoding="utf-8")
+    envelope = "STATUS=complete\nTOOL=codex\nMANIFEST=/tmp/manifest.json\nORCHESTRATOR_EDIT_AUTHORITY=forbidden\n"
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(list(argv), 0, envelope, "")
+
+    monkeypatch.setattr(dispatch_step2.subprocess, "run", fake_run)
+
+    assert dispatch_step2.run_dispatch_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--coder",
+        "codex",
+        "--bgjob-child",
+        "--merge-result-env",
+        str(merge),
+    ]) == 0
+    assert merge.read_text(encoding="utf-8") == envelope
+
+
+def test_step2_dispatch_detects_stranded_prior_attempt_before_rebaseline(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    _ = (tmp / "step2-prelaunch-porcelain.nul").write_bytes(b"")
+    _ = (tmp / "step2-prelaunch-content-digests.txt").write_text("", encoding="utf-8")
+    (repo / "stranded.txt").write_text("uncommitted\n", encoding="utf-8")
+
+    assert dispatch_step2.step2_dispatch_main([
+        "--tmpdir",
+        str(tmp),
+        "--plan-file",
+        str(tmp / "plan.txt"),
+        "--feature-file",
+        str(tmp / "feature-description.txt"),
+        "--coder",
+        "codex",
+        "--codex-binary-found",
+        "true",
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=prior-attempt-unfinalized" in out
+    assert "stranded.txt\0" in (tmp / "step2-recovery-paths.nul").read_bytes().decode("utf-8")
+
+
+def test_step2_dispatch_fails_closed_when_prior_attempt_delta_cannot_be_captured(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    assert repo.is_dir()
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    _ = (tmp / "step2-prelaunch-porcelain.nul").write_bytes(b"")
+    _ = (tmp / "step2-prelaunch-content-digests.txt").write_text("", encoding="utf-8")
+    monkeypatch.setattr(dispatch_step2, "_capture_postlaunch_porcelain", lambda **_kwargs: 1)
+
+    assert dispatch_step2.step2_dispatch_main([
+        "--tmpdir",
+        str(tmp),
+        "--plan-file",
+        str(tmp / "plan.txt"),
+        "--feature-file",
+        str(tmp / "feature-description.txt"),
+        "--coder",
+        "codex",
+        "--codex-binary-found",
+        "true",
+    ]) == 0
+
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=prior-attempt-unfinalized" in out
+
+
+def test_step2_dispatch_adapter_uses_durable_rejoin_contract() -> None:
+    root = Path(__file__).resolve().parents[3]
+    source = (root / "skills" / "implement" / "scripts" / "step-2-dispatch.sh").read_text(encoding="utf-8")
+
+    assert "bgjob adapt" in source
+    assert "--step implement-step2-dispatch" in source
+    assert "--budget-s 7200" in source
+    assert "--bgjob-child" in source
+    assert "--merge-result-env" in source
+    assert "REPLACE_COMPLETED_RESULT=true" in source
+    assert "--replace-completed-result" in source
+
+
 def test_run_dispatch_marks_step2_once_under_lock_and_skips_answers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
