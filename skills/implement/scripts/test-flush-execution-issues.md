@@ -1,9 +1,8 @@
 # test-flush-execution-issues.sh
 
-Offline harness for `skills/implement/scripts/flush-execution-issues.sh`.
+Delegation smoke for `skills/implement/scripts/flush-execution-issues.sh`.
 
-It runs the helper in a temporary plugin/repo sandbox with stubbed
-`run-log` and `run-log append-failure`, then verifies empty-input skip,
-single-section and multi-section NDJSON composition, idempotent rerun behavior,
-and the append-failure path that records `run-log` output back into
-`execution-issues.md`.
+It verifies both `CLAUDE_PLUGIN_ROOT` override and script-relative fallback.
+Each case checks exact CLI routing, argument forwarding, exit-status forwarding,
+and stdout and stderr passthrough. Behavioral coverage lives in
+`python/tests/issue/test_execution_issues.py`.
