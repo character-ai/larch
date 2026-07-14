@@ -1,5 +1,5 @@
 # Review Agents
-Larch uses a unified Claude reviewer archetype — **Code Reviewer** — for broad review surfaces. Tiered code-review panels use four static specialists per available vendor, including a dedicated architectural-compliance specialist.
+Larch uses a unified Claude reviewer archetype — **Code Reviewer** — for broad review surfaces. Tiered code-review panels use three static specialists per available vendor (`correctness`, `edge-cases`, `testing`); architectural invariants/guidelines compliance is owned by the Step 8 architectural assessment.
 
 ## The Code Reviewer Archetype
 
@@ -54,13 +54,13 @@ Larch uses a unified Claude reviewer archetype — **Code Reviewer** — for bro
 
 ## Static Code Review Specialists
 
-The code-review panel dispatches `correctness`, `edge-cases`, `testing`, and `architectural-compliance` through the same tier, vendor, pruning, voting, and no-fallback contracts. Only `reviewer-architectural-compliance` receives rendered architectural knowledge. It reports concrete, in-scope violations with the supplied `I-*` or `G-*` id and code evidence; undocumented preferences stay omitted or out of scope.
+The code-review panel dispatches `correctness`, `edge-cases`, and `testing` through the same tier, vendor, pruning, voting, and no-fallback contracts. No Step 5 panel member receives rendered architectural knowledge; architectural invariants/guidelines compliance is owned by the Step 8 architectural assessment (`larch:arch-assessor` read-only subagent).
 
 `/design` keeps four static personalities. Its `Architecture/Standards` (`arch`) reviewer owns architectural-policy compliance for plans and is the only plan-review personality that receives the rendered knowledge blocks. Dynamic plan reviewers do not inherit the blocks from an `architecture` focus-area label.
 
 ## Generated Specialist Archetypes
 
-Larch also ships generated specialist Claude agents for focused review lanes. These are canonicalized in `skills/shared/reviewer-templates.md` and regenerated through `scripts/generators.tsv`; do not hand-edit the generated files in this table. Static panel specialists such as `reviewer-architectural-compliance` are hand-maintained.
+Larch also ships generated specialist Claude agents for focused review lanes. These are canonicalized in `skills/shared/reviewer-templates.md` and regenerated through `scripts/generators.tsv`; do not hand-edit the generated files in this table. Static panel specialists such as `reviewer-edge-cases` and `reviewer-testing` are hand-maintained.
 
 | Agent | Focus | Input requirement |
 |---|---|---|
@@ -104,7 +104,7 @@ Under `/implement`, committed `larch-logs/implement/<RUN_ID>/` files are the dur
 
 **Claude fallback for externals**: In `/design`, `/review`, and `/implement` Step 5 reviewer panels, static and dynamic reviewer rows dispatch with `--no-fallback`. Cursor and Codex rows cover the same reviewer lenses as peers. Cursor reviewer rows use the default `composer-2.5`; voters and fix/coder roles use their own routing. A missing or failed external vendor drops that row instead of spawning cross-vendor or Claude reviewer backfill. No generic Codex reviewer row is emitted on the plan-review or code-review panels. Round 2 is a pruned backup pass based on round-1 productivity. In `/research`, when Cursor or Codex is unavailable, a Claude Code Reviewer subagent replaces the slot so the [validation panel shape](topology.md#research.validation_panel) remains intact. `python/review_pipeline.py` and `python/larch/review/plan_review_panel.py` are the authorities for the current review slot layouts.
 
-**Note A: `/implement` Step 5 (public mirror)**: Step 5 invokes `review-and-fix step5`, which forwards a fixed `--round-cap` of **2** (hard ceiling) and does **not** forward `--panel` on the public argv; the panel is applied only inside `review-and-fix CLI` → `review core`. Round 1 launches the complete tier matrix with four static specialists per vendor: `correctness`, `edge-cases`, `testing`, and `architectural-compliance`. Tiering uses TRIVIAL Cursor `composer-2.5` singles when Cursor is available, TRIVIAL Codex `gpt-5.6-luna` singles only when Cursor is down, MODERATE Cursor `composer-2.5` plus Codex `gpt-5.6-luna` pairs, and HARD Cursor `composer-2.5` plus Codex `gpt-5.6-terra` pairs. Plan coverage does not add an extra forced reviewer outside that matrix. Round 2 is pruned on round-1 productivity, prune-to-empty converges, and no generic Codex reviewer row is emitted. Reviewer dispatch always uses `--no-fallback`, so missing vendors drop rows instead of cross-vendor or Claude reviewer backfill. Voting still runs in each review round with Codex-primary archetype voters for validity, plan-fidelity, and pragmatism: TRIVIAL Codex voters use `gpt-5.6-luna`; MODERATE and HARD use `gpt-5.6-terra`. When both externals are unavailable, Step 5 falls back to a single Claude voter in binding-single tier. Only failed or narrative-only expected voters degrade the effective quorum. Full voting-panel collapse thresholds for other skills remain authoritative in `skills/shared/voting-protocol.md`.
+**Note A: `/implement` Step 5 (public mirror)**: Step 5 invokes `review-and-fix step5`, which forwards a fixed `--round-cap` of **2** (hard ceiling) and does **not** forward `--panel` on the public argv; the panel is applied only inside `review-and-fix CLI` → `review core`. Round 1 launches the complete tier matrix with three static specialists per vendor: `correctness`, `edge-cases`, and `testing`. Tiering uses TRIVIAL Cursor `composer-2.5` singles when Cursor is available, TRIVIAL Codex `gpt-5.6-luna` singles only when Cursor is down, MODERATE Cursor `composer-2.5` plus Codex `gpt-5.6-terra` pairs, and HARD Cursor `composer-2.5` plus Codex `gpt-5.6-terra` pairs. Plan coverage does not add an extra forced reviewer outside that matrix. Round 2 is pruned on round-1 productivity, prune-to-empty converges, and no generic Codex reviewer row is emitted. Reviewer dispatch always uses `--no-fallback`, so missing vendors drop rows instead of cross-vendor or Claude reviewer backfill. Voting still runs in each review round with Codex-primary archetype voters for validity, plan-fidelity, and pragmatism: TRIVIAL Codex voters use `gpt-5.6-luna`; MODERATE and HARD use `gpt-5.6-terra`. When both externals are unavailable, Step 5 falls back to a single Claude voter in binding-single tier. Only failed or narrative-only expected voters degrade the effective quorum. Full voting-panel collapse thresholds for other skills remain authoritative in `skills/shared/voting-protocol.md`.
 
 ## Migration from legacy agent slugs
 
@@ -112,7 +112,7 @@ The previous two archetypes `general-reviewer` and `deep-analysis-reviewer` have
 
 ## Difficulty-tiered panels
 
-Code review uses TRIVIAL Cursor `composer-2.5` singles when Cursor is available, with Codex `gpt-5.6-luna` singles only when Cursor is down. MODERATE uses Cursor `composer-2.5` plus Codex `gpt-5.6-luna` pairs. HARD uses Cursor `composer-2.5` plus Codex `gpt-5.6-terra` pairs. Dynamic archetypes follow the same tier matrix. Design review always keeps Codex plus Cursor pairs; all tiers use a fixed cap of 2, while HARD uses the Codex default role only for `pragmatic` and `requirements`. Dynamic plan-review Codex rows stay pinned to the review role. The random audit is orthogonal to an operator `--difficulty` override.
+Code review uses TRIVIAL Cursor `composer-2.5` singles when Cursor is available, with Codex `gpt-5.6-luna` singles only when Cursor is down. MODERATE uses Cursor `composer-2.5` plus Codex `gpt-5.6-terra` pairs. HARD uses Cursor `composer-2.5` plus Codex `gpt-5.6-terra` pairs. Dynamic archetypes follow the same tier matrix. Design review always keeps Codex plus Cursor pairs; all tiers use a fixed cap of 2, and all Codex rows use the review role. Dynamic plan-review Codex rows stay pinned to the review role. The random audit is orthogonal to an operator `--difficulty` override.
 
 ## Forced plan-fidelity reviewer
 
