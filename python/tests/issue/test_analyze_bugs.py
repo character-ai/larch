@@ -1,8 +1,6 @@
 # pyright: reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false
 """Offline tests for analyze_bugs.py."""
 
-# pyright: reportOperatorIssue=false
-
 from __future__ import annotations
 
 import json
@@ -1631,8 +1629,8 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     )
     resumed_manifest = json.loads(Path(str(resumed["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
     assert resumed_manifest["selected"][0]["merge_sha"] == non_chronic
-    assert later in cast("tuple[str, ...]", resumed["PENDING_SHAS"])
-    assert cast("int", resumed["SKIPPED_COUNT"]) >= 1
+    assert later in cast("tuple[str, ...]", resumed["PENDING_SHAS"])  # pyright: ignore[reportOperatorIssue]  # cast result typed as tuple, `in` is valid at runtime
+    assert cast("int", resumed["SKIPPED_COUNT"]) >= 1  # pyright: ignore[reportOperatorIssue]  # cast result typed as int, `>=` is valid at runtime
 
 
 def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
