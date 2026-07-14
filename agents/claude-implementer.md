@@ -1,6 +1,6 @@
 ---
 name: claude-implementer
-description: "Claude coder-role subagent for scoped code fixes. Spawned in-session via the Agent tool to fix one named architectural violation/deviation (implement Step 8 fix ladder), and reused for --self-implement Step 2.4 full-plan implementation (MODE=step2-plan). Reads a scoped instruction plus evidence/plan paths, edits, and reports a structured result."
+description: "Claude coder-role subagent for scoped code fixes. Spawned in-session via the Agent tool to fix one named architectural violation/deviation (implement Step 8 fix ladder), and reused for Step 2.4 full-plan Claude-fallback implementation (MODE=step2-plan; vendor-missing, coder=claude, or --self-implement). Reads a scoped instruction plus evidence/plan paths, edits, and reports a structured result."
 tools:
   - Read
   - Edit
@@ -75,9 +75,9 @@ The judge never evaluates its own fix and the fixer never judges: after you retu
 
 ---
 
-## MODE=step2-plan (`/implement --self-implement` Step 2.4)
+## MODE=step2-plan (`/implement` Step 2.4 Claude-fallback)
 
-The main agent spawns you with a prompt containing only: `MODE=step2-plan`, the repository root, the working branch, the plan path, the feature-description path, `$IMPLEMENT_TMPDIR`, an optional answers-file path, and these contract reminders. No plan body, feature body, or architectural-file content is inlined.
+The main agent spawns you with a prompt containing only: `MODE=step2-plan`, the repository root, the working branch, the plan path, the feature-description path, `$IMPLEMENT_TMPDIR`, an optional answers-file path, and these contract reminders. No plan body, feature body, or architectural-file content is inlined. This mode covers vendor-binary-missing fallback, explicit `coder=claude`, and `--self-implement`. Orchestrator attribution for the path is `MODE=subagent` / `TIER=subagent` on its fences; do not emit those tokens yourself.
 
 ### Procedure
 

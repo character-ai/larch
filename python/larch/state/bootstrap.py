@@ -1059,7 +1059,7 @@ def _upsert_plan_summary(st: BootstrapState) -> None:
 def _record_coder_fallback(*, st: BootstrapState, reason: str) -> None:
     if st.coder_fallback != "true" or not st.implement_tmpdir:
         return
-    warning = "**⚠ Cursor and Codex unavailable — implementing with main agent.**\n"
+    warning = "**⚠ Cursor and Codex unavailable — implementing with Claude subagent (larch:claude-implementer).**\n"
     _err(warning.rstrip("\n"))
     diag = Path(st.implement_tmpdir) / "coder-fallback-warning.txt"
     with contextlib.suppress(OSError):

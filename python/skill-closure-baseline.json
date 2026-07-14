@@ -38,11 +38,11 @@
     "skill_md_lines": 690
   },
   {
-    "closure_content_estimated_tokens": 48153,
-    "closure_estimated_tokens": 48276,
-    "closure_lines": 1370,
-    "conditional_content_estimated_tokens": 23231,
-    "conditional_estimated_tokens": 23286,
+    "closure_content_estimated_tokens": 47908,
+    "closure_estimated_tokens": 48030,
+    "closure_lines": 1362,
+    "conditional_content_estimated_tokens": 18199,
+    "conditional_estimated_tokens": 18245,
     "conditional_files": [
       "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
@@ -51,11 +51,10 @@
       "skills/implement/references/step5-review-branches.md",
       "skills/implement/references/force-mode.md",
       "skills/implement/references/phantom-probe.md",
-      "skills/implement/references/execution-issues-tracking.md",
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 674,
+    "conditional_lines": 580,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -68,13 +67,13 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 35395,
-    "skill_md_estimated_tokens": 35478,
-    "skill_md_lines": 881
+    "skill_md_content_estimated_tokens": 35150,
+    "skill_md_estimated_tokens": 35232,
+    "skill_md_lines": 873
   },
   {
-    "closure_content_estimated_tokens": 52622,
-    "closure_estimated_tokens": 52837,
+    "closure_content_estimated_tokens": 52690,
+    "closure_estimated_tokens": 52905,
     "closure_lines": 2884,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,

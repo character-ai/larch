@@ -7149,6 +7149,15 @@ def _dynamic_archetype(name: str) -> dict[str, object]:
     }
 
 
+def test_normalize_coder_scout_producer_subagent(tmp_path: Path) -> None:
+    raw = tmp_path / "scout-coder-manifest.raw.json"
+    raw.write_text('{"archetypes":[]}\n', encoding="utf-8")
+    status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="subagent")
+    assert status == "ok"
+    status_env = (tmp_path / "step2-scout-coder-status.env").read_text(encoding="utf-8")
+    assert "SCOUT_CODER_PRODUCER=subagent" in status_env
+
+
 def test_normalize_coder_scout_intentional_empty_is_ok(tmp_path: Path) -> None:
     raw = tmp_path / "raw.json"
     raw.write_text('{"archetypes":[]}\n', encoding="utf-8")

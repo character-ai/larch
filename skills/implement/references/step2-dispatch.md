@@ -71,7 +71,8 @@ WARN_PLAN_FILES_UNTOUCHED_COUNT=<N>
 ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
                          # ALWAYS emitted (every exit-0 outcome). `allowed` iff STATUS=claude_fallback;
                          # `forbidden` on every external-implementer outcome (complete/needs_qa/bailed).
-                         # Mechanical gate for SKILL.md Step 2.4 main-agent Edit/Write authority.
+                         # Mechanical gate for SKILL.md Step 2.4 Claude-fallback authority
+                         # (orchestrator spawns larch:claude-implementer; main agent does not Edit/Write).
 RECOVERY_FROM=manifest-schema-invalid
 RECOVERY_PRIOR_TOOL=<codex|cursor>
 RECOVERY_PATHS_FILE=<path-to-step2-recovery-paths.nul>

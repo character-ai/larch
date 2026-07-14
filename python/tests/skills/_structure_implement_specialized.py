@@ -907,11 +907,22 @@ def run(repo_root: Path) -> list[str]:
             "Python ship driver wrapper",
             "## Load-Bearing Invariants",
             "Two invariants enforced across multiple steps",
-            "**Architectural knowledge on Claude fallback**: before Step 2.4 edits, read valid present `ARCHITECTURAL_INVARIANTS.md` before valid present `ARCHITECTURAL_GUIDELINES.md`.",
-            "Emit one line before editing: `architectural_acknowledgment: <ids or no parsed entries acknowledged>`.",
+            "Claude-fallback subagent branch",
+            "larch:claude-implementer",
+            "--producer subagent",
         ]:
             if needle not in skill_text:
                 checks.append(f"SKILL.md missing {needle!r}")
+        require(
+            "agents/claude-implementer.md",
+            "Read valid present `ARCHITECTURAL_INVARIANTS.md` before valid present `ARCHITECTURAL_GUIDELINES.md`.",
+            "claude-implementer step2-plan owns architectural knowledge reads",
+        )
+        require(
+            "agents/claude-implementer.md",
+            "architectural_acknowledgment:",
+            "claude-implementer step2-plan emits architectural_acknowledgment",
+        )
         for retired in [
             "Version Bump Freshness", "Degraded-Git Fail-Closed", "### Step 8a",
             'phantom-probe-with-warn.sh" --step 8-pre-bump',
@@ -997,8 +1008,18 @@ def run(repo_root: Path) -> list[str]:
         # Review judgment + fix artifacts live in the subagent definition, not the orchestrator reference.
         forbid(self_review_ref, 'git diff "$(git merge-base HEAD origin/main)"..HEAD', "self-review.md must not inline the review diff capture (subagent owns it)")
         require(skill, "larch:claude-self-reviewer", "SKILL documents --self-review Claude subagent")
-        require(skill, "larch:claude-implementer", "SKILL documents --self-implement Claude subagent")
+        require(skill, "larch:claude-implementer", "SKILL documents Claude-fallback implementer subagent")
         require(skill, "Implementing with Claude subagent (--self-implement", "SKILL self-implement subagent banner")
+        require(skill, "implementing with Claude subagent (larch:claude-implementer)", "SKILL vendor-missing Claude-fallback subagent banner")
+        require(skill, "MODE=subagent", "SKILL Step 2.4 subagent attribution MODE")
+        require(skill, "TIER=subagent", "SKILL Step 2.4 subagent attribution TIER")
+        require(skill, "--producer subagent", "SKILL Claude-fallback scout normalize uses producer subagent")
+        require(skill, "--rater-tool subagent", "SKILL Claude-fallback difficulty uses rater-tool subagent")
+        forbid(skill, "Implementing with main agent (coder=claude)", "SKILL must not use main-agent Claude-fallback banner")
+        forbid(skill, "implementing with main agent.**", "SKILL must not advertise main-agent Claude-fallback edits")
+        forbid(skill, "**Architectural knowledge on Claude fallback**", "SKILL must not instruct main-agent architectural reads on Claude fallback")
+        forbid(skill, "**Main-agent Claude-fallback branch**", "SKILL must not keep a main-agent Claude-fallback edit branch")
+        require("python/larch/implement/dispatch_manifest.py", 'choices=("external", "main-agent", "subagent")', "normalize-coder-scout accepts producer subagent")
 
         # Step 4 skip prose must reference implement commit, not git-commit.sh.
         require(skill, "Skip the `implement commit` invocation.", "Step 4 skip prose references implement commit")
@@ -1037,4 +1058,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 366
+LEGACY_ASSERTION_LABEL_COUNT = 378

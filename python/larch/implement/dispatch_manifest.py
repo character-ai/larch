@@ -196,7 +196,11 @@ def _write_coder_scout_status(*, tmpdir: Path, status: str, manifest: Path, prod
 
 
 def _warn_invalid_coder_scout(producer: str) -> None:
-    producer_label = "main agent" if producer == "main-agent" else "external coder"
+    producer_label = (
+        "main agent" if producer == "main-agent"
+        else "Claude subagent" if producer == "subagent"
+        else "external coder"
+    )
     print(
         f"**⚠ implement Step 2: {producer_label} dynamic-archetype manifest missing or invalid; Step 5 will use static reviewers only.**",
         file=sys.stderr,
@@ -257,7 +261,7 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement normalize-coder-scout")
     parser.add_argument("--tmpdir", default="")
     parser.add_argument("--input", default="")
-    parser.add_argument("--producer", choices=("external", "main-agent"), default="external")
+    parser.add_argument("--producer", choices=("external", "main-agent", "subagent"), default="external")
     args = parser.parse_args(argv)
     raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
