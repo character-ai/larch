@@ -21,6 +21,7 @@ from larch.core import config
 from larch.core import proc
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
+from test_support import ok
 
 CLI_PATH = Path(__file__).resolve().parents[2] / "cli.py"
 
@@ -70,16 +71,12 @@ class StubRunner:
                 stderr=result.stderr if stderr is None else "",
                 duration=result.duration,
             )
-        return CommandResult(
-            argv=argv_tuple,
-            returncode=0,
-            stdout="",
-            stderr="",
-            duration=0.0,
-        )
+        return ok(argv_tuple)
 
 
 def _ok(stdout: str = "", *, rc: int = 0) -> CommandResult:
+    if rc == 0:
+        return ok((), stdout)
     return CommandResult(argv=(), returncode=rc, stdout=stdout, stderr="", duration=0.0)
 
 
@@ -2168,7 +2165,7 @@ class TokenWritingRunner(StubRunner):
             return CommandResult(argv=argv_tuple, returncode=self.append_rc, stdout="", stderr=self.append_stderr, duration=0.0)
         if "record-vendor-sidecar" in argv_tuple:
             return CommandResult(argv=argv_tuple, returncode=self.active_rc, stdout="", stderr=self.active_stderr, duration=0.0)
-        return CommandResult(argv=argv_tuple, returncode=0, stdout="", stderr="", duration=0.0)
+        return ok(argv_tuple)
 
 
 def _token_calls(runner: StubRunner, token_command: str) -> list[tuple[tuple[str, ...], dict[str, object]]]:
