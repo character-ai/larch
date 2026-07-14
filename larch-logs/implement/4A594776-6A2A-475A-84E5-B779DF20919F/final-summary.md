@@ -7,12 +7,20 @@ Exec Issues (1):
   1. Step 5: self-review mode: Claude subagent review complete
 Warnings (0):
 
+## Architectural invariants
+
+The changed skill prose, Gate C note, contract tests, and baseline token counts only clarify that `--skip-approve` still runs Gate C present-note plus persist-design-assessment and do not violate any absolute architectural invariant.
+
+## Architectural guidelines
+
+The diff tightens Gate C author guidance and pins it with contract tests without introducing a meaningful architectural-guideline deviation.
+
 ## /implement run 4A594776-6A2A-475A-84E5-B779DF20919F: shipping
 
 - **Outcome**: shipping
 - Force: true
 - **Duration**: 00:19:18
-- **Cost**: 💰 TOTAL ~$0.83: Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.83  |  Tokens: 411k
+- **Cost**: 💰 TOTAL ~$0.86: Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.86  |  Tokens: 479k
 - **Issue**: #7250: https://github.com/character-ai/larch/issues/7250
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
