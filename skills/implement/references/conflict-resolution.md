@@ -1,85 +1,81 @@
 # Conflict Resolution Procedure
 
-**Consumer**: Rebase Checkpoint Macro early checkpoints (Steps 1.r, 4.r, 7.r, 7a.r) and the active Python Step 8+ driver `run_rebase_rebump` CI-fix rebase conflicts. Early checkpoints enter when the macro's `python/cli.py push rebase --no-push --skip-if-pushed --keep-on-conflict` exits 1 with a rebase still in progress. `run_rebase_rebump` and the pre-PR postbump gate hand off when conflict resolution must move to the main agent. **`--keep-on-conflict` / exit-4 routing**: this file owns Markdown procedure routing only for a `python/cli.py push rebase` exit **1** that leaves a rebase in progress, covering macro `early_rebase` and `ship_pr_pre_push` **exit-4** handoff. When the driver needs a main-agent conflict handoff, it persists `RESUME_PHASE` / `CALLER_KIND` / `CONFLICT_FILES` to `ship-pr-state.sh`; `ship route-exit` emits `NEXT_ACTION=conflict-fix` for orchestrator Phase 1-4. Retired in Phase 1 (#3364): `step8b_rebase`, `step12_phase4`, `step8_apply_bump_same_version`, and the Rebase + Re-bump Sub-procedure.
+**Consumer**: Rebase Checkpoint Macro early checkpoints (Steps 1.r, 4.r, 7.r, 7a.r) and the active Python Step 8+ driver `run_rebase_rebump` CI-fix rebase conflicts. Early checkpoints enter when the macro's `python/cli.py push rebase --no-push --skip-if-pushed --keep-on-conflict` exits 1 with a rebase still in progress. `run_rebase_rebump` and the pre-PR postbump gate hand off when conflict resolution must move to the orchestrator. **`--keep-on-conflict` / exit-4 routing**: this file owns Markdown procedure routing only for a `python/cli.py push rebase` exit **1** that leaves a rebase in progress, covering macro `early_rebase` and `ship_pr_pre_push` **exit-4** handoff. When the driver needs a conflict handoff, it persists `RESUME_PHASE` / `CALLER_KIND` / `CONFLICT_FILES` to `ship-pr-state.sh`; `ship route-exit` emits `NEXT_ACTION=conflict-fix` for orchestrator routing. Retired in Phase 1 (#3364): `step8b_rebase`, `step12_phase4`, `step8_apply_bump_same_version`, and the Rebase + Re-bump Sub-procedure.
 
-**Contract**: Authoritative Phase 1-4 conflict resolution procedure. Preserve the upstream (main) / feature branch commit labels, never "ours"/"theirs". Preserve the `early_rebase` Phase 3 skip, the `ship_pr_pre_push` Phase 3 main-agent self-review for non-trivial resolutions, the per-file context block format in 3c, and no-push Phase 4. Phase 3 for `ship_pr_pre_push` is main-agent self-review only: no external reviewer panel, voting, or external fallback. Phase 4 exit 0 for `early_rebase` returns to the macro. For `ship_pr_pre_push`, re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` through the Step 8 bgjob start/wait pair so `run_rebase_rebump` can finish verification and force-push.
+**Contract**: Authoritative orchestrator contract for rebase conflict-resolution via the `larch:ci-fixer` subagent in `MODE=conflict`. The main agent must never Read conflicted hunks, never classifies conflicts inline, and never edits conflicted files. Phases 1-3 and the Phase 4 local `--continue` loop run inside the subagent (`agents/ci-fixer.md` `MODE=conflict`). Preserve the upstream (main) / feature branch commit labels, never "ours"/"theirs" (enforced in the subagent prompt). Preserve the `early_rebase` Phase 3 skip, the `ship_pr_pre_push` Phase 3 self-review for non-trivial resolutions (now subagent self-review; no external panel), the no-push Phase 4 rule, and the rebase-abort bail invariant. Phase 4 exit 0 for `early_rebase` returns to the macro. For `ship_pr_pre_push`, re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` through the Step 8 bgjob start/wait pair so `run_rebase_rebump` can finish verification and force-push. Attribution for this path is `MODE=subagent` / `TIER=subagent`.
 
-**When to load**: when `python/cli.py push rebase` exits 1 in the Rebase Checkpoint Macro's `--no-push --skip-if-pushed --keep-on-conflict` early_rebase path, or when the Python ship driver emits `NEXT_ACTION=conflict-fix` with `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` in `.ship-route-exit-handoff.env`. Read this file before Phase 1-4. Do NOT load on any other `python/cli.py push rebase` exit code or ship routing token.
+**When to load**: when `python/cli.py push rebase` exits 1 in the Rebase Checkpoint Macro's `--no-push --skip-if-pushed --keep-on-conflict` early_rebase path, or when the Python ship driver emits `NEXT_ACTION=conflict-fix` with `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push` in `.ship-route-exit-handoff.env`. Read this file before spawning the conflict-mode subagent. Do NOT load on any other `python/cli.py push rebase` exit code or ship routing token.
 
 ---
 
-When `python/cli.py push rebase` exits 1, conflicts paused the rebase. Resolve them with user escalation when needed. Non-trivial `ship_pr_pre_push` resolutions get main-agent self-review in Phase 3, not an external panel.
+When `python/cli.py push rebase` exits 1, conflicts paused the rebase. Route resolution to `larch:ci-fixer` (`MODE=conflict`). Operator escalation stays with the main agent; the subagent returns `needs-operator` instead of calling `AskUserQuestion`.
 
 **Caller families**:
 
-- `caller_kind=early_rebase`: run Phase 1, Phase 2, skip Phase 3, then Phase 4 local-only. Bail paths abort the rebase, set `STALL_TRACKING=true`, and skip to Step 18. No panel and no push occur; Step 5 normal review covers correctness later, and no version bump exists yet.
-- `caller_kind=ship_pr_pre_push`: run Phase 1, Phase 2, Phase 3 main-agent self-review when non-trivial resolutions exist, then Phase 4 local-only. The trivial-all gate still skips Phase 3 when every conflict was trivial. No push occurs in Phase 4. **Phase 4 exit 0 re-invokes the active Step 8+ selector**: launch `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` through the Step 8 bgjob start/wait pair. The Python driver continues `run_rebase_rebump` post-rebase verification and CI-fix force-push. **Phase 4 bail** matches `early_rebase`: abort, set `STALL_TRACKING=true`, skip to Step 18.
+- `caller_kind=early_rebase`: spawn the conflict-mode subagent with this caller kind. On `FIXER_RESULT=resolved`, return to the Rebase Checkpoint Macro success path (M3). Bail paths abort the rebase (idempotent verify), set `STALL_TRACKING=true`, and skip to Step 18. No panel and no push occur; Step 5 normal review covers correctness later, and no version bump exists yet.
+- `caller_kind=ship_pr_pre_push`: spawn the conflict-mode subagent with this caller kind. On `FIXER_RESULT=resolved`, local-only rebase succeeded. Do NOT push from this file. **Re-invoke the active Step 8+ selector**: launch `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` through the Step 8 bgjob start/wait pair. The Python driver continues `run_rebase_rebump` post-rebase verification and CI-fix force-push. **Bail** matches `early_rebase`: abort, set `STALL_TRACKING=true`, skip to Step 18.
 
-**Bail invariant**: Any bail from any phase below must call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort` before the caller-family bail destination, because the rebase stays in progress throughout.
+**Bail invariant**: Any hard bail from this procedure must call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort` before the caller-family bail destination (idempotent; safe when already aborted), because the rebase stays in progress until abort or Phase 4 exit 0.
 
-## Phase 1 - Conflict Classification and Resolution
+## Inputs
 
-The caller supplies `CONFLICT_FILES` as a comma-separated list. For `caller_kind=early_rebase`, use the `CONFLICT_FILES=...` line from the macro M1 `python/cli.py push rebase --no-push --skip-if-pushed --keep-on-conflict` stdout. For `caller_kind=ship_pr_pre_push`, use the conflict list from `.ship-route-exit-handoff.env`; `python/ship.py` writes the same list into `$IMPLEMENT_TMPDIR/ship-pr-state.sh` via `--state-file`. If absent, fall back to `git diff --name-only --diff-filter=U`. **Multi-hop rebase / Phase 4 exit 1**: on each Phase 4 `--continue --no-push --keep-on-conflict` exit 1, re-capture `CONFLICT_FILES` from that latest invocation's stdout. Do not reuse an initial M1 list.
+The caller supplies `CONFLICT_FILES` as a comma-separated list. For `caller_kind=early_rebase`, use the `CONFLICT_FILES=...` line from the macro M1 `python/cli.py push rebase --no-push --skip-if-pushed --keep-on-conflict` stdout. For `caller_kind=ship_pr_pre_push`, use the conflict list from `.ship-route-exit-handoff.env`; `python/ship.py` writes the same list into `$IMPLEMENT_TMPDIR/ship-pr-state.sh` via `--state-file`. If absent, pass an empty `CONFLICT_FILES=` token so the subagent falls back to `git diff --name-only --diff-filter=U`. Do not invent conflict metadata beyond the driver- or macro-provided list. Do not Read conflicted file contents in the main agent.
 
-For each file in `CONFLICT_FILES`:
+## Spawn the conflict-mode subagent
 
-1. Run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git conflict-files`. Parse each block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines.
-2. **Unsupported conflict types**: if any required stage is missing, or the file is binary, classify as **uncertain**. Do not auto-resolve.
-3. **Generated files**: if auto-generated and both sides are obvious, classify as **trivial** and auto-resolve. When upstream (main) is correct, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git checkout-ours <file>`; during rebase this wrapper selects upstream (main). Stage with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git stage <file>`. Version files are ordinary conflicts; `/release` owns version bumps.
-4. **Text conflicts with both sides available**: read both sides through wrappers:
-   - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git show-stage --stage 2 --file <file>` → **upstream (main)** version. If it fails, classify as uncertain.
-   - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git show-stage --stage 3 --file <file>` → **feature branch commit** version. If it fails, classify as uncertain.
-   - Also read working-tree conflict markers for context.
-5. **Classify confidence**:
-   - **High-confidence**: non-overlapping regions, or conflict markers show only whitespace, import-order, or formatting differences. Both intents are clear and composable.
-   - **Uncertain**: overlapping semantic changes to the same function/block, correctness needing domain knowledge, failed stage reads, or non-text/binary conflicts.
-6. Auto-resolve trivial and high-confidence files. Stage resolved files with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git stage <file>`.
-7. Always use upstream (main) and feature branch commit labels when describing sides; never use rebase-inverted labels.
+Spawn the Agent tool with `subagent_type` `larch:ci-fixer`. The prompt contains only:
 
-## Phase 2 - User Escalation
+- `MODE=conflict`
+- repository root
+- working branch
+- `caller_kind=early_rebase` or `caller_kind=ship_pr_pre_push`
+- `CONFLICT_FILES=<comma-separated list>` (may be empty)
+- `$IMPLEMENT_TMPDIR` when available
+- the contract reminders from `agents/ci-fixer.md` `MODE=conflict` (label rule, trivial classification, self-review for non-trivial `ship_pr_pre_push`, per-hop re-capture, no push, bail invariant)
 
-If there are no uncertain conflicts: for `caller_kind=early_rebase`, skip to Phase 4; for `caller_kind=ship_pr_pre_push`, continue to Phase 3 so the trivial-all gate can skip or main-agent self-review can run.
+No conflicted hunk content is inlined. Attribution for this path is `MODE=subagent` / `TIER=subagent`.
 
-Call `AskUserQuestion` once with the upstream (main) version, feature branch commit version, and proposed resolution for each uncertain file. Use explicit labels. Incorporate the answer, write the resolved file, and stage with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git stage <file>`. If the user says to abort or the conflict cannot be resolved, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort` and bail with `STALL_TRACKING=true` + Step 18.
+Append each round's `FIXER_SUMMARY` and any per-file resolution table from the subagent message body to `$IMPLEMENT_TMPDIR/conflict-fixer-rounds.md` (create if absent). Do not Read conflicted paths while doing so.
 
-## Phase 3 - Main-Agent Conflict Resolution Self-Review
+## Parse the result
 
-If `caller_kind=early_rebase`, skip Phase 3 entirely and proceed to Phase 4. If all conflicts were trivial, skip Phase 3 and proceed to Phase 4.
+Parse only the final message's three `FIXER_*` lines:
 
-Otherwise, run main-agent self-review for non-trivial `ship_pr_pre_push` conflict resolutions:
-
-**3a. Temp directory**: create `$IMPLEMENT_TMPDIR/conflict-review/`; if it exists from this rebase loop, remove and recreate it.
-
-**3b. Trivial gate**: if every conflict was classified and resolved as trivial, skip the rest of Phase 3 and proceed to Phase 4.
-
-**3c. Review context**: for each non-trivial conflicted file, prepare a per-file conflict context block:
 ```
-### <file-path>
-**Conflict type**: <text overlap / import reorder / etc.>
-**Upstream (main) version** (relevant section):
-<content from `cli.py git show-stage --stage 2 --file <file>`, focused on the conflicting region>
-
-**Feature branch commit version** (relevant section):
-<content from `cli.py git show-stage --stage 3 --file <file>`, focused on the conflicting region>
-
-**Proposed resolution**:
-<the resolved content that was staged>
-
-**Intent**: <one-line description of what each side was trying to do>
+FIXER_RESULT=resolved|needs-operator|bail
+FIXER_COMMIT=
+FIXER_SUMMARY=<one line>
 ```
 
-The per-file conflict context blocks are sufficient for main-agent evaluation; no staged-diff capture is required.
+### `FIXER_RESULT=resolved`
 
-**3d. Main-agent review loop**: review the staged resolutions directly against the context blocks and staged files. If you find a defect, re-resolve the affected file, stage it with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git stage <file>`, and repeat Phase 3 from the context block preparation. If no defect remains, proceed to Phase 4. Allow up to **2 total resolution-review rounds**. After 2 rounds with unresolved defects, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort`, set `STALL_TRACKING=true`, and bail to Step 18.
+Route exactly as today's Phase 4 exit 0:
 
-**3e. Cleanup**: remove `$IMPLEMENT_TMPDIR/conflict-review/` after Phase 3 completes, on success and bail paths, before proceeding.
+- `caller_kind=early_rebase`: return to the Rebase Checkpoint Macro success path. Do NOT push.
+- `caller_kind=ship_pr_pre_push`: re-invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` through the Step 8 bgjob start/wait pair. Do not rerun Step 7a architectural-guidelines Phase A and do not call guideline invalidate or pin helpers here. Pass no resume phase; the Python driver reads scoped state internally. Do NOT invoke the retired Rebase + Re-bump Sub-procedure.
 
-## Phase 4 - Continue Rebase
+### `FIXER_RESULT=needs-operator`
 
-For `caller_kind=early_rebase`, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict`:
+The subagent kept the rebase in progress. Run the existing escalation prompt via `AskUserQuestion` once with the upstream (main) version, feature branch commit version, and proposed resolution for each uncertain file (use the per-file context from the subagent message body; do not Read conflicted hunks yourself). Use explicit labels — never "ours"/"theirs".
 
-- **Exit 0**: local-only rebase succeeded. Return to the Rebase Checkpoint Macro success path (M3). Do NOT push.
-- **Exit 1**: a later commit conflicted. Loop to Phase 1 with a fresh `CONFLICT_FILES` from this invocation's stdout.
-- **Exit 3**: inspect `REBASE_ERROR`. If it indicates an empty or already-applied commit, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-skip`; if skip fails, abort and bail to Step 18. Then run the same `push rebase --continue --no-push --keep-on-conflict` again and handle the same exit codes. Otherwise abort and bail to Step 18.
+- On operator guidance: continue the same subagent via `SendMessage` with the guidance text (and the same `MODE=conflict` / caller kind / paths). When `SendMessage` is unavailable, spawn a fresh `larch:ci-fixer` with `MODE=conflict` and the operator-guidance text (same gating pattern as the CI-fixer round loop / `/review --subagent`).
+- If the operator says to abort, or guidance cannot resolve the conflict: run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort`, set `STALL_TRACKING=true`, and bail to Step 18.
 
-For `caller_kind=ship_pr_pre_push`, run the same `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict` and handle the same non-zero exits. On **Exit 0**, local-only rebase succeeded. Do not rerun Step 7a architectural-guidelines Phase A and do not call guideline invalidate or pin helpers here. The next `step-8-ship.sh` relaunch owns compose-time reassessment and will request a fresh `NEXT_ACTION=guidelines-assessment` when the final diff or `HEAD` changed. Re-invoke the active Step 8+ selector through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` with the Step 8 bgjob start/wait contract before routing through `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md`. Pass no resume phase; the Python driver reads scoped state internally. Do NOT invoke the retired Rebase + Re-bump Sub-procedure; the active selector continues `run_rebase_rebump` after the in-progress rebase is finished.
+### `FIXER_RESULT=bail` or an unparseable final message
+
+Verify the rebase was aborted: run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort` idempotently. Then route today's bail path: set `STALL_TRACKING=true` and skip to Step 18. Give the subagent one fresh respawn only when the message was unparseable and a rebase is still in progress with no evidence of a hard failure class; if that also fails, bail as above.
+
+## Dead-subagent salvage
+
+If the subagent dies or returns no usable trailer while a rebase is still in progress: run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git rebase-abort`, set `STALL_TRACKING=true`, and skip to Step 18. The CI-fixer dirty-tree salvage-commit rule (`CI fix round <N> salvage`) does **not** apply mid-rebase; abort is the deterministic safe action and matches the bail invariant.
+
+## Phase ownership (reference)
+
+| Phase | Owner | Notes |
+|-------|--------|-------|
+| 1 Classification and resolution | `larch:ci-fixer` `MODE=conflict` | Per-file trivial / high-confidence / uncertain |
+| 2 Operator escalation | Main agent on `needs-operator` | `AskUserQuestion` + `SendMessage` / fresh-spawn |
+| 3 Self-review | `larch:ci-fixer` `MODE=conflict` | `ship_pr_pre_push` non-trivial only; skip for `early_rebase` and trivial-all |
+| 4 Continue rebase | `larch:ci-fixer` `MODE=conflict` | `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push rebase --continue --no-push --keep-on-conflict`; per-hop `CONFLICT_FILES` re-capture |
+
+The Phase 1-4 procedure text that the subagent executes lives in `agents/ci-fixer.md` under `MODE=conflict`. Do not re-run those phases in the main agent.
