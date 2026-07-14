@@ -140,6 +140,7 @@ COMMON_DESIGN_ENV_DEFAULTS: dict[str, str] = {
     "ISSUE_TITLE": "",
     "HAS_CLARIFY_LABEL": "false",
     "REPO": "",
+    "REPO_ROOT": "",
     "CLAUDE_BINARY_FOUND": "",
     "CODEX_BINARY_FOUND": "",
     "CURSOR_BINARY_FOUND": "",
