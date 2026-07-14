@@ -253,7 +253,7 @@ def test_design_tmpdir_env_oos_path_resolution(
     assert resolved == accepted
 
 
-def test_disposition_checkpoint_security_sidecar_returns_rc3(tmp_path: Path) -> None:
+def test_disposition_gate_checkpoint_security_sidecar_returns_rc3(tmp_path: Path) -> None:
     _ = (tmp_path / "security-oos-observations.md").write_text("# security observation\n", encoding="utf-8")
 
     rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
@@ -262,7 +262,7 @@ def test_disposition_checkpoint_security_sidecar_returns_rc3(tmp_path: Path) -> 
     assert "security sidecar present" in (tmp_path / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8")
 
 
-def test_disposition_checkpoint_mixed_security_and_public_returns_rc3_after_gate(
+def test_disposition_gate_checkpoint_mixed_security_and_public_returns_rc3_after_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -295,7 +295,7 @@ def test_disposition_checkpoint_mixed_security_and_public_returns_rc3_after_gate
     assert "security sidecar present" in (tmp_path / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8")
 
 
-def test_disposition_checkpoint_mixed_security_and_public_missing_ndjson_fails_closed(
+def test_disposition_gate_checkpoint_mixed_security_and_public_missing_ndjson_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1570,7 +1570,9 @@ def test_materialize_manifest_oos_redactor_failure_fails_closed(
     assert not public.exists() or "raw secret text" not in public.read_text(encoding="utf-8")
 
 
-def test_disposition_checkpoint_uses_origin_main_when_merge_base_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_disposition_gate_checkpoint_uses_origin_main_when_merge_base_absent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     _ = (tmp_path / "ship-pr-state.sh").write_text("FORKED_TARGET=false\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
     _ = (tmp_path / "oos-accepted-main-agent.md").write_text("### OOS_1: Missing\n- **Phase**: implement\n", encoding="utf-8")
     _ = (tmp_path / "oos-accepted-review.md").write_text("", encoding="utf-8")
@@ -1673,3 +1675,955 @@ def test_read_kv_file_missing_symlink_follow_and_crlf_strip(tmp_path: Path) -> N
     link.symlink_to(target)
 
     assert file_oos._read_kv_file(link) == {"A": "one", "B": "two"}  # pyright: ignore[reportPrivateUsage]
+
+
+# ---------------------------------------------------------------------------
+# Disposition gate / checkpoint parity (ported from test-oos-disposition-gate.sh)
+# ---------------------------------------------------------------------------
+
+
+def _disposition_gate_write_oos(path: Path, body: str) -> Path:
+    _ = path.write_text(body, encoding="utf-8")
+    return path
+
+
+def _disposition_gate_inline_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: 0)
+
+
+def _disposition_gate_inline_n(monkeypatch: pytest.MonkeyPatch, count: int) -> None:
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", lambda _commit_range: count)
+
+
+def _disposition_gate_run_main(
+    *,
+    accepted: Path | str,
+    filed: Path | None = None,
+    strict: Path | None = None,
+    ndjson: Path | None = None,
+    commit_range: str = "HEAD",
+    extra: list[str] | None = None,
+) -> int:
+    argv: list[str] = ["--accepted-files", str(accepted), "--commit-range", commit_range]
+    if filed is not None:
+        argv.extend(["--filed-urls-file", str(filed)])
+    if strict is not None:
+        argv.extend(["--filed-urls-strict-file", str(strict)])
+    if ndjson is not None:
+        argv.extend(["--oos-issues-ndjson", str(ndjson)])
+    if extra:
+        argv.extend(extra)
+    return file_oos.disposition_gate_main(argv)
+
+
+@pytest.fixture
+def disposition_gate_checkpoint_tmpdir(tmp_path: Path) -> Path:
+    """Minimal implement tmpdir for disposition-checkpoint parity cases."""
+    _ = (tmp_path / "execution-issues.md").write_text("", encoding="utf-8")
+    for name in (
+        "oos-accepted-main-agent.md",
+        "oos-accepted-review.md",
+        "oos-accepted-design.md",
+        "oos-issues-created.md",
+    ):
+        _ = (tmp_path / name).write_text("", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "FORKED_TARGET=false\nREPO_UNAVAILABLE=false\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "larch-logs" / "implement").mkdir(parents=True)
+    return tmp_path
+
+
+def _disposition_gate_seed_run(
+    tmpdir: Path,
+    *,
+    run_id: str,
+    accepted: str = "",
+    ndjson: str = "",
+    filed: str = "",
+) -> Path:
+    _ = (tmpdir / "session-id").write_text(f"{run_id}\n", encoding="utf-8")
+    run_dir = tmpdir / "larch-logs" / "implement" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    _ = (run_dir / "oos-issues.ndjson").write_text(ndjson, encoding="utf-8")
+    if accepted:
+        _ = (tmpdir / "oos-accepted-main-agent.md").write_text(accepted, encoding="utf-8")
+    if filed:
+        _ = (tmpdir / "oos-issues-created.md").write_text(filed, encoding="utf-8")
+    return run_dir
+
+
+class _DispositionGateGitResult:
+    def __init__(self, returncode: int, stdout: str = "") -> None:
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = ""
+
+
+def _disposition_gate_fake_git(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    merge_base_rc: int = 1,
+    merge_base_out: str = "",
+    origin_main_rc: int = 1,
+    origin_main_out: str = "",
+    parent_rc: int = 1,
+) -> None:
+    def fake_run(argv: list[str], **_kwargs: object) -> _DispositionGateGitResult:
+        if argv[:3] == ["git", "merge-base", "HEAD"]:
+            return _DispositionGateGitResult(merge_base_rc, merge_base_out)
+        if argv[:4] == ["git", "rev-parse", "--verify", "origin/main"]:
+            return _DispositionGateGitResult(origin_main_rc, origin_main_out)
+        if argv[:4] == ["git", "rev-parse", "--verify", "HEAD^"]:
+            return _DispositionGateGitResult(parent_rc, "")
+        return _DispositionGateGitResult(0, "")
+
+    _ = monkeypatch.setattr(file_oos.subprocess, "run", fake_run)
+
+
+def test_disposition_gate_fork_mode_skips_without_full_args() -> None:
+    assert file_oos.disposition_gate_main(["--fork-mode"]) == 0
+
+
+def test_disposition_gate_repo_unavailable_skips_without_full_args() -> None:
+    assert file_oos.disposition_gate_main(["--repo-unavailable"]) == 0
+
+
+def test_disposition_gate_missing_commit_range_is_exit_2(tmp_path: Path) -> None:
+    accepted = tmp_path / "a.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    urls = tmp_path / "urls.md"
+    _ = urls.write_text("", encoding="utf-8")
+    assert file_oos.disposition_gate_main(
+        ["--accepted-files", str(accepted), "--filed-urls-file", str(urls)]
+    ) == 2
+
+
+def test_disposition_gate_accepted_path_not_regular_file_is_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    not_file = tmp_path / "not-a-regular"
+    not_file.mkdir()
+    empty = tmp_path / "empty-urls.md"
+    _ = empty.write_text("", encoding="utf-8")
+    _disposition_gate_inline_zero(monkeypatch)
+    assert (
+        _disposition_gate_run_main(accepted=not_file, filed=empty) == 2
+    )
+
+
+def test_disposition_gate_no_oos_blocks_passes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    empty = tmp_path / "empty-urls.md"
+    _ = empty.write_text("", encoding="utf-8")
+    _disposition_gate_inline_zero(monkeypatch)
+    assert (
+        _disposition_gate_run_main(
+            accepted=f"{tmp_path / 'missing1.md'},{tmp_path / 'missing2.md'}",
+            filed=empty,
+        )
+        == 0
+    )
+
+
+def test_disposition_gate_non_security_with_filed_url_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "acc.md",
+        "### OOS_1: Widget\n- **Description**: bug\n- **Phase**: implement\n",
+    )
+    filed = _disposition_gate_write_oos(
+        tmp_path / "filed.md",
+        "Created https://github.com/example/larch/issues/99\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=filed) == 0
+
+
+def test_disposition_gate_security_hardening_focus_area_passes_without_urls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "sec-hard.md",
+        "### OOS_1: Hardening item\n- **focus-area**: Security-Hardening\n- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 0
+
+
+def test_disposition_gate_unbulleted_security_focus_area_passes_without_urls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "sec-unbulleted.md",
+        "### OOS_1: Hardening item\nfocus-area = security-hardening\n- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    _disposition_gate_inline_zero(monkeypatch)
+    assert file_oos.count_non_security((str(accepted),)) == 0
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 0
+
+
+def test_disposition_gate_legacy_tagged_finding_without_disposition_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "legacy.md",
+        "### FINDING_1: [OUT_OF_SCOPE] Legacy tagged header\n"
+        "- **Description**: no disposition\n- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 1
+
+
+def test_disposition_gate_legacy_trailing_tag_finding_without_disposition_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "legacy-trailing.md",
+        "### FINDING_1: Legacy tagged header [OUT_OF_SCOPE]\n"
+        "- **Description**: no disposition\n- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 1
+
+
+def test_disposition_gate_legacy_tagged_finding_with_filed_url_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "legacy.md",
+        "### FINDING_1: [OUT_OF_SCOPE] Legacy tagged header\n"
+        "- **Description**: no disposition\n- **Phase**: implement\n",
+    )
+    filed = _disposition_gate_write_oos(
+        tmp_path / "filed.md",
+        "Created https://github.com/example/larch/issues/99\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=filed) == 0
+
+
+def test_disposition_gate_invalid_commit_range_yields_exit_2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "bad.md",
+        "### OOS_1: Orphan\n- **Description**: no disposition\n- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+
+    def raise_invalid(_commit_range: str) -> int:
+        raise ValueError("invalid commit-range: HEAD~99..HEAD")
+
+    _ = monkeypatch.setattr(file_oos, "_count_inline_triage", raise_invalid)
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 2
+
+
+def test_disposition_gate_description_prose_focus_area_security_current_classifier(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Shared is_security_block_text matches bare 'focus-area = security' tokens.
+
+    The former Bash harness expected exit 1 (prose not security-routed). The
+    shared classifier currently treats the token as security, so non_security_oos
+    is 0 and the gate passes. Document actual runtime here.
+    """
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "false-sec.md",
+        "### OOS_1: Doc mention\n"
+        "- **Description**: focus-area = security issue (prose only)\n"
+        "- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    _disposition_gate_inline_zero(monkeypatch)
+    assert file_oos.count_non_security((str(accepted),)) == 0
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 0
+
+
+def test_disposition_gate_rejected_oos_markers_in_ndjson_satisfy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "rej-acc.md",
+        "### OOS_1: Out of scope item\n- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    ndjson = _disposition_gate_write_oos(
+        tmp_path / "rej.ndjson",
+        json.dumps(
+            {
+                "phase": "code-review",
+                "step": "9a.1",
+                "category": "OOS",
+                "body": (
+                    "## Rejected / Out-of-Scope Observations (not filed)\n\n"
+                    "### OOS_1: Out of scope item\nPanel rejected.\n"
+                ),
+            }
+        )
+        + "\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty, ndjson=ndjson) == 0
+
+
+def test_disposition_gate_filed_url_only_in_ndjson_passes_via_union(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "ndjson-url-acc.md",
+        "### OOS_1: Tracked elsewhere\n- **Phase**: implement\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    ndjson = _disposition_gate_write_oos(
+        tmp_path / "ndjson-url-only.ndjson",
+        json.dumps(
+            {
+                "phase": "code-review",
+                "step": "9a.1",
+                "category": "OOS",
+                "body": "Filed https://github.com/example/larch/issues/77 from batch.\n",
+            }
+        )
+        + "\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty, ndjson=ndjson) == 0
+
+
+def test_disposition_gate_two_oos_satisfied_by_two_inline_triage_lines(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "two.md",
+        "### OOS_1: A\n- **Description**: x\n### OOS_2: B\n- **Description**: y\n",
+    )
+    empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
+    _disposition_gate_inline_n(monkeypatch, 2)
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 0
+
+
+def test_disposition_gate_two_oos_single_filed_url_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "comb.md",
+        "### OOS_1: One\n- **Description**: a\n### OOS_2: Two\n- **Description**: b\n",
+    )
+    filed = _disposition_gate_write_oos(
+        tmp_path / "one-url.md",
+        "https://github.com/example/larch/issues/1\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=filed) == 0
+
+
+def test_disposition_gate_off_host_issues_url_not_counted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "offhost-acc.md",
+        "### OOS_1: Needs real GitHub filing\n- **Phase**: implement\n",
+    )
+    filed = _disposition_gate_write_oos(
+        tmp_path / "offhost-url.md",
+        "Filed https://evil.example.com/org/repo/issues/999 for tracking.\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=filed) == 1
+
+
+def test_disposition_gate_two_filed_urls_file_union_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "two-union.md",
+        "### OOS_1: A\n- **Description**: x\n- **Phase**: implement\n"
+        "### OOS_2: B\n- **Description**: y\n- **Phase**: implement\n",
+    )
+    url_a = _disposition_gate_write_oos(
+        tmp_path / "url-a.md",
+        "https://github.com/example/larch/issues/1\n",
+    )
+    url_b = _disposition_gate_write_oos(
+        tmp_path / "url-b.md",
+        "https://github.com/example/larch/issues/2\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert (
+        file_oos.disposition_gate_main(
+            [
+                "--accepted-files",
+                str(accepted),
+                "--filed-urls-file",
+                str(url_a),
+                "--filed-urls-file",
+                str(url_b),
+                "--commit-range",
+                "HEAD",
+            ]
+        )
+        == 0
+    )
+
+
+def test_disposition_gate_s1_strict_file_ignores_incidental_issue_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "s1-design.md",
+        "### OOS_1: Ref\n"
+        "- **Description**: see also https://github.com/owner/repo/issues/1234 for context\n"
+        "- **Phase**: implement\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, strict=accepted) == 1
+
+
+def test_disposition_gate_s1_loose_file_counts_incidental_issue_url(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "s1-design.md",
+        "### OOS_1: Ref\n"
+        "- **Description**: see also https://github.com/owner/repo/issues/1234 for context\n"
+        "- **Phase**: implement\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=accepted) == 0
+
+
+def test_disposition_gate_s2_two_filed_url_field_lines_via_strict_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "s2-design.md",
+        "### OOS_1: A\n- **Description**: a\n- **Phase**: implement\n"
+        "- **Filed URL**: https://github.com/example/larch/issues/2700\n\n"
+        "### OOS_2: B\n- **Description**: b\n- **Phase**: implement\n"
+        "- **Filed URL**: https://github.com/example/larch/issues/2701\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, strict=accepted) == 0
+
+
+def test_disposition_gate_s2b_strict_filed_url_with_trailing_note_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "s2b-design.md",
+        "### OOS_1: A\n- **Description**: a\n- **Phase**: implement\n"
+        "- **Filed URL**: https://github.com/example/larch/issues/2800 (see tracking issue)\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, strict=accepted) == 0
+
+
+def test_disposition_gate_s3_strict_plus_loose_union_passes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    accepted = _disposition_gate_write_oos(
+        tmp_path / "s3-acc.md",
+        "### OOS_1: A\n- **Phase**: implement\n### OOS_2: B\n- **Phase**: implement\n",
+    )
+    strict = _disposition_gate_write_oos(
+        tmp_path / "s3-strict.md",
+        "### OOS_9: X\n- **Filed URL**: https://github.com/example/larch/issues/2702\n",
+    )
+    loose = _disposition_gate_write_oos(
+        tmp_path / "s3-loose.md",
+        "https://github.com/example/larch/issues/2703\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    assert _disposition_gate_run_main(accepted=accepted, filed=loose, strict=strict) == 0
+
+
+def test_disposition_gate_checkpoint_proceed_with_empty_accepted_oos(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_proceed_with_filed_url(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-filed",
+        accepted="### OOS_1: Widget\n- **Description**: bug\n- **Phase**: implement\n",
+        filed="Created https://github.com/example/larch/issues/99\n",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_disposition_gap_exit_1_logs_tool_failures(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-gap",
+        accepted="### OOS_1: Orphan\n- **Description**: no disposition\n- **Phase**: implement\n",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 1
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "step-8-oos-checkpoint" in issues
+    assert "step-8-oos-checkpoint-validation" not in issues
+    assert "oos-disposition-gate" in issues
+    assert "Tool Failures" in issues
+    assert (disposition_gate_checkpoint_tmpdir / "oos-disposition-gate.stderr.log").stat().st_size > 0
+
+
+def test_disposition_gate_checkpoint_legacy_finding_disposition_gap_logs_tool_failures(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-gap-legacy",
+        accepted=(
+            "### FINDING_1: [OUT_OF_SCOPE] Legacy checkpoint orphan\n"
+            "- **Description**: no disposition\n- **Phase**: implement\n"
+        ),
+        ndjson="",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 1
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "step-8-oos-checkpoint" in issues
+    assert "Tool Failures" in issues
+    assert (disposition_gate_checkpoint_tmpdir / "oos-disposition-gate.stderr.log").stat().st_size > 0
+
+
+def test_disposition_gate_checkpoint_fork_mode_skip(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (disposition_gate_checkpoint_tmpdir / "ship-pr-state.sh").write_text(
+        "FORKED_TARGET=true\nREPO_UNAVAILABLE=false\n",
+        encoding="utf-8",
+    )
+    _ = (disposition_gate_checkpoint_tmpdir / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Orphan\n- **Description**: no disposition\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _disposition_gate_fake_git(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_repo_unavailable_skip(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (disposition_gate_checkpoint_tmpdir / "ship-pr-state.sh").write_text(
+        "FORKED_TARGET=false\nREPO_UNAVAILABLE=true\n",
+        encoding="utf-8",
+    )
+    _ = (disposition_gate_checkpoint_tmpdir / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Orphan\n- **Description**: no disposition\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _disposition_gate_fake_git(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_ndjson_run_id_keyed_rejection_satisfies(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    body = (
+        "## Rejected / Out-of-Scope Observations (not filed)\n\n"
+        "### OOS_1: Orphan\nRejected.\n"
+    )
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-keyed",
+        accepted="### OOS_1: Orphan\n- **Phase**: implement\n",
+        ndjson=json.dumps(
+            {"phase": "code-review", "step": "9a.1", "category": "OOS", "body": body}
+        )
+        + "\n",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_stale_run_id_rejects_foreign_ndjson(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (disposition_gate_checkpoint_tmpdir / "session-id").write_text("run-missing\n", encoding="utf-8")
+    foreign = disposition_gate_checkpoint_tmpdir / "larch-logs" / "implement" / "foreign-run"
+    foreign.mkdir(parents=True)
+    _ = (foreign / "oos-issues.ndjson").write_text(
+        json.dumps(
+            {
+                "phase": "code-review",
+                "step": "9a.1",
+                "category": "OOS",
+                "body": (
+                    "## Rejected / Out-of-Scope Observations (not filed)\n\n"
+                    "### OOS_1: Foreign\nRejected.\n"
+                ),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _ = (disposition_gate_checkpoint_tmpdir / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Foreign\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 2
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "step-8-oos-checkpoint-validation" in issues
+    assert (disposition_gate_checkpoint_tmpdir / "oos-disposition-checkpoint.stderr.log").stat().st_size > 0
+
+
+def test_disposition_gate_checkpoint_single_ndjson_find_fallback(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    solo = disposition_gate_checkpoint_tmpdir / "larch-logs" / "implement" / "solo-run"
+    solo.mkdir(parents=True)
+    _ = (solo / "oos-issues.ndjson").write_text(
+        json.dumps(
+            {
+                "phase": "code-review",
+                "step": "9a.1",
+                "category": "OOS",
+                "body": (
+                    "## Rejected / Out-of-Scope Observations (not filed)\n\n"
+                    "### OOS_1: Solo\nRejected.\n"
+                ),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _ = (disposition_gate_checkpoint_tmpdir / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Solo\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_ambiguous_ndjson_exit_2(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("run-a", "run-b"):
+        run_dir = disposition_gate_checkpoint_tmpdir / "larch-logs" / "implement" / name
+        run_dir.mkdir(parents=True)
+        _ = (run_dir / "oos-issues.ndjson").write_text("", encoding="utf-8")
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 2
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "step-8-oos-checkpoint-validation" in issues
+    assert "Tool Failures" in issues
+    assert "oos-disposition-checkpoint" in issues
+    assert (disposition_gate_checkpoint_tmpdir / "oos-disposition-checkpoint.stderr.log").stat().st_size > 0
+
+
+def test_disposition_gate_checkpoint_precondition_missing_ndjson_exit_2(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (disposition_gate_checkpoint_tmpdir / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Needs ndjson\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 2
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "step-8-oos-checkpoint-validation" in issues
+    assert (disposition_gate_checkpoint_tmpdir / "oos-disposition-checkpoint.stderr.log").stat().st_size > 0
+
+
+def test_disposition_gate_checkpoint_gate_validation_exit_2_uses_gate_stderr(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (disposition_gate_checkpoint_tmpdir / "session-id").write_text("run-g2val\n", encoding="utf-8")
+    run_dir = disposition_gate_checkpoint_tmpdir / "larch-logs" / "implement" / "run-g2val"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "oos-issues.ndjson").write_text(
+        '{"body":"Created https://github.com/example/larch/issues/404\\n"}\n',
+        encoding="utf-8",
+    )
+    for name in (
+        "oos-accepted-main-agent.md",
+        "oos-accepted-review.md",
+        "oos-accepted-design.md",
+    ):
+        path = disposition_gate_checkpoint_tmpdir / name
+        if path.exists():
+            path.unlink()
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 2
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "step-8-oos-checkpoint-validation" in issues
+    assert (disposition_gate_checkpoint_tmpdir / "oos-disposition-gate.stderr.log").stat().st_size > 0
+
+
+def test_disposition_gate_checkpoint_merge_base_absent_logs_origin_main_range(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-mb",
+        accepted="### OOS_1: Range proof\n- **Phase**: implement\n",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(
+        monkeypatch,
+        merge_base_rc=1,
+        origin_main_rc=0,
+        origin_main_out="abc123\n",
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 1
+    gate_err = (disposition_gate_checkpoint_tmpdir / "oos-disposition-gate.stderr.log").read_text(
+        encoding="utf-8"
+    )
+    assert "commit-range origin/main..HEAD" in gate_err
+
+
+def test_disposition_gate_checkpoint_origin_main_absent_logs_head_range(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-head",
+        accepted="### OOS_1: HEAD range proof\n- **Phase**: implement\n",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(
+        monkeypatch,
+        merge_base_rc=1,
+        origin_main_rc=1,
+        parent_rc=1,
+    )
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 1
+    gate_err = (disposition_gate_checkpoint_tmpdir / "oos-disposition-gate.stderr.log").read_text(
+        encoding="utf-8"
+    )
+    assert "commit-range HEAD" in gate_err
+
+
+def test_disposition_gate_checkpoint_design_tmpdir_strict_url_passes(
+    disposition_gate_checkpoint_tmpdir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design-tmp"
+    design.mkdir()
+    _ = (design / "oos-accepted-design.md").write_text(
+        "### OOS_1: Design strict\n- **Phase**: implement\n"
+        "- **Filed URL**: https://github.com/example/larch/issues/3100\n",
+        encoding="utf-8",
+    )
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-design",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        [
+            "--implement-tmpdir",
+            str(disposition_gate_checkpoint_tmpdir),
+            "--design-tmpdir",
+            str(design),
+        ]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_design_tmpdir_unresolved_oos_fails(
+    disposition_gate_checkpoint_tmpdir: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design-tmp-fail"
+    design.mkdir()
+    _ = (design / "oos-accepted-design.md").write_text(
+        "### OOS_1: Design unresolved\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-design-fail",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        [
+            "--implement-tmpdir",
+            str(disposition_gate_checkpoint_tmpdir),
+            "--design-tmpdir",
+            str(design),
+        ]
+    )
+    assert rc == 1
+
+
+def test_disposition_gate_checkpoint_design_export_fallback_passes(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    export = disposition_gate_checkpoint_tmpdir / "design-export"
+    export.mkdir()
+    _ = (export / "oos-accepted-design.md").write_text(
+        "### OOS_1: Export strict\n- **Phase**: implement\n"
+        "- **Filed URL**: https://github.com/example/larch/issues/3200\n",
+        encoding="utf-8",
+    )
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-export",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 0
+
+
+def test_disposition_gate_checkpoint_design_export_unresolved_oos_fails(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    export = disposition_gate_checkpoint_tmpdir / "design-export"
+    export.mkdir()
+    _ = (export / "oos-accepted-design.md").write_text(
+        "### OOS_1: Export unresolved\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    _ = _disposition_gate_seed_run(
+        disposition_gate_checkpoint_tmpdir,
+        run_id="run-export-fail",
+        ndjson="",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 1
+
+
+def test_disposition_gate_checkpoint_missing_design_tmpdir_value_exit_2(
+    disposition_gate_checkpoint_tmpdir: Path,
+) -> None:
+    rc = file_oos.disposition_checkpoint_main(
+        ["--design-tmpdir", "--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 2
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "step-8-oos-checkpoint-validation" in issues
+    assert "oos-disposition-checkpoint" in issues
+    assert "Tool Failures" in issues
+
+
+def test_disposition_gate_checkpoint_security_sidecar_logs_private_disposition(
+    disposition_gate_checkpoint_tmpdir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (disposition_gate_checkpoint_tmpdir / "security-oos-observations.md").write_text(
+        "### Security OOS: Private audit\n- **focus-area**: security-hardening\n",
+        encoding="utf-8",
+    )
+    _disposition_gate_fake_git(monkeypatch, merge_base_rc=0, merge_base_out="abc\n")
+    _disposition_gate_inline_zero(monkeypatch)
+    rc = file_oos.disposition_checkpoint_main(
+        ["--implement-tmpdir", str(disposition_gate_checkpoint_tmpdir)]
+    )
+    assert rc == 3
+    stderr = (disposition_gate_checkpoint_tmpdir / "oos-disposition-checkpoint.stderr.log").read_text(
+        encoding="utf-8"
+    )
+    issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "security sidecar present; non-security OOS disposition cleared" in stderr
+    assert "step-8-oos-checkpoint-security-sidecar" in issues
+
+
+def test_disposition_gate_delegation_smoke_script_succeeds() -> None:
+    smoke = REPO_ROOT / "skills" / "implement" / "scripts" / "test-oos-disposition-gate.sh"
+    result = subprocess.run(
+        ["bash", str(smoke)],
+        cwd=str(REPO_ROOT),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"stdout={result.stdout!r} stderr={result.stderr!r}"
