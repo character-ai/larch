@@ -19,6 +19,10 @@ Warnings (13):
   12. `extra: dict[str, Any]` in `log_init` matches the `Manifest.synthesize_v2(extra: dict[str, Any] | None)` boundary, which falls in G-Py-9's boundary-forces-`Any` carve-out, and it is a relocated pre...
   13. The new `SetupEmission` dataclass models its variant as `kind: str` carrying `"kv"`/`"line"` rather than a `Literal`/enum. As a module-private type with a single producer (`setup`) and single consu...
 
+## Architectural invariants
+
+The changed code is a behavior-preserving refactor that converts tuple-returning helpers into frozen dataclasses (retaining two-value unpacking) and lifts CLI-wrapper logic into pure functions, keeping every validation, path-confinement, symlink, newline, carriage-return, redaction, execution-issue-append, and emission-ordering behavior byte-for-byte, so no absolute workflow, run-log, panel, agent-contract, or ship-lifecycle invariant is disturbed.
+
 ## Architectural guidelines
 
 The changed code refactors tuple returns into frozen dataclasses with typed callables, and the previously flagged type-suppression reasons are now present on every new test mutation ignore, so the guideline surface for this diff is clean.
