@@ -596,7 +596,7 @@ def test_skip_approve_guideline_prompt_contracts_bind_repo_root() -> None:
     assert "**Absent, invalid, or present-but-empty**: when `read_invariants().status` is not `present` or parsed `content.strip()` is empty after parsing `I-*` entries." in approval
     assert "**Clean**: only when invariants are `present` with parsed non-empty content and no violation assessment was required (no `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` path and no remediated-violations sidecar)." in approval
     assert "**Remediated-violations**: when violations were identified and the remediation loop produced a clean plan." in approval
-    assert "If invariant present-note emits `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview." in approval
+    assert "If invariant present-note emits `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`, consume the subagent's invariants verdict for the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview." in approval
     assert approval.index("INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true") < approval.index("**Clean**: only when invariants are `present`")
     assert "reason=persist-design-assessment-failed" in approval
     assert approval.index("reason=persist-design-assessment-failed") < approval.index("Do not fire `AskUserQuestion`, approve, auto-approve, or transition to Step 5.")
