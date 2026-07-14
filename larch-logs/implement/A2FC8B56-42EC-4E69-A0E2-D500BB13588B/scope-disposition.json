@@ -1,9 +1,9 @@
 {
-  "coverage_fingerprint": "35165a2668cf0e2c16ee6ed50138fe5c2d1fbd7f2f42b2b1f638a1dec25ad4f4",
+  "coverage_fingerprint": "7ee7b3b87f4222dbe6404f495ea72fa52482e25c04e162bb9af170ea06c5e896",
   "disposition": "proceed-partial",
-  "followup_issue_number": "7340",
-  "followup_issue_url": "https://github.com/character-ai/larch/issues/7340",
+  "followup_issue_number": "7347",
+  "followup_issue_url": "https://github.com/character-ai/larch/issues/7347",
   "todos_left_count": 2,
   "total": 62,
-  "untouched_count": 32
+  "untouched_count": 31
 }
