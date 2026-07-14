@@ -1,4 +1,5 @@
 import hashlib
+import json
 import subprocess
 from pathlib import Path
 
@@ -70,6 +71,81 @@ def test_flush_execution_issues_writes_sentinel_and_clears_log(tmp_path: Path) -
     assert (tmp_path / ".execution-issues-flushed.sha").is_file()
 
 
+def test_flush_execution_issues_skips_missing_log_and_writes_checkpoint(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = execution_issues.flush_execution_issues_main(
+        [
+            "--log-root",
+            str((tmp_path / "larch-logs").resolve()),
+            "--run-id",
+            "run-empty",
+            "--issue-log",
+            str(tmp_path / "missing.md"),
+        ]
+    )
+
+    assert rc == 0
+    assert capsys.readouterr().out == "FLUSH_STATUS=skip\nRECORDS=0\n"
+    assert (tmp_path / ".execution-issues-step7a-reached").is_file()
+
+
+def test_flush_execution_issues_writes_single_record_with_flush_metadata(
+    tmp_path: Path,
+) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text(
+        "### Tool Failures\n\n- tool failed once\n", encoding="utf-8"
+    )
+    log_root = (tmp_path / "larch-logs").resolve()
+
+    rc, status, records, append_log = execution_issues.flush_execution_issues(
+        log_root=log_root,
+        run_id="run-single",
+        issue_log=issue_log,
+    )
+
+    record = json.loads(
+        (log_root / "implement" / "run-single" / "execution-issues.ndjson").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (rc, status, records) == (0, "ok", 1)
+    assert Path(append_log).is_file()
+    assert record == {
+        "phase": "implement",
+        "step": "7a",
+        "category": "Tool Failures",
+        "source": "execution-issues.md pre-bump",
+        "source_sha256": hashlib.sha256(b"- tool failed once\n").hexdigest(),
+        "body": "\n- tool failed once\n",
+    }
+    assert issue_log.read_text(encoding="utf-8") == ""
+
+
+def test_flush_execution_issues_writes_one_record_per_section(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text(
+        "### Tool Failures\n\n- first failure\n\n### Warnings\n\n- warning entry\n",
+        encoding="utf-8",
+    )
+    log_root = (tmp_path / "larch-logs").resolve()
+
+    rc, status, records, _append_log = execution_issues.flush_execution_issues(
+        log_root=log_root,
+        run_id="run-multi",
+        issue_log=issue_log,
+    )
+
+    batch = log_root / "implement" / "run-multi" / "execution-issues.ndjson"
+    written = [
+        json.loads(line) for line in batch.read_text(encoding="utf-8").splitlines()
+    ]
+    assert (rc, status, records) == (0, "ok", 2)
+    assert [record["category"] for record in written] == ["Tool Failures", "Warnings"]
+
+
 def test_flush_execution_issues_idempotent_when_sentinel_matches(tmp_path: Path) -> None:
     issue_log = tmp_path / "execution-issues.md"
     _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")
@@ -83,6 +159,8 @@ def test_flush_execution_issues_idempotent_when_sentinel_matches(tmp_path: Path)
     assert second[0] == 0
     assert second[1] == "already-flushed"
     assert issue_log.read_text(encoding="utf-8") == ""
+    batch = log_root / "implement" / run_id / "execution-issues.ndjson"
+    assert len(batch.read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_flush_execution_issues_already_flushed_when_batch_contains_normalized_sections(tmp_path: Path) -> None:
@@ -108,6 +186,39 @@ def test_flush_execution_issues_already_flushed_when_batch_contains_normalized_s
     assert records_count == 0
     assert (tmp_path / ".execution-issues-flushed.sha").is_file()
     assert issue_log.read_text(encoding="utf-8") == ""
+
+
+def test_flush_execution_issues_append_failure_preserves_source_log_and_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text(
+        "### Tool Failures\n\n- original failure\n", encoding="utf-8"
+    )
+
+    def fake_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            ["run-log"], 9, "out\n", "simulated larch-log failure\n"
+        )
+
+    monkeypatch.setattr(execution_issues.subprocess, "run", fake_run)
+
+    rc, status, records, append_log = execution_issues.flush_execution_issues(
+        log_root=(tmp_path / "larch-logs").resolve(),
+        run_id="run-fail",
+        issue_log=issue_log,
+    )
+
+    text = issue_log.read_text(encoding="utf-8")
+    assert (rc, status, records) == (1, "failed", 0)
+    assert "- original failure" in text
+    assert "flush-execution-issues" in text
+    assert "run-log exited 9" in text
+    assert (
+        Path(append_log).read_text(encoding="utf-8")
+        == "out\nsimulated larch-log failure\n"
+    )
 
 
 def test_refresh_execution_issues_skips_when_issue_not_set(
@@ -209,6 +320,7 @@ def test_flush_execution_issues_safety_net_append_failure_preserves_source_log(
     assert "- one" in text
     assert "flush-execution-issues-safety-net" in text
     assert "run-log exited 9" in text
+    assert Path(_append_log).read_text(encoding="utf-8") == "out\nerr\n"
 
 
 def test_flush_execution_issues_safety_net_main_emits_kv_contract(
