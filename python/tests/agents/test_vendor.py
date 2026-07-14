@@ -284,7 +284,7 @@ class TestCodexArgv:
         req = self._request()
         argv = build_codex_argv("read-only", req)
         assert 'model_provider="openai-larch-env"' not in argv
-        assert _codex_auth_args() == []
+        assert not _codex_auth_args()
 
     def test_descriptor_dispatch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
