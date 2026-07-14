@@ -10,14 +10,45 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from larch.bgjob import model as bgjob_model
 from larch.core import config
 from larch.core import logging_util
 from larch.core import redact
 from larch.core.run_context import RunContext
 from larch.errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
+from larch import io as larch_io
 from larch.outcomes import Outcome, StepResult
 from larch.state import finalize
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _terminal_overlay_fields, _breadcrumb
+
+# Explicit wire-key map aligned with dispatch_ship handoff vocabulary (not blanket uppercasing).
+_RESULT_ENV_WIRE_KEYS: tuple[tuple[str, str], ...] = (
+    ("outcome", "outcome"),
+    ("needs_user_reason", "NEEDS_USER_REASON"),
+    ("failed_run_id", "FAILED_RUN_ID"),
+    ("pr_number", "PR_NUMBER"),
+    ("pr_url", "PR_URL"),
+    ("merge_result", "MERGE_RESULT"),
+    ("detail", "DETAIL"),
+    ("ledger_ready", "ledger_ready"),
+    ("ledger_site", "ledger_site"),
+    ("ledger_trigger", "ledger_trigger"),
+    ("ledger_step", "ledger_step"),
+    ("ledger_phase", "ledger_phase"),
+    ("ledger_dispatcher", "ledger_dispatcher"),
+    ("ledger_exit_code", "ledger_exit_code"),
+    ("ledger_failure_detail_log", "ledger_failure_detail_log"),
+    ("main_health_head_sha", "MAIN_HEALTH_HEAD_SHA"),
+    ("main_health_repair_committed", "MAIN_HEALTH_REPAIR_COMMITTED"),
+    ("main_health_repair_failed_run_id", "MAIN_HEALTH_REPAIR_FAILED_RUN_ID"),
+    ("main_health_repair_base_sha", "MAIN_HEALTH_REPAIR_BASE_SHA"),
+    ("main_health_repair_head", "MAIN_HEALTH_REPAIR_HEAD"),
+    ("emergency_repair_branch", "EMERGENCY_REPAIR_BRANCH"),
+    ("original_branch_forbidden", "ORIGINAL_BRANCH_FORBIDDEN"),
+    ("main_repair_run_id", "MAIN_REPAIR_RUN_ID"),
+    ("main_repair_head", "MAIN_REPAIR_HEAD"),
+    ("emergency_repair_pr_number", "EMERGENCY_REPAIR_PR_NUMBER"),
+)
 
 
 @dataclass(frozen=True)
@@ -242,6 +273,74 @@ def _close_contract_stream(stream: TextIO) -> None:
             stream.close()
 
 
+def validate_ship_result_env_path(*, tmpdir: str, path: str | Path) -> Path:
+    """Prevalidate a caller-supplied result-env sink under the owned session tmpdir."""
+    if not _tmpdir_under_allowed_root(tmpdir):
+        msg = "result-env requires tmpdir under an allowed root"
+        raise ValueError(msg)
+    candidate = Path(path)
+    if ".." in candidate.parts:
+        msg = f"result-env path must not contain '..': {candidate}"
+        raise ValueError(msg)
+    return bgjob_model.validate_merge_result_env(path=candidate, tmpdir=Path(tmpdir))
+
+
+def _result_env_scalar(value: object) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    if isinstance(value, int) and not isinstance(value, bool):
+        return str(value)
+    text = value if isinstance(value, str) else str(value)
+    return text.replace("\r", " ").replace("\n", " ")
+
+
+def _result_env_rows(
+    *,
+    payload: dict[str, Any],
+    ci_errors_file: str,
+    ci_errors_distill_class: str,
+    failed_jobs_count: int,
+) -> tuple[tuple[str, str], ...]:
+    rows: list[tuple[str, str]] = [
+        (wire_key, _result_env_scalar(payload.get(source_key)))
+        for source_key, wire_key in _RESULT_ENV_WIRE_KEYS
+    ]
+    # CI pairing mirrors dispatch_ship._write_ship_route_handoff: always emit
+    # CI_ERRORS_FILE and FAILED_JOBS_COUNT; CI_ERRORS_DISTILL_CLASS only when
+    # the digest path is empty. Built from raw emit_result args, not the sparse
+    # JSON-bound payload.
+    file_value = _result_env_scalar(ci_errors_file)
+    rows.append(("CI_ERRORS_FILE", file_value))
+    count = max(failed_jobs_count, 0)
+    rows.append(("FAILED_JOBS_COUNT", str(count)))
+    if not file_value:
+        rows.append(("CI_ERRORS_DISTILL_CLASS", _result_env_scalar(ci_errors_distill_class)))
+    return tuple(rows)
+
+
+def _write_result_env(
+    *,
+    ctx: RunContext,
+    path: Path,
+    payload: dict[str, Any],
+    ci_errors_file: str,
+    ci_errors_distill_class: str,
+    failed_jobs_count: int,
+) -> None:
+    validated = validate_ship_result_env_path(tmpdir=ctx.tmpdir, path=path)
+    text = larch_io.format_kvs(
+        _result_env_rows(
+            payload=payload,
+            ci_errors_file=ci_errors_file,
+            ci_errors_distill_class=ci_errors_distill_class,
+            failed_jobs_count=failed_jobs_count,
+        ),
+    )
+    larch_io.trusted_atomic_write(validated, text, root=ctx.tmpdir, mode=0o600)
+
+
 def emit_result(
     *,
     ctx: RunContext,
@@ -249,6 +348,7 @@ def emit_result(
     ci_errors_file: str = "",
     ci_errors_distill_class: str = "",
     failed_jobs_count: int = 0,
+    result_env_path: Path | None = None,
 ) -> None:
     payload = _redacted_result_payload(result)
     # CI-failure digest path injected raw (not redacted): route-exit reads these
@@ -263,6 +363,17 @@ def emit_result(
     # FAILED_JOBS_COUNT=0 on the ci-fix route.
     if failed_jobs_count:
         payload["failed_jobs_count"] = failed_jobs_count
+    if result_env_path is not None:
+        # Required sink: write before JSON; validation/write failures must not
+        # publish a successful JSON contract.
+        _write_result_env(
+            ctx=ctx,
+            path=result_env_path,
+            payload=payload,
+            ci_errors_file=ci_errors_file,
+            ci_errors_distill_class=ci_errors_distill_class,
+            failed_jobs_count=failed_jobs_count,
+        )
     stream = logging_util.contract_stream()
     try:
         print(json.dumps(payload, sort_keys=True), file=stream)
