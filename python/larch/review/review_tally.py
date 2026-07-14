@@ -13,12 +13,14 @@ import sys
 import tempfile
 from contextlib import suppress
 from collections import defaultdict
+from collections.abc import Iterable
 from pathlib import Path
 from typing import NoReturn, cast
 
 from larch import io as larch_io
 from larch.review import findings_ledger
 from larch.core import logging_util
+from larch.review import tally_engine
 from larch.review import voting
 from larch.review.review_types import JudgeSeverity, ReviewVote, is_canonical_heading, is_security_block_text, parse_blocks
 
@@ -415,23 +417,12 @@ def _record_code_review_score_rows(
     *,
     score_state: tuple[list[tuple[str, str, str, int]], defaultdict[str, float], float],
     reviewer: str,
-    classification: tuple[str, str, bool],
-    cells: list[tuple[str, str, str, str, str, str | None]],
+    result: tally_engine.ItemAdjudicationResult,
 ) -> int:
     score_rows, bonus_by_reviewer, active_bonus = score_state
-    kind, result, neutral_rescued = classification
-    score_kind = "oos" if kind == "oos" or neutral_rescued else "finding"
-    accepted_weight = (
-        voting.accepted_finding_points_from_severities(
-            [cell[2] for cell in cells],
-            votes=[cell[0] for cell in cells],
-        )
-        if score_kind == "finding" and result == "accepted"
-        else 0
-    )
     reviewer_slots = [part.strip() for part in reviewer.split(",") if part.strip()]
-    score_rows.extend((reviewer_slot, score_kind, result, accepted_weight) for reviewer_slot in reviewer_slots)
-    if score_kind == "finding" and result == "accepted" and len(reviewer_slots) == 1 and active_bonus > 0:
+    score_rows.extend((reviewer_slot, result.score_kind, result.score_result, result.accepted_weight) for reviewer_slot in reviewer_slots)
+    if result.unique_finder_eligible and len(reviewer_slots) == 1 and active_bonus > 0:
         bonus_by_reviewer[reviewer_slots[0]] += active_bonus
         return 1
     return 0
@@ -652,13 +643,6 @@ def _record_public_oos_artifact(*, oos_file: Path, pool_file: Path, security_sid
         _append_oos_pool_candidate(pool_file=pool_file, text=artifact)
 
 
-def _finding_oos_reroute_marker(*, block_text: str, neutral_rescued: bool) -> str:
-    _ = block_text
-    if neutral_rescued:
-        return "neutral-rescued"
-    return ""
-
-
 def _record_classification_and_ledger(*,
     class_tsv: Path,
     classification_row: str,
@@ -792,22 +776,62 @@ def tally_code_votes(argv: list[str]) -> int:
     effective = max(0, eligible - parse_failed)
     accepted = rejected = exonerated = neutral = oos_accepted = oos_rejected = drift = 0
     if effective == 0:
-        for block in blocks:
-            try:
-                reviewer = _proposer_for_item(
-                    item_id=block.stem,
-                    block=block,
-                    map_file=proposer_map_file,
-                    sidecar_required=proposer_sidecar_required
+        def zero_voter_contexts() -> Iterable[tally_engine.ItemContext]:
+            for block in blocks:
+                item_id = block.stem
+                try:
+                    reviewer = _proposer_for_item(
+                        item_id=item_id,
+                        block=block,
+                        map_file=proposer_map_file,
+                        sidecar_required=proposer_sidecar_required,
+                    )
+                except voting.TallyError as exc:
+                    raise RuntimeError(str(exc)) from exc
+                text = _read(block)
+                is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
+                if not is_oos and _scope_drift(block=block, scope_files=args.scope_files, plan_file=args.plan_file):
+                    is_oos = True
+                cells = tuple(("", "", "", "", "", args.voter_tools[idx] if three_slot else None) for idx in range(3)) if three_slot else ()
+                yield tally_engine.ItemContext(
+                    item_id=item_id,
+                    block_path=block,
+                    block_text=text,
+                    artifact_text=text,
+                    reviewer=reviewer,
+                    cells=cells,
+                    yes=0,
+                    no=0,
+                    judge_error=0,
+                    is_oos=is_oos,
+                    eligible_voters=0,
+                    voter_votes=(),
+                    voter_severities=(),
                 )
-            except voting.TallyError as exc:
-                return _error(f"tally-code-votes: {exc}")
-            empty_cells = [("", "", "", "", "", args.voter_tools[idx] if three_slot else None) for idx in range(3)] if three_slot else []
-            text = _read(block)
-            is_oos = block.stem.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
-            if not is_oos and _scope_drift(block=block, scope_files=args.scope_files, plan_file=args.plan_file):
-                is_oos = True
-            _append(path=class_tsv, text=_classification_row(item_id=block.stem, reviewer=reviewer, result="rejected", cells=empty_cells, three_slot=three_slot, is_oos=is_oos) + "\n")
+
+        def serialize_zero_voter(result: tally_engine.ItemAdjudicationResult) -> None:
+            context = result.context
+            _append(
+                path=class_tsv,
+                text=_classification_row(
+                    item_id=context.item_id,
+                    reviewer=context.reviewer,
+                    result=result.voting_result,
+                    cells=list(context.cells),
+                    three_slot=three_slot,
+                    is_oos=context.is_oos,
+                ) + "\n",
+            )
+
+        try:
+            _ = tally_engine.run_items(
+                zero_voter_contexts(),
+                serialize=serialize_zero_voter,
+                security_hook=lambda _context: False,
+                publish=lambda _result: None,
+            )
+        except RuntimeError as exc:
+            return _error(f"tally-code-votes: {exc}")
         warning = "**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
         zero_lines = ["# Code Review Voting Tally\n\n", f"{warning}\n\n"]
         if not_substantive_count > 0:
@@ -866,24 +890,27 @@ def tally_code_votes(argv: list[str]) -> int:
     quorum = effective // 2 + 1
     under_quorum_items: list[str] = []
     oos_seq = _seed_oos_seq(args.session_env_path)
-    for block in blocks:
-        item_id = block.stem
-        alias_id = voting.alias_ballot_id(item_id, ballot_id_set)
-        yes = no = judge_error = 0
-        cells: list[tuple[str, str, str, str, str, str | None]] = []
-        if three_slot:
-            for idx in range(3):
-                tool = args.voter_tools[idx]
-                if not effective_slot[idx]:
+    def item_contexts() -> Iterable[tally_engine.ItemContext]:
+        nonlocal drift
+        for block in blocks:
+            item_id = block.stem
+            alias_id = voting.alias_ballot_id(item_id, ballot_id_set)
+            yes = no = judge_error = 0
+            cells: list[tally_engine.VoteCell] = []
+            voter_sources = range(3) if three_slot else range(len(effective_files))
+            for idx in voter_sources:
+                tool = args.voter_tools[idx] if three_slot else None
+                if three_slot and not effective_slot[idx]:
                     cells.append(("", "", "", "", "", tool))
                     continue
-                vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
-                    voter_file=args.voter_files[idx],
-                    ballot_id=item_id,
-                    alias_id=alias_id,
-                )
-                if not vote:
-                    vote = "JUDGE_ERROR"
+                voter_file = args.voter_files[idx] if three_slot else effective_files[idx]
+                try:
+                    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+                        voter_file=voter_file, ballot_id=item_id, alias_id=alias_id
+                    )
+                except FileNotFoundError:
+                    vote, correctness, severity, quality, uncertain = "JUDGE_ERROR", "", "", "", "true"
+                vote = vote or "JUDGE_ERROR"
                 cells.append((vote, correctness, severity, quality, uncertain, tool))
                 if vote == "YES":
                     yes += 1
@@ -891,147 +918,126 @@ def tally_code_votes(argv: list[str]) -> int:
                     no += 1
                 else:
                     judge_error += 1
-        else:
-            for voter_file in effective_files:
-                try:
-                    vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
-                        voter_file=voter_file,
-                        ballot_id=item_id,
-                        alias_id=alias_id,
-                    )
-                except FileNotFoundError:
-                    vote, correctness, severity, quality, uncertain = "JUDGE_ERROR", "", "", "", "true"
-                if not vote:
-                    vote = "JUDGE_ERROR"
-                cells.append((vote, correctness, severity, quality, uncertain, None))
-                if vote == "YES":
-                    yes += 1
-                elif vote == "NO":
-                    no += 1
-                else:
-                    judge_error += 1
-        result = voting.classify_result(yes=yes, no=no, exonerate=0, eligible=effective)
-        text = _read(block)
-        artifact_text = _artifact_text_for_item(item_id=item_id, block=block, map_file=proposer_map_file)
-        is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
-        if not is_oos and _scope_drift(block=block, scope_files=args.scope_files, plan_file=args.plan_file):
-            is_oos = True
-            drift += 1
-        if is_oos:
-            result = voting.classify_oos_result(yes=yes, no=no, exonerate=0, eligible=effective)
-        if effective >= _MIN_DEGRADABLE_PANEL and (yes + no) < quorum:
-            under_quorum_items.append(item_id)
-        voter_votes, voter_severities = _voter_votes_and_severities(
-            cells,
-            voter_tools=args.voter_tools,
-            three_slot=three_slot,
-        )
-        vote_values = [vote for _label, vote in voter_votes]
-        fileable_oos = voting.oos_fileable_from_votes(
-            result,
-            yes_votes=vote_values,
-            severities=voter_severities,
-        )
-        neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
-            result,
-            yes_votes=vote_values,
-            severities=voter_severities,
-        )
+            text = _read(block)
+            is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
+            if not is_oos and _scope_drift(block=block, scope_files=args.scope_files, plan_file=args.plan_file):
+                is_oos = True
+                drift += 1
+            if effective >= _MIN_DEGRADABLE_PANEL and (yes + no) < quorum:
+                under_quorum_items.append(item_id)
+            voter_votes, voter_severities = _voter_votes_and_severities(cells, voter_tools=args.voter_tools, three_slot=three_slot)
+            try:
+                reviewer = _proposer_for_item(
+                    item_id=item_id, block=block, map_file=proposer_map_file, sidecar_required=proposer_sidecar_required
+                )
+            except voting.TallyError as exc:
+                raise RuntimeError(str(exc)) from exc
+            yield tally_engine.ItemContext(
+                item_id=item_id,
+                block_path=block,
+                block_text=text,
+                artifact_text=_artifact_text_for_item(item_id=item_id, block=block, map_file=proposer_map_file),
+                reviewer=reviewer,
+                cells=tuple(cells),
+                yes=yes,
+                no=no,
+                judge_error=judge_error,
+                is_oos=is_oos,
+                eligible_voters=effective,
+                voter_votes=tuple(voter_votes),
+                voter_severities=tuple(voter_severities),
+            )
+
+    def serialize(result: tally_engine.ItemAdjudicationResult) -> None:
+        nonlocal sole_finder_reward_count
+        context = result.context
         agreement_row = voting.voter_agreement_row_from_panel(
-            voting_result=result,
-            voter_votes=voter_votes,
+            voting_result=result.voting_result,
+            voter_votes=list(context.voter_votes),
             panel="code-review",
-            voter_severities=voter_severities,
+            voter_severities=list(context.voter_severities),
         )
         if agreement_row is not None:
             agreement_rows.append(agreement_row)
-        try:
-            reviewer = _proposer_for_item(
-                item_id=item_id,
-                block=block,
-                map_file=proposer_map_file,
-                sidecar_required=proposer_sidecar_required
-            )
-        except voting.TallyError as exc:
-            return _error(f"tally-code-votes: {exc}")
-        tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
+        tally_lines.append(f"| {context.item_id} | {context.yes} | {context.no} | {context.judge_error} | {result.voting_result} |\n")
         _record_classification_and_ledger(
             class_tsv=class_tsv,
             classification_row=_classification_row(
-                item_id=item_id,
-                reviewer=reviewer,
-                result=result,
-                cells=cells,
+                item_id=context.item_id,
+                reviewer=context.reviewer,
+                result=result.voting_result,
+                cells=list(context.cells),
                 three_slot=three_slot,
-                is_oos=is_oos or neutral_rescued,
+                is_oos=result.classification_scope == "oos",
             ),
             ledger_entries=ledger_entries,
             ledger_entry=_ledger_entry(
-                item_id=item_id,
-                block_text=text,
-                outcome="oos" if is_oos or neutral_rescued else result,
-                vote_tally=f"YES={yes}/{effective}"
-            )
+                item_id=context.item_id,
+                block_text=context.block_text,
+                outcome=result.ledger_outcome,
+                vote_tally=f"YES={context.yes}/{effective}",
+            ),
         )
-        kind = "oos" if is_oos else "finding"
-        score_result = "neutral" if kind == "oos" and result == "accepted" and not fileable_oos else result
         sole_finder_reward_count += _record_code_review_score_rows(
-            score_state=(score_rows, bonus_by_reviewer, active_bonus),
-            reviewer=reviewer,
-            classification=(kind, score_result, neutral_rescued),
-            cells=cells,
+            score_state=(score_rows, bonus_by_reviewer, active_bonus), reviewer=context.reviewer, result=result
         )
-        try:
-            security = _security_block(block)
-        except RuntimeError:
-            return _error(f"tally-code-votes: security classifier failed for {item_id}")
-        reroute_marker = _finding_oos_reroute_marker(block_text=text, neutral_rescued=neutral_rescued)
-        if kind == "finding":
-            if result == "accepted":
-                _append(path=accepted_file, text=artifact_text + "\n")
-                accepted += 1
-                _record_tally(tally_file=tally_env, item_id=item_id, accepted=True, outcome="accepted")
-            elif reroute_marker:
-                _record_public_oos_artifact(
-                    oos_file=oos_file,
-                    pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
-                    security_sidecar=security_oos_file,
-                    artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} ({reroute_marker})\n\n",
-                    security=security,
-                    accepted=False,
-                )
-                oos_rejected += 1
-                _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome="oos" if neutral_rescued else result)
-            else:
-                rejected += 1
-                if result == "neutral":
-                    neutral += 1
-                subtype = "dismissed (0 YES)" if result == "rejected" else "neutral (YES below acceptance threshold)"
-                _append(path=rejected_file, text=f"### [rejected] {item_id}\n\n**Rejected subtype:** {subtype}\n\n{artifact_text}\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error}\n\n")
-                _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome=result)
-        else:
-            oos_fileable_marker = "true" if fileable_oos else "false"
+
+    def publish(result: tally_engine.ItemAdjudicationResult) -> None:
+        nonlocal accepted, rejected, neutral, oos_accepted, oos_rejected, oos_seq
+        context = result.context
+        security = bool(result.security)
+        if result.artifact_bucket == "accepted":
+            _append(path=accepted_file, text=context.artifact_text + "\n")
+            accepted += 1
+            _record_tally(tally_file=tally_env, item_id=context.item_id, accepted=True, outcome="accepted")
+        elif result.artifact_bucket == "rejected":
+            rejected += 1
+            if result.voting_result == "neutral":
+                neutral += 1
+            subtype = "dismissed (0 YES)" if result.voting_result == "rejected" else "neutral (YES below acceptance threshold)"
+            _append(path=rejected_file, text=f"### [rejected] {context.item_id}\n\n**Rejected subtype:** {subtype}\n\n{context.artifact_text}\nVote tally: YES={context.yes} NO={context.no} JUDGE_ERROR={context.judge_error}\n\n")
+            _record_tally(tally_file=tally_env, item_id=context.item_id, accepted=False, outcome=result.voting_result)
+        elif not context.is_oos:
             _record_public_oos_artifact(
                 oos_file=oos_file,
                 pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
                 security_sidecar=security_oos_file,
-                artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} Fileable={oos_fileable_marker}\n\n",
+                artifact=context.artifact_text + f"\nVote tally: YES={context.yes} NO={context.no} JUDGE_ERROR={context.judge_error} Result={result.voting_result} ({result.reroute_marker})\n\n",
                 security=security,
-                accepted=fileable_oos,
+                accepted=False,
             )
-            if fileable_oos:
+            oos_rejected += 1
+            _record_tally(tally_file=tally_env, item_id=context.item_id, accepted=False, outcome="oos")
+        else:
+            oos_fileable_marker = "true" if result.fileable_oos else "false"
+            _record_public_oos_artifact(
+                oos_file=oos_file,
+                pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
+                security_sidecar=security_oos_file,
+                artifact=context.artifact_text + f"\nVote tally: YES={context.yes} NO={context.no} JUDGE_ERROR={context.judge_error} Result={result.voting_result} Fileable={oos_fileable_marker}\n\n",
+                security=security,
+                accepted=result.fileable_oos,
+            )
+            if result.fileable_oos:
                 if not security:
                     oos_seq += 1
-                    normalized = _normalize_oos_header_text(text=artifact_text, seq=oos_seq)
+                    normalized = _normalize_oos_header_text(text=context.artifact_text, seq=oos_seq)
                     _append(path=oos_accepted_file, text=normalized + "\n")
                     if oos_accepted_out != oos_accepted_file:
                         _append(path=oos_accepted_out, text=normalized + "\n")
                     oos_accepted += 1
-                _record_tally(tally_file=tally_env, item_id=item_id, accepted=True, outcome="accepted")
+                _record_tally(tally_file=tally_env, item_id=context.item_id, accepted=True, outcome="accepted")
             else:
-                if result != "accepted":
+                if result.voting_result != "accepted":
                     oos_rejected += 1
-                _record_tally(tally_file=tally_env, item_id=item_id, accepted=result == "accepted", outcome=result)
+                _record_tally(tally_file=tally_env, item_id=context.item_id, accepted=result.voting_result == "accepted", outcome=result.voting_result)
+
+    try:
+        _ = tally_engine.run_items(
+            item_contexts(), serialize=serialize, security_hook=lambda context: _security_block(context.block_path), publish=publish
+        )
+    except RuntimeError as exc:
+        return _error(f"tally-code-votes: {exc}")
     if under_quorum_items:
         tally_lines.insert(
             1,
