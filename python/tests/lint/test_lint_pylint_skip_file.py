@@ -128,9 +128,9 @@ def test_detect_ignores_strings_docstrings_unrelated_and_local() -> None:
 
 def test_detect_ignores_paths_outside_python_larch() -> None:
     text = "# pylint: skip-file\n"
-    assert lint.detect(_source("python/tests/mod.py", text)) == []
-    assert lint.detect(_source("python/other.py", text)) == []
-    assert lint.detect(_source("README.md", text)) == []
+    assert not lint.detect(_source("python/tests/mod.py", text))
+    assert not lint.detect(_source("python/other.py", text))
+    assert not lint.detect(_source("README.md", text))
 
 
 def test_run_rule_new_finding_exits_one(tmp_path: Path) -> None:
@@ -409,4 +409,4 @@ def test_detect_disable_next_and_indented_disable_ignored() -> None:
         "    # pylint: disable=duplicate-code\n"
         "    return None\n"
     )
-    assert lint.detect(_source("python/larch/mod.py", text)) == []
+    assert not lint.detect(_source("python/larch/mod.py", text))

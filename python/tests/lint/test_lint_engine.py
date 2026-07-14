@@ -354,7 +354,7 @@ def test_requested_paths_filter_and_unmatched_clean(tmp_path: Path) -> None:
         seen.append(source.path)
         return []
 
-    code, out, err, _ = _run(
+    code, out, err, runner = _run(
         tmp_path,
         files=files,
         tracked=list(files),
@@ -365,6 +365,10 @@ def test_requested_paths_filter_and_unmatched_clean(tmp_path: Path) -> None:
     assert seen == ["pkg/a.py", "pkg/b.py"]
     assert out == ""
     assert err == ""
+    assert runner.calls == [
+        (("git", "rev-parse", "--show-toplevel"), str(tmp_path.resolve())),
+        (("git", "ls-files", "--cached", "-z", "--", "pkg"), str(tmp_path.resolve())),
+    ]
 
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
@@ -487,7 +491,12 @@ def test_source_loading_revalidates_and_converts_oserror(
     _ = outside.write_text("x = 1\n", encoding="utf-8")
     _write_files(tmp_path, {"a.py": "x = 1\n"})
 
-    def swap_after_discovery(_root: Path, _runner: RecordingRunner) -> list[str]:
+    def swap_after_discovery(
+        _root: Path,
+        _runner: RecordingRunner,
+        *,
+        pathspecs: Sequence[str] | None = None,  # pylint: disable=unused-argument
+    ) -> list[str]:
         source.unlink()
         source.symlink_to(outside)
         return ["a.py"]

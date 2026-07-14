@@ -141,7 +141,7 @@ def _is_single_line(value: object) -> bool:
 def _validate_rule(rule: LintRule) -> None:
     if not _is_single_line(rule.rule_id):
         raise ScanError("lint rule rule_id must be a non-empty single-line string")
-    if type(rule.allow_inline_suppression) is not bool:
+    if not isinstance(rule.allow_inline_suppression, bool):
         raise ScanError("lint rule allow_inline_suppression must be a bool")
     if not _is_single_line(rule.suppression_token):
         raise ScanError(
@@ -188,8 +188,20 @@ def _validate_repo_root(root: Path, runner: Runner) -> Path:
     return resolved
 
 
-def _discover_tracked_paths(root: Path, runner: Runner) -> list[str]:
-    result = runner.run(("git", "ls-files", "--cached", "-z"), cwd=str(root))
+def _discover_tracked_paths(
+    root: Path,
+    runner: Runner,
+    *,
+    pathspecs: Sequence[str] | None = None,
+) -> list[str]:
+    # Scope ls-files when callers pass pathspecs so sparse checkouts that omit
+    # unrelated trees (for example CI excluding larch-logs/) do not fail
+    # existence checks on out-of-scope cached paths.
+    argv: list[str] = ["git", "ls-files", "--cached", "-z"]
+    if pathspecs is not None:
+        argv.append("--")
+        argv.extend(pathspecs)
+    result = runner.run(tuple(argv), cwd=str(root))
     if result.returncode != 0:
         raise ScanError(f"git ls-files --cached failed: {_bounded_git_detail(result)}")
     seen: set[str] = set()
@@ -914,7 +926,14 @@ def _scan_findings(
     runner: Runner,
     paths: Sequence[str | Path] | None,
 ) -> list[Finding]:
-    tracked = _discover_tracked_paths(root, runner)
+    pathspecs: list[str] | None = None
+    if paths is not None:
+        # Validate selectors before discovery so bad pathspecs fail closed and
+        # git only enumerates in-scope cached paths.
+        pathspecs = [
+            _validate_requested_path(item, root=root)[0] for item in paths
+        ]
+    tracked = _discover_tracked_paths(root, runner, pathspecs=pathspecs)
     selected = _filter_tracked_paths(tracked, root=root, paths=paths)
     pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s+(\S.*)$")
     empty_pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s*$")
