@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import FrozenInstanceError, is_dataclass
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,14 @@ def test_validate_rating_low_confidence_bumps_and_sanitizes() -> None:
     assert rating.predicted_tier == difficulty.TRIVIAL
     assert rating.adjusted_tier == difficulty.MODERATE
     assert rating.rationale == "line with controls"
+
+
+def test_public_difficulty_results_are_frozen() -> None:
+    result = difficulty.FloorResult(tier=difficulty.TRIVIAL, matches=())
+
+    assert is_dataclass(result)
+    with pytest.raises(FrozenInstanceError):
+        result.tier = difficulty.HARD  # type: ignore[misc]
 
 
 @pytest.mark.parametrize("tier", ["", "EASY", "harder"])

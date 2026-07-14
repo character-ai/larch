@@ -193,20 +193,20 @@ def _write_final_report(
     skip_tracking_upsert: bool = False,
 ) -> None:
     _ = runner
-    rc, _comment_url, error = pr_body.write_final_report(
+    result = pr_body.write_final_report(
         Path(ctx.tmpdir),
         skip_tracking_upsert=skip_tracking_upsert,
     )
-    if rc != 0:
-        msg = error or "final report write failed"
+    if result.exit_code != 0:
+        msg = result.error or "final report write failed"
         raise ShipError(msg)
 
 
 def write_final_report_comment(*, runner: Runner, ctx: RunContext) -> None:
     _ = runner
-    rc, _comment_url, error = pr_body.write_final_report(Path(ctx.tmpdir), comment_only=True)
-    if rc != 0:
-        msg = error or "final report comment write failed"
+    result = pr_body.write_final_report(Path(ctx.tmpdir), comment_only=True)
+    if result.exit_code != 0:
+        msg = result.error or "final report comment write failed"
         raise ShipError(msg)
 
 

@@ -29,6 +29,7 @@ from larch.agents import _ci_launcher
 from larch.agents import _review_launcher
 from larch.agents import _drafter
 from larch.agents import _claude_runner
+from larch.agents import _failure_diag
 from larch.agents import _launch_failure
 from larch.agents import _types
 from larch.design import plan_grammar
@@ -6387,3 +6388,21 @@ def test_parse_drafter_output_dialectic_inside_plan_is_fatal(tmp_path: Path) -> 
     )
     with pytest.raises(ValueError, match="dialectic block may not appear inside plan"):
         agents.parse_drafter_output(raw_file=raw, plan_tmp=tmp_path / "plan.tmp", summary_tmp=tmp_path / "summary.tmp")
+
+
+@pytest.mark.parametrize(
+    ("name", "module"),
+    [
+        ("TierAttempt", _types),
+        ("classify_launch_failure", _launch_failure),
+        ("parse_codex_usage_file", _failure_diag),
+        ("run_external_agent", _run_external),
+        ("check_reviewers", _auth),
+        ("launch_codex_drafter", _drafter),
+        ("launch_codex_ci_main", _ci_launcher),
+        ("launch_review_main", _review_launcher),
+        ("launch_claude_subprocess_main", _claude_runner),
+    ],
+)
+def test_agents_reexports_split_public_contract(name: str, module: object) -> None:
+    assert getattr(agents, name) is getattr(module, name)

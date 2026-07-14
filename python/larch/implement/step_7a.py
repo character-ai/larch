@@ -268,6 +268,52 @@ def _run_log_flush(
     return log_flush_status
 
 
+def _generate_code_flow_diagram(
+    implement_tmpdir: Path,
+    *,
+    base_remote: str,
+    base_ref: str,
+) -> pr_body.CodeFlowDiagramResult:
+    result = pr_body.generate_code_flow_diagram(
+        implement_tmpdir,
+        base_remote=base_remote,
+        base_ref=base_ref,
+    )
+    retry_sidecar = implement_tmpdir / "code-flow-diagram.retried"
+    if retry_sidecar.is_file():
+        first_rc = ""
+        with contextlib.suppress(OSError, ValueError):
+            for line in retry_sidecar.read_text(encoding="utf-8").splitlines():
+                if line.startswith("FIRST_RC="):
+                    first_rc = line.split("=", 1)[1].strip()
+        retry_msg = f"code-flow subprocess transient (rc={first_rc}); retried once"
+        run_logs.append_execution_issue(
+            log_file=implement_tmpdir / "execution-issues.md",
+            category="Warnings",
+            entry=f"- **Step 7a — code flow diagram**: {retry_msg}",
+        )
+        with contextlib.suppress(OSError):
+            retry_sidecar.unlink()
+    if result.status == "ok" and result.diagram_file:
+        section = implement_tmpdir / "code-flow-section.md"
+        section.write_text(
+            (implement_tmpdir / "code-flow-diagram.md").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        return result
+    _cleanup_diagram_artifacts(implement_tmpdir, keep_diagram=False)
+    if result.exit_code == 0 and result.status != "failed":
+        return result
+    reason = result.reason or "generation failed"
+    _append_diagram_warning(implement_tmpdir=implement_tmpdir, message=reason)
+    return pr_body.CodeFlowDiagramResult(
+        exit_code=result.exit_code,
+        status="failed",
+        diagram_file="",
+        reason=reason,
+    )
+
+
 def run_step7a(
     implement_tmpdir: Path,
     *,
@@ -341,37 +387,14 @@ def _run_step7a_inner(
         _cleanup_diagram_artifacts(implement_tmpdir, keep_diagram=False)
         print("⏩ 7a: pre-ship status=skip reason=small-non-runtime-change elapsed=0s")
     else:
-        diagram_rc, diagram_status, diagram_path, reason = pr_body.generate_code_flow_diagram(
+        diagram_result = _generate_code_flow_diagram(
             implement_tmpdir,
             base_remote=base_remote,
             base_ref=base_ref,
         )
-        retry_sidecar = implement_tmpdir / "code-flow-diagram.retried"
-        if retry_sidecar.is_file():
-            first_rc = ""
-            with contextlib.suppress(OSError, ValueError):
-                for line in retry_sidecar.read_text(encoding="utf-8").splitlines():
-                    if line.startswith("FIRST_RC="):
-                        first_rc = line.split("=", 1)[1].strip()
-            retry_msg = f"code-flow subprocess transient (rc={first_rc}); retried once"
-            run_logs.append_execution_issue(
-                log_file=implement_tmpdir / "execution-issues.md",
-                category="Warnings",
-                entry=f"- **Step 7a — code flow diagram**: {retry_msg}",
-            )
-            with contextlib.suppress(OSError):
-                retry_sidecar.unlink()
-        keep_diagram = diagram_status == "ok" and bool(diagram_path)
-        if keep_diagram:
-            section = implement_tmpdir / "code-flow-section.md"
-            section.write_text((implement_tmpdir / "code-flow-diagram.md").read_text(encoding="utf-8"), encoding="utf-8")
-        else:
-            _cleanup_diagram_artifacts(implement_tmpdir, keep_diagram=False)
-        if diagram_rc != 0 or diagram_status == "failed":
-            diagram_status = "failed"
-            diagram_reason = reason or "generation failed"
-            diagram_path = ""
-            _append_diagram_warning(implement_tmpdir=implement_tmpdir, message=diagram_reason)
+        diagram_status = diagram_result.status
+        diagram_path = diagram_result.diagram_file
+        diagram_reason = diagram_result.reason if diagram_status == "failed" else ""
 
     if issue_number and (implement_tmpdir / "code-flow-section.md").is_file() and (implement_tmpdir / "code-flow-section.md").stat().st_size > 0:
         upsert_args = ["diagrams", "upsert", "--issue", issue_number, "--code-flow-file", str(implement_tmpdir / "code-flow-section.md")]

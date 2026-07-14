@@ -13,7 +13,7 @@ from typing import Self
 import pytest
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import FrozenInstanceError, dataclass, field, is_dataclass
 
 from larch.core import config
 from larch.report import final_report
@@ -38,6 +38,60 @@ def test_py_cli_resolves_to_repo_python_cli() -> None:
     expected = Path(__file__).resolve().parents[2] / "cli.py"
     assert expected == pr_body._PY_CLI
     assert pr_body._PY_CLI.is_file()
+
+
+def test_write_final_report_returns_typed_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FinalReportModule:
+        def write_final_report(
+            self,
+            implement_tmpdir: Path,
+            *,
+            comment_only: bool,
+            print_stdout: bool,
+            skip_tracking_upsert: bool,
+        ) -> tuple[int, str, str]:
+            assert implement_tmpdir == Path("/tmp/implementation")
+            assert comment_only is True
+            assert print_stdout is False
+            assert skip_tracking_upsert is True
+            return 0, "https://example.test/comment/1", ""
+
+    def fake_final_report_module() -> FinalReportModule:
+        return FinalReportModule()
+
+    monkeypatch.setattr(pr_body, "_final_report_module", fake_final_report_module)
+
+    result = pr_body.write_final_report(
+        Path("/tmp/implementation"),
+        comment_only=True,
+        skip_tracking_upsert=True,
+    )
+
+    assert result == pr_body.FinalReportResult(
+        exit_code=0,
+        comment_url="https://example.test/comment/1",
+        error="",
+    )
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        pr_body.FinalReportResult(0, "", ""),
+        pr_body.TrackingIssuePostResult(
+            exit_code=0,
+            posted=True,
+            comment_url="",
+            error="",
+        ),
+        pr_body.SlackIssueAnnouncementResult(0, "posted", ""),
+        pr_body.CodeFlowDiagramResult(0, "ok", "diagram.md", ""),
+    ],
+)
+def test_public_result_types_are_frozen(result: object) -> None:
+    assert is_dataclass(result)
+    with pytest.raises(FrozenInstanceError):
+        result.exit_code = 1  # type: ignore[attr-defined]
 
 
 
@@ -1050,7 +1104,10 @@ def test_slack_issue_announce_webhook_unset_skips(
     _write_slack_issue_state(tmp_path)
     monkeypatch.delenv("LARCH_SLACK_WEBHOOK_URL", raising=False)
 
-    assert pr_body.slack_issue_announce(tmp_path) == (0, "skipped", "webhook-not-set")
+    result = pr_body.slack_issue_announce(tmp_path)
+    assert result.exit_code == 0
+    assert result.status == "skipped"
+    assert result.reason == "webhook-not-set"
 
 
 @pytest.mark.parametrize("issue_number", ["", "0"])
@@ -1058,27 +1115,30 @@ def test_slack_issue_announce_issue_unset_skips(tmp_path: Path, issue_number: st
     if issue_number:
         _write_slack_issue_state(tmp_path, issue_number=issue_number)
 
-    assert pr_body.slack_issue_announce(tmp_path) == (0, "skipped", "issue-not-set")
+    result = pr_body.slack_issue_announce(tmp_path)
+    assert result.exit_code == 0
+    assert result.status == "skipped"
+    assert result.reason == "issue-not-set"
 
 
 def test_slack_issue_announce_nonnumeric_issue_fails(tmp_path: Path) -> None:
     _write_slack_issue_state(tmp_path, issue_number="abc")
 
-    rc, status, reason = pr_body.slack_issue_announce(tmp_path)
+    result = pr_body.slack_issue_announce(tmp_path)
 
-    assert rc != 0
-    assert status == "failed"
-    assert reason == "ISSUE_NUMBER must be numeric"
+    assert result.exit_code != 0
+    assert result.status == "failed"
+    assert result.reason == "ISSUE_NUMBER must be numeric"
 
 
 def test_slack_issue_announce_nonnumeric_issue_best_effort_exits_zero(tmp_path: Path) -> None:
     _write_slack_issue_state(tmp_path, issue_number="abc")
 
-    rc, status, reason = pr_body.slack_issue_announce(tmp_path, best_effort=True)
+    result = pr_body.slack_issue_announce(tmp_path, best_effort=True)
 
-    assert rc == 0
-    assert status == "failed"
-    assert reason == "ISSUE_NUMBER must be numeric"
+    assert result.exit_code == 0
+    assert result.status == "failed"
+    assert result.reason == "ISSUE_NUMBER must be numeric"
 
 
 def test_slack_issue_announce_posts_json(
@@ -1097,7 +1157,10 @@ def test_slack_issue_announce_posts_json(
 
     monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
 
-    assert pr_body.slack_issue_announce(tmp_path) == (0, "posted", "")
+    result = pr_body.slack_issue_announce(tmp_path)
+    assert result.exit_code == 0
+    assert result.status == "posted"
+    assert result.reason == ""
 
     assert len(requests) == 1
     request = requests[0]
@@ -1125,11 +1188,11 @@ def test_slack_issue_announce_urlopen_failure_fails(
 
     monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
 
-    rc, status, reason = pr_body.slack_issue_announce(tmp_path)
+    result = pr_body.slack_issue_announce(tmp_path)
 
-    assert rc != 0
-    assert status == "failed"
-    assert reason == "network down"
+    assert result.exit_code != 0
+    assert result.status == "failed"
+    assert result.reason == "network down"
 
 
 def test_slack_issue_announce_urlopen_failure_best_effort_exits_zero(
@@ -1145,11 +1208,11 @@ def test_slack_issue_announce_urlopen_failure_best_effort_exits_zero(
 
     monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
 
-    rc, status, reason = pr_body.slack_issue_announce(tmp_path, best_effort=True)
+    result = pr_body.slack_issue_announce(tmp_path, best_effort=True)
 
-    assert rc == 0
-    assert status == "failed"
-    assert reason == "network down"
+    assert result.exit_code == 0
+    assert result.status == "failed"
+    assert result.reason == "network down"
 
 
 def test_slack_issue_announce_invalid_webhook_scheme_does_not_call_urlopen(
@@ -1165,11 +1228,11 @@ def test_slack_issue_announce_invalid_webhook_scheme_does_not_call_urlopen(
 
     monkeypatch.setattr(pr_body.urllib.request, "urlopen", fake_urlopen)
 
-    rc, status, reason = pr_body.slack_issue_announce(tmp_path)
+    result = pr_body.slack_issue_announce(tmp_path)
 
-    assert rc != 0
-    assert status == "failed"
-    assert reason == "webhook scheme must be http or https"
+    assert result.exit_code != 0
+    assert result.status == "failed"
+    assert result.reason == "webhook scheme must be http or https"
 
 
 def test_slack_issue_announce_main_posted_envelope(
@@ -1294,12 +1357,12 @@ def test_post_tracking_issue_writes_metadata(tmp_path: Path, monkeypatch: pytest
         return Result()
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
-    rc, posted, url, err = pr_body.post_tracking_issue(tmp_path)
-    assert rc == 0
-    assert posted is True
-    assert "issues/42" in url
+    result = pr_body.post_tracking_issue(tmp_path)
+    assert result.exit_code == 0
+    assert result.posted is True
+    assert "issues/42" in result.comment_url
     assert (tmp_path / "summary-metadata.md").is_file()
-    assert err == ""
+    assert result.error == ""
     assert [cmd[1] for cmd in calls] == [str(pr_body._PY_CLI), str(pr_body._PY_CLI)]
 
 
@@ -1322,12 +1385,12 @@ def test_post_tracking_issue_warns_plugin_read_version_nonzero_on_stderr(
         return Result()
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
-    rc, posted, _url, err = pr_body.post_tracking_issue(tmp_path)
+    result = pr_body.post_tracking_issue(tmp_path)
     captured = capsys.readouterr()
 
-    assert rc == 0
-    assert posted is True
-    assert err == ""
+    assert result.exit_code == 0
+    assert result.posted is True
+    assert result.error == ""
     assert "pr_body: plugin read-version failed rc=7" in captured.err
     assert "pr_body: plugin read-version" not in captured.out
 
@@ -1353,14 +1416,14 @@ def test_generate_code_flow_diagram_uses_launcher_not_stub(tmp_path: Path, monke
         return type("R", (), {"returncode": 1, "stdout": "stdout diagnostic\n## Code Flow Diagram\n```mermaid\ngraph TD\nA-->B\n```", "stderr": raw_stderr})()
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
-    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
-    assert rc == 1
-    assert status == "failed"
-    assert reason != "generation-failed"
-    assert "generation-failed rc=1" in reason
-    assert "tail=" in reason
-    assert "timeout after 600s" in reason
-    assert raw_secret not in reason
+    result = pr_body.generate_code_flow_diagram(tmp_path)
+    assert result.exit_code == 1
+    assert result.status == "failed"
+    assert result.reason != "generation-failed"
+    assert "generation-failed rc=1" in result.reason
+    assert "tail=" in result.reason
+    assert "timeout after 600s" in result.reason
+    assert raw_secret not in result.reason
     failure_log = tmp_path / "code-flow-diagram.failure.log"
     assert failure_log.is_file()
     log_text = failure_log.read_text(encoding="utf-8")
@@ -1394,12 +1457,12 @@ def test_generate_code_flow_diagram_labels_launcher_failure_class(
         )
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
-    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+    result = pr_body.generate_code_flow_diagram(tmp_path)
 
-    assert rc == 1
-    assert status == "failed"
-    assert "generation-failed health/auth rc=124" in reason
-    assert "tail=" in reason
+    assert result.exit_code == 1
+    assert result.status == "failed"
+    assert "generation-failed health/auth rc=124" in result.reason
+    assert "tail=" in result.reason
 
 
 def test_generate_code_flow_diagram_uses_py_cli_launcher(
@@ -1426,12 +1489,12 @@ def test_generate_code_flow_diagram_uses_py_cli_launcher(
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected argv")
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)
-    rc, status, diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+    result = pr_body.generate_code_flow_diagram(tmp_path)
 
-    assert rc == 0
-    assert status == "ok"
-    assert diagram
-    assert reason == ""
+    assert result.exit_code == 0
+    assert result.status == "ok"
+    assert result.diagram_file
+    assert result.reason == ""
     assert launch_argv[1] == str(pr_body._PY_CLI)
     assert launch_argv[2:4] == ["agent", "launch-claude-subprocess"]
     timeout_idx = launch_argv.index("--timeout")
@@ -1470,13 +1533,13 @@ def test_generate_code_flow_diagram_retries_on_timeout(
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
-    rc, status, diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+    result = pr_body.generate_code_flow_diagram(tmp_path)
 
     assert call_count == 2, "should succeed on first retry"
-    assert rc == 0
-    assert status == "ok"
-    assert diagram
-    assert reason == ""
+    assert result.exit_code == 0
+    assert result.status == "ok"
+    assert result.diagram_file
+    assert result.reason == ""
     assert (tmp_path / "code-flow-diagram.retried").is_file()
     retried_text = (tmp_path / "code-flow-diagram.retried").read_text(encoding="utf-8")
     assert f"FIRST_RC={config.EXIT_TIMEOUT}" in retried_text
@@ -1515,12 +1578,12 @@ def test_generate_code_flow_diagram_retries_on_empty_output(
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
-    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+    result = pr_body.generate_code_flow_diagram(tmp_path)
 
     assert call_count == 2, "should succeed on first retry"
-    assert rc == 0
-    assert status == "ok"
-    assert reason == ""
+    assert result.exit_code == 0
+    assert result.status == "ok"
+    assert result.reason == ""
     assert (tmp_path / "code-flow-diagram.retried").is_file()
 
 
@@ -1545,11 +1608,11 @@ def test_generate_code_flow_diagram_no_retry_on_hard_failure(
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
-    rc, status, _diagram, _reason = pr_body.generate_code_flow_diagram(tmp_path)
+    result = pr_body.generate_code_flow_diagram(tmp_path)
 
     assert call_count == 1, "should NOT retry when output file is absent"
-    assert rc == 1
-    assert status == "failed"
+    assert result.exit_code == 1
+    assert result.status == "failed"
     assert not (tmp_path / "code-flow-diagram.retried").is_file()
 
 
@@ -1577,12 +1640,12 @@ def test_generate_code_flow_diagram_retries_up_to_max_on_persistent_failure(
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
-    rc, status, _diagram, _reason = pr_body.generate_code_flow_diagram(tmp_path)
+    result = pr_body.generate_code_flow_diagram(tmp_path)
 
     expected_calls = 1 + pr_body._MAX_DIAGRAM_RETRIES
     assert call_count == expected_calls, f"should attempt {expected_calls} times total"
-    assert rc == 1
-    assert status == "failed"
+    assert result.exit_code == 1
+    assert result.status == "failed"
     assert (tmp_path / "code-flow-diagram.retried").is_file()
     retried_text = (tmp_path / "code-flow-diagram.retried").read_text(encoding="utf-8")
     assert f"FIRST_RC={config.EXIT_TIMEOUT}" in retried_text
@@ -1611,13 +1674,13 @@ def test_generate_code_flow_diagram_reads_stderr_sidecar(
         return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
 
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
-    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+    result = pr_body.generate_code_flow_diagram(tmp_path)
 
-    assert rc == 1
-    assert status == "failed"
+    assert result.exit_code == 1
+    assert result.status == "failed"
     # Sidecar content must appear in the reason; completed.stderr was empty so
     # without Fix 1 the tail would be "no-output" instead.
-    assert "claude.ai login" in reason
+    assert "claude.ai login" in result.reason
 
 
 def test_derive_oos_fields_reads_json_body_filed_url(tmp_path: Path) -> None:
