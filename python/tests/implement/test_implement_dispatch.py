@@ -4609,7 +4609,7 @@ def test_checks_commit_route_emit_step7_breadcrumb_goes_to_stderr(
     def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(list(argv), 0, "RELEVANT_CHECKS_OK=true SITE=step6\n", "")
 
-    def fake_commit(*, _site_name: str, **_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
+    def fake_commit(**_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
         return "continue", "COMMIT_ROUTE_OUTCOME=continue\nCOMMITTED=true\nCOMMIT_OUTCOME=ok\n"
 
     def fake_7r(_forked_target: str) -> int:
