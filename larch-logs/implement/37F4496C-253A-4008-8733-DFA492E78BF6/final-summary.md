@@ -61,6 +61,12 @@ Warnings (17):
   16. ---
   17. All other aspects of the diff are clean. The SKILL.md additions are coordinated with the test consumer update in the same change. No new modules, hooks, or wire grammars are introduced. The `ARCHIT...
 
+## Architectural invariants
+
+Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.
+
+The changed lines add a prevention-field requirement to the learn-from-bugs skill, extend the skill's structural test, and append a corresponding guideline entry. None of the changed code touches gates, persisted step results, run-log flush or commit paths, panel slot accounting, agent verdict dispatch, pause snapshots, or ship-recovery routing.
+
 ## Architectural guidelines
 
 Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
@@ -71,7 +77,7 @@ All locals in the changed Python code carry explicit type annotations or are sca
 
 - **Outcome**: shipping
 - **Duration**: 00:24:09
-- **Cost**: 💰 TOTAL ~$10.62: Claude $3.55, Codex-5.6 $5.00, Codex-mini $0.01, Cursor $1.85 (Composer $1.85, Grok $0.00), Claude (subprocess) $0.21  |  Tokens: 13086k
+- **Cost**: 💰 TOTAL ~$11.11: Claude $4.04, Codex-5.6 $5.00, Codex-mini $0.01, Cursor $1.85 (Composer $1.85, Grok $0.00), Claude (subprocess) $0.21  |  Tokens: 14202k
 - **Issue**: #7209: https://github.com/character-ai/larch/issues/7209
 - **Plan review**: N/A
 - **Plan coverage**: 3/3 firm headings; band: advisory; disposition: none; todos_left: 0
