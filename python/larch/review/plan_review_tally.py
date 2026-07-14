@@ -24,12 +24,14 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 from typing import NoReturn
 
 from larch.review import findings_ledger
 from larch.core import logging_util
 from larch.review import plan_review_round
+from larch.review import tally_engine
 from larch.review import voting
 from larch.review.review_types import parse_blocks
 from larch.state.session_env import validate_design_tmpdir
@@ -60,47 +62,35 @@ _FULL_PANEL = 3
 LABEL_MAP_MIN_COLS = 2
 
 
-def _finding_oos_reroute_marker(*, block_text: str, neutral_rescued: bool) -> str:
-    _ = block_text
-    if neutral_rescued:
-        return "neutral-rescued"
-    return ""
-
-
 def _record_plan_review_score_rows(
     *,
     score_state: tuple[list[tuple[str, str, str, int, float]], list[str], float],
-    reviewer: str,
-    kind: str,
-    result: str,
-    vote_inputs: tuple[list[str], list[str]],
+    adjudication: tally_engine.ItemAdjudicationResult,
 ) -> int:
     score_rows, attribution_labels, active_bonus = score_state
-    votes, severities = vote_inputs
-    neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
-        result,
-        yes_votes=votes,
-        severities=severities,
-    )
-    score_kind = "oos" if kind == "oos" or neutral_rescued else "finding"
-    accepted_weight = (
-        voting.accepted_finding_points_from_severities(severities, votes=votes)
-        if score_kind == "finding" and result == "accepted"
-        else 0
-    )
+    context = adjudication.context
     split_reviewers = voting.split_classification_attribution(
-        reviewer,
+        context.reviewer,
         column="finding_reviewers",
         labels=attribution_labels,
     )
     if not split_reviewers:
-        split_reviewers = [part.strip() for part in reviewer.split(",") if part.strip()]
+        split_reviewers = [part.strip() for part in context.reviewer.split(",") if part.strip()]
     bonus_float = (
         active_bonus
-        if score_kind == "finding" and result == "accepted" and len(split_reviewers) == 1 and active_bonus > 0
+        if adjudication.unique_finder_eligible and len(split_reviewers) == 1 and active_bonus > 0
         else 0.0
     )
-    score_rows.extend((reviewer_slot, score_kind, result, accepted_weight, bonus_float) for reviewer_slot in split_reviewers)
+    score_rows.extend(
+        (
+            reviewer_slot,
+            adjudication.score_kind,
+            adjudication.score_result,
+            adjudication.accepted_weight,
+            bonus_float,
+        )
+        for reviewer_slot in split_reviewers
+    )
     return 1 if bonus_float > 0 else 0
 
 
@@ -162,6 +152,7 @@ class _Tally:
         self.proposer_map_file = ""
         self.proposer_sidecar_required = False
         self.ballot_id_set: set[str] = set()
+        self.adjudications: list[tally_engine.ItemAdjudicationResult] = []
 
     # -- usage / diagnostics -------------------------------------------------
     @staticmethod
@@ -295,38 +286,9 @@ class _Tally:
         self.slot_file[slot] = path
         self.slot_tool[slot] = tool
 
-    # -- vote tallying -------------------------------------------------------
+    # -- cached engine-context preparation ----------------------------------
     def _alias_id(self, item_id: str) -> str:
         return voting.alias_ballot_id(item_id, self.ballot_id_set)
-
-    def _tally_votes_for_id(self, item_id: str) -> tuple[int, int, int, str]:
-        yes = no = judge_error = 0
-        alias_id = self._alias_id(item_id)
-        if self.tally_voter_file:
-            vote = voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file, alias_id=alias_id)
-            if vote == "YES":
-                yes = 1
-            elif vote == "NO":
-                no = 1
-            else:
-                judge_error = 1
-        elif self.eligible > 0:
-            for pos in (1, 2, 3):
-                voter_file = self.slot_file[pos]
-                if not voter_file:
-                    continue
-                vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
-                if vote == "YES":
-                    yes += 1
-                elif vote == "NO":
-                    no += 1
-                else:
-                    judge_error += 1
-        if item_id.startswith("OOS_"):
-            result = voting.classify_oos_result(yes=yes, no=no, exonerate=0, eligible=self.eligible)
-        else:
-            result = voting.classify_result(yes=yes, no=no, exonerate=0, eligible=self.eligible)
-        return yes, no, judge_error, result
 
     def _attribution_labels(self) -> list[str]:
         labels: list[str] = []
@@ -369,117 +331,135 @@ class _Tally:
                 voting.grow_attribution_labels(labels, seen, reviewer)
         return labels
 
-    def _votes_and_severities_for_item(self, item_id: str) -> tuple[list[str], list[str]]:
-        votes: list[str] = []
-        severities: list[str] = []
-        alias_id = self._alias_id(item_id)
-        if self.tally_voter_file:
-            try:
-                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
-                    voter_file=self.tally_voter_file, ballot_id=item_id, alias_id=alias_id
-                )
-            except (OSError, FileNotFoundError):
-                severity = ""
-            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=self.tally_voter_file, alias_id=alias_id))
-            severities.append(severity)
-            return votes, severities
-        for pos in (1, 2, 3):
-            voter_file = self.slot_file[pos]
-            if not voter_file or self.eligible <= 0:
-                continue
-            try:
-                _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
-                    voter_file=voter_file,
-                    ballot_id=item_id,
-                    alias_id=alias_id,
-                )
-            except (OSError, FileNotFoundError):
-                severity = ""
-            votes.append(voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id))
-            severities.append(severity)
-        return votes, severities
-
-    def _vote_and_severity_for_slot(self, item_id: str, *, pos: int) -> tuple[str, str]:
-        voter_file = self.slot_file[pos]
-        alias_id = self._alias_id(item_id)
-        if not voter_file:
-            return "", ""
-        try:
-            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
-                voter_file=voter_file,
-                ballot_id=item_id,
-                alias_id=alias_id,
-            )
-        except (OSError, FileNotFoundError):
-            return "", ""
-        vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
-        if vote == "JUDGE_ERROR":
-            vote = ""
-        return vote, severity
-
-    def _voter_agreement_row_for_item(self, item_id: str, *, result: str) -> dict[str, object] | None:
+    def _voter_agreement_row_for_item(
+        self, adjudication: tally_engine.ItemAdjudicationResult
+    ) -> dict[str, object] | None:
         voter_votes: list[tuple[str, str]] = []
         voter_severities: list[str] | None = None
         if self.eligible > 0 and not self.tally_voter_file:
             voter_severities = []
             fallback = {1: "codex-validity", 2: "codex-plan-fidelity", 3: "codex-pragmatism"}
-            for pos in (1, 2, 3):
-                vote, severity = self._vote_and_severity_for_slot(item_id=item_id, pos=pos)
+            for pos, cell in enumerate(adjudication.context.cells, start=1):
+                vote, _correctness, severity, _quality, _uncertain, _tool = cell
+                if vote == "JUDGE_ERROR":
+                    vote = ""
                 voter_votes.append((self.slot_tool[pos] or fallback[pos], vote))
                 voter_severities.append(severity)
         return voting.voter_agreement_row_from_panel(
-            voting_result=result,
+            voting_result=adjudication.voting_result,
             voter_votes=voter_votes,
             panel="design",
             voter_severities=voter_severities,
         )
 
+    def _main_agent_vote_data(
+        self, *, item_id: str, alias_id: str
+    ) -> tuple[list[tally_engine.VoteCell], list[tuple[str, str]], list[str]]:
+        try:
+            _vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(
+                voter_file=self.tally_voter_file, ballot_id=item_id, alias_id=alias_id
+            )
+        except (OSError, FileNotFoundError):
+            severity = ""
+        vote = voting.vote_for_id(
+            ballot_id=item_id, voter_file=self.tally_voter_file, alias_id=alias_id
+        )
+        return [], [("MainAgent", vote)], [severity]
+
+    def _panel_vote_data(
+        self, *, item_id: str, alias_id: str
+    ) -> tuple[list[tally_engine.VoteCell], list[tuple[str, str]], list[str]]:
+        cells: list[tally_engine.VoteCell] = []
+        voter_votes: list[tuple[str, str]] = []
+        voter_severities: list[str] = []
+        for pos in (1, 2, 3):
+            voter_file = self.slot_file[pos]
+            tool = self.slot_tool[pos]
+            if not voter_file:
+                cells.append(("", "", "", "", "", tool))
+                continue
+            try:
+                _vote, correctness, severity, quality, uncertain = voting.parse_judge_vote(
+                    voter_file=voter_file, ballot_id=item_id, alias_id=alias_id
+                )
+            except (OSError, FileNotFoundError):
+                correctness = severity = quality = uncertain = ""
+            vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
+            cells.append((vote, correctness, severity, quality, uncertain, tool))
+            voter_votes.append((tool, vote))
+            voter_severities.append(severity)
+        return cells, voter_votes, voter_severities
+
+    def _vote_data_for_item(
+        self, *, item_id: str, alias_id: str
+    ) -> tuple[list[tally_engine.VoteCell], list[tuple[str, str]], list[str]]:
+        if self.tally_voter_file:
+            return self._main_agent_vote_data(item_id=item_id, alias_id=alias_id)
+        if self.eligible > 0:
+            return self._panel_vote_data(item_id=item_id, alias_id=alias_id)
+        return [], [], []
+
+    @staticmethod
+    def _vote_counts(voter_votes: list[tuple[str, str]]) -> tuple[int, int, int]:
+        yes = sum(vote == "YES" for _label, vote in voter_votes)
+        no = sum(vote == "NO" for _label, vote in voter_votes)
+        return yes, no, len(voter_votes) - yes - no
+
+    def _item_contexts(self, sorted_ids: list[str]) -> Iterable[tally_engine.ItemContext]:
+        """Lazily prepare every plan-review-specific engine context once."""
+        for item_id in sorted_ids:
+            block = Path(self.block_dir) / f"{item_id}.md"
+            block_text = block.read_text(encoding="utf-8")
+            alias_id = self._alias_id(item_id)
+            cells, voter_votes, voter_severities = self._vote_data_for_item(
+                item_id=item_id, alias_id=alias_id
+            )
+            yes, no, judge_error = self._vote_counts(voter_votes)
+            while len(cells) < _FULL_PANEL:
+                cells.append(("", "", "", "", "", ""))
+            yield tally_engine.ItemContext(
+                item_id=item_id,
+                block_path=block,
+                block_text=block_text,
+                artifact_text=voting.restore_reviewer_attribution(
+                    block_text=block_text,
+                    reviewer_line=voting.reviewer_line_for_item(item_id=item_id, map_file=self.proposer_map_file),
+                ),
+                reviewer=self._proposer_for_item(item_id=item_id, block=block),
+                cells=tuple(cells),
+                yes=yes,
+                no=no,
+                judge_error=judge_error,
+                is_oos=item_id.startswith("OOS_"),
+                eligible_voters=self.eligible,
+                voter_votes=tuple(voter_votes),
+                voter_severities=tuple(voter_severities),
+            )
+
     # -- findings-classification TSV ----------------------------------------
-    def _write_findings_classification(self, sorted_ids: list[str]) -> None:
+    def _write_findings_classification(
+        self, adjudications: list[tally_engine.ItemAdjudicationResult]
+    ) -> None:
         out = Path(self.findings_out)
         out.parent.mkdir(parents=True, exist_ok=True)
         buf = voting.findings_classification_header() + "\n"
-        for item_id in sorted_ids:
-            block = Path(self.block_dir) / f"{item_id}.md"
-            alias_id = self._alias_id(item_id)
-            reviewer = _sanitize_tsv_cell(self._proposer_for_item(item_id=item_id, block=block))
-            body_severity = _sanitize_tsv_cell(_body_severity_for_block(block))
-            _, _, _, result = self._tally_votes_for_id(item_id)
-            tsv_result = "rejected" if self.main_agent_voter else result
-            votes, severities = self._votes_and_severities_for_item(item_id)
-            neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
-                result,
-                yes_votes=votes,
-                severities=severities,
-            )
-            row = [item_id, reviewer, tsv_result]
-            for pos in (1, 2, 3):
-                voter_file = self.slot_file[pos]
-                tool = self.slot_tool[pos]
-                if voter_file and self.tally_voter_file != voter_file and self.eligible > 0:
-                    try:
-                        _, correctness, severity, quality, uncertain = voting.parse_judge_vote(
-                            voter_file=voter_file,
-                            ballot_id=item_id,
-                            alias_id=alias_id,
-                        )
-                    except (OSError, FileNotFoundError):
-                        correctness = severity = quality = uncertain = ""
-                    vote = voting.vote_for_id(ballot_id=item_id, voter_file=voter_file, alias_id=alias_id)
-                    if vote == "JUDGE_ERROR":
-                        vote = ""
-                    row += [
-                        _sanitize_tsv_cell(vote),
-                        _sanitize_tsv_cell(correctness),
-                        _sanitize_tsv_cell(severity),
-                        _sanitize_tsv_cell(quality),
-                        _sanitize_tsv_cell(uncertain),
-                        _sanitize_tsv_cell(tool),
-                    ]
-                else:
-                    row += ["", "", "", "", "", ""]
+        for adjudication in adjudications:
+            context = adjudication.context
+            reviewer = _sanitize_tsv_cell(context.reviewer)
+            body_severity = _sanitize_tsv_cell(_body_severity_for_block(context.block_path))
+            tsv_result = "rejected" if self.main_agent_voter else adjudication.voting_result
+            row = [context.item_id, reviewer, tsv_result]
+            for vote, correctness, severity, quality, uncertain, tool in context.cells:
+                row += [
+                    _sanitize_tsv_cell("" if vote == "JUDGE_ERROR" else vote),
+                    _sanitize_tsv_cell(correctness),
+                    _sanitize_tsv_cell(severity),
+                    _sanitize_tsv_cell(quality),
+                    _sanitize_tsv_cell(uncertain),
+                    _sanitize_tsv_cell(tool or ""),
+                ]
             row.append(body_severity)
-            row.append("oos" if item_id.startswith("OOS_") or neutral_rescued else "in_scope")
+            row.append(adjudication.classification_scope)
             buf += "\t".join(row) + "\n"
         tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
         _ = tmp.write_text(buf, encoding="utf-8")
@@ -517,29 +497,18 @@ class _Tally:
                 return re.sub(r"^[- ]*[^:]+:\s*", "", normalized).strip()
         return ""
 
-    def _write_findings_ledger(self, sorted_ids: list[str]) -> None:
+    def _write_findings_ledger(self, adjudications: list[tally_engine.ItemAdjudicationResult]) -> None:
         entries: list[dict[str, object]] = []
-        for item_id in sorted_ids:
-            block = Path(self.block_dir) / f"{item_id}.md"
-            block_text = block.read_text(encoding="utf-8", errors="replace")
-            yes, _no, _judge_error, result = self._tally_votes_for_id(item_id)
-            votes, severities = self._votes_and_severities_for_item(item_id)
-            neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
-                result,
-                yes_votes=votes,
-                severities=severities,
-            )
-            outcome = "oos" if item_id.startswith("OOS_") else result
-            if neutral_rescued:
-                outcome = "oos"
+        for adjudication in adjudications:
+            context = adjudication.context
             entries.append(
                 {
-                    "finding_id": item_id,
-                    "title": self._ledger_title(block_text=block_text, item_id=item_id),
-                    "file_line": self._ledger_file_line(block_text),
-                    "outcome": outcome,
-                    "vote_tally": f"YES={yes}/{self.eligible}",
-                    "reason": self._ledger_reason(block_text),
+                    "finding_id": context.item_id,
+                    "title": self._ledger_title(block_text=context.block_text, item_id=context.item_id),
+                    "file_line": self._ledger_file_line(context.block_text),
+                    "outcome": adjudication.ledger_outcome,
+                    "vote_tally": f"YES={context.yes}/{self.eligible}",
+                    "reason": self._ledger_reason(context.block_text),
                 }
             )
         findings_ledger.write_round(
@@ -548,9 +517,9 @@ class _Tally:
             entries,
         )
 
-    def _write_findings_outputs(self, sorted_ids: list[str]) -> None:
-        self._write_findings_classification(sorted_ids)
-        self._write_findings_ledger(sorted_ids)
+    def _write_findings_outputs(self, adjudications: list[tally_engine.ItemAdjudicationResult]) -> None:
+        self._write_findings_classification(adjudications)
+        self._write_findings_ledger(adjudications)
 
     # -- argument parsing ----------------------------------------------------
     def _parse_args(self, argv: list[str]) -> int | None:
@@ -730,23 +699,19 @@ class _Tally:
         for artifact in (accepted_plan, rejected_plan, oos_file):
             _ = artifact.write_text("", encoding="utf-8")
 
-        active_bonus = voting.unique_finder_bonus_from_env()
         if self.eligible == 0:
-            _ = Path(self.tally_file).write_text(
-                "# Plan Review Voting Tally\n\n"
-                "**⚠ Degraded plan-review panel: 0 judges available. "
-                "Panel tier: main-agent-required.**\n\n"
-                + voting.render_voter_agreement_and_severity_scoreboards([]),
-                encoding="utf-8",
-            )
-            self._write_findings_classification(sorted_ids)
-            self.status_emitted = True
-            logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="main-agent-vote-required")
-            logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
-            return 0
+            return self._run_zero_voter_tally(sorted_ids)
 
+        self.adjudications = []
+        _ = tally_engine.run_items(
+            self._item_contexts(sorted_ids),
+            serialize=lambda _result: None,
+            security_hook=lambda context: voting.is_security_block_text(context.artifact_text),
+            publish=self.adjudications.append,
+        )
+        active_bonus = voting.unique_finder_bonus_from_env()
         self._render(
-            sorted_ids=sorted_ids,
+            adjudications=self.adjudications,
             accepted_plan=accepted_plan,
             accepted_plan_all=accepted_plan_all,
             rejected_plan=rejected_plan,
@@ -754,9 +719,30 @@ class _Tally:
             oos_accepted_local=oos_accepted_local,
             active_bonus=active_bonus,
         )
-        self._write_findings_outputs(sorted_ids)
+        self._write_findings_outputs(self.adjudications)
         self.status_emitted = True
         logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="ok")
+        logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
+        return 0
+
+    def _run_zero_voter_tally(self, sorted_ids: list[str]) -> int:
+        _ = Path(self.tally_file).write_text(
+            "# Plan Review Voting Tally\n\n"
+            "**⚠ Degraded plan-review panel: 0 judges available. "
+            "Panel tier: main-agent-required.**\n\n"
+            + voting.render_voter_agreement_and_severity_scoreboards([]),
+            encoding="utf-8",
+        )
+        self.adjudications = []
+        _ = tally_engine.run_items(
+            self._item_contexts(sorted_ids),
+            serialize=lambda _result: None,
+            security_hook=lambda _context: False,
+            publish=self.adjudications.append,
+        )
+        self._write_findings_classification(self.adjudications)
+        self.status_emitted = True
+        logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="main-agent-vote-required")
         logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
         return 0
 
@@ -797,7 +783,7 @@ class _Tally:
     def _render(
         self,
         *,
-        sorted_ids: list[str],
+        adjudications: list[tally_engine.ItemAdjudicationResult],
         accepted_plan: Path,
         accepted_plan_all: Path,
         rejected_plan: Path,
@@ -826,42 +812,23 @@ class _Tally:
         attribution_labels = self._attribution_labels()
         agreement_rows: list[dict[str, object]] = []
 
-        for item_id in sorted_ids:
-            block = Path(self.block_dir) / f"{item_id}.md"
-            yes, no, judge_error, result = self._tally_votes_for_id(item_id)
-            buf += f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n"
-            agreement_row = self._voter_agreement_row_for_item(item_id=item_id, result=result)
+        for adjudication in adjudications:
+            context = adjudication.context
+            buf += (
+                f"| {context.item_id} | {context.yes} | {context.no} | {context.judge_error} | "
+                f"{adjudication.voting_result} |\n"
+            )
+            agreement_row = self._voter_agreement_row_for_item(adjudication)
             if agreement_row is not None:
                 agreement_rows.append(agreement_row)
 
-            reviewer = self._proposer_for_item(item_id=item_id, block=block)
-            votes, severities = self._votes_and_severities_for_item(item_id)
-            neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
-                result,
-                yes_votes=votes,
-                severities=severities,
-            )
-            kind = "oos" if item_id.startswith("OOS_") else "finding"
-            fileable_oos = voting.oos_fileable_from_votes(
-                result,
-                yes_votes=votes,
-                severities=severities,
-            )
-            score_result = "neutral" if kind == "oos" and result == "accepted" and not fileable_oos else result
             sole_finder_reward_count += _record_plan_review_score_rows(
                 score_state=(score_rows, attribution_labels, active_bonus),
-                reviewer=reviewer,
-                kind=kind,
-                result=score_result,
-                vote_inputs=(votes, severities),
+                adjudication=adjudication,
             )
-            artifact_text = self._artifact_text_for_item(item_id=item_id, block=block)
-            security = voting.is_security_block_text(artifact_text)
-            reroute_marker = _finding_oos_reroute_marker(block_text=artifact_text, neutral_rescued=neutral_rescued)
 
             _record_plan_review_artifact_chunks(
-                item=(kind, result, reroute_marker, item_id, artifact_text, security, fileable_oos),
-                vote_counts=(yes, no, judge_error),
+                adjudication=adjudication,
                 chunks=(accepted_chunks, rejected_chunks, oos_chunks, oos_accepted_chunks, oos_pool_chunks, security_oos_chunks),
             )
 
@@ -934,40 +901,40 @@ class _Tally:
 
 def _record_plan_review_artifact_chunks(
     *,
-    item: tuple[str, str, str, str, str, bool, bool],
-    vote_counts: tuple[int, int, int],
+    adjudication: tally_engine.ItemAdjudicationResult,
     chunks: tuple[list[str], list[str], list[str], list[str], list[str], list[str]],
 ) -> None:
-    kind, result, reroute_marker, item_id, artifact_text, security, fileable = item
+    context = adjudication.context
     accepted_chunks, rejected_chunks, oos_chunks, oos_accepted_chunks, oos_pool_chunks, security_oos_chunks = chunks
-    yes, no, judge_error = vote_counts
-    if kind == "finding":
-        if result == "accepted":
-            accepted_chunks.append(artifact_text + "\n")
-        elif reroute_marker:
+    if not context.is_oos:
+        if adjudication.voting_result == "accepted":
+            accepted_chunks.append(context.artifact_text + "\n")
+        elif adjudication.reroute_marker:
             oos_artifact = (
-                artifact_text
-                + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} "
-                f"Result={result} ({reroute_marker})\n\n"
+                context.artifact_text
+                + f"\nVote tally: YES={context.yes} NO={context.no} JUDGE_ERROR={context.judge_error} "
+                f"Result={adjudication.voting_result} ({adjudication.reroute_marker})\n\n"
             )
-            if security:
+            if adjudication.security:
                 security_oos_chunks.append(oos_artifact)
             else:
                 oos_chunks.append(oos_artifact)
-                if result == "accepted":
-                    oos_pool_chunks.extend(_public_oos_pool_chunks(artifact=oos_artifact, security=security))
         else:
-            rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{artifact_text}\n")
+            rejected_chunks.append(f"### [Plan Review] {context.item_id}\n\n{context.artifact_text}\n")
         return
-    fileable_marker = "true" if fileable else "false"
-    oos_artifact = artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} Fileable={fileable_marker}\n\n"
-    if security:
+    fileable_marker = "true" if adjudication.fileable_oos else "false"
+    oos_artifact = (
+        context.artifact_text
+        + f"\nVote tally: YES={context.yes} NO={context.no} JUDGE_ERROR={context.judge_error} "
+        f"Result={adjudication.voting_result} Fileable={fileable_marker}\n\n"
+    )
+    if adjudication.security:
         security_oos_chunks.append(oos_artifact)
         return
     oos_chunks.append(oos_artifact)
-    if fileable:
-        oos_pool_chunks.extend(_public_oos_pool_chunks(artifact=oos_artifact, security=security))
-        oos_accepted_chunks.append(artifact_text + "\n")
+    if adjudication.fileable_oos:
+        oos_pool_chunks.extend(_public_oos_pool_chunks(artifact=oos_artifact, security=False))
+        oos_accepted_chunks.append(context.artifact_text + "\n")
 
 
 def _public_oos_pool_chunks(*, artifact: str, security: bool) -> list[str]:
