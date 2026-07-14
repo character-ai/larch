@@ -952,10 +952,9 @@ def run(repo_root: Path) -> list[str]:
             if retired in skill_text:
                 checks.append(f"SKILL.md must not retain retired surface {retired!r}")
         require("skills/implement/scripts/step-8-ship.sh", "bgjob adapt", "step-8-ship delegates outer launch to bgjob adapter")
-        require("skills/implement/scripts/step-8-ship.sh", "--replace-completed-result", "step-8-ship replaces completed result for reship")
-        require("skills/implement/scripts/step-8-ship.sh", '--result-env-path "$MERGE_RESULT_ENV"', "step-8-ship passes merge result env to ship driver")
-        for retired in ["HANDOFF_CAPTURE", "HANDOFF_JSON", "persist_handoff", "tee -a"]:
-            forbid("skills/implement/scripts/step-8-ship.sh", retired, f"step-8-ship must not retain retired handoff sidecar {retired}")
+        forbid("skills/implement/scripts/step-8-ship.sh", "HANDOFF_", "step-8-ship must not retain retired handoff sidecars")
+        forbid("skills/implement/scripts/step-8-ship.sh", "persist_handoff", "step-8-ship must not retain retired handoff writer")
+        forbid("skills/implement/scripts/step-8-ship.sh", "tee -a", "step-8-ship must not retain retired handoff stdout capture")
         require("skills/implement/scripts/step-8-oos-checkpoint.sh", "implement step-8-oos-checkpoint", "step-8-oos-checkpoint delegates to Python authority")
         forbid("skills/implement/scripts/step-8-oos-checkpoint.sh", "oos disposition-checkpoint", "step-8-oos-checkpoint wrapper does not call disposition directly")
 
