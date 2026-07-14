@@ -6134,7 +6134,7 @@ def test_ship_state_read_error_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp
     def fail_read(*_args: object, **_kwargs: object) -> str:
         raise OSError("blocked")
 
-    monkeypatch.setattr(Path, "read_text", fail_read)
+    monkeypatch.setattr("larch.io._read_utf8", fail_read)
 
     with pytest.raises(ShipError, match="cannot read existing ship state"):
         ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]

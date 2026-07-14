@@ -62,8 +62,8 @@ def phase_driver_read_result_env(*, path: str | Path, allow_keys: Iterable[str])
         raise OSError(f"result env is not a regular file: {source}")
     allow = set(allow_keys)
     text = source.read_bytes().decode("utf-8", errors="replace")
-    if "\r" in text:
-        return []
+    clean_lines = [line for line in text.split("\n") if "\r" not in line]
+    text = "\n".join(clean_lines)
     rows = larch_io.parse_kv(
         text,
         duplicate_policy="all",
