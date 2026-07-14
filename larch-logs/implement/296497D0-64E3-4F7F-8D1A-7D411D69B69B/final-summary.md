@@ -75,30 +75,25 @@ Warnings (4):
 
 ## Architectural invariants
 
-The changed code contains no architectural invariant violations.
+The changed code introduces no invariant violations; the new stderr-routing test, baseline engine additions, and test-file updates all stay within the boundaries established by the invariants.
 
 ## Architectural guidelines
 
-The engine.py and test_lint_engine.py changes are broadly consistent with the guidelines: frozen dataclasses (G-Py-1), larch.io helpers for reads and writes (G-IO-1), symlink and path-traversal rejection at validation time (G-Sec-4), write postcondition verification via three-step read-back in `_publish_baseline` (G-Py-8), non-empty-reason enforcement on baseline rows (G-Enf-2), and all suppression comments carry inline reasons (G-Py-11).
+The changed code contains no architectural guideline deviations.
 
-## Deviation: G-Fix-2
+## /implement run 296497D0-64E3-4F7F-8D1A-7D411D69B69B: pr-created
 
-Two changes in `dispatch_commit_route.py` redirect breadcrumb prints from stdout to stderr in `_step4_noop` and `_checks_commit_route_main_impl`. G-Fix-2 requires that fixes to orchestration machinery ship with a test that replays the failure. No test was added covering these two output-routing corrections.
-
-Exception: Adding a reproduction test would require new test coverage for dispatch_commit_route.py, which is outside the plan scope for this issue (plan covers only lint/engine.py and tests/lint/test_lint_engine.py). The correctness of both fixes is verifiable by the bgjob infrastructure returning BGJOB_RC=0 after the fix was applied. The changes are two one-line, deterministic redirections with no behavioral side-effects beyond the targeted stdout-to-stderr routing. (author: main-agent, date: 2026-07-13)
-
-## /implement run 296497D0-64E3-4F7F-8D1A-7D411D69B69B: shipping
-
-- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
+- **Outcome**: ✅ DONE
 - **Duration**: 01:26:24
-- **Cost**: 💰 TOTAL ~$29.10: Claude $17.28, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.37  |  Tokens: 52079k
+- **Cost**: 💰 TOTAL ~$34.05: Claude $22.19, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.41  |  Tokens: 63622k
 - **Issue**: #7020: https://github.com/character-ai/larch/issues/7020
+- **PR**: #7280: https://github.com/character-ai/larch/pull/7280
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 11/14 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1401/-40, larch-logs +1078/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 4

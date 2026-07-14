@@ -1,1 +1,1 @@
-{"assessment_kind":"deviation","base_ref":"origin/main","detail":"","guidelines_status":"present","head_sha":"635c65a00a52f41c8057fbf7ce28c4892f197839","operator_waived":false,"outcome":"pinned","phase":"implement","reason":"note-pinned","schema_version":"1","step":"8"}
+{"assessment_kind":"clean","base_ref":"origin/main","detail":"","guidelines_status":"present","head_sha":"926ba610fe3e261041a8fd3e3f15e445c0627add","operator_waived":false,"outcome":"clean","phase":"implement","reason":"clean-note","schema_version":"1","step":"8"}
