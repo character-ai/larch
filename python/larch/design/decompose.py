@@ -725,12 +725,12 @@ def close_original_issue(*, design_tmpdir: Path, original_issue: str, repo: str)
         return "failed"
 
     def run_gh(argv: list[str]) -> tuple[None, int, str]:
-        result = proc.run(argv)
+        result = gh.command(proc, argv)
         return None, result.returncode, result.stdout + result.stderr
 
     if not comment_sent.is_file():
         result = retry.with_transient_retry(
-            lambda: run_gh(["gh", "issue", "comment", original_issue, "--repo", repo, "--body-file", str(redacted)]),
+            lambda: run_gh(["issue", "comment", original_issue, "--repo", repo, "--body-file", str(redacted)]),
         )
         if result.last_returncode != 0:
             _append_failure(design_tmpdir, site="design decompose close-original", tool="gh issue comment", exit_code=result.last_returncode, output_file=redacted)

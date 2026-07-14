@@ -612,7 +612,7 @@ def _probe_tracking_blocker(*, tmpdir: Path, repo: str, issue_number: str) -> bo
 
 
 def _run_gh(args: list[str]) -> proc.CommandResult:
-    return proc.run(args)
+    return gh.command(proc, args)
 
 
 def _ensure_priority_label(*, tmpdir: Path, repo: str) -> bool:

@@ -1245,9 +1245,8 @@ def _filed_issue_status(
     runner: Runner, proposal: Proposal, repo: str
 ) -> ProposalStatus:
     assert proposal.filed_issue is not None
-    result = runner.run(  # lint-subprocess-via-runner: ok local gh issue view with JSON response
+    result = gh.command(runner,  # lint-subprocess-via-runner: ok local gh issue view with JSON response
         [
-            "gh",
             "issue",
             "view",
             str(proposal.filed_issue),

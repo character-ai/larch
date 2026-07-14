@@ -462,7 +462,7 @@ def test_scan_origin_fallback_suppresses_primary_failure_diagnostic(
             self.calls.append(list(argv))
             if list(argv)[:2] == ["git", "rev-parse"]:
                 return CommandResult(tuple(argv), 0, str(self.root), "", 0.01)
-            if list(argv)[:3] == ["gh", "repo", "view"]:
+            if list(argv)[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 1, "", "ghp_aaaaaaaaaaaaaaaaaaaaaaaaaa", 0.01)
             if list(argv)[:3] == ["git", "remote", "get-url"]:
                 return CommandResult(tuple(argv), 0, "git@github.com:o/r.git\n", "", 0.01)
@@ -498,7 +498,7 @@ def test_scan_unresolved_redacts_nonzero_primary_stderr(
             self.calls.append(list(argv))
             if list(argv)[:2] == ["git", "rev-parse"]:
                 return CommandResult(tuple(argv), 0, str(self.root), "", 0.01)
-            if list(argv)[:3] == ["gh", "repo", "view"]:
+            if list(argv)[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 1, "", secret, 0.01)
             if list(argv)[:3] == ["git", "remote", "get-url"]:
                 return CommandResult(tuple(argv), 1, "", "", 0.01)
@@ -532,7 +532,7 @@ def test_scan_unresolved_oserror_primary_diagnostic(
             self.calls.append(list(argv))
             if list(argv)[:2] == ["git", "rev-parse"]:
                 return CommandResult(tuple(argv), 0, str(self.root), "", 0.01)
-            if list(argv)[:3] == ["gh", "repo", "view"]:
+            if list(argv)[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
                 raise FileNotFoundError("gh binary missing")
             if list(argv)[:3] == ["git", "remote", "get-url"]:
                 return CommandResult(tuple(argv), 1, "", "", 0.01)

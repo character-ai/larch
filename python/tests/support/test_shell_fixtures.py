@@ -16,7 +16,7 @@ def _run(tool: str, *argv: str, env: Mapping[str, str]) -> subprocess.CompletedP
     return subprocess.run([tool, *argv], env=env, text=True, capture_output=True, check=False)
 
 
-@pytest.mark.parametrize("tool", ["gh", "codex", "cursor", "claude"])
+@pytest.mark.parametrize("tool", ["gh", "codex", "cursor", "claude"])  # lint-gh-argv-literal: ok fixture assertion
 def test_all_supported_tools_are_configurable_and_recorded(tmp_path: Path, tool: str) -> None:
     fake_bin = shell_fixtures.make_fake_bin_dir(tmp_path)
     fake_bin.configure(tool, shell_fixtures.FakeCommand(stdout=f"{tool} ok\\n"))  # pyright: ignore[reportArgumentType] - parametrized literals exercise the public runtime check.
@@ -77,7 +77,7 @@ def test_fake_bin_dirs_keep_multiple_configured_tools_and_logs_isolated(tmp_path
     assert second.invocations() == [shell_fixtures.Invocation(tool="cursor", argv=("agent",))]
 
 
-@pytest.mark.parametrize("tool", ["gh", "codex", "cursor", "claude"])
+@pytest.mark.parametrize("tool", ["gh", "codex", "cursor", "claude"])  # lint-gh-argv-literal: ok fixture assertion
 def test_unconfigured_tools_fail_closed_before_ambient_path(tmp_path: Path, tool: str) -> None:
     ambient_bin = tmp_path / "ambient-bin"
     ambient_bin.mkdir()

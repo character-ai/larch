@@ -242,7 +242,7 @@ def test_list_issues_parses_json_array() -> None:
     runner = RecordingRunner(responses=[_result(json.dumps(rows))], strict=True)
     out = learn_from_bugs.list_issues(runner, search="[BUG] in:title", state="closed", limit=5, repo="o/r")
     assert [row["number"] for row in out] == [1, 2]
-    assert runner.calls == [[
+    assert runner.calls == [[  # lint-gh-argv-literal: ok fixture assertion
         "gh", "issue", "list", "--repo", "o/r", "--state", "closed", "--json",
         "number,title,body,closedAt,url,state", "--search", "[BUG] in:title", "--limit", "5",
     ]]

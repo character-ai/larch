@@ -360,11 +360,17 @@ def _marketplace_sparse_cone_matches() -> bool:
     return result.returncode == 0 and configured == normalize_sparse_dirs()
 
 
+def _gh_command(argv: list[str]) -> proc.CommandResult:
+    from larch.git import gh  # noqa: PLC0415 - core leaf import stays function-local  # lint-layering: ok shared GitHub executable seam
+
+    return gh.command(proc, argv)
+
+
 def _get_stable_releases() -> list[str]:
     if shutil.which("gh") is None:
         err("Warning: gh is not available; upgrading without stable verification.")
         return []
-    result = proc.run(["gh", "api", "--paginate", "repos/character-ai/larch/releases", "--jq", ".[] | select(.prerelease == false and .draft == false) | .tag_name"])
+    result = _gh_command(["api", "--paginate", "repos/character-ai/larch/releases", "--jq", ".[] | select(.prerelease == false and .draft == false) | .tag_name"])
     if result.returncode != 0:
         err(f"Warning: failed to query GitHub stable releases via gh (exit {result.returncode}); upgrading without stable verification.")
         return []

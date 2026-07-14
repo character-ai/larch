@@ -151,7 +151,7 @@ def test_clarify_state_flattens_slurp_pages() -> None:
 def test_missing_repo_resolves_with_gh_repo_view() -> None:
     runner = RecordingRunner(responses=[_result(stdout="o/r\n"), _result(stdout="[]")])
     assert clarify.clarify_state(runner=runner, issue="7", repo=None).state == "clean"
-    assert runner.calls[0] == ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]
+    assert runner.calls[0] == ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"]  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_comment_fetch_writes_request_body_without_stdout_body(tmp_path: Path) -> None:
@@ -588,7 +588,7 @@ def test_label_add_create_and_metadata() -> None:
     )
     result = clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True)
     assert result == clarify.ClarifyLabelResult(changed=True, action="add", label=clarify.LABEL_NAME)
-    assert runner.calls[1] == [
+    assert runner.calls[1] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "label",
         "create",
@@ -611,7 +611,7 @@ def test_label_repeated_add_with_omitted_label_creates_each_time() -> None:
     )
     assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
     assert clarify.clarify_label(runner=runner, issue="7", action="add", repo="o/r", create_if_missing=True).changed
-    create_calls = [call for call in runner.calls if call[:3] == ["gh", "label", "create"]]
+    create_calls = [call for call in runner.calls if call[:3] == ["gh", "label", "create"]]  # lint-gh-argv-literal: ok fixture assertion
     assert len(create_calls) == 2
 
 

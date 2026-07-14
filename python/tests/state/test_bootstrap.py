@@ -612,7 +612,7 @@ def test_forked_plan_requires_upstream_repo_before_gh(tmp_path, monkeypatch) -> 
         bootstrap._phase_plan(st)  # pyright: ignore[reportPrivateUsage]
     assert exc_info.value.code == 2
     assert st.implement_bail_reason == ""
-    assert not any(call[:3] == ["gh", "issue", "view"] for call in calls)
+    assert not any(call[:3] == ["gh", "issue", "view"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_phase_plan_materializes_feature_description_via_template_wrapper(tmp_path, monkeypatch) -> None:

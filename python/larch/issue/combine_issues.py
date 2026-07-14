@@ -771,7 +771,7 @@ def apply_main(argv: list[str] | None = None) -> int:
     red_body.write(redact.redact(body.read_text(encoding="utf-8")))
     red_body.close()
     try:
-        create = proc.run(["gh", "issue", "create", "--repo", repo, "--title", red_title, "--body-file", red_body.name])
+        create = gh.command(proc, ["issue", "create", "--repo", repo, "--title", red_title, "--body-file", red_body.name])
         if create.returncode != 0:
             print("ERROR=Failed to create combined issue (gh output withheld)", file=sys.stderr)
             return 1

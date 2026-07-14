@@ -122,7 +122,7 @@ def test_filtered_argv_uses_repo_bare_branch_event_workflow_limit_and_commit() -
     )
 
     call = runner.calls[0]
-    assert call[0:5] == ["gh", "run", "list", "--repo", "o/r"]
+    assert call[0:5] == ["gh", "run", "list", "--repo", "o/r"]  # lint-gh-argv-literal: ok fixture assertion
     assert "--branch" in call
     assert call[call.index("--branch") + 1] == "main"
     assert call[call.index("--event") + 1] == "push"

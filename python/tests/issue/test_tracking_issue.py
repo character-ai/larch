@@ -452,8 +452,8 @@ def test_read_issue_prompt_success_appends_then_renders_task(
     assert "TASK_SOURCE=issue-plus-prompt" in out
     assert f"TASK_FILE={task_file}" in out
     assert runner.calls[0][1:3] == ["issue", "comment"]
-    assert runner.calls[1][:2] == ["gh", "api"]
-    assert runner.calls[2][:2] == ["gh", "api"]
+    assert runner.calls[1][:2] == ["gh", "api"]  # lint-gh-argv-literal: ok fixture assertion
+    assert runner.calls[2][:2] == ["gh", "api"]  # lint-gh-argv-literal: ok fixture assertion
     assert task_file.read_text(encoding="utf-8").endswith(
         '<external_issue_comment id="11">\nkept comment\n</external_issue_comment>\n\n\noperator prompt\n'
     )

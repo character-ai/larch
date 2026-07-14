@@ -131,6 +131,21 @@ def _gh(
     return runner.run(["gh", *argv], cwd=cwd, timeout=timeout)
 
 
+def command(
+    runner: Runner,
+    argv: Sequence[str],
+    *,
+    cwd: str | None = None,
+    timeout: float | None = None,
+) -> CommandResult:
+    """Run a GitHub CLI command through the package's executable choke point.
+
+    Prefer a typed helper where one exists. This preserves legacy command
+    behavior while callers are consolidated behind the single executable seam.
+    """
+    return _gh(runner, argv, cwd=cwd, timeout=timeout)
+
+
 def _combined(result: CommandResult) -> str:
     return result.stdout + result.stderr
 

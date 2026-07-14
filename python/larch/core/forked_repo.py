@@ -302,6 +302,12 @@ def release_lock(ctx: SetupContext) -> None:
         pass
 
 
+def _gh_command(argv: list[str]) -> proc.CommandResult:
+    from larch.git import gh  # noqa: PLC0415 - core leaf import stays function-local  # lint-layering: ok shared GitHub executable seam
+
+    return gh.command(proc, argv)
+
+
 def phase_preflight(ctx: SetupContext) -> None:
     root = git_stdout(["rev-parse", "--show-toplevel"])
     os.chdir(root)
@@ -319,7 +325,7 @@ def phase_preflight(ctx: SetupContext) -> None:
         if parsed is None:
             die(f"origin remote URL '{urls[0] if urls else ''}' is not a recognized GitHub-compatible URL; refusing to fetch")
         ctx.gh_host = parsed[0]
-    auth = proc.run(["gh", "auth", "status", "--hostname", ctx.gh_host])
+    auth = _gh_command(["auth", "status", "--hostname", ctx.gh_host])
     if auth.returncode != 0:
         err("ERROR: gh auth status failed:")
         err(redact_outbound(auth.stderr))
@@ -344,7 +350,7 @@ def phase_preflight(ctx: SetupContext) -> None:
 
 
 def phase_github(ctx: SetupContext) -> None:
-    view = proc.run(["gh", "repo", "view", ctx.fork, "--json", "nameWithOwner,parent,defaultBranchRef"])
+    view = _gh_command(["repo", "view", ctx.fork, "--json", "nameWithOwner,parent,defaultBranchRef"])
     if view.returncode != 0:
         combined = f"{view.stdout}\n{view.stderr}"
         if re.search(r"404|not[_ -]?found|Could not resolve to a Repository", combined, re.IGNORECASE):

@@ -151,9 +151,9 @@ def _named_values(value: object, *, field: str) -> tuple[str, ...]:
 
 
 def _issue_snapshot(runner: Runner, *, issue: int, repo: str) -> IssueSnapshot:
-    result = runner.run(
+    result = gh.command(
+        runner,
         [
-            "gh",
             "issue",
             "view",
             str(issue),
@@ -363,7 +363,7 @@ def _check_snapshot(
 
 
 def _mutate(runner: Runner, argv: list[str], *, action: str) -> None:
-    result = runner.run(argv)
+    result = gh.command(runner, argv)
     if result.returncode != 0:
         raise TriageError(
             f"{action} failed: {result.stderr or result.stdout}", EXIT_MUTATION
@@ -552,7 +552,6 @@ def _restore_stale_title(
     _mutate(
         runner,
         [
-            "gh",
             "issue",
             "edit",
             str(request.issue),
@@ -624,7 +623,6 @@ def _close_apply(
     _mutate(
         runner,
         [
-            "gh",
             "issue",
             "close",
             str(request.issue),

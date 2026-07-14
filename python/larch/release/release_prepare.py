@@ -14,6 +14,7 @@ from typing import Any
 
 from larch.core import config
 from larch.core import proc
+from larch.git import gh
 from larch.release import version_bump
 from larch.errors import ShipError
 
@@ -34,7 +35,7 @@ def _emit_error(token: str, *diagnostics: str, extra: list[str] | None = None) -
 
 
 def _gh_json(argv: list[str]) -> object | None:
-    res = proc.run(["gh", *argv])
+    res = gh.command(proc, argv)
     if res.returncode != 0:
         return None
     try:
@@ -205,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         m = _PR_SUFFIX_RE.search(subj)
         if m and int(m.group(1)) not in unresolved:
             continue
-        api = proc.run(["gh", "api", f"repos/{args.repo}/commits/{sha}/pulls"])
+        api = gh.command(proc, ["api", f"repos/{args.repo}/commits/{sha}/pulls"])
         if api.returncode != 0:
             return _emit_error("pr-metadata-incomplete", f"commits-to-pulls lookup failed for {sha}: {api.stderr.strip()}")
         try:

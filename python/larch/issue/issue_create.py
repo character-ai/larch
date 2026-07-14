@@ -42,7 +42,7 @@ URL_RE = re.compile(r"https?://[^\s]+/issues/[0-9]+")
 
 
 def _gh_read(argv: list[str], *, cwd: str | None = None) -> proc.CommandResult:
-    return proc.run(argv, timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC, cwd=cwd)
+    return gh.command(proc, argv, timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC, cwd=cwd)
 
 
 def emit_kv(key: str, value: object, *, stream: object | None = None) -> None:
@@ -357,7 +357,7 @@ def _valid_labels(repo: str, labels: list[str], *, dry_run: bool) -> list[str]:
             valid.append(label)
             continue
         result = _gh_read(
-            ["gh", "label", "list", "--repo", repo, "--search", label, "--json", "name", "--jq", ".[].name"],
+            ["label", "list", "--repo", repo, "--search", label, "--json", "name", "--jq", ".[].name"],
         )
         if result.returncode == 0 and label in result.stdout.splitlines():
             valid.append(label)
@@ -457,7 +457,7 @@ def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "")
 
 
 def _resolve_created_issue_id(*, repo: str, number: str, url: str, final_title: str) -> int:
-    lookup = _gh_read(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
+    lookup = _gh_read(["api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
         emit_kv(key="ISSUE_NUMBER", value=number)
@@ -477,7 +477,7 @@ def _resolve_created_from_output(*, repo: str, output: str, final_title: str) ->
     if not parsed:
         return _emit_issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(text=output)})")
     number, url = parsed
-    lookup = _gh_read(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
+    lookup = _gh_read(["api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
         emit_kv(key="ISSUE_NUMBER", value=number)
@@ -493,7 +493,7 @@ def _resolve_created_from_output(*, repo: str, output: str, final_title: str) ->
 
 
 def _create_fallback(*, repo: str, gh_args: list[str], final_title: str) -> int:
-    created = proc.run(["gh", *gh_args])
+    created = gh.command(proc, gh_args)
     if created.returncode != 0:
         return _emit_issue_failed(_flat_error(text=created.stderr))
     return _resolve_created_from_output(repo=repo, output=created.stdout, final_title=final_title)
@@ -559,7 +559,7 @@ def create_one_main(argv: list[str]) -> int:
         gh_args = ["issue", "create", "--repo", repo, "--title", final_title, "--body-file", body_tmp_path]
         for label in valid_labels:
             gh_args.extend(["--label", label])
-        result = proc.run(["gh", *gh_args, "--json", "id,number,url"])
+        result = gh.command(proc, [*gh_args, "--json", "id,number,url"])
         unknown_json = bool(re.search(r"unknown flag|unknown option|flag provided but not defined", result.stderr, re.IGNORECASE)) and "--json" in result.stderr
         if result.returncode == 0:
             json_status = _issue_create_json_status(result.stdout)
@@ -728,7 +728,7 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
         if not repo:
             return _blocked_failure(client=client, blocker=blocker, message="could not determine repo")
     if not blocker_id:
-        lookup = _gh_read(["gh", "api", f"/repos/{repo}/issues/{blocker}", "--jq", ".id"])
+        lookup = _gh_read(["api", f"/repos/{repo}/issues/{blocker}", "--jq", ".id"])
         blocker_id = lookup.stdout.strip()
         if lookup.returncode != 0:
             return _blocked_failure(client=client, blocker=blocker, message=f"blocker-id lookup failed for #{blocker}: {lookup.stderr}")
@@ -745,7 +745,7 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
             tmp.write(body)
             tmp_path = tmp.name
         try:
-            result = proc.run(["gh", "api", f"/repos/{repo}/issues/{client}/dependencies/blocked_by", "-X", "POST", "--input", tmp_path])
+            result = gh.command(proc, ["api", f"/repos/{repo}/issues/{client}/dependencies/blocked_by", "-X", "POST", "--input", tmp_path])
         finally:
             Path(tmp_path).unlink(missing_ok=True)
         err = result.stderr or result.stdout

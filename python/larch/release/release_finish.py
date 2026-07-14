@@ -17,6 +17,7 @@ from typing import Any
 
 from larch.core import proc
 from larch.core import redact
+from larch.git import gh
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
@@ -33,7 +34,7 @@ def _git(*argv: str) -> proc.CommandResult:
 
 
 def _gh(*argv: str) -> proc.CommandResult:
-    return proc.run(["gh", *argv])
+    return gh.command(proc, argv)
 
 
 def _repo_root() -> Path:

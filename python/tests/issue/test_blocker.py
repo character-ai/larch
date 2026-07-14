@@ -84,7 +84,7 @@ def test_prose_open_blockers_parses_body_and_comment_bodies() -> None:
         ]
     )
     assert blocker.prose_open_blockers(runner, "7", repo="o/r") == [8]
-    assert runner.calls[1] == ["gh", "api", "/repos/o/r/issues/7/comments", "--paginate"]
+    assert runner.calls[1] == ["gh", "api", "/repos/o/r/issues/7/comments", "--paginate"]  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_prose_open_blockers_keeps_comment_refs_when_body_fails() -> None:

@@ -55,7 +55,7 @@ py-lint-checks-fast:
 	@# is dash): no pipefail, no arrays.
 	@tmp=$$(mktemp -d); rc=0; pids=""; \
 	( cd python && ruff check . ) >"$$tmp/ruff.log" 2>&1 & pids="$$pids $$!:ruff"; \
-	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner wire-artifact-pairing tempfile-dir markdown-heading-fence-state self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers; do \
+	for chk in complexity-baseline agent-tool-contract keyword-only subprocess-via-runner gh-argv-literal wire-artifact-pairing tempfile-dir markdown-heading-fence-state self-disarmable-gate unreachable-branch monkeypatch-facade-binding env-via-config-constant lifecycle-prefix-literal prefix-case-variant shared-convention-regex renderer-golden-tests suppression-reason guideline-no-exception guidelines-note-wrapper-bypass layering flat-tests run-log-walkers; do \
 		$(PYTHON) python/cli.py lint "$$chk" >"$$tmp/$$chk.log" 2>&1 & pids="$$pids $$!:$$chk"; \
 	done; \
 	for entry in $$pids; do \

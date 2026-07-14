@@ -40,7 +40,7 @@ def _stub_issue_view(
     def fake_proc_run(argv: list[str] | tuple[str, ...], **_kwargs: Any) -> CommandResult:
         argv_list = list(argv)
         calls.append(argv_list)
-        if argv_list[:3] == ["gh", "issue", "view"]:
+        if argv_list[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv_list), returncode, stdout, stderr, 0.01)
         return CommandResult(tuple(argv_list), 0, "", "", 0.01)
 

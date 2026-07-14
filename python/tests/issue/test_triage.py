@@ -106,12 +106,12 @@ def test_valid_apply_preserves_original_and_verifies_readback(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal calls
         calls += 1
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
         if calls in {1, 3}:
             return _result(argv, stdout=_snapshot())
         if calls == 5:
-            assert argv[:4] == ["gh", "issue", "edit", "7"]
+            assert argv[:4] == ["gh", "issue", "edit", "7"]  # lint-gh-argv-literal: ok fixture assertion
             assert "--title" in argv
             assert argv[argv.index("--title") + 1] == expected_title
             assert Path(argv[-1]).read_text(encoding="utf-8") == expected_body
@@ -166,7 +166,7 @@ def test_valid_apply_bug_prefix_title_gets_triaged_infix(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal calls
         calls += 1
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
         if calls in {1, 3}:
             return _result(argv, stdout=_snapshot(title="[BUG] Crash on startup"))
@@ -264,7 +264,7 @@ def test_close_stops_when_snapshot_changes_between_mutations(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         command = list(argv)
         calls.append(command)
-        if command[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if command[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             if len(calls) == 8:
                 return _result(command, stdout=json.dumps([{"body": marked}]))
             return _result(command, stdout="[]")
@@ -272,7 +272,7 @@ def test_close_stops_when_snapshot_changes_between_mutations(
         if position in {1, 4}:
             return _result(command, stdout=_snapshot())
         if position == 6:
-            assert command[:4] == ["gh", "issue", "comment", "7"]
+            assert command[:4] == ["gh", "issue", "comment", "7"]  # lint-gh-argv-literal: ok fixture assertion
             return _result(command)
         if position == 7:
             return _result(
@@ -309,7 +309,7 @@ def test_close_stops_when_snapshot_changes_between_mutations(
     )
     assert rc == triage.EXIT_STALE
     assert len(calls) == 9
-    assert not any(command[:4] == ["gh", "issue", "close", "7"] for command in calls)
+    assert not any(command[:4] == ["gh", "issue", "close", "7"] for command in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 @pytest.mark.parametrize(
@@ -336,7 +336,7 @@ def test_protected_and_security_state_refuses(
         lambda argv, **_: _result(
             list(argv),
             stdout="[]"
-            if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]
+            if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]  # lint-gh-argv-literal: ok fixture assertion
             else _snapshot(title=title, body=body, labels=labels),
         ),
     )
@@ -421,7 +421,7 @@ def test_valid_apply_reports_a_verified_noop(monkeypatch: Any, capsys: Any, tria
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
         return _result(argv, stdout=_snapshot(body=existing_body, title="[TRIAGED] Bug report"))
 
@@ -434,7 +434,7 @@ def test_valid_apply_reports_a_verified_noop(monkeypatch: Any, capsys: Any, tria
     output = capsys.readouterr().out
     assert "ISSUE_UPDATED=false" in output
     assert "UPDATED_AT=2026-07-12T10:00:00Z" in output
-    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)
+    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_paginated_security_comment_blocks_public_mutation(
@@ -446,7 +446,7 @@ def test_paginated_security_comment_blocks_public_mutation(
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout='[]\n[{"body": "api key exposed"}]')
         return _result(argv, stdout=_snapshot())
 
@@ -457,7 +457,7 @@ def test_paginated_security_comment_blocks_public_mutation(
         str(triage_root), "--body-file", str(body_file), "--operator-invoked",
     ])
     assert rc == triage.EXIT_PROTECTED
-    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)
+    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_sensitive_pending_artifact_blocks_public_mutation(
@@ -469,7 +469,7 @@ def test_sensitive_pending_artifact_blocks_public_mutation(
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        return _result(argv, stdout="[]" if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"] else _snapshot())
+        return _result(argv, stdout="[]" if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"] else _snapshot())  # lint-gh-argv-literal: ok fixture assertion
 
     monkeypatch.setattr(triage.proc, "run", fake_run)
     rc = triage.apply_main([
@@ -492,7 +492,7 @@ def test_valid_apply_rechecks_snapshot_before_body_mutation(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal views
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
         views += 1
         return _result(argv, stdout=_snapshot(updated_at="2026-07-12T10:00:01Z" if views == 2 else "2026-07-12T10:00:00Z"))
@@ -504,7 +504,7 @@ def test_valid_apply_rechecks_snapshot_before_body_mutation(
         str(triage_root), "--body-file", str(body_file), "--operator-invoked",
     ])
     assert rc == triage.EXIT_STALE
-    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)
+    assert not any(call[:4] == ["gh", "issue", "edit", "7"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_duplicate_requires_an_open_canonical_issue(
@@ -516,9 +516,9 @@ def test_duplicate_requires_an_open_canonical_issue(
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="[]")
-        if argv[:4] == ["gh", "issue", "view", "8"]:
+        if argv[:4] == ["gh", "issue", "view", "8"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=_snapshot(number=8, state="CLOSED"))
         return _result(argv, stdout=_snapshot())
 
@@ -530,7 +530,7 @@ def test_duplicate_requires_an_open_canonical_issue(
         "--canonical-duplicate", "8", "--operator-invoked",
     ])
     assert rc == triage.EXIT_PROTECTED
-    assert not any(call[:4] == ["gh", "issue", "comment", "7"] for call in calls)
+    assert not any(call[:4] == ["gh", "issue", "comment", "7"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_conflicting_verdict_marker_blocks_close(
@@ -544,7 +544,7 @@ def test_conflicting_verdict_marker_blocks_close(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal comment_reads
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             comment_reads += 1
             body = "<!-- larch:triage-verdict:invalid -->\nConflicting evidence."
             return _result(argv, stdout="[]" if comment_reads == 1 else json.dumps([{"body": body}]))
@@ -557,7 +557,7 @@ def test_conflicting_verdict_marker_blocks_close(
         str(triage_root), "--comment-file", str(comment_file), "--operator-invoked",
     ])
     assert rc == triage.EXIT_POSTCONDITION
-    assert not any(call[:4] == ["gh", "issue", "close", "7"] for call in calls)
+    assert not any(call[:4] == ["gh", "issue", "close", "7"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_close_restores_title_and_verifies_not_planned(
@@ -575,17 +575,17 @@ def test_close_restores_title_and_verifies_not_planned(
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal title, state, state_reason, updated_at
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=json.dumps(comments))
-        if argv[:4] == ["gh", "issue", "comment", "7"]:
+        if argv[:4] == ["gh", "issue", "comment", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             comments.append({"body": "<!-- larch:triage-verdict:invalid -->\nVerified as invalid."})
             updated_at = "2026-07-12T10:00:01Z"
             return _result(argv)
-        if argv[:4] == ["gh", "issue", "edit", "7"]:
+        if argv[:4] == ["gh", "issue", "edit", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             title = "Bug report"
             updated_at = "2026-07-12T10:00:02Z"
             return _result(argv)
-        if argv[:4] == ["gh", "issue", "close", "7"]:
+        if argv[:4] == ["gh", "issue", "close", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             state = "CLOSED"
             state_reason = "NOT_PLANNED"
             updated_at = "2026-07-12T10:00:03Z"
@@ -602,7 +602,7 @@ def test_close_restores_title_and_verifies_not_planned(
         str(triage_root), "--comment-file", str(comment_file), "--operator-invoked",
     ])
     assert rc == 0
-    assert any(call[:4] == ["gh", "issue", "close", "7"] and call[-2:] == ["--reason", "not planned"] for call in calls)
+    assert any(call[:4] == ["gh", "issue", "close", "7"] and call[-2:] == ["--reason", "not planned"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 @pytest.mark.parametrize(
@@ -621,18 +621,18 @@ def test_close_successfully_applies_already_fixed_and_duplicate_verdicts(
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         nonlocal updated_at, state, state_reason
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/7/comments"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=json.dumps(comments))
-        if argv[:4] == ["gh", "issue", "view", "8"]:
+        if argv[:4] == ["gh", "issue", "view", "8"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=_snapshot(number=8))
-        if argv[:4] == ["gh", "issue", "comment", "7"]:
+        if argv[:4] == ["gh", "issue", "comment", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             content = "Verified outcome."
             if verdict == "duplicate":
                 content = "Duplicate of #8.\n\nVerified outcome."
             comments.append({"body": f"<!-- larch:triage-verdict:{verdict} -->\n{content}"})
             updated_at = "2026-07-12T10:00:01Z"
             return _result(argv)
-        if argv[:4] == ["gh", "issue", "close", "7"]:
+        if argv[:4] == ["gh", "issue", "close", "7"]:  # lint-gh-argv-literal: ok fixture assertion
             state = "CLOSED"
             state_reason = "NOT_PLANNED"
             updated_at = "2026-07-12T10:00:02Z"
