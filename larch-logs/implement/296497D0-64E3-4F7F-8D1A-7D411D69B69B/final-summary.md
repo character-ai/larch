@@ -86,7 +86,7 @@ The changed code contains no architectural guideline deviations.
 
 - **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: first-fixer-non-health; pending: ci-fix)
 - **Duration**: 01:26:24
-- **Cost**: 💰 TOTAL ~$35.29: Claude $23.33, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.51  |  Tokens: 67190k
+- **Cost**: 💰 TOTAL ~$36.69: Claude $24.69, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.55  |  Tokens: 71170k
 - **Issue**: #7020: https://github.com/character-ai/larch/issues/7020
 - **PR**: #7280: https://github.com/character-ai/larch/pull/7280
 - **Plan review**: N/A
@@ -94,7 +94,7 @@ The changed code contains no architectural guideline deviations.
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 11/14 accepted
-- **Lines (PR diff)**: code +1401/-40, larch-logs +1081/-0
+- **Lines (PR diff)**: code +1401/-40, larch-logs +1098/-0
 - **OOS filed**: 0
 - **Exec issues**: 2
 - **Warnings**: 4
