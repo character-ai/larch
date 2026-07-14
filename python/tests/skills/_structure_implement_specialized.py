@@ -1021,7 +1021,7 @@ def run(repo_root: Path) -> list[str]:
             "Checks Failure Entry Macro",
             "--site step5-self-review",
             "SELF_REVIEW_RESULT=complete",
-            "Claude subagent review complete",
+            "Do not record a successful self-review",
         ]:
             if needle not in self_review_text:
                 checks.append(f"self-review.md missing relocated authority {needle!r}")

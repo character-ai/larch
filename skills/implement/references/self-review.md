@@ -38,7 +38,9 @@ Wait with the shared bgjob contract. Repeat this exact fence on `BGJOB_STATUS=WA
 
 After the self-review composite bgjob returns `DONE` with `BGJOB_RC=0`, parse exactly one line-anchored composite `NEXT_ACTION=` record from the final `DONE` stdout and/or bgjob result env. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract (orchestrator repair only for structural composite failures), then re-run this same composite launcher with identical argv. On missing, duplicated, malformed, seed-failed, non-zero `BGJOB_RC`, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
 
-4. Log `Step 5: self-review mode: Claude subagent review complete` to `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.
+4. Do not record a successful self-review in `$IMPLEMENT_TMPDIR/execution-issues.md`.
+That log is for warnings and failures that need operator attention.
+Normal review artifacts record successful completion.
 
 5. Emit self-review Step 5 run-log artifacts so final report and `audit_runs` Step 5 detection treat a clean self-review as review ran. The CLI reconciles accepted and rejected counts from durable self-review artifacts under `$IMPLEMENT_TMPDIR`. This verb is best effort: writer failure records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
 
