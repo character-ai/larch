@@ -39,11 +39,19 @@ codex/apply                              │                                    
 
 **Reviewer slot failures**: 0
 
+## Architectural invariants
+
+The changed code adds three JSON fixture files and a new test module (`python/tests/lint/test_lint_engine_equivalence.py`) that materializes synthetic repositories under `tmp_path` and exercises legacy lint scan-file adapters. None of the changed code touches gate disarm logic, pause/resume snapshot machinery, persisted step result consumption, run-log flush paths, committed artifact fields, outcome label writes, panel slot accounting, agent verdict emission, or ship/rebase recovery routes. The diff is entirely test-layer infrastructure with no production surface changes, so all invariants hold without exception.
+
+## Architectural guidelines
+
+The changed code — three new test fixture JSON files and a new equivalence-harness test module — conforms to the architectural guidelines with no deviations.
+
 ## /implement run CF288943-6C65-4182-873F-34C62179562A: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:21:50
-- **Cost**: 💰 TOTAL ~$8.81: Claude $0.58, Codex-5.6 $2.60, Codex-mini $0.01, Cursor $5.47 (Composer $3.01, Grok $2.46), Claude (subprocess) $0.15  |  Tokens: 13146k
+- **Cost**: 💰 TOTAL ~$9.93: Claude $1.70, Codex-5.6 $2.60, Codex-mini $0.01, Cursor $5.47 (Composer $3.01, Grok $2.46), Claude (subprocess) $0.15  |  Tokens: 14645k
 - **Issue**: #7021: https://github.com/character-ai/larch/issues/7021
 - **Plan review**: N/A
 - **Plan coverage**: 4/4 firm headings; band: advisory; disposition: none; todos_left: 0
