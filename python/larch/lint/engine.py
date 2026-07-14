@@ -647,6 +647,8 @@ def _validate_baseline_component(path: Path, *, is_parent: bool) -> bool:
         if is_parent:
             raise ScanError(f"baseline parent does not exist: {path}") from None
         return False
+    except OSError as exc:
+        raise ScanError(f"failed to inspect baseline path {path}: {exc}") from exc
     if stat.S_ISLNK(mode):
         raise ScanError(f"baseline path is symlinked: {path}")
     if is_parent and not stat.S_ISDIR(mode):

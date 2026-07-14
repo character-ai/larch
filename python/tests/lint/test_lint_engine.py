@@ -1117,6 +1117,27 @@ def test_generic_baseline_match_new_stale_and_strict_stale(tmp_path: Path) -> No
     )
 
 
+def test_strict_stale_takes_precedence_over_new_findings(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [_baseline_row("a.py", message="old")])
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        strict_stale=True,
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert err == (
+        "warning: stale baseline row: a.py:1: demo-rule old\n"
+        "strict_stale rejected stale baseline rows\n"
+    )
+
+
 def test_baseline_new_finding_and_reason_do_not_change_generic_identity(
     tmp_path: Path,
 ) -> None:
@@ -1195,6 +1216,97 @@ def test_symbol_metric_baselines_compare_symbols_without_generic_dedupe(
     assert err == ""
 
 
+@pytest.mark.parametrize("metric", [2, 3])
+def test_symbol_metric_baseline_accepts_equal_or_reduced_metric(
+    tmp_path: Path, metric: int
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(
+        baseline,
+        [
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": "function",
+                "metric": 3,
+                "reason": "known",
+            }
+        ],
+    )
+
+    def detect(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="same",
+                qualified_symbol="function",
+                metric=metric,
+            )
+        ]
+
+    code, out, err = _invoke(
+        _rule(detect=detect),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+    )
+
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+
+
+@pytest.mark.parametrize("metric", [-1, True, "3"])
+def test_symbol_metric_baseline_rejects_invalid_metric(
+    tmp_path: Path, metric: object
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(
+        baseline,
+        [
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": "function",
+                "metric": metric,
+                "reason": "known",
+            }
+        ],
+    )
+
+    code, out, err = _invoke(
+        _rule(), tmp_path, _git_ok_runner(tmp_path, ["a.py"]), baseline_path=baseline
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "invalid metric" in err
+
+
+def test_symbol_metric_baseline_rejects_duplicate_identity(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    row: dict[str, object] = {
+        "path": "a.py",
+        "rule_id": "demo-rule",
+        "qualified_symbol": "function",
+        "metric": 3,
+        "reason": "known",
+    }
+    _write_baseline(baseline, [row, {**row, "metric": 4}])
+
+    code, out, err = _invoke(
+        _rule(), tmp_path, _git_ok_runner(tmp_path, ["a.py"]), baseline_path=baseline
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "duplicate baseline identity" in err
+
+
 def test_baseline_active_duplicate_identity_fails_but_scan_only_dedupes(
     tmp_path: Path,
 ) -> None:
@@ -1266,10 +1378,13 @@ def test_write_baseline_preserves_reasons_and_refuses_unexplained_findings(
     )
     assert code == EXIT_CLEAN
     assert out == err == ""
-    assert json.loads(baseline.read_text(encoding="utf-8")) == [
-        _baseline_row("a.py", reason="keep this"),
-        _baseline_row("b.py", reason="new finding"),
+    expected_rows = [
+        lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "keep this"),
+        lint_engine.GenericBaselineRow("b.py", 1, "demo-rule", "hit", "new finding"),
     ]
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+        expected_rows
+    )
 
     before = baseline.read_text(encoding="utf-8")
     no_reason_code, no_reason_out, no_reason_err = _invoke(
@@ -1363,3 +1478,184 @@ def test_baseline_path_rejects_escape_symlink_parent_and_directory_target(
         assert code == EXIT_ERROR
         assert out == ""
         assert needle in err
+
+
+@pytest.mark.parametrize("write_baseline", [False, True])
+def test_baseline_component_lstat_errors_return_scan_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, write_baseline: bool
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n", "baseline.json": "[]"})
+    baseline = tmp_path / "baseline.json"
+    original_lstat = Path.lstat
+
+    def denied(path: Path) -> os.stat_result:
+        if path == baseline:
+            raise PermissionError("denied")
+        return original_lstat(path)
+
+    monkeypatch.setattr(Path, "lstat", denied)
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        write_baseline=write_baseline,
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "failed to inspect baseline path" in err
+
+
+@pytest.mark.parametrize(
+    ("baseline_path", "setup", "needle"),
+    [
+        ("../outside.json", None, "must not contain"),
+        ("missing/baseline.json", None, "parent does not exist"),
+        ("not-a-directory/baseline.json", "file", "parent is not a directory"),
+        ("linked.json", "symlink", "symlinked"),
+    ],
+)
+def test_write_baseline_rejects_unsafe_or_invalid_destination(
+    tmp_path: Path,
+    baseline_path: str,
+    setup: str | None,
+    needle: str,
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    if setup == "file":
+        _ = (tmp_path / "not-a-directory").write_text("x", encoding="utf-8")
+    if setup == "symlink":
+        target = tmp_path / "target.json"
+        _ = target.write_text("[]", encoding="utf-8")
+        (tmp_path / "linked.json").symlink_to(target)
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline_path,
+        write_baseline=True,
+        initial_reason="known",
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert needle in err
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        {
+            "path": "a.py",
+            "line": 0,
+            "rule_id": "demo-rule",
+            "message": "hit",
+            "reason": "x",
+        },
+        {
+            "path": "a.py",
+            "line": True,
+            "rule_id": "demo-rule",
+            "message": "hit",
+            "reason": "x",
+        },
+        {
+            "path": "a.py",
+            "line": 1,
+            "rule_id": "demo-rule",
+            "message": "hit",
+            "reason": "",
+        },
+    ],
+)
+def test_malformed_generic_baseline_aborts_before_write(
+    tmp_path: Path, row: dict[str, object]
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [row])
+    before = baseline.read_text(encoding="utf-8")
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="known",
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "invalid" in err
+    assert baseline.read_text(encoding="utf-8") == before
+
+
+def test_write_baseline_readback_mismatch_fails_without_rollback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [_baseline_row("removed.py", reason="old")])
+    original_read = lint_engine.larch_io.read_trusted_text
+    calls = 0
+
+    def mismatched_read(*args: object, **kwargs: object) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            return "[]\n"
+        return original_read(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(lint_engine.larch_io, "read_trusted_text", mismatched_read)
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="known",
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "read-back bytes differ" in err
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+        [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
+    )
+
+
+def test_write_baseline_readback_error_fails_without_rollback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [_baseline_row("removed.py", reason="old")])
+    original_read = lint_engine.larch_io.read_trusted_text
+    calls = 0
+
+    def failing_read(*args: object, **kwargs: object) -> str:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("read-back denied")
+        return original_read(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(lint_engine.larch_io, "read_trusted_text", failing_read)
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="known",
+    )
+
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "failed to read back baseline" in err
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+        [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
+    )
