@@ -68,19 +68,18 @@ fi
 registry_root="${LARCH_BGJOB_REGISTRY_ROOT:-${HOME:-}/.cache/larch/daemons}"
 [ -d "$registry_root" ] || exit 0
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || {
-  emit_deny 'run_in_background denied: cannot locate shared registry codec'
-  exit 0
-}
-kv_cli="$script_dir/../python/cli.py"
-[ -f "$kv_cli" ] && command -v python3 >/dev/null 2>&1 || {
-  emit_deny 'run_in_background denied: shared registry codec unavailable'
-  exit 0
-}
-
 found_same_clone=0
 for entry in "$registry_root"/*.env; do
   [ -f "$entry" ] && [ ! -L "$entry" ] || continue
+  script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P) || {
+    emit_deny 'run_in_background denied: cannot locate shared registry codec'
+    exit 0
+  }
+  kv_cli="$script_dir/../python/cli.py"
+  [ -f "$kv_cli" ] && command -v python3 >/dev/null 2>&1 || {
+    emit_deny 'run_in_background denied: shared registry codec unavailable'
+    exit 0
+  }
   clone_path=$(python3 "$kv_cli" kv get --file "$entry" --key CLONE_PATH --match first 2>/dev/null)
   kv_rc=$?
   if [ "$kv_rc" -ne 0 ]; then

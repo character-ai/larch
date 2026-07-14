@@ -8,7 +8,7 @@ from pathlib import Path
 
 from larch.io import kv_value, read_kv
 
-_MATCH_CHOICES = ("first", "last")
+_MATCH_CHOICES = ("first", "last", "last-non-empty")
 _CR_STRIP_CHOICES = ("none", "suffix", "rstrip", "strip")
 
 

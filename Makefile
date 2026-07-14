@@ -101,7 +101,7 @@ regen-keyword-only-baseline:
 
 regen-kv-codec-baseline:
 	# Regenerate the strict shared-codec adoption baseline from production scans.
-	$(PYTHON) python/cli.py lint kv-codec --write --initial-reason 'legacy or bootstrap reader pending migration to shared codec'
+	$(PYTHON) python/cli.py lint kv-codec --write
 
 regen-subprocess-via-runner-baseline:
 	# Regenerate python/subprocess-via-runner-baseline.json from live AST scan.

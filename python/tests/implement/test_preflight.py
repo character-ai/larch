@@ -22,6 +22,12 @@ def _write(handle: object, text: str) -> None:
         _ = handle.write(text)  # type: ignore[attr-defined]
 
 
+def test_read_kv_lines_uses_last_duplicate_value() -> None:
+    assert preflight._read_kv_lines("ADMISSION_RESULT=old\nADMISSION_RESULT=latest\n") == {  # pyright: ignore[reportPrivateUsage]
+        "ADMISSION_RESULT": "latest"
+    }
+
+
 def _fake_completed(argv: list[str], returncode: int = 0) -> subprocess.CompletedProcess[str]:
     return subprocess.CompletedProcess(argv, returncode, stdout="", stderr="")
 

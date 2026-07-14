@@ -26,6 +26,11 @@ _MARKER_START = "<!-- larch:design-pause:start -->"
 _MARKER_END = "<!-- larch:design-pause:end -->"
 
 
+def test_parse_pause_payload_normalizes_keys_before_last_value_selection() -> None:
+    payload = f"{_MARKER_START}\nSTEP=old\n STEP =new\nSTEP=latest\n{_MARKER_END}\n"
+    assert design_pause._parse_pause_payload(payload) == {"STEP": "latest"}  # pyright: ignore[reportPrivateUsage]
+
+
 def _git(*argv: str, cwd: Path) -> None:
     _ = subprocess.run(["git", *argv], cwd=cwd, check=True, capture_output=True)
 

@@ -20,6 +20,7 @@ def test_parse_kv_explicit_duplicate_policies_and_boolean_compatibility() -> Non
     assert larch_io.parse_kv(text, duplicate_policy="first") == {"A": "1"}
     assert larch_io.parse_kv(text, duplicate_policy="last") == {"A": "2"}
     assert larch_io.parse_kv(text, duplicate_policy="all") == {"A": ["1", "2"]}
+    assert larch_io.parse_kv("A=1\nA=\n", duplicate_policy="last-non-empty") == {"A": "1"}
     assert larch_io.parse_kv(text, first_wins=False) == {"A": "2"}
     with pytest.raises(ValueError, match="conflicting duplicate policy"):
         _ = larch_io.parse_kv(text, duplicate_policy="last", first_wins=True)
@@ -41,10 +42,17 @@ def test_parse_kv_comments_and_strip_value() -> None:
 
 def test_parse_kv_cr_strip_modes() -> None:
     text = "A=\rvalue\r\n"
-    assert larch_io.parse_kv(text, cr_strip="none")["A"] == "\rvalue"
-    assert larch_io.parse_kv(text, cr_strip="suffix")["A"] == "\rvalue"
-    assert larch_io.parse_kv(text, cr_strip="rstrip")["A"] == "\rvalue"
-    assert larch_io.parse_kv(text, cr_strip="strip")["A"] == "value"
+    assert larch_io.parse_kv(text, cr_strip="none")["A"] == ""
+    assert larch_io.parse_kv(text, cr_strip="suffix")["A"] == ""
+    assert larch_io.parse_kv(text, cr_strip="rstrip")["A"] == ""
+    assert larch_io.parse_kv(text, cr_strip="strip")["A"] == ""
+
+
+def test_parse_kv_lone_cr_separates_rows() -> None:
+    assert larch_io.parse_kv("PHASE=one\rRUN_ID=two\r") == {
+        "PHASE": "one",
+        "RUN_ID": "two",
+    }
 
 
 def test_kv_value_first_and_last() -> None:
@@ -85,6 +93,16 @@ def test_reject_cr_raises(tmp_path: Path) -> None:
     _ = path.write_bytes(b"A=1\r\n")
     with pytest.raises(ValueError, match="carriage return"):
         _ = larch_io.read_kvs(path, reject_cr=True)
+
+
+def test_read_kvs_allowlist_duplicates_and_embedded_equals(tmp_path: Path) -> None:
+    path = tmp_path / "env"
+    _ = path.write_bytes(b"KEEP=one=two\r\nDROP=no\nKEEP=last=part\n")
+    assert larch_io.read_kvs(
+        path,
+        duplicate_policy="last",
+        allowed_keys={"KEEP"},
+    ) == {"KEEP": "last=part"}
 
 
 def test_missing_and_error_defaults(tmp_path: Path) -> None:

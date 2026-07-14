@@ -1166,6 +1166,35 @@ def test_generic_baseline_match_new_stale_and_strict_stale(tmp_path: Path) -> No
     )
 
 
+def test_anchored_generic_baseline_ignores_line_movement(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(
+        baseline,
+        [{**_baseline_row("a.py", line=1), "anchor": "stable-reader"}],
+    )
+    rule = _rule(
+        detect=lambda source: [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="hit",
+                anchor="stable-reader",
+            )
+        ]
+    )
+    code, out, err = _invoke(
+        rule,
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path="baseline.json",
+        strict_stale=True,
+    )
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+
+
 def test_strict_stale_takes_precedence_over_new_findings(tmp_path: Path) -> None:
     _write_files(tmp_path, {"a.py": "x = 1\n"})
     baseline = tmp_path / "baseline.json"

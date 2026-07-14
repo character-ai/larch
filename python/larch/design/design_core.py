@@ -217,8 +217,7 @@ def _read_env_value_last(*, path: Path, key: str, default: str = "") -> str:
         path=path,
         key=key,
         default=default,
-        duplicate_policy="last",
-        empty_value_means_default=True,
+        duplicate_policy="last-non-empty",
         reject_symlink=True,
         on_error_default=True,
         errors="replace",
@@ -226,20 +225,15 @@ def _read_env_value_last(*, path: Path, key: str, default: str = "") -> str:
 
 
 def _read_env_values(*, path: Path, defaults: Mapping[str, str]) -> dict[str, str]:
-    out = dict(defaults)
-    values = larch_io.read_kvs(
+    return larch_io.read_kvs(
         path,
-        default=out,
-        duplicate_policy="last",
-        allowed_keys=out,
+        default=defaults,
+        duplicate_policy="last-non-empty",
+        allowed_keys=defaults,
         reject_symlink=True,
         on_error_default=True,
         errors="replace",
     )
-    for key, value in values.items():
-        if key in out and value:
-            out[key] = value
-    return out
 
 
 

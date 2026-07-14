@@ -64,6 +64,7 @@ class Finding:
     message: str
     qualified_symbol: str | None = None
     metric: int | None = None
+    anchor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -397,6 +398,7 @@ def _validate_finding(
     rule_id = finding.rule_id
     message = finding.message
     qualified_symbol = finding.qualified_symbol
+    anchor = finding.anchor
     if path != source.path:
         raise ScanError(f"finding path {path!r} does not match source {source.path!r}")
     if rule_id != rule.rule_id:
@@ -418,6 +420,8 @@ def _validate_finding(
         raise ScanError(
             "finding qualified_symbol must be a non-empty single-line string when present"
         )
+    if anchor is not None and not _is_single_line(anchor):
+        raise ScanError("finding anchor must be a non-empty single-line string when present")
     metric = _validate_metric(finding.metric)
     return Finding(
         path=path,
@@ -426,6 +430,7 @@ def _validate_finding(
         message=message,
         qualified_symbol=qualified_symbol,
         metric=metric,
+        anchor=anchor,
     )
 
 
@@ -541,9 +546,12 @@ class GenericBaselineRow:
     rule_id: str
     message: str
     reason: str
+    anchor: str | None = None
 
     @property
-    def identity(self) -> tuple[str, int, str, str]:
+    def identity(self) -> tuple[object, ...]:
+        if self.anchor is not None:
+            return (self.path, self.rule_id, self.message, self.anchor)
         return (self.path, self.line, self.rule_id, self.message)
 
 
@@ -573,7 +581,7 @@ def _baseline_kind(row: BaselineRow) -> BaselineKind:
 
 def _baseline_sort_key(row: BaselineRow) -> tuple[object, ...]:
     if isinstance(row, GenericBaselineRow):
-        return ("generic", row.path, row.line, row.rule_id, row.message)
+        return ("generic", row.path, row.rule_id, row.message, row.anchor or "", row.line)
     return ("symbol_metric", row.path, row.rule_id, row.qualified_symbol)
 
 
@@ -599,6 +607,7 @@ def _generic_baseline_row(
     rule_id = record["rule_id"]
     message = record["message"]
     reason = record["reason"]
+    anchor = record.get("anchor")
     if not _is_single_line(path):
         raise ScanError(f"{source}: baseline row {index} has invalid path")
     if not isinstance(line, int) or isinstance(line, bool) or line < 1:
@@ -609,12 +618,15 @@ def _generic_baseline_row(
         raise ScanError(f"{source}: baseline row {index} has invalid message")
     if not _nonempty_single_line(reason):
         raise ScanError(f"{source}: baseline row {index} has invalid reason")
+    if anchor is not None and not _is_single_line(anchor):
+        raise ScanError(f"{source}: baseline row {index} has invalid anchor")
     return GenericBaselineRow(
         cast("str", path),
         line,
         cast("str", rule_id),
         cast("str", message),
         cast("str", reason),
+        cast("str | None", anchor),
     )
 
 
@@ -650,8 +662,9 @@ def _parse_baseline_row(raw: object, *, index: int, source: str) -> BaselineRow:
         raise ScanError(f"{source}: baseline row {index} must be an object")
     record = cast("dict[str, object]", raw)
     generic_keys = frozenset({"path", "line", "rule_id", "message", "reason"})
+    anchored_generic_keys = generic_keys | {"anchor"}
     symbol_keys = frozenset({"path", "rule_id", "qualified_symbol", "metric", "reason"})
-    if frozenset(record) == generic_keys:
+    if frozenset(record) in {generic_keys, anchored_generic_keys}:
         return _generic_baseline_row(record, index=index, source=source)
     if frozenset(record) == symbol_keys:
         return _symbol_metric_baseline_row(record, index=index, source=source)
@@ -757,7 +770,7 @@ def _baseline_exists(path: Path, *, root: Path) -> bool:
 def _project_finding(finding: Finding) -> BaselineRow:
     if finding.qualified_symbol is None and finding.metric is None:
         return GenericBaselineRow(
-            finding.path, finding.line, finding.rule_id, finding.message, ""
+            finding.path, finding.line, finding.rule_id, finding.message, "", finding.anchor
         )
     if finding.qualified_symbol is not None and finding.metric is not None:
         return SymbolMetricBaselineRow(
@@ -855,6 +868,7 @@ def _serialized_baseline(rows: Sequence[BaselineRow]) -> str:
                     "rule_id": row.rule_id,
                     "message": row.message,
                     "reason": row.reason,
+                    **({"anchor": row.anchor} if row.anchor is not None else {}),
                 }
             )
         else:
@@ -888,7 +902,14 @@ def _rows_for_write(
             )
         if isinstance(row, GenericBaselineRow):
             written.append(
-                GenericBaselineRow(row.path, row.line, row.rule_id, row.message, reason)
+                GenericBaselineRow(
+                    row.path,
+                    row.line,
+                    row.rule_id,
+                    row.message,
+                    reason,
+                    row.anchor,
+                )
             )
         else:
             written.append(

@@ -61,3 +61,10 @@ def test_from_env_hydrates_ci_fix_rebase_pending_from_state(tmp_path: Path) -> N
     _ = state.write_text("CI_FIX_REBASE_PENDING=true\n", encoding="utf-8")
     ctx = run_context.RunContext.from_env(env={"SHIP_PR_STATE_FILE": str(state)})
     assert ctx.ci_fix_rebase_pending is True
+
+
+def test_from_env_uses_last_duplicate_state_value(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("CI_FIX_REBASE_PENDING=false\nCI_FIX_REBASE_PENDING=true\n", encoding="utf-8")
+    ctx = run_context.RunContext.from_env(env={"SHIP_PR_STATE_FILE": str(state)})
+    assert ctx.ci_fix_rebase_pending is True

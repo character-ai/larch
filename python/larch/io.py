@@ -21,9 +21,9 @@ from pathlib import Path
 from typing import Literal, TypeAlias, cast, overload
 
 KvRows: TypeAlias = Mapping[str, object] | Iterable[tuple[str, object]]
-DuplicatePolicy: TypeAlias = Literal["first", "last", "all"]
+DuplicatePolicy: TypeAlias = Literal["first", "last", "last-non-empty", "all"]
 _CR_MODES = {"none", "suffix", "rstrip", "strip"}
-_DUPLICATE_POLICIES = {"first", "last", "all"}
+_DUPLICATE_POLICIES = {"first", "last", "last-non-empty", "all"}
 
 
 def _duplicate_policy(
@@ -300,7 +300,7 @@ def _strip_cr(*, value: str, mode: str) -> str:
 
 
 def _line_iter(text: str) -> list[str]:
-    return [line.removesuffix("\r") for line in text.split("\n")]
+    return text.splitlines()
 
 
 def _read_utf8(path: Path, *, errors: str) -> str:
@@ -317,6 +317,7 @@ def parse_kv(
     skip_empty_key: bool = False,
     cr_strip: str = "none",
     strip_value: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     skip_comments: bool = False,
@@ -327,11 +328,12 @@ def parse_kv(
 def parse_kv(
     text: str,
     *,
-    duplicate_policy: Literal["first", "last"] | None = None,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
     first_wins: bool | None = None,
     skip_empty_key: bool = False,
     cr_strip: str = "none",
     strip_value: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     skip_comments: bool = False,
@@ -346,6 +348,7 @@ def parse_kv(
     skip_empty_key: bool = False,
     cr_strip: str = "none",
     strip_value: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     skip_comments: bool = False,
@@ -380,6 +383,8 @@ def parse_kv(
         if "=" not in raw:
             continue
         key, value = raw.split("=", 1)
+        if strip_key:
+            key = key.strip()
         if skip_empty_key and not key:
             continue
         if allow is not None and key not in allow:
@@ -395,6 +400,8 @@ def parse_kv(
             continue
         if policy == "first" and key in out:
             continue
+        if policy == "last-non-empty" and not value:
+            continue
         out[key] = value
     return out
 
@@ -404,7 +411,7 @@ def kv_value(
     text: str,
     key: str,
     default: str = "",
-    duplicate_policy: Literal["first", "last"] | None = None,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
     first_match: bool | None = None,
     cr_strip: str = "none",
 ) -> str:
@@ -426,6 +433,8 @@ def kv_value(
             found = _strip_cr(value=raw[len(prefix) :], mode=cr_strip)
             if policy == "first":
                 return found
+            if policy == "last-non-empty" and not found:
+                continue
     return found
 
 
@@ -456,7 +465,7 @@ def read_kv(
     path: str | Path,
     key: str,
     default: str = "",
-    duplicate_policy: Literal["first", "last"] | None = None,
+    duplicate_policy: Literal["first", "last", "last-non-empty"] | None = None,
     first_match: bool | None = None,
     cr_strip: str = "none",
     errors: str = "replace",
@@ -492,6 +501,8 @@ def read_kv(
                 value = default
             if policy == "first":
                 return value
+            if policy == "last-non-empty" and not value:
+                continue
             found = value
     return default if found is None else found
 
@@ -505,6 +516,7 @@ def read_kvs(
     first_wins: bool | None = None,
     cr_strip: str = "none",
     skip_comments: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     errors: str = "replace",
@@ -523,6 +535,7 @@ def read_kvs(
     first_wins: bool | None = None,
     cr_strip: str = "none",
     skip_comments: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     errors: str = "replace",
@@ -540,6 +553,7 @@ def read_kvs(
     first_wins: bool | None = None,
     cr_strip: str = "none",
     skip_comments: bool = False,
+    strip_key: bool = False,
     key_pattern: str | re.Pattern[str] | None = None,
     allowed_keys: Iterable[str] | None = None,
     errors: str = "replace",
@@ -569,6 +583,7 @@ def read_kvs(
         first_wins=first_wins,
         cr_strip=cr_strip,
         skip_comments=skip_comments,
+        strip_key=strip_key,
         key_pattern=key_pattern,
         allowed_keys=allowed_keys,
     )

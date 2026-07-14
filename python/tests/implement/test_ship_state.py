@@ -89,6 +89,15 @@ def test_patch_ship_state_rejects_unknown_key(tmp_path: Path) -> None:
         )
 
 
+def test_read_existing_ship_state_uses_last_value_and_lone_cr_rows(tmp_path: Path) -> None:
+    state = tmp_path / "ship.env"
+    _ = state.write_bytes(b"PHASE=first\rPHASE=last\rRUN_ID=run-1\r")
+    assert ship_state._read_existing_ship_state(state) == {  # pyright: ignore[reportPrivateUsage]
+        "PHASE": "last",
+        "RUN_ID": "run-1",
+    }
+
+
 def test_progress_note_uses_run_aware_breadcrumb(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

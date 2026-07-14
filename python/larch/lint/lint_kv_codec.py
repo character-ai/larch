@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
+import re
 import sys
 from pathlib import Path
 from typing import cast
@@ -39,28 +41,52 @@ def _is_split_equals(node: ast.AST) -> bool:
     )
 
 
+def _is_option_loop(node: ast.AST) -> bool:
+    return (
+        isinstance(node, (ast.For, ast.AsyncFor))
+        and isinstance(node.iter, ast.Name)
+        and node.iter.id in {"args", "argv", "options", "tokens"}
+    )
+
+
 def _python_findings(source: SourceFile) -> list[Finding]:
     if not source.path.startswith(PYTHON_PREFIX) or source.path in OWNER_PATHS:
         return []
-    findings: list[Finding] = []
+    calls: dict[int, ast.Call] = {}
     for node in ast.walk(source.python_ast):
-        if not isinstance(node, (ast.For, ast.AsyncFor)):
+        if not isinstance(node, (ast.For, ast.AsyncFor, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
             continue
-        findings.extend(
-            _split_finding(source, cast("ast.Call", child))
-            for child in ast.walk(node)
-            if _is_split_equals(child)
-        )
-    return list({(finding.line, finding.message): finding for finding in findings}.values())
+        if _is_option_loop(node):
+            continue
+        for child in ast.walk(node):
+            if _is_split_equals(child):
+                call = cast("ast.Call", child)
+                calls[call.lineno] = call
+    return [
+        _split_finding(source, call, occurrence=occurrence)
+        for occurrence, call in enumerate(calls.values(), start=1)
+    ]
 
 
-def _split_finding(source: SourceFile, call: ast.Call) -> Finding:
+def _split_finding(source: SourceFile, call: ast.Call, *, occurrence: int) -> Finding:
     return Finding(
         path=source.path,
         line=call.lineno,
         rule_id=RULE_ID,
         message="ad-hoc KEY=value split loop; use larch.io codec",
+        anchor="split=" + hashlib.sha256(
+            f"{ast.dump(call, include_attributes=False)}:{occurrence}".encode()
+        ).hexdigest(),
     )
+
+
+_AWK_EQUALS_RE = re.compile(
+    r"\bawk\b(?=[^\n]*(?:\$1|index\(\$0\)))[^\n]*-F\s*(?:=|['\"]=['\"]?)"
+)
+_CUT_EQUALS_RE = re.compile(
+    r"\bcut\b(?=[^\n]*(?:env|state|result|kv))(?=[^\n]*-f\s*\d)[^\n]*-d\s*(?:=|['\"]=['\"]?)",
+    re.IGNORECASE,
+)
 
 
 def _shell_findings(source: SourceFile) -> list[Finding]:
@@ -72,8 +98,7 @@ def _shell_findings(source: SourceFile) -> list[Finding]:
         return []
     findings: list[Finding] = []
     for number, line in enumerate(source.lines, start=1):
-        compact = line.replace(" ", "")
-        if "awk-F=" in compact or "cut-d=" in compact:
+        if _AWK_EQUALS_RE.search(line) or _CUT_EQUALS_RE.search(line):
             findings.append(
                 Finding(
                     path=source.path,
@@ -123,9 +148,6 @@ def main(argv: list[str] | None = None) -> int:
     root = Path(str(parsed.root)).resolve()
     write_baseline = bool(parsed.write)
     reason = None if parsed.initial_reason is None else str(parsed.initial_reason)
-    if write_baseline and not reason:
-        print("lint-kv-codec: --write requires --initial-reason", file=sys.stderr)
-        return 2
     return run_rule(
         RULE,
         root,

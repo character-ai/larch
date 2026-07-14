@@ -247,9 +247,11 @@ def init_runparams_main(argv: Sequence[str]) -> int:
         check=False,
     )
     if rename.returncode == 0:
-        for line in rename.stdout.splitlines():
-            if line.startswith("RENAMED="):
-                renamed = line.split("=", 1)[1]
+        renamed = larch_io.kv_value(
+            text=rename.stdout,
+            key="RENAMED",
+            duplicate_policy="last",
+        )
     else:
         warn_lines.append(
             "**⚠ 0b: [DESIGNING] rename failed (python3 python/cli.py tracking-issue rename); continuing with run-params write. Re-invoke /design or rename manually if the title is still wrong.**"

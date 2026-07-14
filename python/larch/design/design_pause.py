@@ -130,6 +130,7 @@ def _parse_pause_payload(body: str) -> dict[str, str] | None:
             payload,
             duplicate_policy="last",
             skip_empty_key=True,
+            strip_key=True,
         ).items()
     }
 
@@ -241,11 +242,7 @@ def pause_save_main(argv: Sequence[str]) -> int:
         text=True,
         check=False,
     )
-    publish_kv: dict[str, str] = {}
-    for line in publish.stdout.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            publish_kv[key] = value
+    publish_kv = larch_io.parse_kv(publish.stdout, duplicate_policy="last")
     if publish_kv.get("PUBLISH_OK") != "true":
         recovery = publish_kv.get("RECOVERY_BRANCH", "")
         if recovery:

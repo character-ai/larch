@@ -282,7 +282,6 @@ def review_provenance(design_tmpdir: Path) -> tuple[str, int, bool]:
         result_env,
         duplicate_policy="last",
         errors="replace",
-        on_error_default=True,
     )
     status = kv.get("STEP3_REVIEW_LOOP_STATUS", "")
     if not status:
@@ -816,7 +815,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
     for line in capture.stdout.splitlines():
         if line.startswith("SESSION_TRANSCRIPT_STATUS="):
             print(line)
-            status = line.split("=", 1)[1]
+            status = line.removeprefix("SESSION_TRANSCRIPT_STATUS=")
     root_transcript = ctx.design_tmpdir / "session-transcript.jsonl"
     staged = staging_root / "design" / canonical_session_id / "session-transcript.jsonl"
     if capture.returncode != 0 or status != "captured":

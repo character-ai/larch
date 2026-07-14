@@ -32,4 +32,11 @@ ln -s "$(command -v jq)" "$TMP/no-python/bin/jq"
 out=$(payload | PATH="$TMP/no-python/bin" "$(command -v bash)" "$HOOK")
 printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
 
+mkdir -p "$TMP/kv-fail/bin"
+ln -s "$(command -v jq)" "$TMP/kv-fail/bin/jq"
+ln -s "$(command -v bash)" "$TMP/kv-fail/bin/bash"
+ln -s "$(command -v false)" "$TMP/kv-fail/bin/python3"
+out=$(payload | PATH="$TMP/kv-fail/bin" "$(command -v bash)" "$HOOK")
+printf '%s' "$out" | jq -e '.hookSpecificOutput.permissionDecision == "deny"' >/dev/null
+
 echo 'PASS: hook-deny-run-in-background'
