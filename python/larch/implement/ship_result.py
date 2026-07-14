@@ -331,7 +331,7 @@ def _write_result_env(
     larch_io.trusted_atomic_write(validated, text, root=ctx.tmpdir, mode=0o600)
 
 
-def emit_result(  # noqa: PLR0913 - result-env sink is an optional peer to the CI digest kwargs
+def emit_result(  # noqa: PLR0913,RUF100 - result-env sink is an optional peer to the CI digest kwargs
     *,
     ctx: RunContext,
     result: ShipResult,
