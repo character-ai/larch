@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	20334	5084	14062	3516	6272	1568		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	16998	4250	13798	3450	3200	800		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	20474	5119	14202	3551	6272	1568		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17114	4279	13914	3479	3200	800		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	20356	5089	14084	3521	6272	1568		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	16974	4244	13774	3444	3200	800		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	16996	4249	13796	3449	3200	800		0	0
+design Step 3	phase1	1	dyn-codex-plan-result-env-boundary-auditor	plan-review	codex	dyn-codex-plan-result-env-boundary-auditor.txt	17255	4314	13649	3413	3606	902		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	20358	5090	14086	3522	6272	1568		0	0
+design Step 3	phase1	1	dyn-cursor-plan-result-env-boundary-auditor	plan-review	cursor	dyn-cursor-plan-result-env-boundary-auditor.txt	20615	5154	13937	3485	6678	1670		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	24457	6115	4601	1151	19856	4964	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	12345	3087	9131	2283	3214	804		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	12345	3087	9131	2283	3214	804		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	12345	3087	9131	2283	3214	804		0	0

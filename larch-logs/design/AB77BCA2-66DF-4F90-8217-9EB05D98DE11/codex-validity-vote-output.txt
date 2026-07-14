@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Duplicates prior neutral FINDING_3 without materially new evidence.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Lexical parent traversal reaches the resolved root for in-root paths containing `..`.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Existing handoff casing differs, but exact handoff parity is not required by this foundation’s scoped direct-result contract.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The anchored acceptance explicitly requires `ship pr --result-env-path`; flag naming consistency is not a feature defect.

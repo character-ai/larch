@@ -1,0 +1,67 @@
+## Final Design Plan
+
+## Plan
+
+## Approach
+
+Add an optional, required-once-supplied result-env sink to the ship contract. Derive its values from the same redacted result data used for JSON, while preserving existing JSON stdout exactly for callers without the flag.
+
+Prevalidate a supplied path before `run_ship` or any other ship mutation. Require the tmpdir allowed-root gate, reject lexical `..` components before the bgjob validator, and publish with trusted atomic I/O. A required result-env failure must not publish a successful JSON contract.
+
+Confidence: high.
+
+### UPDATED: python/larch/implement/ship_result.py
+
+- Extend `emit_result()` with an optional, prevalidated result-env path.
+- Build result-env rows from the redacted result payload with stable scalar rendering: strings as text, integers as decimal, booleans as lowercase tokens, and `None` as empty.
+- Use an explicit wire-key map aligned with `dispatch_ship`, not blanket uppercasing: retain `outcome` and every `ledger_*` key in lowercase; map outcome fields to established uppercase names such as `NEEDS_USER_REASON`, `FAILED_RUN_ID`, `PR_NUMBER`, `PR_URL`, `MERGE_RESULT`, and `DETAIL`; retain uppercase repair fields (`MAIN_HEALTH_*`, `EMERGENCY_REPAIR_BRANCH`, `ORIGINAL_BRANCH_FORBIDDEN`, `MAIN_REPAIR_*`); and emit uppercase CI fields.
+- Sanitize CR/LF only in result-env values so multiline or diagnostic content cannot forge rows; leave JSON payload rendering unchanged.
+- Always emit `CI_ERRORS_FILE` and `FAILED_JOBS_COUNT`; emit `CI_ERRORS_DISTILL_CLASS` only when `CI_ERRORS_FILE` is empty, matching `dispatch_ship` CI pairing rules.
+- On a supplied sink, require `_tmpdir_under_allowed_root(ctx.tmpdir)`, revalidate/canonicalize with `bgjob.model.validate_merge_result_env()`, and write `larch.io.format_kvs()` output through `trusted_atomic_write(..., root=ctx.tmpdir, mode=0o600)`.
+- Write the result env before JSON stdout; propagate validation or write failures without a successful JSON result.
+- Retain existing JSON stdout and best-effort journaling behavior when no sink is supplied; journal only after both primary contracts succeed.
+
+### UPDATED: python/larch/implement/ship.py
+
+- Add `--result-env-path` to the `ship pr` parser.
+- Immediately after context construction and before logging setup, `run_ship`, stall persistence, or CI distillation, validate a supplied path.
+- Reject any lexical `..` path component before `validate_merge_result_env()` so its parent walk cannot escape its termination condition.
+- Fail closed when the tmpdir is outside the allowed root or the path is relative, lexical-`..`, or otherwise fails `validate_merge_result_env()`, without calling `run_ship` or attempting a result-env write.
+- Pass the validated path through normal and exception result-emission flows.
+- Keep help, argparse-failure, exit-code, and no-flag behavior unchanged.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+- Verify valid result-env output uses the explicit mixed-case wire map: lowercase `outcome` and `ledger_*`, established uppercase outcome fields, uppercase repair fields, and uppercase CI fields.
+- Verify stable scalar rendering and multiline-safe values.
+- Verify JSON stdout remains JSON-only and byte-compatible for no-flag callers, and that omitting the flag creates no result-env artifact.
+- Cover CI route shapes: a digest file omits `CI_ERRORS_DISTILL_CLASS`; an empty file value includes the class; both always include `CI_ERRORS_FILE` and `FAILED_JOBS_COUNT`.
+- Exercise `ship.main()` flag plumbing with a representative result.
+- Verify preflight rejects outside-root, relative, lexical-`..`, nonregular, symlink-destination, and symlink-parent paths, including an invalid tmpdir allowed-root case; assert `run_ship` is not called.
+- Verify trusted atomic-write failures propagate, do not publish successful JSON, and do not create unsafe parent directories.
+
+## Edge cases
+
+- Preserve empty values that distinguish unavailable CI evidence from omitted output.
+- Render `None` as empty and booleans as lowercase wire tokens.
+- Preserve the existing mixed-case handoff vocabulary; do not emit contradictory CI digest and distillation-class keys.
+- Do not accept lexical traversal, follow symlinked path components, or create missing parent directories.
+
+## Failure modes
+
+- Reject invalid result-env configuration before ship work begins.
+- Fail required result-env writes closed so bgjob transport records a failed child rather than consuming a partial result.
+- Keep journal append failures best-effort only after result-env and JSON publication succeed.
+
+## Testing strategy
+
+Run the focused ship suite:
+
+`python3 -m pytest python/tests/implement/test_ship.py`
+
+Then run the requested ship-compatible Python test target:
+
+`make py-test`
+
+difficulty: MODERATE
+diff_lines: 168
