@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
@@ -133,7 +134,8 @@ def test_token_claude_source_requires_complete_snapshot(tmp_path: Path) -> None:
     snap = tmp_path / "source.env"
     _ = snap.write_text(f"TRANSCRIPT_PATH={transcript}\n", encoding="utf-8")
     out = tokens.token_claude_source(claude_source_file=snap, env={"HOME": str(tmp_path)})
-    assert out.get("STATUS") == "unavailable"
+    assert not out.available
+    assert out.reason
 
 
 def test_token_cost_helpers_exported_from_tokens_module() -> None:
@@ -153,7 +155,8 @@ def test_token_claude_source_rejects_transcript_outside_session_dir(tmp_path: Pa
         encoding="utf-8",
     )
     out = tokens.token_claude_source(claude_source_file=snap, env={"HOME": str(tmp_path)})
-    assert out.get("STATUS") == "unavailable"
+    assert not out.available
+    assert out.reason
 
 
 def test_token_claude_source_accepts_complete_snapshot(tmp_path: Path) -> None:
@@ -167,9 +170,12 @@ def test_token_claude_source_accepts_complete_snapshot(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     out = tokens.token_claude_source(claude_source_file=snap)
-    assert out["TRANSCRIPT_PATH"] == str(transcript.resolve())
-    assert out["SESSION_DIR"] == str(session_dir)
-    assert out["SESSION_UUID"] == "session-uuid"
+    assert out.available
+    assert out.transcript_path == transcript.resolve()
+    assert out.session_dir == session_dir
+    assert out.session_uuid == "session-uuid"
+    with pytest.raises(FrozenInstanceError):
+        out.reason = "changed"  # type: ignore[misc]
 
 
 def test_find_latest_claude_transcript_uses_ambient_claude_sid(tmp_path: Path) -> None:
@@ -253,9 +259,11 @@ def test_check_step_token_budget_resets_at_mark(tmp_path: Path, monkeypatch: pyt
     monkeypatch.setenv("LARCH_TOKEN_LEDGER", str(ledger))
     under = tokens.check_step_token_budget(cap=100, step="Step 1")
     over = tokens.check_step_token_budget(cap=40, step="Step 1")
-    assert under["status"] == "under_cap"
-    assert over["status"] == "cap_hit"
-    assert over["total"] == 50
+    assert under.status == "under_cap"
+    assert over.status == "cap_hit"
+    assert over.total == 50
+    with pytest.raises(FrozenInstanceError):
+        over.total = 0  # type: ignore[misc]
 
 
 def _token_report_fixtures(tmp_path: Path) -> tuple[Path, Path]:
@@ -669,11 +677,30 @@ def test_compute_pr_line_counts_buckets(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr(tokens.proc, "run", fake_run)
     result = tokens.compute_pr_line_counts(pr_number=42, repo="owner/repo")
-    assert result["LINES_STATUS"] == "ok"
-    assert result["CODE_ADDED"] == 10
-    assert result["CODE_DELETED"] == 2
-    assert result["LOGS_ADDED"] == 5
-    assert result["LOGS_DELETED"] == 1
+    assert result.status == "ok"
+    assert result.code_added == 10
+    assert result.code_deleted == 2
+    assert result.logs_added == 5
+    assert result.logs_deleted == 1
+    assert result.kv_items() == (
+        ("LINES_STATUS", "ok"),
+        ("CODE_ADDED", "10"),
+        ("CODE_DELETED", "2"),
+        ("LOGS_ADDED", "5"),
+        ("LOGS_DELETED", "1"),
+    )
+
+
+def test_token_mark_returns_typed_recorded_and_skipped_results(tmp_path: Path) -> None:
+    recorded = tokens.token_mark(step="Step 1", env={"IMPLEMENT_TMPDIR": str(tmp_path)})
+    skipped = tokens.token_mark(step="Step 1", env={})
+
+    assert recorded.marked
+    assert recorded.ledger_path is not None
+    assert not skipped.marked
+    assert skipped.ledger_path is None
+    with pytest.raises(FrozenInstanceError):
+        recorded.marked = False  # type: ignore[misc]
 
 
 def test_classify_md_tier_and_claude_imports() -> None:
@@ -848,8 +875,8 @@ def test_read_main_model_returns_first_assistant_model(monkeypatch: pytest.Monke
         encoding="utf-8",
     )
 
-    def fake_source(**_: object) -> dict[str, str]:
-        return {"TRANSCRIPT_PATH": str(transcript)}
+    def fake_source(**_: object) -> tokens.ClaudeSourceResult:
+        return tokens.ClaudeSourceResult(transcript_path=transcript, session_dir=None, session_uuid="")
 
     monkeypatch.setattr(tokens, "token_claude_source", fake_source)
     assert tokens.read_main_model() == "claude-opus-4-8"
@@ -859,16 +886,16 @@ def test_read_main_model_blank_when_no_assistant_model(monkeypatch: pytest.Monke
     transcript = tmp_path / "session.jsonl"
     _ = transcript.write_text(json.dumps({"type": "user", "message": {"content": "hi"}}), encoding="utf-8")
 
-    def fake_source(**_: object) -> dict[str, str]:
-        return {"TRANSCRIPT_PATH": str(transcript)}
+    def fake_source(**_: object) -> tokens.ClaudeSourceResult:
+        return tokens.ClaudeSourceResult(transcript_path=transcript, session_dir=None, session_uuid="")
 
     monkeypatch.setattr(tokens, "token_claude_source", fake_source)
     assert tokens.read_main_model() == ""
 
 
 def test_read_main_model_blank_when_transcript_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_source(**_: object) -> dict[str, str]:
-        return {"STATUS": "unavailable"}
+    def fake_source(**_: object) -> tokens.ClaudeSourceResult:
+        return tokens.ClaudeSourceResult(transcript_path=None, session_dir=None, session_uuid="", reason="unavailable")
 
     monkeypatch.setattr(tokens, "token_claude_source", fake_source)
     assert tokens.read_main_model() == ""

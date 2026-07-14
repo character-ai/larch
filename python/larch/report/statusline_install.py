@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -16,6 +17,17 @@ from larch.git.repo_roots import consumer_repo_root
 ENV_CLAUDE_PLUGIN_ROOT = "CLAUDE_PLUGIN_ROOT"
 LOCAL_SETTINGS = Path(".claude") / "settings.local.json"
 LARCH_COMMAND_MARKER = ".cache/larch/statusline.sh"
+
+
+@dataclass(frozen=True)
+class StatuslineInstallResult:
+    """Outcome of an attempted statusline installation."""
+
+    installed: bool
+    reason: str = ""
+
+    def __bool__(self) -> bool:
+        return self.installed
 
 
 def _launcher_path() -> Path:
@@ -118,9 +130,9 @@ def _safe_existing_file(path: Path) -> bool:
     return not path.exists() or (path.is_file() and not path.is_symlink())
 
 
-def install_statusline(*, repo_root: Path, plugin_root: Path, notice: bool = False) -> bool:
+def install_statusline(*, repo_root: Path, plugin_root: Path, notice: bool = False) -> StatuslineInstallResult:
     if os.environ.get("LARCH_STATUSLINE_DISABLE") == "1":
-        return False
+        return StatuslineInstallResult(installed=False, reason="disabled")
     try:
         repo = consumer_repo_root(repo_root.expanduser()) or repo_root.expanduser().resolve()
         plugin = plugin_root.expanduser().resolve()
@@ -130,7 +142,7 @@ def install_statusline(*, repo_root: Path, plugin_root: Path, notice: bool = Fal
         notice_sentinel = _notice_sentinel()
         larch_io.assert_no_symlink_path_or_ancestors(launcher)
         if not _safe_existing_file(settings_path) or not _safe_existing_file(launcher):
-            return False
+            return StatuslineInstallResult(installed=False, reason="unsafe-path")
         user_command = _read_user_statusline()
         larch_io.atomic_write(
             path=launcher,
@@ -140,10 +152,10 @@ def install_statusline(*, repo_root: Path, plugin_root: Path, notice: bool = Fal
         )
         settings = _read_json_object(settings_path)
         if settings is None:
-            return False
+            return StatuslineInstallResult(installed=False, reason="invalid-settings")
         current = _statusline_command(settings)
         if current and LARCH_COMMAND_MARKER not in current and "progress statusline" not in current:
-            return False
+            return StatuslineInstallResult(installed=False, reason="custom-statusline")
         first_install = not current
         settings["statusLine"] = {"type": "command", "command": str(launcher), "refreshInterval": 2}
         rendered = json.dumps(settings, indent=2, sort_keys=True) + "\n"
@@ -151,9 +163,9 @@ def install_statusline(*, repo_root: Path, plugin_root: Path, notice: bool = Fal
         if notice and first_install and not notice_sentinel.exists():
             larch_io.atomic_write(path=notice_sentinel, text="installed\n", nofollow=True, mode=0o600)
             print("larch: installed progress statusline (set LARCH_STATUSLINE_DISABLE=1 to opt out)")
-        return True
+        return StatuslineInstallResult(installed=True)
     except (OSError, TypeError, ValueError):
-        return False
+        return StatuslineInstallResult(installed=False, reason="write-failed")
 
 
 def install_statusline_main(argv: list[str] | None = None) -> int:

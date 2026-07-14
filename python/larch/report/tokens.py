@@ -77,6 +77,63 @@ class TimingRecord:
     duration_ms: int
 
 
+@dataclass(frozen=True)
+class TokenMarkResult:
+    """Outcome of recording a token-ledger step mark."""
+
+    ledger_path: Path | None
+    marked: bool
+
+
+@dataclass(frozen=True)
+class BudgetCheckResult:
+    """Current token usage since the last mark and its configured cap."""
+
+    status: Literal["cap_hit", "under_cap"]
+    total: int
+    cap: int
+    step: str
+
+
+@dataclass(frozen=True)
+class ClaudeSourceResult:
+    """Validated Claude transcript source, or its unavailable reason."""
+
+    transcript_path: Path | None
+    session_dir: Path | None
+    session_uuid: str
+    reason: str = ""
+
+    @property
+    def available(self) -> bool:
+        return self.transcript_path is not None
+
+
+@dataclass(frozen=True)
+class PrLineCountResult:
+    """PR file-line totals, split between code and committed run logs."""
+
+    status: Literal["ok", "skipped", "unavailable"]
+    code_added: int | None = None
+    code_deleted: int | None = None
+    logs_added: int | None = None
+    logs_deleted: int | None = None
+    reason: str = ""
+
+    def kv_items(self) -> tuple[tuple[str, str], ...]:
+        items: list[tuple[str, str]] = [("LINES_STATUS", self.status)]
+        if self.status == "ok":
+            items.extend((
+                ("CODE_ADDED", str(self.code_added)),
+                ("CODE_DELETED", str(self.code_deleted)),
+                ("LOGS_ADDED", str(self.logs_added)),
+                ("LOGS_DELETED", str(self.logs_deleted)),
+            ))
+        else:
+            items.append(("REASON", self.reason))
+        return tuple(items)
+
+
 PANEL_PROMPT_SIZE_BASENAME = "panel-prompt-sizes.tsv"
 _PANEL_PROMPT_SIZE_FIELDS = (
     "site",
@@ -196,11 +253,13 @@ class TokenLedger:
     path: Path
     session_id: str | None = None
 
-    def mark(self, step: str) -> None:
+    def mark(self, step: str) -> bool:
         try:
             self._append({"type": "mark", "step": step, "ts": _timestamp_utc()})
         except OSError as exc:
             print(f"token mark: write skipped: {exc}", file=sys.stderr)
+            return False
+        return True
 
     def record_vendor(
         self,
@@ -1340,11 +1399,11 @@ def _transcript_sources(
 ) -> list[Path]:
     if transcript_path is None:
         source = token_claude_source(env=env)
-        if not source.get("TRANSCRIPT_PATH"):
-            msg = str(source.get("REASON") or "Claude transcript source unavailable")
+        if source.transcript_path is None:
+            msg = source.reason or "Claude transcript source unavailable"
             raise ValueError(msg)
-        transcript_path = Path(str(source["TRANSCRIPT_PATH"]))
-        session_dir = Path(str(source.get("SESSION_DIR") or "")) if source.get("SESSION_DIR") else None
+        transcript_path = source.transcript_path
+        session_dir = source.session_dir
     if not transcript_path.is_file():
         msg = "transcript not found"
         raise ValueError(msg)
@@ -1414,7 +1473,7 @@ def token_report(
     return rendered
 
 
-def check_step_token_budget(*, cap: int, step: str = "unknown", env: Mapping[str, str] | None = None) -> dict[str, object]:
+def check_step_token_budget(*, cap: int, step: str = "unknown", env: Mapping[str, str] | None = None) -> BudgetCheckResult:
     total = 0
     try:
         ledger = resolve_token_ledger_path(env=env)
@@ -1425,7 +1484,7 @@ def check_step_token_budget(*, cap: int, step: str = "unknown", env: Mapping[str
                 total += _int_field(data=row, key="total")
     except (OSError, ValueError):
         total = 0
-    return {"status": "cap_hit" if total >= cap else "under_cap", "total": total, "cap": cap, "step": step}
+    return BudgetCheckResult(status="cap_hit" if total >= cap else "under_cap", total=total, cap=cap, step=step)
 
 
 def _cached_claude_source_replay(
@@ -1491,12 +1550,18 @@ def token_claude_source(
     *,
     claude_source_file: Path | None = None,
     env: Mapping[str, str] | None = None,
-) -> dict[str, str]:
+) -> ClaudeSourceResult:
     env_map = os.environ if env is None else env
     replay = _cached_claude_source_replay(claude_source_file=claude_source_file, env_map=env_map)
-    if replay is not None:
-        return replay
-    return _resolve_claude_source_from_project(env_map)
+    data = replay if replay is not None else _resolve_claude_source_from_project(env_map)
+    transcript = data.get("TRANSCRIPT_PATH", "")
+    if transcript:
+        return ClaudeSourceResult(
+            transcript_path=Path(transcript),
+            session_dir=Path(data["SESSION_DIR"]) if data.get("SESSION_DIR") else None,
+            session_uuid=data.get("SESSION_UUID", ""),
+        )
+    return ClaudeSourceResult(transcript_path=None, session_dir=None, session_uuid="", reason=data.get("REASON", ""))
 
 
 def _assistant_model_from_line(raw: str) -> str:
@@ -1531,10 +1596,9 @@ def read_main_model(
     is the orchestrator session rather than a spawned reviewer/voter.
     """
     source = token_claude_source(claude_source_file=claude_source_file, env=env)
-    transcript = source.get("TRANSCRIPT_PATH", "")
-    if not transcript:
+    if source.transcript_path is None:
         return ""
-    path = Path(transcript)
+    path = source.transcript_path
     if not path.is_file():
         return ""
     try:
@@ -1768,11 +1832,11 @@ def validate_research_dir(path: Path) -> None:
         raise ValueError(msg)
 
 
-def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> dict[str, int | str]:
+def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> PrLineCountResult:
     if pr_number < 1:
-        return {"LINES_STATUS": "skipped", "REASON": "no-pr"}
+        return PrLineCountResult(status="skipped", reason="no-pr")
     if repo is not None and not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
-        return {"LINES_STATUS": "skipped", "REASON": "invalid-repo"}
+        return PrLineCountResult(status="skipped", reason="invalid-repo")
     endpoint = f"repos/{repo}/pulls/{pr_number}/files" if repo else f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/files"
     try:
         result = gh.command(
@@ -1784,7 +1848,7 @@ def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> dict[s
             )
         out = result.stdout
     except (OSError, subprocess.CalledProcessError):
-        return {"LINES_STATUS": "unavailable", "REASON": "gh-failed"}
+        return PrLineCountResult(status="unavailable", reason="gh-failed")
     code_added = code_deleted = logs_added = logs_deleted = 0
     for line in out.splitlines():
         parts = line.split("\t")
@@ -1798,7 +1862,13 @@ def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> dict[s
         else:
             code_added += added
             code_deleted += deleted
-    return {"LINES_STATUS": "ok", "CODE_ADDED": code_added, "CODE_DELETED": code_deleted, "LOGS_ADDED": logs_added, "LOGS_DELETED": logs_deleted}
+    return PrLineCountResult(
+        status="ok",
+        code_added=code_added,
+        code_deleted=code_deleted,
+        logs_added=logs_added,
+        logs_deleted=logs_deleted,
+    )
 
 
 def _repo_root() -> Path:
@@ -2788,20 +2858,27 @@ def _pop_ledger(argv: list[str]) -> tuple[list[str], str | None]:
     return out, ledger
 
 
+def token_mark(
+    *,
+    step: str,
+    ledger: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> TokenMarkResult:
+    """Record one token mark, returning a typed skipped or recorded outcome."""
+    path = resolve_token_ledger_path(ledger=ledger, env=env)
+    if path is None:
+        return TokenMarkResult(ledger_path=None, marked=False)
+    marked = TokenLedger(path).mark(step)
+    return TokenMarkResult(ledger_path=path, marked=marked)
+
+
 def token_mark_main(argv: list[str] | None = None) -> int:
     args, ledger_override = _pop_ledger(list(argv if argv is not None else sys.argv[1:]))
     if not args:
         print("token mark requires <step>", file=sys.stderr)
         return 1
     try:
-        ledger = resolve_token_ledger_path(ledger=ledger_override)
-    except ValueError as exc:
-        print(f"token mark: {exc}", file=sys.stderr)
-        return 1
-    if ledger is None:
-        return 0
-    try:
-        TokenLedger(ledger).mark(args[0])
+        _ = token_mark(step=args[0], ledger=ledger_override)
     except (OSError, ValueError) as exc:
         if isinstance(exc, ValueError):
             print(f"token mark: {exc}", file=sys.stderr)
@@ -2952,7 +3029,7 @@ def token_check_budget_main(argv: list[str] | None = None) -> int:
         print("token check-budget: --cap must be >= 1", file=sys.stderr)
         return 1
     result = check_step_token_budget(cap=cap, step=step)
-    print(f"STATUS={result['status']} TOTAL={result['total']} CAP={result['cap']} STEP={result['step']}")
+    print(f"STATUS={result.status} TOTAL={result.total} CAP={result.cap} STEP={result.step}")
     return 0
 
 
@@ -2960,10 +3037,16 @@ def token_claude_source_main(argv: list[str] | None = None) -> int:
     args = list(argv if argv is not None else sys.argv[1:])
     snap = Path(args[0]) if args else None
     result = token_claude_source(claude_source_file=snap)
-    for key in ("TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID", "STATUS", "REASON"):
-        if key in result:
-            print(f"{key}={result[key]}")
-    return 0 if "TRANSCRIPT_PATH" in result else 1
+    if result.available:
+        print(f"TRANSCRIPT_PATH={result.transcript_path}")
+        if result.session_dir is not None:
+            print(f"SESSION_DIR={result.session_dir}")
+        if result.session_uuid:
+            print(f"SESSION_UUID={result.session_uuid}")
+        return 0
+    print("STATUS=unavailable")
+    print(f"REASON={result.reason}")
+    return 1
 
 
 def token_lane_write_main(argv: list[str] | None = None) -> int:
@@ -3038,7 +3121,7 @@ def compute_pr_line_counts_main(argv: list[str] | None = None) -> int:
         print("LINES_STATUS=skipped\nREASON=no-pr")
         return 0
     result = compute_pr_line_counts(pr_number=int(pr_raw), repo=opts.get("--repo") or None)
-    for key, value in result.items():
+    for key, value in result.kv_items():
         print(f"{key}={value}")
     return 0
 

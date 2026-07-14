@@ -16,9 +16,26 @@ import pytest
 from larch.core import config
 from larch.errors import ShipError
 from larch.implement import scope_disposition
-from larch.report import final_report, progress_report
+from larch.report import final_report, progress_report, tokens
 
 from test_support import IMPLEMENT_BASELINE_KEYS, write_session_env
+
+
+def test_derive_pr_line_counts_consumes_typed_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    ship = tmp_path / "ship-pr-state.sh"
+    _ = ship.write_text("PR_URL=https://example.test/pr/42\n", encoding="utf-8")
+    monkeypatch.setattr(
+        final_report.tokens,
+        "compute_pr_line_counts",
+        lambda **_kwargs: tokens.PrLineCountResult(
+            status="ok", code_added=10, code_deleted=2, logs_added=3, logs_deleted=1,
+        ),
+    )
+
+    values = final_report._derive_pr_line_counts(repo="owner/repo", repo_unavailable=False, pr_number="42", ship=ship)
+
+    assert values == ("10", "2", "3", "1")
+    assert "LINES_STATUS=ok" in ship.read_text(encoding="utf-8")
 
 
 def _write_minimal_state(tmp_path: Path) -> None:

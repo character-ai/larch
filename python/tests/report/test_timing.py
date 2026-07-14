@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl as fcntl_mod
 import os
 import stat
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 from larch.report import progress_file
@@ -12,6 +13,36 @@ from larch.report import progress_file
 import pytest
 
 from larch.report import timing
+
+
+def test_typed_timing_entry_points_return_frozen_results(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    env = {"TMPDIR": str(tmp_path)}
+
+    marked = timing.mark(label="Step 1", ledger=str(ledger), env=env)
+    vendor = timing.record_vendor_task(
+        request=timing.VendorTaskRequest(
+            vendor="codex", task_kind="codex-review", start_s=1, end_s=2, output="out.txt",
+        ),
+        ledger=str(ledger),
+        env=env,
+    )
+    round_result = timing.record_round(
+        request=timing.RoundRequest(
+            skill="implement", step="Step 1", round_n=1, start_s=1, end_s=2, accepted=1, rejected=0,
+        ),
+        ledger=str(ledger),
+        env=env,
+    )
+    report = timing.render_report(mode="full", ledger=str(ledger), env=env)
+
+    assert marked.marked
+    assert vendor.recorded
+    assert round_result.recorded
+    assert report.status == "rendered"
+    assert report.rendered is not None
+    with pytest.raises(FrozenInstanceError):
+        marked.marked = False  # type: ignore[misc]
 
 
 def test_timing_vendor_task_accepts_claude_and_basename(tmp_path: Path) -> None:
