@@ -147,7 +147,7 @@ def test_coder_and_codex_implement_routing_by_difficulty() -> None:
         "claude",
     )
     assert config.CODEX_DEFAULT_MODEL == "gpt-5.6-sol"
-    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE] == "gpt-5.6-terra"
-    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD] == "gpt-5.6-terra"
-    assert config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE] == "gpt-5.6-terra"
-    assert config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD] == "gpt-5.6-terra"
+    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE] == config.CODEX_TERRA_MODEL
+    assert config.CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD] == config.CODEX_TERRA_MODEL
+    assert config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE] == config.CODEX_TERRA_MODEL
+    assert config.CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_HARD] == config.CODEX_TERRA_MODEL
