@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- The plan already includes the required Step 8 ship contract update.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires all Step 18 ordering assertions to map to pytest nodes; this implementation detail is unnecessary.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- This duplicates prior neutral FINDING_7 without materially new evidence.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The requested exclusion conflicts with the acceptance requirement that every legacy assertion map to pytest before deletion.

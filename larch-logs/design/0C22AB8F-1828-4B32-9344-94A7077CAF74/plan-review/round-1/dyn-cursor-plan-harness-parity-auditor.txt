@@ -1,0 +1,81 @@
+Auditing the plan against the four legacy harnesses and their contracts for assertion parity and coverage gaps.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	skills/implement/scripts/step-5-review.md:30; skills/implement/scripts/step-18.md:109	Issue firm headings omit runtime contract doc retargets	/design firm headings require step-5-review.md and step-18.md; the plan only updates test-*.md and step-8-ship.md. Edit-in-sync and coverage prose still point at deleted .sh harnesses after migration.	Add ### UPDATED: skills/implement/scripts/step-5-review.md and ### UPDATED: skills/implement/scripts/step-18.md; retarget edit-in-sync and coverage bullets to python/tests/implement/test_implement_shell_scripts.py node groups.
+1	in_scope	major	architecture	skills/implement/scripts/test-step-5-review.sh:9-22; python/tests/implement/test_implement_dispatch.py:185-199	Step 5 parity boundary not pinned against the thinned harness	The live harness is only wrapper grep (lines 9-15) plus four delegated pytest runs (17-22). The plan bundles Step 5 into the new shell module without stating adapter/bgjob contract parity stays in existing pytest modules. Implementers may re-port dispatch_commit_route coverage or drop the delegated-suite mapping from the pre-delete audit.	In the NEW module section, limit Step 5 to source-read wrapper-shape checks matching lines 9-15; add an explicit parity table mapping lines 17-22 to existing nodes in test_bgjob_adapt.py, test_implement_dispatch.py (-k filter), test_run_step_checks.py, and test_step_6_entry.py; do not subprocess-invoke pytest from the new module.
+1	in_scope	minor	architecture	skills/implement/scripts/test-step-5-review.sh:11-12; python/tests/implement/test_implement_dispatch.py:194-199	Wrapper grep parity partially already exists	test_implement_dispatch.py::test_converted_bgjob_launchers_are_thin_wrappers already pins no bgjob start/registry and implement verb delegation for the same four wrappers; the bash harness also requires set -euo pipefail and exec python3 … implement. Re-parameterizing all four checks in the new module duplicates coverage.	[SCOPE-REDUCTION] Extend test_converted_bgjob_launchers_are_thin_wrappers (or one sibling) with the missing set -euo pipefail / exec python3 pins; reference those node IDs in the parity checklist instead of re-asserting the full matrix in test_implement_shell_scripts.py.
+1	in_scope	minor	risk-integration	skills/implement/scripts/test-write-final-report.sh:450	Cross-harness comment still names deleted Step 18 bash harness	After test-step-18.sh is removed and migrated-scripts.tsv blocks references, this comment still directs readers to the retired path; it is outside the plan’s Makefile/manifest/skill/doc sweep.	Retarget the comment to python/tests/implement/test_implement_shell_scripts.py (Step 18 finalize/marker node group) or drop it during the reference sweep.
+
+## Findings
+
+### 1. Missing runtime contract doc updates (major, correctness)
+
+The issue’s firm headings include `skills/implement/scripts/step-5-review.md` and `skills/implement/scripts/step-18.md`, but the plan only lists `### UPDATED` entries for the `test-*.md` contract docs plus `step-8-ship.md`. After the four `.sh` harnesses are deleted, stale pointers remain:
+
+```30:30:skills/implement/scripts/step-5-review.md
+Update `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `make test-implement-structure`, `skills/implement/scripts/test-step-5-review.sh`, and Python Step 5 wrapper tests when this contract or argv changes.
+```
+
+```109:109:skills/implement/scripts/step-18.md
+`test-step-18.sh` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, the execution-issues and transcript safety nets, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
+```
+
+Add both runtime contract files to the firm `### UPDATED:` set and retarget their edit-in-sync / coverage bullets to the new pytest module.
+
+### 2. Step 5 parity boundary underspecified (major, architecture)
+
+The current `test-step-5-review.sh` is only 25 lines: wrapper grep plus four delegated pytest subprocesses, not dynamic shell-out of `step-5-review.sh`:
+
+```9:22:skills/implement/scripts/test-step-5-review.sh
+for wrapper in step-5-review.sh step-5-resume.sh step-6-entry.sh run-step-checks.sh; do
+  path="skills/implement/scripts/$wrapper"
+  grep -Fq 'set -euo pipefail' "$path"
+  grep -Fq 'exec python3 "$PLUGIN_ROOT/python/cli.py" implement' "$path"
+  if grep -Fq 'bgjob start' "$path"; then exit 1; fi
+  if grep -Fq 'registry' "$path"; then exit 1; fi
+done
+
+PYTHONPATH=python python3 -m pytest -q python/tests/bgjob/test_bgjob_adapt.py
+PYTHONPATH=python python3 -m pytest -q \
+  python/tests/implement/test_implement_dispatch.py \
+  -k 'bgjob_contract_unification or step5 or step6 or checks_step5_resume'
+PYTHONPATH=python python3 -m pytest -q python/tests/implement/test_run_step_checks.py
+PYTHONPATH=python python3 -m pytest -q python/tests/implement/test_step_6_entry.py
+```
+
+The plan’s anti-pattern forbids nested pytest but does not say where lines 17–22 land in the parity audit. Pin Step 5 adapter coverage to the existing pytest modules above; keep the new module to wrapper-shape checks only.
+
+### 3. Duplicate Step 5 wrapper coverage (minor, architecture / scope reduction)
+
+`test_converted_bgjob_launchers_are_thin_wrappers` already covers three of the four grep checks for the same wrapper set:
+
+```185:199:python/tests/implement/test_implement_dispatch.py
+@pytest.mark.parametrize(
+    ("script_name", "verb"),
+    [
+        ("run-step-checks.sh", "run-step-checks"),
+        ("step-5-review.sh", "step-5-review"),
+        ("step-5-resume.sh", "step-5-resume"),
+        ("step-6-entry.sh", "step-6-entry"),
+    ],
+)
+def test_converted_bgjob_launchers_are_thin_wrappers(script_name: str, verb: str) -> None:
+    root = Path(__file__).resolve().parents[3]
+    source = (root / "skills" / "implement" / "scripts" / script_name).read_text(encoding="utf-8")
+    assert f'implement {verb} "$@"' in source
+    assert "bgjob start" not in source
+    assert "registry" not in source
+```
+
+Extend that test (or one sibling) with the missing `set -euo pipefail` pin rather than re-parameterizing the full matrix in `test_implement_shell_scripts.py`.
+
+### 4. Stale cross-harness comment (minor, risk-integration)
+
+```450:450:skills/implement/scripts/test-write-final-report.sh
+# Step 18 shell-wrapper body-emission coverage moved to test-step-18.sh.
+```
+
+Include this path in the post-deletion reference sweep and point it at the Step 18 node group in the new pytest module.
+
+---
+
+**Parity note (no finding):** Step 8, Step 18, and token-propagation legacy assertions align well with the plan’s dynamic-case list (real helper subprocess, external-boundary stubs, stale/symlink/argv/timing/failure routing called out in edge cases). Step 8 `symlink rejection` is acceptance-required scope beyond today’s bash harness (~375 lines, ~80+ pass labels); the plan correctly adds it rather than dropping it. Step 18 SKILL.md documentation grep at `test-step-18.sh:271-273` is redundant with `python/tests/skills/_structure_implement_specialized.py` structure pins and need not be re-ported.
