@@ -10,6 +10,36 @@ from ._structure_label_inventory import assertion_labels
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
 
 
+def _prevention_field_failures(text: str) -> list[str]:
+    prevention_field_contract = (
+        "Every Section 4 lint proposal and Section 7 regression-test proposal must include "
+        "**Host**, **Size budget**, and **Cheaper alternative**. Section 5 proposals "
+        "require those same fields only when `best-home` is `lint` or `hook`; other "
+        "Section 5 best-home classifications are not subject to this field contract. "
+        "**Host** names the existing lint rule, module, hook, or harness to extend. "
+        "`Host: New module` is complete only when it also names the closest existing host "
+        "and gives one sentence explaining why that host cannot absorb the rule. "
+        "**Size budget** is the estimated new non-test lines; a budget greater than 150 "
+        "lines requires an explicit justification. Use an independently computed estimate "
+        "for the over-150-line and over-400-line thresholds; the proposal author's budget "
+        "cannot suppress either trigger. **Cheaper alternative** names the nearest cheaper "
+        "mechanism—such as extending an existing rule, a manifest or table entry, an "
+        "invariant test, or a hook line—and gives one sentence explaining why it is "
+        "insufficient."
+    )
+    requirements = (
+        (prevention_field_contract, "(C2.14) prevention-field semantics must remain complete"),
+        ("Every Lint filing body must include **Host**, **Size budget**, and **Cheaper alternative**.", "(G.3) lint filing bodies must include prevention fields"),
+        ("Every Hook-contract filing body must include **Host**, **Size budget**, and **Cheaper alternative**.", "(G.4) hook-contract filing bodies must include prevention fields"),
+        ("Every Regression test filing body must include **Host**, **Size budget**, and **Cheaper alternative**.", "(G.5) regression-test filing bodies must include prevention fields"),
+        ("Fail closed when an applicable Lint, Hook-contract, or Regression test proposal has a missing, blank, or semantically incomplete **Host**, **Size budget**, or **Cheaper alternative**", "(M.1a) completeness must fail closed for incomplete prevention fields"),
+        ("including a missing closest-existing-host explanation for `Host: New module`, an over-150-line justification, or a cheaper-alternative insufficiency explanation", "(M.1b) completeness must require conditional prevention-field explanations"),
+        ("Split every proposal with a Size budget greater than 400 lines before filing; do not generate or file the oversized proposal intact", "(M.1c) filing must split over-400-line proposals before filing"),
+        ("require a separate explicit operator approval for every proposal whose Size budget is greater than 400 lines", "(P.3) default mode must separately approve over-400-line proposals"),
+    )
+    return [failure for required, failure in requirements if required not in text]
+
+
 def run(repo_root: Path) -> list[str]:
     failures: list[str] = []
     skill = repo_root / "skills/learn-from-bugs/SKILL.md"
@@ -104,18 +134,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(C2.12) Step 4 must run report-contract validation before print/marker/filing")
     if 'if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" learn-from-bugs validate-report' not in text:
         failures.append("(C2.13) Step 4 must stop when report-contract validation fails")
-    if "**Host**, **Size budget**, and **Cheaper alternative**" not in text:
-        failures.append("(C2.14) applicable proposals must name Host, Size budget, and Cheaper alternative")
-    if "Section 5 proposals require those same fields only when `best-home` is `lint` or `hook`" not in text:
-        failures.append("(C2.15) only lint and hook Section 5 proposals must carry the prevention fields")
-    if "`Host: New module` is complete only when it also names the closest existing host and gives one sentence explaining why that host cannot absorb the rule" not in text:
-        failures.append("(C2.16) new-module hosts must identify the closest host and why it cannot absorb the rule")
-    if "a budget greater than 150 lines requires an explicit justification" not in text:
-        failures.append("(C2.17) over-150-line Size budgets must be justified")
-    if "Use an independently computed estimate for the over-150-line and over-400-line thresholds; the proposal author's budget cannot suppress either trigger." not in text:
-        failures.append("(C2.17a) size thresholds must not rely on the proposal author's budget")
-    if "gives one sentence explaining why it is insufficient" not in text:
-        failures.append("(C2.18) Cheaper alternative must explain why the mechanism is insufficient")
     if "**Proposed regression tests.**" not in text:
         failures.append("(D.1) report must include Proposed regression tests section")
     if "target test file (or best-justified new test file), the behavior or symbol, fixture/setup, action, assertions, backing bug issues" not in text:
@@ -152,12 +170,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(G.1) hook filing bodies must require hooks.json, script, sibling docs, harness, acceptance, verification")
     if "Do not use the invariants-file body template for hook work" not in text:
         failures.append("(G.2) hook bodies must not use invariants-file template")
-    if "Every Lint filing body must include **Host**, **Size budget**, and **Cheaper alternative**." not in text:
-        failures.append("(G.3) lint filing bodies must include prevention fields")
-    if "Every Hook-contract filing body must include **Host**, **Size budget**, and **Cheaper alternative**." not in text:
-        failures.append("(G.4) hook-contract filing bodies must include prevention fields")
-    if "Every Regression test filing body must include **Host**, **Size budget**, and **Cheaper alternative**." not in text:
-        failures.append("(G.5) regression-test filing bodies must include prevention fields")
     if "**Guideline amendment:** exact target identifier or heading, exact current text span or bounded verbatim excerpt with location, complete replacement text, and acceptance criteria requiring replacement or removal of the old wording" not in text:
         failures.append("(H.1) guideline amendments must require target, current span, replacement, old-text removal criteria")
     if "**Invariant amendment:** target invariant ID or section, exact current text span or bounded verbatim excerpt with location, complete replacement text, and acceptance criteria requiring replacement or removal of the old wording" not in text:
@@ -182,12 +194,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(L.3) literal payloads containing ### must be fenced")
     if "one consolidated `AskUserQuestion` covering all unresolved decisions" not in text:
         failures.append("(M.1) one consolidated ambiguity prompt must precede filing")
-    if "Fail closed when an applicable Lint, Hook-contract, or Regression test proposal has a missing, blank, or semantically incomplete **Host**, **Size budget**, or **Cheaper alternative**" not in text:
-        failures.append("(M.1a) completeness must fail closed for incomplete prevention fields")
-    if "including a missing closest-existing-host explanation for `Host: New module`, an over-150-line justification, or a cheaper-alternative insufficiency explanation" not in text:
-        failures.append("(M.1b) completeness must require conditional prevention-field explanations")
-    if "Split every proposal with a Size budget greater than 400 lines before filing; do not generate or file the oversized proposal intact" not in text:
-        failures.append("(M.1c) filing must split over-400-line proposals before filing")
     if "Ban placeholders, unresolved alternatives, research tasks, open questions, and decisions deferred to `/design`" not in text:
         failures.append("(M.2) filed issues must forbid open questions and deferred /design decisions")
     if "**New guideline:** complete append-ready imperative, Why, and Deviate-when text" not in text:
@@ -208,8 +214,6 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(P.1) default mode must preserve state-publication-before-Step-5 ordering")
     if "Then continue to Step 5 (approval-gated follow-ups)" not in text:
         failures.append("(P.2) default mode must continue to approval-gated Step 5 after publication resolution")
-    if "require a separate explicit operator approval for every proposal whose Size budget is greater than 400 lines" not in text:
-        failures.append("(P.3) default mode must separately approve over-400-line proposals")
     if "`ANALYSIS_ROOT` may be detached, but it must be a repository checkout with an `origin` remote" not in text:
         failures.append("(Q.1) publication must accept detached repository checkouts with origin")
     if 'git -C "$ANALYSIS_ROOT" rev-parse --is-inside-work-tree' not in text:
@@ -307,4 +311,4 @@ def run(repo_root: Path) -> list[str]:
         failures.append("(V.3) publication must not reject detached ANALYSIS_ROOT")
     if 'git -C "$ANALYSIS_ROOT" commit' in text:
         failures.append("(V.4) old direct ANALYSIS_ROOT commit flow must be absent")
-    return failures
+    return [*failures, *_prevention_field_failures(text)]
