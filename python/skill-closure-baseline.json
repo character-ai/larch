@@ -72,9 +72,9 @@
     "skill_md_lines": 873
   },
   {
-    "closure_content_estimated_tokens": 54263,
-    "closure_estimated_tokens": 54484,
-    "closure_lines": 2930,
+    "closure_content_estimated_tokens": 56282,
+    "closure_estimated_tokens": 56510,
+    "closure_lines": 3005,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,
     "conditional_files": [],
@@ -88,6 +88,7 @@
       "agents/code-reviewer.md",
       "agents/codex-implementer.md",
       "agents/cursor-implementer.md",
+      "agents/issue-dedup.md",
       "agents/orchestrator-aggregator.md",
       "agents/reviewer-code-robustness.md",
       "agents/reviewer-correctness.md",
