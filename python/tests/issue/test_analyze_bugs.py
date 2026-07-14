@@ -1630,7 +1630,7 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     resumed_manifest = json.loads(Path(str(resumed["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
     assert resumed_manifest["selected"][0]["merge_sha"] == non_chronic
     assert later in cast("tuple[str, ...]", resumed["PENDING_SHAS"])
-    assert resumed["SKIPPED_COUNT"] >= 1
+    assert cast("int", resumed["SKIPPED_COUNT"]) >= 1
 
 
 def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
