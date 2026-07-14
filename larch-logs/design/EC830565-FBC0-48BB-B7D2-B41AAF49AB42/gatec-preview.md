@@ -1,0 +1,103 @@
+## Final Design Plan
+
+## Plan
+
+Port the rule after Piece 1 lands. Preserve detection, production scope, declaration-line pragma semantics, finding identity, baseline schema, CLI arguments, and exit behavior.
+
+### UPDATED: python/larch/lint/engine.py
+
+- Add a typed occurrence-baseline codec for JSON rows shaped exactly as `{file, qualified_symbol, pattern_name, occurrence, reason}`.
+- Keep occurrence baseline matching internally repo-relative: deserialize each JSON `file` by prefixing `python/` to form the `Finding.path`; serialize only `Finding.path` values under `python/` by stripping that prefix. Reject invalid/non-`python/` occurrence paths rather than silently changing baseline identity.
+- Project detector-supplied occurrence identity fields without deriving identity from rendered messages or line numbers.
+- Preserve exact key validation, duplicate detection, stable occurrence-key sorting, reason preservation, atomic write/read-back validation, and strict stale handling for this codec.
+- Add an explicit rule-owned pre-load source filter contract. Apply rule pathspecs and that filter before `_load_source` or `_scan_source` in check and write modes; user `--paths` further narrows the selected files, while write mode still rejects filtered-path regeneration.
+- Ensure full write discovery honors the rule’s pathspec/filter contract rather than falling back to all tracked repository files.
+- Add an explicit syntax-error policy that raises `ScanError`; retain existing `fail` and `skip` behavior for other rules.
+- Defer an absent occurrence baseline decision until after scanning: a clean scan with no baseline exits `0`; live findings without a baseline produce the compatibility diagnostic and exit `2`. Keep malformed present baselines as exit `2`.
+- Let `run_rule` use the occurrence codec and scoped selection so this rule retains engine discovery, source loading, finding rendering, baseline comparison, and write handling.
+
+### UPDATED: python/tests/lint/test_lint_engine.py
+
+- Cover occurrence-schema parsing, duplicate identities, projection, comparison, stale-row failure, preserved reasons, required initial reasons, stable serialization, and byte-identical no-op rewrites.
+- Add repo-relative `Finding.path` ↔ Python-relative JSON `file` round-trip coverage, including matching a committed-style baseline row without rewriting its file prefix.
+- Cover absent-baseline behavior for both a clean scan (`0`) and live findings (`2`).
+- Cover rule pathspec and pre-load filtering in check and write modes, including excluded malformed/unreadable files that must never reach source loading.
+- Cover the new syntax-error policy returning exit `2` with a deterministic diagnostic, without changing `fail` or `skip` coverage.
+
+### NEW: python/larch/lint/markdown_heading_fence_state_detector.py
+
+- Move the rule-specific AST walker, scope state, regex and fence-helper recognition, occurrence counting, declaration-comment parsing, and legacy production-path predicate into a focused detector helper.
+- Expose the production-path predicate for engine pre-load selection; accept only legacy production `python/**/*.py` sources and exclude tests, support fixtures, excluded directories, and symlinks before text loading or AST parsing.
+- Keep exact production detection semantics: nested symbol tracking, lexical occurrence numbering, helper imports, boolean guards, active-loop guards, and `continue` paths.
+- Parse the documented pragma on the regex declaration, not on the emitted match line. A non-empty reason suppresses that declaration; an empty declaration pragma raises `ScanError`.
+
+### REWRITTEN: python/larch/lint/lint_markdown_heading_fence_state.py
+
+- Keep a thin `detect(SourceFile)` adapter that invokes the extracted AST helper and emits engine `Finding` values with the existing rule ID, rendered message, qualified symbol, and typed `pattern_name`/`occurrence` baseline identity.
+- Define one `LintRule` with `allow_inline_suppression=False`, the existing pragma token, `python/**/*.py` discovery pathspecs, the legacy production pre-load filter, the occurrence-baseline codec, and the syntax-error policy that raises `ScanError`.
+- Require that the rule’s source scope applies for normal checks and full `--write` regeneration, so tracked `scripts/**/*.py`, `skills/**/*.py`, tests, support files, and symlinks cannot affect findings, syntax failures, or rewritten rows.
+- Do not enable engine same-line suppression: this rule owns its declaration-line compatibility suppression, including empty-reason failures.
+- Keep only the compatibility CLI adapter for `--root`, `--write`, and `--initial-reason`; map them to `run_rule`, the committed baseline path, full scoped-discovery write mode, and strict stale checks.
+- Remove local discovery, source loading, generic suppression, finding rendering, baseline parsing, comparison, serialization, and write plumbing.
+- Preserve exit `2` for invalid arguments, repository failures, unreadable in-scope inputs, malformed in-scope Python, malformed or duplicate baselines, live findings with no baseline, missing reasons, and stale rows. Preserve clean success when the baseline is absent and no findings exist.
+- Keep this production module at approximately 250 lines; the extracted helper contains the retained rule-specific AST logic.
+
+### REWRITTEN: python/tests/lint/test_lint_markdown_heading_fence_state.py
+
+- Replace legacy `scan_file`, discovery, and baseline-helper tests with focused `SourceFile`, `detect`, `RULE`, and injected-runner `main` coverage.
+- Retain direct-match, search, enumerated-line, helper-import, boolean-guard, active-loop-guard, `continue`, unrelated-regex, nested-symbol, and production-path-exclusion cases.
+- Verify declaration-line suppression through `detect` and `main`: a non-empty reason suppresses, while an empty declaration pragma fails with exit `2`.
+- Verify malformed in-scope Python takes the rule’s `ScanError` path and exits `2`, rather than producing an engine syntax finding or being skipped.
+- Verify malformed or unreadable excluded tests, support fixtures, symlinks, `scripts/**/*.py`, and `skills/**/*.py` are filtered before source loading in both check and full write modes, using the injected git runner.
+- Exercise check and write modes against the committed five-key baseline schema, including Python-relative JSON files matched to repo-relative findings.
+- Assert clean absent-baseline success and live-finding absent-baseline failure with exit `2`.
+- Assert clean, new-finding, stale-baseline, malformed-baseline, duplicate-identity, missing-reason, unreadable in-scope input, and invalid-argument behavior.
+- Assert a no-op regeneration is byte-identical and current-repository finding identities and rendered lines remain unchanged.
+
+### UPDATED: python/tests/lint/test_lint_engine_equivalence.py
+
+- Replace the legacy Markdown adapter with direct `SourceFile` construction and `lint_markdown_heading_fence_state.detect`.
+- Keep identity and rendered-line comparison unchanged.
+- Avoid git-backed discovery in the synthetic fixture adapter, so materialized untracked fixture sources are scanned directly.
+- Add coverage that direct fixture adaptation preserves repo-relative finding paths while the occurrence codec preserves Python-relative baseline `file` values.
+- Remove reliance on the deleted legacy Markdown `Finding`, `scan_file`, and `iter_source_files` APIs.
+
+### MAY_UPDATE: python/tests/lint/fixtures/lint_engine_equivalence/markdown_heading_fence_state.json
+
+- Update only if the direct detector adapter requires fixture metadata changes.
+- Preserve the fixture path, line, rule ID, message, qualified symbol, occurrence text, and rendered golden line.
+
+## Edge cases
+
+- Exclude tests, support fixtures, symlinks, excluded directories, and out-of-`python/` tracked Python files before source loading without widening production scope.
+- Preserve nested function and class occurrence numbering.
+- Distinguish real fence guards from unrelated booleans or constant membership checks.
+- Apply suppressions only from the documented regex declaration line.
+- Keep reason-bearing declaration suppressions effective and reject empty declaration suppressions.
+- Preserve occurrence-key baseline identity independently of finding line numbers and map only the baseline JSON file prefix at the codec boundary.
+- Permit a missing baseline only when the scoped scan is clean.
+
+## Failure modes
+
+- Return exit `2` for invalid CLI input, unsafe roots, unreadable tracked in-scope files, malformed in-scope Python, invalid baseline data, duplicate identities, live findings with no baseline, missing reasons, or stale rows.
+- Do not load, parse, or fail on excluded tracked files.
+- Do not partially rewrite a baseline when validation or read-back fails.
+- Reject filtered-path write mode; regeneration requires full scoped tracked-file discovery.
+- Do not route this baseline through generic or symbol-metric baseline projection.
+
+## Testing strategy
+
+- Run `make test-lint-markdown-heading-fence-state`.
+- Run `make lint-markdown-heading-fence-state`.
+- Run the Markdown cases in `python/tests/lint/test_lint_engine_equivalence.py`.
+- Run the changed occurrence-codec, scoped-discovery, missing-baseline, and syntax-policy cases in `python/tests/lint/test_lint_engine.py`.
+- Confirm a no-op regeneration leaves `python/markdown-heading-fence-state-baseline.json` byte-identical.
+- Run lint and type checks only for the changed Python files.
+
+Difficulty rationale: MODERATE with medium confidence. The port retains compatibility through a typed engine baseline codec, scoped pre-load discovery, and a focused AST helper while preserving the rule module size target.
+
+difficulty: MODERATE
+diff_added: 1450
+diff_deleted: 1280
+mechanical_churn: false
+diff_lines: 2730

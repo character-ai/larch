@@ -1,0 +1,87 @@
+## Plan
+
+Port the rule after Piece 1 lands. Preserve detection, production scope, declaration-line pragma semantics, finding identity, baseline schema, CLI arguments, and exit behavior.
+
+### UPDATED: python/larch/lint/engine.py
+
+- Add a typed occurrence-baseline codec for rows shaped exactly as `{file, qualified_symbol, pattern_name, occurrence, reason}`.
+- Project detector-supplied occurrence identity fields without deriving identity from rendered messages or line numbers.
+- Preserve exact key validation, duplicate detection, stable occurrence-key sorting, reason preservation, atomic write/read-back validation, and strict stale handling for this codec.
+- Add an explicit syntax-error policy that raises `ScanError`; retain existing `fail` and `skip` behavior for other rules.
+- Let `run_rule` use the occurrence codec so this rule retains engine discovery, source loading, finding rendering, baseline comparison, and write handling.
+
+### UPDATED: python/tests/lint/test_lint_engine.py
+
+- Cover occurrence-schema parsing, duplicate identities, projection, comparison, stale-row failure, preserved reasons, required initial reasons, stable serialization, and byte-identical no-op rewrites.
+- Cover the new syntax-error policy returning exit `2` with a deterministic diagnostic, without changing `fail` or `skip` coverage.
+
+### NEW: python/larch/lint/markdown_heading_fence_state_detector.py
+
+- Move the rule-specific AST walker, scope state, regex and fence-helper recognition, occurrence counting, and declaration-comment parsing into a focused detector helper.
+- Keep exact production detection semantics: `python/**/*.py` scope, excluded test/support paths and directories, nested symbol tracking, lexical occurrence numbering, helper imports, boolean guards, active-loop guards, and `continue` paths.
+- Parse the documented pragma on the regex declaration, not on the emitted match line. A non-empty reason suppresses that declaration; an empty declaration pragma raises `ScanError`.
+
+### REWRITTEN: python/larch/lint/lint_markdown_heading_fence_state.py
+
+- Keep a thin `detect(SourceFile)` adapter that invokes the extracted AST helper and emits engine `Finding` values with the existing rule ID, rendered message, qualified symbol, and typed `pattern_name`/`occurrence` baseline identity.
+- Define one `LintRule` with `allow_inline_suppression=False`, the existing pragma token, the occurrence-baseline codec, and the syntax-error policy that raises `ScanError`.
+- Do not enable engine same-line suppression: this rule owns its declaration-line compatibility suppression, including empty-reason failures.
+- Keep only the compatibility CLI adapter for `--root`, `--write`, and `--initial-reason`; map them to `run_rule`, the committed baseline path, full-discovery write mode, and strict stale checks.
+- Remove local discovery, source loading, generic suppression, finding rendering, baseline parsing, comparison, serialization, and write plumbing.
+- Preserve exit `2` for invalid arguments, repository failures, unreadable inputs, malformed Python, malformed or duplicate baselines, missing reasons, and stale rows.
+- Keep this production module at approximately 250 lines; the extracted helper contains the retained rule-specific AST logic.
+
+### REWRITTEN: python/tests/lint/test_lint_markdown_heading_fence_state.py
+
+- Replace legacy `scan_file`, discovery, and baseline-helper tests with focused `SourceFile`, `detect`, `RULE`, and injected-runner `main` coverage.
+- Retain direct-match, search, enumerated-line, helper-import, boolean-guard, active-loop-guard, `continue`, unrelated-regex, nested-symbol, and production-path-exclusion cases.
+- Verify declaration-line suppression through `detect` and `main`: a non-empty reason suppresses, while an empty declaration pragma fails with exit `2`.
+- Verify malformed Python takes the rule’s `ScanError` path and exits `2`, rather than producing an engine syntax finding or being skipped.
+- Exercise check and write modes against the committed five-key baseline schema.
+- Assert clean, new-finding, stale-baseline, malformed-baseline, duplicate-identity, missing-reason, unreadable-input, and invalid-argument behavior.
+- Assert a no-op regeneration is byte-identical and current-repository finding identities and rendered lines remain unchanged.
+
+### UPDATED: python/tests/lint/test_lint_engine_equivalence.py
+
+- Replace the legacy Markdown adapter with direct `SourceFile` construction and `lint_markdown_heading_fence_state.detect`.
+- Keep identity and rendered-line comparison unchanged.
+- Avoid git-backed discovery in the synthetic fixture adapter, so materialized untracked fixture sources are scanned directly.
+- Remove reliance on the deleted legacy Markdown `Finding`, `scan_file`, and `iter_source_files` APIs.
+
+### MAY_UPDATE: python/tests/lint/fixtures/lint_engine_equivalence/markdown_heading_fence_state.json
+
+- Update only if the direct detector adapter requires fixture metadata changes.
+- Preserve the fixture path, line, rule ID, message, qualified symbol, occurrence text, and rendered golden line.
+
+## Edge cases
+
+- Exclude tests, support fixtures, symlinks, and excluded directories without widening production scope.
+- Preserve nested function and class occurrence numbering.
+- Distinguish real fence guards from unrelated booleans or constant membership checks.
+- Apply suppressions only from the documented regex declaration line.
+- Keep reason-bearing declaration suppressions effective and reject empty declaration suppressions.
+- Preserve occurrence-key baseline identity independently of finding line numbers.
+
+## Failure modes
+
+- Return exit `2` for invalid CLI input, unsafe roots, unreadable tracked files, malformed Python, invalid baseline data, duplicate identities, missing reasons, or stale rows.
+- Do not partially rewrite a baseline when validation or read-back fails.
+- Reject filtered-path write mode; regeneration requires full tracked-file discovery.
+- Do not route this baseline through generic or symbol-metric baseline projection.
+
+## Testing strategy
+
+- Run `make test-lint-markdown-heading-fence-state`.
+- Run `make lint-markdown-heading-fence-state`.
+- Run the Markdown cases in `python/tests/lint/test_lint_engine_equivalence.py`.
+- Run the changed occurrence-codec and syntax-policy cases in `python/tests/lint/test_lint_engine.py`.
+- Confirm a no-op regeneration leaves `python/markdown-heading-fence-state-baseline.json` byte-identical.
+- Run lint and type checks only for the changed Python files.
+
+Difficulty rationale: MODERATE with medium confidence. The port retains compatibility through a typed engine baseline codec and a focused AST helper, while preserving the rule module size target.
+
+difficulty: MODERATE
+diff_added: 1360
+diff_deleted: 1240
+mechanical_churn: false
+diff_lines: 2600
