@@ -29,11 +29,11 @@ Warnings (21):
 
 ## Architectural invariants
 
-The changed code is a behavior-preserving refactor that converts tuple-returning helpers into frozen dataclasses (retaining two-value unpacking) and lifts CLI-wrapper logic into pure functions, keeping every validation, path-confinement, symlink, newline, carriage-return, secret-scrub residual re-check, execution-issue append, and stdout emission-ordering behavior intact, so no workflow-integrity, run-log-integrity, panel, agent-contract, or ship-lifecycle absolute rule is disturbed.
+The changed code is a behavior-preserving refactor that converts tuple-returning helpers into frozen dataclasses and lifts CLI-wrapper logic into pure functions while keeping validation, path confinement, redaction residual checks, and stdout emission ordering intact, so no workflow, run-log, panel, agent-contract, or ship-lifecycle absolute rule is disturbed.
 
 ## Architectural guidelines
 
-The changed code now gives every new lint and type suppression an inline reason at the narrowest scope, so the guideline surface for this diff is clean.
+The changed code gives every new lint and type suppression and every relocated complexity-baseline row an inline reason, moves composite results to frozen dataclasses, and keeps monkeypatched test fakes aligned with the real return contract, so the guideline surface for this diff is clean.
 
 ## /implement run B6F0FC47-186D-4AF6-9CC1-B2C1EAA656C4: pr-created
 
@@ -48,7 +48,7 @@ The changed code now gives every new lint and type suppression an inline reason 
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: code +1566/-359, larch-logs +291/-0
+- **Lines (PR diff)**: code +1576/-363, larch-logs +313/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 21
