@@ -46,17 +46,17 @@ codex/apply                        │                                          
 
 ## Architectural invariants
 
-The changed code — removing `_SECURITY_TOKEN_RE` from `review_types.py`, porting Bash disposition-gate regression cases into `test_file_oos.py`, and reducing `test-oos-disposition-gate.sh` to a delegation smoke — is clean with respect to all architectural invariants.
+The changed code is clean with respect to all architectural invariants.
 
 ## Architectural guidelines
 
-The changed code — removing the false-positive body-text security-token regex, porting all Bash harness cases to Python tests with fixture updates across `test_oos.py`, `test_review_types.py`, and `test_voting.py`, slimming the Bash harness to a delegation smoke, and updating `oos-disposition-gate.md` and `test-oos-disposition-gate.md` in the same change — is clean with respect to all architectural guidelines.
+The changed code is clean with respect to all architectural guidelines.
 
 ## /implement run E188FE56-4468-4144-B84E-4B82F5E66481: pr-created
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:34:33
-- **Cost**: 💰 TOTAL ~$16.91: Claude $5.33, Codex-5.6 $4.30, Codex-mini $0.04, Cursor $6.00 (Composer $3.78, Grok $2.22), Claude (subprocess) $1.24  |  Tokens: 24201k
+- **Cost**: 💰 TOTAL ~$24.77: Claude $13.19, Codex-5.6 $4.30, Codex-mini $0.04, Cursor $6.00 (Composer $3.78, Grok $2.22), Claude (subprocess) $1.24  |  Tokens: 41117k
 - **Issue**: #7267: https://github.com/character-ai/larch/issues/7267
 - **PR**: #7321: https://github.com/character-ai/larch/pull/7321
 - **Plan review**: N/A
@@ -64,7 +64,7 @@ The changed code — removing the false-positive body-text security-token regex,
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 3/5 accepted
-- **Lines (PR diff)**: code +1112/-1036, larch-logs +704/-0
+- **Lines (PR diff)**: code +1118/-1040, larch-logs +706/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
