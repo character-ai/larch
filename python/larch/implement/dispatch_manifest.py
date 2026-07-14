@@ -63,6 +63,8 @@ class DispatchState:
     prelaunch_index_flag: Path
     recovery_paths_file: Path
     resume_count_file: Path
+    completion_retry_state_file: Path
+    completion_retry_feedback_file: Path
     spawn_branch_file: Path
     spawn_coder_file: Path
     runtime_failure_token: str

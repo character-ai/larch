@@ -72,6 +72,8 @@ _ASCII_CONTROL_MAX = 31
 _ASCII_DELETE = 127
 _ARCH_KNOWLEDGE_SNAPSHOT = "step2-architectural-knowledge.env"
 _PRIOR_ATTEMPT_REASON = "prior-attempt-unfinalized"
+_COMPLETION_RETRY_STATE_INVALID = "completion-retry-state-invalid"
+_COMPLETION_RETRY_STATE_STALE = "completion-retry-state-stale"
 
 
 def _publish_bgjob_envelope(*, tmpdir: Path, path: str, text: str) -> bool:
@@ -254,6 +256,8 @@ def _dispatch_state(*, args: argparse.Namespace, repo_root: Path, tmpdir: Path, 
         prelaunch_index_flag=tmpdir / "step2-prelaunch-index.env",
         recovery_paths_file=tmpdir / "step2-recovery-paths.nul",
         resume_count_file=tmpdir / f"{tool}-resume-count.txt",
+        completion_retry_state_file=tmpdir / "step2-completion-retry-state.env",
+        completion_retry_feedback_file=tmpdir / "step2-completion-retry.md",
         spawn_branch_file=tmpdir / "step2-spawn-branch.txt",
         spawn_coder_file=tmpdir / "step2-spawn-coder.txt",
         runtime_failure_token=f"{tool}-runtime-failure",
@@ -294,6 +298,8 @@ def _launcher_args(st: DispatchState) -> list[str]:
         args.extend(["--difficulty", st.difficulty])
     if st.answers_file is not None:
         args.extend(["--answers-file", str(st.answers_file)])
+    if st.completion_retry_feedback_file.is_file():
+        args.extend(["--completion-retry-file", str(st.completion_retry_feedback_file)])
     return args
 
 
@@ -301,6 +307,98 @@ def _run_launcher(st: DispatchState) -> tuple[int, dict[str, str], str]:
     result = _invoke_cli(_launcher_args(st), cwd=st.repo_root)
     stdout = result.stdout or ""
     return result.returncode, _parse_kv(stdout[:65536]), stdout + (result.stderr or "")
+
+
+def _completion_retry_state(st: DispatchState) -> tuple[int, str] | None:
+    """Return retry state only when its bounded wire record is valid."""
+    if not st.completion_retry_state_file.exists():
+        return 0, ""
+    try:
+        raw = larch_io.read_trusted_text(
+            st.completion_retry_state_file, root=st.tmpdir, errors="replace"
+        )
+        data = larch_io.parse_kv(raw, skip_comments=True, cr_strip="strip")
+    except (OSError, ValueError):
+        return None
+    count_text = data.get("COMPLETION_RETRY_COUNT", "")
+    fingerprint = data.get("PLAN_COVERAGE_FINGERPRINT", "")
+    if not count_text.isdigit() or not re.fullmatch(r"[0-9a-f]{64}", fingerprint):
+        return None
+    count = int(count_text)
+    if not 0 < count <= config.IMPLEMENT_COMPLETION_RETRY_CAP:
+        return None
+    return count, fingerprint
+
+
+def _completion_retry_args(*, args: argparse.Namespace) -> list[str]:
+    retry_args = [
+        "--tmpdir", args.tmpdir,
+        "--plan-file", args.plan_file,
+        "--feature-file", args.feature_file,
+        "--coder", args.coder,
+        "--completion-retry",
+    ]
+    for name in ("cursor_present", "codex_binary_found", "cursor_binary_found"):
+        value = getattr(args, name)
+        if value:
+            retry_args.extend([f"--{name.replace('_', '-')}", value])
+    if args.difficulty:
+        retry_args.extend(["--difficulty", args.difficulty])
+    return retry_args
+
+
+def _retry_incomplete_completion(
+    *, args: argparse.Namespace, st: DispatchState, coverage: scope_disposition.PlanCoverage
+) -> int | None:
+    """Re-dispatch a proven-incomplete coder result, bounded by configuration."""
+    state = _completion_retry_state(st)
+    if state is None:
+        return st.emit_bailed(_COMPLETION_RETRY_STATE_INVALID)
+    count, _fingerprint = state
+    if count >= config.IMPLEMENT_COMPLETION_RETRY_CAP:
+        _append_warning(
+            st=st,
+            text=(
+                "Step 2 completion retries exhausted after "
+                f"{count} retry attempt(s); retaining the required scope-disposition gate."
+            ),
+        )
+        return None
+    next_count = count + 1
+    feedback_lines = [
+        "# Completion retry",
+        "",
+        "The previous implementation attempt declared completion, but "
+        "independent plan coverage found required work incomplete.",
+        "Preserve compatible existing edits and finish the remaining plan scope. "
+        "Do not declare completion until all required work is complete.",
+        "",
+        f"Retry attempt: {next_count} of {config.IMPLEMENT_COMPLETION_RETRY_CAP}",
+        "",
+        "## Required plan paths still untouched",
+        "",
+    ]
+    feedback_lines.extend(f"- `{path}`" for path in coverage.untouched_paths)
+    if coverage.todos_left:
+        feedback_lines.extend(["", "## Blocking deferred work reported by the prior attempt", ""])
+        feedback_lines.extend(f"- {item}" for item in coverage.todos_left)
+    larch_io.trusted_atomic_write(
+        st.completion_retry_state_file,
+        f"COMPLETION_RETRY_COUNT={next_count}\n"
+        f"PLAN_COVERAGE_FINGERPRINT={coverage.fingerprint}\n",
+        root=st.tmpdir,
+    )
+    _write_text_atomic(
+        path=st.completion_retry_feedback_file, text="\n".join(feedback_lines) + "\n"
+    )
+    _append_warning(
+        st=st,
+        text=(
+            "Step 2 independently found incomplete plan coverage; "
+            f"re-dispatching {st.tool_tag} for completion retry {next_count}/{config.IMPLEMENT_COMPLETION_RETRY_CAP}."
+        ),
+    )
+    return step2_dispatch_main(_completion_retry_args(args=args))
 
 
 def _append_warning(*, st: DispatchState, text: str) -> None:
@@ -563,6 +661,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     parser.add_argument("--codex-binary-found", default="")
     parser.add_argument("--cursor-binary-found", default="")
     parser.add_argument("--answers", default="")
+    parser.add_argument("--completion-retry", action="store_true")
     parser.add_argument("--difficulty", choices=("", *config.DIFFICULTY_TIERS), default="")
     args = parser.parse_args(argv)
 
@@ -646,6 +745,24 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         _err("implement step2-dispatch: must be invoked from within a git working tree (git rev-parse --show-toplevel failed)")
         return 2
     st = _dispatch_state(args=args, repo_root=repo_root, tmpdir=tmpdir, plugin_root=plugin_root)
+    completion_retry_state = _completion_retry_state(st)
+    if completion_retry_state is None:
+        return st.emit_bailed(_COMPLETION_RETRY_STATE_INVALID)
+    completion_retry_count, completion_retry_fingerprint = completion_retry_state
+    if args.completion_retry:
+        if not completion_retry_count or not st.completion_retry_feedback_file.is_file():
+            return st.emit_bailed(_COMPLETION_RETRY_STATE_INVALID)
+        try:
+            retry_coverage = scope_disposition.compute_coverage(
+                tmpdir=st.tmpdir,
+                repo_root=st.repo_root,
+                plan_file=st.plan_file,
+                manifest_path=st.manifest_path,
+            )
+        except ShipError:
+            return st.emit_bailed(_COMPLETION_RETRY_STATE_STALE)
+        if retry_coverage.fingerprint != completion_retry_fingerprint:
+            return st.emit_bailed(_COMPLETION_RETRY_STATE_STALE)
     _append_architectural_knowledge_warnings(st)
     if not (plugin_root / "agents" / f"{st.tool_tag}-implementer.md").is_file():
         _err(f"implement step2-dispatch: agent prompt missing: {plugin_root / 'agents' / (st.tool_tag + '-implementer.md')}")
@@ -688,7 +805,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     if resume_count > RESUME_CAP:
         return st.emit_bailed("qa-loop-exceeded")
 
-    if _prior_attempt_unfinalized(st):
+    if not args.completion_retry and _prior_attempt_unfinalized(st):
         return st.emit_bailed(_PRIOR_ATTEMPT_REASON)
 
     for path in (st.manifest_path, st.manifest_raw_path, st.qa_pending_path, st.transcript_path, st.sidecar_log, st.launch_scout_manifest):
@@ -816,6 +933,10 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
             or is_quota_failure(tool=st.coder, sidecar=st.transcript_path)
         ):
             return st.emit_bailed("quota")
+        if plan_coverage.disposition_required:
+            retry_result = _retry_incomplete_completion(args=args, st=st, coverage=plan_coverage)
+            if retry_result is not None:
+                return retry_result
         uncovered = list(plan_coverage.untouched_paths)
         if uncovered:
             uncovered_plan_path_count = len(uncovered)
@@ -897,6 +1018,12 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
             _emit_kv(key="TODOS_LEFT_FILE", value=plan_coverage.todos_file)
             _emit_kv(key="PLAN_COVERAGE_DISPOSITION_REQUIRED", value=str(plan_coverage.disposition_required).lower())
             _emit_kv(key="PLAN_FIDELITY_FORCED", value=str(plan_coverage.plan_fidelity_forced).lower())
+        completion_retry_state = _completion_retry_state(st)
+        if completion_retry_state is None:
+            return st.emit_bailed(_COMPLETION_RETRY_STATE_INVALID)
+        completion_retry_count, _completion_retry_fingerprint = completion_retry_state
+        if completion_retry_count:
+            _emit_kv(key="CODER_COMPLETION_RETRIES", value=completion_retry_count)
         _emit_kv(key="ORCHESTRATOR_EDIT_AUTHORITY", value="forbidden")
     elif status == "needs_qa":
         _emit_kv(key="STATUS", value="needs_qa")

@@ -7476,8 +7476,17 @@ def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
     )
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
+    launcher_calls = 0
+
     def fake_launcher(st: implement_dispatch.DispatchState):
+        nonlocal launcher_calls
+        launcher_calls += 1
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
+        if launcher_calls == 2:
+            assert "docs/expected.md" in st.completion_retry_feedback_file.read_text(encoding="utf-8")
+            docs_dir = repo / "docs"
+            docs_dir.mkdir(exist_ok=True)
+            (docs_dir / "expected.md").write_text("completion retry edit\n", encoding="utf-8")
         st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
         st.manifest_path.write_text(
             json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: edit README only")),
@@ -7501,12 +7510,85 @@ def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
     assert rc == 0
     out = capsys.readouterr().out
     assert "STATUS=complete" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED=true" in out
-    assert "WARN_PLAN_FILES_UNTOUCHED_COUNT=1" in out
+    assert launcher_calls == 2
+    assert "CODER_COMPLETION_RETRIES=1" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED=true" not in out
     assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "stub: edit README only"
     issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
-    assert "docs/expected.md" in issues
+    assert "re-dispatching codex for completion retry 1/3" in issues
     assert "docs/optional.md" not in issues
+
+
+def test_step2_dispatch_completion_retries_exhaust_before_partial_disposition(
+    repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    (tmp / "plan.txt").write_text(
+        "## Files to modify/create\n"
+        "### UPDATED: `README.md`\n"
+        "### UPDATED: `docs/expected.md`\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    launcher_calls = 0
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        nonlocal launcher_calls
+        launcher_calls += 1
+        (repo / "README.md").write_text("still partial\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(
+            json.dumps(_complete_manifest_payload(path="README.md", commit_message="stub: partial after retries")),
+            encoding="utf-8",
+        )
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
+
+    assert _run_step2(tmp) == 0
+    out = capsys.readouterr().out
+    assert launcher_calls == config.IMPLEMENT_COMPLETION_RETRY_CAP + 1
+    assert "STATUS=complete" in out
+    assert f"CODER_COMPLETION_RETRIES={config.IMPLEMENT_COMPLETION_RETRY_CAP}" in out
+    assert "WARN_PLAN_FILES_UNTOUCHED_COUNT=1" in out
+    issues = (tmp / "execution-issues.md").read_text(encoding="utf-8")
+    assert "completion retries exhausted after 3 retry attempt(s)" in issues
+    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "stub: partial after retries"
+
+
+def test_step2_dispatch_completion_retry_rejects_stale_coverage_feedback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    tmp = make_implement_tmpdir(tmp_path)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    (tmp / "step2-completion-retry-state.env").write_text(
+        "COMPLETION_RETRY_COUNT=1\n"
+        "PLAN_COVERAGE_FINGERPRINT=" + ("0" * 64) + "\n",
+        encoding="utf-8",
+    )
+    (tmp / "step2-completion-retry.md").write_text("stale retry feedback\n", encoding="utf-8")
+    launcher_calls = 0
+
+    def fake_launcher(_st: implement_dispatch.DispatchState):
+        nonlocal launcher_calls
+        launcher_calls += 1
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", "codex",
+        "--completion-retry",
+    ]) == 0
+    out = capsys.readouterr().out
+    assert launcher_calls == 0
+    assert "STATUS=bailed" in out
+    assert "REASON=completion-retry-state-stale" in out
 
 
 def test_step2_dispatch_bails_on_quota_when_plan_coverage_requires_disposition(
@@ -8071,6 +8153,8 @@ def _materialize_dispatch_state(tmp_path: Path, observations: object) -> impleme
         prelaunch_index_flag=tmp / "index.env",
         recovery_paths_file=tmp / "recovery.nul",
         resume_count_file=tmp / "resume.txt",
+        completion_retry_state_file=tmp / "completion-retry-state.env",
+        completion_retry_feedback_file=tmp / "completion-retry.md",
         spawn_branch_file=tmp / "branch.txt",
         spawn_coder_file=tmp / "coder.txt",
         runtime_failure_token="codex-runtime-failure",  # noqa: S106
