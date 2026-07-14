@@ -42,6 +42,35 @@ class MermaidResult:
     fence_count: int
 
 
+@dataclass(frozen=True)
+class FinalReportResult:
+    exit_code: int
+    comment_url: str
+    error: str
+
+
+@dataclass(frozen=True)
+class TrackingIssuePostResult:
+    exit_code: int
+    posted: bool
+    comment_url: str
+    error: str
+
+
+@dataclass(frozen=True)
+class SlackIssueAnnouncementResult:
+    exit_code: int
+    status: str
+    reason: str
+
+
+@dataclass(frozen=True)
+class CodeFlowDiagramResult:
+    exit_code: int
+    status: str
+    diagram_file: str
+    reason: str
+
 _FENCE_RE = re.compile(r"^(\s{0,3})(`{3,})([^`]*)$")
 _FLOWCHART_START = re.compile(r"^(flowchart|graph)(\s|$)")
 _OPEN_BRACKET = frozenset("[{(")
@@ -926,13 +955,18 @@ def write_final_report(
     comment_only: bool = False,
     print_stdout: bool = False,
     skip_tracking_upsert: bool = False,
-) -> tuple[int, str, str]:
-    return _final_report_module().write_final_report(  # type: ignore[attr-defined]
-        implement_tmpdir,
-        comment_only=comment_only,
-        print_stdout=print_stdout,
-        skip_tracking_upsert=skip_tracking_upsert,
+) -> FinalReportResult:
+    delegated = cast(
+        "tuple[int, str, str]",
+        _final_report_module().write_final_report(  # type: ignore[attr-defined]
+            implement_tmpdir,
+            comment_only=comment_only,
+            print_stdout=print_stdout,
+            skip_tracking_upsert=skip_tracking_upsert,
+        ),
     )
+    exit_code, comment_url, error = delegated
+    return FinalReportResult(exit_code, comment_url, error)
 
 
 def write_final_report_main(argv: list[str] | None = None) -> int:
@@ -953,11 +987,28 @@ def step18b_final_report(
 def step18b_final_report_main(argv: list[str] | None = None) -> int:
     return _final_report_module().step18b_final_report_main(argv)  # type: ignore[attr-defined]
 
-def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_id: str = "", adopted: str = "true", force_requested: str = "false") -> tuple[int, bool, str, str]:
+def post_tracking_issue(
+    implement_tmpdir: Path,
+    *,
+    issue_number: str = "",
+    run_id: str = "",
+    adopted: str = "true",
+    force_requested: str = "false",
+) -> TrackingIssuePostResult:
     if adopted not in {"true", "false"}:
-        return 2, False, "", "--adopted must be true or false"
+        return TrackingIssuePostResult(
+            exit_code=2,
+            posted=False,
+            comment_url="",
+            error="--adopted must be true or false",
+        )
     if force_requested not in {"true", "false"}:
-        return 2, False, "", "--force-requested must be true or false"
+        return TrackingIssuePostResult(
+            exit_code=2,
+            posted=False,
+            comment_url="",
+            error="--force-requested must be true or false",
+        )
     parent = implement_tmpdir / "parent-issue.md"
     session = implement_tmpdir / "session-env.sh"
     flags = implement_tmpdir / "run-flags.sh"
@@ -966,11 +1017,26 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
     if force_requested == "false" and _read_kv(path=flags, key="FORCE_REQUESTED") == "true":
         force_requested = "true"
     if not issue:
-        return 1, False, "", "ISSUE_NUMBER not found in parent-issue.md"
+        return TrackingIssuePostResult(
+            exit_code=1,
+            posted=False,
+            comment_url="",
+            error="ISSUE_NUMBER not found in parent-issue.md",
+        )
     if not issue.isdigit():
-        return 1, False, "", "ISSUE_NUMBER must be numeric"
+        return TrackingIssuePostResult(
+            exit_code=1,
+            posted=False,
+            comment_url="",
+            error="ISSUE_NUMBER must be numeric",
+        )
     if not re.fullmatch(r"[A-Za-z0-9._-]+", run or ""):
-        return 1, False, "", "RUN_ID must match ^[A-Za-z0-9._-]+$"
+        return TrackingIssuePostResult(
+            exit_code=1,
+            posted=False,
+            comment_url="",
+            error="RUN_ID must match ^[A-Za-z0-9._-]+$",
+        )
     version = "unknown"
     try:
         completed = subprocess.run([sys.executable, str(_PY_CLI), "plugin", "read-version"], text=True, capture_output=True, check=False)
@@ -992,10 +1058,20 @@ def post_tracking_issue(implement_tmpdir: Path, *, issue_number: str = "", run_i
         if issue_number:
             parent.write_text(f"ISSUE_NUMBER={issue}\nRUN_ID={run}\nADOPTED={adopted}\n", encoding="utf-8")
         m: re.Match[str] | None = re.search(r"^COMMENT_URL=(.*)$", completed.stdout, re.MULTILINE)
-        return 0, True, m.group(1) if m else "", ""
+        return TrackingIssuePostResult(
+            exit_code=0,
+            posted=True,
+            comment_url=m.group(1) if m else "",
+            error="",
+        )
     err = " ".join(completed.stderr.split())[:500]
     _warn(f"tracking-issue upsert-summary failed rc={completed.returncode} stderr={err}")
-    return 1, False, "", err
+    return TrackingIssuePostResult(
+        exit_code=1,
+        posted=False,
+        comment_url="",
+        error=err,
+    )
 
 
 def post_tracking_issue_main(argv: list[str] | None = None) -> int:
@@ -1006,27 +1082,41 @@ def post_tracking_issue_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--adopted", default="true")
     parser.add_argument("--force-requested", default="false")
     args = parser.parse_args(argv)
-    rc, posted, url, err = post_tracking_issue(Path(args.implement_tmpdir), issue_number=args.issue_number, run_id=args.run_id, adopted=args.adopted, force_requested=args.force_requested)
-    _emit_kv(key="POSTED", value=str(posted).lower())
-    _emit_kv(key="COMMENT_URL", value=url)
-    if err:
-        _emit_kv(key="ERROR", value=err)
-    return rc
+    result = post_tracking_issue(
+        Path(args.implement_tmpdir),
+        issue_number=args.issue_number,
+        run_id=args.run_id,
+        adopted=args.adopted,
+        force_requested=args.force_requested,
+    )
+    _emit_kv(key="POSTED", value=str(result.posted).lower())
+    _emit_kv(key="COMMENT_URL", value=result.comment_url)
+    if result.error:
+        _emit_kv(key="ERROR", value=result.error)
+    return result.exit_code
 
 
-def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, str, str]:
+def slack_issue_announce(
+    implement_tmpdir: Path, *, best_effort: bool = False
+) -> SlackIssueAnnouncementResult:
     parent = implement_tmpdir / "parent-issue.md"
     ship = implement_tmpdir / "ship-pr-state.sh"
     issue = _read_kv(path=parent, key="ISSUE_NUMBER", default="0") or "0"
     if not issue.isdigit():
-        return (0 if best_effort else 1), "failed", "ISSUE_NUMBER must be numeric"
+        return SlackIssueAnnouncementResult(
+            0 if best_effort else 1, "failed", "ISSUE_NUMBER must be numeric"
+        )
     if issue == "0":
-        return 0, "skipped", "issue-not-set"
+        return SlackIssueAnnouncementResult(0, "skipped", "issue-not-set")
     webhook = os.environ.get("LARCH_SLACK_WEBHOOK_URL", "")
     if not webhook:
-        return 0, "skipped", "webhook-not-set"
+        return SlackIssueAnnouncementResult(0, "skipped", "webhook-not-set")
     if urllib.parse.urlparse(webhook).scheme not in {"http", "https"}:
-        return (0 if best_effort else 1), "failed", "webhook scheme must be http or https"
+        return SlackIssueAnnouncementResult(
+            0 if best_effort else 1,
+            "failed",
+            "webhook scheme must be http or https",
+        )
     run_id = _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
     text = f"Implement run {run_id} opened PR {_read_kv(path=ship, key='PR_URL', default='N/A')} for tracking issue #{issue}"
     if _read_kv(path=ship, key="PR_TITLE"):
@@ -1037,8 +1127,12 @@ def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -
         with urllib.request.urlopen(req, timeout=10):  # noqa: S310
             pass
     except Exception as exc:
-        return (0 if best_effort else 1), "failed", " ".join(str(exc).split())[:500]
-    return 0, "posted", ""
+        return SlackIssueAnnouncementResult(
+            0 if best_effort else 1,
+            "failed",
+            " ".join(str(exc).split())[:500],
+        )
+    return SlackIssueAnnouncementResult(0, "posted", "")
 
 
 def slack_issue_announce_main(argv: list[str] | None = None) -> int:
@@ -1054,11 +1148,16 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
         _emit_kv(key="STATUS", value="failed")
         _emit_kv(key="ERROR", value="--implement-tmpdir not found")
         return 2
-    rc, status, reason = slack_issue_announce(Path(args.implement_tmpdir), best_effort=args.best_effort)
-    _emit_kv(key="STATUS", value=status)
-    if reason:
-        _emit_kv(key="REASON" if status == "skipped" else "ERROR", value=reason)
-    return rc
+    result = slack_issue_announce(
+        Path(args.implement_tmpdir), best_effort=args.best_effort
+    )
+    _emit_kv(key="STATUS", value=result.status)
+    if result.reason:
+        _emit_kv(
+            key="REASON" if result.status == "skipped" else "ERROR",
+            value=result.reason,
+        )
+    return result.exit_code
 
 
 def _diagram_failure_capture(*, returncode: int, stderr: str) -> tuple[str, str]:
@@ -1122,7 +1221,13 @@ def _diagram_stderr_from_sidecar(raw: Path, fallback: str) -> str:
     return _sidecar_text or fallback
 
 
-def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:
+def generate_code_flow_diagram(
+    implement_tmpdir: Path,
+    *,
+    model: str = "claude-sonnet-4-6",
+    base_remote: str = "origin",
+    base_ref: str = "main",
+) -> CodeFlowDiagramResult:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     raw = implement_tmpdir / "code-flow-diagram.raw.md"
     candidate = implement_tmpdir / "code-flow-diagram.candidate.md"
@@ -1196,9 +1301,9 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
                 failure_log.write_text(diagnostic, encoding="utf-8")
         except OSError:
             reason = f"{reason} log-write-failed"
-        return 1, "failed", "", reason
+        return CodeFlowDiagramResult(1, "failed", "", reason)
     if not raw.is_file() or raw.stat().st_size == 0:
-        return 1, "failed", "", "empty-generation"
+        return CodeFlowDiagramResult(1, "failed", "", "empty-generation")
     candidate.write_bytes(raw.read_bytes())
     result = sanitize_fragment(candidate.read_text(encoding="utf-8"), from_md=True)
     if result.status == "ok":
@@ -1206,9 +1311,14 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
         with contextlib.suppress(OSError):
             failure_log.unlink()
             _ = (implement_tmpdir / "code-flow-diagram.raw-failure.log").unlink(missing_ok=True)
-        return 0, "ok", str(diagram), ""
+        return CodeFlowDiagramResult(0, "ok", str(diagram), "")
     candidate.unlink(missing_ok=True)
-    return 0, "skipped", "", result.reason_tokens[0] if result.reason_tokens else "sanitizer-rejected"
+    return CodeFlowDiagramResult(
+        0,
+        "skipped",
+        "",
+        result.reason_tokens[0] if result.reason_tokens else "sanitizer-rejected",
+    )
 
 
 def generate_code_flow_diagram_main(argv: list[str] | None = None) -> int:
@@ -1218,8 +1328,13 @@ def generate_code_flow_diagram_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
     args = parser.parse_args(argv)
-    rc, status, diagram, reason = generate_code_flow_diagram(Path(args.implement_tmpdir), model=args.model, base_remote=args.base_remote, base_ref=args.base_ref)
-    _emit_kv(key="STATUS", value=status)
-    _emit_kv(key="DIAGRAM_FILE", value=diagram)
-    _emit_kv(key="SKIP_REASON", value=reason)
-    return rc
+    result = generate_code_flow_diagram(
+        Path(args.implement_tmpdir),
+        model=args.model,
+        base_remote=args.base_remote,
+        base_ref=args.base_ref,
+    )
+    _emit_kv(key="STATUS", value=result.status)
+    _emit_kv(key="DIAGRAM_FILE", value=result.diagram_file)
+    _emit_kv(key="SKIP_REASON", value=result.reason)
+    return result.exit_code

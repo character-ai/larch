@@ -113,11 +113,13 @@ def test_step7a_bgjob_launch_rejects_symlinked_tmpdir_before_merge_env_setup(
 def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
-    def fake_generate_code_flow_diagram(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+    def fake_generate_code_flow_diagram(
+        implement_tmpdir: Path, *, base_remote: str, base_ref: str
+    ) -> step_7a.pr_body.CodeFlowDiagramResult:
         _ = (base_remote, base_ref)
         diagram = implement_tmpdir / "code-flow-diagram.md"
         _ = diagram.write_text("## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n", encoding="utf-8")
-        return 0, "ok", str(diagram), ""
+        return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
     with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
         step_7a.pr_body,
@@ -290,10 +292,12 @@ def test_step7a_diagram_failure_exits_zero_and_clears_stale_artifacts(tmp_path: 
     _ = (tmp_path / "code-flow-diagram.md").write_text("stale\n", encoding="utf-8")
     reason = "generation-failed rc=7 tail=timeout after 600s"
 
-    def fake_generate_code_flow_diagram(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+    def fake_generate_code_flow_diagram(
+        implement_tmpdir: Path, *, base_remote: str, base_ref: str
+    ) -> step_7a.pr_body.CodeFlowDiagramResult:
         _ = (base_remote, base_ref)
         _ = (implement_tmpdir / "code-flow-diagram.failure.log").write_text("returncode: 7\nstderr: timeout after 600s\n", encoding="utf-8")
-        return 1, "failed", "", reason
+        return step_7a.pr_body.CodeFlowDiagramResult(1, "failed", "", reason)
 
     with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
         step_7a.pr_body,
@@ -324,7 +328,7 @@ def test_step7a_diagram_failure_emits_diagram_reason_on_rebase_failure(tmp_path:
     with patch.object(step_7a, "_is_small_non_runtime_change", return_value=False), patch.object(
         step_7a.pr_body,
         "generate_code_flow_diagram",
-        return_value=(1, "failed", "", reason),
+        return_value=step_7a.pr_body.CodeFlowDiagramResult(1, "failed", "", reason),
     ), patch.object(step_7a, "_run_log_flush", return_value="ok") as mock_flush, patch.object(step_7a, "subprocess") as mock_subprocess:
         mock_subprocess.run.return_value.returncode = 1
         mock_subprocess.run.return_value.stdout = "REBASE_OUTCOME=conflict\n"
@@ -446,12 +450,14 @@ def test_step7a_orchestrates_generation_upsert_and_checkpoint_in_order(
     calls: list[tuple[str, ...]] = []
     events: list[str] = []
 
-    def fake_generate(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+    def fake_generate(
+        implement_tmpdir: Path, *, base_remote: str, base_ref: str
+    ) -> step_7a.pr_body.CodeFlowDiagramResult:
         assert (base_remote, base_ref) == ("origin", "main")
         events.append("generate")
         diagram = implement_tmpdir / "code-flow-diagram.md"
         _ = diagram.write_text("## Code Flow Diagram\n\n```mermaid\ngraph TD\nA-->B\n```\n", encoding="utf-8")
-        return 0, "ok", str(diagram), ""
+        return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         calls.append(args)
@@ -504,11 +510,13 @@ def test_step7a_rehydrates_fork_target_for_generation_and_checkpoint(
     calls: list[tuple[str, ...]] = []
     generation_target: list[tuple[str, str]] = []
 
-    def fake_generate(implement_tmpdir: Path, *, base_remote: str, base_ref: str) -> tuple[int, str, str, str]:
+    def fake_generate(
+        implement_tmpdir: Path, *, base_remote: str, base_ref: str
+    ) -> step_7a.pr_body.CodeFlowDiagramResult:
         generation_target.append((base_remote, base_ref))
         diagram = implement_tmpdir / "code-flow-diagram.md"
         _ = diagram.write_text("## Code Flow Diagram\n", encoding="utf-8")
-        return 0, "ok", str(diagram), ""
+        return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         calls.append(args)
@@ -548,8 +556,10 @@ def test_step7a_sanitizer_skip_clears_stale_artifacts_and_omits_upsert(
             return subprocess.CompletedProcess(args, 0, "REBASE_OUTCOME=ok\n", "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
-    def fake_generate(*_args: object, **_kwargs: object) -> tuple[int, str, str, str]:
-        return 0, status, "", reason
+    def fake_generate(
+        *_args: object, **_kwargs: object
+    ) -> step_7a.pr_body.CodeFlowDiagramResult:
+        return step_7a.pr_body.CodeFlowDiagramResult(0, status, "", reason)
 
     monkeypatch.setattr(step_7a, "_is_small_non_runtime_change", _no_small_non_runtime_change)
     monkeypatch.setattr(step_7a.pr_body, "generate_code_flow_diagram", fake_generate)
@@ -572,10 +582,12 @@ def test_step7a_upsert_failure_keeps_checkpoint_and_exit_success(
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
-    def fake_generate(implement_tmpdir: Path, **_kwargs: str) -> tuple[int, str, str, str]:
+    def fake_generate(
+        implement_tmpdir: Path, **_kwargs: str
+    ) -> step_7a.pr_body.CodeFlowDiagramResult:
         diagram = implement_tmpdir / "code-flow-diagram.md"
         _ = diagram.write_text("## Code Flow Diagram\n", encoding="utf-8")
-        return 0, "ok", str(diagram), ""
+        return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         calls.append(args)
@@ -603,10 +615,12 @@ def test_step7a_empty_issue_number_skips_upsert_but_runs_checkpoint(
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
     calls: list[tuple[str, ...]] = []
 
-    def fake_generate(implement_tmpdir: Path, **_kwargs: str) -> tuple[int, str, str, str]:
+    def fake_generate(
+        implement_tmpdir: Path, **_kwargs: str
+    ) -> step_7a.pr_body.CodeFlowDiagramResult:
         diagram = implement_tmpdir / "code-flow-diagram.md"
         _ = diagram.write_text("## Code Flow Diagram\n", encoding="utf-8")
-        return 0, "ok", str(diagram), ""
+        return step_7a.pr_body.CodeFlowDiagramResult(0, "ok", str(diagram), "")
 
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         calls.append(args)

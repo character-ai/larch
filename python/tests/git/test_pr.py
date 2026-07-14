@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError, is_dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
@@ -48,6 +49,19 @@ def test_ensure_pr_invalid_issue_raises() -> None:
         _ = pr_module.ensure_pr(
             runner=runner, ctx=_ctx(issue=""), body="body", title="t"
         )
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        pr_module.PrResult(number=1, url="https://example.test/pr/1", status="created"),
+        pr_module.CreateBranchResult(status="created", branch_name="dev/feature"),
+    ],
+)
+def test_public_pr_results_are_frozen(result: object) -> None:
+    assert is_dataclass(result)
+    with pytest.raises(FrozenInstanceError):
+        result.exit_code = 1  # type: ignore[attr-defined]
 
 
 def test_ensure_pr_repo_unavailable() -> None:
