@@ -44,11 +44,27 @@ codex/apply                         │                                         
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (8):
+  1. ## G-Cfg-1 deviation — inline literals replace named constants in `python/larch/core/config.py`
+  2. G-Cfg-1 requires every tunable and wire literal to be defined once as a `Final` constant and referenced by name.
+  3. Changed lines: (lines ~302–312 in the diff hunk for `python/larch/core/config.py`):
+  4. The named constants `CODEX_DEFAULT_MODEL` and `CODEX_REVIEW_MODEL_DEFAULT` are replaced by the inline string `"gpt-5.6-terra"`. The constant `CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.6-terra"` alrea...
+  5. Scope: the deviation is localized to `python/larch/core/config.py` and the corresponding test. It does not affect correctness; the adjacent TRIVIAL (implement dict) and HARD (review-panel dict) row...
+  6. Suggested fix: define `CODEX_TERRA_MODEL: Final = "gpt-5.6-terra"` near `CODEX_FIX_MODEL_DEFAULT` and replace all five `"gpt-5.6-terra"` occurrences in these two dicts (and the four test literal as...
+  7. ---
+  8. All other guidelines are satisfied. The retirement of `architectural-compliance` is swept consistently across `config.py`, `review_pipeline_shared.py`, `plan_scout.py`, `rendering.py`, `plan_review...
+
+## Architectural guidelines
+
+The changed code is in full compliance with all applicable architectural guidelines.
+
 ## /implement run A69A4500-BE78-4F2D-ABD3-A209969A9471: shipping
 
 - **Outcome**: shipping
 - **Duration**: 00:45:23
-- **Cost**: 💰 TOTAL ~$18.74: Claude $1.99, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 37332k
+- **Cost**: 💰 TOTAL ~$21.30: Claude $4.55, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 40754k
 - **Issue**: #7222: https://github.com/character-ai/larch/issues/7222
 - **Plan review**: N/A
 - **Plan coverage**: 20/20 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -58,7 +74,7 @@ codex/apply                         │                                         
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 8
 - **Run logs**: `larch-logs/implement/A69A4500-BE78-4F2D-ABD3-A209969A9471/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
