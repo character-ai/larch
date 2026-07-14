@@ -64,11 +64,29 @@ codex/apply              │                                     █████
 
 **Reviewer slot failures**: 0
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (4):
+  1. The engine.py and test_lint_engine.py changes are broadly consistent with the guidelines: frozen dataclasses (G-Py-1), larch.io helpers for reads and writes (G-IO-1), symlink and path-traversal rej...
+  2. ## Deviation: G-Fix-2
+  3. Two changes in `dispatch_commit_route.py` redirect breadcrumb prints from stdout to stderr in `_step4_noop` and `_checks_commit_route_main_impl`. G-Fix-2 requires that fixes to orchestration machin...
+  4. Exception: Adding a reproduction test would require new test coverage for dispatch_commit_route.py, which is outside the plan scope for this issue (plan covers only lint/engine.py and tests/lint/te...
+
+## Architectural guidelines
+
+The engine.py and test_lint_engine.py changes are broadly consistent with the guidelines: frozen dataclasses (G-Py-1), larch.io helpers for reads and writes (G-IO-1), symlink and path-traversal rejection at validation time (G-Sec-4), write postcondition verification via three-step read-back in `_publish_baseline` (G-Py-8), non-empty-reason enforcement on baseline rows (G-Enf-2), and all suppression comments carry inline reasons (G-Py-11).
+
+## Deviation: G-Fix-2
+
+Two changes in `dispatch_commit_route.py` redirect breadcrumb prints from stdout to stderr in `_step4_noop` and `_checks_commit_route_main_impl`. G-Fix-2 requires that fixes to orchestration machinery ship with a test that replays the failure. No test was added covering these two output-routing corrections.
+
+Exception: Adding a reproduction test would require new test coverage for dispatch_commit_route.py, which is outside the plan scope for this issue (plan covers only lint/engine.py and tests/lint/test_lint_engine.py). The correctness of both fixes is verifiable by the bgjob infrastructure returning BGJOB_RC=0 after the fix was applied. The changes are two one-line, deterministic redirections with no behavioral side-effects beyond the targeted stdout-to-stderr routing. (author: main-agent, date: 2026-07-13)
+
 ## /implement run 296497D0-64E3-4F7F-8D1A-7D411D69B69B: shipping
 
 - **Outcome**: shipping
 - **Duration**: 01:26:24
-- **Cost**: 💰 TOTAL ~$24.23: Claude $12.41, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.37  |  Tokens: 43108k
+- **Cost**: 💰 TOTAL ~$28.03: Claude $16.21, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.37  |  Tokens: 49580k
 - **Issue**: #7020: https://github.com/character-ai/larch/issues/7020
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -78,7 +96,7 @@ codex/apply              │                                     █████
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 4
 - **Run logs**: `larch-logs/implement/296497D0-64E3-4F7F-8D1A-7D411D69B69B/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
