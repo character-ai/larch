@@ -1,9 +1,0 @@
-[
-  {
-    "file": "larch/review/voting.py",
-    "qualified_symbol": "ballot_text_is_neutralized",
-    "pattern_name": "BALLOT_HEADING_RE",
-    "occurrence": 1,
-    "reason": "grandfathered heading regex without fence state pre-G-Md-3 ratchet"
-  }
-]
