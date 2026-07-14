@@ -1,38 +1,30 @@
+"""Coverage for the engine-backed markdown-heading-fence-state rule."""
+
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 from pathlib import Path
 
 import pytest
-
 from larch.lint import lint_markdown_heading_fence_state as lint
-
-
-def _record(
-    *,
-    file: str = "larch/mod.py",
-    qualified_symbol: str = "parse",
-    pattern_name: str = "HEADING_RE",
-    occurrence: int = 1,
-    reason: str = "grandfathered",
-) -> dict[str, object]:
-    return {
-        "file": file,
-        "qualified_symbol": qualified_symbol,
-        "pattern_name": pattern_name,
-        "occurrence": occurrence,
-        "reason": reason,
-    }
-
-
-def _write_project(root: Path, *, files: dict[str, str], baseline: object | None) -> None:
-    python_dir = root / "python"
-    for relpath, source in files.items():
-        path = python_dir / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text(source, encoding="utf-8")
-    if baseline is not None:
-        _ = (python_dir / lint.BASELINE_FILENAME).write_text(json.dumps(baseline), encoding="utf-8")
+from larch.lint.engine import (
+    EXIT_CLEAN,
+    EXIT_ERROR,
+    EXIT_FINDINGS,
+    ScanError,
+    SourceFile,
+    run_rule,
+)
+from larch.lint.markdown_heading_fence_state_detector import (
+    is_production_source_path,
+)
+from tests.lint.test_lint_engine import (
+    RecordingRunner,
+    _git_ok_runner,  # type: ignore[reportPrivateUsage]
+    _write_files,  # type: ignore[reportPrivateUsage]
+)
 
 
 VIOLATING = """\
@@ -75,32 +67,75 @@ def parse(text: str) -> None:
 """
 
 
-def test_direct_re_compile_without_fence_is_detected(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(VIOLATING, encoding="utf-8")
-
-    findings = lint.scan_file(path, python_dir=python_dir)
-    assert [(f.pattern_name, f.qualified_symbol) for f in findings] == [("HEADING_RE", "parse")]
+def _source(path: str, text: str) -> SourceFile:
+    return SourceFile(path=path, text=text, lines=tuple(text.splitlines()))
 
 
-def test_fence_helper_gating_is_compliant(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(COMPLIANT, encoding="utf-8")
+def _occurrence_row(
+    *,
+    file: str = "larch/mod.py",
+    qualified_symbol: str = "parse",
+    pattern_name: str = "HEADING_RE",
+    occurrence: int = 1,
+    reason: str = "grandfathered",
+) -> dict[str, object]:
+    return {
+        "file": file,
+        "qualified_symbol": qualified_symbol,
+        "pattern_name": pattern_name,
+        "occurrence": occurrence,
+        "reason": reason,
+    }
 
-    assert not lint.scan_file(path, python_dir=python_dir)
+
+def _invoke_main(root: Path, argv: list[str]) -> tuple[int, str, str]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        code = lint.main(["--root", str(root), *argv])
+    return code, stdout.getvalue(), stderr.getvalue()
 
 
-def test_inline_fence_helper_and_continue_skip_are_compliant(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def _invoke_rule(
+    root: Path,
+    runner: RecordingRunner,
+    *,
+    write_baseline: bool = False,
+    initial_reason: str | None = None,
+    strict_stale: bool = True,
+    baseline_name: str = lint.BASELINE_FILENAME,
+) -> tuple[int, str, str]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        code = run_rule(
+            lint.RULE,
+            root,
+            runner,
+            paths=None,
+            baseline_path=root / "python" / baseline_name,
+            write_baseline=write_baseline,
+            initial_reason=initial_reason,
+            strict_stale=strict_stale,
+        )
+    return code, stdout.getvalue(), stderr.getvalue()
+
+
+def test_direct_re_compile_without_fence_is_detected() -> None:
+    findings = lint.detect(_source("python/larch/mod.py", VIOLATING))
+    assert [(f.pattern_name, f.qualified_symbol, f.occurrence) for f in findings] == [
+        ("HEADING_RE", "parse", 1)
+    ]
+
+
+def test_fence_helper_gating_is_compliant() -> None:
+    assert not lint.detect(_source("python/larch/mod.py", COMPLIANT))
+
+
+def test_inline_fence_helper_and_continue_skip_are_compliant() -> None:
+    text = (
         "import re\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')\n"
         "def fence_indices(lines: list[str]) -> set[int]:\n"
         "    return set()\n"
         "def parse(text: str) -> None:\n"
@@ -109,266 +144,370 @@ def test_inline_fence_helper_and_continue_skip_are_compliant(tmp_path: Path) -> 
         "        if index in fence_indices(lines):\n"
         "            continue\n"
         "        if HEADING_RE.match(line):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-    assert not lint.scan_file(path, python_dir=python_dir)
+    assert not lint.detect(_source("python/larch/mod.py", text))
 
 
-def test_unrelated_boolean_does_not_count_as_fence_guard(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def test_unrelated_boolean_does_not_count_as_fence_guard() -> None:
+    text = (
         "import re\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')\n"
         "def parse(text: str) -> None:\n"
         "    for line in text.splitlines():\n"
         "        in_fence = False\n"
         "        if not in_fence and HEADING_RE.match(line):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-    assert [finding.pattern_name for finding in lint.scan_file(path, python_dir=python_dir)] == [
+    assert [f.pattern_name for f in lint.detect(_source("python/larch/mod.py", text))] == [
         "HEADING_RE"
     ]
 
 
-def test_unrelated_regex_ignored(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(UNRELATED, encoding="utf-8")
-
-    assert not lint.scan_file(path, python_dir=python_dir)
+def test_unrelated_regex_ignored() -> None:
+    assert not lint.detect(_source("python/larch/mod.py", UNRELATED))
 
 
-def test_search_over_split_lines_detected(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def test_search_over_split_lines_detected() -> None:
+    text = (
         "import re\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s')\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s')\n"
         "def parse(text: str) -> None:\n"
         "    lines = text.splitlines()\n"
         "    for line in lines:\n"
         "        if HEADING_RE.search(line):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-
-    assert [f.pattern_name for f in lint.scan_file(path, python_dir=python_dir)] == ["HEADING_RE"]
-
-
-def test_enumerated_split_lines_require_fence_guard(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
-        "import re\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
-        "def parse(text: str) -> None:\n"
-        "    for index, line in enumerate(text.splitlines()):\n"
-        "        if HEADING_RE.match(line):\n"
-        "            pass\n",
-        encoding="utf-8",
-    )
-    assert [finding.pattern_name for finding in lint.scan_file(path, python_dir=python_dir)] == [
+    assert [f.pattern_name for f in lint.detect(_source("python/larch/mod.py", text))] == [
         "HEADING_RE"
     ]
 
 
-def test_fence_guard_must_reference_active_loop_value(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def test_enumerated_split_lines_require_fence_guard() -> None:
+    text = (
+        "import re\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')\n"
+        "def parse(text: str) -> None:\n"
+        "    for index, line in enumerate(text.splitlines()):\n"
+        "        if HEADING_RE.match(line):\n"
+        "            pass\n"
+    )
+    assert [f.pattern_name for f in lint.detect(_source("python/larch/mod.py", text))] == [
+        "HEADING_RE"
+    ]
+
+
+def test_fence_guard_must_reference_active_loop_value() -> None:
+    text = (
         "import re\n"
         "from larch.design.plan_grammar import _balanced_fence_line_indices\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')\n"
         "def parse(text: str) -> None:\n"
         "    lines = text.splitlines()\n"
         "    fenced = _balanced_fence_line_indices(lines)\n"
         "    for index, line in enumerate(lines):\n"
         "        if 0 not in fenced and HEADING_RE.match(line):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-    assert [finding.pattern_name for finding in lint.scan_file(path, python_dir=python_dir)] == [
+    assert [f.pattern_name for f in lint.detect(_source("python/larch/mod.py", text))] == [
         "HEADING_RE"
     ]
 
 
-def test_boolean_fence_guard_and_subscript_line_are_compliant(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def test_boolean_fence_guard_and_subscript_line_are_compliant() -> None:
+    text = (
         "import re\n"
         "from larch.design.plan_grammar import _balanced_fence_line_indices\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')\n"
         "def parse(text: str) -> None:\n"
         "    lines = text.splitlines()\n"
         "    fenced = _balanced_fence_line_indices(lines)\n"
         "    for index in range(len(lines)):\n"
         "        in_fence = index in fenced\n"
         "        if not in_fence and HEADING_RE.match(lines[index]):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-    assert not lint.scan_file(path, python_dir=python_dir)
+    assert not lint.detect(_source("python/larch/mod.py", text))
 
 
-def test_function_local_fence_helper_import_is_compliant(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def test_function_local_fence_helper_import_is_compliant() -> None:
+    text = (
         "import re\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')\n"
         "def parse(text: str) -> None:\n"
         "    from larch.design.plan_grammar import _balanced_fence_line_indices\n"
         "    lines = text.splitlines()\n"
         "    fenced = _balanced_fence_line_indices(lines)\n"
         "    for index, line in enumerate(lines):\n"
         "        if index not in fenced and HEADING_RE.match(line):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-    assert not lint.scan_file(path, python_dir=python_dir)
+    assert not lint.detect(_source("python/larch/mod.py", text))
 
 
-def test_unreadable_source_raises_scan_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text("import re\n", encoding="utf-8")
-
-    def fail_read(*_args: object, **_kwargs: object) -> str:
-        raise OSError("denied")
-
-    monkeypatch.setattr(Path, "read_text", fail_read)
-    with pytest.raises(lint.ScanError, match="cannot read source"):
-        _ = lint.scan_file(path, python_dir=python_dir)
-
-
-def test_scope_excludes_tests_and_vendor(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    for relpath in [
-        "larch/test_mod.py",
-        "larch/conftest.py",
-        "larch/.venv/vendor.py",
-        "larch/prod.py",
-    ]:
-        path = python_dir / relpath
-        path.parent.mkdir(parents=True, exist_ok=True)
-        _ = path.write_text("import re\n", encoding="utf-8")
-
-    assert [p.relative_to(python_dir).as_posix() for p in lint.iter_source_files(python_dir)] == [
-        "larch/prod.py"
+def test_nested_symbol_occurrence_numbering() -> None:
+    text = (
+        "import re\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')\n"
+        "class Parser:\n"
+        "    def outer(self, text: str) -> None:\n"
+        "        def inner(chunk: str) -> None:\n"
+        "            for line in chunk.splitlines():\n"
+        "                if HEADING_RE.match(line):\n"
+        "                    pass\n"
+        "        for line in text.splitlines():\n"
+        "            if HEADING_RE.match(line):\n"
+        "                pass\n"
+    )
+    findings = lint.detect(_source("python/larch/mod.py", text))
+    assert [(f.qualified_symbol, f.occurrence) for f in findings] == [
+        ("Parser.outer.inner", 1),
+        ("Parser.outer", 1),
     ]
 
 
-def test_symlink_excluded(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python" / "larch"
-    python_dir.mkdir(parents=True)
-    real = python_dir / "real.py"
-    _ = real.write_text(VIOLATING, encoding="utf-8")
-    link = python_dir / "link.py"
-    link.symlink_to(real)
-    assert [p.name for p in lint.iter_source_files(tmp_path / "python")] == ["real.py"]
+def test_production_path_filter_excludes_tests_support_and_vendor() -> None:
+    assert is_production_source_path("python/larch/prod.py")
+    assert not is_production_source_path("python/larch/test_mod.py")
+    assert not is_production_source_path("python/larch/conftest.py")
+    assert not is_production_source_path("python/larch/.venv/vendor.py")
+    assert not is_production_source_path("scripts/tool.py")
+    assert not is_production_source_path("skills/demo/helper.py")
 
 
-def test_malformed_source_exits_2(tmp_path: Path) -> None:
-    _write_project(tmp_path, files={"larch/mod.py": "def broken(\n"}, baseline=[])
-    assert lint.main(["--root", str(tmp_path)]) == 2
-
-
-def test_valid_suppression_on_regex_declaration(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def test_valid_suppression_on_regex_declaration() -> None:
+    text = (
         "import re\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')  # lint-markdown-heading-fence-state: ok intentional\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')  "
+        "# lint-markdown-heading-fence-state: ok intentional\n"
         "def parse(text: str) -> None:\n"
         "    for line in text.splitlines():\n"
         "        if HEADING_RE.match(line):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-    assert not lint.scan_file(path, python_dir=python_dir)
+    assert not lint.detect(_source("python/larch/mod.py", text))
 
 
-def test_empty_suppression_reason_fails(tmp_path: Path) -> None:
-    python_dir = tmp_path / "python"
-    path = python_dir / "larch" / "mod.py"
-    path.parent.mkdir(parents=True)
-    _ = path.write_text(
+def test_empty_declaration_pragma_raises_scan_error() -> None:
+    text = (
         "import re\n"
-        "HEADING_RE = re.compile(r'^#{1,6}\\\\s+')  # lint-markdown-heading-fence-state: ok\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')  "
+        "# lint-markdown-heading-fence-state: ok\n"
         "def parse(text: str) -> None:\n"
         "    for line in text.splitlines():\n"
         "        if HEADING_RE.match(line):\n"
-        "            pass\n",
-        encoding="utf-8",
+        "            pass\n"
     )
-    with pytest.raises(lint.ScanError, match="empty"):
-        _ = lint.scan_file(path, python_dir=python_dir)
+    with pytest.raises(ScanError, match="empty lint-markdown-heading-fence-state"):
+        _ = lint.detect(_source("python/larch/mod.py", text))
 
 
-def test_baseline_suppresses_and_new_finding_exits_1(tmp_path: Path) -> None:
-    _write_project(
+def test_empty_declaration_pragma_main_exits_2(tmp_path: Path) -> None:
+    text = (
+        "import re\n"
+        "HEADING_RE = re.compile(r'^#{1,6}\\s+')  "
+        "# lint-markdown-heading-fence-state: ok\n"
+        "def parse(text: str) -> None:\n"
+        "    for line in text.splitlines():\n"
+        "        if HEADING_RE.match(line):\n"
+        "            pass\n"
+    )
+    _write_files(tmp_path, {"python/larch/mod.py": text})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner, strict_stale=False)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "empty lint-markdown-heading-fence-state" in err
+
+
+def test_malformed_in_scope_python_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "def broken(\n"})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner, strict_stale=False)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "cannot parse source" in err
+
+
+def test_excluded_malformed_and_out_of_tree_paths_never_loaded(tmp_path: Path) -> None:
+    _write_files(
         tmp_path,
-        files={"larch/mod.py": VIOLATING},
-        baseline=[_record()],
+        {
+            "python/larch/prod.py": "x = 1\n",
+            "python/larch/test_bad.py": "def broken(\n",
+            "python/larch/conftest.py": "def broken(\n",
+            "scripts/tool.py": "def broken(\n",
+            "skills/demo/helper.py": "def broken(\n",
+        },
     )
-    assert lint.main(["--root", str(tmp_path)]) == 0
-
-    _write_project(
-        tmp_path,
-        files={"larch/mod.py": VIOLATING, "larch/other.py": VIOLATING.replace("HEADING_RE", "OTHER_RE")},
-        baseline=[_record()],
-    )
-    assert lint.main(["--root", str(tmp_path)]) == 1
-
-
-def test_issue_create_passes_with_fence_helper() -> None:
-    root = Path(__file__).resolve().parents[3]
-    python_dir = root / "python"
-    path = python_dir / "larch" / "issue" / "issue_create.py"
-    findings = [
-        f
-        for f in lint.scan_file(path, python_dir=python_dir)
-        if "issue_create" in f.file
+    tracked = [
+        "python/larch/prod.py",
+        "python/larch/test_bad.py",
+        "python/larch/conftest.py",
+        "scripts/tool.py",
+        "skills/demo/helper.py",
     ]
-    assert not findings
+    runner = _git_ok_runner(tmp_path, tracked)
+    code, out, err = _invoke_rule(tmp_path, runner, strict_stale=False)
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+    # Discovery used rule pathspecs, not the full tracked set.
+    assert runner.calls[1][0][:4] == ("git", "ls-files", "--cached", "-z")
+    assert "python/**/*.py" in runner.calls[1][0]
 
 
-def test_cli_write_and_check(tmp_path: Path) -> None:
-    _write_project(tmp_path, files={"larch/mod.py": VIOLATING}, baseline=None)
-    assert (
-        lint.main(
-            [
-                "--root",
-                str(tmp_path),
-                "--write",
-                "--initial-reason",
-                "bootstrap",
-            ]
-        )
-        == 0
+def test_excluded_paths_filtered_in_write_mode(tmp_path: Path) -> None:
+    _write_files(
+        tmp_path,
+        {
+            "python/larch/prod.py": "x = 1\n",
+            "scripts/tool.py": "def broken(\n",
+            "skills/demo/helper.py": VIOLATING,
+        },
     )
-    assert lint.main(["--root", str(tmp_path)]) == 0
+    tracked = [
+        "python/larch/prod.py",
+        "scripts/tool.py",
+        "skills/demo/helper.py",
+    ]
+    runner = _git_ok_runner(tmp_path, tracked)
+    code, out, _err = _invoke_rule(
+        tmp_path,
+        runner,
+        write_baseline=True,
+        initial_reason="seed",
+        strict_stale=False,
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    assert baseline.read_text(encoding="utf-8") == "[]\n"
 
 
-def test_baseline_stale_duplicate_and_shrink_fail_closed(tmp_path: Path) -> None:
-    _write_project(tmp_path, files={"larch/mod.py": VIOLATING}, baseline=[_record(), _record()])
-    assert lint.main(["--root", str(tmp_path)]) == 2
+def test_absent_baseline_clean_scan_exits_0(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": COMPLIANT})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
 
-    _write_project(tmp_path, files={"larch/mod.py": "def parse() -> None:\n    pass\n"}, baseline=[_record()])
-    assert lint.main(["--root", str(tmp_path)]) == 2
 
-    _write_project(tmp_path, files={"larch/mod.py": VIOLATING}, baseline=[])
-    assert lint.main(["--root", str(tmp_path)]) == 1
+def test_absent_baseline_live_findings_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "required baseline missing" in err
+
+
+def test_check_mode_matches_committed_style_baseline(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row()], indent=2) + "\n",
+        encoding="utf-8",
+    )
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+
+
+def test_new_finding_exits_1(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text("[]\n", encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_FINDINGS
+    assert "python/larch/mod.py:7: lint-markdown-heading-fence-state" in out
+    assert err == ""
+
+
+def test_stale_baseline_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": COMPLIANT})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row()], indent=2) + "\n",
+        encoding="utf-8",
+    )
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "stale baseline row" in err
+
+
+def test_malformed_baseline_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": COMPLIANT})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text("{not-json", encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "invalid JSON" in err or "baseline" in err
+
+
+def test_duplicate_baseline_identity_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row(), _occurrence_row()], indent=2) + "\n",
+        encoding="utf-8",
+    )
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(tmp_path, runner)
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "duplicate baseline identity" in err
+
+
+def test_write_requires_initial_reason_for_new_rows(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke_rule(
+        tmp_path, runner, write_baseline=True, strict_stale=False
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "initial_reason" in err
+
+
+def test_noop_regeneration_is_byte_identical(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": VIOLATING})
+    baseline = tmp_path / "python" / lint.BASELINE_FILENAME
+    original = json.dumps([_occurrence_row()], indent=2) + "\n"
+    _ = baseline.write_text(original, encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, _err = _invoke_rule(
+        tmp_path, runner, write_baseline=True, strict_stale=False
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert baseline.read_text(encoding="utf-8") == original
+
+
+def test_main_invalid_argument_exits_2() -> None:
+    code, out, _err = _invoke_main(Path("/tmp"), ["--no-such-flag"])
+    assert code == 2
+    assert out == ""
+
+
+def test_main_empty_initial_reason_exits_2(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    code, _out, err = _invoke_main(tmp_path, ["--write", "--initial-reason", "   "])
+    assert code == 2
+    assert "initial-reason must be non-empty" in err
+
+
+def test_rule_contract_flags() -> None:
+    assert lint.RULE.allow_inline_suppression is False
+    assert lint.RULE.occurrence_baseline is True
+    assert lint.RULE.syntax_policy == "raise"
+    assert lint.RULE.pathspecs == ("python/**/*.py",)
+    assert lint.RULE.source_filter is is_production_source_path

@@ -1,9 +1,10 @@
-"""Equivalence harness: legacy detector scan_file → engine Finding mapping.
+"""Equivalence harness: detector outputs → engine Finding mapping.
 
-Test-only surface. Production detectors and the shared engine stay unchanged.
-Golden fixtures under fixtures/lint_engine_equivalence/ materialize synthetic
-repositories below tmp_path; adapters call the three legacy scan_file APIs and
-map results into larch.lint.engine.Finding for identity and render comparison.
+Test-only surface. Golden fixtures under fixtures/lint_engine_equivalence/
+materialize synthetic repositories below tmp_path. The markdown adapter calls
+``lint_markdown_heading_fence_state.detect`` directly on SourceFile values;
+unreachable-branch and self-disarmable-gate still use their legacy scan_file
+APIs until those ports land.
 """
 
 from __future__ import annotations
@@ -19,7 +20,13 @@ import pytest
 from larch.lint import lint_markdown_heading_fence_state as lint_md
 from larch.lint import lint_self_disarmable_gate as lint_sd
 from larch.lint import lint_unreachable_branch as lint_ub
-from larch.lint.engine import Finding, render_finding
+from larch.lint.engine import Finding, SourceFile, render_finding
+from larch.lint.engine import (
+    OccurrenceBaselineRow,
+    _occurrence_json_file,  # type: ignore[reportPrivateUsage]
+    _project_finding,  # type: ignore[reportPrivateUsage]
+)
+from larch.lint.markdown_heading_fence_state_detector import is_production_source_path
 
 FIXTURE_DIR: Final[Path] = (
     Path(__file__).resolve().parent / "fixtures" / "lint_engine_equivalence"
@@ -278,17 +285,20 @@ def materialize_sources(repo_root: Path, sources: Mapping[str, str]) -> Path:
     return python_dir
 
 
-def _map_markdown_finding(legacy: lint_md.Finding) -> Finding:
-    return Finding(
-        path=_normalize_repo_relative_posix(f"python/{legacy.file}"),
-        line=legacy.lineno,
-        rule_id=lint_md.SUPPRESSION,
-        message=(
-            f"applies heading regex {legacy.pattern_name} to splitlines without "
-            f"fence-state gating (occurrence {legacy.occurrence})"
-        ),
-        qualified_symbol=legacy.qualified_symbol,
-    )
+def adapt_markdown_heading_fence_state(repo_root: Path) -> list[Finding]:
+    """Scan synthetic python/ sources directly via detect (no git discovery)."""
+    python_dir: Path = repo_root / "python"
+    findings: list[Finding] = []
+    for path in sorted(python_dir.rglob("*.py")):
+        if not path.is_file() or path.is_symlink():
+            continue
+        rel = path.relative_to(repo_root).as_posix()
+        if not is_production_source_path(rel):
+            continue
+        text = path.read_text(encoding="utf-8")
+        source = SourceFile(path=rel, text=text, lines=tuple(text.splitlines()))
+        findings.extend(lint_md.detect(source))
+    return findings
 
 
 def _map_unreachable_finding(legacy: lint_ub.Finding) -> Finding:
@@ -312,18 +322,6 @@ def _map_self_disarmable_finding(legacy: lint_sd.Finding) -> Finding:
         message=legacy.message,
         qualified_symbol=legacy.qualified_symbol,
     )
-
-
-def adapt_markdown_heading_fence_state(repo_root: Path) -> list[Finding]:
-    """Scan synthetic python/ with the markdown detector and map to engine Findings."""
-    python_dir: Path = repo_root / "python"
-    findings: list[Finding] = []
-    for path in lint_md.iter_source_files(python_dir):
-        findings.extend(
-            _map_markdown_finding(item)
-            for item in lint_md.scan_file(path, python_dir=python_dir)
-        )
-    return findings
 
 
 def adapt_unreachable_branch(repo_root: Path) -> list[Finding]:
@@ -352,6 +350,35 @@ def adapt_self_disarmable_gate(repo_root: Path) -> list[Finding]:
         meta_fields=resolution.fields,
     )
     return [_map_self_disarmable_finding(item) for item in legacy_findings]
+
+
+def test_markdown_adapter_preserves_repo_relative_paths_and_occurrence_codec(
+    tmp_path: Path,
+) -> None:
+    """Direct fixture adaptation keeps repo-relative Finding.path values."""
+    repo_root = tmp_path / "repo"
+    _ = materialize_sources(
+        repo_root,
+        {
+            "larch/mod.py": (
+                "import re\n\n"
+                'HEADING_RE = re.compile(r"^#{1,6}\\s+")\n\n'
+                "def parse(text: str) -> None:\n"
+                "    for line in text.splitlines():\n"
+                "        if HEADING_RE.match(line):\n"
+                "            pass\n"
+            )
+        },
+    )
+    findings = adapt_markdown_heading_fence_state(repo_root)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.path == "python/larch/mod.py"
+    assert finding.pattern_name == "HEADING_RE"
+    assert finding.occurrence == 1
+    row = _project_finding(finding)
+    assert isinstance(row, OccurrenceBaselineRow)
+    assert _occurrence_json_file(row.path) == "larch/mod.py"
 
 
 ADAPTER_REGISTRY: Final[dict[str, AdapterFn]] = {

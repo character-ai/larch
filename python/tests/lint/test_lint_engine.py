@@ -103,6 +103,9 @@ def _rule(
     rule_id: str = "demo-rule",
     pragma: str = "lint-demo",
     allow_inline_suppression: bool = True,
+    pathspecs: tuple[str, ...] | None = None,
+    source_filter: Callable[[str], bool] | None = None,
+    occurrence_baseline: bool = False,
 ) -> LintRule:
     def _default_detect(source: SourceFile) -> list[Finding]:
         return [
@@ -121,6 +124,9 @@ def _rule(
         syntax_policy=syntax_policy,  # type: ignore[arg-type]
         suppression_token=pragma,
         allow_inline_suppression=allow_inline_suppression,
+        pathspecs=pathspecs,
+        source_filter=source_filter,
+        occurrence_baseline=occurrence_baseline,
     )
 
 
@@ -1931,3 +1937,225 @@ def test_write_baseline_readback_parse_failure_fails_without_rollback(
     assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]  # accessing internal serialization helper for test assertion
         [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
     )
+
+
+def _occurrence_detect(source: SourceFile) -> list[Finding]:
+    return [
+        Finding(
+            path=source.path,
+            line=1,
+            rule_id="demo-rule",
+            message="applies heading regex HEADING_RE occurrence 1",
+            qualified_symbol="parse",
+            pattern_name="HEADING_RE",
+            occurrence=1,
+        )
+    ]
+
+
+def _occurrence_rule(**kwargs: object) -> LintRule:
+    return _rule(
+        detect=_occurrence_detect,
+        occurrence_baseline=True,
+        allow_inline_suppression=False,
+        pathspecs=("python/**/*.py",),
+        **kwargs,  # type: ignore[arg-type]
+    )
+
+
+def _occurrence_row(
+    *,
+    file: str = "larch/mod.py",
+    qualified_symbol: str = "parse",
+    pattern_name: str = "HEADING_RE",
+    occurrence: int = 1,
+    reason: str = "known",
+) -> dict[str, object]:
+    return {
+        "file": file,
+        "qualified_symbol": qualified_symbol,
+        "pattern_name": pattern_name,
+        "occurrence": occurrence,
+        "reason": reason,
+    }
+
+
+def test_occurrence_baseline_round_trip_and_noop_rewrite(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    original = json.dumps([_occurrence_row()], indent=2) + "\n"
+    _ = baseline.write_text(original, encoding="utf-8")
+    runner = _git_ok_runner(tmp_path, ["python/larch/mod.py"])
+    code, out, err = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        runner,
+        baseline_path=baseline,
+        write_baseline=True,
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+    assert baseline.read_text(encoding="utf-8") == original
+
+
+def test_occurrence_baseline_matches_without_rewriting_file_prefix(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row()], indent=2) + "\n", encoding="utf-8"
+    )
+    code, out, err = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+        strict_stale=True,
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+
+
+def test_occurrence_baseline_rejects_duplicates_and_preserves_reasons(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row(), _occurrence_row()], indent=2) + "\n",
+        encoding="utf-8",
+    )
+    code, _out, err = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+    )
+    assert code == EXIT_ERROR
+    assert "duplicate baseline identity" in err
+
+    _ = baseline.write_text(
+        json.dumps([_occurrence_row(reason="preserved")], indent=2) + "\n",
+        encoding="utf-8",
+    )
+    code2, _out2, err2 = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+    )
+    assert code2 == EXIT_CLEAN
+    assert err2 == ""
+    rewritten = json.loads(baseline.read_text(encoding="utf-8"))
+    assert rewritten[0]["reason"] == "preserved"
+
+
+def test_occurrence_baseline_stale_and_missing_reason(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "occ.json"
+    _ = baseline.write_text(
+        json.dumps(
+            [_occurrence_row(qualified_symbol="other", reason="stale")], indent=2
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    code, out, err = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+        strict_stale=True,
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "stale baseline row" in err
+
+    code2, out2, err2 = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+    )
+    assert code2 == EXIT_ERROR
+    assert out2 == ""
+    assert "initial_reason" in err2
+
+
+def test_occurrence_absent_baseline_clean_and_live(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"python/larch/mod.py": "x = 1\n"})
+    baseline = tmp_path / "python" / "missing.json"
+    clean_rule = _rule(
+        detect=lambda _source: [],
+        occurrence_baseline=True,
+        allow_inline_suppression=False,
+        pathspecs=("python/**/*.py",),
+    )
+    code, out, err = _invoke(
+        clean_rule,
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+
+    code2, out2, err2 = _invoke(
+        _occurrence_rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["python/larch/mod.py"]),
+        baseline_path=baseline,
+    )
+    assert code2 == EXIT_ERROR
+    assert out2 == ""
+    assert "required baseline missing" in err2
+
+
+def test_pathspecs_and_source_filter_exclude_before_load(tmp_path: Path) -> None:
+    _write_files(
+        tmp_path,
+        {
+            "python/larch/ok.py": "x = 1\n",
+            "python/larch/test_bad.py": "def broken(\n",
+            "scripts/tool.py": "def broken(\n",
+        },
+    )
+
+    def only_ok(rel: str) -> bool:
+        return rel == "python/larch/ok.py"
+
+    rule = _rule(
+        detect=lambda _source: [],
+        syntax_policy="raise",
+        pathspecs=("python/**/*.py",),
+        source_filter=only_ok,
+        occurrence_baseline=True,
+        allow_inline_suppression=False,
+    )
+    runner = _git_ok_runner(
+        tmp_path,
+        ["python/larch/ok.py", "python/larch/test_bad.py", "scripts/tool.py"],
+    )
+    code, out, err = _invoke(rule, tmp_path, runner, baseline_path=tmp_path / "b.json")
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+    assert "python/**/*.py" in runner.calls[1][0]
+
+
+def test_syntax_policy_raise_exits_error(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "def broken(\n"})
+    code, out, err = _invoke(
+        _rule(syntax_policy="raise", detect=lambda _source: []),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "cannot parse source" in err
