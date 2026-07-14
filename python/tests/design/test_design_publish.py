@@ -522,6 +522,31 @@ def test_publish_invariants_present_regular_assessment_proceeds(
     assert rc == 0
 
 
+def test_publish_invariant_violation_note_refuses_gate_c(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _git_repo_with_invariants(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    (design / "architectural-invariant-assessment.md").write_text(
+        "Violation: I-Gate-1 the plan disarms a gate on self-declared metadata.\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        ["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"]
+    )
+
+    stdout = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "records a violation" in stdout
+    assert "PUBLISH_REFUSE_REASON=invariant-violation" in result_env
+    assert "ARCH_INVARIANT_ASSESSMENT_PRESENT=true" in result_env
+    assert "ARCH_INVARIANT_ASSESSMENT_STATUS=violation" in result_env
+
+
 @pytest.mark.parametrize("invariants_text", ["", "# No invariant entries\n"])
 def test_publish_invariants_empty_or_no_parsed_entries_not_required(
     tmp_path: Path,
@@ -646,6 +671,51 @@ def test_publish_guidelines_present_regular_assessment_proceeds(
             "--claude-pid",
             "11",
         ]
+    )
+
+    assert rc == 0
+
+
+def test_publish_guideline_bare_deviation_refuses_gate_c(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _git_repo_with_guidelines(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    (design / "architectural-guideline-assessment.md").write_text(
+        "Deviation: G-Py-4 the plan swallows an exception without a narrow handler.\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        ["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"]
+    )
+
+    stdout = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "without a documented exception" in stdout
+    assert "PUBLISH_REFUSE_REASON=invalid-guideline-deviation" in result_env
+    assert "ARCH_GUIDE_ASSESSMENT_PRESENT=true" in result_env
+    assert "ARCH_GUIDE_ASSESSMENT_STATUS=deviation" in result_env
+
+
+def test_publish_guideline_deviation_with_valid_exception_proceeds(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _git_repo_with_guidelines(tmp_path, monkeypatch)
+    plugin_root, design = _minimal_publish_design(tmp_path)
+    (design / "architectural-guideline-assessment.md").write_text(
+        "Deviation: G-Py-4 the plan swallows an exception without a narrow handler.\n"
+        "Exception: pragmatic for this partition piece (author: main-agent, date: 2026-07-13)\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = design_publish.publish_core(
+        ["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"]
     )
 
     assert rc == 0

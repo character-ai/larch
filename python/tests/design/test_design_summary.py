@@ -8,7 +8,7 @@ import json
 import subprocess
 from pathlib import Path
 
-import pytest  # noqa: TC002
+import pytest
 
 from larch.core import config
 from larch.design import design_summary
@@ -394,6 +394,102 @@ def test_missing_guideline_assessment_warning_prefixes_fallback_summary(
     assert rc == 0
     assert summary.startswith("**⚠ Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**")
     assert "Degraded fallback" in summary
+
+
+def test_guideline_exception_disclosure_prefixes_approved_summary_and_upsert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upsert_bodies = _install_final_summary_env(tmp_path, monkeypatch)
+    (tmp_path / "architectural-guideline-assessment.md").write_text(
+        "Deviation on G-Py-4.\n"
+        "Exception: pragmatic for this partition piece (author: main-agent, date: 2026-07-13)\n",
+        encoding="utf-8",
+    )
+
+    rc = design_summary.render_final_summary_main(
+        ["--outcome", "approved", "--design-tmpdir", str(tmp_path), "--issue-number", "42", "--session-id", "design-run-1"]
+    )
+
+    summary = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert summary.startswith(
+        "**Gate C guideline exception recorded:** pragmatic for this partition piece "
+        "(author: main-agent, date: 2026-07-13)"
+    )
+    assert upsert_bodies
+    assert upsert_bodies[-1].startswith("**Gate C guideline exception recorded:**")
+
+
+def test_guideline_exception_disclosure_redacts_secret_rationale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    upsert_bodies = _install_final_summary_env(tmp_path, monkeypatch)
+    (tmp_path / "architectural-guideline-assessment.md").write_text(
+        "Deviation on G-Py-4.\n"
+        "Exception: pin token ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 for CI (author: main-agent, date: 2026-07-13)\n",
+        encoding="utf-8",
+    )
+
+    rc = design_summary.render_final_summary_main(
+        ["--outcome", "approved", "--design-tmpdir", str(tmp_path), "--issue-number", "42", "--session-id", "design-run-1"]
+    )
+
+    summary = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" not in summary
+    assert "<REDACTED-TOKEN>" in summary.splitlines()[0]
+    assert upsert_bodies
+    assert "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" not in upsert_bodies[-1]
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("Deviation with no exception block.", id="missing"),
+        pytest.param("Exception: see policy elsewhere", id="malformed"),
+        pytest.param(
+            "Deviation.\n```\nException: fenced (author: main-agent, date: 2026-07-13)\n```",
+            id="fenced-only",
+        ),
+    ],
+)
+def test_guideline_exception_disclosure_omitted_for_invalid_notes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    note: str,
+) -> None:
+    _ = _install_final_summary_env(tmp_path, monkeypatch)
+    (tmp_path / "architectural-guideline-assessment.md").write_text(note + "\n", encoding="utf-8")
+
+    rc = design_summary.render_final_summary_main(
+        ["--outcome", "approved", "--design-tmpdir", str(tmp_path), "--issue-number", "42", "--session-id", "design-run-1"]
+    )
+
+    summary = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert "**Gate C guideline exception recorded:**" not in summary
+
+
+def test_guideline_exception_disclosure_omitted_for_non_approved_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = _install_final_summary_env(tmp_path, monkeypatch)
+    (tmp_path / "architectural-guideline-assessment.md").write_text(
+        "Deviation on G-Py-4.\n"
+        "Exception: pragmatic for this piece (author: main-agent, date: 2026-07-13)\n",
+        encoding="utf-8",
+    )
+
+    rc = design_summary.render_final_summary_main(
+        ["--outcome", "failed-plan-write", "--design-tmpdir", str(tmp_path), "--issue-number", "42", "--session-id", "design-run-1"]
+    )
+
+    summary = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert rc == 0
+    assert "**Gate C guideline exception recorded:**" not in summary
 
 
 def test_failure_report_gate_uses_in_process_core(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

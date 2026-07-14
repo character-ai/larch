@@ -595,7 +595,7 @@ def test_skip_approve_guideline_prompt_contracts_bind_repo_root() -> None:
     assert approval.index('architectural-invariants persist-design-assessment --repo-root "$REPO_ROOT"') < approval.index('architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT"')
     assert "**Absent, invalid, or present-but-empty**: when `read_invariants().status` is not `present` or parsed `content.strip()` is empty after parsing `I-*` entries." in approval
     assert "**Clean**: only when invariants are `present` with parsed non-empty content and no violation assessment was required (no `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` path and no remediated-violations sidecar)." in approval
-    assert "**Remediated-violations**: when violations were identified and the remediation loop produced a clean plan." in approval
+    assert "**Remediated-violations**: when violations were identified and the fix ladder produced a clean plan." in approval
     assert "If invariant present-note emits `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`, consume the subagent's invariants verdict for the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview." in approval
     assert approval.index("INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true") < approval.index("**Clean**: only when invariants are `present`")
     assert "reason=persist-design-assessment-failed" in approval
@@ -613,6 +613,53 @@ def test_skip_approve_guideline_prompt_contracts_bind_repo_root() -> None:
     assert '. "$DESIGN_TMPDIR/source-env.sh"' in outline
     assert 'present-note --repo-root "$REPO_ROOT"' in outline
     assert "auto-approved (--skip-approve)" in outline
+
+
+def test_gate_c_fix_ladder_prompt_contracts() -> None:
+    root = Path(__file__).resolve().parents[3]
+    approval = (root / "skills" / "design" / "references" / "approval-gates-gate-c.md").read_text(encoding="utf-8")
+
+    # Two-tier ladder with per-kind counters and atomic tier-2 consumption.
+    assert (
+        "Persist per-kind tier-1 and tier-2 counters under `$DESIGN_TMPDIR`: "
+        "`architectural-<kind>-gatec-tier1.count` and `architectural-<kind>-gatec-tier2.count`"
+    ) in approval
+    assert (
+        "atomically mark the tier-2 round consumed (increment "
+        "`architectural-<kind>-gatec-tier2.count` to 1) before the main agent begins an "
+        "invariant repair, a guideline repair, or a guideline decline"
+    ) in approval
+    # Tier-1 reviser is the MODE=plan-revise claude-implementer.
+    assert (
+        "spawn exactly one `larch:claude-implementer` subagent with `MODE=plan-revise`"
+    ) in approval
+    # Gate C settle + fresh-assessor re-entry.
+    assert "invoke `design-step35-settle.sh --site gate-c`" in approval
+    assert "re-enter `resume@4b` only on the clean `gate-c-return` action" in approval
+    assert "the reviser never judges its own revision" in approval
+    # Invariant cancellation and guideline documented exception.
+    assert (
+        "Gate C does not approve: skip approval, Step 5, publication, and any waiver, "
+        "and end through the existing cancellation outcome with nothing published"
+    ) in approval
+    assert "append exactly one active `Exception: <rationale> (author: main-agent, date: YYYY-MM-DD)` line" in approval
+    assert '--assessment-file "$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar" --allow-exception' in approval
+
+
+def test_generated_implementer_prompts_include_plan_revise_contract() -> None:
+    root = Path(__file__).resolve().parents[3]
+    base = (root / "agents" / "_implementer-base.md").read_text(encoding="utf-8")
+    codex = (root / "agents" / "codex-implementer.md").read_text(encoding="utf-8")
+    cursor = (root / "agents" / "cursor-implementer.md").read_text(encoding="utf-8")
+    claude = (root / "agents" / "claude-implementer.md").read_text(encoding="utf-8")
+
+    assert "MODE=plan-revise" in claude
+    assert "## Mode boundary" in base
+    # Codex and Cursor are regenerated from the shared base, so the plan-revise
+    # boundary note stays synchronized in both generated prompts.
+    for generated in (codex, cursor):
+        assert "## Mode boundary" in generated
+        assert "MODE=plan-revise" in generated
 
 
 def test_persist_design_assessment_file_normalizes_final_newline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -683,6 +730,190 @@ def test_persist_design_assessment_absent_invalid_reject_source_flags(tmp_path: 
 
     assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean"]) == 1
     assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)]) == 1
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("clean\nException: pragmatic for this PR (author: main-agent, date: 2026-07-13)", id="valid"),
+        pytest.param(
+            "Deviation on G-Py-4.\n"
+            "Exception: pragmatic for this PR (author: main-agent, date: 2026-07-13)",
+            id="valid-body",
+        ),
+    ],
+)
+def test_persist_design_assessment_allow_exception_persists_valid_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, note: str
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text(note + "\n", encoding="utf-8")
+
+    rc = ag.persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar), "--allow-exception"]
+    )
+
+    assert rc == 0
+    assert (design_tmpdir / ag.DESIGN_ASSESSMENT).read_text(encoding="utf-8") == note + "\n"
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        pytest.param("Deviation with no exception block.", id="missing"),
+        pytest.param("Exception: see the override policy elsewhere", id="malformed"),
+        pytest.param("Exception:  (author: main-agent, date: 2026-07-13)", id="empty-rationale"),
+        pytest.param("Exception: pragmatic (author: subagent, date: 2026-07-13)", id="wrong-author"),
+        pytest.param("Exception: pragmatic (author: main-agent, date: 2026-02-30)", id="impossible-date"),
+        pytest.param(
+            "Exception: a (author: main-agent, date: 2026-07-13)\n"
+            "Exception: b (author: main-agent, date: 2026-07-14)",
+            id="duplicate",
+        ),
+        pytest.param(
+            "Deviation.\n```\nException: fenced (author: main-agent, date: 2026-07-13)\n```",
+            id="fenced-only",
+        ),
+    ],
+)
+def test_persist_design_assessment_allow_exception_rejects_invalid_note(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], note: str
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text(note + "\n", encoding="utf-8")
+
+    rc = ag.persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar), "--allow-exception"]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON=invalid-exception" in out
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
+def test_persist_design_assessment_rejects_active_exception_without_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text(
+        "Deviation on G-Py-4.\nException: pragmatic (author: main-agent, date: 2026-07-13)\n",
+        encoding="utf-8",
+    )
+
+    rc = ag.persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON=unexpected-exception" in out
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
+def test_persist_design_assessment_ordinary_deviation_without_exception_persists(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("Deviation on G-Py-4 with rationale but no exception block.\n", encoding="utf-8")
+
+    rc = ag.persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar)]
+    )
+
+    assert rc == 0
+    assert (design_tmpdir / ag.DESIGN_ASSESSMENT).is_file()
+
+
+def test_persist_design_assessment_allow_exception_rejected_for_clean(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+
+    rc = ag.persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean", "--allow-exception"]
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "ARCHITECTURAL_GUIDELINE_ASSESSMENT_PERSIST_REASON=allow-exception-requires-file" in out
+    assert not (design_tmpdir / ag.DESIGN_ASSESSMENT).exists()
+
+
+def test_persist_design_assessment_allow_exception_rejected_for_absent_and_invalid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("Exception: x (author: main-agent, date: 2026-07-13)\n", encoding="utf-8")
+
+    # Absent guidelines: source flags are rejected before the exception check.
+    assert ag.persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar), "--allow-exception"]
+    ) == 1
+    # No source with the flag is also rejected.
+    assert ag.persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--allow-exception"]
+    ) == 1
+
+
+def test_persist_invariant_design_assessment_rejects_allow_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.INVARIANTS_FILENAME).write_text("### I-Test-1: Invariant\n- Why: needed.\n", encoding="utf-8")
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    sidecar = tmp_path / "assessment.input.sidecar"
+    sidecar.write_text("Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.\n", encoding="utf-8")
+
+    rc = ag.invariants_persist_design_assessment_main(
+        ["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment-file", str(sidecar), "--allow-exception"]
+    )
+
+    assert rc == 1
+    assert not (design_tmpdir / ag.INVARIANT_DESIGN_ASSESSMENT).exists()
+
+
+@pytest.mark.parametrize(
+    ("note", "valid", "present"),
+    [
+        ("Exception: x (author: main-agent, date: 2026-07-13)", True, True),
+        ("Exception:  (author: main-agent, date: 2026-07-13)", False, True),
+        ("Exception: x (author: main-agent, date: 2026-02-30)", False, True),
+        ("Exception: x (author: main-agent, date: 2026-13-01)", False, True),
+        ("Exception: x (author: subagent, date: 2026-07-13)", False, True),
+        ("> Exception: x (author: main-agent, date: 2026-07-13)", False, False),
+        ("Exception: see policy elsewhere", False, True),
+        ("no exception at all", False, False),
+        (
+            "Exception: a (author: main-agent, date: 2026-07-13)\n"
+            "Exception: b (author: main-agent, date: 2026-07-14)",
+            False,
+            True,
+        ),
+        ("```\nException: x (author: main-agent, date: 2026-07-13)\n```", False, False),
+        ("~~~\nException: x (author: main-agent, date: 2026-07-13)\n~~~", False, False),
+    ],
+)
+def test_guideline_active_exception_classification(note: str, valid: bool, present: bool) -> None:
+    assert ag.guideline_exception_valid(note) is valid
+    assert ag.guideline_exception_present(note) is present
+    assert (ag.guideline_active_exception(note) is not None) is valid
 
 
 def test_persist_design_assessment_unlink_failure_fails_closed(

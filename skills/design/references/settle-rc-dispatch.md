@@ -1,6 +1,6 @@
 # Settle-wrapper dispatch
 
-**Consumer**: `/design` Gate B post-apply, Step 1e Gate A re-entry optional-trailer guard, and Round 2 post-plan discussion revision after `design-step35-settle.sh` returns.
+**Consumer**: `/design` Gate B post-apply, Step 1e Gate A re-entry optional-trailer guard, Round 2 post-plan discussion revision, and Gate C plan revision after `design-step35-settle.sh` returns.
 
 **Contract**: prompt-side branch bodies for `design-step35-settle.sh` machine actions. Python chooses the action through `python/cli.py design settle-next-action`; this file does not derive actions from rc values.
 
@@ -40,6 +40,12 @@ Diagnostics:
 | `gate-a-hard-size` | **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before dispatch. Use the retained Step 2b.5 direct Split-path behavior. |
 | `gate-b-split` | Run Split-path only. Non-exiting Split returns use `python/cli.py design step2b-postplan --write-completion-only` before continuing. |
 | `gate-a-split` | Run Split-path per `decompose-panel.md`. |
+| `gate-c-return` | Re-enter `resume@4b` only. Re-run Gate C present-note, spawn a fresh `larch:arch-assessor`, and re-judge the revised plan. This is the sole action that re-assesses. |
+| `gate-c-validator-fail` | Execute **### Plan command validator failure (shared)** with site `design Gate C`. Fix-and-retry re-enters settle; do not re-assess until a subsequent clean `gate-c-return`. |
+| `gate-c-hard-size` | Run the unified Split-path directly. Do not issue a local hard-size prompt. Do not re-assess until a subsequent clean `gate-c-return`. |
+| `gate-c-split` | Run Split-path only. Do not re-assess until a subsequent clean `gate-c-return`. |
+
+Gate C also emits the shared `dedup-revise` and `pause` actions (rows above): `dedup-revise` rewrites `plan.txt` and retries `--site gate-c` settle (Gate C keeps no Gate B snapshot to restore), and `pause` stops at the delegated pause boundary. Never route a Gate C action from the wrapper rc.
 
 ## Compatibility note
 

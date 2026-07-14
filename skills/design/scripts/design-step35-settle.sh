@@ -204,7 +204,8 @@ fi
 case "${SITE:-}" in
   gate-b) POSTPLAN_SITE=gate-b ;;
   gate-a|discussion-round2) POSTPLAN_SITE=discussion-round2 ;;
-  *) printf '%s\n' "design-step35-settle.sh: --site must be gate-b, gate-a, or discussion-round2" >&2; exit 2 ;;
+  gate-c) POSTPLAN_SITE=gate-c ;;
+  *) printf '%s\n' "design-step35-settle.sh: --site must be gate-b, gate-a, discussion-round2, or gate-c" >&2; exit 2 ;;
 esac
 
 # Retired launcher fence: design-step2b-postplan.sh now maps to the Python CLI.

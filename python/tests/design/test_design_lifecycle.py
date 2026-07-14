@@ -2535,6 +2535,27 @@ def test_postplan_decide_ok_returns_rows_and_touches(tmp_path: Path) -> None:
     assert not decision.unlinks
 
 
+def test_postplan_decide_gate_c_is_non_initial_site(tmp_path: Path) -> None:
+    # Gate C plan revision re-runs postplan with the normal KVs but never writes
+    # Step 2b completion semantics, so it is a non-initial site like gate-b.
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths=paths,
+        site="gate-c",
+        rc=0,
+        captured_stdout="POSTPLAN_EMIT_STATUS=ok\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.rows == ("POSTPLAN_RC=0\n", "POSTPLAN_STATUS=ok\n")
+    assert decision.touches == (paths.step2b5_done,)
+    assert paths.step2b_done not in decision.touches
+
+
 def test_postplan_decide_inline_retry_returns_apply_metadata(tmp_path: Path) -> None:
     paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
     decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
@@ -2691,6 +2712,11 @@ def test_postplan_decide_rc2_warning_is_nonfatal(tmp_path: Path) -> None:
         ("gate-b", 13, "gate-b-split", 13, "partition-requested"),
         ("gate-a", 13, "gate-a-split", 13, "partition-requested"),
         ("discussion-round2", 13, "gate-a-split", 13, "partition-requested"),
+        ("gate-c", 0, "gate-c-return", 0, "ok"),
+        ("gate-c", 10, "gate-c-validator-fail", 10, "validate-failed"),
+        ("gate-c", 11, "pause", 11, "pause-save"),
+        ("gate-c", 12, "gate-c-hard-size", 12, "plan-size-trigger"),
+        ("gate-c", 13, "gate-c-split", 13, "partition-requested"),
     ],
 )
 def test_settle_next_action_for_matrix(
@@ -4792,6 +4818,54 @@ def test_step5c_core_rc4_missing_guideline_assessment_not_validator_defects(
     assert "STEP5C_STATUS=validator-defects" not in contract
     assert "CLEANUP_ELIGIBLE=false" in status_env
     assert "ARCH_GUIDE_ASSESSMENT_REQUIRED=true" in status_env
+    assert not (design / ".completed" / "step-5c").exists()
+
+
+@pytest.mark.parametrize(
+    ("refuse_reason", "status_key", "status_value"),
+    [
+        ("invariant-violation", "ARCH_INVARIANT_ASSESSMENT_STATUS", "violation"),
+        ("invalid-guideline-deviation", "ARCH_GUIDE_ASSESSMENT_STATUS", "deviation"),
+    ],
+)
+def test_step5c_core_rc4_gate_c_content_refusal_not_validator_defects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    refuse_reason: str,
+    status_key: str,
+    status_value: str,
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42")
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(
+            "\n".join(
+                [
+                    "PLAN_WRITE_OK=false",
+                    "VALIDATE_STATUS=not-run",
+                    f"PUBLISH_REFUSE_REASON={refuse_reason}",
+                    f"{status_key}={status_value}",
+                    f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}",
+                    "",
+                ]
+            ),
+            end="",
+        )
+        return 4
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
+
+    status_env = (design / ".design-step5c-status.env").read_text(encoding="utf-8")
+    assert rc == 0
+    assert f"STEP5C_STATUS={refuse_reason}" in contract
+    assert "STEP5C_STATUS=validator-defects" not in contract
+    assert "CLEANUP_ELIGIBLE=false" in status_env
     assert not (design / ".completed" / "step-5c").exists()
 
 

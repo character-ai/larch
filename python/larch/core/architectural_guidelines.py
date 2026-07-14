@@ -1358,6 +1358,84 @@ def classify_note_for_kind(note: str, *, kind: AssessmentKind) -> str:
     )
 
 
+# A Gate C guideline deviation publishes only when its persisted assessment note
+# carries exactly one *active* documented-exception line: a top-level
+# `Exception:` line (outside every code fence) recording a non-empty rationale,
+# `author: main-agent`, and a real calendar date. Exception-looking text inside a
+# backtick or tilde fence has no authority, and duplicate active lines fail closed
+# (#7196.2; the /design mirror of the #7193 /implement ladder).
+_EXCEPTION_LEAD_RE = re.compile(r"^\s*Exception:")
+_DESIGN_EXCEPTION_RE = re.compile(
+    r"^\s*Exception:\s+(?P<rationale>\S[^\n]*?)\s+"
+    r"\(author:\s*main-agent,\s+date:\s*"
+    r"(?P<date>\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01]))\)\s*$"
+)
+
+
+@dataclass(frozen=True)
+class GuidelineException:
+    """A validated active documented-exception recovered from a deviation note."""
+
+    rationale: str
+    date: str
+    line: str
+
+
+def _exception_date_plausible(date_text: str) -> bool:
+    """True when ``date_text`` parses as a real calendar date (rejects Feb 30, etc.)."""
+    try:
+        year_text, month_text, day_text = date_text.split("-")
+        _ = datetime(int(year_text), int(month_text), int(day_text), tzinfo=UTC)
+    except ValueError:
+        return False
+    return True
+
+
+def _active_exception_lines(note: str) -> list[str]:
+    """Return the note's non-fenced lines that lead with ``Exception:``.
+
+    Lines inside a balanced code fence carry no authority (G-Md-3).
+    """
+    from larch.design import plan_grammar  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.design  # lint-layering: ok reuse the balanced fenced-code-block scanner (G-Md-3) instead of re-deriving fence state.
+    lines = note.splitlines()
+    fenced = plan_grammar.balanced_fence_line_indices(lines)
+    return [
+        line
+        for index, line in enumerate(lines)
+        if index not in fenced and _EXCEPTION_LEAD_RE.match(line) is not None
+    ]
+
+
+def guideline_active_exception(note: str) -> GuidelineException | None:
+    """Return the sole valid active documented-exception, or ``None`` (fail closed).
+
+    Recognizes exactly one active ``Exception:`` line outside code fences with a
+    non-empty rationale, ``author: main-agent``, and a real calendar date. Missing,
+    malformed, empty-rationale, wrong-author, impossible-date, duplicate, and
+    fenced-only notes return ``None``.
+    """
+    active = _active_exception_lines(note)
+    if len(active) != 1:
+        return None
+    match = _DESIGN_EXCEPTION_RE.match(active[0])
+    if match is None:
+        return None
+    rationale = match.group("rationale").strip()
+    if not rationale or not _exception_date_plausible(match.group("date")):
+        return None
+    return GuidelineException(rationale=rationale, date=match.group("date"), line=active[0].strip())
+
+
+def guideline_exception_present(note: str) -> bool:
+    """True when the note carries any active (non-fenced) ``Exception:`` line."""
+    return bool(_active_exception_lines(note))
+
+
+def guideline_exception_valid(note: str) -> bool:
+    """True when the note carries exactly one valid active documented-exception."""
+    return guideline_active_exception(note) is not None
+
+
 def _compose_precheck_result(
     *,
     implement_tmpdir: Path,
@@ -1806,6 +1884,33 @@ def _design_assessment_flag_error(
     return None
 
 
+def _design_exception_flag_error(
+    *, note: str, allow_exception: bool, kind: AssessmentKind
+) -> tuple[str, str] | None:
+    """Validate a guideline deviation note's documented-exception state.
+
+    Without ``--allow-exception`` any active exception line fails closed. With the
+    flag, the note must carry exactly one valid active documented-exception.
+    """
+    if kind.is_invariant:
+        return None
+    if not allow_exception:
+        if guideline_exception_present(note):
+            return (
+                "unexpected-exception",
+                "guideline note carries a documented-exception line; pass "
+                "--allow-exception only to persist a Gate C decline",
+            )
+        return None
+    if not guideline_exception_valid(note):
+        return (
+            "invalid-exception",
+            "--allow-exception requires exactly one active documented-exception line "
+            "(Exception: <rationale> (author: main-agent, date: YYYY-MM-DD))",
+        )
+    return None
+
+
 def _emit_guideline_persist_result(
     *, kind: AssessmentKind, status: str, result: str, reason: str
 ) -> None:
@@ -1815,12 +1920,53 @@ def _emit_guideline_persist_result(
         )
 
 
+def _persist_prevalidate(  # noqa: PLR0911 - fail-closed persistence validates each flag, source, and exception boundary with a distinct machine reason
+    *,
+    args: argparse.Namespace,
+    result: ArchitecturalGuidelinesResult,
+    kind: AssessmentKind,
+) -> tuple[str | None, tuple[str, str] | None]:
+    """Validate persist flags and read/validate the assessment file.
+
+    Returns ``(assessment_text, None)`` on success, where ``assessment_text`` is
+    ``None`` (no source file) or the file text; or ``(None, (reason, message))``
+    on a rejected flag combination or exception state. An empty reason suppresses
+    the guideline machine line (the invariant path emits none).
+    """
+    has_clean = args.assessment == "clean"
+    has_file = bool(args.assessment_file)
+    if args.allow_exception and kind.is_invariant:
+        return None, ("", "--allow-exception is not valid for architectural invariants")
+    flag_error = _design_assessment_flag_error(result=result, has_clean=has_clean, has_file=has_file, kind=kind)
+    if flag_error is not None:
+        return None, ("invalid-flags", flag_error)
+    if args.allow_exception and not has_file:
+        return None, ("allow-exception-requires-file", "--allow-exception requires a guideline deviation --assessment-file")
+    if not has_file:
+        return None, None
+    try:
+        assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
+    except OSError as exc:
+        return None, ("assessment-file-unreadable", f"assessment-file: {exc}")
+    if not assessment_text.strip():
+        return None, ("assessment-file-empty", "assessment-file: content must not be empty")
+    exception_error = _design_exception_flag_error(note=assessment_text, allow_exception=args.allow_exception, kind=kind)
+    if exception_error is not None:
+        return None, exception_error
+    return assessment_text, None
+
+
 def _persist_design_assessment_main(argv: list[str], *, kind: AssessmentKind) -> int:
     parser = argparse.ArgumentParser(prog=f"architectural-{kind.key} persist-design-assessment")
     parser.add_argument("--repo-root")
     parser.add_argument("--design-tmpdir", default=os.environ.get(config.ENV_DESIGN_TMPDIR, ""))
     parser.add_argument("--assessment", choices=("clean",))
     parser.add_argument("--assessment-file")
+    parser.add_argument(
+        "--allow-exception", action="store_true",
+        help="permit a guideline deviation note carrying one documented-exception "
+        "block (Gate C decline persistence only)",
+    )
     args = parser.parse_args(argv)
     try:
         design_tmpdir = _validate_design_tmpdir_arg(args.design_tmpdir)
@@ -1828,36 +1974,13 @@ def _persist_design_assessment_main(argv: list[str], *, kind: AssessmentKind) ->
         print(str(exc), file=sys.stderr)
         return 1
     result = _read_assessment_kind(kind=kind, repo_root=args.repo_root)
-    has_clean = args.assessment == "clean"
-    has_file = bool(args.assessment_file)
-    flag_error = _design_assessment_flag_error(
-        result=result,
-        has_clean=has_clean,
-        has_file=has_file,
-        kind=kind,
-    )
-    if flag_error is not None:
-        _emit_guideline_persist_result(
-            kind=kind, status=result.status, result="failed", reason="invalid-flags"
-        )
-        print(flag_error, file=sys.stderr)
+    assessment_text, error = _persist_prevalidate(args=args, result=result, kind=kind)
+    if error is not None:
+        reason, message = error
+        if reason:
+            _emit_guideline_persist_result(kind=kind, status=result.status, result="failed", reason=reason)
+        print(message, file=sys.stderr)
         return 1
-    assessment_text: str | None = None
-    if has_file:
-        try:
-            assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
-        except OSError as exc:
-            _emit_guideline_persist_result(
-                kind=kind, status=result.status, result="failed", reason="assessment-file-unreadable"
-            )
-            print(f"assessment-file: {exc}", file=sys.stderr)
-            return 1
-        if not assessment_text.strip():
-            _emit_guideline_persist_result(
-                kind=kind, status=result.status, result="failed", reason="assessment-file-empty"
-            )
-            print("assessment-file: content must not be empty", file=sys.stderr)
-            return 1
     try:
         rc = _persist_design_assessment(
             repo_root=args.repo_root,

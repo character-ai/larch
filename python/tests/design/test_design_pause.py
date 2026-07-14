@@ -724,6 +724,52 @@ def test_pause_load_restores_step5c_provenance_sentinels(
     )
 
 
+def test_pause_load_restores_gate_c_tier_counters_and_guideline_exception(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: object,
+) -> None:
+    body = _pause_marker_body(run_id="RUN1", issue="9", step="4b", repo="owner/repo")
+    files, blobs = _restore_blobs(
+        "RUN1",
+        issue_number=9,
+        manifest_run="RUN1",
+        step="4b",
+        completed_paths=[".completed/step-3"],
+    )
+    base = "larch-logs/design/RUN1/"
+    # A consumed tier-2 counter plus a persisted guideline deviation-with-exception
+    # note must survive snapshot/restore so resume cannot grant another tier-2
+    # action and the recorded exception still gates publish (I-Pause-1).
+    extra = {
+        "architectural-invariant-gatec-tier1.count": "1\n",
+        "architectural-invariant-gatec-tier2.count": "1\n",
+        "architectural-guideline-gatec-tier1.count": "1\n",
+        "architectural-guideline-gatec-tier2.count": "1\n",
+        "architectural-guideline-assessment.md": (
+            "Deviation on G-Py-4.\n"
+            "Exception: pragmatic for this piece (author: main-agent, date: 2026-07-13)\n"
+        ),
+    }
+    for name, blob in extra.items():
+        files.append(base + name)
+        blobs[base + name] = blob
+    fake = _FakeGit(files=files, blobs=blobs)
+    _patch_load(monkeypatch, body, fake)
+
+    dest = tmp_path / "d"
+    rc = design_pause.pause_load_main(
+        ["--design-tmpdir", str(dest), "--issue", "9", "--repo", "owner/repo"]
+    )
+
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+    assert rc == 0
+    assert "LOAD_OK=true" in out
+    assert (dest / ".completed" / "step-3").is_file()
+    for name, blob in extra.items():
+        assert (dest / name).read_text(encoding="utf-8") == blob
+
+
 def test_pause_load_downgrades_legacy_step5c_to_step5b5(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: object
 ) -> None:
