@@ -408,10 +408,35 @@ def test_release_prepare_origin_repo_mismatch(monkeypatch: pytest.MonkeyPatch, t
 
 def test_release_prepare_pr_metadata_incomplete(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     repo_root = Path(release_prepare.__file__).resolve().parents[3]
-    runner = ReleasePrepareRunner(repo_root)
+    # A gh pr view miss now routes the commit to the commits-to-pulls fallback; the
+    # pr-metadata-incomplete error survives only when that API lookup itself fails.
+    runner = ReleasePrepareRunner(repo_root, api_rc=1)
     _prepare_common(monkeypatch, runner, pr_view=None)
     assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 1
     assert "ERROR=pr-metadata-incomplete" in capsys.readouterr().out
+
+
+def test_release_prepare_recovers_when_suffix_is_issue_number(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    # The squash-merge subject ends in the closed issue number (#7217), not the merged PR
+    # number, so gh pr view 7217 misses. The commit must still resolve to the real PR
+    # (#7221) via the commits-to-pulls fallback rather than aborting the whole prepare step.
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
+    pulls = json.dumps([{"number": 7221, "title": "Re-point ci-fix to the fix ladder (#7217)", "labels": [], "user": {"login": "me"}, "html_url": "u7221"}])
+    runner = ReleasePrepareRunner(
+        repo_root,
+        log_subjects="Re-point ci-fix to the fix ladder (#7217)\n",
+        log_hash_subjects="da0d9c Re-point ci-fix to the fix ladder (#7217)\n",
+        api_stdout=pulls,
+    )
+    _prepare_common(monkeypatch, runner, pr_view=None)
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
+    captured = capsys.readouterr()
+    assert "NOTE: commit da0d9c resolved to PR #7221 via GitHub API" in captured.err
+    out = dict(line.split("=", 1) for line in captured.out.splitlines())
+    assert out["PR_COUNT"] == "1"
+    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
+        "7221\tRe-point ci-fix to the fix ladder (#7217)\t\tme\tu7221"
+    ]
 
 
 def test_release_prepare_commit_to_pulls_note(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

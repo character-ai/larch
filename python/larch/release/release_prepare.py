@@ -182,25 +182,28 @@ def main(argv: list[str] | None = None) -> int:
     pr_list_file.write_text("", encoding="utf-8")
     written: set[int] = set()
     ignored: set[int] = set()
-    missing: list[str] = []
+    unresolved: set[int] = set()
     for n in pr_nums:
         pr = _gh_json(["pr", "view", str(n), "--repo", args.repo, "--json", "number,title,labels,author,url"])
         if not isinstance(pr, dict):
-            missing.append(str(n))
+            # A trailing (#N) can be a human-authored issue reference the squash-merge
+            # subject kept verbatim, not the merged PR number, so a gh pr view miss is not
+            # fatal: record it as unresolved and let the commits-to-pulls fallback below
+            # resolve the real PR instead of trusting the suffix.
+            unresolved.add(n)
             continue
         if str(pr.get("title", "")).startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
             ignored.add(int(pr.get("number", n)))
             continue
         _write_pr_row(path=pr_list_file, repo=args.repo, pr=pr)
         written.add(int(pr.get("number", n)))
-    if missing:
-        return _emit_error("pr-metadata-incomplete", f"could not fetch PR metadata for: {' '.join(missing)}")
     orphan_shas: list[str] = []
     for line in _git("log", f"{baseline}..origin/main", "--format=%H %s").stdout.splitlines():
         if not line.strip():
             continue
         sha, _, subj = line.partition(" ")
-        if _PR_SUFFIX_RE.search(subj):
+        m = _PR_SUFFIX_RE.search(subj)
+        if m and int(m.group(1)) not in unresolved:
             continue
         api = proc.run(["gh", "api", f"repos/{args.repo}/commits/{sha}/pulls"])
         if api.returncode != 0:
