@@ -5,13 +5,12 @@ from __future__ import annotations
 
 import json
 import re
-import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from functools import partial
 from pathlib import Path
-from typing import ClassVar, Final, cast
+from typing import ClassVar, Final
 
 from larch import io as larch_io
 from larch.core import architectural_guidelines
@@ -193,94 +192,11 @@ _CLEAR_OUTCOME_BY_KIND = {
     GUIDELINES: architectural_guidelines.clear_guideline_ship_outcome,
     INVARIANTS: architectural_guidelines.clear_invariant_ship_outcome,
 }
-_OUTCOME_PATH_BY_KEY = {
-    GUIDELINES.key: architectural_guidelines.guideline_ship_outcome_path,
-    INVARIANTS.key: architectural_guidelines.invariant_ship_outcome_path,
-}
-_OUTCOME_VALIDATOR_BY_KEY = {
-    GUIDELINES.key: architectural_guidelines.validate_guideline_ship_outcome_record,
-    INVARIANTS.key: architectural_guidelines.validate_invariant_ship_outcome_record,
-}
 
 
 def _bounded_detail(text: str) -> str:
     clean = logging_util.sanitize_diagnostic_line(redact.redact_outbound(text or ""))
     return clean[:500]
-
-
-def read_unavailable_outcome_detail(
-    *, implement_tmpdir: str, kind: str, head_sha: str, base_ref: str
-) -> str:
-    """Read diagnostic detail from a current, valid unavailable outcome."""
-    path_fn = _OUTCOME_PATH_BY_KEY.get(kind)
-    validator = _OUTCOME_VALIDATOR_BY_KEY.get(kind)
-    if path_fn is None or validator is None:
-        return ""
-    path = path_fn(Path(implement_tmpdir))
-    try:
-        mode: int = path.lstat().st_mode
-        if path.is_symlink() or not stat.S_ISREG(mode):
-            return ""
-        decoded: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        return ""
-    if validator(decoded) is not None or not isinstance(decoded, dict):
-        return ""
-    record: dict[str, object] = decoded  # type: ignore[assignment]  # reason: isinstance narrowed the JSON object
-    detail = record.get("detail", "")
-    if (
-        record.get("reason") != REASON_UNAVAILABLE
-        or record.get("head_sha") != head_sha
-        or record.get("base_ref") != base_ref
-        or not isinstance(detail, str)
-    ):
-        return ""
-    return _bounded_detail(detail)
-
-
-def mark_operator_waived_outcomes(
-    *, implement_tmpdir: str, kinds: frozenset[str]
-) -> frozenset[str]:
-    """Mark existing unavailable outcome sidecars for the waived kinds."""
-    if not implement_tmpdir or not kinds:
-        return frozenset()
-    tmpdir = Path(implement_tmpdir)
-    marked: set[str] = set()
-    for kind in kinds:
-        path_fn = _OUTCOME_PATH_BY_KEY.get(kind)
-        validator = _OUTCOME_VALIDATOR_BY_KEY.get(kind)
-        if path_fn is None or validator is None:
-            continue
-        path = path_fn(tmpdir)
-        try:
-            if not larch_io.trusted_file_present(path, root=tmpdir):
-                continue
-            raw = json.loads(
-                larch_io.read_trusted_text(path, root=tmpdir, reject_cr=True)
-            )
-        except (OSError, ValueError, json.JSONDecodeError):
-            continue
-        if not isinstance(raw, dict):
-            continue
-        data = cast("dict[str, object]", raw)
-        if validator(data) is not None:
-            continue
-        if (
-            data.get("outcome") != OUTCOME_DROPPED
-            or data.get("reason") != REASON_UNAVAILABLE
-        ):
-            continue
-        data["operator_waived"] = True
-        try:
-            larch_io.trusted_atomic_write(
-                path,
-                json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n",
-                root=tmpdir,
-            )
-        except OSError:
-            continue
-        marked.add(kind)
-    return frozenset(marked)
 
 
 def _classify_assessment_ship_outcome(  # noqa: C901 - descriptor policies preserve each legacy outcome branch

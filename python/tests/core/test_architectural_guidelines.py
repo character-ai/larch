@@ -2459,61 +2459,6 @@ def test_deterministic_clean_note_records_distinct_identities(tmp_path: Path) ->
     assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
 
 
-def test_unavailable_note_is_head_pinned_and_has_no_synthetic_identity(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_unavailable_note(
-        implement_tmpdir=tmpdir,
-        head_sha="head-a",
-        base_ref="origin/main",
-        kind=ag.INVARIANTS,
-    )
-
-    metadata = ag.invariant_durable_note_metadata(tmpdir)
-    assert metadata["NOTE_STATE"] == ag.config.NOTE_STATE_UNAVAILABLE
-    assert metadata["AUTHORED_DIFF_FINGERPRINT"] == ""
-    assert metadata["COVERED_DIFF_FINGERPRINT"] == ""
-    assert ag.invariant_note_consumable(implement_tmpdir=tmpdir, head_sha="head-a")
-    assert not ag.invariant_note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
-
-
-def test_unavailable_note_is_not_stale_at_its_pinned_head(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_unavailable_note(
-        implement_tmpdir=tmpdir,
-        head_sha="head-a",
-        base_ref="origin/main",
-    )
-
-    assert not ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=tmp_path)
-
-
-def test_unavailable_invariant_refresh_replaces_authored_violation(tmp_path: Path) -> None:
-    tmpdir = tmp_path / "implement"
-    ag.write_invariant_implement_note(
-        implement_tmpdir=tmpdir,
-        note_text="I-Test-1: violated\n",
-        head_sha="head-a",
-        metadata={
-            "NOTE_STATE": ag.config.NOTE_STATE_AUTHORED,
-            "AUTHORED_DIFF_FINGERPRINT": "author-fingerprint",
-            "COVERED_DIFF_FINGERPRINT": "covered-fingerprint",
-            "DIFF_FINGERPRINT": "covered-fingerprint",
-            "ASSESSMENT_KIND": "violation",
-        },
-        base_ref="origin/main",
-    )
-
-    ag.write_unavailable_note(
-        implement_tmpdir=tmpdir,
-        head_sha="head-b",
-        base_ref="origin/main",
-        kind=ag.INVARIANTS,
-    )
-
-    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == "Architectural assessment unavailable."
-    assert ag.invariant_durable_note_metadata(tmpdir)["NOTE_STATE"] == ag.config.NOTE_STATE_UNAVAILABLE
-
-
 @pytest.mark.parametrize(
     ("validator", "record"),
     [

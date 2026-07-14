@@ -262,24 +262,6 @@ JSON
     assert "MODEL=sentinel-cursor-model" in token_record
 
 
-def test_single_attempt_mode_bypasses_all_shared_retry_classes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    calls = 0
-
-    def one_failure(**_kwargs: object) -> agents.RunExternalAgentResult:
-        nonlocal calls
-        calls += 1
-        return agents.RunExternalAgentResult(7, tmp_path / "out.txt")
-
-    monkeypatch.setattr(_review_launcher, "_review_run_wrapper_attempt", one_failure)
-    result, auth_attempt, transient_attempt = agents._review_run_with_retries(
-        tool="cursor", output=tmp_path / "out.txt", timeout_seconds=1,
-        cmd=("cursor",), single_attempt=True,
-    )
-
-    assert result.exit_code == 7
-    assert (auth_attempt, transient_attempt, calls) == (1, 1, 1)
-
-
 def test_cursor_plan_review_launch_keeps_no_issues_with_inlined_plan_input(tmp_path: Path) -> None:
     bin_dir = _stub_bin(
         tmp_path,

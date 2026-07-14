@@ -6473,20 +6473,7 @@ def _present_invariants_file(
     )
 
 
-def _write_assessment_waiver(
-    tmp_path: Path, *, kinds: list[str], run_id: str = "run-abc"
-) -> None:
-    (tmp_path / "session-env.sh").write_text(
-        f"LARCH_RUN_ID={run_id}\n", encoding="utf-8"
-    )
-    (tmp_path / config.ASSESSMENT_OPERATOR_WAIVER_FILENAME).write_text(
-        json.dumps({"schema_version": "1", "kinds": kinds, "run_id": run_id}) + "\n",
-        encoding="utf-8",
-    )
-
-
-def test_combined_assessment_result_violation_is_not_waivable(tmp_path: Path) -> None:
-    _write_assessment_waiver(tmp_path, kinds=["invariants"])
+def test_combined_assessment_result_violation_bails(tmp_path: Path) -> None:
     gates = ship._AssessmentGatePair(
         invariants=ship.InvariantsGateResult(
             assessment_kind="violation", note="violated I-Test-1"
@@ -6562,8 +6549,15 @@ def test_load_or_prepare_guidelines_note_routes_legacy_unavailable_to_assessment
     tmp_path: Path,
 ) -> None:
     tmpdir = tmp_path / "implement"
-    ship.architectural_guidelines.write_unavailable_note(
-        implement_tmpdir=tmpdir, head_sha="head-a", base_ref="origin/main",
+    # Fabricate a legacy `unavailable` durable note (the production writer was
+    # retired in #7219); the compose read path must still route it to a fresh
+    # assessment rather than composing a PR with zero assessment (#7216).
+    ship.architectural_guidelines.write_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="Architectural assessment unavailable.",
+        head_sha="head-a",
+        metadata={"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE, "ASSESSMENT_KIND": ""},
+        base_ref="origin/main",
     )
     result = ship_guidelines.load_or_prepare_guidelines_note(
         implement_tmpdir=str(tmpdir), head_sha="head-a", base_ref="origin/main",
@@ -6697,40 +6691,6 @@ def test_invariants_gate_stalls_on_genuine_dropped_outcome(
             base_ref="main",
             resume=_pre_pr_resume_plan(),
         )
-
-
-def test_unavailable_detail_reader_rejects_untrusted_outcomes(tmp_path: Path) -> None:
-    outcome_path = tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
-    _ = ship_guidelines.write_guideline_ship_outcome(
-        implement_tmpdir=str(tmp_path),
-        result=ship.GuidelinesGateResult(detail="trusted diagnostic", guidelines_status="present", note_state=config.NOTE_STATE_UNAVAILABLE),
-        head_sha="abc123",
-        base_ref="origin/main",
-    )
-    read_detail = ship_guidelines.read_unavailable_outcome_detail
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == "trusted diagnostic"
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="stale", base_ref="origin/main") == ""
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/release") == ""
-
-    record = json.loads(outcome_path.read_text(encoding="utf-8"))
-    del record["detail"]
-    outcome_path.write_text(json.dumps(record), encoding="utf-8")
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
-    record["detail"] = "wrong reason"
-    record["reason"] = "unknown"
-    outcome_path.write_text(json.dumps(record), encoding="utf-8")
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
-
-    outcome_path.write_text("not json\n", encoding="utf-8")
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
-    outcome_path.unlink()
-    outcome_path.mkdir()
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
-    outcome_path.rmdir()
-    target = tmp_path / "outcome-target.json"
-    target.write_text("{}\n", encoding="utf-8")
-    outcome_path.symlink_to(target)
-    assert read_detail(implement_tmpdir=str(tmp_path), kind="guidelines", head_sha="abc123", base_ref="origin/main") == ""
 
 
 def test_load_or_prepare_guidelines_note_drops_on_redaction_failure(
@@ -8304,3 +8264,73 @@ def test_guideline_outcome_validator_rejects_deterministic_clean_paired_with_dev
         "assessment_kind": "deviation",
     })
     assert error is not None
+
+
+def _ci_fix_result(reason: str, run_id: str) -> ship.ShipResult:
+    return ship.ShipResult(Outcome.NEEDS_USER_INPUT, needs_user_reason=reason, failed_run_id=run_id)
+
+
+def test_distill_ci_errors_skips_non_ci_fix_reason(tmp_path: Path) -> None:
+    # #7192/#7219: an architectural-invariants-violation bail is not a ci-fix
+    # reason, so no distill runs and no digest/class/count is produced.
+    result = _ci_fix_result("architectural-invariants-violation", "123456")
+    assert ship._distill_ci_errors_for_result(ctx=_ctx(tmp_path), result=result) == ("", "", 0)
+
+
+@pytest.mark.parametrize("run_id", ["", "not-a-number", "12x34"])
+def test_distill_ci_errors_skips_non_digit_run_id(tmp_path: Path, run_id: str) -> None:
+    # #7192: a ci-fix (main scope) reason with an empty or non-digit run id cannot distill.
+    result = _ci_fix_result(config.NEEDS_USER_MAIN_CI_FAIL, run_id)
+    assert ship._distill_ci_errors_for_result(ctx=_ctx(tmp_path), result=result) == ("", "", 0)
+
+
+def test_distill_ci_errors_main_scope_returns_file_and_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #7192/#7219: a main-ci-fail bail with a digit run id distills; the digest
+    # path and the failing-job count are both returned for the handoff.
+    result = _ci_fix_result(config.NEEDS_USER_MAIN_CI_FAIL, "123456")
+    monkeypatch.setattr(
+        ship.ci, "distill_log",
+        lambda **kwargs: ship.ci.DistillOutcome(
+            exit_code=0, status="ok", output=str(kwargs["output"]),
+            failed_jobs_count=4, bail_class="",
+        ),
+    )
+    ci_errors_file, distill_class, count = ship._distill_ci_errors_for_result(ctx=_ctx(tmp_path), result=result)
+    assert ci_errors_file.endswith("ci-errors-123456.md")
+    assert distill_class == ""
+    assert count == 4
+
+
+def test_distill_ci_errors_propagates_class_and_count_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #7192/#7219: a distill failure returns an empty digest path, the bail class,
+    # and the failing-job count.
+    result = _ci_fix_result(config.NEEDS_USER_FLAKY_DEFECT_UNFIXED, "123456")
+    monkeypatch.setattr(
+        ship.ci, "distill_log",
+        lambda **kwargs: ship.ci.DistillOutcome(
+            exit_code=1, status="error", output=str(kwargs["output"]),
+            failed_jobs_count=2, bail_class=config.CI_FIXER_STATUS_HEALTH_BAIL,
+        ),
+    )
+    ci_errors_file, distill_class, count = ship._distill_ci_errors_for_result(ctx=_ctx(tmp_path), result=result)
+    assert ci_errors_file == ""
+    assert distill_class == config.CI_FIXER_STATUS_HEALTH_BAIL
+    assert count == 2
+
+
+def test_distill_ci_errors_exception_never_blocks_bail(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #7192: a distill exception is swallowed into a distill-exception class with a
+    # zero count so it can never block the ci-fix bail.
+    result = _ci_fix_result(config.NEEDS_USER_MAIN_CI_FAIL, "123456")
+
+    def _boom(**_kwargs: object) -> ship.ci.DistillOutcome:
+        raise RuntimeError("gh unavailable")
+
+    monkeypatch.setattr(ship.ci, "distill_log", _boom)
+    assert ship._distill_ci_errors_for_result(ctx=_ctx(tmp_path), result=result) == ("", "distill-exception", 0)

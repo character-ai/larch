@@ -115,7 +115,6 @@ def _review_parser() -> argparse.ArgumentParser:
     parser.add_argument("--default-model", default="")
     parser.add_argument("--cursor-model", default=None)
     parser.add_argument("--difficulty", default="")
-    parser.add_argument("--single-attempt", action="store_true")
     return parser
 
 
@@ -665,7 +664,6 @@ def _review_run_with_retries(
     stdout_path: Path | None = None,
     stderr_path: Path | None = None,
     stderr_sink: str = "",
-    single_attempt: bool = False,
 ) -> tuple[RunExternalAgentResult, int, int]:
     max_auth = _auth_retry_limit()
     auth_attempt = 1
@@ -683,8 +681,6 @@ def _review_run_with_retries(
             stderr_path=stderr_path,
             stderr_sink=stderr_sink,
         )
-        if single_attempt:
-            return result, auth_attempt, transient_attempt
         if tool == "codex" and result.exit_code != 0 and stdout_path is not None and stderr_path is not None:
             _mirror_codex_quota_from_events(events=stdout_path, sidecar=stderr_path)
         if tool == "codex":
@@ -877,7 +873,6 @@ def _review_launch_codex(*, args: argparse.Namespace, prompt: str) -> int:
                 stdout_path=paths.events,
                 stderr_path=paths.sidecar,
                 stderr_sink=args.stderr_sink,
-                single_attempt=bool(getattr(args, "single_attempt", False)),
             )
     events = paths.events
     if not events.is_file() or events.stat().st_size == 0:
@@ -1209,7 +1204,6 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
             cmd=cmd,
             capture_stdout_only=True,
             stderr_sink=args.stderr_sink,
-            single_attempt=bool(getattr(args, "single_attempt", False)),
         )
     finally:
         _review_cleanup_cursor_config_dir(cfg_tmp=cfg_tmp, old_cfg=old_cfg)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import subprocess
 import sys
 from pathlib import Path
 
@@ -114,6 +115,27 @@ def test_materialize_main_usage_error(capsys: pytest.CaptureFixture[str]) -> Non
     assert out[0] == "ASSESSMENT_MATERIALIZE_STATUS=usage-error"
 
 
+def test_materialize_main_surfaces_log_pending_distinctly(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    # #7219: a `log-pending` deviation record (outcome persisted, execution-issues
+    # warning append failed) is surfaced in ASSESSMENT_LOG_PENDING_KINDS rather than
+    # lumped into ASSESSMENT_DETERMINISTIC_KINDS, where the orchestrator would treat
+    # it as fully resolved and silently drop the deviation warning.
+    def _fake_materialize(**_kwargs: object) -> tuple[dict[str, str], list[assessment.MaterializedEvidence]]:
+        return {"guidelines": "log-pending", "invariants": "handled"}, []
+
+    monkeypatch.setattr(assessment, "materialize", _fake_materialize)
+    assert assessment.materialize_main([
+        "--kind", "invariants", "--kind", "guidelines",
+        "--repo-root", str(tmp_path), "--implement-tmpdir", str(tmp_path),
+    ]) == config.EXIT_OK
+    out = capsys.readouterr().out.splitlines()
+    assert "ASSESSMENT_LOG_PENDING_KINDS=guidelines" in out
+    assert "ASSESSMENT_DETERMINISTIC_KINDS=invariants" in out
+    assert "ASSESSMENT_PENDING_KINDS=" in out
+
+
 def _stub_submit(monkeypatch: pytest.MonkeyPatch, evidence: assessment.MaterializedEvidence, *, head_sha: str | None = None) -> list[assessment.AssessmentResult]:
     monkeypatch.setattr(assessment, "validate_materialization", lambda *_args, **_kwargs: evidence)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
     monkeypatch.setattr(assessment, "_git_read", lambda *_args, **_kwargs: head_sha if head_sha is not None else evidence.head_sha)  # type: ignore[reportUnknownLambdaType, reportUnknownArgumentType]
@@ -164,6 +186,80 @@ def test_submit_rejects_empty_or_oversized_note(monkeypatch: pytest.MonkeyPatch,
     _ = _stub_submit(monkeypatch, evidence)
     with pytest.raises(ValueError, match="empty or oversized"):
         _ = assessment.submit(kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=note, repo_root=tmp_path, implement_tmpdir=tmp_path)
+
+
+def test_submit_accepts_note_at_exact_cap_boundary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # #7219: a note of exactly _MAX_ASSESSMENT_CHARS is at the inclusive boundary
+    # and is accepted; only a strictly longer note is rejected (oversized test above).
+    evidence = _run_evidence(tmp_path)
+    persisted = _stub_submit(monkeypatch, evidence)
+    note = "x" * assessment._MAX_ASSESSMENT_CHARS  # pyright: ignore[reportPrivateUsage]
+    result = assessment.submit(
+        kind=config.ASSESSMENT_KIND_GUIDELINES, state="clean", note=note,
+        repo_root=tmp_path, implement_tmpdir=tmp_path,
+    )
+    assert result.state == "clean"
+    assert persisted
+    assert len(persisted[0].assessment) == assessment._MAX_ASSESSMENT_CHARS  # pyright: ignore[reportPrivateUsage]
+
+
+def _git(cwd: Path, *args: str) -> None:
+    completed = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
+    assert completed.returncode == 0, completed.stderr or completed.stdout
+
+
+def _real_repo_with_origin_main(tmp_path: Path) -> tuple[Path, str]:
+    repo = tmp_path / "repo"
+    repo.mkdir(parents=True)
+    _git(repo, "init")
+    _git(repo, "config", "user.name", "Larch Test")
+    _git(repo, "config", "user.email", "larch@example.invalid")
+    _ = (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "branch", "-M", "main")
+    _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True, capture_output=True, check=False
+    ).stdout.strip()
+    return repo, head
+
+
+def test_submit_main_diff_mismatch_is_failed_not_head_drift(
+    capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    # #7219: identity revalidation runs for real (no validate_materialization stub).
+    # A frozen-diff mismatch at an unchanged HEAD is a `failed` (exit 1), not the
+    # HEAD-drift signal (exit 10); submit_main must keep the two distinct.
+    repo, head = _real_repo_with_origin_main(tmp_path)
+    tmpdir = tmp_path / "implement"
+    tmpdir.mkdir()
+    ag = assessment.architectural_guidelines
+    _ = (repo / ag.GUIDELINES_FILENAME).write_text("### G-Py-4: Fail loudly\n", encoding="utf-8")
+    diff_snapshot = tmpdir / ag.MATERIALIZED_DIFF
+    _ = diff_snapshot.write_text("diff --git a/app.py b/app.py\n", encoding="utf-8")
+    _ = (tmpdir / ag.MATERIALIZE_ENV).write_text(
+        "STATUS=present\n"
+        f"HEAD_SHA={head}\n"
+        "BASE_REF=origin/main\n"
+        f"DIFF_FINGERPRINT={'0' * 64}\n"  # deliberately does not match the frozen snapshot
+        f"DIFF_SNAPSHOT={diff_snapshot}\n"
+        "GUIDELINES_STATUS=present\n"
+        f"GUIDELINES_PATH={repo / ag.GUIDELINES_FILENAME}\n",
+        encoding="utf-8",
+    )
+    note = tmpdir / "note.md"
+    _ = note.write_text("clean", encoding="utf-8")
+
+    rc = assessment.submit_main([
+        "--kind", "guidelines", "--state", "clean", "--note-file", str(note),
+        "--repo-root", str(repo), "--implement-tmpdir", str(tmpdir),
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == config.EXIT_INTERNAL_ERROR
+    assert rc != 10  # not the HEAD-drift exit code
+    assert "ASSESSMENT_STATUS=failed" in out
 
 
 def test_submit_redacts_note_before_persist(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

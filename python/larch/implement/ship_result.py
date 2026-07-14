@@ -248,6 +248,7 @@ def emit_result(
     result: ShipResult,
     ci_errors_file: str = "",
     ci_errors_distill_class: str = "",
+    failed_jobs_count: int = 0,
 ) -> None:
     payload = _redacted_result_payload(result)
     # CI-failure digest path injected raw (not redacted): route-exit reads these
@@ -257,6 +258,11 @@ def emit_result(
         payload["ci_errors_file"] = ci_errors_file
     if ci_errors_distill_class:
         payload["ci_errors_distill_class"] = ci_errors_distill_class
+    # Failing-job count forwarded to the ci-fix handoff as FAILED_JOBS_COUNT
+    # evidence for the main agent (#7192, #7219). A zero/absent value renders as
+    # FAILED_JOBS_COUNT=0 on the ci-fix route.
+    if failed_jobs_count:
+        payload["failed_jobs_count"] = failed_jobs_count
     stream = logging_util.contract_stream()
     try:
         print(json.dumps(payload, sort_keys=True), file=stream)

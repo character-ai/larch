@@ -828,6 +828,64 @@ def test_ship_route_exit_ci_fix_forwards_distill_class_on_failure(
     assert "CI_ERRORS_DISTILL_CLASS=github-log-failure\n" in env
 
 
+def test_ship_route_exit_ci_fix_forwards_failed_jobs_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # #7219: the driver distills the failing-job count and injects it into the
+    # result payload; route-exit forwards it into the ci-fix handoff as the
+    # FAILED_JOBS_COUNT evidence KV named in skills/implement/SKILL.md Step 8.
+    tmp = make_implement_tmpdir(tmp_path)
+    digest = tmp / "ci-errors-12345.md"
+    digest.write_text("digest", encoding="utf-8")
+
+    exit_rc, _out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        3,
+        {
+            "outcome": "NEEDS_USER_INPUT",
+            "needs_user_reason": "main-ci-fail",
+            "failed_run_id": "12345",
+            "ci_errors_file": str(digest),
+            "failed_jobs_count": 3,
+        },
+    )
+
+    assert exit_rc == 0
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "FAILED_JOBS_COUNT=3\n" in env
+
+
+def test_ship_route_exit_ci_fix_failed_jobs_count_defaults_to_zero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # #7219: a ci-fix bail with no distilled count still emits FAILED_JOBS_COUNT=0
+    # so the evidence KV is always present on the route, mirroring CI_ERRORS_FILE.
+    tmp = make_implement_tmpdir(tmp_path)
+
+    exit_rc, _out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        3,
+        {
+            "outcome": "NEEDS_USER_INPUT",
+            "needs_user_reason": "flaky-defect-unfixed",
+            "failed_run_id": "67890",
+            "ci_errors_distill_class": "github-log-failure",
+        },
+    )
+
+    assert exit_rc == 0
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "FAILED_JOBS_COUNT=0\n" in env
+
+
 @pytest.mark.parametrize(
     ("action", "expected"),
     [

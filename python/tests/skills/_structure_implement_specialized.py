@@ -709,6 +709,30 @@ def run(repo_root: Path) -> list[str]:
                 "CI fix round <N>",
             ]:
                 require_text(agent_text, needle, "agents/ci-fixer.md contract")
+        arch_assessor_agent = Path("agents/arch-assessor.md")
+        if not arch_assessor_agent.is_file():
+            checks.append("missing agents/arch-assessor.md")
+        else:
+            agent_text = arch_assessor_agent.read_text()
+            for needle in [
+                "name: arch-assessor",
+                "You have only `Read`, `Grep`, and `Glob`.",
+                "ASSESSMENT_KIND=<kind>",
+                "ASSESSMENT_STATE=<state>",
+            ]:
+                require_text(agent_text, needle, "agents/arch-assessor.md contract")
+        claude_implementer_agent = Path("agents/claude-implementer.md")
+        if not claude_implementer_agent.is_file():
+            checks.append("missing agents/claude-implementer.md")
+        else:
+            agent_text = claude_implementer_agent.read_text()
+            for needle in [
+                "name: claude-implementer",
+                "CODER_RESULT=pushed|no-progress|bail",
+                "CODER_COMMIT=<sha or empty>",
+                "CODER_SUMMARY=<one line>",
+            ]:
+                require_text(agent_text, needle, "agents/claude-implementer.md contract")
         write_final_ref = Path("skills/implement/scripts/write-final-report.md")
         if write_final_ref.is_file():
             write_final_text = write_final_ref.read_text()
@@ -995,4 +1019,4 @@ def run(repo_root: Path) -> list[str]:
 
 
 LEGACY_LABELS: frozenset[str] = assertion_labels(__file__)
-LEGACY_ASSERTION_LABEL_COUNT = 354
+LEGACY_ASSERTION_LABEL_COUNT = 358
