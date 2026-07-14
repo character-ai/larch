@@ -1320,10 +1320,10 @@ def test_step18_restore_stall_step_mismatch(tmp_path: Path) -> None:
     assert all(line is not None for line in (mark_line, flush_line, capture_line, restore_line, teardown_line)), (
         "ordering log missing expected rows"
     )
-    assert mark_line < flush_line, "closing mark must precede execution-issues safety net"  # type: ignore[operator]
-    assert flush_line < capture_line, "execution-issues safety net must precede transcript safety net"  # type: ignore[operator]
-    assert capture_line < restore_line, "transcript safety net must precede restore-finalize-state"  # type: ignore[operator]
-    assert restore_line < teardown_line, "restore-finalize-state must precede teardown"  # type: ignore[operator]
+    assert mark_line < flush_line, "closing mark must precede execution-issues safety net"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert flush_line < capture_line, "execution-issues safety net must precede transcript safety net"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert capture_line < restore_line, "transcript safety net must precede restore-finalize-state"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
+    assert restore_line < teardown_line, "restore-finalize-state must precede teardown"  # type: ignore[operator]  # pyright cannot narrow int | None across an all(...is not None...) assertion boundary
 
 
 def test_step18_restore_aligned_skips(tmp_path: Path) -> None:
