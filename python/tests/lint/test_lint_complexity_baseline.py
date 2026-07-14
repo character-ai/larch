@@ -888,8 +888,9 @@ def test_write_growth_appends_history_and_preserves_manual_override(
     written = lcb.load_baseline(tmp_path / "python" / "complexity-baseline.json")
     written_record = written[0]
     assert written_record.get("added_at") == "2026-07-12"
-    assert written_record.get("history") is not None
-    assert written_record["history"][-1] == {"date": lcb.utc_today().isoformat(), "metric": 18}
+    history = written_record.get("history")
+    assert history is not None
+    assert history[-1] == {"date": lcb.utc_today().isoformat(), "metric": 18}
     assert written_record.get("reason") == "urgent API"
     assert written_record.get("source_issue") == 7156
     assert written_record.get("operator_override") == {
