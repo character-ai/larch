@@ -110,6 +110,9 @@ def _validate_source_relpath(
     if normalized.startswith(("/", "~")):
         msg = f"{fixture_path}: case {case_label!r} source path must be relative: {relpath!r}"
         raise AssertionError(msg)
+    if len(normalized) >= 2 and normalized[0].isalpha() and normalized[1] == ":":
+        msg = f"{fixture_path}: case {case_label!r} source path must not be drive-qualified: {relpath!r}"
+        raise AssertionError(msg)
     parts: list[str] = normalized.split("/")
     if "" in parts or "." in parts or ".." in parts:
         msg = f"{fixture_path}: case {case_label!r} source path is unsafe: {relpath!r}"
@@ -559,6 +562,27 @@ def test_load_rejects_absolute_source_path(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     with pytest.raises(AssertionError, match="must be relative"):
+        _ = load_equivalence_fixture(path)
+
+
+def test_load_rejects_drive_qualified_source_path(tmp_path: Path) -> None:
+    path: Path = tmp_path / "drive.json"
+    _ = path.write_text(
+        json.dumps(
+            {
+                "rule": lint_md.SUPPRESSION,
+                "cases": [
+                    {
+                        "label": "x",
+                        "sources": {"C:/outside.py": "x = 1\n"},
+                        "expected": [],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(AssertionError, match="must not be drive-qualified"):
         _ = load_equivalence_fixture(path)
 
 
