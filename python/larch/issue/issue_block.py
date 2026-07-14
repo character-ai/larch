@@ -145,9 +145,9 @@ def _json_object(text: str, *, context: str, exit_code: int) -> dict[str, object
 
 def _lookup_nodes(args: MutationArgs) -> tuple[str, str]:
     owner, name = args.repo.split("/", 1)
-    lookup = proc.run(
+    lookup = gh.command(
+        proc,
         [
-            "gh",
             "api",
             "graphql",
             "-F",
@@ -182,9 +182,9 @@ def _lookup_nodes(args: MutationArgs) -> tuple[str, str]:
 
 
 def _relation_present(*, repo: str, issue: int, blocker: int) -> bool:
-    result = proc.run(
+    result = gh.command(
+        proc,
         [
-            "gh",
             "api",
             f"repos/{repo}/issues/{issue}/dependencies/blocked_by",
             "--paginate",
@@ -259,9 +259,9 @@ def _mutate_dependency(args: MutationArgs, *, remove: bool) -> str:
         return args.expected_updated_at
     node_a, node_b = _lookup_nodes(args)
     _triage_precondition(args)
-    mutation = proc.run(
+    mutation = gh.command(
+        proc,
         [
-            "gh",
             "api",
             "graphql",
             "-F",

@@ -16,7 +16,9 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import redact
+from larch.core import proc
 from larch.design import design_publish
+from larch.git import gh
 from larch.design.design_summary import resolve_summary_mode
 from larch.report import run_logs
 
@@ -459,9 +461,9 @@ def _publish_design_logs(
             f"Merged once required CI checks pass (issue #{request.issue}).\n",
             encoding="utf-8",
         )
-        pr = _run(
+        pr = gh.command(
+            proc,
             [
-                "gh",
                 "pr",
                 "create",
                 "--head",

@@ -1068,7 +1068,7 @@ def test_high_risk_oos_provisions_and_applies_correctness_label(
     assert rc == 0
     create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
     assert any("--label" in call and "oos-correctness" in call for call in create_calls)
-    assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
+    assert gh_calls[0][:3] == ["label", "create", "oos-correctness"]
     assert label_calls == [("101", "oos-correctness", "owner/repo")]
 
 
@@ -1252,7 +1252,7 @@ def test_cap_rollup_high_risk_receives_correctness_label(
 
     assert rc == 0
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
-    assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
+    assert gh_calls[0][:3] == ["label", "create", "oos-correctness"]
     assert ("101", "oos-correctness", "owner/repo") in label_calls
 
 

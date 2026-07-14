@@ -269,7 +269,7 @@ def test_bugs_backlog_nudge_uses_scan_started_at_when_present(
     monkeypatch.setattr(audit_runs.proc, "run", fake_run)
 
     assert audit_runs.bugs_backlog_nudge_main(["--repo", "o/r", "--root", str(tmp_path)]) == 0
-    assert calls[0] == [
+    assert calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh", "issue", "list", "--repo", "o/r", "--state", "closed", "--json",
         "number,title,closedAt", "--search", "[BUG] in:title closed:>2026-07-09T01:00:00Z",
         "--limit", "100000",
@@ -963,13 +963,13 @@ def test_close_priors_reports_partial_success(monkeypatch, capsys):
     ])
     class PartialCloseRunner:
         def run(self, argv, **_kwargs):
-            if argv[:3] == ["gh","issue","list"]:
+            if argv[:3] == ["gh","issue","list"]:  # lint-gh-argv-literal: ok fixture assertion
                 return cr(("gh",), stdout=prior)
-            if argv[:4] == ["gh","issue","comment","7"]:
+            if argv[:4] == ["gh","issue","comment","7"]:  # lint-gh-argv-literal: ok fixture assertion
                 return cr(("gh",))
-            if argv[:4] == ["gh","issue","close","7"]:
+            if argv[:4] == ["gh","issue","close","7"]:  # lint-gh-argv-literal: ok fixture assertion
                 return cr(("gh",))
-            if argv[:4] == ["gh","issue","comment","8"]:
+            if argv[:4] == ["gh","issue","comment","8"]:  # lint-gh-argv-literal: ok fixture assertion
                 return cr(("gh",), stderr="boom", rc=1)
             raise AssertionError(f"unexpected argv: {argv}")
     monkeypatch.setattr(audit_runs.proc, "run", PartialCloseRunner().run)
@@ -1075,15 +1075,15 @@ def test_preflight_missing_repo_uses_default_kv(monkeypatch, capsys):
             return cr(("git",), stdout="")
         if argv[:3] == ["git","config","--get"]:
             return cr(("git",), stdout="https://github.com/character-ai/larch.git\n")
-        if argv[:3] == ["gh","repo","view"]:
+        if argv[:3] == ["gh","repo","view"]:  # lint-gh-argv-literal: ok fixture assertion
             return cr(("gh",), stdout='{"url":"https://github.com/character-ai/larch"}\n')
-        if argv[:3] == ["gh","issue","list"]:
+        if argv[:3] == ["gh","issue","list"]:  # lint-gh-argv-literal: ok fixture assertion
             return cr(("gh",), stdout="[]")
         raise AssertionError(f"unexpected argv: {argv}")
     monkeypatch.setattr(audit_runs.proc, "run", run)
     assert audit_runs.preflight_main(["--skill","implement"]) == 0
     assert "PREFLIGHT_OK=true" in capsys.readouterr().out
-    assert any(call[:3] == ["gh","repo","view"] and call[3] == "character-ai/larch" for call in calls)
+    assert any(call[:3] == ["gh","repo","view"] and call[3] == "character-ai/larch" for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_preflight_allow_concurrent_skips_recent_audit_probe(monkeypatch, capsys):

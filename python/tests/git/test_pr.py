@@ -293,7 +293,7 @@ def test_ensure_pr_threads_base_to_create() -> None:
     )
     assert result.number == 10
     create_call = next(
-        call for call in runner.calls if call[:3] == ["gh", "pr", "create"]
+        call for call in runner.calls if call[:3] == ["gh", "pr", "create"]  # lint-gh-argv-literal: ok fixture assertion
     )
     assert "--base" in create_call
     assert "main" in create_call
@@ -401,7 +401,7 @@ def test_create_pr_parity_omits_repo_when_unresolved() -> None:
         title="t",
         body="body",
     )
-    create_calls = [call for call in runner.calls if call[:3] == ["gh", "pr", "create"]]
+    create_calls = [call for call in runner.calls if call[:3] == ["gh", "pr", "create"]]  # lint-gh-argv-literal: ok fixture assertion
     assert create_calls
     assert "--repo" not in create_calls[0]
     assert result.exit_code == 0
@@ -724,7 +724,7 @@ def _mutating_calls(runner: RecordingRunner) -> list[list[str]]:
         call
         for call in runner.calls
         if call[:3]
-        in (["git", "push", "-u"], ["gh", "pr", "create"], ["gh", "pr", "edit"])
+        in (["git", "push", "-u"], ["gh", "pr", "create"], ["gh", "pr", "edit"])  # lint-gh-argv-literal: ok fixture assertion
     ]
 
 

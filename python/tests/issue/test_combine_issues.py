@@ -20,7 +20,7 @@ class Runner:
 
     def run(self, argv, **_kwargs):
         self.calls.append(list(argv))
-        if argv[:3] == ["gh", "issue", "list"]:
+        if argv[:3] == ["gh", "issue", "list"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv), 0, self.stdout, "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -37,7 +37,7 @@ def test_fetch_filters_busy_titles(monkeypatch, capsys):
     runner = Runner(json.dumps(issues))
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
     assert combine_issues.fetch_main(["--repo", "o/r"]) == 0
-    assert runner.calls == [[
+    assert runner.calls == [[  # lint-gh-argv-literal: ok fixture assertion
         "gh", "issue", "list", "--repo", "o/r", "--state", "open", "--json",
         "number,title,body,labels", "--limit", "200",
     ]]
@@ -104,7 +104,7 @@ def test_apply_rejects_malformed_source_issues_before_create(monkeypatch, tmp_pa
         "--defer-close",
     ]) == 1
     assert "ERROR=--source-issues values must be positive integers" in capsys.readouterr().err
-    assert not any(call[:3] == ["gh", "issue", "create"] for call in runner.calls)
+    assert not any(call[:3] == ["gh", "issue", "create"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 class ApplyRunner:
@@ -113,9 +113,9 @@ class ApplyRunner:
 
     def run(self, argv, **_kwargs):
         self.calls.append(list(argv))
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv), 0, "https://github.com/o/r/issues/99\n", "", 0.01)
-        if argv[:3] == ["gh", "issue", "close"]:
+        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv), 0, "", "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -125,7 +125,7 @@ class FailingCreateRunner:
         self.result = result
 
     def run(self, argv, **_kwargs):
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return self.result
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -162,16 +162,16 @@ def test_apply_create_and_close_one_attempt_per_mutation(monkeypatch, tmp_path: 
     assert out["DRY_RUN"] == "false"
     assert out["COMBINED_ISSUE"] == "99"
     assert out["CLOSED_ISSUES"] == "2"
-    assert sum(c[:4] == ["gh", "issue", "close", "1"] for c in runner.calls) == 1
-    assert sum(c[:4] == ["gh", "issue", "close", "2"] for c in runner.calls) == 1
+    assert sum(c[:4] == ["gh", "issue", "close", "1"] for c in runner.calls) == 1  # lint-gh-argv-literal: ok fixture assertion
+    assert sum(c[:4] == ["gh", "issue", "close", "2"] for c in runner.calls) == 1  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_apply_close_warning_redacts_failed_close_stderr(monkeypatch, tmp_path: Path, capsys):
     class CloseFailRunner:
         def run(self, argv, **_kwargs):
-            if argv[:3] == ["gh", "issue", "create"]:
+            if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 0, "https://github.com/o/r/issues/99\n", "", 0.01)
-            if argv[:3] == ["gh", "issue", "close"]:
+            if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
             return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -204,7 +204,7 @@ def test_issue_blocking_read_pins_native_endpoint_argv():
     runner = GhReadRunner()
     result = gh.issue_blocking_read(runner, "7", repo="o/r")
     assert result.returncode == 0
-    assert runner.calls == [["gh", "api", "repos/o/r/issues/7/dependencies/blocking", "--paginate"]]
+    assert runner.calls == [["gh", "api", "repos/o/r/issues/7/dependencies/blocking", "--paginate"]]  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_fetch_deps_reads_both_directions_and_marks_blocking_failure(monkeypatch, capsys):
@@ -784,7 +784,7 @@ def test_apply_defer_close_creates_without_closing(monkeypatch, tmp_path: Path, 
     assert out["SOURCE_TO_COMBINED_JSON_FRAGMENT"] == '{"1":99,"2":99}'
     assert out["CLOSING_DEFERRED"] == "true"
     assert out["CLOSED_ISSUES"] == "0"
-    assert not any(call[:3] == ["gh", "issue", "close"] for call in runner.calls)
+    assert not any(call[:3] == ["gh", "issue", "close"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_merge_source_to_combined_fragments_promotes_sorted_unique_arrays():
@@ -804,8 +804,8 @@ def test_close_sources_reuses_close_comment_and_counts(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "CLOSED_ISSUES=2" in out
     assert "PARTIAL=false" in out
-    close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]
-    assert close_calls[0][:7] == ["gh", "issue", "close", "1", "--repo", "o/r", "--comment"]
+    close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]  # lint-gh-argv-literal: ok fixture assertion
+    assert close_calls[0][:7] == ["gh", "issue", "close", "1", "--repo", "o/r", "--comment"]  # lint-gh-argv-literal: ok fixture assertion
     assert "Combined into #99" in close_calls[0][7]
     assert "larch:combined-away source=#1 target=#99" in close_calls[0][7]
     assert len(close_calls) == 2
@@ -818,11 +818,11 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
 
         def run(self, argv, **_kwargs):
             self.calls.append(list(argv))
-            if argv[:3] == ["gh", "issue", "view"]:
+            if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok fixture assertion
                 issue = argv[3]
                 title = "[IMPLEMENTING] busy" if issue == "1" else "ready"
                 return CommandResult(tuple(argv), 0, json.dumps({"title": title, "state": "OPEN"}), "", 0.01)
-            if argv[:3] == ["gh", "issue", "close"]:
+            if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 0, "", "", 0.01)
             return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -833,9 +833,9 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
     assert "CLOSED_ISSUES=1" in captured.out
     assert "PARTIAL=true" in captured.out
     assert "Skipped #1: source issue has busy title prefix" in captured.err
-    close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]
+    close_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "close"]]  # lint-gh-argv-literal: ok fixture assertion
     assert len(close_calls) == 1
-    assert close_calls[0][:7] == ["gh", "issue", "close", "2", "--repo", "o/r", "--comment"]
+    assert close_calls[0][:7] == ["gh", "issue", "close", "2", "--repo", "o/r", "--comment"]  # lint-gh-argv-literal: ok fixture assertion
     assert "Combined into #99" in close_calls[0][7]
     assert "larch:combined-away source=#2 target=#99" in close_calls[0][7]
 
@@ -843,7 +843,7 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
 def test_close_sources_warning_redacts_failed_close_stderr(monkeypatch, capsys):
     class CloseSourcesFailRunner:
         def run(self, argv, **_kwargs):
-            if argv[:3] == ["gh", "issue", "close"]:
+            if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
             return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -867,7 +867,7 @@ def test_close_stale_rejects_invalid_reason_before_close(monkeypatch, capsys):
     monkeypatch.setattr(combine_issues.proc, "run", run)
     assert combine_issues.close_stale_main(["--repo", "o/r", "--issues", "1", "--reason", "stale"]) == 1
     assert "ERROR=--reason must be one of: completed, not planned" in capsys.readouterr().err
-    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)
+    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_close_stale_rejects_missing_comment_file_before_close(monkeypatch, tmp_path: Path, capsys):
@@ -886,7 +886,7 @@ def test_close_stale_rejects_missing_comment_file_before_close(monkeypatch, tmp_
         "--comment-file", str(missing),
     ]) == 1
     assert "ERROR=Missing or unreadable --comment-file" in capsys.readouterr().err
-    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)
+    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_close_stale_dry_run_does_not_close(monkeypatch, capsys):
@@ -905,7 +905,7 @@ def test_close_stale_dry_run_does_not_close(monkeypatch, capsys):
     ]) == 0
     out = capsys.readouterr().out.splitlines()
     assert out == ["DRY_RUN=true", "WOULD_CLOSE=1,2", "CLOSED_ISSUES=0", "PARTIAL=false"]
-    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)
+    assert not any(call[:3] == ["gh", "issue", "close"] for call in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, capsys):
@@ -913,7 +913,7 @@ def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, caps
 
     def run(argv, **_kwargs):
         calls.append(list(argv))
-        if argv[:3] == ["gh", "issue", "close"]:
+        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv), 0, "", "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -930,7 +930,7 @@ def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, caps
     captured = capsys.readouterr()
     assert "CLOSED_ISSUES=1" in captured.out
     assert "PARTIAL=false" in captured.out
-    assert calls == [["gh", "issue", "close", "1", "--repo", "o/r", "--reason", "not planned", "--comment", "Stale discard summary\n"]]
+    assert calls == [["gh", "issue", "close", "1", "--repo", "o/r", "--reason", "not planned", "--comment", "Stale discard summary\n"]]  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_close_stale_skip_path_sets_partial(monkeypatch, capsys):
@@ -951,13 +951,13 @@ def test_close_stale_skip_path_sets_partial(monkeypatch, capsys):
     assert "CLOSED_ISSUES=1" in captured.out
     assert "PARTIAL=true" in captured.out
     assert "WARNING=Skipped #1: source issue is not open (CLOSED)" in captured.err
-    assert calls == [["gh", "issue", "close", "2", "--repo", "o/r", "--reason", "completed"]]
+    assert calls == [["gh", "issue", "close", "2", "--repo", "o/r", "--reason", "completed"]]  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_close_stale_warning_redacts_failed_close_stderr(monkeypatch, capsys):
     class CloseStaleFailRunner:
         def run(self, argv, **_kwargs):
-            if argv[:3] == ["gh", "issue", "close"]:
+            if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 1, "", "failed with ghp_abcdefghijklmnopqrstuvwxyz0123456789", 0.01)
             return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
@@ -986,7 +986,7 @@ def test_list_open_uses_issue_list_read_and_filters_closed(monkeypatch, capsys):
     runner = OpenRunner()
     monkeypatch.setattr(combine_issues.proc, "run", runner.run)
     assert combine_issues.list_open_main(["--repo", "o/r"]) == 0
-    assert runner.calls[0][:4] == ["gh", "issue", "list", "--repo"]
+    assert runner.calls[0][:4] == ["gh", "issue", "list", "--repo"]  # lint-gh-argv-literal: ok fixture assertion
     assert runner.calls[0][runner.calls[0].index("--limit") + 1] == "100000"
     assert runner.calls[0][runner.calls[0].index("--json") + 1] == "number,title,state,labels,body"
     payload = json.loads(capsys.readouterr().out)

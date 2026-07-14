@@ -1771,7 +1771,7 @@ def test_step1d5_collect_records_clean_dirty_tree_checkpoint(tmp_path: Path, mon
 
 def test_resolve_repo_parses_ssh_url_remote(monkeypatch: pytest.MonkeyPatch) -> None:
     def fake_run(argv: list[str], **_kwargs: object) -> object:
-        if argv[:2] == ["gh", "repo"]:
+        if argv[:2] == ["gh", "repo"]:  # lint-gh-argv-literal: ok fixture assertion
             return type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})()
         if argv[:3] == ["git", "remote", "get-url"]:
             return type("R", (), {"returncode": 0, "stdout": "ssh://git@github.com/org/repo.git\n", "stderr": ""})()

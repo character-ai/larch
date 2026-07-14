@@ -985,11 +985,11 @@ def sync_labels_main(argv: list[str] | None = None) -> int:
     for label in known_labels():
         _ = gh.issue_label_remove(proc, str(args.issue), label, repo=repo)
     label = label_for_tier(tier)
-    create_argv = ["gh", "label", "create", label]
+    create_argv = ["label", "create", label]
     if repo:
         create_argv.extend(["--repo", repo])
     create_argv.extend(["--color", "ededed", "--description", "larch difficulty rating"])
-    create = proc.run(create_argv, check=False)
+    create = gh.command(proc, create_argv)
     if create.returncode != 0 and "already exists" not in (create.stderr + create.stdout).lower():
         print("STATUS=warning")
         print("WARNING=label-create-failed")

@@ -1115,7 +1115,7 @@ def test_design_annotate_labels_only_high_risk_url_with_repo(
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
 
     assert rc == 0
-    assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
+    assert gh_calls[0][:3] == ["label", "create", "oos-correctness"]
     assert label_calls == [("101", "oos-correctness", "acme/repo")]
     assert not (tmp_path / ".oos-priority-label-pending").exists()
 

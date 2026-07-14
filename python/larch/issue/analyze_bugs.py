@@ -574,7 +574,6 @@ _BUG_ISSUE_LIST_FIELDS: Final = (
 
 def _issue_pr_refs_argv(repo: str, *, issue_number: int) -> list[str]:
     return [
-        "gh",
         "issue",
         "view",
         str(issue_number),
@@ -691,7 +690,7 @@ def find_fix_by_pr_refs(runner: Runner, *, issue: IssueRecord, repo: str) -> Fix
     shas: list[str] = []
     refs = issue.closed_by_pull_requests
     if not refs and repo and issue.number > 0:
-        result = runner.run(_issue_pr_refs_argv(repo, issue_number=issue.number))
+        result = gh.command(runner, _issue_pr_refs_argv(repo, issue_number=issue.number))
         if result.returncode == 0:
             try:
                 refs = _closed_pr_refs_from_raw(_parse_json_object(result.stdout, desc="gh issue view"))

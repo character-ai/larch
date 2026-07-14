@@ -22,6 +22,7 @@ from collections.abc import Mapping, Sequence
 from larch import io as larch_io
 from larch.core import config
 from larch.core import proc
+from larch.git import gh
 from larch.errors import ShipError
 from larch.report import run_log_corpus
 from larch.report.report_tokens_models import RunRecord, Skill, VendorTotals, safe_int
@@ -1774,11 +1775,14 @@ def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> dict[s
         return {"LINES_STATUS": "skipped", "REASON": "invalid-repo"}
     endpoint = f"repos/{repo}/pulls/{pr_number}/files" if repo else f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/files"
     try:
-        out = proc.run(
-            ["gh", "api", "--paginate", endpoint, "--jq", ".[] | [.filename, .additions, .deletions] | @tsv"],
-            stderr=subprocess.DEVNULL,
-            check=True,
-        ).stdout
+        result = gh.command(
+            proc, ["api", "--paginate", endpoint, "--jq", ".[] | [.filename, .additions, .deletions] | @tsv"]
+        )
+        if result.returncode != 0:
+            raise subprocess.CalledProcessError(
+                result.returncode, result.argv, output=result.stdout, stderr=result.stderr
+            )
+        out = result.stdout
     except (OSError, subprocess.CalledProcessError):
         return {"LINES_STATUS": "unavailable", "REASON": "gh-failed"}
     code_added = code_deleted = logs_added = logs_deleted = 0

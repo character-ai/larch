@@ -503,7 +503,7 @@ def _merged_prs(repo: str) -> list[dict[str, object]] | None:
     page = 1
     out: dict[int, dict[str, object]] = {}
     while page <= 10000:
-        res = proc.run(["gh", "api", f"repos/{owner}/{name}/pulls?state=closed&per_page=100&page={page}"])
+        res = gh.command(proc, ["api", f"repos/{owner}/{name}/pulls?state=closed&per_page=100&page={page}"])
         if res.returncode != 0:
             print(f"audit-resolve-prs: gh api pulls page {page} failed", file=sys.stderr)
             return None
@@ -612,7 +612,7 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
         if not m:
             return _kv_error(f"prior audit-report #{prior_num} has malformed or missing frontmatter (audited_pr_range.last)")
         last_pr = m.group(1)
-        merged_res = proc.run(["gh", "pr", "view", last_pr, "--repo", args.repo, "--json", "mergedAt"])
+        merged_res = gh.command(proc, ["pr", "view", last_pr, "--repo", args.repo, "--json", "mergedAt"])
         merged_obj = _load_json(text=merged_res.stdout, default={}) if merged_res.returncode == 0 else {}
         merged_at = str(merged_obj.get("mergedAt") or "") if isinstance(merged_obj, dict) else ""
         if not merged_at:
@@ -649,7 +649,7 @@ def resolve_prs_main(argv: list[str] | None = None) -> int:
     m = re.match(r"^(PR\s+)?#([0-9]+)$", verbal)
     if m:
         n = m.group(2)
-        res = proc.run(["gh", "pr", "view", n, "--repo", args.repo, "--json", "title"])
+        res = gh.command(proc, ["pr", "view", n, "--repo", args.repo, "--json", "title"])
         obj = _load_json(text=res.stdout, default={}) if res.returncode == 0 else {}
         title = str(obj.get("title") or "") if isinstance(obj, dict) else ""
         if not title:
@@ -689,7 +689,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         print("PREFLIGHT_OK=false\nREASON=working tree is dirty")
         return 0
     remote_url = proc.run(["git", "config", "--get", "remote.origin.url"]).stdout.strip()
-    gh_res = proc.run(["gh", "repo", "view", args.repo, "--json", "url"])
+    gh_res = gh.command(proc, ["repo", "view", args.repo, "--json", "url"])
     gh_url = ""
     if gh_res.returncode == 0:
         obj = _load_json(text=gh_res.stdout, default={})
@@ -793,7 +793,7 @@ def map_runs_main(argv: list[str] | None = None) -> int:
             continue
         run_id = started = ver = closes = ""
         if args.skill == "design":
-            res = proc.run(["gh", "pr", "view", pr, "--repo", args.repo, "--json", "title"])
+            res = gh.command(proc, ["pr", "view", pr, "--repo", args.repo, "--json", "title"])
             if res.returncode != 0:
                 _report_pr_view_failed(pr=pr, field="title", res=res)
             obj = _load_json(text=res.stdout, default={}) if res.returncode == 0 else {}
@@ -803,7 +803,7 @@ def map_runs_main(argv: list[str] | None = None) -> int:
                 started, ver, _ = _manifest_fields(path=mf)
             print(f"{pr}\t{run_id}\t{started}\t{ver}\t")
             continue
-        body_res = proc.run(["gh", "pr", "view", pr, "--repo", args.repo, "--json", "body"])
+        body_res = gh.command(proc, ["pr", "view", pr, "--repo", args.repo, "--json", "body"])
         if body_res.returncode != 0:
             _report_pr_view_failed(pr=pr, field="body", res=body_res)
             print(f"{pr}\t\t\t\t")
@@ -1319,7 +1319,7 @@ def close_priors_main(argv: list[str] | None = None) -> int:
             if not isinstance(issue,dict): continue
             num=str(issue.get("number") or "")
             if num==args.new_issue_number or not match_audit_report_title(skill=args.skill,title=str(issue.get("title") or "")): continue
-            if proc.run(["gh","issue","comment",num,"--repo",args.repo,"--body-file",str(body)]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue comment failed"); continue
+            if gh.command(proc, ["issue","comment",num,"--repo",args.repo,"--body-file",str(body)]).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue comment failed"); continue
             if gh.issue_close(proc, num, repo=args.repo).returncode!=0: print(f"CLOSE_FAILED={num}\tREASON=gh issue close failed"); continue
             print(f"CLOSED_NUMBER={num}")
     finally:

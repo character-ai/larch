@@ -466,6 +466,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "agent-tool-contract"): ("larch.lint.lint_agent_tool_contract", "main"),
     ("lint", "keyword-only"): ("larch.lint.lint_keyword_only", "main"),
     ("lint", "subprocess-via-runner"): ("larch.lint.lint_subprocess_via_runner", "main"),
+    ("lint", "gh-argv-literal"): ("larch.lint.lint_gh_argv_literal", "main"),
     ("lint", "wire-artifact-pairing"): ("larch.lint.lint_wire_artifact_pairing", "main"),
     ("lint", "tempfile-dir"): ("larch.lint.lint_tempfile_dir", "main"),
     ("lint", "markdown-heading-fence-state"): ("larch.lint.lint_markdown_heading_fence_state", "main"),

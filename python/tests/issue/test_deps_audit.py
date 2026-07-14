@@ -85,7 +85,7 @@ def test_fetch_filters_and_merges_existing_deps_and_writes_untrusted_corpus(tmp_
     ]
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
-        assert argv[:3] == ["gh", "issue", "list"]
+        assert argv[:3] == ["gh", "issue", "list"]  # lint-gh-argv-literal: ok fixture assertion
         assert argv[argv.index("--limit") + 1] == "100000"
         assert argv[argv.index("--json") + 1] == "number,title,state,labels,body"
         return result(argv, stdout=json.dumps(issues))
@@ -93,16 +93,16 @@ def test_fetch_filters_and_merges_existing_deps_and_writes_untrusted_corpus(tmp_
     def blocked_by(_runner: object, issue: str, *, repo: str, cwd: str | None = None) -> CommandResult:
         _ = (repo, cwd)
         rows = [{"number": 2}] if issue == "1" else []
-        return result(["gh"], stdout=json.dumps(rows))
+        return result(["gh"], stdout=json.dumps(rows))  # lint-gh-argv-literal: ok fixture assertion
 
     def blocking(_runner: object, issue: str, *, repo: str, cwd: str | None = None) -> CommandResult:
         _ = (repo, cwd)
         rows = [{"number": 2}] if issue == "1" else []
-        return result(["gh"], stdout=json.dumps(rows))
+        return result(["gh"], stdout=json.dumps(rows))  # lint-gh-argv-literal: ok fixture assertion
 
     def comments(_runner: object, issue: str, *, repo: str, cwd: str | None = None) -> CommandResult:
         _ = (repo, cwd)
-        return result(["gh"], stdout=json.dumps([{"id": 10, "body": f"comment {issue}"}]))
+        return result(["gh"], stdout=json.dumps([{"id": 10, "body": f"comment {issue}"}]))  # lint-gh-argv-literal: ok fixture assertion
 
     monkeypatch.setattr(deps_audit.proc, "run", fake_run)
     monkeypatch.setattr(deps_audit.gh, "issue_blocked_by_read", blocked_by)
@@ -541,7 +541,7 @@ def test_apply_rewrite_passes_existing_temporary_body_file_and_cleans_it(monkeyp
         seen["path"] = path
         seen["body"] = path.read_text(encoding="utf-8")
         assert path.is_file()
-        return result(["gh", "issue", "edit", issue])
+        return result(["gh", "issue", "edit", issue])  # lint-gh-argv-literal: ok fixture assertion
 
     monkeypatch.setattr(deps_audit.gh, "issue_edit_body_file", edit_body)
 
@@ -585,7 +585,7 @@ def test_apply_edges_only_skips_rewrites_and_closes(tmp_path: Path, monkeypatch,
     assert deps_audit.apply_main(["--repo", "o/r", "--plan-file", str(plan), "--edges-only"]) == 0
     data = read_stdout_json(capsys)
     assert data["applied"] == [{"kind": "edge", "client_issue": 1, "blocker_issue": 2}]
-    assert not any(argv[0:2] == ["gh", "issue"] for argv in calls)
+    assert not any(argv[0:2] == ["gh", "issue"] for argv in calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_apply_mutually_exclusive_flags_fail(tmp_path: Path) -> None:

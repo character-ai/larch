@@ -454,7 +454,7 @@ def test_create_one_dry_run_redacts(monkeypatch: Any, tmp_path: Path, capsys: An
     body.write_text("body crsr_0123456789abcdefghijklmnopqrstuvwxyzABCDEF", encoding="utf-8")
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "label", "list"]:
+        if argv[:3] == ["gh", "label", "list"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="bug\n")
         return _result(argv, stdout="owner/repo\n")
 
@@ -498,7 +498,7 @@ def test_create_one_success_json(monkeypatch: Any, tmp_path: Path, capsys: Any) 
     body.write_text("body", encoding="utf-8")
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=json.dumps({"id": 99, "number": 5, "url": "https://x/issues/5"}))
         return _result(argv, stdout="owner/repo\n")
 
@@ -517,9 +517,9 @@ def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path,
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="4242\n")
         return _result(argv, stdout="owner/repo\n")
 
@@ -528,7 +528,7 @@ def test_create_one_success_plain_url_fallback(monkeypatch: Any, tmp_path: Path,
     out = capsys.readouterr().out
     assert "ISSUE_NUMBER=42" in out
     assert "ISSUE_ID=4242" in out
-    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]
+    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]  # lint-gh-argv-literal: ok fixture assertion
     assert len(create_calls) == 1
     assert "--json" in create_calls[0]
 
@@ -538,12 +538,12 @@ def test_create_one_resolves_rest_id_for_graphql_node_id(monkeypatch: Any, tmp_p
     body.write_text("body", encoding="utf-8")
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(
                 argv,
                 stdout=json.dumps({"id": "MDU6SXNzdWUx", "number": 5, "url": "https://x/issues/5"}),
             )
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="12345\n")
         return _result(argv, stdout="owner/repo\n")
 
@@ -560,14 +560,14 @@ def test_create_one_graphql_node_id_lookup_failure_rolls_back(monkeypatch: Any, 
     body.write_text("body", encoding="utf-8")
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(
                 argv,
                 stdout=json.dumps({"id": "MDU6SXNzdWUx", "number": 5, "url": "https://x/issues/5"}),
             )
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/5"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, returncode=1, stderr="lookup failed")
-        if argv[:3] == ["gh", "issue", "close"]:
+        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv)
         return _result(argv, stdout="owner/repo\n")
 
@@ -584,11 +584,11 @@ def test_create_one_id_lookup_failure_emits_rollback_failed(monkeypatch: Any, tm
     body.write_text("body", encoding="utf-8")
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="https://github.com/owner/repo/issues/42\n")
-        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:
+        if argv[:3] == ["gh", "api", "/repos/owner/repo/issues/42"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, returncode=1, stderr="lookup failed")
-        if argv[:3] == ["gh", "issue", "close"]:
+        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, returncode=1, stderr="close failed")
         return _result(argv, stdout="owner/repo\n")
 
@@ -644,9 +644,9 @@ def test_fetch_issue_details_partial_failure(monkeypatch: Any, tmp_path: Path, c
     }
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "9":
+        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "9":  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=json.dumps(payload))
-        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "10":
+        if argv[:3] == ["gh", "issue", "view"] and argv[3] == "10":  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, returncode=1, stderr="not found")
         return _result(argv, stdout="o/r\n")
 
@@ -667,9 +667,9 @@ def test_add_blocked_by_transient_retry(monkeypatch: Any, capsys: Any) -> None:
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="200\n")
-        if argv[:3] == ["gh", "api", "/repos/o/r/issues/1/dependencies/blocked_by"]:
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/1/dependencies/blocked_by"]:  # lint-gh-argv-literal: ok fixture assertion
             nonlocal api_calls
             api_calls += 1
             if api_calls < 3:
@@ -699,7 +699,7 @@ def test_add_blocked_by_retry_idempotent(monkeypatch: Any, capsys: Any) -> None:
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="200\n")
         return _result(argv, returncode=1, stderr="HTTP 422 duplicate dependency")
 
@@ -730,7 +730,7 @@ def test_list_issues_filters_archival(monkeypatch: Any, capsys: Any) -> None:
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(list(argv))
-        if argv[:3] == ["gh", "issue", "list"]:
+        if argv[:3] == ["gh", "issue", "list"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=json.dumps(payload))
         return _result(argv, stdout="o/r\n")
 
@@ -742,7 +742,7 @@ def test_list_issues_filters_archival(monkeypatch: Any, capsys: Any) -> None:
     assert "3\tClosed\tclosed\tu3" in out
     assert "4\tOther\topen\tu4" in out
     assert "Research" not in out
-    assert calls[0][:3] == ["gh", "issue", "list"]
+    assert calls[0][:3] == ["gh", "issue", "list"]  # lint-gh-argv-literal: ok fixture assertion
     assert calls[0][calls[0].index("--limit") + 1] == "100000"
     assert calls[0][calls[0].index("--json") + 1] == "number,title,state,closedAt,url"
 
@@ -772,7 +772,7 @@ def test_fetch_issue_details_success_and_validation(monkeypatch: Any, tmp_path: 
     }
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "view"]:
+        if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=json.dumps(payload))
         return _result(argv, stdout="o/r\n")
 
@@ -787,7 +787,7 @@ def test_fetch_issue_details_success_and_validation(monkeypatch: Any, tmp_path: 
 
 def test_cleanup_failed_closes_orphan(monkeypatch: Any, capsys: Any) -> None:
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "issue", "close"]:
+        if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv)
         return _result(argv, stdout="o/r\n")
 
@@ -809,7 +809,7 @@ def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="200\n")
         return _result(argv, returncode=1, stderr="HTTP 404: Not Found")
 
@@ -823,7 +823,7 @@ def test_add_blocked_by_404_no_retry(monkeypatch: Any, capsys: Any) -> None:
 
 def test_add_blocked_by_redaction_failure_exits_three(monkeypatch: Any, capsys: Any) -> None:
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:
+        if argv[:3] == ["gh", "api", "/repos/o/r/issues/2"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="200\n")
         return _result(argv, returncode=1, stderr="HTTP 404: Not Found")
 
@@ -845,7 +845,7 @@ def test_create_one_dry_run_preserves_operator_paths(monkeypatch: Any, tmp_path:
     body.write_text(f"see {operator_path}", encoding="utf-8")
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
-        if argv[:3] == ["gh", "label", "list"]:
+        if argv[:3] == ["gh", "label", "list"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout="bug\n")
         return _result(argv, stdout="owner/repo\n")
 
@@ -874,7 +874,7 @@ def test_create_one_empty_json_fields_do_not_fallback(monkeypatch: Any, tmp_path
 
     def fake_run(argv: list[str], **_: object) -> proc.CommandResult:
         calls.append(argv)
-        if argv[:3] == ["gh", "issue", "create"]:
+        if argv[:3] == ["gh", "issue", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return _result(argv, stdout=json.dumps({"id": "", "number": "", "url": ""}))
         return _result(argv, stdout="owner/repo\n")
 
@@ -884,7 +884,7 @@ def test_create_one_empty_json_fields_do_not_fallback(monkeypatch: Any, tmp_path
     assert rc == 2
     assert "ISSUE_FAILED=true" in out
     assert "empty field" in out
-    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]
+    create_calls = [argv for argv in calls if argv[:3] == ["gh", "issue", "create"]]  # lint-gh-argv-literal: ok fixture assertion
     assert len(create_calls) == 1
     assert "--json" in create_calls[0]
 

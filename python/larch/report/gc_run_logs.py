@@ -14,6 +14,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from larch.core import logging_util
+from larch.core import proc
+from larch.git import gh as gh_cli
 from larch.report import run_log_corpus
 
 SKILLS = ("design", "implement", "review")
@@ -248,7 +250,7 @@ def _apply(*, repo_root: Path, logs_root: Path, plan: list[PlannedDir], counters
         body_file.write(body)
         body_path = body_file.name
     try:
-        gh = _run(["gh", "pr", "create", "--title", title, "--body-file", body_path, "--base", "main", "--head", branch], cwd=repo_root)
+        gh = gh_cli.command(proc, ["pr", "create", "--title", title, "--body-file", body_path, "--base", "main", "--head", branch], cwd=str(repo_root))
     finally:
         Path(body_path).unlink()
     if gh.returncode != 0:

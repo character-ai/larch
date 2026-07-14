@@ -11,6 +11,7 @@ from typing import Any
 
 from larch.core import logging_util
 from larch.core import proc
+from larch.git import gh
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
@@ -39,26 +40,26 @@ def promote_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="promote-release.sh")
     tag = f"v{args.version}"
     repo_args = _repo_args(args.repo)
-    if proc.run(["gh", "release", "view", tag, *repo_args]).returncode != 0:
+    if gh.command(proc, ["release", "view", tag, *repo_args]).returncode != 0:
         return _err(f"release {tag} not found.")
-    cur = proc.run([
-        "gh", "release", "list", *repo_args, "--json", "tagName,isLatest", "--jq",
+    cur = gh.command(proc, [
+        "release", "list", *repo_args, "--json", "tagName,isLatest", "--jq",
         'map(select(.isLatest)) | .[0].tagName // ""',
     ])
     if cur.returncode != 0:
         return _err(cur.stderr or "gh release list failed")
     if cur.stdout.strip() == tag:
-        pre = proc.run(["gh", "release", "view", tag, *repo_args, "--json", "isPrerelease", "--jq", ".isPrerelease"])
+        pre = gh.command(proc, ["release", "view", tag, *repo_args, "--json", "isPrerelease", "--jq", ".isPrerelease"])
         if pre.returncode != 0:
             return _err(pre.stderr or f"gh release view {tag} failed")
         if pre.stdout.strip() == "true":
-            if proc.run(["gh", "release", "edit", tag, *repo_args, "--prerelease=false"]).returncode != 0:
+            if gh.command(proc, ["release", "edit", tag, *repo_args, "--prerelease=false"]).returncode != 0:
                 return _err(f"gh release edit {tag} failed")
             logging_util.emit(f"{tag} is already the latest release; cleared pre-release flag.")
         else:
             logging_util.emit(f"{tag} is already the latest release.")
         return 0
-    if proc.run(["gh", "release", "edit", tag, *repo_args, "--latest", "--prerelease=false"]).returncode != 0:
+    if gh.command(proc, ["release", "edit", tag, *repo_args, "--latest", "--prerelease=false"]).returncode != 0:
         return _err(f"gh release edit {tag} failed")
     logging_util.emit(f"Promoted {tag} to latest release.")
     return 0
@@ -80,8 +81,8 @@ def promote_latest_main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not _REPO_RE.fullmatch(args.repo):
         return _err(f"ERROR=Invalid --repo value: {args.repo}")
-    res = proc.run([
-        "gh", "release", "list", "--repo", args.repo, "--limit", "100", "--exclude-drafts",
+    res = gh.command(proc, [
+        "release", "list", "--repo", args.repo, "--limit", "100", "--exclude-drafts",
         "--json", "tagName,isPrerelease,isLatest,publishedAt,createdAt",
     ])
     if res.returncode != 0:
@@ -111,11 +112,11 @@ def promote_latest_main(argv: list[str] | None = None) -> int:
         print("RELEASE_ALREADY_LATEST=true")
         return 0
     print("RELEASE_ALREADY_LATEST=false")
-    edit = proc.run(["gh", "release", "edit", tag, "--repo", args.repo, "--prerelease=false", "--latest"])
+    edit = gh.command(proc, ["release", "edit", tag, "--repo", args.repo, "--prerelease=false", "--latest"])
     if edit.returncode != 0:
         return _err((edit.stderr or "ERROR=gh release edit failed").strip())
-    ver = proc.run([
-        "gh", "release", "list", "--repo", args.repo, "--limit", "100", "--exclude-drafts",
+    ver = gh.command(proc, [
+        "release", "list", "--repo", args.repo, "--limit", "100", "--exclude-drafts",
         "--json", "tagName,isPrerelease,isLatest",
     ])
     if ver.returncode != 0:

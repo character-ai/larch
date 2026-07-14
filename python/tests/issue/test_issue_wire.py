@@ -120,16 +120,16 @@ class IssueRunner:
     ) -> CommandResult:
         args = list(argv)
         self.calls.append(args)
-        if args[:4] == ["gh", "issue", "view", "9"]:
+        if args[:4] == ["gh", "issue", "view", "9"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 0, '{"body": ' + __import__("json").dumps(self.body) + "}", "", 0.01)
-        if args[:4] == ["gh", "issue", "edit", "9"]:
+        if args[:4] == ["gh", "issue", "edit", "9"]:  # lint-gh-argv-literal: ok fixture assertion
             body_file = args[args.index("--body-file") + 1]
             self.edit_bodies.append(Path(body_file).read_text(encoding="utf-8"))
             if self.edit_failures:
                 self.edit_failures -= 1
                 return CommandResult(tuple(args), 1, "", "Could not resolve host", 0.01)
             return CommandResult(tuple(args), 0, "", "", 0.01)
-        if args[:3] == ["gh", "repo", "view"]:
+        if args[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 0, "owner/repo\n", "", 0.01)
         raise AssertionError(f"unexpected call: {args}")
 
@@ -157,7 +157,7 @@ def test_named_block_write_malformed_skips_edit() -> None:
     runner = IssueRunner("<!-- larch:plan:start -->\nno end")
     result = issue_wire.named_block_write(runner=runner, marker="plan", issue="9", repo="owner/repo", content="x", delete=False)
     assert result == {"malformed": "start-without-end"}
-    assert not any(call[:3] == ["gh", "issue", "edit"] for call in runner.calls)
+    assert not any(call[:3] == ["gh", "issue", "edit"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_issue_body_redaction_and_no_second_redaction() -> None:
@@ -199,7 +199,7 @@ def test_write_cli_no_repo_resolves_with_gh_only(monkeypatch: pytest.MonkeyPatch
     runner = IssueRunner("")
     _ = monkeypatch.setattr(issue_wire, "proc", runner)
     assert issue_wire.named_block_write_main(["--marker", "plan", "--issue", "9", "--content-file", str(content)]) == 0
-    assert runner.calls[0][:3] == ["gh", "repo", "view"]
+    assert runner.calls[0][:3] == ["gh", "repo", "view"]  # lint-gh-argv-literal: ok fixture assertion
     assert "WRITTEN=true" in capsys.readouterr().out
 
 
@@ -217,7 +217,7 @@ class FailingRepoRunner(IssueRunner):
     ) -> CommandResult:
         args = list(argv)
         self.calls.append(args)
-        if args[:3] == ["gh", "repo", "view"]:
+        if args[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 1, "", "no repo", 0.01)
         if args[:3] == ["git", "remote", "get-url"]:
             return CommandResult(tuple(args), 1, "", "no origin", 0.01)
@@ -238,7 +238,7 @@ class FailingIssueViewRunner(IssueRunner):
     ) -> CommandResult:
         args = list(argv)
         self.calls.append(args)
-        if args[:4] == ["gh", "issue", "view", "9"]:
+        if args[:4] == ["gh", "issue", "view", "9"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(args), 2, "", "GraphQL: could not resolve to an Issue", 0.01)
         raise AssertionError(f"unexpected call: {args}")
 
@@ -275,7 +275,7 @@ def test_write_cli_origin_fallback_succeeds(
         ) -> CommandResult:
             args = list(argv)
             self.calls.append(args)
-            if args[:3] == ["gh", "repo", "view"]:
+            if args[:3] == ["gh", "repo", "view"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(args), 1, "", "no repo", 0.01)
             if args[:3] == ["git", "remote", "get-url"]:
                 return CommandResult(
@@ -341,7 +341,7 @@ def test_write_cli_redaction_failure_exits_3(
     assert rc == 3
     assert "FAILED=true" in out
     assert "ERROR=redaction:" in out
-    assert not any(call[:3] == ["gh", "issue", "edit"] for call in runner.calls)
+    assert not any(call[:3] == ["gh", "issue", "edit"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def _capture_contract_from_self_quiet(call: Callable[[], int], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[int, str]:
@@ -645,6 +645,6 @@ def test_gh_issue_view_body_and_edit_retry(monkeypatch: pytest.MonkeyPatch) -> N
     assert body == "body"
     result = gh.issue_edit_body_with_retry(runner, "9", "redacted", repo="owner/repo")
     assert result.returncode == 0
-    edit_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "edit"]]
+    edit_calls = [call for call in runner.calls if call[:3] == ["gh", "issue", "edit"]]  # lint-gh-argv-literal: ok fixture assertion
     assert len(edit_calls) == 3
     assert runner.edit_bodies[-1] == "redacted"

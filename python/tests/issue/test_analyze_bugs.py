@@ -118,7 +118,7 @@ def test_fetch_filters_bug_prefix_and_uses_issue_list_read() -> None:
     selected, _corpus = analyze_bugs.fetch_bug_issues(runner, repo="o/r", count=1)
 
     assert [issue.number for issue in selected] == [200]
-    assert runner.calls[0][:4] == ["gh", "issue", "list", "--repo"]
+    assert runner.calls[0][:4] == ["gh", "issue", "list", "--repo"]  # lint-gh-argv-literal: ok fixture assertion
     assert "--limit" in runner.calls[0]
     assert runner.calls[0][runner.calls[0].index("--limit") + 1] == "100000"
     assert "closedByPullRequestsReferences" in runner.calls[0][runner.calls[0].index("--json") + 1]

@@ -37,7 +37,6 @@ def issue_number_from_url(url: str) -> str:
 def label_create_argv(*, repo: str = "") -> list[str]:
     """Return argv for idempotently provisioning the high-risk OOS label."""
     argv = [
-        "gh",
         "label",
         "create",
         OOS_CORRECTNESS_LABEL,

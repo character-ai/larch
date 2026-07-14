@@ -340,7 +340,7 @@ def test_gate_missing_gh_returns_admission_error(monkeypatch, capsys) -> None:
 
 def test_gate_gh_failure_does_not_echo_stderr(monkeypatch, capsys) -> None:
     def fake_proc_run(argv, **_kwargs):
-        if list(argv)[:3] == ["gh", "issue", "view"]:
+        if list(argv)[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv), 1, "", "token ghp_secret\n", 0.01)
         return CommandResult(tuple(argv), 0, "", "", 0.01)
 
@@ -443,10 +443,10 @@ def test_fork_env_success(tmp_path, monkeypatch, capsys) -> None:
     def fake_run(argv, **_kwargs):  # pyright: ignore[reportMissingParameterType, reportUnknownParameterType]
         if argv[:3] == ["git", "remote", "get-url"]:
             return subprocess.CompletedProcess(argv, 0, "https://github.com/upstream/repo.git\n", "")
-        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:  # lint-gh-argv-literal: ok fixture assertion
             gh_calls.append(list(argv))
             return subprocess.CompletedProcess(argv, 0, "user/fork\n", "")
-        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "upstream"]:
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "upstream"]:  # lint-gh-argv-literal: ok fixture assertion
             gh_calls.append(list(argv))
             return subprocess.CompletedProcess(argv, 0, "upstream/repo\n", "")
         return subprocess.CompletedProcess(argv, 1, "", "unexpected\n")
@@ -476,7 +476,7 @@ def test_fork_env_parse_failure(monkeypatch, capsys) -> None:
     def fake_run(argv, **_kwargs):  # pyright: ignore[reportMissingParameterType, reportUnknownParameterType]
         if argv[:3] == ["git", "remote", "get-url"]:
             return subprocess.CompletedProcess(argv, 0, "https://github.com/upstream/repo.git\n", "")
-        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:  # lint-gh-argv-literal: ok fixture assertion
             return subprocess.CompletedProcess(argv, 2, "", "parse failed\n")
         return subprocess.CompletedProcess(argv, 1, "", "unexpected\n")
 
@@ -489,9 +489,9 @@ def test_fork_env_caller_env_atomic_failure(tmp_path, monkeypatch, capsys) -> No
     def fake_run(argv, **_kwargs):  # pyright: ignore[reportMissingParameterType, reportUnknownParameterType]
         if argv[:3] == ["git", "remote", "get-url"]:
             return subprocess.CompletedProcess(argv, 0, "https://github.com/upstream/repo.git\n", "")
-        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "origin"]:  # lint-gh-argv-literal: ok fixture assertion
             return subprocess.CompletedProcess(argv, 0, "user/fork\n", "")
-        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "upstream"]:
+        if len(argv) >= 4 and list(argv[-3:]) == ["gh", "remote-repo", "upstream"]:  # lint-gh-argv-literal: ok fixture assertion
             return subprocess.CompletedProcess(argv, 0, "upstream/repo\n", "")
         return subprocess.CompletedProcess(argv, 1, "", "unexpected\n")
 

@@ -50,10 +50,10 @@ class ReleaseFinishRunner:
         self.calls.append(list(argv))
         if argv[:3] == ["git", "fetch", "origin"]:
             return cr(argv)
-        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "mergeCommit":
+        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "mergeCommit":  # lint-gh-argv-literal: ok fixture assertion
             value = {"oid": self.merge_oid} if self.merge_oid else None
             return cr(argv, json.dumps({"mergeCommit": value}))
-        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "state":
+        if argv[:4] == ["gh", "pr", "view", "5"] and argv[-1] == "state":  # lint-gh-argv-literal: ok fixture assertion
             return cr(argv, '{"state":"MERGED"}\n')
         if argv[:3] == ["git", "rev-parse", "--verify"]:
             target = argv[3]
@@ -81,11 +81,11 @@ class ReleaseFinishRunner:
             return cr(argv)
         if argv[:2] == ["git", "push"]:
             return cr(argv)
-        if argv[:3] == ["gh", "release", "view"]:
+        if argv[:3] == ["gh", "release", "view"]:  # lint-gh-argv-literal: ok fixture assertion
             return cr(argv, rc=0 if self.release_exists else 1)
-        if argv[:3] == ["gh", "release", "edit"]:
+        if argv[:3] == ["gh", "release", "edit"]:  # lint-gh-argv-literal: ok fixture assertion
             return cr(argv)
-        if argv[:3] == ["gh", "release", "create"]:
+        if argv[:3] == ["gh", "release", "create"]:  # lint-gh-argv-literal: ok fixture assertion
             return cr(argv)
         raise AssertionError(f"unexpected argv: {argv}")
 
@@ -122,7 +122,7 @@ def test_release_finish_existing_local_tag_creates_missing_release_and_promotes(
     assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
     out = capsys.readouterr().out
     assert "RELEASE_ACTION=create" in out
-    assert any(call[:3] == ["gh", "release", "create"] for call in runner.calls)
+    assert any(call[:3] == ["gh", "release", "create"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
     assert any(call[0] == "promote" for call in runner.calls)
 
 
@@ -131,7 +131,7 @@ def test_release_finish_falls_back_to_origin_main_when_merge_commit_missing(monk
     notes = _patch_release_finish(monkeypatch, tmp_path, runner)
     assert release_finish.main(["--version","1.2.3","--notes-file",str(notes),"--repo","o/r","--pr","5"]) == 0
     assert "TARGET_OID=abc1234" in capsys.readouterr().out
-    assert sum(call[:4] == ["gh", "pr", "view", "5"] and call[-1] == "mergeCommit" for call in runner.calls) == 5
+    assert sum(call[:4] == ["gh", "pr", "view", "5"] and call[-1] == "mergeCommit" for call in runner.calls) == 5  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_release_finish_retries_until_target_reaches_origin_main(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -192,7 +192,7 @@ def test_set_version_rejects_downgrade(tmp_path: Path, monkeypatch: pytest.Monke
 
 def test_promote_latest_dry_run_emits_prelude(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = QueueRunner([
-        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False,"publishedAt":"2026-01-01T00:00:00Z"}]))
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False,"publishedAt":"2026-01-01T00:00:00Z"}]))  # lint-gh-argv-literal: ok fixture assertion
     ])
     monkeypatch.setattr(promote_release.proc, "run", runner.run)
     assert promote_release.promote_latest_main(["--repo", "o/r", "--dry-run"]) == 0
@@ -211,9 +211,9 @@ def test_promote_validation_errors_exit_one(capsys: pytest.CaptureFixture[str]) 
 
 def test_promote_checks_prerelease_probe_return_code_when_already_latest(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = QueueRunner([
-        cr(["gh"]),
-        cr(["gh"], "v1.2.3\n"),
-        cr(["gh"], stderr="auth failed", rc=1),
+        cr(["gh"]),  # lint-gh-argv-literal: ok fixture assertion
+        cr(["gh"], "v1.2.3\n"),  # lint-gh-argv-literal: ok fixture assertion
+        cr(["gh"], stderr="auth failed", rc=1),  # lint-gh-argv-literal: ok fixture assertion
     ])
     monkeypatch.setattr(promote_release.proc, "run", runner.run)
     assert promote_release.promote_main(["1.2.3", "--repo", "o/r"]) == 1
@@ -222,9 +222,9 @@ def test_promote_checks_prerelease_probe_return_code_when_already_latest(monkeyp
 
 def test_promote_latest_preserves_empty_boolean_fields(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = QueueRunner([
-        cr(["gh"], json.dumps([{"tagName":"v1.2.3","publishedAt":"2026-01-01T00:00:00Z"}])),
-        cr(["gh"]),
-        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":False,"isLatest":True}])),
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","publishedAt":"2026-01-01T00:00:00Z"}])),  # lint-gh-argv-literal: ok fixture assertion
+        cr(["gh"]),  # lint-gh-argv-literal: ok fixture assertion
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":False,"isLatest":True}])),  # lint-gh-argv-literal: ok fixture assertion
     ])
     monkeypatch.setattr(promote_release.proc, "run", runner.run)
     assert promote_release.promote_latest_main(["--repo", "o/r"]) == 0
@@ -232,14 +232,14 @@ def test_promote_latest_preserves_empty_boolean_fields(monkeypatch: pytest.Monke
     assert "RELEASE_WAS_PRERELEASE=" in out
     assert "RELEASE_WAS_LATEST=" in out
     assert "RELEASE_ALREADY_LATEST=false" in out
-    assert any(call[:3] == ["gh", "release", "edit"] for call in runner.calls)
+    assert any(call[:3] == ["gh", "release", "edit"] for call in runner.calls)  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_promote_latest_verification_failure_keeps_phase_kvs(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = QueueRunner([
-        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False,"publishedAt":"2026-01-01T00:00:00Z"}])),
-        cr(["gh"]),
-        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False}])),
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False,"publishedAt":"2026-01-01T00:00:00Z"}])),  # lint-gh-argv-literal: ok fixture assertion
+        cr(["gh"]),  # lint-gh-argv-literal: ok fixture assertion
+        cr(["gh"], json.dumps([{"tagName":"v1.2.3","isPrerelease":True,"isLatest":False}])),  # lint-gh-argv-literal: ok fixture assertion
     ])
     monkeypatch.setattr(promote_release.proc, "run", runner.run)
     assert promote_release.promote_latest_main(["--repo", "o/r"]) == 1
@@ -253,7 +253,7 @@ def test_promote_latest_verification_failure_keeps_phase_kvs(monkeypatch: pytest
 
 def test_promote_latest_errors_are_error_kv_prefixed(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     runner = QueueRunner([
-        cr(["gh"], stderr="raw gh failure", rc=1),
+        cr(["gh"], stderr="raw gh failure", rc=1),  # lint-gh-argv-literal: ok fixture assertion
     ])
     monkeypatch.setattr(promote_release.proc, "run", runner.run)
     assert promote_release.promote_latest_main(["--repo", "o/r"]) == 1
@@ -262,7 +262,7 @@ def test_promote_latest_errors_are_error_kv_prefixed(monkeypatch: pytest.MonkeyP
 
 def test_promote_latest_failure_ignores_inherited_quiet(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     runner = QueueRunner([
-        cr(["gh"], stderr="raw gh failure", rc=1),
+        cr(["gh"], stderr="raw gh failure", rc=1),  # lint-gh-argv-literal: ok fixture assertion
     ])
     quiet_log = tmp_path / "quiet.log"
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
@@ -357,7 +357,7 @@ class ReleasePrepareRunner:
                 return cr(tuple(argv), stdout=self.log_hash_subjects)
             if argv[:2] == ["git", "log"]:
                 return cr(tuple(argv), stdout=self.log_subjects)
-        if argv[:2] == ["gh", "api"]:
+        if argv[:2] == ["gh", "api"]:  # lint-gh-argv-literal: ok fixture assertion
             return cr(tuple(argv), stdout=self.api_stdout, rc=self.api_rc)
         return cr(tuple(argv))
 

@@ -625,7 +625,7 @@ def test_run_list_filtered_builds_filters_and_parses_head_sha_event() -> None:
 
     assert runs[0].head_sha == "abc"
     assert runs[0].event == "push"
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "run",
         "list",
@@ -727,10 +727,10 @@ def test_mutating_helpers_build_argv_without_retry() -> None:
     assert gh.run_rerun(runner, 11, repo="o/r").returncode == 0
     assert gh.issue_comment(runner, "1", "body", repo="o/r").returncode == 0
     assert gh.issue_edit(runner, "1", repo="o/r", title="t", body="b").returncode == 0
-    assert runner.calls[0] == ["gh", "run", "rerun", "11", "--repo", "o/r", "--failed"]
-    assert runner.calls[1][0:6] == ["gh", "issue", "comment", "1", "--repo", "o/r"]
+    assert runner.calls[0] == ["gh", "run", "rerun", "11", "--repo", "o/r", "--failed"]  # lint-gh-argv-literal: ok fixture assertion
+    assert runner.calls[1][0:6] == ["gh", "issue", "comment", "1", "--repo", "o/r"]  # lint-gh-argv-literal: ok fixture assertion
     assert runner.calls[1][6] == "--body-file"
-    assert runner.calls[2][0:6] == ["gh", "issue", "edit", "1", "--repo", "o/r"]
+    assert runner.calls[2][0:6] == ["gh", "issue", "edit", "1", "--repo", "o/r"]  # lint-gh-argv-literal: ok fixture assertion
     assert runner.calls[2][6:8] == ["--title", "t"]
     assert runner.calls[2][8] == "--body-file"
 
@@ -1154,7 +1154,7 @@ def test_pr_edit_body_file_retries_and_threads_repo(
     result = gh.pr_edit_body_file(runner, "4", str(body_file), repo="o/r")
     assert result.updated
     assert len(runner.calls) == 2
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "pr",
         "edit",
@@ -1174,7 +1174,7 @@ def test_pr_edit_body_file_omits_repo_when_absent(tmp_path: Path) -> None:
     )
     result = gh.pr_edit_body_file(runner, "4", str(body_file), repo=None)
     assert result.updated
-    assert runner.calls[0] == ["gh", "pr", "edit", "4", "--body-file", str(body_file)]
+    assert runner.calls[0] == ["gh", "pr", "edit", "4", "--body-file", str(body_file)]  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_body_file_args_fail_closed_on_truncation(
@@ -1426,7 +1426,7 @@ def test_issue_create_uses_body_file_and_optional_repo() -> None:
     )
     result = gh.issue_create(runner, repo=None, title="t", body="body")
     assert result.returncode == 0
-    assert runner.calls[0][0:4] == ["gh", "issue", "create", "--title"]
+    assert runner.calls[0][0:4] == ["gh", "issue", "create", "--title"]  # lint-gh-argv-literal: ok fixture assertion
     assert "--repo" not in runner.calls[0]
     assert "--body-file" in runner.calls[0]
 
@@ -1581,7 +1581,7 @@ def test_pr_edit_body_file_scope_refusal_no_edit(
     assert result.exit_code == config.EXIT_NEEDS_USER_INPUT
     assert result.updated is False
     assert result.error == "scope-disposition required"
-    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []
+    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_pr_edit_body_scope_refusal_raises_no_edit(
@@ -1595,7 +1595,7 @@ def test_pr_edit_body_scope_refusal_raises_no_edit(
     with pytest.raises(NeedsUserInput):
         _ = gh.pr_edit_body(runner, 7, "body", repo="o/r")
 
-    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []
+    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_pr_edit_body_file_manifest_only_todos_block(
@@ -1613,7 +1613,7 @@ def test_pr_edit_body_file_manifest_only_todos_block(
     result = gh.pr_edit_body_file(runner, "7", str(body), repo="o/r")
 
     assert result.exit_code == config.EXIT_NEEDS_USER_INPUT
-    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []
+    assert [call for call in runner.calls if call[:3] == ["gh", "pr", "edit"]] == []  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_resolve_repo_detailed_valid_primary() -> None:
@@ -1652,7 +1652,7 @@ def test_resolve_repo_detailed_origin_fallback_and_cwd() -> None:
     assert detailed.primary_failure is not None
     assert detailed.primary_failure.kind == "nonzero"
     assert detailed.primary_failure.stderr == "boom"
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "repo",
         "view",
@@ -1832,7 +1832,7 @@ def test_issue_list_read_builds_argv_preserving_field_and_label_order() -> None:
     )
     assert rows == [{"number": 1}, {"number": 2}]
     assert runner.calls == [
-        [
+        [  # lint-gh-argv-literal: ok fixture assertion
             "gh",
             "issue",
             "list",
@@ -1874,7 +1874,7 @@ def test_issue_list_read_omits_empty_search_and_preserves_zero_limit() -> None:
         )
         == []
     )
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "list",
@@ -2003,13 +2003,13 @@ def test_issue_view_read_plain_argv_and_timeout() -> None:
     )
     result = gh.issue_view_read(runner, 42, cwd="/work")
     assert result.stdout == "plain body"
-    assert runner.calls[0] == ["gh", "issue", "view", "42"]
+    assert runner.calls[0] == ["gh", "issue", "view", "42"]  # lint-gh-argv-literal: ok fixture assertion
     assert "--json" not in runner.calls[0]
     assert "--template" not in runner.calls[0]
     assert runner.cwds[0] == "/work"
 
     _ = gh.issue_view_read(runner, 7, repo="o/r")
-    assert runner.calls[1] == ["gh", "issue", "view", "7", "--repo", "o/r"]
+    assert runner.calls[1] == ["gh", "issue", "view", "7", "--repo", "o/r"]  # lint-gh-argv-literal: ok fixture assertion
     assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC] * 2
 
 
@@ -2061,7 +2061,7 @@ def test_issue_view_template_read_builds_argv_and_retries() -> None:
         cwd="/tmp/x",
     )
     assert result.stdout == "templated"
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "view",
@@ -2078,7 +2078,7 @@ def test_issue_view_template_read_builds_argv_and_retries() -> None:
 
     retried = gh.issue_view_template_read(runner, "3", "number", "{{.number}}")
     assert retried.stdout == "templated"
-    assert runner.calls[1] == [
+    assert runner.calls[1] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "view",
@@ -2106,7 +2106,7 @@ def test_issue_close_builds_optional_argv_and_returns_failures() -> None:
         ],
     )
     assert gh.issue_close(runner, 9).returncode == 0
-    assert runner.calls[0] == ["gh", "issue", "close", "9"]
+    assert runner.calls[0] == ["gh", "issue", "close", "9"]  # lint-gh-argv-literal: ok fixture assertion
 
     assert (
         gh.issue_close(
@@ -2119,7 +2119,7 @@ def test_issue_close_builds_optional_argv_and_returns_failures() -> None:
         ).returncode
         == 0
     )
-    assert runner.calls[1] == [
+    assert runner.calls[1] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "close",
@@ -2153,7 +2153,7 @@ def test_issue_close_omits_empty_repo_and_redacts_comment() -> None:
         ).returncode
         == 0
     )
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "close",
@@ -2162,7 +2162,7 @@ def test_issue_close_omits_empty_repo_and_redacts_comment() -> None:
         "done <REDACTED-TOKEN>",
     ]
     assert gh.issue_close(runner, 12, comment="").returncode == 0
-    assert runner.calls[1] == ["gh", "issue", "close", "12", "--comment", ""]
+    assert runner.calls[1] == ["gh", "issue", "close", "12", "--comment", ""]  # lint-gh-argv-literal: ok fixture assertion
 
 
 def test_issue_edit_body_file_passes_caller_path_without_retry() -> None:
@@ -2181,7 +2181,7 @@ def test_issue_edit_body_file_passes_caller_path_without_retry() -> None:
         ],
     )
     assert gh.issue_edit_body_file(runner, 5, body_path).returncode == 0
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "edit",
@@ -2196,7 +2196,7 @@ def test_issue_edit_body_file_passes_caller_path_without_retry() -> None:
         ).returncode
         == 0
     )
-    assert runner.calls[1] == [
+    assert runner.calls[1] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "edit",
@@ -2236,7 +2236,7 @@ def test_issue_label_add_remove_optional_repo_and_retry() -> None:
     )
 
     assert gh.issue_label_add(runner, "1", "bug", repo="o/r").returncode == 0
-    assert runner.calls[0] == [
+    assert runner.calls[0] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "edit",
@@ -2247,7 +2247,7 @@ def test_issue_label_add_remove_optional_repo_and_retry() -> None:
         "bug",
     ]
     assert gh.issue_label_remove(runner, "1", "bug", repo="o/r").returncode == 0
-    assert runner.calls[1] == [
+    assert runner.calls[1] == [  # lint-gh-argv-literal: ok fixture assertion
         "gh",
         "issue",
         "edit",
@@ -2259,9 +2259,9 @@ def test_issue_label_add_remove_optional_repo_and_retry() -> None:
     ]
 
     assert gh.issue_label_add(runner, "1", "bug").returncode == 0
-    assert runner.calls[2] == ["gh", "issue", "edit", "1", "--add-label", "bug"]
+    assert runner.calls[2] == ["gh", "issue", "edit", "1", "--add-label", "bug"]  # lint-gh-argv-literal: ok fixture assertion
     assert gh.issue_label_remove(runner, "1", "bug").returncode == 0
-    assert runner.calls[3] == ["gh", "issue", "edit", "1", "--remove-label", "bug"]
+    assert runner.calls[3] == ["gh", "issue", "edit", "1", "--remove-label", "bug"]  # lint-gh-argv-literal: ok fixture assertion
 
     assert gh.issue_label_add(runner, "1", "bug", repo="o/r").returncode == 0
     assert len(runner.calls) == 6
@@ -2279,6 +2279,6 @@ def test_issue_edit_title_body_regression_unchanged() -> None:
         ],
     )
     assert gh.issue_edit(runner, "1", repo="o/r", title="t", body="b").returncode == 0
-    assert runner.calls[0][0:6] == ["gh", "issue", "edit", "1", "--repo", "o/r"]
+    assert runner.calls[0][0:6] == ["gh", "issue", "edit", "1", "--repo", "o/r"]  # lint-gh-argv-literal: ok fixture assertion
     assert runner.calls[0][6:8] == ["--title", "t"]
     assert runner.calls[0][8] == "--body-file"
