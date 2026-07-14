@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 import pytest
 
@@ -2236,3 +2237,155 @@ def test_design_source_helper_matches_writer_key_contract(tmp_path: Path) -> Non
     assert json.loads(params.read_text(encoding="utf-8"))["schema_version"] == 3
     refreshed = write_design_source_env(design, overrides={"REPO": "owner/name"})
     assert "export REPO=owner/name\n" in refreshed.read_text(encoding="utf-8")
+
+
+def test_write_env_direct_returns_frozen_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    out = tmp_path / "session-env.sh"
+    result = session_env.write_env(session_env.WriteEnvParams(output=str(out), repo_unavailable="false", repo="owner/repo"))
+    assert isinstance(result, session_env.WriteEnvResult)
+    assert result.wrote is True
+    assert result.output == out
+    assert result.plugin_root_only is False
+    text = out.read_text(encoding="utf-8")
+    assert "REPO=owner/repo\n" in text
+    assert "REPO_UNAVAILABLE=false\n" in text
+    with pytest.raises(FrozenInstanceError):
+        result.wrote = False  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_write_env_direct_dev_null_does_not_write(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    result = session_env.write_env(session_env.WriteEnvParams(output="/dev/null", repo_unavailable="false"))
+    assert result.wrote is False
+    assert result.output is None
+
+
+def test_write_env_direct_plugin_root_only(tmp_path: Path) -> None:
+    out = tmp_path / "plugin-root.env"
+    result = session_env.write_env(session_env.WriteEnvParams(output=str(out), repo_unavailable=None, plugin_root_only=True, value="/abs/plugin/root"))
+    assert result.plugin_root_only is True
+    assert result.wrote is True
+    assert out.read_text(encoding="utf-8").startswith("CLAUDE_PLUGIN_ROOT=/abs/plugin/root")
+    skipped = session_env.write_env(session_env.WriteEnvParams(output=str(tmp_path / "skip.env"), repo_unavailable=None, plugin_root_only=True, value="not-absolute"))
+    assert skipped.wrote is False
+    assert skipped.output is None
+
+
+def test_write_env_direct_missing_output_raises() -> None:
+    with pytest.raises(ValueError, match="Missing required"):
+        session_env.write_env(session_env.WriteEnvParams(output="", repo_unavailable="false"))
+
+
+def test_write_id_direct_writes_then_preserves(tmp_path: Path) -> None:
+    out = tmp_path / "session-id"
+    first = session_env.write_id(output=out)
+    assert isinstance(first, session_env.WriteIdResult)
+    assert first.wrote is True
+    assert first.session_id
+    assert out.read_text(encoding="utf-8").strip() == first.session_id
+    out.write_text("keep\n", encoding="utf-8")
+    second = session_env.write_id(output=out)
+    assert second.wrote is False
+    assert second.session_id == "keep"
+    assert out.read_text(encoding="utf-8") == "keep\n"
+    with pytest.raises(FrozenInstanceError):
+        second.wrote = True  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_write_id_direct_rejects_disallowed_root() -> None:
+    with pytest.raises(OSError, match="allowed session root"):
+        session_env.write_id(output=Path("/etc/larch-not-allowed/session-id"))
+
+
+def test_read_key_direct_resolves_and_defaults(tmp_path: Path) -> None:
+    session = tmp_path / "session-env.sh"
+    session.write_text("TOKEN=a=b=c\nEMPTY=\n", encoding="utf-8")
+    result = session_env.read_key(file=str(session), key="TOKEN", default=None, file_flag_present=True)
+    assert isinstance(result, session_env.ReadKeyResult)
+    assert result.value == "a=b=c"
+    assert session_env.read_key(file=str(session), key="EMPTY", default="fb", file_flag_present=True).value == "fb"
+    assert session_env.read_key(file=str(tmp_path / "missing"), key="TOKEN", default="fb", file_flag_present=True).value == "fb"
+    with pytest.raises(FrozenInstanceError):
+        result.value = "x"  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_read_key_direct_error_paths(tmp_path: Path) -> None:
+    session = tmp_path / "session-env.sh"
+    session.write_text("TOKEN=v\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="--key is required"):
+        session_env.read_key(file=str(session), key="", default=None, file_flag_present=True)
+    with pytest.raises(ValueError, match="--file is required"):
+        session_env.read_key(file=None, key="TOKEN", default=None, file_flag_present=False)
+    with pytest.raises(ValueError, match="cannot read"):
+        session_env.read_key(file=str(tmp_path / "missing"), key="TOKEN", default=None, file_flag_present=True)
+
+
+def test_entry_gate_direct_returns_frozen_result() -> None:
+    cont = session_env.entry_gate(mode="implement", is_main="false", is_user_branch="true", user_prefix="user", branch_info_supplied=None)
+    assert isinstance(cont, session_env.GateResult)
+    assert cont.entry_gate == "continue"
+    assert cont.skip_branch_check == "true"
+    strict = session_env.entry_gate(mode="implement", is_main="true", is_user_branch="false", user_prefix="user", branch_info_supplied=None)
+    assert strict.entry_gate == "strict"
+    assert strict.skip_branch_check == "false"
+    with pytest.raises(FrozenInstanceError):
+        strict.entry_gate = "continue"  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_entry_gate_direct_error_paths() -> None:
+    with pytest.raises(ValueError, match="invalid mode"):
+        session_env.entry_gate(mode="bogus", is_main="true", is_user_branch="false", user_prefix="user", branch_info_supplied=None)
+    with pytest.raises(ValueError, match="not allowed for mode=implement"):
+        session_env.entry_gate(mode="implement", is_main="true", is_user_branch="false", user_prefix="user", branch_info_supplied="true")
+
+
+def test_write_implement_env_direct_returns_frozen_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    result = session_env.write_implement_env(claude_pid="123", implement_tmpdir=str(impl), cwd=str(tmp_path))
+    assert isinstance(result, session_env.WriteImplementEnvResult)
+    assert result.pointer.is_file()
+    assert result.run_script.is_file()
+    assert result.implement_tmpdir == impl
+    assert f"IMPLEMENT_TMPDIR={impl}" in result.pointer.read_text(encoding="utf-8")
+    with pytest.raises(ValueError, match="claude-pid"):
+        session_env.write_implement_env(claude_pid="", implement_tmpdir=str(impl), cwd=str(tmp_path))
+
+
+def test_setup_direct_returns_emission_envelope(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    result = session_env.setup(prefix="pytest", skip_preflight=True, skip_repo_check=True)
+    assert isinstance(result, session_env.SessionSetupResult)
+    assert result.exit_code == 0
+    assert result.repo_checked is False
+    assert result.session_tmpdir.is_dir()
+    assert result.session_id
+    assert result.render_cache_dir == result.session_tmpdir / "render-cache"
+    kv_keys = [e.key for e in result.stdout_emissions if e.kind == "kv"]
+    assert kv_keys[:3] == ["SESSION_TMPDIR", "SESSION_ID", "LARCH_RENDER_CACHE_DIR"]
+    assert "REPO" not in kv_keys
+    assert "CLAUDE_BINARY_FOUND" in kv_keys
+    with pytest.raises(FrozenInstanceError):
+        result.exit_code = 1  # pyright: ignore[reportAttributeAccessIssue]
+
+
+def test_setup_direct_writes_session_env_and_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.delenv("CLAUDE_PLUGIN_ROOT", raising=False)
+    caller = tmp_path / "caller.env"
+    caller.write_text("REPO=owner/repo\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
+    out = tmp_path / "session-env.sh"
+    result = session_env.setup(prefix="pytest", skip_preflight=True, write_session_env=str(out), caller_env=str(caller))
+    assert result.exit_code == 0
+    assert result.repo_checked is True
+    assert result.repo == "owner/repo"
+    assert result.write_env_result is not None
+    assert result.write_env_result.wrote is True
+    assert "REPO=owner/repo" in out.read_text(encoding="utf-8")
+    kv_keys = [e.key for e in result.stdout_emissions if e.kind == "kv"]
+    assert "REPO" in kv_keys
+    assert "REPO_UNAVAILABLE" in kv_keys

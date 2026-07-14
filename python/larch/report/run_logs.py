@@ -23,6 +23,7 @@ import os
 import re
 import sys
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
@@ -233,6 +234,122 @@ def larch_log_validate_run_id_main(argv: list[str]) -> int:
     return 0
 
 
+@dataclass(frozen=True)
+class LogInitResult:
+    """Result of :func:`log_init`: manifest path and idempotent write state."""
+
+    path: Path
+    written: bool
+    unchanged: bool
+
+
+@dataclass(frozen=True)
+class LogWriteResult:
+    """Result of :func:`log_write`: batch path and idempotent write state."""
+
+    path: Path
+    written: bool
+    unchanged: bool
+
+
+@dataclass(frozen=True)
+class LogAppendResult:
+    """Result of :func:`log_append`: batch path and append state."""
+
+    path: Path
+    written: bool
+    unchanged: bool
+
+
+@dataclass(frozen=True)
+class LogAppendFailureResult:
+    """Result of :func:`log_append_failure`: execution-issue log path and append flag."""
+
+    log: Path
+    appended: bool
+
+
+@dataclass(frozen=True)
+class LogExistsResult:
+    """Result of :func:`log_exists`: batch path and existence flag."""
+
+    path: Path
+    exists: bool
+
+
+def log_init(
+    *,
+    log_root: Path,
+    skill: str,
+    run_id: str,
+    parent_skill: str = "",
+    issue: str = "",
+) -> LogInitResult:
+    """Idempotently synthesize a v2 manifest for ``skill``/``run_id``.
+
+    Raises ``ValueError`` for an invalid ``parent_skill`` slug or non-numeric
+    ``issue``. Returns an unchanged result when the manifest already exists.
+    """
+    if parent_skill:
+        _validate_slug(label="parent-skill", value=parent_skill)
+    if issue and not str(issue).isdigit():
+        raise ValueError(f"invalid issue: {issue}")
+    path = _manifest_cli_path(log_root=log_root, skill=skill, run_id=run_id)
+    if path.is_file():
+        return LogInitResult(path=path, written=False, unchanged=True)
+    extra: dict[str, Any] = {
+        "parent_skill": parent_skill or None,
+        "issue_number": int(issue) if issue else None,
+    }
+    manifest = Manifest.synthesize_v2(skill=skill, run_id=run_id, extra=extra)
+    _write_manifest_v2(path=path, data=manifest.to_json(existing=None))
+    return LogInitResult(path=path, written=True, unchanged=False)
+
+
+def log_write(
+    *,
+    log_root: Path,
+    skill: str,
+    run_id: str,
+    batch: str,
+    input_file: str,
+) -> LogWriteResult:
+    """Write a batch payload, returning its path and idempotent write state."""
+    path, written, unchanged = _write_batch(
+        log_root=log_root, skill=skill, run_id=run_id, batch=batch, input_file=input_file
+    )
+    return LogWriteResult(path=path, written=written, unchanged=unchanged)
+
+
+def log_append(
+    *,
+    log_root: Path,
+    skill: str,
+    run_id: str,
+    batch: str,
+    record_file: str,
+) -> LogAppendResult:
+    """Append a record to a batch, returning its path and append state."""
+    path, written, unchanged = _append_batch(
+        log_root=log_root, skill=skill, run_id=run_id, batch=batch, record_file=record_file
+    )
+    return LogAppendResult(path=path, written=written, unchanged=unchanged)
+
+
+def log_exists(
+    *,
+    log_root: Path,
+    skill: str,
+    run_id: str,
+    batch: str,
+) -> LogExistsResult:
+    """Report whether a known batch file exists. Raises ``ValueError`` for an unknown batch."""
+    if batch not in _LARCH_LOG_BATCHES:
+        raise ValueError(f"unknown batch: {batch}")
+    path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
+    return LogExistsResult(path=path, exists=path.exists())
+
+
 def larch_log_init_main(argv: list[str]) -> int:
     parser = _common_parser("cli.py run-log init")
     parser.add_argument("--parent-skill", default="")
@@ -240,24 +357,17 @@ def larch_log_init_main(argv: list[str]) -> int:
     args = _parse_common(parser=parser, argv=argv)
     if args is None:
         return _larch_log_fail(code=1, message="invalid init arguments")
-    if args.parent_skill:
-        try:
-            _validate_slug(label="parent-skill", value=args.parent_skill)
-        except ValueError as exc:
-            return _larch_log_fail(code=1, message=str(exc))
-    if args.issue and not str(args.issue).isdigit():
-        return _larch_log_fail(code=1, message=f"invalid issue: {args.issue}")
-    path = _manifest_cli_path(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id)
-    if path.is_file():
-        _emit_larch_log_envelope(path=path, written=False, unchanged=True)
-        return 0
-    extra: dict[str, Any] = {
-        "parent_skill": args.parent_skill or None,
-        "issue_number": int(args.issue) if args.issue else None,
-    }
-    manifest = Manifest.synthesize_v2(skill=args.skill, run_id=args.run_id, extra=extra)
-    _write_manifest_v2(path=path, data=manifest.to_json(existing=None))
-    _emit_larch_log_envelope(path=path, written=True, unchanged=False)
+    try:
+        result = log_init(
+            log_root=args.log_root_path,
+            skill=args.skill,
+            run_id=args.run_id,
+            parent_skill=args.parent_skill,
+            issue=args.issue,
+        )
+    except ValueError as exc:
+        return _larch_log_fail(code=1, message=str(exc))
+    _emit_larch_log_envelope(path=result.path, written=result.written, unchanged=result.unchanged)
     return 0
 
 
@@ -270,10 +380,16 @@ def larch_log_write_main(argv: list[str]) -> int:
     if args is None:
         return _larch_log_fail(code=1, message="invalid write arguments")
     try:
-        path, written, unchanged = _write_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, input_file=args.input_file)
+        result = log_write(
+            log_root=args.log_root_path,
+            skill=args.skill,
+            run_id=args.run_id,
+            batch=args.batch,
+            input_file=args.input_file,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return _larch_log_fail(code=1 if isinstance(exc, ValueError) else 2, message=str(exc))
-    _emit_larch_log_envelope(path=path, written=written, unchanged=unchanged)
+    _emit_larch_log_envelope(path=result.path, written=result.written, unchanged=result.unchanged)
     return 0
 
 
@@ -285,10 +401,16 @@ def larch_log_append_main(argv: list[str]) -> int:
     if args is None:
         return _larch_log_fail(code=1, message="invalid append arguments")
     try:
-        path, written, unchanged = _append_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, record_file=args.record_file)
+        result = log_append(
+            log_root=args.log_root_path,
+            skill=args.skill,
+            run_id=args.run_id,
+            batch=args.batch,
+            record_file=args.record_file,
+        )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return _larch_log_fail(code=1 if isinstance(exc, ValueError) else 2, message=str(exc))
-    _emit_larch_log_envelope(path=path, written=written, unchanged=unchanged)
+    _emit_larch_log_envelope(path=result.path, written=result.written, unchanged=result.unchanged)
     return 0
 
 
@@ -298,10 +420,16 @@ def larch_log_exists_main(argv: list[str]) -> int:
     args = _parse_common(parser=parser, argv=argv)
     if args is None:
         return _larch_log_fail(code=1, message="invalid exists arguments")
-    if args.batch not in _LARCH_LOG_BATCHES:
-        return _larch_log_fail(code=1, message=f"unknown batch: {args.batch}")
-    path = _batch_path(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch)
-    _emit_larch_log_envelope(path=path, written=False, unchanged=path.exists())
+    try:
+        result = log_exists(
+            log_root=args.log_root_path,
+            skill=args.skill,
+            run_id=args.run_id,
+            batch=args.batch,
+        )
+    except ValueError as exc:
+        return _larch_log_fail(code=1, message=str(exc))
+    _emit_larch_log_envelope(path=result.path, written=False, unchanged=result.exists)
     return 0
 
 
@@ -456,6 +584,57 @@ def _failure_retry_suffix(retry_count: str, transient_retry_count: str) -> str:
     return ""
 
 
+def log_append_failure(
+    *,
+    log: Path,
+    site: str,
+    tool: str,
+    exit_code: str,
+    category: str,
+    output_file: Path,
+    verdict: str = "",
+    retry_count: str = "",
+    transient_retry_count: str = "",
+    redact_body: bool = False,
+    status_label: str = "failed",
+) -> LogAppendFailureResult:
+    """Format and append a failure entry to an execution-issue log.
+
+    Raises ``ValueError`` for an unsupported category or malformed integer
+    fields; ``OSError`` propagates from the underlying append.
+    """
+    if category not in {"Tool Failures", "External Reviewer Issues", "CI Issues", "Warnings"}:
+        raise ValueError(f"unsupported category: {category}")
+    for flag, value in (
+        ("exit-code", exit_code),
+        ("retry-count", retry_count),
+        ("transient-retry-count", transient_retry_count),
+    ):
+        if value and not re.fullmatch(r"[0-9]+", value):
+            raise ValueError(f"--{flag} must be a non-negative integer")
+    if output_file.is_file() and output_file.stat().st_size:
+        body = output_file.read_text(encoding="utf-8", errors="replace")
+    else:
+        body = f"no diagnostics captured (exit {exit_code})\n"
+    if redact_body:
+        body = redact.redact_secrets_only(redact.redact_tmpdir_paths(body))
+    if category == "Warnings" and "diagram" in f"{site} {output_file}".lower():
+        body = design_diagram_log.sanitize_diagram_capture(body)
+    suffix = ""
+    if verdict:
+        suffix += f", {verdict}"
+    suffix += _failure_retry_suffix(retry_count, transient_retry_count)
+    entry = (
+        f"- **Step {site}: {tool} {status_label} "
+        f"(exit {exit_code}{suffix})**:\n"
+        "  ```\n"
+        f"{body.rstrip()}\n"
+        "  ```\n"
+    )
+    _append_execution_issue(log_file=log, category=category, entry=entry)
+    return LogAppendFailureResult(log=log, appended=True)
+
+
 def append_failure_main(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="python3 python/cli.py run-log append-failure")
     parser = argparse.ArgumentParser(prog="python3 python/cli.py run-log append-failure", add_help=False)
@@ -475,38 +654,24 @@ def append_failure_main(argv: list[str]) -> int:
     except SystemExit:
         logging_util.emit_kv(key="FAILED", value="true")
         return 1
-    if args.category not in {"Tool Failures", "External Reviewer Issues", "CI Issues", "Warnings"}:
-        logging_util.emit_kv(key="FAILED", value="true")
-        logging_util.emit_kv(key="ERROR", value=f"unsupported category: {args.category}")
-        return 1
-    for attr in ("exit_code", "retry_count", "transient_retry_count"):
-        value = getattr(args, attr)
-        if value and not re.fullmatch(r"[0-9]+", value):
-            logging_util.emit_kv(key="FAILED", value="true")
-            logging_util.emit_kv(key="ERROR", value=f"--{attr.replace('_', '-')} must be a non-negative integer")
-            return 1
-    output = Path(args.output_file)
-    if output.is_file() and output.stat().st_size:
-        body = output.read_text(encoding="utf-8", errors="replace")
-    else:
-        body = f"no diagnostics captured (exit {args.exit_code})\n"
-    if args.redact:
-        body = redact.redact_secrets_only(redact.redact_tmpdir_paths(body))
-    if args.category == "Warnings" and "diagram" in f"{args.site} {args.output_file}".lower():
-        body = design_diagram_log.sanitize_diagram_capture(body)
-    suffix = ""
-    if args.verdict:
-        suffix += f", {args.verdict}"
-    suffix += _failure_retry_suffix(args.retry_count, args.transient_retry_count)
-    entry = (
-        f"- **Step {args.site}: {args.tool} {args.status_label} "
-        f"(exit {args.exit_code}{suffix})**:\n"
-        "  ```\n"
-        f"{body.rstrip()}\n"
-        "  ```\n"
-    )
     try:
-        _append_execution_issue(log_file=Path(args.log), category=args.category, entry=entry)
+        log_append_failure(
+            log=Path(args.log),
+            site=args.site,
+            tool=args.tool,
+            exit_code=args.exit_code,
+            category=args.category,
+            output_file=Path(args.output_file),
+            verdict=args.verdict,
+            retry_count=args.retry_count,
+            transient_retry_count=args.transient_retry_count,
+            redact_body=args.redact,
+            status_label=args.status_label,
+        )
+    except ValueError as exc:
+        logging_util.emit_kv(key="FAILED", value="true")
+        logging_util.emit_kv(key="ERROR", value=str(exc))
+        return 1
     except OSError as exc:
         logging_util.emit_kv(key="FAILED", value="true")
         logging_util.emit_kv(key="ERROR", value=str(exc))

@@ -6,9 +6,53 @@ from __future__ import annotations
 import re
 import subprocess
 import sys
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from larch.core import config
+
+
+@dataclass(frozen=True)
+class ScrubLogSecretsResult:
+    """Result of :func:`scrub_log_secrets`.
+
+    ``findings`` is the approved mutable mapping of family name -> occurrence
+    count in the original text. Supports two-value unpacking
+    (``scrubbed, findings = result``) for out-of-partition callers.
+    """
+
+    scrubbed: str
+    findings: dict[str, int]
+
+    def __iter__(self) -> Iterator[Any]:  # legacy two-value unpacking compatibility
+        yield self.scrubbed
+        yield self.findings
+
+
+@dataclass(frozen=True)
+class ScrubLogDirectoryResult:
+    """Result of :func:`scrub_log_directory`: total secret hits and files scrubbed."""
+
+    total: int
+    files: int
+
+    def __iter__(self) -> Iterator[Any]:  # legacy two-value unpacking compatibility
+        yield self.total
+        yield self.files
+
+
+@dataclass(frozen=True)
+class ScrubSubmodulePathsResult:
+    """Result of :func:`scrub_submodule_paths`: scrubbed-finding count and success flag."""
+
+    count: int
+    ok: bool
+
+    def __iter__(self) -> Iterator[Any]:  # legacy two-value unpacking compatibility
+        yield self.count
+        yield self.ok
 
 # Line-local secret families (byte-for-byte ports of python3 python/cli.py redact secrets sed -E)
 _SK_RE = re.compile(r"sk-(ant-)?[A-Za-z0-9_-]{20,}")
@@ -348,18 +392,18 @@ def redact_secrets_outbound(text: str) -> str:
     """Redact secret families only; preserve tmpdir and operator repo paths."""
     if not text:
         return text
-    out, _ = scrub_log_secrets(text)
+    out = scrub_log_secrets(text).scrubbed
     if text.endswith("\n"):
         return out
     return out.rstrip("\n")
 
 
-def scrub_log_secrets(text: str) -> tuple[str, dict[str, int]]:
+def scrub_log_secrets(text: str) -> ScrubLogSecretsResult:
     """Scrub secret-shaped values from run-log text before a flush commit
     (parity with python3 python/cli.py redact scrub-log-secrets).
 
-    Returns ``(scrubbed_text, findings)`` where ``findings`` maps a family name
-    to its occurrence count in the ORIGINAL text. Base families
+    Returns a :class:`ScrubLogSecretsResult` whose ``findings`` maps a family
+    name to its occurrence count in the ORIGINAL text. Base families
     (sk-/GitHub/AWS/JWT/PEM) are scrubbed by the python3 python/cli.py redact secrets-equivalent
     PEM-aware pass; the extra prefixed families (Cursor et al.) by additional
     substitutions. Unlike :func:`redact`, this does NOT rewrite session tmpdir
@@ -373,7 +417,7 @@ def scrub_log_secrets(text: str) -> tuple[str, dict[str, int]]:
     scrubbed, _ = _redact_secrets_pem(text)
     for _, pattern in _EXTRA_SECRET_FAMILIES:
         scrubbed = pattern.sub(config.REDACTED_TOKEN, scrubbed)
-    return scrubbed, findings
+    return ScrubLogSecretsResult(scrubbed=scrubbed, findings=findings)
 
 
 def redact_breadcrumb_file(*, input_path: Path, output_path: Path, state_file: Path) -> None:
@@ -454,7 +498,7 @@ def main_tmpdir_paths(argv: list[str]) -> int:
     return 0
 
 
-def scrub_log_directory(directory: Path) -> tuple[int, int]:
+def scrub_log_directory(directory: Path) -> ScrubLogDirectoryResult:
     total = 0
     files = 0
     for path in sorted(directory.rglob("*")):
@@ -464,16 +508,15 @@ def scrub_log_directory(directory: Path) -> tuple[int, int]:
             text = path.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        scrubbed, findings = scrub_log_secrets(text)
-        if not findings:
+        first_pass = scrub_log_secrets(text)
+        if not first_pass.findings:
             continue
-        _, residual = scrub_log_secrets(scrubbed)
-        if residual:
+        if scrub_log_secrets(first_pass.scrubbed).findings:
             raise RuntimeError(f"secret survived scrubbing in {path}")
-        path.write_text(scrubbed, encoding="utf-8")
-        total += sum(findings.values())
+        path.write_text(first_pass.scrubbed, encoding="utf-8")
+        total += sum(first_pass.findings.values())
         files += 1
-    return total, files
+    return ScrubLogDirectoryResult(total=total, files=files)
 
 
 def main_scrub_log_secrets(argv: list[str]) -> int:
@@ -501,12 +544,12 @@ def main_scrub_log_secrets(argv: list[str]) -> int:
         print(f"python3 python/cli.py redact scrub-log-secrets: directory not found: {root}", file=sys.stderr)
         return 2
     try:
-        violations, files = scrub_log_directory(root)
+        directory_result = scrub_log_directory(root)
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 3
-    print(f"LARCH_SECRET_SCRUB_VIOLATIONS={violations}")
-    print(f"LARCH_SECRET_SCRUB_FILES={files}")
+    print(f"LARCH_SECRET_SCRUB_VIOLATIONS={directory_result.total}")
+    print(f"LARCH_SECRET_SCRUB_FILES={directory_result.files}")
     return 0
 
 
@@ -536,7 +579,7 @@ def discover_submodule_paths(cwd: Path) -> set[str]:
     return _discover_submodule_paths(cwd)
 
 
-def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path) -> tuple[int, bool]:
+def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path) -> ScrubSubmodulePathsResult:
     from larch.review.review_types import parse_blocks  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.review  # lint-layering: ok review_types is stdlib-only so no import cycle
     text = input_path.read_text(encoding="utf-8", errors="replace")
     repo = Path.cwd()
@@ -582,7 +625,7 @@ def scrub_submodule_paths(*, input_path: Path, output_path: Path, log_path: Path
     output_path.write_text("".join(parts), encoding="utf-8")
     log_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.write_text("\n".join(audit) + ("\n" if audit else ""), encoding="utf-8")
-    return scrubbed_count, True
+    return ScrubSubmodulePathsResult(count=scrubbed_count, ok=True)
 
 
 def main_scrub_submodule_paths(argv: list[str]) -> int:
@@ -608,12 +651,12 @@ def main_scrub_submodule_paths(argv: list[str]) -> int:
         print("scrub-submodule-paths.sh: --input, --output, and --log are required", file=sys.stderr)
         return 2
     try:
-        count, ok = scrub_submodule_paths(input_path=Path(input_path), output_path=Path(output_path), log_path=Path(log_path))
+        submodule_result = scrub_submodule_paths(input_path=Path(input_path), output_path=Path(output_path), log_path=Path(log_path))
     except OSError as exc:
         print(f"scrub-submodule-paths.sh: {exc}", file=sys.stderr)
         print("SCRUB_COUNT=0")
         print("SCRUB_OK=false")
         return 2
-    print(f"SCRUB_COUNT={count}")
-    print(f"SCRUB_OK={'true' if ok else 'false'}")
+    print(f"SCRUB_COUNT={submodule_result.count}")
+    print(f"SCRUB_OK={'true' if submodule_result.ok else 'false'}")
     return 0

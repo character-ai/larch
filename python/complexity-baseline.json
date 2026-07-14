@@ -5186,6 +5186,24 @@
   {
     "file": "larch/issue/tracking_issue.py",
     "code": "PLR0913",
+    "qualified_symbol": "append_comment_result",
+    "metric": 6,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "typed callable mirrors append_comment args"
+  },
+  {
+    "file": "larch/issue/tracking_issue.py",
+    "code": "PLR0913",
+    "qualified_symbol": "read",
+    "metric": 9,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "typed callable mirrors _render_issue_task args"
+  },
+  {
+    "file": "larch/issue/tracking_issue.py",
+    "code": "PLR0913",
     "qualified_symbol": "rename",
     "metric": 6,
     "added_at": "legacy",
@@ -6254,6 +6272,15 @@
     "metric": 17,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/report/run_logs.py",
+    "code": "PLR0913",
+    "qualified_symbol": "log_append_failure",
+    "metric": 11,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "typed callable relocated from append_failure_main"
   },
   {
     "file": "larch/report/run_logs.py",
@@ -8682,6 +8709,15 @@
   {
     "file": "larch/state/session_env.py",
     "code": "C901",
+    "qualified_symbol": "read_key",
+    "metric": 12,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "read_key resolution logic relocated from read_key_main"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
     "qualified_symbol": "read_key_main",
     "metric": 13,
     "added_at": "legacy",
@@ -8714,6 +8750,15 @@
   {
     "file": "larch/state/session_env.py",
     "code": "C901",
+    "qualified_symbol": "setup",
+    "metric": 21,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "session-setup side effects relocated from setup_main"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
     "qualified_symbol": "setup_main",
     "metric": 37,
     "added_at": "legacy",
@@ -8734,6 +8779,15 @@
     "metric": 28,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "C901",
+    "qualified_symbol": "write_env",
+    "metric": 32,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "session-env write/validation relocated from write_env_main"
   },
   {
     "file": "larch/state/session_env.py",
@@ -8834,6 +8888,15 @@
   {
     "file": "larch/state/session_env.py",
     "code": "PLR0912",
+    "qualified_symbol": "setup",
+    "metric": 22,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "session-setup side effects relocated from setup_main"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
     "qualified_symbol": "setup_main",
     "metric": 40,
     "added_at": "legacy",
@@ -8846,6 +8909,15 @@
     "metric": 27,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0912",
+    "qualified_symbol": "write_env",
+    "metric": 31,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "session-env write/validation relocated from write_env_main"
   },
   {
     "file": "larch/state/session_env.py",
@@ -8866,6 +8938,15 @@
   {
     "file": "larch/state/session_env.py",
     "code": "PLR0915",
+    "qualified_symbol": "setup",
+    "metric": 86,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "session-setup side effects relocated from setup_main"
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0915",
     "qualified_symbol": "setup_main",
     "metric": 119,
     "added_at": "legacy",
@@ -8878,6 +8959,15 @@
     "metric": 76,
     "added_at": "legacy",
     "history": []
+  },
+  {
+    "file": "larch/state/session_env.py",
+    "code": "PLR0915",
+    "qualified_symbol": "write_env",
+    "metric": 69,
+    "added_at": "2026-07-14",
+    "history": [],
+    "reason": "session-env write/validation relocated from write_env_main"
   },
   {
     "file": "larch/state/session_env.py",
