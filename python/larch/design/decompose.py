@@ -21,6 +21,8 @@ from larch.core import external_defaults
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
+from larch.design.design_step0_env import ROUTE_STATE_PATH
+from larch.design.design_terminal import phase_driver_read_result_env
 from larch.git import gh
 from larch.issue import issue_wire
 from larch.state import session_env
@@ -37,7 +39,6 @@ PARTITION_DEP_FIELD_COUNT = 2
 # title (e.g. ``[BUG]``, ``[FEATURE][A]``). Selected characters are restricted
 # so an untrusted GitHub title cannot smuggle arbitrary text into the prefix.
 SQUARE_BRACKET_PREFIX_RE = re.compile(r"^\s*((?:\[[A-Za-z0-9 _.-]+\]\s*)+)")
-ROUTE_STATE_PATH = ".design-step0-route-state.env"
 
 
 
@@ -103,19 +104,24 @@ def _route_state_value(design_tmpdir: Path, key: str) -> str:
     """Read a ``KEY=value`` row from the Step 0 route-state env, or return "".
 
     The route-state file (written by ``design_step0``) carries the original
-    issue title and number that ``/design`` bound at Step 0; both are needed to
-    build the split-piece title prefix. The file is a regular ``KEY=value`` kv
-    file with raw (unquoted) values.
+    issue title and number that ``/design`` bound at Step 0; the title is needed
+    to build the split-piece title prefix. Reads go through the shared
+    ``phase_driver_read_result_env`` helper that sibling consumers
+    (``design_step0``, ``clarify``) already use, with a single-key containment,
+    so parsing and value/newline handling stay centralized rather than being
+    re-derived here. Missing/symlink/non-regular files degrade to "" so the
+    caller's title passes through unchanged.
     """
-    path = design_tmpdir / ROUTE_STATE_PATH
-    if not path.is_file() or path.is_symlink():
+    try:
+        pairs = phase_driver_read_result_env(
+            path=design_tmpdir / ROUTE_STATE_PATH,
+            allow_keys=frozenset({key}),
+        )
+    except OSError:
         return ""
-    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not raw or raw.startswith("#") or "=" not in raw:
-            continue
-        row_key, _, row_value = raw.partition("=")
+    for row_key, value in pairs:
         if row_key == key:
-            return row_value
+            return value
     return ""
 
 
