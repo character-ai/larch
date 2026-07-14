@@ -223,4 +223,4 @@ The post phase runs canonical MainAgent re-tally, persists both Step 3 result en
 
 ### Tiered plan-review panels
 
-TRIVIAL and MODERATE use the Codex review role plus Cursor pairs. HARD uses the Codex default role plus Cursor pairs. All tiers cap at 2. Design review never sheds a vendor half by tier. Escalation from any non-HARD tier goes directly to HARD when a round has at least two accepted in-scope high-severity findings. Escalated rounds skip pruning.
+TRIVIAL, MODERATE, and HARD all use the Codex review role plus Cursor pairs. All tiers cap at 2. Design review never sheds a vendor half by tier. Escalation from any non-HARD tier goes directly to HARD when a round has at least two accepted in-scope high-severity findings. Escalated rounds skip pruning.

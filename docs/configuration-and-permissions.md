@@ -332,7 +332,7 @@ Codex reasoning effort applies at launch sites that pass `--with-effort` or use 
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
 
-HARD reviewer panels can set Codex model roles per archetype. Plan review uses the default Codex role only for `pragmatic` and `requirements`; code review uses it only for `correctness` and `edge-cases`. Other Codex reviewer rows, including dynamic rows, stay on the `review` role. Manifest `resolved_model` is derived from each row's `model_role`, so mixed HARD panels can contain both the default Codex model and `CODEX_REVIEW_MODEL_DEFAULT`.
+All Codex reviewer rows use the `review` role at every tier and for every archetype, including dynamic rows; there is no per-archetype or HARD-tier default-role override. Manifest `resolved_model` is derived from each row's `model_role` and the tier-aware `CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY` default, so HARD panels resolve Codex rows the same way MODERATE does.
 
 ### `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`
 
