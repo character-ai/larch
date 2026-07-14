@@ -18,6 +18,7 @@ from larch.calibration import difficulty
 from larch.core import config
 from larch.design import design_publish
 from larch.design import design_step5c
+from tests.support.design_wire import diff_lines_trailer, plan_body, write_result_env
 
 
 @pytest.fixture(autouse=True)
@@ -844,7 +845,7 @@ def test_publish_rejects_missing_difficulty_when_validation_enforces_it(tmp_path
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("## Plan\nbody\n\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(plan_body(body="body", diff_lines=1), encoding="utf-8")
     call_log = tmp_path / "calls.ndjson"
     record_file = tmp_path / "validate-invocation.env"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
@@ -890,9 +891,9 @@ def test_publish_recovers_auto_composed_embedded_difficulty_without_raw_sidecar(
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-3").write_text("", encoding="utf-8")
-    _ = (design / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=2\n",
-        encoding="utf-8",
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "2"},
     )
     _ = (design / "plan.txt").write_text(
         """## Plan
@@ -968,7 +969,12 @@ def test_step5c_auto_compose_preserves_oversize_override(tmp_path: Path) -> None
     design = tmp_path / "design"
     design.mkdir()
     (design / "plan.txt").write_text(
-        "## Plan\n\nBody.\n\n## Testing strategy\n\nRun tests.\n\ndifficulty: MODERATE\noversize_override: operator\ndiff_lines: 12\n",
+        plan_body(
+            body="Body.\n\n## Testing strategy\n\nRun tests.",
+            difficulty="MODERATE",
+            oversize_override="operator",
+            diff_lines=12,
+        ),
         encoding="utf-8",
     )
 
@@ -985,7 +991,7 @@ def test_publish_prefers_raw_sidecar_adjusted_tier_over_wire_plan_tier(tmp_path:
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("## Plan\nbody\n\ndifficulty: HARD\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(plan_body(body="body", difficulty="HARD", diff_lines=1), encoding="utf-8")
     _ = (design / difficulty.DESIGN_RAW_RATING_BASENAME).write_text(
         '{"predicted_tier":"TRIVIAL","confidence":"low","rationale":"raw sidecar"}\n',
         encoding="utf-8",
@@ -1033,7 +1039,7 @@ def test_publish_rejects_invalid_raw_sidecar_before_label_or_record_writes(tmp_p
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text(plan_body(body="body", difficulty="MODERATE", diff_lines=1), encoding="utf-8")
     _ = (design / difficulty.DESIGN_RAW_RATING_BASENAME).write_text("{invalid-json}\n", encoding="utf-8")
     call_log = tmp_path / "calls.ndjson"
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
@@ -1334,10 +1340,14 @@ def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    _ = (design / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=cap-hit\nLOOP_STATUS=cap-reached\nROUNDS_COMPLETED=5\n",
-        encoding="utf-8",
+    _ = (design / "composed-plan.md").write_text(plan_body(header="# plan", diff_lines=1), encoding="utf-8")
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {
+            "STEP3_REVIEW_LOOP_STATUS": "cap-hit",
+            "LOOP_STATUS": "cap-reached",
+            "ROUNDS_COMPLETED": "5",
+        },
     )
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     result = subprocess.run(
@@ -1368,10 +1378,14 @@ def test_publish_refuses_complete_without_step3_sentinel(tmp_path: Path) -> None
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text("# plan\n\ndiff_lines: 1\n", encoding="utf-8")
-    _ = (design / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=3\n",
-        encoding="utf-8",
+    _ = (design / "composed-plan.md").write_text(plan_body(header="# plan", diff_lines=1), encoding="utf-8")
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {
+            "STEP3_REVIEW_LOOP_STATUS": "complete",
+            "LOOP_STATUS": "complete",
+            "ROUNDS_COMPLETED": "3",
+        },
     )
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     result = subprocess.run(
@@ -1405,13 +1419,10 @@ def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-3").write_text("", encoding="utf-8")
-    _ = (design / "composed-plan.md").write_text(
-        "## Plan\nbody\n\ndiff_lines: 3\n",
-        encoding="utf-8",
-    )
-    _ = (design / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=2\n",
-        encoding="utf-8",
+    _ = (design / "composed-plan.md").write_text(plan_body(body="body", diff_lines=3), encoding="utf-8")
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "2"},
     )
     cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
@@ -1901,9 +1912,9 @@ def test_review_provenance_falls_back_to_round_count_file_when_keys_absent(tmp_p
     # #5210: a result env that omits ROUNDS_COMPLETED/REVIEW_ROUND_COUNT must recover
     # the launched-round count from review-round-count.txt rather than read rounds=0
     # and let publish_core refuse a cleanly-reviewed plan.
-    _ = (tmp_path / ".step3-review-result.env").write_text(
-        "LOOP_STATUS=zero-findings-degraded-panel\nTALLY_PLAN_REVIEW_STATUS=ok\n",
-        encoding="utf-8",
+    _ = write_result_env(
+        tmp_path / ".step3-review-result.env",
+        {"LOOP_STATUS": "zero-findings-degraded-panel", "TALLY_PLAN_REVIEW_STATUS": "ok"},
     )
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
     assert design_publish.review_provenance(tmp_path) == ("ok", 2, True)
@@ -1911,9 +1922,9 @@ def test_review_provenance_falls_back_to_round_count_file_when_keys_absent(tmp_p
 
 def test_review_provenance_prefers_explicit_keys_over_round_count_file(tmp_path: Path) -> None:
     # Explicit round-count keys win; the fallback file is not consulted when present.
-    _ = (tmp_path / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=3\n",
-        encoding="utf-8",
+    _ = write_result_env(
+        tmp_path / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "3"},
     )
     _ = (tmp_path / "review-round-count.txt").write_text("9\n", encoding="utf-8")
     assert design_publish.review_provenance(tmp_path) == ("complete", 3, True)
@@ -1921,9 +1932,9 @@ def test_review_provenance_prefers_explicit_keys_over_round_count_file(tmp_path:
 
 def test_review_provenance_round_count_fallback_absent_file_stays_zero(tmp_path: Path) -> None:
     # No round-count keys and no fallback file: rounds stays 0 (no behavior change).
-    _ = (tmp_path / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=panel-failed\n",
-        encoding="utf-8",
+    _ = write_result_env(
+        tmp_path / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "panel-failed"},
     )
     assert design_publish.review_provenance(tmp_path) == ("panel-failed", 0, True)
 
@@ -1940,9 +1951,15 @@ def test_publish_refuses_oversize_without_override(tmp_path: Path, capsys: pytes
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / ".completed" / "step-3").write_text("", encoding="utf-8")
-    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
-    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
-    (design / ".step3-review-result.env").write_text("STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    (design / "plan.txt").write_text("body\n" + diff_lines_trailer(1), encoding="utf-8")
+    (design / "composed-plan.md").write_text(
+        "body\n" + diff_lines_trailer(1, difficulty="MODERATE"),
+        encoding="utf-8",
+    )
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "1"},
+    )
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
@@ -1973,9 +1990,15 @@ def test_publish_refuses_size_check_failure(tmp_path: Path, capsys: pytest.Captu
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / ".completed" / "step-3").write_text("", encoding="utf-8")
-    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
-    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
-    (design / ".step3-review-result.env").write_text("STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    (design / "plan.txt").write_text("body\n" + diff_lines_trailer(1), encoding="utf-8")
+    (design / "composed-plan.md").write_text(
+        "body\n" + diff_lines_trailer(1, difficulty="MODERATE"),
+        encoding="utf-8",
+    )
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "1"},
+    )
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_fail = os.environ.get("FAKE_CLI_CHECK_SIZE_FAIL")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
@@ -2011,9 +2034,15 @@ def test_publish_refuses_size_check_without_valid_trigger_fails_closed(
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     (design / ".completed" / "step-3").write_text("", encoding="utf-8")
-    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
-    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
-    (design / ".step3-review-result.env").write_text("STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    (design / "plan.txt").write_text("body\n" + diff_lines_trailer(1), encoding="utf-8")
+    (design / "composed-plan.md").write_text(
+        "body\n" + diff_lines_trailer(1, difficulty="MODERATE"),
+        encoding="utf-8",
+    )
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "1"},
+    )
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
@@ -2043,9 +2072,15 @@ def test_publish_refuses_review_provenance_records_reason(tmp_path: Path, capsys
     (design / ".completed").mkdir(parents=True)
     (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
-    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
-    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
-    (design / ".step3-review-result.env").write_text("STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    (design / "plan.txt").write_text("body\n" + diff_lines_trailer(1), encoding="utf-8")
+    (design / "composed-plan.md").write_text(
+        "body\n" + diff_lines_trailer(1, difficulty="MODERATE"),
+        encoding="utf-8",
+    )
+    _ = write_result_env(
+        design / ".step3-review-result.env",
+        {"STEP3_REVIEW_LOOP_STATUS": "complete", "ROUNDS_COMPLETED": "1"},
+    )
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)

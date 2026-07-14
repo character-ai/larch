@@ -17,6 +17,7 @@ from larch.core import logging_util
 from larch.rendering import rendering
 from larch.agents import review_dispatch
 from larch.review import voting
+from tests.support.design_wire import plan_body, run_params_json
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON_DIR = Path(__file__).resolve().parents[2]
@@ -766,7 +767,7 @@ def test_render_plan_review_rejects_empty_feature_file(
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
     feature = design_tmpdir / "feature.txt"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     _ = feature.write_text("", encoding="utf-8")
     rc = rendering.render_plan_review_main(
         [
@@ -796,9 +797,9 @@ def test_render_plan_review_inlines_strunk_and_white_readability(
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     _ = (design_tmpdir / "run-params.json").write_text(
-        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
+        run_params_json(),
         encoding="utf-8",
     )
     style = tmp_path / "readability-style.md"
@@ -842,9 +843,9 @@ def test_render_plan_review_cursor_inlines_plan_content(
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
-    _ = plan.write_text("## Plan\n\nUNIQUE_PLAN_MARKER_5518 do the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="UNIQUE_PLAN_MARKER_5518 do the thing."), encoding="utf-8")
     _ = (design_tmpdir / "run-params.json").write_text(
-        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
+        run_params_json(),
         encoding="utf-8",
     )
     rc = rendering.render_plan_review_main(
@@ -868,9 +869,9 @@ def test_render_plan_review_codex_references_plan_path(
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
-    _ = plan.write_text("## Plan\n\nUNIQUE_PLAN_MARKER_5518 do the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="UNIQUE_PLAN_MARKER_5518 do the thing."), encoding="utf-8")
     _ = (design_tmpdir / "run-params.json").write_text(
-        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
+        run_params_json(),
         encoding="utf-8",
     )
     rc = rendering.render_plan_review_main(
@@ -895,9 +896,9 @@ def test_render_plan_review_tsv_contract_hardening(
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     _ = (design_tmpdir / "run-params.json").write_text(
-        '{"schema_version":3,"partition_requested":false,"brainstorm_requested":false}\n',
+        run_params_json(),
         encoding="utf-8",
     )
     rc = rendering.render_plan_review_main(
@@ -973,7 +974,7 @@ def test_render_plan_review_injects_architectural_guidelines_separate_from_scope
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
     feature = design_tmpdir / "feature.txt"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     _ = feature.write_text("Issue scope.\n", encoding="utf-8")
     rc = rendering.render_plan_review_main(
         [
@@ -1021,7 +1022,7 @@ def test_render_plan_review_non_arch_archetypes_omit_architectural_knowledge(
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
 
     rc = rendering.render_plan_review_main(
         [
@@ -1060,7 +1061,7 @@ def test_render_plan_review_trivial_omits_architectural_guidelines(
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
     feature = design_tmpdir / "feature.txt"
-    plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     feature.write_text("Issue scope.\n", encoding="utf-8")
 
     rc = rendering.render_plan_review_main(
@@ -1097,7 +1098,7 @@ def test_render_plan_review_injects_reviewer_ledger_rules(
     design_tmpdir = tmp_path / "design"
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     findings_ledger.write_round(
         design_tmpdir,
         1,
@@ -1143,7 +1144,7 @@ def test_render_plan_review_body_file_substitutes_role_line(
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
     body = design_tmpdir / "dyn-cursor-plan-semantics-guard.body"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     _ = body.write_text("You are a Semantics-Guard reviewer. Verify contract semantics.\n", encoding="utf-8")
     rc = rendering.render_plan_review_main(
         [
@@ -1181,7 +1182,7 @@ def test_render_plan_review_rejects_empty_body_file(
     design_tmpdir.mkdir()
     plan = design_tmpdir / "plan.txt"
     body = design_tmpdir / "empty.body"
-    _ = plan.write_text("## Plan\n\nDo the thing.\n", encoding="utf-8")
+    _ = plan.write_text(plan_body(body="Do the thing."), encoding="utf-8")
     _ = body.write_text("", encoding="utf-8")
     rc = rendering.render_plan_review_main(
         [
