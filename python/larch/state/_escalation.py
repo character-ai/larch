@@ -20,6 +20,7 @@ from larch.state._tokens import (
     _DEFAULT_RECORD_FAILURE_MARKER,
     _safe_dispatcher_value,
     _safe_token,
+    _sanitize_token_diagnostic_value,
     _validate_tmpdir_write_path,
     emit,
 )
@@ -119,12 +120,17 @@ def record_escalation(args: argparse.Namespace) -> int:
     phase = args.phase
     dispatcher = args.dispatcher
     exit_code = args.exit_code
-    if not _safe_token(kind="site", value=site, generic=generic) or not _safe_token(kind="trigger", value=trigger, generic=generic):
-        print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
-        return hard_fail("token-validation-failed")
-    if not _safe_token(kind="step", value=step, generic=generic) or not _safe_token(kind="phase", value=phase, generic=generic):
-        print("stall-recovery: record-escalation token validation failed", file=sys.stderr)
-        return hard_fail("token-validation-failed")
+    for kind, value in (
+        ("site", site),
+        ("trigger", trigger),
+        ("step", step),
+        ("phase", phase),
+    ):
+        if not _safe_token(kind=kind, value=value, generic=generic):
+            safe_value = _sanitize_token_diagnostic_value(value)
+            reason = f"token-validation-failed kind={kind} value={safe_value}"
+            print(f"stall-recovery: record-escalation {reason}", file=sys.stderr)
+            return hard_fail(reason)
     detail_log = getattr(args, "failure_detail_log", "") or ""
     rel_log, detail_log_skipped = _resolve_detail_log(tmpdir=tmpdir, detail_log=detail_log)
     ledger = _artifact_path(tmpdir=tmpdir, default_name="stall-recovery-escalation-ledger.tsv", prefix=prefix)

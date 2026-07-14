@@ -229,6 +229,81 @@ def test_record_escalation_writes_canonical_ledger(tmp_path: Path, capsys: pytes
     assert "site=step5" in (tmp_path / "stall-recovery-escalation-ledger.tsv").read_text(encoding="utf-8")
 
 
+def _step2_vendor_bail_escalation_args(tmp_path: Path) -> list[str]:
+    """Documented Step 2 step2-impl handoff argv (vendor-failure recovery)."""
+    return [
+        "--implement-tmpdir", str(tmp_path),
+        "--site", "step2",
+        "--trigger", "step2-impl",
+        "--step", "2",
+        "--phase", "implementation",
+        "--dispatcher", "cursor",
+        "--exit-code", "1",
+    ]
+
+
+def test_record_escalation_step2_vendor_bail_writes_ledger(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = stall_recovery.record_escalation_main(_step2_vendor_bail_escalation_args(tmp_path))
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "ESCALATION_RECORDED=true" in out
+    fields = _escalation_ledger_fields(tmp_path)
+    assert fields["site"] == "step2"
+    assert fields["trigger"] == "step2-impl"
+    assert fields["step"] == "2"
+    assert fields["phase"] == "implementation"
+    _assert_no_record_escalation_tool_failure(tmp_path)
+
+
+def test_record_escalation_token_rejection_names_kind_and_value(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = stall_recovery.record_escalation_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--site", "not-a-legal-site",
+        "--trigger", "step2-impl",
+        "--step", "2",
+        "--phase", "implementation",
+        "--dispatcher", "cursor",
+        "--exit-code", "1",
+    ])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "token-validation-failed kind=site value=not-a-legal-site" in err
+    execution = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "Tool Failure: record-escalation" in execution
+    assert "reason: `token-validation-failed kind=site value=not-a-legal-site`" in execution
+    assert not (tmp_path / "stall-recovery-escalation-ledger.tsv").exists()
+
+
+def test_record_escalation_illegal_trigger_still_hard_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = stall_recovery.record_escalation_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--site", "step2",
+        "--trigger", "cursor-runtime-failure",
+        "--step", "2",
+        "--phase", "implementation",
+        "--dispatcher", "cursor",
+        "--exit-code", "1",
+    ])
+
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "token-validation-failed kind=trigger value=cursor-runtime-failure" in err
+    execution = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "reason: `token-validation-failed kind=trigger value=cursor-runtime-failure`" in execution
+    assert not (tmp_path / "stall-recovery-escalation-ledger.tsv").exists()
+
+
 @pytest.mark.parametrize(
     ("case", "expected_skip"),
     [

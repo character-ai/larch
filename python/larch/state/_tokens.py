@@ -19,6 +19,7 @@ from larch.core import config, process_identity
 # ---------------------------------------------------------------------------
 
 CONTROL_CHAR_ORDINAL_LIMIT = 32
+_TOKEN_DIAGNOSTIC_VALUE_MAX = 64
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
@@ -59,7 +60,7 @@ _GENERIC_SITES = frozenset({
     "design-publish", "clarify-loop", "judge-panel", "decompose-panel",
 })
 _COMMON_SITES = frozenset({
-    "step3", "step5", "step5-self-review", "step5-mav", "step6", "step8", "step18a",
+    "step2", "step3", "step5", "step5-self-review", "step5-mav", "step6", "step8", "step18a",
     "review-loop", "lint-fix-loop", "ship-pr", "ship-pr-ci-initial", "ship-pr-ci-merge",
     "ship-pr-ci-per-job", "ship-pr-internal", "recovery-inline",
 })
@@ -413,6 +414,14 @@ def _safe_bail_value(value: str) -> str:
 
 def _safe_simple_token(value: str, *, fallback: str = "redacted") -> str:
     return value if value and re.fullmatch(r"[A-Za-z0-9._:-]+", value) else fallback
+
+
+def _sanitize_token_diagnostic_value(value: str) -> str:
+    """Sanitize a rejected token value for stderr / Tool Failure diagnostics."""
+    safe = _safe_simple_token(value)
+    if len(safe) > _TOKEN_DIAGNOSTIC_VALUE_MAX:
+        return safe[:_TOKEN_DIAGNOSTIC_VALUE_MAX]
+    return safe
 
 
 # ---------------------------------------------------------------------------
