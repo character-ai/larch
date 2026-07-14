@@ -59,6 +59,10 @@ Warnings (11):
   10. G-Py-11 requires the form `# type: ignore[code] # reason`. The contextual reason is clear (the preceding `all(...is not None...)` assertion establishes at runtime that these values are `int`, but p...
   11. No other deviations were found. The Python module follows the stub-and-subprocess test pattern already established in the codebase. The migration sweep of prose consumers (`SKILL.md`, contract `.md...
 
+## Architectural invariants
+
+The diff is a Bash-to-Python test migration: four Bash harness scripts (`test-step-5-review.sh`, `test-step-8-ship.sh`, `test-step-18.sh`, `test-implement-review-token-propagation.sh`) are removed, and equivalent coverage is ported into `python/tests/implement/test_implement_shell_scripts.py`. Supporting `Makefile`, `agent-lint.toml`, `docs/linting.md`, `migrated-scripts.tsv`, `scripts/residual-bash-paths.txt`, contract `.md` files, `skills/implement/SKILL.md`, and `python/skill-closure-baseline.json` are updated to reference the new test module. No gate logic, pause/resume artifacts, persisted step-result consumers, run-log flush paths, committed artifact fields, outcome label writers, slot accounting, agent verdict dispatch, or ship/recovery routes are modified. All invariants are satisfied.
+
 ## Architectural guidelines
 
 The diff retires four Bash harness scripts and replaces them with a new pytest module at `python/tests/implement/test_implement_shell_scripts.py`. Supporting surface changes update Makefile `.PHONY` declarations and shard lists, `scripts/residual-bash-paths.txt`, `agent-lint.toml`, `python/migrated-scripts.tsv`, `python/skill-closure-baseline.json`, prose references in `skills/implement/SKILL.md`, `docs/linting.md`, `skills/implement/scripts/step-18.md`, `skills/implement/scripts/step-5-review.md`, `skills/implement/scripts/step-8-ship.md`, `skills/implement/scripts/test-implement-review-token-propagation.md`, and two plan-fidelity-calibration fixture diffs. The new Python module uses `subprocess`, `pathlib`, and injectable stub binaries and operates under `set -euo pipefail` in its spawned Bash subprocesses. All prose consumers of the retired script names are swept in the same change. The migration records the four retired paths in `python/migrated-scripts.tsv` under issue `#7063`. No architectural guideline is deviated from in these changes.
@@ -67,7 +71,7 @@ The diff retires four Bash harness scripts and replaces them with a new pytest m
 
 - **Outcome**: shipping
 - **Duration**: 00:38:09
-- **Cost**: 💰 TOTAL ~$20.45: Claude $4.06, Codex-5.6 $6.28, Codex-mini $0.03, Cursor $8.91 (Composer $5.60, Grok $3.31), Claude (subprocess) $1.17  |  Tokens: 29074k
+- **Cost**: 💰 TOTAL ~$21.39: Claude $5.00, Codex-5.6 $6.28, Codex-mini $0.03, Cursor $8.91 (Composer $5.60, Grok $3.31), Claude (subprocess) $1.17  |  Tokens: 30458k
 - **Issue**: #7063: https://github.com/character-ai/larch/issues/7063
 - **Plan review**: N/A
 - **Plan coverage**: 20/20 firm headings; band: advisory; disposition: none; todos_left: 0
