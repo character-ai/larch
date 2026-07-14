@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The remaining prompt prose is stale but is outside the anchored public-mirror scope and does not affect dispatch.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Slot metadata is stale, but dispatch derives the role from difficulty and the feature path remains correct.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

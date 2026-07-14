@@ -1,0 +1,14 @@
+1	flipping the trivial coder waterfall to cursor-first leaves `test_phase_coder_routes_difficulty_matrix` expecting codex, causing the targeted or full test suite to fail.
+1	removing the hard role overrides makes pragmatic and requirements use `review`, but the existing test still expects the default role.
+1	removing the hard role override makes all plan-review archetypes use `review`, while the existing hard panel test expects pragmatic and requirements to use the default role.
+1	shipped documentation, skill prompts, and topology metadata continue to describe four specialists, the retired reviewer, and old routing; topology synchronization may also fail linting.
+1	removing the shared architectural-compliance reviewer from the common panel also removes architectural assessment from standalone `/review`, which has no step 8 equivalent.
+1	`test_model_args_defaults_and_effort` hardcodes the old codex model and will fail if the shared default changes to terra.
+1	changing `codex_default_model` affects unrelated default-role launches and model-less historical token rows, potentially changing their execution or pricing.
+1	the cursor implement-model test still expects `cursor_default_model` for trivial, but the new mapping selects `grok-4.5`.
+1	python/larch/core/config.py:769-777 [scope-reduction] g-wire-2/g-wire-3: changing codex_default_model broadens the feature beyond per-tier implement routing.. scenario: ci, lint-fix, rebase, generic launches, and model-less token reports can switch from sol to terra unintentionally.
+1	python/larch/core/config.py:769-777; python/larch/report/report_tokens_cost.py:18; python/larch/report/tokens.py:1093 [scope-reduction] changing shared codex_default_model broadens the feature beyond per-tier implement routing. scenario: model-less historical codex rows are repriced from gpt-5.6-sol to terra, and unrelated default-role callers also change
+1	python/larch/core/config.py:769-777 [scope-reduction] changing codex_default_model broadens a tier-specific routing change into unrelated defaults.. scenario: agent default-role launches and token-cost reports move from gpt-5.6-sol to terra; existing default snapshots fail and missing-model costs change.
+2	retargeting the topology authority to `review_dispatch_panel.py` without the exact `three specialists per vendor` anchor will cause topology generation and validation checks to fail.
+2	changing the plan-review role without passing the tier-specific codex model causes moderate and hard review-role launches to use luna instead of terra.
+2	the testing strategy omits the rendering, plan-scout, and skills-structure pytest files required by acceptance, leaving those suites unverified.

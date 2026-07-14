@@ -1,0 +1,116 @@
+## Plan
+
+### UPDATED: python/larch/core/config.py
+- Keep `CODEX_DEFAULT_MODEL` at `gpt-5.6-sol`; do not change unrelated default-role launches or model-less token-cost fallback behavior.
+- Set `CODEX_IMPLEMENT_MODEL_BY_DIFFICULTY[MODERATE]` and `[HARD]` explicitly to `gpt-5.6-terra`; keep TRIVIAL at terra.
+- Change TRIVIAL coder order to `("cursor", "codex", "claude")` and its Cursor implement model to `grok-4.5`.
+- Set `CODEX_REVIEW_PANEL_MODEL_BY_DIFFICULTY[MODERATE]` to `gpt-5.6-terra`; retain TRIVIAL’s luna fallback and HARD’s terra value.
+- Remove the `design.plan_review_panel` role overrides, leaving `DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES` empty. Update plan-review fallback prose to state that static Codex rows use the review role.
+- Retain all four `_CODE_REVIEW_ARCHETYPES`, including `architectural-compliance`, because standalone `/review` still requires that coverage.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+- Use the existing `--site` value to omit only `architectural-compliance` static rows when `site == "implement Step 5"`.
+- Leave standalone `/review` dispatch unchanged, including the architectural-compliance Cursor and Codex rows, rendered architecture knowledge, and no-fallback behavior.
+
+### UPDATED: python/larch/review/plan_review_panel.py
+- Make the waterfall `--model-role` agree with the per-slot plan-review rows after override removal: all HARD static Codex plan-review rows dispatch with `review`, not `default`.
+
+### UPDATED: python/tests/core/test_config.py
+- Assert explicit terra mappings for MODERATE and HARD Codex implementers while retaining the sol global default.
+- Update TRIVIAL coder-order and Cursor-model expectations.
+
+### UPDATED: python/tests/core/test_external_role_defaults.py
+- Replace the removed plan-review override assertion with an empty-override assertion.
+- Retain the existing four-specialist `review.panel` topology expectation.
+
+### UPDATED: python/tests/agents/test_agents.py
+- Make the default Codex model assertion reference `config.CODEX_DEFAULT_MODEL`.
+- Update the TRIVIAL Cursor implement-model case to expect `grok-4.5`.
+
+### UPDATED: python/tests/state/test_bootstrap.py
+- Change the both-tools-available TRIVIAL coder-route expectation from Codex to Cursor.
+
+### UPDATED: python/tests/calibration/test_difficulty.py
+- Rename and update the HARD plan-review role test so pragmatic and requirements, like arch and innovation, resolve to `review`.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+- Update MODERATE and HARD Codex implement-model assertions to terra.
+- Update TRIVIAL coder ordering and Cursor model assertions.
+
+### UPDATED: python/tests/review/test_plan_review_panel.py
+- Update the HARD panel test name and assertions: all four Codex focus areas use `review`, and the waterfall receives `--model-role review`.
+- Continue asserting terra as the resolved HARD panel model.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+- Add or update dispatch/coverage scenarios proving `/implement` Step 5 emits only correctness, edge-cases, and testing per available vendor.
+- Preserve standalone `/review` scenarios that require architectural-compliance, including manifest-derived coverage-gate behavior.
+
+### UPDATED: README.md
+- Change the `/implement` Step 5 summary from four to three static specialists per vendor and retain the separate Step 8 architectural-assessment ownership.
+
+### UPDATED: docs/configuration-and-permissions.md
+- Document TRIVIAL Cursor-first routing with `grok-4.5`, plus terra for MODERATE and HARD Codex implement fallbacks.
+- Update MODERATE Codex reviewer-panel routing from luna to terra while retaining the global sol default and TRIVIAL luna fallback.
+
+### UPDATED: docs/review-agents.md
+- Distinguish standalone `/review`’s four static specialists from `/implement` Step 5’s three-specialist panel.
+- State that Step 8 owns `/implement` architectural assessment and update MODERATE reviewer-model prose to terra.
+- Retain documentation for the standalone architectural-compliance agent and its rendered architecture knowledge.
+
+### UPDATED: docs/external-reviewers.md
+- Update Step 2 tier routing and describe the site-specific code-review panel composition.
+- State that all plan-review Codex rows use the review role and that MODERATE review-panel rows use terra.
+
+### UPDATED: docs/skills.md
+- Update the `/implement` Step 5 feature entry to three static specialists per vendor and Step 8 architectural ownership.
+
+### UPDATED: docs/workflow-lifecycle.md
+- Replace the Step 5 architectural-compliance ownership statement with the three-specialist panel and Step 8 architectural-assessment contract.
+
+### UPDATED: skills/implement/SKILL.md
+- Update the Step 5 banner contract to three static specialists and MODERATE terra reviewer pairs.
+- Keep architectural-compliance reserved for dynamic-scout validation.
+
+### UPDATED: skills/review/SKILL.md
+- Retain the standalone four-specialist description while updating MODERATE Codex review routing to terra and HARD static role wording to review.
+
+### UPDATED: skills/shared/topology.tsv
+- Change `implement.review_and_fix.panel_hard` to three specialists per vendor with correctness, edge-cases, and testing.
+- Point the authority at the site-aware dispatch implementation.
+
+### UPDATED: docs/topology.md
+- Regenerate from `skills/shared/topology.tsv` with `python3 python/cli.py generate topology-docs`.
+
+### MAY_UPDATE: python/larch/review/review_core_body.py
+- No production edit expected: its coverage gate already derives expected static reviewers from the emitted manifest, so the Step 5 filtered manifest requires three while standalone `/review` requires four. Verify this with the updated review-pipeline tests.
+
+## Approach
+Apply tier-specific routing without changing the shared Codex default. Retire architectural-compliance only from `/implement` Step 5 through the existing site-aware dispatch path; keep the shared slot, agent, pre-rendered prompt, manifest entry, reservation, rendering branch, token slot classification, and standalone `/review` coverage intact. Do not delete `agents/reviewer-architectural-compliance.md` or regenerate pre-rendered reviewer prompts.
+
+Update public mirrors and skill prompts to distinguish the two code-review surfaces: `/implement` Step 5 uses three static specialists because Step 8 performs architectural assessment, while standalone `/review` continues to use the architectural-compliance specialist.
+
+## Edge cases
+- TRIVIAL review-panel routing remains unchanged: Cursor singles when available; otherwise Codex luna singles.
+- The global Codex default remains sol for generic launches, lint/CI/rebase roles, and model-less historical token rows.
+- Removing plan-review role overrides changes HARD plan-review role labels to `review`; terra remains the resolved model through the HARD panel-model mapping.
+- The Step 5 filter must match the exact existing site string, `implement Step 5`; all other sites retain architectural-compliance.
+- Keep `architectural-compliance` in `REVIEW_RESERVED` because it remains an active standalone static archetype.
+
+## Failure modes
+1. A broad archetype deletion removes standalone `/review` architectural coverage. Earliest signal: standalone manifest or coverage-gate tests omit architectural-compliance. Mitigation: retain shared topology and filter only Step 5 dispatch rows.
+2. Changing `CODEX_DEFAULT_MODEL` reprices historical model-less rows or alters unrelated launches. Earliest signal: default-model and token-cost tests drift. Mitigation: retain sol and use explicit terra implement mappings.
+3. Plan-review rows resolve to terra but launch with `--model-role default`. Earliest signal: HARD plan-review dispatch test. Mitigation: align the waterfall argument with the all-review per-slot role.
+4. Public mirrors describe one shared four- or three-specialist shape. Earliest signal: docs-sync checks or stale-token grep. Mitigation: document `/review` and `/implement` Step 5 separately.
+
+## Testing strategy
+- Run applicable linters for changed Python files and targeted pytest:
+  `pytest python/tests/core/test_config.py python/tests/core/test_external_role_defaults.py python/tests/agents/test_agents.py python/tests/state/test_bootstrap.py python/tests/calibration/test_difficulty.py python/tests/implement/test_implement_dispatch.py python/tests/review/test_review_pipeline.py python/tests/review/test_plan_review_panel.py`.
+- Run `python3 python/cli.py generate topology-docs`, then `python3 python/cli.py generate check`.
+- Run agent-lint and the relevant documentation-sync harness.
+- Verify manifests directly: Step 5 emits six MODERATE/HARD static rows with both vendors available; standalone `/review` emits eight and retains architectural-compliance.
+
+difficulty: MODERATE
+diff_added: 185
+diff_deleted: 155
+oversize_override: operator
+diff_lines: 340

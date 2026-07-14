@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Documentation sweep is deferred from this partition and does not break the feature path.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The metadata is not consumed by plan-review dispatch, so the feature works without this consistency change.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
