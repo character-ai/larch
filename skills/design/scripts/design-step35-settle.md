@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Shared post-rewrite settle wrapper for Gate B, Gate A rewrites, and discussion Round 2. It runs dedup, delegates postplan to `python/cli.py design step2b-postplan`, and asks `python/cli.py design settle-next-action` for the action envelope.
+Shared post-rewrite settle wrapper for Gate B, Gate A rewrites, discussion Round 2, and Gate C plan revision. It runs dedup, delegates postplan to `python/cli.py design step2b-postplan`, and asks `python/cli.py design settle-next-action` for the action envelope.
 
 ## Primary callers
 
@@ -12,7 +12,7 @@ Prompt-side `/design` calls this wrapper through the design launcher:
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b
 ```
 
-Gate A uses `--site gate-a`. Discussion Round 2 uses `--site discussion-round2`.
+Gate A uses `--site gate-a`. Discussion Round 2 uses `--site discussion-round2`. Gate C plan revision (Step 4b adverse-outcome ladder) uses `--site gate-c` after every plan change; it carries no Gate B round and owns no Gate B marker or snapshot.
 
 ## Arguments
 
@@ -21,7 +21,7 @@ Gate A uses `--site gate-a`. Discussion Round 2 uses `--site discussion-round2`.
 | `--session-env-path PATH` | launcher-supplied | Optional session env to source before plugin-root validation. |
 | `--claude-pid PID` | launcher-supplied | Forwarded to `python/cli.py design step2b-postplan`. |
 | `--plugin-root DIR` | launcher-supplied | Plugin root used for helper resolution. |
-| `--site gate-b\|gate-a\|discussion-round2` | yes | Selects marker handling and postplan site mapping. |
+| `--site gate-b\|gate-a\|discussion-round2\|gate-c` | yes | Selects marker handling and postplan site mapping. |
 | `--round-num N` | Gate B optional | Explicit Gate B review round. |
 
 ## Gate B round derivation
@@ -44,6 +44,7 @@ Missing or non-numeric Gate B rounds exit `2`.
 | `gate-b` | `python/cli.py design step2b-postplan --site gate-b` |
 | `gate-a` | `python/cli.py design step2b-postplan --site discussion-round2` |
 | `discussion-round2` | `python/cli.py design step2b-postplan --site discussion-round2` |
+| `gate-c` | `python/cli.py design step2b-postplan --site gate-c` |
 
 ## Exit code contract
 
@@ -61,6 +62,10 @@ The wrapper emits one stdout `SETTLE_NEXT_ACTION=<value>` row before each determ
 | `gate-a-hard-size` | Gate A / Round 2 hard size brake. |
 | `gate-b-split` | Gate B split path. |
 | `gate-a-split` | Gate A or discussion Round 2 split path. |
+| `gate-c-return` | Gate C plan-revision clean result; re-enter `resume@4b`. |
+| `gate-c-validator-fail` | Gate C plan-revision validator operator brake. |
+| `gate-c-hard-size` | Gate C plan-revision hard plan-size brake. |
+| `gate-c-split` | Gate C plan-revision split path. |
 
 | Exit | Meaning |
 | --- | --- |
@@ -74,6 +79,13 @@ The wrapper emits one stdout `SETTLE_NEXT_ACTION=<value>` row before each determ
 | `13` | Split path. |
 
 Unexpected child output that lacks an anchored whole-line `POSTPLAN_RC=` row is a contract error unless pause output or a fresh pause breadcrumb is present.
+
+## Gate C plan-revision contract
+
+Gate C invokes `--site gate-c` after every plan change in the Step 4b adverse-outcome ladder (`approval-gates-gate-c.md`). The wrapper maps it to `python/cli.py design step2b-postplan --site gate-c`, which re-runs postplan validation on the revised `plan.txt` with no Gate B round, marker, phase file, or plan snapshot; it retains the shared dedup and stale-dialectic clearing behavior.
+
+- **Clean**: `POSTPLAN_RC=0`, exactly one `SETTLE_NEXT_ACTION=gate-c-return`, and a matching `SETTLE_EXIT_RC=0`. Only on this clean action does Gate C re-enter `resume@4b` to re-run present-note, spawn a fresh `larch:arch-assessor`, and re-judge the revised plan.
+- **Repair or terminal**: `gate-c-validator-fail`, `gate-c-hard-size`, `gate-c-split`, and `pause` are repair or terminal branches. They must not re-assess the plan until a subsequent clean Gate C settle. A failed settle (missing or duplicate `POSTPLAN_RC`, dispatch mismatch) retries only settlement for the already-consumed action; it never re-runs the fix and never advances to fresh assessment.
 
 ## Marker ownership
 

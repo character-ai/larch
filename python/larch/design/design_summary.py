@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.calibration import difficulty
+from larch.core import architectural_guidelines, redact
 from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.design.design_publish import review_provenance
@@ -37,6 +38,8 @@ _MISSING_INVARIANT_ASSESSMENT_SUMMARY_WARNING = (
 _MISSING_GUIDELINE_ASSESSMENT_SUMMARY_WARNING = (
     "**⚠ Missing architectural-guideline-assessment.md; Gate C assessment did not persist.**"
 )
+_APPROVED_OUTCOMES = frozenset({"approved", "approved-partition"})
+_GUIDELINE_EXCEPTION_DISCLOSURE_PREFIX = "**Gate C guideline exception recorded:**"
 
 
 def _plugin_root() -> Path:
@@ -571,6 +574,51 @@ def _prefix_missing_assessment_warnings(*, design_tmpdir: Path, out_file: Path) 
         )
 
 
+def _guideline_exception_disclosure(design_tmpdir: Path) -> str:
+    """Return a redacted Gate C guideline-exception disclosure line, or ``''``.
+
+    Reads the persisted guideline assessment, validates exactly one active
+    documented-exception (the fence-aware shared helper), and redacts the
+    rationale through the established outbound-redaction path before egress.
+    Missing, malformed, fenced-only, or unsafe artifacts disclose nothing.
+    """
+    note_path = design_tmpdir / architectural_guidelines.DESIGN_ASSESSMENT
+    if note_path.is_symlink() or not note_path.is_file():
+        return ""
+    try:
+        note = note_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    exception = architectural_guidelines.guideline_active_exception(note)
+    if exception is None:
+        return ""
+    redacted = redact.redact_outbound(exception.rationale).replace("\n", " ").strip()
+    if not redacted:
+        return ""
+    return (
+        f"{_GUIDELINE_EXCEPTION_DISCLOSURE_PREFIX} {redacted} "
+        f"(author: main-agent, date: {exception.date})"
+    )
+
+
+def _prefix_guideline_exception_disclosure(*, design_tmpdir: Path, outcome: str, out_file: Path) -> None:
+    if outcome not in _APPROVED_OUTCOMES:
+        return
+    disclosure = _guideline_exception_disclosure(design_tmpdir)
+    if not disclosure:
+        return
+    if out_file.is_symlink() or not out_file.is_file():
+        return
+    try:
+        body = out_file.read_text(encoding="utf-8")
+    except OSError:
+        return
+    if disclosure in body:
+        return
+    with contextlib.suppress(OSError):
+        _ = out_file.write_text(f"{disclosure}\n\n{body}", encoding="utf-8")
+
+
 def render_final_summary_for_request(request: FinalSummaryRenderRequest) -> bool:
     """Render an enriched final summary, returning success without raising."""
     out_file = request.design_tmpdir / "final-summary.md"
@@ -750,6 +798,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
 
     exit_rc = _write_enriched_post_publish_summary(design_tmpdir=design_tmpdir, out_file=out_file, load_result=load_result)
     _prefix_missing_assessment_warnings(design_tmpdir=design_tmpdir, out_file=out_file)
+    _prefix_guideline_exception_disclosure(design_tmpdir=design_tmpdir, outcome=outcome, out_file=out_file)
     write_ok = exit_rc == 0
     summary_written = write_ok and out_file.is_file() and out_file.stat().st_size > 0
 

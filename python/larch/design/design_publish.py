@@ -539,6 +539,72 @@ def _emit_missing_guideline_assessment_refusal(
 
 
 
+def _persisted_note_publishable(*, path: Path, kind: architectural_guidelines.AssessmentKind) -> bool:
+    """Classify a present, regular assessment note for the Gate C publish gate.
+
+    Invariants publish only when the note classifies clean; a violation note fails
+    closed. Guidelines publish when the note is clean, or a deviation carrying
+    exactly one validated documented-exception (the fence-aware shared helper);
+    a bare or malformed deviation fails closed. An unreadable note fails closed.
+    """
+    try:
+        note = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    classification = architectural_guidelines.classify_note_for_kind(note, kind=kind)
+    if classification == config.ASSESSMENT_OUTCOME_CLEAN:
+        return True
+    if kind.is_invariant:
+        return False
+    return architectural_guidelines.guideline_exception_valid(note)
+
+
+def _emit_invariant_violation_refusal(
+    *,
+    result: InvariantAssessmentCompleteness,
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> None:
+    print(
+        "**⚠ 5c: publish refused: architectural-invariant-assessment.md records a violation; "
+        "return to Gate C to resolve the invariant violation before publish.**",
+        flush=True,
+    )
+    _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="not-run")
+    _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value="0")
+    _replace_kv(rows=kvs, key="VALIDATE_LOG_FILE", value="")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_REQUIRED", value="true")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_PRESENT", value="true")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_STATUS", value="violation")
+    _replace_kv(rows=kvs, key="ARCH_INVARIANT_ASSESSMENT_ARTIFACT", value=result.artifact)
+    _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value="invariant-violation")
+    _emit_rows(kvs)
+    _ = _write_result_env(path=result_env, rows=kvs)
+
+
+def _emit_invalid_guideline_deviation_refusal(
+    *,
+    result: GuidelineAssessmentCompleteness,
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> None:
+    print(
+        "**⚠ 5c: publish refused: architectural-guideline-assessment.md records a guideline deviation "
+        "without a documented exception; return to Gate C to fix the plan or record an exception before publish.**",
+        flush=True,
+    )
+    _replace_kv(rows=kvs, key="VALIDATE_STATUS", value="not-run")
+    _replace_kv(rows=kvs, key="VALIDATE_DEFECT_COUNT", value="0")
+    _replace_kv(rows=kvs, key="VALIDATE_LOG_FILE", value="")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_REQUIRED", value="true")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_PRESENT", value="true")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_STATUS", value="deviation")
+    _replace_kv(rows=kvs, key="ARCH_GUIDE_ASSESSMENT_ARTIFACT", value=result.artifact)
+    _replace_kv(rows=kvs, key="PUBLISH_REFUSE_REASON", value="invalid-guideline-deviation")
+    _emit_rows(kvs)
+    _ = _write_result_env(path=result_env, rows=kvs)
+
+
 def _append_transcript_warning(*, design_tmpdir: Path, warning_step_label: str, status: str, message: str) -> None:
     run_logs.append_execution_issue(
         log_file=design_tmpdir / "execution-issues.md",
@@ -1030,6 +1096,16 @@ def publish_core(argv: Sequence[str]) -> int:
             result_env=result_env,
         )
         return 4
+    if invariant_completeness.required and invariant_completeness.present and not _persisted_note_publishable(
+        path=design_tmpdir / invariant_completeness.artifact,
+        kind=architectural_guidelines.INVARIANTS,
+    ):
+        _emit_invariant_violation_refusal(
+            result=invariant_completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
 
     completeness = _check_guideline_assessment_completeness(
         design_tmpdir=design_tmpdir,
@@ -1039,6 +1115,16 @@ def publish_core(argv: Sequence[str]) -> int:
     if completeness.required and not completeness.present:
         _emit_missing_guideline_assessment_refusal(
             design_tmpdir=design_tmpdir,
+            result=completeness,
+            kvs=kvs,
+            result_env=result_env,
+        )
+        return 4
+    if completeness.required and completeness.present and not _persisted_note_publishable(
+        path=design_tmpdir / completeness.artifact,
+        kind=architectural_guidelines.GUIDELINES,
+    ):
+        _emit_invalid_guideline_deviation_refusal(
             result=completeness,
             kvs=kvs,
             result_env=result_env,

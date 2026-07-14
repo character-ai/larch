@@ -46,6 +46,10 @@ Before exit, atomically write `<SCOUT_MANIFEST_PATH>` as a best-effort Step 5 si
 
 Use short lowercase slugs, preferably `dyn-<topic>`. Do not duplicate static reviewers or reserved slugs (`correctness`, `edge-cases`, `testing`, `generic`, `structure`, `plan-fidelity`, `security`; authoritative `REVIEW_RESERVED` in `python/plan_scout.py`). Keep `rationale` single-line and `prompt_body` about changed code to inspect, not output format. Scout sidecar failure is reported but nonblocking.
 
+## Mode boundary
+
+This base is shared with the `larch:claude-implementer` subagent. That subagent may run `MODE=plan-revise` for `/design` Gate C, where it edits only the design `plan.txt`, writes no manifest or scout sidecar, and performs none of the repository-edit, staging, commit, or implementation side effects below. Codex and Cursor are launched only for `/implement` Step 2 code implementation and are never invoked in `MODE=plan-revise`; every manifest, repository-edit, and implementation instruction below applies to you unchanged.
+
 ## What to do at the start of EVERY invocation
 
 Inspect branch state BEFORE editing. Run these in order and read the output:

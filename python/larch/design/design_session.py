@@ -237,6 +237,11 @@ def settle_next_action_for(*, site: str, postplan_rc: int) -> SettleDispatchResu
         ("gate-b", 13): ("gate-b-split", "partition-requested"),
         ("gate-a", 13): ("gate-a-split", "partition-requested"),
         ("discussion-round2", 13): ("gate-a-split", "partition-requested"),
+        ("gate-c", 0): ("gate-c-return", "ok"),
+        ("gate-c", 10): ("gate-c-validator-fail", "validate-failed"),
+        ("gate-c", 11): ("pause", "pause-save"),
+        ("gate-c", 12): ("gate-c-hard-size", "plan-size-trigger"),
+        ("gate-c", 13): ("gate-c-split", "partition-requested"),
     }
     if (site, postplan_rc) not in action_by_site_rc:
         return SettleDispatchResult(action="", exit_rc=2, status="unknown-dispatch")
@@ -277,7 +282,7 @@ def settle_next_action_main(argv: Sequence[str]) -> int:
         return 0
     result = SettleDispatchResult(action="", exit_rc=2, status=status)
     if not status:
-        if site not in {"gate-b", "gate-a", "discussion-round2"}:
+        if site not in {"gate-b", "gate-a", "discussion-round2", "gate-c"}:
             result = SettleDispatchResult(action="", exit_rc=2, status="invalid-site")
         else:
             try:

@@ -143,6 +143,17 @@ STEP5C_PUBLISH_RESULT_ALLOW_KEYS = (
     "ARCH_GUIDE_ASSESSMENT_ARTIFACT",
 )
 
+# Gate C precondition refusals route Step 5c back to Gate C (Return-to-Gate-C /
+# Cancel), not to the generic composed-plan validator-defect path. The two
+# assessment-content refusals mirror the missing-assessment preconditions
+# (#7196.2; the /design mirror of the #7193 /implement ladder).
+_GATE_C_PRECONDITION_REFUSALS = (
+    "missing-invariant-assessment",
+    "missing-guideline-assessment",
+    "invariant-violation",
+    "invalid-guideline-deviation",
+)
+
 
 def _step5c_safe_publish_env(
     *, design_tmpdir: Path,
@@ -841,10 +852,8 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             )
             _emit_core_kvs(rows)
             if publish_rc == 4:
-                if publish_refuse_reason == "missing-invariant-assessment":
-                    status_value = "missing-invariant-assessment"
-                elif publish_refuse_reason == "missing-guideline-assessment":
-                    status_value = "missing-guideline-assessment"
+                if publish_refuse_reason in _GATE_C_PRECONDITION_REFUSALS:
+                    status_value = publish_refuse_reason
                 else:
                     status_value = "validator-defects"
                 logging_util.emit_kv(key="STEP5C_STATUS", value=status_value)
