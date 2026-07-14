@@ -74,6 +74,10 @@ Warnings (10):
   9. 2. The condition is not file-wide. The `reportOperatorIssue` error is triggered only in the new `test_sweep_chronic_priority_cap_and_pending_frontier` function by two `cast` expressions: `cast("tup...
   10. No other deviations were identified. The removal of `SWEEP_PENDING_CAP` from `load_sweep_state` and `write_sweep_state` is covered by a new round-trip test and is consistent with the stated feature...
 
+## Architectural invariants
+
+The changed code passes all architectural invariants.
+
 ## Architectural guidelines
 
 The changed code passes all architectural guidelines.
@@ -82,7 +86,7 @@ The changed code passes all architectural guidelines.
 
 - **Outcome**: shipping
 - **Duration**: 00:51:07
-- **Cost**: 💰 TOTAL ~$16.74: Claude $2.65, Codex-5.6 $9.32, Codex-mini $0.03, Cursor $2.93 (Composer $2.93, Grok $0.00), Claude (subprocess) $1.81  |  Tokens: 18434k
+- **Cost**: 💰 TOTAL ~$17.27: Claude $3.18, Codex-5.6 $9.32, Codex-mini $0.03, Cursor $2.93 (Composer $2.93, Grok $0.00), Claude (subprocess) $1.81  |  Tokens: 19400k
 - **Issue**: #7208: https://github.com/character-ai/larch/issues/7208
 - **Plan review**: N/A
 - **Plan coverage**: 3/3 firm headings; band: advisory; disposition: none; todos_left: 0
