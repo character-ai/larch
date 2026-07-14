@@ -2,6 +2,21 @@
 
 No review rounds completed.
 
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (3):
+  1. G-Py-11: — In the new parity fixtures in `python/tests/report/test_final_report.py`, the malformed token-report case uses a bare suppression:
+  2. `token_report="{not-json\n", # noqa: S106`
+  3. with no inline reason. The guideline requires every lint suppression to carry an inline reason at the narrowest scope (for example `# noqa: S106 - malformed JSON fixture, not a secret`).
+
+## Architectural invariants
+
+The changed surfaces relocate final-report harness coverage into pytest and thin the Bash wrapper smoke; nothing in the diff touches gate disarmament, pause/resume artifacts, stale result consumption, run-log flush or commit integrity, panel slots, agent evidence contracts, or ship recovery mutations.
+
+## Architectural guidelines
+
+The noqa on the malformed token-report fixture now carries an inline reason, and the rest of the harness move keeps Bash thin, updates companion docs, and matches surrounding pytest patterns without a meaningful guideline deviation.
+
 ## /implement run 30289A42-7C5F-4335-AF44-3DC8E1A8C97D: shipping
 
 - **Outcome**: shipping
@@ -17,7 +32,7 @@ No review rounds completed.
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/30289A42-7C5F-4335-AF44-3DC8E1A8C97D/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: unknown
