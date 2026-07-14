@@ -132,7 +132,7 @@ def _invoke(
     stdout = io.StringIO()
     stderr = io.StringIO()
     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = run_rule(rule, root, runner, paths=paths, **kwargs)  # type: ignore[arg-type]
+        code = run_rule(rule, root, runner, paths=paths, **kwargs)  # type: ignore[arg-type]  # kwargs forwarding not typed in run_rule signature
     return code, stdout.getvalue(), stderr.getvalue()
 
 
@@ -1382,7 +1382,7 @@ def test_write_baseline_preserves_reasons_and_refuses_unexplained_findings(
         lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "keep this"),
         lint_engine.GenericBaselineRow("b.py", 1, "demo-rule", "hit", "new finding"),
     ]
-    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]  # accessing internal serialization helper for test assertion
         expected_rows
     )
 
@@ -1767,7 +1767,7 @@ def test_write_baseline_readback_mismatch_fails_without_rollback(
         calls += 1
         if calls == 2:
             return "[]\n"
-        return original_read(*args, **kwargs)  # type: ignore[arg-type]
+        return original_read(*args, **kwargs)  # type: ignore[arg-type]  # kwargs forwarding not typed in larch_io function signature
 
     monkeypatch.setattr(lint_engine.larch_io, "read_trusted_text", mismatched_read)
     code, out, err = _invoke(
@@ -1782,7 +1782,7 @@ def test_write_baseline_readback_mismatch_fails_without_rollback(
     assert code == EXIT_ERROR
     assert out == ""
     assert "read-back bytes differ" in err
-    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]  # accessing internal serialization helper for test assertion
         [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
     )
 
@@ -1801,7 +1801,7 @@ def test_write_baseline_readback_error_fails_without_rollback(
         calls += 1
         if calls == 2:
             raise OSError("read-back denied")
-        return original_read(*args, **kwargs)  # type: ignore[arg-type]
+        return original_read(*args, **kwargs)  # type: ignore[arg-type]  # kwargs forwarding not typed in larch_io function signature
 
     monkeypatch.setattr(lint_engine.larch_io, "read_trusted_text", failing_read)
     code, out, err = _invoke(
@@ -1816,7 +1816,7 @@ def test_write_baseline_readback_error_fails_without_rollback(
     assert code == EXIT_ERROR
     assert out == ""
     assert "failed to read back baseline" in err
-    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]  # accessing internal serialization helper for test assertion
         [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
     )
 
@@ -1835,7 +1835,7 @@ def test_write_baseline_readback_parse_failure_fails_without_rollback(
         calls += 1
         if calls == 2:
             raise lint_engine.ScanError("invalid JSON baseline: expected value")
-        return original_parse(*args, **kwargs)  # type: ignore[arg-type]
+        return original_parse(*args, **kwargs)  # type: ignore[arg-type]  # kwargs forwarding not typed in _parse_baseline_text signature
 
     monkeypatch.setattr(lint_engine, "_parse_baseline_text", malformed_parse)
     code, out, err = _invoke(
@@ -1850,6 +1850,6 @@ def test_write_baseline_readback_parse_failure_fails_without_rollback(
     assert code == EXIT_ERROR
     assert out == ""
     assert "read-back validation failed" in err
-    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]
+    assert baseline.read_text(encoding="utf-8") == lint_engine._serialized_baseline(  # pyright: ignore[reportPrivateUsage]  # accessing internal serialization helper for test assertion
         [lint_engine.GenericBaselineRow("a.py", 1, "demo-rule", "hit", "known")]
     )
