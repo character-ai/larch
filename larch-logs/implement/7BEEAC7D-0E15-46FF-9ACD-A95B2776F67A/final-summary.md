@@ -13,26 +13,27 @@ Warnings (5):
 
 ## Architectural invariants
 
-The changed code only adds title-prefix composition helpers, a shared-helper-backed route-state reader, a filename constant moved to its canonical home, and tests, touching no gate, pause snapshot, persisted-result consumption, run-log flush or commit, panel-slot accounting, machine-parsed agent verdict, or ship-recovery mutation surface, so every absolute invariant holds for this change.
+The changed code only adds title-prefix composition helpers, a shared-helper-backed route-state reader, a filename constant placed in its canonical home, supporting tests, a small doc paragraph, and a regenerated closure-baseline JSON whose changed rows are just refreshed token and line counts reflecting that doc growth; none of this touches a gate-disarm input, pause snapshot contents, persisted-result consumption, run-log flush or commit, panel-slot accounting, machine-parsed agent verdict, or ship-recovery mutation surface, so every absolute invariant holds for this change.
 
 ## Architectural guidelines
 
-The changed code reads the route-state wire file through the shared phase-driver env reader with an explicit single-key allow set (inheriting its grammar, CR/LF rejection, and symlink/non-regular-file containment) and defines the route-state filename constant in its canonical home next to the sibling key set, so it neither re-implements the wire-file grammar nor re-derives the filename convention, and the added title-prefix helpers use a restricted bracket-character class with a narrow OSError degraded path, introducing no guideline deviation in the changed code.
+The changed code routes the route-state read through the shared phase-driver env helper with a single-key allow set, places the filename constant in its canonical home next to the sibling key set, restricts the bracket-character class so an untrusted title cannot smuggle arbitrary text into the prefix, and the regenerated closure-baseline JSON merely refreshes the ratchet's token and line counts to match the committed doc growth, so the changed code introduces no guideline deviation.
 
-## /implement run 7BEEAC7D-0E15-46FF-9ACD-A95B2776F67A: shipping
+## /implement run 7BEEAC7D-0E15-46FF-9ACD-A95B2776F67A: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 01:06:16
-- **Cost**: 💰 TOTAL ~$0.53: Claude/GLM-5.2 token $4.51 (estimated $0.30), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.23  |  Tokens: 13500k
+- **Cost**: 💰 TOTAL ~$0.61: Claude/GLM-5.2 token $5.60 (estimated $0.37), Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.24  |  Tokens: 17204k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7277: https://github.com/character-ai/larch/issues/7277
+- **PR**: #7300: https://github.com/character-ai/larch/pull/7300
 - **Plan review**: N/A
 - **Plan coverage**: 0/0 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +152/-4, larch-logs +186/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 5
