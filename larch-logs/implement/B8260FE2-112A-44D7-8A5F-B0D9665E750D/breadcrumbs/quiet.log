@@ -35,5 +35,7 @@ generate-topology-docs: row 13: invalid composition: ci-fixer MODE=conflict self
 === larch-quiet-sessionstart-health.sh-34804.log ===
 === larch-quiet-sessionstart-health.sh-36212.log ===
 === larch-quiet-sessionstart-health.sh-37017.log ===
+=== larch-quiet-sessionstart-health.sh-40177.log ===
+=== larch-quiet-sessionstart-health.sh-40945.log ===
 === larch-quiet-sessionstart-health.sh-8561.log ===
 === larch-quiet-tracking-issue-read-45801.log ===
