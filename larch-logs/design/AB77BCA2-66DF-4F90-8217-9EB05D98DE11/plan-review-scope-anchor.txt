@@ -1,0 +1,49 @@
+Partition piece 1 of 3 split from #7037.
+
+**Rescoped 2026-07-12 (validation-overhaul change of course, #7192/#7193)**: #7193 deletes the step-8 assessment adapter (`step-8-assessment.sh`) and its Bash-retyped ASSESSMENT vocabulary outright, and its new fail-closed `architectural-assessment submit` verb owns state validation. The `validate-results-coverage` verb half of this piece is therefore obviated and removed. What remains is the ship-side foundation that piece 2 (#7138) consumes. Piece 3 (#7139) is closed as superseded by #7193.
+
+**Scope**: Extend `ship_result.emit_result()` and `ship.py` to write outcome KVs directly to an optional bgjob merge-result-env path (keeping JSON stdout for existing callers).
+
+**Firm headings**: python/larch/implement/ship_result.py, python/larch/implement/ship.py
+
+**Acceptance**:
+
+`ship pr --result-env-path` writes expected KVs to that path (including the #7192 `CI_ERRORS_FILE` / `CI_ERRORS_DISTILL_CLASS` keys once those land); JSON stdout unchanged for existing callers; `make py-test` green for ship tests.
+
+**Dependencies (from proposal)**: none
+
+```
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] step-8 grammar unification: assessment vocab + ship result-env
+
+Part of the #6997 partition. Child of umbrella #7014. Blocked by the foundation piece. Converts the two step-8 adapters and removes their token-grammar forks so Bash keeps zero token knowledge.
+
+​#### Problem
+
+Two grammar forks ride on the step-8 scripts. `step-8-assessment.sh:334-377` re-types the full ASSESSMENT_RESULTS state/reason vocabulary that Python already owns (`architectural_assessment.py:750-831`, `config.py:95-97`). The ship outcome crosses four serialization hops: `ship_result.emit_result` JSON, a Bash stdout sniffer at `step-8-ship.sh:153-178`, a handoff env re-parsed by `dispatch_ship.ship_route_exit_main`, then a grep at `step-8-assessment.sh:193-207`.
+
+​#### Goal
+
+Convert the two step-8 adapters to thin `bgjob adapt` wrappers, and delete both grammar forks. Bash holds no token vocabulary; the ship child writes its result env directly.
+
+​#### Scope
+
+- Convert `skills/implement/scripts/step-8-assessment.sh` and `step-8-ship.sh` adapters to the thin `bgjob adapt` pattern.
+- Move ASSESSMENT_RESULTS state/reason validation behind a cli verb; delete the Bash-retyped vocabulary at `step-8-assessment.sh:334-377`.
+- Have the ship child write its result env directly; delete the stdout sniffer at `step-8-ship.sh:153-178` and the assessment-side grep at `step-8-assessment.sh:193-207`; collapse the redundant serialization hops.
+
+​#### Non-goals
+
+The KEY=value codec work (#6999), which lands after this partition.
+
+​#### Acceptance
+
+- Assessment and ship outcomes flow identically to before, with the token vocabulary owned only in Python.
+- The stdout sniffer and the assessment-side grep are gone.
+- `make lint` and `make py-test` green.
+
+Run /design on this issue before /implement.
+

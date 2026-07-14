@@ -1,0 +1,57 @@
+Reviewing ship result-env implementation against the plan: path validation, symlink handling, atomic writes, and KEY=value safety.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/implement/ship_result.py:253-265	Reuse-redacted-payload omits CI distill kwargs	Result-env rows built only from the JSON-bound payload omit empty CI_ERRORS_* keys and can drop the raw ci_errors_file path that is injected only when truthy today	Build result-env from redacted ship fields plus always-present ci_errors_file ci_errors_distill_class and failed_jobs_count kwargs (same separate parameters as emit_result today), not from the JSON payload alone
+2	in_scope	major	architecture	python/larch/implement/dispatch_commit_route.py:98-102	Plan reinvents merge path validation instead of reusing bgjob helper	Bespoke checks can drift from bgjob merge trust boundaries or accidentally use atomic_write(create_parent=True) and create directories outside the validated tree	Reuse bgjob.model.validate_merge_result_env (or dispatch_commit_route._safe_merge_env) then larch_io.trusted_atomic_write(..., root=Path(ctx.tmpdir), mode=0o600); do not mkdir parents outside that validated path
+3	in_scope	major	security	python/larch/implement/ship_result.py:272	No allowed-root gate for required result-env writes	Journal append is skipped when tmpdir fails _tmpdir_under_allowed_root, but JSON still emits; a required result-env write could still land under a disallowed --tmpdir before stdout	Gate required result-env writes on _tmpdir_under_allowed_root(ctx.tmpdir) and fail closed when --result-env-path is set and the gate fails
+4	in_scope	major	correctness	python/larch/implement/ship.py:2142-2176	main() omits fail-closed exit coupling for required writes	Failure modes say propagate write failures, but ship.py only passes the path through; an implementation could catch emit_result errors and still print JSON or return OUTCOME_EXIT_MAP success	When --result-env-path is set, validate and write in emit_result before JSON, raise on failure, and let main() exit non-zero without emitting JSON
+5	in_scope	minor	correctness	python/tests/implement/test_ship.py:4456-5607	Test plan lacks ordering regression for false success	Without an explicit test, a partial result-env write or validation failure could regress to printing JSON stdout and looking successful to callers	Add a test that with --result-env-path set, validation or trusted_atomic_write failure produces no JSON stdout and a non-zero ship.main() exit
+
+## Findings
+
+### 1. CI distill kwargs are outside the “reuse redacted payload” contract (correctness)
+
+The plan says result-env rows should come from the redacted JSON payload so stdout, journaling, and env cannot drift. Today `emit_result()` builds that payload in `ship_result.py` and only conditionally injects CI evidence:
+
+```253:265:python/larch/implement/ship_result.py
+    payload = _redacted_result_payload(result)
+    # CI-failure digest path injected raw (not redacted): route-exit reads these
+    # from the in-tmpdir sidecar to forward into .ship-route-exit-handoff.env.
+    ...
+    if ci_errors_file:
+        payload["ci_errors_file"] = ci_errors_file
+    if ci_errors_distill_class:
+        payload["ci_errors_distill_class"] = ci_errors_distill_class
+    ...
+    if failed_jobs_count:
+        payload["failed_jobs_count"] = failed_jobs_count
+```
+
+The plan requires `CI_ERRORS_FILE`, `CI_ERRORS_DISTILL_CLASS`, and `FAILED_JOBS_COUNT` on the result-env surface even when empty or zero, while keeping JSON byte-compatible (so those keys stay omitted from JSON when unset). A serializer that only uppercases the JSON-bound payload will miss the acceptance contract and can drop the raw digest path. Result-env needs an explicit row builder: redacted ship fields plus always-present CI kwargs.
+
+### 2. Reuse existing bgjob merge path validation and `trusted_atomic_write` (architecture / scope reduction)
+
+The plan describes bespoke “absolute regular-file beneath `ctx.tmpdir`, no symlinked parent” validation plus a generic “shared atomic I/O helper.” The repo already has that contract for child merge envs:
+
+```98:102:python/larch/implement/dispatch_commit_route.py
+def _safe_merge_env(*, tmpdir: Path, raw: str | Path) -> Path:
+    bgjob_root = bgjob_model.bgjob_dir(tmpdir)
+    if Path(raw).parent.resolve() == bgjob_root.resolve():
+        bgjob_root.mkdir(parents=True, exist_ok=True)
+    return bgjob_model.validate_merge_result_env(path=Path(raw), tmpdir=tmpdir)
+```
+
+and publishes with `larch_io.trusted_atomic_write(..., root=tmpdir, mode=0o600)` (`dispatch_commit_route.py:176-183`). Reusing that pair avoids duplicating symlink/containment rules and avoids picking `atomic_write(create_parent=True)`, which conflicts with the plan’s “do not create missing or unsafe parent directories” edge case (`design_terminal.py:89` creates parents; bgjob merge paths do not).
+
+### 3. Result-env writes need the same allowed-root gate as journaling (security)
+
+Journal append is gated on `_tmpdir_under_allowed_root(ctx.tmpdir)` at `ship_result.py:272`, but JSON stdout is not. If `--result-env-path` is set with a disallowed `--tmpdir` (see `test_emit_result_skips_journal_on_invalid_tmpdir`), JSON can still print while a required env write lands under an unapproved tmpdir root. Required result-env writes should fail closed when the allowed-root gate fails, not silently skip like journaling.
+
+### 4. `main()` must abort before JSON when a required result-env write fails (correctness)
+
+`ship.py:2168-2176` always calls `emit_result()` then returns `config.OUTCOME_EXIT_MAP[result.outcome]`. Failure modes require propagating result-env write failures so bgjob records a failed child, and the plan orders env-before-JSON. The `ship.py` section only says to pass `--result-env-path` through; it should also require that when the path is set, validation/write failures raise (or otherwise force non-zero exit) before JSON is printed, matching `step-8-ship.md` merge-result fail-closed semantics.
+
+### 5. Add an explicit no-JSON-on-write-failure test (correctness)
+
+The planned tests cover symlink/outside-tmpdir/atomic failures, but not the highest-risk regression: emitting JSON after a failed required write. Given the new env-before-JSON ordering, one focused `ship.main()` / `emit_result()` test prevents false success for line-oriented consumers.
+
+[OUT_OF_SCOPE] Piece 2 should pass `implement-step8-ship.merge.env` (child merge surface merged by `bgjob/daemon.py:137-146`), not the daemon-owned `implement-step8-ship.result.env`. Piece 1 does not need to wire `step-8-ship.sh`, but documenting that target in the approach would reduce mis-wiring in #7138.
