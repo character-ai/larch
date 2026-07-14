@@ -20,6 +20,7 @@ from larch.implement import ship
 from larch.implement import ship_guidelines
 from larch.implement import ship_pr
 from larch.implement import ship_resume
+from larch.implement import ship_result
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, ProcRunner
@@ -5605,6 +5606,345 @@ def test_emit_result_skips_journal_on_invalid_tmpdir(tmp_path: Path, capsys: pyt
     ship.emit_result(ctx=ctx, result=ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"))
     assert json.loads(capsys.readouterr().out)["outcome"] == "STALLED"
     assert not Path("/not/allowed/larch").exists()
+
+
+def _parse_result_env(path: Path) -> dict[str, str]:
+    data: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            data[key] = value
+    return data
+
+
+def test_emit_result_writes_mixed_case_result_env(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    sink = tmp_path / "ship.result.env"
+    ctx = _ctx(tmp_path)
+    ship.emit_result(
+        ctx=ctx,
+        result=ship.ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason="main-ci-fail",
+            failed_run_id="99",
+            pr_number=7,
+            pr_url="https://example.test/pr/7",
+            merge_result="merged",
+            detail="line one\nline two",
+            ledger_ready=True,
+            ledger_site="ship-pr",
+            ledger_trigger="main-ci-fail",
+            ledger_step="8",
+            ledger_phase="ci-merge",
+            ledger_dispatcher="ship-pr",
+            ledger_exit_code=3,
+            ledger_failure_detail_log="/tmp/detail.log",
+            main_health_head_sha="abc123",
+            main_health_repair_committed="false",
+            original_branch_forbidden="true",
+            main_repair_run_id="99",
+            main_repair_head="abc123",
+        ),
+        ci_errors_file="",
+        ci_errors_distill_class="github-log-failure",
+        failed_jobs_count=0,
+        result_env_path=sink,
+    )
+    env = _parse_result_env(sink)
+    assert env["outcome"] == "NEEDS_USER_INPUT"
+    assert env["ledger_ready"] == "true"
+    assert env["ledger_site"] == "ship-pr"
+    assert env["ledger_exit_code"] == "3"
+    assert env["NEEDS_USER_REASON"] == "main-ci-fail"
+    assert env["FAILED_RUN_ID"] == "99"
+    assert env["PR_NUMBER"] == "7"
+    assert env["PR_URL"] == "https://example.test/pr/7"
+    assert env["MERGE_RESULT"] == "merged"
+    assert env["DETAIL"] == "line one line two"
+    assert env["MAIN_HEALTH_HEAD_SHA"] == "abc123"
+    assert env["ORIGINAL_BRANCH_FORBIDDEN"] == "true"
+    assert env["MAIN_REPAIR_RUN_ID"] == "99"
+    assert env["CI_ERRORS_FILE"] == ""
+    assert env["FAILED_JOBS_COUNT"] == "0"
+    assert env["CI_ERRORS_DISTILL_CLASS"] == "github-log-failure"
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["outcome"] == "NEEDS_USER_INPUT"
+    assert "ci_errors_file" not in payload
+    assert "failed_jobs_count" not in payload
+
+
+def test_emit_result_ci_digest_omits_distill_class(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    sink = tmp_path / "ship.result.env"
+    digest = tmp_path / "ci-errors-1.md"
+    _ = digest.write_text("digest", encoding="utf-8")
+    ship.emit_result(
+        ctx=_ctx(tmp_path),
+        result=ship.ShipResult(Outcome.NEEDS_USER_INPUT, needs_user_reason="first-fixer-non-health"),
+        ci_errors_file=str(digest),
+        ci_errors_distill_class="should-not-appear",
+        failed_jobs_count=4,
+        result_env_path=sink,
+    )
+    env = _parse_result_env(sink)
+    assert env["CI_ERRORS_FILE"] == str(digest)
+    assert env["FAILED_JOBS_COUNT"] == "4"
+    assert "CI_ERRORS_DISTILL_CLASS" not in env
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ci_errors_file"] == str(digest)
+    assert payload["failed_jobs_count"] == 4
+    # JSON injection stays truthy-sparse and unchanged: a supplied class still lands
+    # in the JSON payload even when result-env pairing omits it.
+    assert payload["ci_errors_distill_class"] == "should-not-appear"
+
+
+def test_emit_result_omitting_flag_creates_no_result_env_artifact(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ctx = _ctx(tmp_path)
+    before = {p.name for p in tmp_path.iterdir()}
+    ship.emit_result(ctx=ctx, result=ship.ShipResult(Outcome.OK, pr_number=1, pr_url="u"))
+    after = {p.name for p in tmp_path.iterdir()}
+    assert not any(name.endswith(".result.env") for name in after - before)
+    assert json.loads(capsys.readouterr().out)["outcome"] == "OK"
+
+
+def test_emit_result_none_and_bool_scalar_rendering(tmp_path: Path) -> None:
+    sink = tmp_path / "ship.result.env"
+    ship.emit_result(
+        ctx=_ctx(tmp_path),
+        result=ship.ShipResult(Outcome.OK, pr_number=None, ledger_ready=False, ledger_exit_code=None),
+        result_env_path=sink,
+    )
+    env = _parse_result_env(sink)
+    assert env["PR_NUMBER"] == ""
+    assert env["ledger_ready"] == "false"
+    assert env["ledger_exit_code"] == ""
+    assert env["CI_ERRORS_FILE"] == ""
+    assert env["FAILED_JOBS_COUNT"] == "0"
+    assert env["CI_ERRORS_DISTILL_CLASS"] == ""
+
+
+def test_main_result_env_flag_plumbing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    sink = tmp_path / "bgjob" / "ship.result.env"
+    sink.parent.mkdir()
+
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        return ship.ShipResult(
+            Outcome.OK,
+            pr_number=12,
+            pr_url="https://example.test/pr/12",
+            ledger_ready=False,
+        )
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--result-env-path",
+            str(sink),
+        ],
+    )
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["outcome"] == "OK"
+    env = _parse_result_env(sink)
+    assert env["outcome"] == "OK"
+    assert env["PR_NUMBER"] == "12"
+    assert env["CI_ERRORS_FILE"] == ""
+    assert env["FAILED_JOBS_COUNT"] == "0"
+
+
+@pytest.mark.parametrize(
+    ("path_factory", "tmpdir_override"),
+    [
+        (lambda tmp: str(tmp / "outside" / "ship.result.env"), "/not/allowed/larch"),
+        (lambda _tmp: str(Path("/tmp") / "larch-result-env-escape.env"), None),
+        (lambda _tmp: "relative/ship.result.env", None),
+        (lambda tmp: str(tmp / "nested" / ".." / "ship.result.env"), None),
+        (lambda tmp: str(tmp / "not-a-file"), None),
+    ],
+)
+def test_main_result_env_preflight_rejects_unsafe_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    path_factory: object,
+    tmpdir_override: str | None,
+) -> None:
+    called: list[bool] = []
+
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        called.append(True)
+        return ship.ShipResult(Outcome.OK)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    assert callable(path_factory)
+    raw_path = path_factory(tmp_path)
+    if str(raw_path).endswith("not-a-file"):
+        (tmp_path / "not-a-file").mkdir()
+    tmpdir = tmpdir_override or str(tmp_path)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            tmpdir,
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--result-env-path",
+            str(raw_path),
+        ],
+    )
+    assert not called
+    assert rc == config.EXIT_INTERNAL_ERROR
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["outcome"] == "INTERNAL_ERROR"
+    assert not any(tmp_path.rglob("*.result.env"))
+
+
+def test_main_result_env_preflight_rejects_symlink_destination(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "real.env"
+    _ = target.write_text("x=1\n", encoding="utf-8")
+    link = tmp_path / "ship.result.env"
+    link.symlink_to(target)
+    called: list[bool] = []
+
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        called.append(True)
+        return ship.ShipResult(Outcome.OK)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--result-env-path",
+            str(link),
+        ],
+    )
+    assert not called
+    assert rc == config.EXIT_INTERNAL_ERROR
+    assert json.loads(capsys.readouterr().out)["outcome"] == "INTERNAL_ERROR"
+
+
+def test_main_result_env_preflight_rejects_symlink_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    link_dir = tmp_path / "linked"
+    link_dir.symlink_to(real_dir)
+    sink = link_dir / "ship.result.env"
+    called: list[bool] = []
+
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        called.append(True)
+        return ship.ShipResult(Outcome.OK)
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--result-env-path",
+            str(sink),
+        ],
+    )
+    assert not called
+    assert rc == config.EXIT_INTERNAL_ERROR
+    assert json.loads(capsys.readouterr().out)["outcome"] == "INTERNAL_ERROR"
+
+
+def test_emit_result_trusted_write_failure_skips_json(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    sink = tmp_path / "ship.result.env"
+    missing_parent = tmp_path / "missing-parent" / "ship.result.env"
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise OSError("trusted write blocked")
+
+    monkeypatch.setattr(ship_result.larch_io, "trusted_atomic_write", boom)
+    with pytest.raises(OSError, match="trusted write blocked"):
+        ship.emit_result(
+            ctx=_ctx(tmp_path),
+            result=ship.ShipResult(Outcome.OK, pr_number=1),
+            result_env_path=sink,
+        )
+    assert capsys.readouterr().out == ""
+    assert not sink.exists()
+
+    with pytest.raises((OSError, ValueError)):
+        ship.emit_result(
+            ctx=_ctx(tmp_path),
+            result=ship.ShipResult(Outcome.OK, pr_number=1),
+            result_env_path=missing_parent,
+        )
+    assert not (tmp_path / "missing-parent").exists()
+    assert capsys.readouterr().out == ""
+
+
+def test_main_result_env_write_failure_returns_internal_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    sink = tmp_path / "ship.result.env"
+
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        return ship.ShipResult(Outcome.OK, pr_number=1)
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise OSError("trusted write blocked")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    monkeypatch.setattr(ship_result.larch_io, "trusted_atomic_write", boom)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--result-env-path",
+            str(sink),
+        ],
+    )
+    assert rc == config.EXIT_INTERNAL_ERROR
+    assert capsys.readouterr().out == ""
+    assert not sink.exists()
 
 
 def test_persist_stall_metadata_gap_fill_preserves_custom_key(tmp_path: Path) -> None:

@@ -99,6 +99,7 @@ from larch.implement.ship_result import (
     _step_result_to_ship,
     _write_terminal_finalize_if_terminal,
     emit_result,
+    validate_ship_result_env_path,
 )
 from larch.implement.ship_guidelines import (
     GuidelinesGateResult,
@@ -1995,6 +1996,7 @@ def build_parser() -> argparse.ArgumentParser:
     _ = parser.add_argument("--no-logs-commit", nargs="?", const="true", default=None)
     _ = parser.add_argument("--expected-session-id")
     _ = parser.add_argument("--expected-tmpdir-basename-prefix")
+    _ = parser.add_argument("--result-env-path")
     return parser
 
 
@@ -2142,6 +2144,7 @@ def _distill_ci_errors_for_result(*, ctx: RunContext, result: ShipResult) -> tup
 def main(argv: list[str] | None = None) -> int:
     ctx = RunContext.from_env(env={})
     result: ShipResult
+    result_env_path: Path | None = None
     parser = build_parser()
     try:
         args = parser.parse_args(argv)
@@ -2155,24 +2158,42 @@ def main(argv: list[str] | None = None) -> int:
         return config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
     try:
         ctx = _ctx_from_args(args)
+        # Prevalidate a supplied result-env sink before logging setup, run_ship,
+        # stall persistence, or CI distillation so invalid config fails closed.
+        raw_result_env = getattr(args, "result_env_path", None)
+        if raw_result_env not in (None, ""):
+            result_env_path = validate_ship_result_env_path(
+                tmpdir=ctx.tmpdir,
+                path=str(raw_result_env),
+            )
         if _tmpdir_under_allowed_root(ctx.tmpdir):
             os.environ[config.ENV_IMPLEMENT_TMPDIR] = ctx.tmpdir
             logging_util.quiet_init(argv0="ship.py")
         result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
     except Exception as exc:  # top-level contract envelope
+        # Prevalidation raises before assigning result_env_path, so the sink stays
+        # None and no result-env write is attempted. A later failure keeps a
+        # previously validated path for exception result emission.
         logging_util.BreadcrumbWriter().emit(
             f"ship.py: internal error\n{traceback.format_exc()}",
         )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
     _persist_stall_metadata_if_needed(ctx=ctx, result=result, tmpdir=Path(ctx.tmpdir))
     ci_errors_file, ci_errors_distill_class, failed_jobs_count = _distill_ci_errors_for_result(ctx=ctx, result=result)
-    emit_result(
-        ctx=ctx,
-        result=result,
-        ci_errors_file=ci_errors_file,
-        ci_errors_distill_class=ci_errors_distill_class,
-        failed_jobs_count=failed_jobs_count,
-    )
+    try:
+        emit_result(
+            ctx=ctx,
+            result=result,
+            ci_errors_file=ci_errors_file,
+            ci_errors_distill_class=ci_errors_distill_class,
+            failed_jobs_count=failed_jobs_count,
+            result_env_path=result_env_path,
+        )
+    except Exception:  # required result-env write must not publish JSON then succeed
+        logging_util.BreadcrumbWriter().emit(
+            f"ship.py: result-env emit failed\n{traceback.format_exc()}",
+        )
+        return config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
     return config.OUTCOME_EXIT_MAP[result.outcome]
 
 
