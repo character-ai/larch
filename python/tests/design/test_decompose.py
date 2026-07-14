@@ -139,10 +139,34 @@ def test_prepare_plan_stub_delegates_to_compose_named_block(
         inner=expected_inner,
     )
     batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
-    assert f"```\n{expected_block}```\n" in batch
+    expected_example = issue_wire.neutralize_named_block_markers(text=expected_block, marker="plan")
+    assert f"```\n{expected_example}```\n" in batch
     assert "(needs /design — operator runs `/design` on this filed piece" in batch
     assert expected_block.endswith("<!-- larch:plan:end -->\n")
     assert "\n\n<!-- larch:plan:end -->" not in expected_block
+
+
+def test_prepare_second_generation_child_has_no_live_plan_markers(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    parent_plan = issue_wire.compose_named_block(marker="plan", inner="parent plan")
+    (d / "feature-description.txt").write_text(
+        "Child context\n\n```\n" + parent_plan + "```\n",
+        encoding="utf-8",
+    )
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n"
+        "- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n"
+        "- Acceptance: verify api\n- Dependencies: none\n",
+        encoding="utf-8",
+    )
+    status, witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="123")
+    assert (status, witness) == ("ok", "")
+    batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+    assert issue_wire.parse_named_block(body=batch, marker="plan") == (None, "")
+    assert "<!--\u200b larch:plan:start -->" in batch
 
 
 def test_prepare_rejects_duplicate_declared_dependency(tmp_path: Path) -> None:

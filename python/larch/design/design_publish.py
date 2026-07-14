@@ -17,6 +17,8 @@ from larch.calibration import difficulty
 from larch.core import architectural_guidelines, config, proc
 from larch.report import run_logs
 from larch.design import design_step0_env, plan_grammar
+from larch.design.design_core import capture_contract_stream_to_paths
+from larch.design.design_terminal import stage_terminal_state_core
 from larch.git.repo_roots import consumer_repo_root
 
 
@@ -901,6 +903,92 @@ def _run_log_publish_after_capture(
     return None
 
 
+def _stage_failed_plan_write(
+    *,
+    design_tmpdir: Path,
+    kvs: list[tuple[str, str]],
+) -> None:
+    """Stage the terminal state before failure reporting and run-log publication."""
+    detail_log = design_tmpdir / "design-plan-write.failure.log"
+    if not detail_log.is_file():
+        _ = detail_log.write_text("named-block write failed\n", encoding="utf-8")
+    stdout_log = design_tmpdir / "design-plan-write-stage.stdout.log"
+    stderr_log = design_tmpdir / "design-plan-write-stage.stderr.log"
+    values = dict(kvs)
+    stage_args = [
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--outcome",
+        "failed-plan-write",
+        "--step",
+        "step5c",
+        "--phase",
+        "plan-write",
+        "--site",
+        "design-publish",
+        "--trigger",
+        "plan-write-failed",
+        "--bail-reason",
+        "plan-write-failed",
+        "--exit-code",
+        "1",
+        "--source-script",
+        "design-publish",
+        "--summary-outcome",
+        "failed-plan-write",
+        "--failure-detail-log",
+        str(detail_log),
+    ]
+    for flag, key in (
+        ("--publish-attempt-id", "PUBLISH_ATTEMPT_ID"),
+        ("--publish-rc-source", "PUBLISH_RC_SOURCE"),
+        ("--latest-phase", "LATEST_PHASE"),
+        ("--plan-write-ok", "PLAN_WRITE_OK"),
+        ("--publish-ok", "PUBLISH_OK"),
+        ("--renamed", "RENAMED"),
+        ("--log-publish-attempted", "LOG_PUBLISH_ATTEMPTED"),
+        ("--log-publish-completed", "LOG_PUBLISH_COMPLETED"),
+        ("--designed-admission-ready", "DESIGNED_ADMISSION_READY"),
+        ("--pr-url", "PR_URL"),
+        ("--recovery-branch", "RECOVERY_BRANCH"),
+    ):
+        if values.get(key, ""):
+            stage_args.extend([flag, values[key]])
+    stage_rc = capture_contract_stream_to_paths(
+        stage_terminal_state_core,
+        stdout_log,
+        stderr_log,
+        stage_args,
+    )
+    staged = "STAGED=true" in stdout_log.read_text(encoding="utf-8", errors="replace") if stdout_log.is_file() else False
+    if stage_rc != 0 or not staged:
+        run_logs.append_execution_issue(
+            log_file=design_tmpdir / "execution-issues.md",
+            category="Warnings",
+            entry="design Step 5c plan-write terminal-state staging failed; failure report may be unavailable.",
+        )
+
+
+def _finalize_failed_plan_write(
+    *,
+    design_tmpdir: Path,
+    transcript_capture: _TranscriptCaptureContext | None,
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> int:
+    _stage_failed_plan_write(design_tmpdir=design_tmpdir, kvs=kvs)
+    if transcript_capture is not None:
+        _ = _run_log_publish_after_capture(
+            ctx=transcript_capture,
+            kvs=kvs,
+            result_env=result_env,
+            outcome="failed-plan-write",
+            write_result_env_on_publish_failure=False,
+        )
+    _emit_rows(kvs)
+    return 1 if _write_result_env(path=result_env, rows=kvs) else 3
+
+
 def publish_core(argv: Sequence[str]) -> int:
     args = list(argv)
     parsed = {
@@ -1161,24 +1249,25 @@ def publish_core(argv: Sequence[str]) -> int:
         check=False,
     )
     if block.returncode != 0:
-        if parsed["--session-id"]:
-            _ = _run_log_publish_after_capture(
-                ctx=_TranscriptCaptureContext(
-                    design_tmpdir=design_tmpdir,
-                    plugin_root=plugin_root,
-                    session_id=parsed["--session-id"],
-                    issue=parsed["--issue"],
-                    repo=parsed["--repo"],
-                    claude_pid=parsed["--claude-pid"],
-                    warning_step_label="5c",
-                ),
-                kvs=kvs,
-                result_env=result_env,
-                outcome="failed-plan-write",
-                write_result_env_on_publish_failure=False,
+        transcript_capture = (
+            _TranscriptCaptureContext(
+                design_tmpdir=design_tmpdir,
+                plugin_root=plugin_root,
+                session_id=parsed["--session-id"],
+                issue=parsed["--issue"],
+                repo=parsed["--repo"],
+                claude_pid=parsed["--claude-pid"],
+                warning_step_label="5c",
             )
-        _emit_rows(kvs)
-        return 1 if _write_result_env(path=result_env, rows=kvs) else 3
+            if parsed["--session-id"]
+            else None
+        )
+        return _finalize_failed_plan_write(
+            design_tmpdir=design_tmpdir,
+            transcript_capture=transcript_capture,
+            kvs=kvs,
+            result_env=result_env,
+        )
     _replace_kv(rows=kvs, key="PLAN_WRITE_OK", value="true")
     _checkpoint_result_env(path=result_env, rows=kvs, phase="plan-write")
     if design_rating is not None:
