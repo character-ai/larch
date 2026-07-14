@@ -1,0 +1,63 @@
+Partition piece 1 of 5 split from #7004.
+
+**Scope**: Add `python/tests/support/shell_fixtures.py`, expose its fixtures through `python/conftest.py`, and add focused fixture self-tests. Provide typed fake binaries for `gh`, `codex`, `cursor`, and `claude`; unambiguous invocation logs; minimal plugin-tree builders; and controlled subprocess environments. Consume the #7003 testkit — #7023 `repo_root()`/`RecordingRunner` and #7024 `write_session_env`/session+tmpdir builders — instead of rebuilding checkout-root resolution or env writers; add only the shell-subprocess fixtures that kit lacks (executable fake-bin PATH factory, fake plugin-tree builder). Do not migrate or delete harnesses.
+
+**Firm headings**: python/conftest.py, python/tests/support/shell_fixtures.py
+
+**Acceptance**:
+
+Begin only after the external wire-fixture/session-builder prerequisite has landed. Fixtures preserve argv containing spaces and newlines, support configured stdout/stderr/exit status, prevent fallthrough to live tools, resolve repository paths independently of cwd, and preserve existing session-environment isolation. Plugin fixtures can dispatch to real checkout scripts without copying them. Focused pytest, lint, type, and autouse-isolation checks pass; no Bash harness or shard inventory changes.
+
+**Dependencies (from panel)**: none
+
+```
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Retire pytest-twin bash harnesses
+
+​#### Problem
+
+The Bash test harnesses total 24,223 lines across 91 files. Four harnesses of 910/939/1,003/258 lines (`test-write-final-report.sh`, `test-step-7a.sh`, `test-oos-disposition-gate.sh`, `test-flush-execution-issues.sh`) test 8-line `exec python3 cli.py` wrapper scripts (verified) whose behavior already has pytest twins (`test_final_report.py` 1,359 lines, `test_step_7a.py` 432, partial coverage for the other two); Makefile:970 runs both lanes. Across 70 files there are ~2,300 lines of copied scaffolding: 193 definitions of fail/pass/assert helper families, mktemp+trap setup in 64, fake-bin PATH stubs for gh/codex/cursor/claude in 11, fake plugin-tree builders in 13, env-file writers in 14. The seven `*-structure.sh` tests (2,951 lines) implement the same prose-pin job with two divergent assertion engines (`test-implement-structure.sh` embeds a private Python mini-framework at lines 13-45; `test-design-structure.sh` is grep-based). The big step harnesses are 80-90% fixture scaffolding by line count.
+
+​#### Goal
+
+Keep a ~30-line smoke test per thin wrapper; move behavior cases into the existing pytest twins; build the missing pytest fixture kit (fake-bin factory, fake plugin tree, env writers) so genuinely-Bash helpers are tested by pytest shelling out to the real script; consolidate the structure tests onto one parameterized pin-checker with per-skill pin tables. No new shared Bash library (policy-compliant: fixtures move to python/tests).
+
+​#### Size
+
+Net reduction 6,500-7,500 lines, and new fixes stop shipping hand-written harness code.
+
+​#### Dependencies
+
+Land after the pytest wire-fixture/session-builder issue (the migrated cases consume that kit).
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add `python/tests/support/shell_fixtures.py` with typed fake-bin PATH factory, invocation logger, and minimal plugin-tree builder.
+- Expose those fixtures as named pytest fixtures in `python/conftest.py`.
+- Cover the new module with focused self-tests; make lint, type, and autouse-isolation checks pass.
+
+### Non-goals
+- Do not migrate or delete any existing Bash harness.
+- Do not rebuild `repo_root()`, `RecordingRunner`, `write_session_env`, or session/tmpdir builders; consume them from the #7003 testkit already in place.
+- Do not add shard-inventory entries or Makefile changes.
+
+### Approach sketch
+- `shell_fixtures.py` exports plain Python functions: `make_fake_bin_dir(tmp_path, name, ...)` writes an executable Python script that logs argv and returns configured output; `make_fake_plugin_tree(tmp_path)` builds a minimal `CLAUDE_PLUGIN_ROOT` tree that symlinks to the real repo scripts.
+- `conftest.py` wraps the factory functions as scoped (not autouse) `@pytest.fixture` entries.
+- Each fake binary appends an invocation record (argv list) to a per-directory log file.
+- Self-tests cover argv-with-spaces, newline preservation, configured stdout/stderr/rc, PATH isolation, and plugin-tree dispatch.
+
+### Surfaces in scope
+- `python/tests/support/shell_fixtures.py` (new)
+- `python/conftest.py` (extend with fixtures)
+- `python/tests/support/test_shell_fixtures.py` (new, self-tests)
+
+### Open questions
+- None.
