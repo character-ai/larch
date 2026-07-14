@@ -926,6 +926,14 @@ def test_cli_dispatches_analyze_bugs_help() -> None:
     assert "analyze-bugs prefetch" in result.stdout
 
 
+@pytest.mark.parametrize("flag", ["--sweep", "--sweep-max=1"])
+def test_prefetch_rejects_sweep_only_flags(flag: str) -> None:
+    result = run_cli("analyze-bugs", "prefetch", flag)
+
+    assert result.returncode != 0
+    assert "unrecognized arguments" in result.stderr
+
+
 def _analytics_bundle(run_dir: Path, *, issue: int, cache_key: str, files: list[str], fix_time: int, added_lines: int = 10, markers: list[int] | None = None, mechanical: str = "") -> dict[str, object]:
     row = _single_manifest_issue(run_dir, issue=issue, cache_key=cache_key, mechanical=mechanical)
     row["fix_sha"] = f"sha-{issue}"
@@ -1272,6 +1280,21 @@ def test_sweep_state_round_trip_and_absent_default(tmp_path: Path) -> None:
     assert oct(path.stat().st_mode & 0o777) in {"0o600", "0o400"}
 
 
+def test_sweep_state_round_trips_pending_frontier_over_1000_shas(tmp_path: Path) -> None:
+    path = tmp_path / "sweep-state.json"
+    pending = tuple(f"{index:040x}" for index in range(1_001))
+    state = analyze_bugs.SweepState(
+        last_sweep_sha="a" * 40,
+        last_sweep_at="2026-07-13T12:00:00Z",
+        schema_version=analyze_bugs.SWEEP_SCHEMA_VERSION,
+        pending_shas=pending,
+    )
+
+    analyze_bugs.write_sweep_state(path, state)
+
+    assert analyze_bugs.load_sweep_state(path) == state
+
+
 def test_sweep_state_rejects_malformed_schema_and_pending(tmp_path: Path) -> None:
     path = tmp_path / "sweep-state.json"
     _write_json(
@@ -1521,9 +1544,10 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
         analyze_bugs.SweepState(last_sweep_sha=base, last_sweep_at="2026-01-01T00:00:00Z", schema_version=1, pending_shas=()),
     )
 
+    run1 = tmp_path / "run1"
     capped = analyze_bugs.sweep_prepare(
         runner=ProcRunner(),
-        run_dir=tmp_path / "run1",
+        run_dir=run1,
         ledger_path=ledger,
         repo="o/r",
         sweep_max=1,
@@ -1543,19 +1567,24 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     assert not durable.pending_shas
     assert durable.last_sweep_sha == base
 
-    # Hand-written state carries pending SHAs; ranking still prefers chronic/pending over new lower-priority work.
-    analyze_bugs.write_sweep_state(
-        analyze_bugs.sweep_state_path(ledger),
-        analyze_bugs.SweepState(
-            last_sweep_sha=tip,
-            last_sweep_at="2026-01-02T00:00:00Z",
-            schema_version=1,
-            pending_shas=(non_chronic, later),
-        ),
+    (run1 / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": chronic, "findings": []}]), encoding="utf-8"
     )
+    analyze_bugs.sweep_ingest_finder(run_dir=run1)
+    analyze_bugs.sweep_ingest_refuter(run_dir=run1)
+    _write_json(run1 / "manifest.json", _single_manifest(run1, mechanical="WONTFIX"))
+    _write_bundle(run1 / "issue-1-bundle.md")
+    monkeypatch.setattr(analyze_bugs, "_runner", ProcRunner)
+    analyze_bugs.render_report(manifest_path=run1 / "manifest.json", ledger_path=ledger, run_dir=run1)
+
+    committed = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
+    assert committed is not None
+    assert committed.last_sweep_sha == tip
+    assert committed.pending_shas == (non_chronic, later)
+
     _commit_file(repo, "README.md", "root2\n", "chore: tiny readme", when=now + 50)
     new_tip = _set_origin_main(repo)
-    resumed = analyze_bugs.sweep_enumeration(
+    resumed = analyze_bugs.sweep_prepare(
         runner=ProcRunner(),
         ledger_path=ledger,
         run_dir=tmp_path / "run2",
@@ -1564,9 +1593,10 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
         pinned_tip=new_tip,
         now=now + 100,
     )
-    assert resumed.selected[0].merge_sha == non_chronic
-    assert later in resumed.pending_shas
-    assert resumed.skipped_count >= 1
+    resumed_manifest = json.loads(Path(str(resumed["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
+    assert resumed_manifest["selected"][0]["merge_sha"] == non_chronic
+    assert later in cast("tuple[str, ...]", resumed["PENDING_SHAS"])
+    assert resumed["SKIPPED_COUNT"] >= 1
 
 
 def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -69,7 +69,6 @@ SWEEP_INITIAL_WINDOW_SECONDS: Final = 48 * 60 * 60
 SWEEP_DIFF_CAP: Final = DEFAULT_DIFF_CAP
 SWEEP_SYMBOL_CAP: Final = 40
 SWEEP_CONSUMER_CAP: Final = 40
-SWEEP_PENDING_CAP: Final = 1_000
 SWEEP_STATE_FILENAME: Final = "sweep-state.json"
 SWEEP_FINDER_RAW_NAME: Final = "sweep-finder.jsonl"
 SWEEP_REFUTER_RAW_NAME: Final = "sweep-refuter.jsonl"
@@ -2330,8 +2329,6 @@ def load_sweep_state(path: Path) -> SweepState | None:
     pending_raw = raw["pending_shas"]
     if not isinstance(pending_raw, list):
         raise AnalyzeBugsError(f"malformed sweep state pending_shas: {path}")
-    if len(pending_raw) > SWEEP_PENDING_CAP:
-        raise AnalyzeBugsError(f"sweep state pending_shas exceeds bound {SWEEP_PENDING_CAP}: {path}")
     pending: list[str] = []
     seen: set[str] = set()
     for item in pending_raw:
@@ -2354,8 +2351,6 @@ def write_sweep_state(path: Path, state: SweepState) -> None:
         raise AnalyzeBugsError(f"refusing to write unsupported sweep schema_version={state.schema_version}")
     _full_sha(state.last_sweep_sha, label="last_sweep_sha")
     _sweep_timestamp(state.last_sweep_at, label="last_sweep_at")
-    if len(state.pending_shas) > SWEEP_PENDING_CAP:
-        raise AnalyzeBugsError(f"pending_shas exceeds bound {SWEEP_PENDING_CAP}")
     seen: set[str] = set()
     pending: list[str] = []
     for sha in state.pending_shas:
