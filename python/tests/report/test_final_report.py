@@ -1936,7 +1936,7 @@ def test_write_final_report_cost_unavailable_variants(
         run_id="run-badjson",
         ship=ship,
         finalize=finalize,
-        token_report="{not-json\n",  # noqa: S106
+        token_report="{not-json\n",  # noqa: S106 - malformed JSON fixture, not a secret
     )
     rc, _url, err = final_report.write_final_report(
         tmp_path, comment_only=True, print_stdout=True
