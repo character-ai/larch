@@ -720,25 +720,6 @@ def write_deterministic_clean_note(
     )
 
 
-def write_unavailable_note(
-    *,
-    implement_tmpdir: Path,
-    head_sha: str,
-    base_ref: str,
-    kind: AssessmentKind = GUIDELINES,
-) -> None:
-    """Persist a non-violating note when assessment input is unavailable."""
-    metadata = {"NOTE_STATE": config.NOTE_STATE_UNAVAILABLE, "ASSESSMENT_KIND": ""}
-    _write_implement_note(
-        implement_tmpdir=implement_tmpdir,
-        note_text="Architectural assessment unavailable.",
-        head_sha=head_sha,
-        metadata=metadata,
-        base_ref=base_ref,
-        kind=kind,
-    )
-
-
 def _materialize_live_diff(*, repo_root: Path | None, resolved_base: str) -> tuple[str, str] | None:
     """Materialize the live implementation diff and return diff text plus fingerprint."""
     if repo_root is None or not resolved_base:

@@ -363,6 +363,9 @@ def _write_ship_route_handoff(
         reason = _ship_route_safe_line(payload.get("needs_user_reason", ""))
         scope = "main" if reason == config.NEEDS_USER_MAIN_CI_FAIL else "pr"
         lines.append(f"CI_FAILURE_SCOPE={scope}")
+        raw_count = payload.get("failed_jobs_count", 0)
+        failed_jobs_count = raw_count if isinstance(raw_count, int) and raw_count >= 0 else 0
+        lines.append(f"FAILED_JOBS_COUNT={failed_jobs_count}")
         ci_errors_file = _ship_route_safe_line(payload.get("ci_errors_file", ""))
         if ci_errors_file:
             lines.append(f"CI_ERRORS_FILE={ci_errors_file}")

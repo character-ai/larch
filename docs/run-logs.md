@@ -395,6 +395,8 @@ Created by `python/cli.py run-log init` during **Step 0** when the tracking issu
 
 `model_roster.main` is the orchestrator (main-agent) model id, not the implementer coder. It is captured once at run-log init (the newest session transcript at that point is the orchestrator session, before subagents spawn) via `tokens.read_main_model`, then preserved across `run-log manifest` merges. Historical runs predating this capture carry `"unknown"`.
 
+Attribution for the Step 8 subagents (the `larch:ci-fixer` fixer and the `larch:arch-assessor` assessor) is prose-only: their identity is described in `skills/implement/SKILL.md` and `agents/*.md`, and no `MODE=subagent` or `TIER=subagent` tokens are emitted into run-log records for them (#7192, #7193, #7219).
+
 For current `/implement` runs, the committed manifest is normally an `"in-progress"` snapshot because the post-merge `"done"` update happens inside `$IMPLEMENT_TMPDIR` after the last log commit window. That is not an absolute invariant: older committed runs, tests, or manual/status-update flows can still produce committed manifests with `"done"` or other statuses. To assess completion, read `status` as one signal and correlate it with PR merge state plus the surrounding run-log artifacts.
 
 ## Batch files

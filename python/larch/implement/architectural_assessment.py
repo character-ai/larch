@@ -669,11 +669,19 @@ def materialize_main(argv: list[str] | None = None) -> int:
         print(f"ASSESSMENT_DETAIL={_safe_detail(str(exc), Path(args.implement_tmpdir))}")
         return config.EXIT_INTERNAL_ERROR
     pending_kinds = [evidence.kind for evidence in pending]
-    deterministic_kinds = [kind for kind in normalized if statuses.get(kind)]
+    # A `log-pending` status persisted the deviation outcome but the
+    # execution-issues deviation warning append failed; surface it distinctly so
+    # the orchestrator retries the record instead of treating the kind as fully
+    # resolved and silently dropping the warning (#7219).
+    log_pending_kinds = [kind for kind in normalized if statuses.get(kind) == "log-pending"]
+    deterministic_kinds = [
+        kind for kind in normalized if statuses.get(kind) and statuses.get(kind) != "log-pending"
+    ]
     print("ASSESSMENT_MATERIALIZE_STATUS=ok")
     print(f"ASSESSMENT_REQUESTED_KINDS={','.join(normalized)}")
     print(f"ASSESSMENT_PENDING_KINDS={','.join(pending_kinds)}")
     print(f"ASSESSMENT_DETERMINISTIC_KINDS={','.join(deterministic_kinds)}")
+    print(f"ASSESSMENT_LOG_PENDING_KINDS={','.join(log_pending_kinds)}")
     for evidence in pending:
         upper = evidence.kind.upper()
         prior = _durable_note_path(evidence.kind, Path(args.implement_tmpdir))

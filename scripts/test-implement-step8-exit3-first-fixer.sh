@@ -45,6 +45,7 @@ for needle in [
     'FIXER_RESULT=no-progress',
     'FIXER_RESULT=bail',
     'SendMessage',
+    'spawn a fresh `larch:ci-fixer` per round',
     'ci-fix-exhausted',
     'ci-fix-no-progress',
     'ci-evidence-unavailable',

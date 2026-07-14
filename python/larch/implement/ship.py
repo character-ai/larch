@@ -2106,13 +2106,15 @@ _CI_FIX_AUTONOMOUS_REASONS = frozenset({
 })
 
 
-def _distill_ci_errors_for_result(*, ctx: RunContext, result: ShipResult) -> tuple[str, str]:
+def _distill_ci_errors_for_result(*, ctx: RunContext, result: ShipResult) -> tuple[str, str, int]:
     """Distill CI failure evidence for a ci-fix ``NEEDS_USER`` result.
 
-    Returns ``(ci_errors_file, distill_class)``: the absolute digest path with
-    an empty class on success; an empty path with a bail class when distill is
-    skipped (no run id, non-ci-fix reason) or fails. Distill failure never
-    blocks the bail. Issue #7192.
+    Returns ``(ci_errors_file, distill_class, failed_jobs_count)``: the absolute
+    digest path with an empty class and the failing-job count on success; an
+    empty path with a bail class and the count (zero when unknown) when distill
+    is skipped (no run id, non-ci-fix reason) or fails. Distill failure never
+    blocks the bail. The count is forwarded into the ci-fix route-exit handoff as
+    ``FAILED_JOBS_COUNT`` evidence for the main agent (#7192, #7219).
     """
     reason = result.needs_user_reason
     run_id = result.failed_run_id
@@ -2125,16 +2127,16 @@ def _distill_ci_errors_for_result(*, ctx: RunContext, result: ShipResult) -> tup
         and _tmpdir_under_allowed_root(ctx.tmpdir)
     )
     if not eligible:
-        return "", ""
+        return "", "", 0
     output = Path(ctx.tmpdir) / f"ci-errors-{run_id}.md"
     try:
         outcome = ci.distill_log(run_id=run_id, repo=ctx.repo, output=output)
     except Exception as exc:  # pylint: disable=broad-exception-caught  # distill must never block the ci-fix bail
         logging_util.BreadcrumbWriter().emit(f"ship.py: ci distill-log failed: {exc}")
-        return "", "distill-exception"
+        return "", "distill-exception", 0
     if outcome.status == "ok":
-        return str(output), ""
-    return "", outcome.bail_class or "distill-failed"
+        return str(output), "", outcome.failed_jobs_count
+    return "", outcome.bail_class or "distill-failed", outcome.failed_jobs_count
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2163,12 +2165,13 @@ def main(argv: list[str] | None = None) -> int:
         )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
     _persist_stall_metadata_if_needed(ctx=ctx, result=result, tmpdir=Path(ctx.tmpdir))
-    ci_errors_file, ci_errors_distill_class = _distill_ci_errors_for_result(ctx=ctx, result=result)
+    ci_errors_file, ci_errors_distill_class, failed_jobs_count = _distill_ci_errors_for_result(ctx=ctx, result=result)
     emit_result(
         ctx=ctx,
         result=result,
         ci_errors_file=ci_errors_file,
         ci_errors_distill_class=ci_errors_distill_class,
+        failed_jobs_count=failed_jobs_count,
     )
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

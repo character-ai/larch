@@ -79,13 +79,6 @@ SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION: Final = "halt-scope-disposition"
 SHIP_ROUTE_ACTION_ASSESSMENTS: Final = "assessments"
 ASSESSMENT_KIND_INVARIANTS: Final = "invariants"
 ASSESSMENT_KIND_GUIDELINES: Final = "guidelines"
-ASSESSMENT_OPERATOR_WAIVER_FILENAME: Final = "assessment-operator-waiver.json"
-ASSESSMENT_OPERATOR_WAIVER_SCHEMA_VERSION: Final = "1"
-ASSESSMENT_WAIVER_STATUS_OK: Final = "ok"
-ASSESSMENT_WAIVER_STATUS_FAILED: Final = "failed"
-ASSESSMENT_WAIVER_KINDS: Final[frozenset[str]] = frozenset(
-    {ASSESSMENT_KIND_INVARIANTS, ASSESSMENT_KIND_GUIDELINES}
-)
 TERMINAL_DONE_CLEAR_FIELDS: Final[tuple[tuple[str, str], ...]] = (
     ("STALL_TRACKING", "false"),
     ("STALL_STEP", ""),
@@ -854,7 +847,6 @@ CI_FIXER_DISTILL_STEP_TAIL_LINES: Final = 80
 CI_FIXER_DISTILL_STEP_CONTEXT_LINES: Final = 4
 CI_FIXER_DISTILL_TOTAL_BYTES: Final = 60000
 CI_FIXER_DISTILL_REPEATED_BLOCK_LIMIT: Final = 2
-CI_FIXER_EVIDENCE_DIGEST_ATTEMPTS: Final = 3
 # Distill bail class surfaced when gh itself is unavailable (auth/quota/binary).
 # Emitted by the ci distill-log health-bail branch and forwarded as
 # CI_ERRORS_DISTILL_CLASS in the ship route-exit handoff (#7192).
