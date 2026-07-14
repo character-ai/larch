@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import datetime
 import hashlib
 import json
 import os
@@ -68,7 +69,6 @@ SWEEP_INITIAL_WINDOW_SECONDS: Final = 48 * 60 * 60
 SWEEP_DIFF_CAP: Final = DEFAULT_DIFF_CAP
 SWEEP_SYMBOL_CAP: Final = 40
 SWEEP_CONSUMER_CAP: Final = 40
-SWEEP_PENDING_CAP: Final = 1_000
 SWEEP_STATE_FILENAME: Final = "sweep-state.json"
 SWEEP_FINDER_RAW_NAME: Final = "sweep-finder.jsonl"
 SWEEP_REFUTER_RAW_NAME: Final = "sweep-refuter.jsonl"
@@ -86,6 +86,8 @@ SWEEP_FINDING_SYMBOL_CAP: Final = 200
 SWEEP_FINDING_DESC_CAP: Final = 2000
 SWEEP_PRINTABLE_MIN: Final = 0x20
 SWEEP_LOG_FIELDS: Final = 3
+SWEEP_FINDER_OUTPUT_TOKENS: Final = 400
+SWEEP_REFUTER_OUTPUT_TOKENS: Final = 80
 FULL_SHA_RE: Final = re.compile(r"^[0-9a-f]{40}$")
 SWEEP_TIMESTAMP_RE: Final = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 SWEEP_FLUSH_SUBJECT_RE: Final = re.compile(r"^chore\(larch-logs\)")
@@ -1958,9 +1960,167 @@ def _estimate_cost(*, bundles: Sequence[BundleRecord], deep_rate_model: str) -> 
     return f"${cost:.2f} estimated"
 
 
+def _sweep_cost_estimate(*, run_dir: Path, selected_manifest: Mapping[str, Any]) -> str:
+    """Estimate bounded finder and refuter Task usage at the Sonnet rate."""
+    selected_raw = selected_manifest.get("selected")
+    if not isinstance(selected_raw, list):
+        raise AnalyzeBugsError("selected sweep manifest lacks selected array for cost estimate")
+    finder_chars = 0
+    for item in selected_raw:
+        if not isinstance(item, dict):
+            raise AnalyzeBugsError("selected sweep manifest has non-object entry for cost estimate")
+        bundle_path = item.get("bundle_path")
+        if not isinstance(bundle_path, str):
+            raise AnalyzeBugsError("selected sweep manifest lacks bundle path for cost estimate")
+        path = Path(bundle_path)
+        if path.resolve().parent != run_dir.resolve():
+            raise AnalyzeBugsError("selected sweep manifest has a bundle outside the active run directory")
+        try:
+            finder_chars += len(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError as exc:
+            raise AnalyzeBugsError(f"could not read sweep bundle for cost estimate: {path}") from exc
+    queue_path = run_dir / SWEEP_REFUTER_QUEUE_NAME
+    try:
+        refuter_rows = _read_strict_jsonl(queue_path, desc="sweep refuter queue") if queue_path.exists() else []
+        refuter_chars = len(queue_path.read_text(encoding="utf-8", errors="replace")) if queue_path.exists() else 0
+    except OSError as exc:
+        raise AnalyzeBugsError(f"could not read sweep refuter queue for cost estimate: {queue_path}") from exc
+    row = rate_row("claude", model=config.CLAUDE_SONNET_4_6_MODEL)
+    input_tokens = (finder_chars + refuter_chars) / 4
+    output_tokens = (len(selected_raw) * SWEEP_FINDER_OUTPUT_TOKENS) + (len(refuter_rows) * SWEEP_REFUTER_OUTPUT_TOKENS)
+    cost = (input_tokens / 1_000_000 * row["input"]) + (output_tokens / 1_000_000 * row["output"])
+    return f"${cost:.2f} estimated"
+
+
+def _validated_sweep_artifact(*, run_dir: Path) -> tuple[SweepValidatedArtifact, dict[str, Any]] | None:
+    """Load a strict validated artifact and prove it matches this run's selection."""
+    artifact_path = run_dir / SWEEP_VALIDATED_NAME
+    if not artifact_path.exists():
+        return None
+    raw = _load_json(artifact_path)
+    required = {
+        "pinned_tip",
+        "selected_manifest_path",
+        "selected_count",
+        "skipped_count",
+        "pending_shas",
+        "coverage_incomplete",
+        "candidates",
+    }
+    if set(raw) != required:
+        raise AnalyzeBugsError(f"malformed validated sweep artifact keys: {artifact_path}")
+    expected_manifest = (run_dir / SWEEP_SELECTED_MANIFEST_NAME).resolve()
+    selected_path = raw.get("selected_manifest_path")
+    if not isinstance(selected_path, str) or Path(selected_path).resolve() != expected_manifest:
+        raise AnalyzeBugsError("validated sweep artifact has a foreign selected manifest path")
+    selected_manifest = _load_json(expected_manifest)
+    selected_required = {"pinned_tip", "selected_count", "skipped_count", "coverage_incomplete", "pending_shas", "selected"}
+    if set(selected_manifest) != selected_required:
+        raise AnalyzeBugsError("selected sweep manifest has unexpected keys")
+    pinned_tip = _full_sha(raw.get("pinned_tip"), label="validated sweep pinned_tip")
+    selected_tip, selected_shas, selected_summary = _load_selected_manifest(run_dir)
+    manifest_selected_count = selected_manifest.get("selected_count")
+    manifest_skipped_count = selected_manifest.get("skipped_count")
+    manifest_pending_raw = selected_manifest.get("pending_shas")
+    manifest_coverage = selected_manifest.get("coverage_incomplete")
+    if (
+        isinstance(manifest_selected_count, bool)
+        or not isinstance(manifest_selected_count, int)
+        or manifest_selected_count != len(selected_shas)
+        or isinstance(manifest_skipped_count, bool)
+        or not isinstance(manifest_skipped_count, int)
+        or manifest_skipped_count < 0
+        or not isinstance(manifest_pending_raw, list)
+        or not isinstance(manifest_coverage, bool)
+    ):
+        raise AnalyzeBugsError("selected sweep manifest has malformed coverage fields")
+    manifest_pending = tuple(_full_sha(item, label="selected sweep pending SHA") for item in manifest_pending_raw)
+    if len(set(manifest_pending)) != len(manifest_pending) or manifest_skipped_count != len(manifest_pending):
+        raise AnalyzeBugsError("selected sweep manifest has inconsistent pending coverage")
+    if manifest_coverage != bool(manifest_pending):
+        raise AnalyzeBugsError("selected sweep manifest has inconsistent coverage status")
+    if pinned_tip != selected_tip:
+        raise AnalyzeBugsError("validated sweep artifact pinned tip does not match selected manifest")
+    selected_count = raw.get("selected_count")
+    skipped_count = raw.get("skipped_count")
+    coverage_incomplete = raw.get("coverage_incomplete")
+    pending_raw = raw.get("pending_shas")
+    if (
+        isinstance(selected_count, bool)
+        or not isinstance(selected_count, int)
+        or selected_count != len(selected_shas)
+        or isinstance(skipped_count, bool)
+        or not isinstance(skipped_count, int)
+        or skipped_count < 0
+        or not isinstance(coverage_incomplete, bool)
+        or not isinstance(pending_raw, list)
+    ):
+        raise AnalyzeBugsError("malformed validated sweep artifact coverage fields")
+    pending_shas = tuple(_full_sha(item, label="validated sweep pending SHA") for item in pending_raw)
+    if len(set(pending_shas)) != len(pending_shas):
+        raise AnalyzeBugsError("validated sweep artifact has duplicate pending SHAs")
+    if (
+        skipped_count != int(selected_summary["skipped_count"])
+        or coverage_incomplete != bool(selected_summary["coverage_incomplete"])
+        or pending_shas != cast("tuple[str, ...]", selected_summary["pending_shas"])
+    ):
+        raise AnalyzeBugsError("validated sweep artifact coverage does not match selected manifest")
+    candidates_raw = raw.get("candidates")
+    if not isinstance(candidates_raw, list):
+        raise AnalyzeBugsError("validated sweep artifact candidates must be an array")
+    candidates: list[SweepCandidate] = []
+    for item in candidates_raw:
+        if not isinstance(item, dict):
+            raise AnalyzeBugsError("validated sweep artifact candidate is not an object")
+        if set(item) != {"merge_sha", "file", "symbol", "description", "severity", "confidence"}:
+            raise AnalyzeBugsError("validated sweep artifact candidate has unexpected or missing fields")
+        finding_raw = {key: item.get(key) for key in ("file", "symbol", "description", "severity", "confidence")}
+        finding = _parse_finder_finding(finding_raw)
+        if isinstance(finding, str):
+            raise AnalyzeBugsError(f"validated sweep artifact candidate: {finding}")
+        merge_sha = _full_sha(item.get("merge_sha"), label="validated sweep candidate merge_sha")
+        if merge_sha not in selected_shas:
+            raise AnalyzeBugsError("validated sweep artifact candidate belongs to an unselected merge")
+        candidates.append(
+            SweepCandidate(
+                merge_sha=merge_sha,
+                file=finding.file,
+                symbol=finding.symbol,
+                description=finding.description,
+                severity=finding.severity,
+                confidence=finding.confidence,
+            )
+        )
+    current_tip = _full_sha(
+        _git_required(_runner(), ["git", "rev-parse", "--verify", "origin/main"], desc="sweep report tip verification").strip(),
+        label="current origin/main tip",
+    )
+    if current_tip != pinned_tip:
+        raise AnalyzeBugsError("validated sweep artifact is stale for the current origin/main tip")
+    return (
+        SweepValidatedArtifact(
+            pinned_tip=pinned_tip,
+            selected_manifest_path=str(expected_manifest),
+            selected_count=selected_count,
+            skipped_count=skipped_count,
+            pending_shas=pending_shas,
+            coverage_incomplete=coverage_incomplete,
+            candidates=tuple(candidates),
+        ),
+        selected_manifest,
+    )
+
+
+def _sweep_state_timestamp() -> str:
+    return datetime.datetime.now(tz=datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> str:
     manifest, bundles = _load_manifest(manifest_path)
     ledger, corrupt_count = load_ledger(ledger_path)
+    sweep = _validated_sweep_artifact(run_dir=run_dir)
+    sweep_artifact = sweep[0] if sweep else None
+    selected_sweep_manifest = sweep[1] if sweep else None
     analytics = build_analytics_view(manifest=manifest, bundles=bundles, ledger_path=ledger_path, runner=_runner())
     summary_path = run_dir / "ledger-summary.json"
     summary = _load_json(summary_path) if summary_path.exists() else {}
@@ -2002,10 +2162,17 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
     sample_rate = (sampled_failures / len(sampled_rows)) if sampled_rows else 0.0
     followups = [(bundle, verdict, reason) for bundle, verdict, _tier, reason, _missing, _sampled in rows if verdict in TERMINAL_FOLLOWUP_VERDICTS]
     followup_path = run_dir / "follow-up-issue.md"
-    if followups:
+    if followups or (sweep_artifact and sweep_artifact.candidates):
         body_lines = ["# Analyze-bugs follow-up", "", f"Repo: {manifest.get('repo', '')}", "", "Findings:"]
         for bundle, verdict, reason in followups:
             body_lines.append(f"- #{bundle.issue_number}: {verdict}. {reason}")
+        if sweep_artifact and sweep_artifact.candidates:
+            body_lines.extend(["", "Sweep candidates:"])
+            body_lines.extend(
+                f"- {_short_sha(candidate.merge_sha)} {candidate.file} `{candidate.symbol}`: "
+                f"{candidate.severity}/{candidate.confidence}. {candidate.description}"
+                for candidate in sweep_artifact.candidates
+            )
         _atomic_write_text(followup_path, "\n".join(body_lines) + "\n")
 
     snapshot = RunSnapshot(
@@ -2051,18 +2218,64 @@ def render_report(*, manifest_path: Path, ledger_path: Path, run_dir: Path) -> s
         "## Sample calibration", "", f"Sample size: {len(sampled_rows)}", f"Sampled failures: {sampled_failures}",
         f"Triage false-pass rate: {sample_rate:.2%}", "",
     ]
+    if sweep_artifact and selected_sweep_manifest is not None:
+        sweep_rows = [["Merge", "File", "Symbol", "Severity", "Confidence", "Description"]]
+        sweep_rows.extend(
+            [
+                _short_sha(candidate.merge_sha),
+                candidate.file,
+                candidate.symbol,
+                candidate.severity,
+                candidate.confidence,
+                candidate.description,
+            ]
+            for candidate in sweep_artifact.candidates
+        )
+        parts.extend(
+            [
+                "## Sweep candidates",
+                "",
+                _markdown_table(sweep_rows) if sweep_artifact.candidates else "None.",
+                "",
+                f"Sweep selected merges: {sweep_artifact.selected_count}",
+                f"Sweep skipped merges: {sweep_artifact.skipped_count}",
+                f"Sweep pending frontier: {len(sweep_artifact.pending_shas)}",
+            ]
+        )
+        if sweep_artifact.coverage_incomplete:
+            parts.extend(["Sweep coverage incomplete: pending eligible merges will be retried.", ""])
+        else:
+            parts.append("")
     if corrupt_count:
         parts.extend([f"Ledger corrupt lines quarantined: {corrupt_count}", ""])
-    if followups:
+    if followups or (sweep_artifact and sweep_artifact.candidates):
         parts.extend(["## Follow-up issue body", "", f"Follow-up body file: {followup_path}", ""])
     if analytics.chronic_zones:
         parts.extend([f"Suggestion: run /learn-from-bugs scoped to {', '.join(zone.zone for zone in analytics.chronic_zones)}.", ""])
     parts.append(f"ANALYZE_BUGS_COST_ESTIMATE={cost}")
+    if sweep_artifact and selected_sweep_manifest is not None:
+        parts.append(
+            "ANALYZE_BUGS_SWEEP_COST_ESTIMATE="
+            + _sweep_cost_estimate(
+                run_dir=run_dir,
+                selected_manifest=selected_sweep_manifest,
+            )
+        )
     report = "\n".join(parts) + "\n"
     _atomic_write_text(run_dir / "report.md", report)
     if analytics.hydrated_records:
         _append_private_jsonl(ledger_path, (_record_json(record) for record in analytics.hydrated_records))
     _write_json(run_dir / "run-state.json", asdict(snapshot))
+    if sweep_artifact:
+        write_sweep_state(
+            sweep_state_path(ledger_path),
+            SweepState(
+                last_sweep_sha=sweep_artifact.pinned_tip,
+                last_sweep_at=_sweep_state_timestamp(),
+                schema_version=SWEEP_SCHEMA_VERSION,
+                pending_shas=sweep_artifact.pending_shas,
+            ),
+        )
     return report
 
 
@@ -2116,8 +2329,6 @@ def load_sweep_state(path: Path) -> SweepState | None:
     pending_raw = raw["pending_shas"]
     if not isinstance(pending_raw, list):
         raise AnalyzeBugsError(f"malformed sweep state pending_shas: {path}")
-    if len(pending_raw) > SWEEP_PENDING_CAP:
-        raise AnalyzeBugsError(f"sweep state pending_shas exceeds bound {SWEEP_PENDING_CAP}: {path}")
     pending: list[str] = []
     seen: set[str] = set()
     for item in pending_raw:
@@ -2140,8 +2351,6 @@ def write_sweep_state(path: Path, state: SweepState) -> None:
         raise AnalyzeBugsError(f"refusing to write unsupported sweep schema_version={state.schema_version}")
     _full_sha(state.last_sweep_sha, label="last_sweep_sha")
     _sweep_timestamp(state.last_sweep_at, label="last_sweep_at")
-    if len(state.pending_shas) > SWEEP_PENDING_CAP:
-        raise AnalyzeBugsError(f"pending_shas exceeds bound {SWEEP_PENDING_CAP}")
     seen: set[str] = set()
     pending: list[str] = []
     for sha in state.pending_shas:
@@ -2305,13 +2514,13 @@ def _enumerate_window_rows(runner: Runner, *, tip: str, state: SweepState | None
         since = max(0, now - SWEEP_INITIAL_WINDOW_SECONDS)
         out = _git_required(
             runner,
-            ["git", "log", "--first-parent", f"--since={since}", "--format=%H%x00%s%x00%ct", tip],
+            ["git", "log", "--first-parent", "--merges", f"--since={since}", "--format=%H%x00%s%x00%ct", tip],
             desc="first-run sweep enumeration",
         )
     else:
         out = _git_required(
             runner,
-            ["git", "log", "--first-parent", "--format=%H%x00%s%x00%ct", tip, "--not", state.last_sweep_sha],
+            ["git", "log", "--first-parent", "--merges", "--format=%H%x00%s%x00%ct", tip, "--not", state.last_sweep_sha],
             desc="watermark sweep enumeration",
         )
     rows: list[tuple[str, str, int]] = []

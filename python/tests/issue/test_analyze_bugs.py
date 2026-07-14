@@ -926,6 +926,14 @@ def test_cli_dispatches_analyze_bugs_help() -> None:
     assert "analyze-bugs prefetch" in result.stdout
 
 
+@pytest.mark.parametrize("flag", ["--sweep", "--sweep-max=1"])
+def test_prefetch_rejects_sweep_only_flags(flag: str) -> None:
+    result = run_cli("analyze-bugs", "prefetch", flag)
+
+    assert result.returncode != 0
+    assert "unrecognized arguments" in result.stderr
+
+
 def _analytics_bundle(run_dir: Path, *, issue: int, cache_key: str, files: list[str], fix_time: int, added_lines: int = 10, markers: list[int] | None = None, mechanical: str = "") -> dict[str, object]:
     row = _single_manifest_issue(run_dir, issue=issue, cache_key=cache_key, mechanical=mechanical)
     row["fix_sha"] = f"sha-{issue}"
@@ -1201,6 +1209,16 @@ def _commit_file(repo: Path, relative: str, content: str, message: str, *, when:
     return _git(repo, "rev-parse", "HEAD")
 
 
+def _merge_branch(repo: Path, branch: str, message: str, *, when: int | None = None) -> str:
+    env: dict[str, str] = {}
+    if when is not None:
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(when)) + " +0000"
+        env["GIT_AUTHOR_DATE"] = stamp
+        env["GIT_COMMITTER_DATE"] = stamp
+    _git(repo, "merge", "--no-ff", "-q", "-m", message, branch, env=env or None)
+    return _git(repo, "rev-parse", "HEAD")
+
+
 def _set_origin_main(repo: Path, sha: str | None = None) -> str:
     tip = sha or _git(repo, "rev-parse", "HEAD")
     _git(repo, "update-ref", "refs/remotes/origin/main", tip)
@@ -1272,6 +1290,21 @@ def test_sweep_state_round_trip_and_absent_default(tmp_path: Path) -> None:
     assert oct(path.stat().st_mode & 0o777) in {"0o600", "0o400"}
 
 
+def test_sweep_state_round_trips_pending_frontier_over_1000_shas(tmp_path: Path) -> None:
+    path = tmp_path / "sweep-state.json"
+    pending = tuple(f"{index:040x}" for index in range(1_001))
+    state = analyze_bugs.SweepState(
+        last_sweep_sha="a" * 40,
+        last_sweep_at="2026-07-13T12:00:00Z",
+        schema_version=analyze_bugs.SWEEP_SCHEMA_VERSION,
+        pending_shas=pending,
+    )
+
+    analyze_bugs.write_sweep_state(path, state)
+
+    assert analyze_bugs.load_sweep_state(path) == state
+
+
 def test_sweep_state_rejects_malformed_schema_and_pending(tmp_path: Path) -> None:
     path = tmp_path / "sweep-state.json"
     _write_json(
@@ -1323,7 +1356,9 @@ def test_sweep_state_rejects_malformed_schema_and_pending(tmp_path: Path) -> Non
         analyze_bugs.load_sweep_state(path)
 
 
-def test_sweep_enumeration_excludes_flush_release_and_logs_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sweep_enumeration_selects_merges_only_and_excludes_flush_release_and_logs_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _init_sweep_repo(tmp_path)
     monkeypatch.chdir(repo)
     base = _commit_file(repo, "python/larch/issue/a.py", "A = 1\n", "seed", when=1_700_000_000)
@@ -1332,8 +1367,17 @@ def test_sweep_enumeration_excludes_flush_release_and_logs_only(tmp_path: Path, 
     flush = _commit_file(repo, "larch-logs/run/x.md", "log\n", "chore(larch-logs): flush", when=1_700_000_100)
     release = _commit_file(repo, "VERSION", "1.0.0\n", "Release v1.0.0", when=1_700_000_200)
     logs_only = _commit_file(repo, "larch-logs/other.md", "more\n", "docs: logs only", when=1_700_000_300)
-    real_one = _commit_file(repo, "python/larch/issue/a.py", "A = 2\n", "fix: real one", when=1_700_000_400)
-    real_two = _commit_file(repo, "python/larch/core/b.py", "B = 1\n", "fix: real two", when=1_700_000_500)
+    direct = _commit_file(repo, "python/larch/issue/a.py", "A = 2\n", "fix: direct main commit", when=1_700_000_400)
+    _git(repo, "checkout", "-q", "-b", "real-one")
+    _commit_file(repo, "python/larch/issue/a.py", "A = 3\n", "fix: real one", when=1_700_000_500)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "--no-ff", "-q", "-m", "Merge real one", "real-one")
+    real_one = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "real-two")
+    _commit_file(repo, "python/larch/core/b.py", "B = 1\n", "fix: real two", when=1_700_000_600)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "--no-ff", "-q", "-m", "Merge real two", "real-two")
+    real_two = _git(repo, "rev-parse", "HEAD")
     tip = _set_origin_main(repo)
 
     run_dir = tmp_path / "run"
@@ -1363,6 +1407,7 @@ def test_sweep_enumeration_excludes_flush_release_and_logs_only(tmp_path: Path, 
     assert flush not in selected
     assert release not in selected
     assert logs_only not in selected
+    assert direct not in selected
     assert result.skipped_count == 0
 
 
@@ -1370,7 +1415,10 @@ def test_sweep_enumeration_first_run_window_and_empty(tmp_path: Path, monkeypatc
     repo = _init_sweep_repo(tmp_path)
     monkeypatch.chdir(repo)
     old = _commit_file(repo, "python/old.py", "X = 1\n", "old commit", when=1_000_000_000)
-    recent = _commit_file(repo, "python/new.py", "Y = 1\n", "recent commit", when=1_800_000_000)
+    _git(repo, "checkout", "-q", "-b", "recent")
+    _commit_file(repo, "python/new.py", "Y = 1\n", "recent commit", when=1_800_000_000)
+    _git(repo, "checkout", "-q", "main")
+    recent = _merge_branch(repo, "recent", "Merge recent", when=1_800_000_000)
     tip = _set_origin_main(repo)
     run_dir = tmp_path / "run"
     ledger = tmp_path / "ledger.jsonl"
@@ -1508,10 +1556,19 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     base = _commit_file(repo, "README.md", "root\n", "seed", when=now - 1_000)
     # Non-chronic but large diff.
     big = "Z = '" + ("x" * 4000) + "'\n"
-    non_chronic = _commit_file(repo, "docs/guide.md", big, "docs: large non-chronic", when=now - 300)
+    _git(repo, "checkout", "-q", "-b", "non-chronic")
+    _commit_file(repo, "docs/guide.md", big, "docs: large non-chronic", when=now - 300)
+    _git(repo, "checkout", "-q", "main")
+    non_chronic = _merge_branch(repo, "non-chronic", "Merge non-chronic", when=now - 300)
     # Chronic zone, smaller diff.
-    chronic = _commit_file(repo, "python/larch/issue/shared.py", "SHARED = 1\n", "fix: chronic small", when=now - 200)
-    later = _commit_file(repo, "scripts/tool.sh", "echo hi\n", "scripts: later", when=now - 100)
+    _git(repo, "checkout", "-q", "-b", "chronic")
+    _commit_file(repo, "python/larch/issue/shared.py", "SHARED = 1\n", "fix: chronic small", when=now - 200)
+    _git(repo, "checkout", "-q", "main")
+    chronic = _merge_branch(repo, "chronic", "Merge chronic", when=now - 200)
+    _git(repo, "checkout", "-q", "-b", "later")
+    _commit_file(repo, "scripts/tool.sh", "echo hi\n", "scripts: later", when=now - 100)
+    _git(repo, "checkout", "-q", "main")
+    later = _merge_branch(repo, "later", "Merge later", when=now - 100)
     tip = _set_origin_main(repo)
 
     ledger = tmp_path / "ledger.jsonl"
@@ -1521,9 +1578,10 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
         analyze_bugs.SweepState(last_sweep_sha=base, last_sweep_at="2026-01-01T00:00:00Z", schema_version=1, pending_shas=()),
     )
 
+    run1 = tmp_path / "run1"
     capped = analyze_bugs.sweep_prepare(
         runner=ProcRunner(),
-        run_dir=tmp_path / "run1",
+        run_dir=run1,
         ledger_path=ledger,
         repo="o/r",
         sweep_max=1,
@@ -1543,19 +1601,24 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     assert not durable.pending_shas
     assert durable.last_sweep_sha == base
 
-    # Hand-written state carries pending SHAs; ranking still prefers chronic/pending over new lower-priority work.
-    analyze_bugs.write_sweep_state(
-        analyze_bugs.sweep_state_path(ledger),
-        analyze_bugs.SweepState(
-            last_sweep_sha=tip,
-            last_sweep_at="2026-01-02T00:00:00Z",
-            schema_version=1,
-            pending_shas=(non_chronic, later),
-        ),
+    (run1 / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": chronic, "findings": []}]), encoding="utf-8"
     )
+    analyze_bugs.sweep_ingest_finder(run_dir=run1)
+    analyze_bugs.sweep_ingest_refuter(run_dir=run1)
+    _write_json(run1 / "manifest.json", _single_manifest(run1, mechanical="WONTFIX"))
+    _write_bundle(run1 / "issue-1-bundle.md")
+    monkeypatch.setattr(analyze_bugs, "_runner", ProcRunner)
+    analyze_bugs.render_report(manifest_path=run1 / "manifest.json", ledger_path=ledger, run_dir=run1)
+
+    committed = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
+    assert committed is not None
+    assert committed.last_sweep_sha == tip
+    assert committed.pending_shas == (non_chronic, later)
+
     _commit_file(repo, "README.md", "root2\n", "chore: tiny readme", when=now + 50)
     new_tip = _set_origin_main(repo)
-    resumed = analyze_bugs.sweep_enumeration(
+    resumed = analyze_bugs.sweep_prepare(
         runner=ProcRunner(),
         ledger_path=ledger,
         run_dir=tmp_path / "run2",
@@ -1564,9 +1627,10 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
         pinned_tip=new_tip,
         now=now + 100,
     )
-    assert resumed.selected[0].merge_sha == non_chronic
-    assert later in resumed.pending_shas
-    assert resumed.skipped_count >= 1
+    resumed_manifest = json.loads(Path(str(resumed["SELECTED_MERGE_MANIFEST"])).read_text(encoding="utf-8"))
+    assert resumed_manifest["selected"][0]["merge_sha"] == non_chronic
+    assert later in cast("tuple[str, ...]", resumed["PENDING_SHAS"])  # pyright: ignore[reportOperatorIssue]  # cast result typed as tuple, `in` is valid at runtime
+    assert cast("int", resumed["SKIPPED_COUNT"]) >= 1  # pyright: ignore[reportOperatorIssue]  # cast result typed as int, `>=` is valid at runtime
 
 
 def test_sweep_prepare_cli_fence_and_help(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1644,6 +1708,167 @@ def test_non_sweep_verbs_do_not_touch_sweep_state(tmp_path: Path, monkeypatch: p
     report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
     assert "Analyze Bugs Report" in report
     assert not state_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Sweep report/state integration (issue #7208, piece 3).
+# ---------------------------------------------------------------------------
+
+
+def _write_validated_sweep_artifact(
+    run_dir: Path,
+    *,
+    pending: tuple[str, ...] = (),
+    skipped: int = 0,
+    candidate: bool = True,
+) -> None:
+    selected = _sweep_selected_manifest(
+        run_dir,
+        pending=pending,
+        skipped=skipped,
+        coverage_incomplete=bool(pending),
+    )
+    bundle_path = run_dir / f"sweep-{SWEEP_SHA_A}-bundle.md"
+    bundle_path.write_text("# Sweep evidence\n" + ("x" * 40) + "\n", encoding="utf-8")
+    (run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME).write_text(
+        json.dumps(
+            {
+                "merge_sha": SWEEP_SHA_A,
+                "finding_index": 0,
+                "file": "python/example.py",
+                "symbol": "example",
+                "description": "wrong field remains in a consumer",
+                "severity": "high",
+                "confidence": "medium",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_json(run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME, selected)
+    _write_json(
+        run_dir / analyze_bugs.SWEEP_VALIDATED_NAME,
+        {
+            "pinned_tip": SWEEP_TIP,
+            "selected_manifest_path": str(run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME),
+            "selected_count": 1,
+            "skipped_count": skipped,
+            "pending_shas": list(pending),
+            "coverage_incomplete": bool(pending),
+            "candidates": [
+                {
+                    "merge_sha": SWEEP_SHA_A,
+                    "file": "python/example.py",
+                    "symbol": "example",
+                    "description": "wrong field remains in a consumer",
+                    "severity": "high",
+                    "confidence": "medium",
+                }
+            ]
+            if candidate
+            else [],
+        },
+    )
+
+
+def test_render_report_merges_sweep_and_commits_pending_state_last(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    manifest = _single_manifest(run_dir, mechanical="NOT_FIXED")
+    _write_json(run_dir / "manifest.json", manifest)
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir, pending=(SWEEP_SHA_B,), skipped=1)
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(SWEEP_SHA_C, "2026-01-01T00:00:00Z", 1, ()),
+    )
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    assert "## Sweep candidates" in report
+    assert "python/example.py" in report
+    assert "Sweep selected merges: 1" in report
+    assert "Sweep skipped merges: 1" in report
+    assert "Sweep pending frontier: 1" in report
+    assert "Sweep coverage incomplete" in report
+    assert "ANALYZE_BUGS_SWEEP_COST_ESTIMATE=$" in report
+    followup = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
+    assert "#1: NOT_FIXED" in followup
+    assert "Sweep candidates:" in followup
+    state = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
+    assert state is not None
+    assert state.last_sweep_sha == SWEEP_TIP
+    assert state.pending_shas == (SWEEP_SHA_B,)
+    assert (run_dir / "report.md").is_file()
+    assert (run_dir / "follow-up-issue.md").is_file()
+
+
+def test_sweep_report_failure_leaves_existing_state_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir, pending=(SWEEP_SHA_B,), skipped=1)
+    state_path = analyze_bugs.sweep_state_path(ledger)
+    analyze_bugs.write_sweep_state(
+        state_path,
+        analyze_bugs.SweepState(SWEEP_SHA_C, "2026-01-01T00:00:00Z", 1, ()),
+    )
+    before = state_path.read_text(encoding="utf-8")
+    original_write = analyze_bugs._atomic_write_text  # pyright: ignore[reportPrivateUsage]  # report-write failure seam
+
+    def fail_report(path: Path, text: str, *, mode: int = 0o600) -> None:
+        if path.name == "report.md":
+            raise OSError("simulated report write failure")
+        original_write(path, text, mode=mode)
+
+    monkeypatch.setattr(analyze_bugs, "_atomic_write_text", fail_report)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+
+    with pytest.raises(OSError, match="simulated report"):
+        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+    assert state_path.read_text(encoding="utf-8") == before
+
+
+def test_sweep_only_survivor_creates_followup_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    followup = run_dir / "follow-up-issue.md"
+    assert followup.is_file()
+    assert "Sweep candidates:" in followup.read_text(encoding="utf-8")
+    assert f"Follow-up body file: {followup}" in report
+
+
+def test_sweep_report_rejects_stale_tip_or_manifest_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_SHA_B + "\n")))
+
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="stale"):
+        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    artifact_path = run_dir / analyze_bugs.SWEEP_VALIDATED_NAME
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact["selected_manifest_path"] = str(tmp_path / "foreign.json")
+    _write_json(artifact_path, artifact)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="foreign selected manifest"):
+        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
 
 
 # ---------------------------------------------------------------------------
