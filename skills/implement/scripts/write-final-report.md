@@ -8,7 +8,7 @@ The markdown body is produced by [`python/cli.py render run-summary`](../../../p
 
 ## Implement outcome enum (`--outcome` raw values)
 
-These values are emitted by the shared `python/cli.py stall-recovery normalize-outcome` helper. `write-final-report.sh` consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. The harness `test-write-final-report.sh` is expected to stay aligned with the helper.
+These values are emitted by the shared `python/cli.py stall-recovery normalize-outcome` helper. `write-final-report.sh` consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Pytest coverage in `python/tests/report/test_final_report.py` stays aligned with the helper.
 
 1. `stalled`: any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
 2. `forked-dry-run`: `FORKED_TARGET=true`.
@@ -145,3 +145,8 @@ summary in process via `python/cli.py render run-summary` helpers. There is no
 separate Bash self-composed renderer fallback. Tracking-comment failures still
 return `STATUS=failed` after writing `summary-final.md`; repo-unavailable runs
 skip the tracking upsert and return `STATUS=ok` with an empty `COMMENT_URL`.
+
+## Test authority
+
+- **Behavioral authority**: `python/tests/report/test_final_report.py` (`make test-write-final-report` → `write-final-report-py-harness`), covering outcome matrix, comment-only, manifest stamp/failure, cost unavailable variants, force flags, line-count cache, and review-phase injection.
+- **Delegation smoke**: `skills/implement/scripts/test-write-final-report.sh` (`write-final-report-bash-harness`) covers only thin-wrapper plugin-root selection, exact `final-report write` CLI routing, argv forwarding, exit-status forwarding, and stdout/stderr passthrough.

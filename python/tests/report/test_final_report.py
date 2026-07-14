@@ -1564,3 +1564,771 @@ def test_write_final_report_coverage_line_not_fed_run_log_manifest(
     assert run_dir / "manifest.json" not in seen_manifest_paths
     summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
     assert "## /implement run run1" in summary
+
+
+# ---------------------------------------------------------------------------
+# Bash harness parity (ported from skills/implement/scripts/test-write-final-report.sh)
+# ---------------------------------------------------------------------------
+
+_TOKEN_REPORT_NONEMPTY: dict[str, object] = {
+    "claude": {"totals": {"total": 1000}},
+    "codex": {"totals": {"total": 2000}},
+    "cursor": {"totals": {"total": 3000}},
+    "BUCKETS_claude": {
+        "input": 500,
+        "cache_read": 100,
+        "cache_create_5m": 50,
+        "cache_create_1h": 50,
+        "output": 300,
+    },
+    "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+    "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000},
+}
+
+_CORRUPT_WARNING = "**⚠ token-report.json appears corrupt; reporting Cost: N/A**"
+_ZERO_DOLLAR_BREAKDOWN = "Claude $0.00, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00"
+
+
+def _write_parity_fixture(
+    tmp_path: Path,
+    *,
+    run_id: str,
+    issue: str = "0",
+    ship: str,
+    finalize: str,
+    session: str = "REPO=owner/repo\n",
+    run_flags: str = "NO_ISSUES=false\n",
+    token_report: dict[str, object] | str | None = None,
+) -> Path:
+    run_dir = tmp_path / "larch-logs" / "implement" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "parent-issue.md").write_text(
+        f"ISSUE_NUMBER={issue}\nRUN_ID={run_id}\nADOPTED=true\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "session-env.sh").write_text(session, encoding="utf-8")
+    (tmp_path / "ship-pr-state.sh").write_text(ship, encoding="utf-8")
+    (tmp_path / "finalize-state.sh").write_text(finalize, encoding="utf-8")
+    (tmp_path / "run-flags.sh").write_text(run_flags, encoding="utf-8")
+    if token_report is None:
+        token_report = _TOKEN_REPORT_NONEMPTY
+    if isinstance(token_report, str):
+        (run_dir / "token-report.json").write_text(token_report, encoding="utf-8")
+    else:
+        (run_dir / "token-report.json").write_text(
+            json.dumps(token_report),
+            encoding="utf-8",
+        )
+    return run_dir
+
+
+def _cost_line(body: str) -> str:
+    for line in body.splitlines():
+        if line.startswith("- **Cost**:"):
+            return line
+    return ""
+
+
+def test_write_final_report_comment_only_preserves_tracked_final_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = _write_parity_fixture(
+        tmp_path,
+        run_id="run-co",
+        ship=(
+            "PR_URL=https://example.test/pr/5\nPR_NUMBER=5\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+    )
+    marker = "legacy-stale-marker-do-not-touch\n"
+    (run_dir / "final-summary.md").write_text(marker, encoding="utf-8")
+    monkeypatch.setattr(
+        final_report.tokens,
+        "compute_pr_line_counts",
+        lambda **_kw: {
+            "LINES_STATUS": "ok",
+            "CODE_ADDED": "17",
+            "CODE_DELETED": "3",
+            "LOGS_ADDED": "5",
+            "LOGS_DELETED": "1",
+        },
+    )
+    _stub_cost_and_assessment(monkeypatch)
+
+    rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, url, err) == (0, "", "")
+    assert (run_dir / "final-summary.md").read_text(encoding="utf-8") == marker
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "https://example.test/pr/5" in summary
+    assert "## /implement run run-co: merged" in summary
+
+
+def test_write_final_report_main_missing_tmpdir_emits_failed_envelope(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = final_report.write_final_report_main([])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STATUS=failed" in out
+    assert "COMMENT_URL=" in out
+    assert "ERROR=usage" in out
+
+
+def test_write_final_report_main_upsert_failure_emits_status_failed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-up",
+        issue="7",
+        ship=(
+            "PR_URL=https://example.test/pr/5\nPR_NUMBER=5\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+    )
+    _stub_cost_and_assessment(monkeypatch)
+    monkeypatch.setattr(
+        final_report.tokens,
+        "compute_pr_line_counts",
+        lambda **_kw: {"LINES_STATUS": "unavailable"},
+    )
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "tracking-issue" in argv and "upsert-summary" in argv:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="gh auth failed")
+        if "run-log" in argv and "manifest" in argv:
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(final_report.subprocess, "run", fake_run)
+
+    rc = final_report.write_final_report_main(["--implement-tmpdir", str(tmp_path)])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert "STATUS=failed" in out
+    assert "ERROR=" in out
+
+
+@pytest.mark.parametrize(
+    ("expected", "ship", "finalize", "outcome_display", "expect_pr"),
+    [
+        (
+            "merged",
+            "PR_URL=https://example.test/pr/5\nPR_NUMBER=5\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+            "✅ DONE",
+            True,
+        ),
+        (
+            "stalled",
+            "PR_URL=https://example.test/pr/2\nPR_NUMBER=2\nSTALL_TRACKING=true\n"
+            "PHASE=stalled\nMERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=true\n",
+            "❌ STALLED",
+            True,
+        ),
+        (
+            "design-only",
+            "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nMERGE_RESULT=\n"
+            "MERGE=false\nDRAFT=false\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=true\nBAIL_NEEDS_USER_INPUT=false\n",
+            "✅ DONE",
+            False,
+        ),
+        (
+            "bailed-needs-user-input",
+            "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nBAIL_REASON=early-failure\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=true\n",
+            "bailed-needs-user-input",
+            False,
+        ),
+        (
+            "bailed",
+            "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nBAIL_REASON=early-failure\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+            "bailed",
+            False,
+        ),
+        (
+            "forked-dry-run",
+            "PR_URL=https://example.test/pr/32\nPR_NUMBER=32\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=true\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+            "✅ DONE",
+            True,
+        ),
+        (
+            "pr-created",
+            "PR_URL=https://example.test/pr/30\nPR_NUMBER=30\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+            "✅ DONE",
+            True,
+        ),
+        (
+            "pr-created-draft",
+            "PR_URL=https://example.test/pr/31\nPR_NUMBER=31\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=true\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+            "✅ DONE",
+            True,
+        ),
+        (
+            "force-merged-externally",
+            "PR_URL=https://example.test/pr/33\nPR_NUMBER=33\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=already_merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n",
+            "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+            "✅ DONE",
+            True,
+        ),
+    ],
+)
+def test_write_final_report_outcome_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    expected: str,
+    ship: str,
+    finalize: str,
+    outcome_display: str,
+    expect_pr: bool,
+) -> None:
+    run_id = f"run-{expected}"
+    _write_parity_fixture(
+        tmp_path,
+        run_id=run_id,
+        ship=ship,
+        finalize=finalize,
+        token_report=_TOKEN_REPORT_NONEMPTY if expected != "bailed" else None,
+    )
+    if expected == "bailed":
+        # Missing token data → Cost: N/A (bash bailed fixture has no token-report).
+        (tmp_path / "larch-logs" / "implement" / run_id / "token-report.json").unlink(missing_ok=True)
+    monkeypatch.setattr(
+        final_report.tokens,
+        "compute_pr_line_counts",
+        lambda **_kw: {
+            "LINES_STATUS": "ok",
+            "CODE_ADDED": "17",
+            "CODE_DELETED": "3",
+            "LOGS_ADDED": "5",
+            "LOGS_DELETED": "1",
+        },
+    )
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
+
+    rc, url, err = final_report.write_final_report(
+        tmp_path,
+        comment_only=False,
+        skip_tracking_upsert=True,
+        print_stdout=False,
+    )
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    run_log = (
+        tmp_path / "larch-logs" / "implement" / run_id / "final-summary.md"
+    ).read_text(encoding="utf-8")
+    for body in (summary, run_log):
+        assert f"## /implement run {run_id}: {expected}" in body
+        assert f"- **Outcome**: {outcome_display}" in body
+        assert "- **Mode**:" not in body
+        assert "- **Cost**:" in body
+        assert "<!-- larch:run-summary v=1 -->" in body
+        if expect_pr:
+            assert "- **PR**:" in body
+        else:
+            assert "- **PR**:" not in body
+        if expected != "bailed":
+            cost = _cost_line(body)
+            assert "💰 TOTAL" in cost
+            assert ("Claude $" in cost) or ("Claude/GLM-5.2 token $" in cost)
+            assert "Codex-5.6 $" in cost
+            assert "Codex-mini $" in cost
+            assert "Cursor $" in cost
+            assert "Tokens: " in cost
+        else:
+            assert "- **Cost**: N/A" in body
+            assert "- **Lines (PR diff)**: N/A" in body
+
+
+def test_write_final_report_manifest_stamp_and_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = _write_parity_fixture(
+        tmp_path,
+        run_id="run-mfb",
+        ship=(
+            "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nBAIL_REASON=early-failure\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+        token_report={"claude": {"totals": {"total": 0}}},
+    )
+    # No Step 7a artifact after unlink → steps_ran.step7a=false (bash mfb fixture).
+    (run_dir / "token-report.json").unlink()
+    (run_dir / "manifest.json").write_text(
+        '{"schema_version":2,"steps_ran":{}}\n',
+        encoding="utf-8",
+    )
+    (run_dir / "final-summary.md").write_text("prior\n", encoding="utf-8")
+    captured: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "run-log" in argv and "manifest" in argv:
+            captured.append(list(argv))
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(final_report.subprocess, "run", fake_run)
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
+
+    rc, url, err = final_report.write_final_report(tmp_path, skip_tracking_upsert=False)
+    assert (rc, url, err) == (0, "", "")
+    assert captured
+    argv = captured[0]
+    assert "run-log" in argv
+    assert "manifest" in argv
+    assert "--log-root" in argv
+    assert "--skill" in argv
+    assert "implement" in argv
+    assert "--run-id" in argv
+    assert "run-mfb" in argv
+    fields = [argv[i + 1] for i, tok in enumerate(argv) if tok == "--field"]
+    assert "steps_ran.step9a1=false" in fields
+    assert "steps_ran.step8=true" in fields
+    assert "steps_ran.step7a=false" in fields
+
+    def fail_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if "run-log" in argv and "manifest" in argv:
+            return subprocess.CompletedProcess(argv, 1, stdout="", stderr="manifest stub failure")
+        return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(final_report.subprocess, "run", fail_run)
+    rc_fail, _url, err_fail = final_report.write_final_report(tmp_path)
+    assert rc_fail == 1
+    assert "run-log manifest reconcile failed" in err_fail
+
+
+def test_write_final_report_cost_unavailable_variants(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ship = (
+        "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nBAIL_REASON=early-failure\n"
+        "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n"
+    )
+    finalize = "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n"
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
+
+    # Malformed token-report.json
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-badjson",
+        ship=ship,
+        finalize=finalize,
+        token_report="{not-json\n",  # noqa: S106
+    )
+    rc, _url, err = final_report.write_final_report(
+        tmp_path, comment_only=True, print_stdout=True
+    )
+    out = capsys.readouterr().out
+    assert (rc, err) == (0, "")
+    assert "- **Cost**: N/A" in out
+    assert _ZERO_DOLLAR_BREAKDOWN not in out
+
+    # All-zero buckets: cost N/A, no corrupt warning, no zero-dollar breakdown
+    zero_report: dict[str, object] = {
+        "claude": {"totals": {"total": 0}},
+        "codex": {"totals": {"total": 0}},
+        "cursor": {"totals": {"total": 0}},
+        "claude_sub": {"totals": {"total": 0}},
+        "BUCKETS_claude": {
+            "input": 0,
+            "cache_read": 0,
+            "cache_create_5m": 0,
+            "cache_create_1h": 0,
+            "output": 0,
+        },
+        "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0},
+        "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0},
+        "BUCKETS_claude_sub": {
+            "input": 0,
+            "cache_read": 0,
+            "cache_create_5m": 0,
+            "cache_create_1h": 0,
+            "output": 0,
+        },
+    }
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-zero",
+        ship=ship,
+        finalize=finalize,
+        token_report=zero_report,
+    )
+    rc, _url, err = final_report.write_final_report(
+        tmp_path, comment_only=True, print_stdout=True
+    )
+    out = capsys.readouterr().out
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert "- **Cost**: N/A" in out
+    assert _CORRUPT_WARNING not in out
+    assert _CORRUPT_WARNING not in summary
+    assert _ZERO_DOLLAR_BREAKDOWN not in out
+
+    # Claude-only zero totals keep cost unavailable
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-claude-zero",
+        ship=ship,
+        finalize=finalize,
+        token_report={
+            "claude": {"totals": {"total": 0}},
+            "BUCKETS_claude": {
+                "input": 0,
+                "cache_read": 0,
+                "cache_create_5m": 0,
+                "cache_create_1h": 0,
+                "output": 0,
+            },
+        },
+    )
+    rc, _url, err = final_report.write_final_report(
+        tmp_path, comment_only=True, print_stdout=True
+    )
+    out = capsys.readouterr().out
+    assert (rc, err) == (0, "")
+    assert "- **Cost**: N/A" in out
+    assert _CORRUPT_WARNING not in out
+
+
+def test_write_final_report_claude_sub_nonzero_cost_line(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-sub-nonzero",
+        ship=(
+            "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nBAIL_REASON=early-failure\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+        token_report={
+            "claude": {"totals": {"total": 0}},
+            "codex": {"totals": {"total": 0}},
+            "cursor": {"totals": {"total": 0}},
+            "claude_sub": {"totals": {"total": 100}},
+            "BUCKETS_claude": {
+                "input": 0,
+                "cache_read": 0,
+                "cache_create_5m": 0,
+                "cache_create_1h": 0,
+                "output": 0,
+            },
+            "BUCKETS_codex": {"input": 0, "cached_input": 0, "output": 0},
+            "BUCKETS_cursor": {"input": 0, "cache_read": 0, "output": 0},
+            "BUCKETS_claude_sub": {
+                "input": 50,
+                "cache_read": 10,
+                "cache_create_5m": 20,
+                "cache_create_1h": 0,
+                "output": 20,
+            },
+        },
+    )
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
+
+    rc, _url, err = final_report.write_final_report(
+        tmp_path, comment_only=True, print_stdout=True
+    )
+    out = capsys.readouterr().out
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert _CORRUPT_WARNING not in out
+    assert _CORRUPT_WARNING not in summary
+    cost = _cost_line(out)
+    assert "Claude (subprocess)" in cost
+    assert "💰 TOTAL" in cost
+
+
+def test_write_final_report_force_flag_and_legacy_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ship = (
+        "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nBAIL_REASON=early-failure\n"
+        "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n"
+    )
+    finalize = "DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n"
+    _stub_cost_and_assessment(monkeypatch)
+
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-em",
+        ship=ship,
+        finalize=finalize,
+        run_flags="NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=true\n",
+        token_report={"claude": {"totals": {"total": 0}}},
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    assert (rc, err) == (0, "")
+    assert "- Force: true" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+
+    for flags, run_id in (
+        ("NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=false\n", "run-emf"),
+        ("NO_ISSUES=false\n", "run-emo"),
+        ("NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=maybe\n", "run-emi"),
+    ):
+        _write_parity_fixture(
+            tmp_path,
+            run_id=run_id,
+            ship=ship,
+            finalize=finalize,
+            run_flags=flags,
+            token_report={"claude": {"totals": {"total": 0}}},
+        )
+        rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+        body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+        assert (rc, err) == (0, "")
+        assert "Force: true" not in body
+        assert "Invalid `FORCE_REQUESTED` value" not in body
+        assert not (tmp_path / "execution-issues.md").exists() or (
+            "Invalid FORCE_REQUESTED value in run-flags.sh: maybe"
+            not in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+        )
+
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-legacy",
+        ship=ship,
+        finalize=finalize,
+        session="REPO=owner/repo\nPOST_PLAN_WORKFLOW_PATH=\n",
+        run_flags="NO_ISSUES=false\nWORKFLOW_PATH=\nFORCE_REQUESTED=false\n",
+        token_report={"claude": {"totals": {"total": 0}}},
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert "- **Path**:" not in body
+
+
+def test_write_final_report_line_counts_cache_and_repo_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[object] = []
+
+    def fake_line_counts(**kwargs: object) -> dict[str, str]:
+        calls.append(kwargs)
+        return {
+            "LINES_STATUS": "ok",
+            "CODE_ADDED": "17",
+            "CODE_DELETED": "3",
+            "LOGS_ADDED": "5",
+            "LOGS_DELETED": "1",
+        }
+
+    monkeypatch.setattr(final_report.tokens, "compute_pr_line_counts", fake_line_counts)
+    _stub_cost_and_assessment(monkeypatch)
+
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-lines",
+        ship=(
+            "PR_URL=https://example.test/pr/40\nPR_NUMBER=40\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert "- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1" in body
+    assert calls
+
+    # REPO_UNAVAILABLE skips line-count helper
+    calls.clear()
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-runav",
+        ship=(
+            "PR_URL=https://example.test/pr/41\nPR_NUMBER=41\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+        session="REPO=owner/repo\nREPO_UNAVAILABLE=true\n",
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert "- **Lines (PR diff)**: N/A" in body
+    assert calls == []
+
+    # Helper failure → N/A
+    monkeypatch.setattr(
+        final_report.tokens,
+        "compute_pr_line_counts",
+        lambda **_kw: {"LINES_STATUS": "unavailable"},
+    )
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-ghfail",
+        ship=(
+            "PR_URL=https://example.test/pr/42\nPR_NUMBER=42\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    assert (rc, err) == (0, "")
+    assert "- **Lines (PR diff)**: N/A" in (tmp_path / "summary-final.md").read_text(
+        encoding="utf-8"
+    )
+
+    # Unavailable cache is recomputed; stale PR cache is not reused
+    monkeypatch.setattr(final_report.tokens, "compute_pr_line_counts", fake_line_counts)
+    calls.clear()
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-line-cache",
+        ship=(
+            "PR_URL=https://example.test/pr/43\nPR_NUMBER=43\nLINES_PR_NUMBER=43\n"
+            "LINES_STATUS=unavailable\nCODE_ADDED=999\nCODE_DELETED=999\n"
+            "LOGS_ADDED=999\nLOGS_DELETED=999\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert "- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1" in body
+    assert calls
+
+    calls.clear()
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-line-stale",
+        ship=(
+            "PR_URL=https://example.test/pr/44\nPR_NUMBER=44\nLINES_PR_NUMBER=43\n"
+            "LINES_STATUS=ok\nCODE_ADDED=999\nCODE_DELETED=999\n"
+            "LOGS_ADDED=999\nLOGS_DELETED=999\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+    )
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    ship_text = (tmp_path / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert "- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1" in body
+    assert "+999/-999" not in body
+    assert ship_text.count("LINES_STATUS=") == 1
+    assert "CODE_ADDED=17" in ship_text
+
+
+def test_write_final_report_review_phase_live_dir_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """#3794: round-meta only under live IMPLEMENT_TMPDIR/round-N is ignored."""
+    _write_parity_fixture(
+        tmp_path,
+        run_id="run-rpd",
+        ship=(
+            "PR_URL=N/A\nPR_NUMBER=\nSTALL_TRACKING=false\nBAIL_REASON=early-failure\n"
+            "MERGE_RESULT=\nMERGE=false\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+        token_report={"claude": {"totals": {"total": 0}}},
+    )
+    live_round = tmp_path / "round-1"
+    live_round.mkdir()
+    (live_round / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "2",
+                "REJECTED_COUNT": "0",
+                "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0",
+                "OOS_ACCEPTED_COUNT": "0",
+                "OOS_REJECTED_COUNT": "0",
+            },
+            "summary": {"panel": {"total_slot_count": 2}},
+        }),
+        encoding="utf-8",
+    )
+    (live_round / "panel-manifest.ndjson").write_text("{}\n", encoding="utf-8")
+    findings = tmp_path / "larch-logs" / "implement" / "run-rpd" / "review-findings-full.jsonl"
+    findings.write_text(
+        json.dumps({
+            "id": "FINDING_1",
+            "outcome": "accepted",
+            "reviewer_slots": ["cursor-specialist-correctness-output.txt"],
+            "round_num": "1",
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    _stub_cost_and_assessment(monkeypatch)
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert (rc, err) == (0, "")
+    assert "## Review Phase Detail" in body
+    assert "No review rounds completed." in body
+    assert "| 1 | 2 | 2 | 0 | 0 |" not in body
+
+
+def test_write_final_report_happy_path_writes_final_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = _write_parity_fixture(
+        tmp_path,
+        run_id="run-5",
+        ship=(
+            "PR_URL=https://example.test/pr/5\nPR_NUMBER=5\nSTALL_TRACKING=false\n"
+            "MERGE_RESULT=merged\nMERGE=true\nDRAFT=false\nFORKED_TARGET=false\n"
+        ),
+        finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
+    )
+    monkeypatch.setattr(
+        final_report.tokens,
+        "compute_pr_line_counts",
+        lambda **_kw: {
+            "LINES_STATUS": "ok",
+            "CODE_ADDED": "17",
+            "CODE_DELETED": "3",
+            "LOGS_ADDED": "5",
+            "LOGS_DELETED": "1",
+        },
+    )
+    monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
+
+    rc, url, err = final_report.write_final_report(tmp_path, skip_tracking_upsert=True)
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    final = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert final.strip()
+    for body in (summary, final):
+        assert "## /implement run run-5: merged" in body
+        assert "- **Outcome**: ✅ DONE" in body
+        assert "- **Mode**:" not in body
+        assert "- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1" in body
+        assert "<!-- larch:run-summary v=1 -->" in body
+        assert "## Review Phase Detail" in body
+        assert "No review rounds completed." in body
