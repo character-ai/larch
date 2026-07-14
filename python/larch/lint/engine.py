@@ -138,10 +138,14 @@ def _is_single_line(value: object) -> bool:
     )
 
 
+def _is_exact_bool(value: object) -> bool:
+    return isinstance(value, bool)
+
+
 def _validate_rule(rule: LintRule) -> None:
     if not _is_single_line(rule.rule_id):
         raise ScanError("lint rule rule_id must be a non-empty single-line string")
-    if not isinstance(rule.allow_inline_suppression, bool):
+    if not _is_exact_bool(rule.allow_inline_suppression):
         raise ScanError("lint rule allow_inline_suppression must be a bool")
     if not _is_single_line(rule.suppression_token):
         raise ScanError(
