@@ -1,0 +1,96 @@
+### FINDING_1: Duplicate `run_params_json` serialization contract
+- **Reviewer(s)**: Cursor-Requirements, Cursor-dyn-Wire Fixture Boundary, Codex-dyn-Wire Fixture Boundary
+- **Severity**: major
+- **Concern**: `run_params_json` can diverge from the existing schema-v3 seed serializer in defaults, key order, indentation, override placement, or trailing-newline behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Implement run_params_json as a thin wrapper over the same shared payload builder seed_run_params uses (_RUN_PARAMS_SCHEMA_V3 merge plus json.dumps(indent=2, sort_keys=False) and trailing newline); do not duplicate the schema dict
+  - From Cursor-dyn-Wire Fixture Boundary: `run_params_json` should delegate to `session.seed_run_params` (or re-export it), not duplicate `_RUN_PARAMS_SCHEMA_V3`.
+  - From Codex-dyn-Wire Fixture Boundary: Require run_params_json to match the existing production/shared serializer, including key order, indentation, override placement, and one terminal newline, with an exact-string foundation test
+
+### FINDING_2: `plan_body` contract is too narrow
+- **Reviewer(s)**: Cursor-Innovation, Cursor-dyn-Wire Fixture Boundary, Codex-dyn-Wire Fixture Boundary
+- **Severity**: major
+- **Concern**: A builder limited to paired `### NEW:` / `### UPDATED:` sections cannot represent ordinary section-based plans, UPDATED-only plans, or valid plans using other supported heading combinations.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In `test_plan_quality.py` migration notes, explicitly keep heading-type preservation and multi-kind heading-count fixtures inline. Limit `plan_body` to NEW/UPDATED unless a follow-up piece expands scope.
+  - From Cursor-dyn-Wire Fixture Boundary: Extend the plan_body contract with a body/sections parameter (or plan_markdown prefix) plus optional ordered trailer lines before diff_lines_trailer; keep only firm-heading ordering in the file-heading slice
+  - From Cursor-dyn-Wire Fixture Boundary: Keep minimal/non-export `source-env.sh` stubs inline in publish capture tests; use make_design_tmpdir only where `source-env.sh` content is not part of the assertion surface.
+  - From Codex-dyn-Wire Fixture Boundary: Define optional ordered new and updated inputs that emit only supplied headings, and add an exact UPDATED-only builder assertion
+
+### FINDING_3: Result-env validation contract is underspecified and duplicated
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+- **Severity**: major
+- **Concern**: `result_env_lines` / `write_result_env` may either duplicate session validation or incorrectly apply production allowlists, rejecting valid lifecycle fixture keys such as `ROUTE`, `INIT_STATUS`, and `RUN_PARAMS_PATH`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extract shared KV validation in tests.support (or export helpers from session.py) and call it from result_env_lines / write_result_env
+  - From Cursor-Requirements: Specify validation uses shell-var-name checks only (reuse design_session._valid_var_name / tests.support.session _KEY_RE) and explicitly not PHASE_RESULT_ENV_ALLOW_KEYS; or add an allow_keys parameter with presets from design_step0_env (INIT_RESULT_KEYS, ROUTE_RESULT_KEYS) and document which preset each migrated file uses
+
+### FINDING_4: `diff_lines_trailer` should use the canonical grammar composer
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: minor
+- **Concern**: Hand-rolled trailer formatting can accept values or ordering that `plan_grammar` rejects, causing fixture behavior to diverge from production parsing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Make diff_lines_trailer a thin wrapper around compose_trailer_lines for the requested keys; join with a single trailing newline to match existing plan.txt fixtures
+
+### FINDING_5: `plan_body` should validate generated headings
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: minor
+- **Concern**: Builders can emit malformed heading spacing or syntax that tests treat as valid while plan parsing and heading-count logic reject it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: After formatting headings, assert match_heading succeeds for every line (or raise ValueError); document that paths must use the colon form the grammar accepts
+
+### FINDING_6: Preserve publish source-env stub semantics during tmpdir migration
+- **Reviewer(s)**: Cursor-dyn-Wire Fixture Boundary
+- **Severity**: minor
+- **Concern**: Unqualified use of `make_design_tmpdir` replaces intentionally minimal `source-env.sh` fixtures with production-style exports, changing publish-capture behavior and assertions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Wire Fixture Boundary: Name an explicit carve-out in test_design_publish.py migration: keep hand-written minimal/non-export source-env stubs inline; use make_design_tmpdir only on paths that do not assert publish-side source-env mutation semantics
+  - From Cursor-dyn-Wire Fixture Boundary: Keep minimal/non-export `source-env.sh` stubs inline in publish capture tests; use make_design_tmpdir only where `source-env.sh` content is not part of the assertion surface
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/tests/support/design_wire.py:NEW
+- **Concern**: [SCOPE-REDUCTION] run_params_json duplicates Piece 2 seed_run_params / _RUN_PARAMS_SCHEMA_V3 (G-Fix-1 G-Cfg-3). Scenario: session.py already owns schema-v3 defaults and seed_run_params matching session_env.write_run_params; a third builder in design_wire.py will drift and produce non-canonical run-params.json during migration
+- **Proposed resolution**: Drop run_params_json from design_wire.py; migrate valid run-params writes to session.seed_run_params and any dict seeds to a single exported constant in session.py
+
+### FINDING_8:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Focus area**: correctness
+- **Location**: python/tests/design/test_design_lifecycle.py:UPDATED
+- **Concern**: [SCOPE-REDUCTION] plan_body migration mandated for files with no firm plan headings. Scenario: test_design_lifecycle.py test_design_publish.py test_design_postplan.py test_design_log_publish_flow.py and test_rendering.py contain zero ### NEW:/UPDATED: literals; forcing plan_body there adds API surface without meeting the one-file heading-edit goal
+- **Proposed resolution**: Limit plan_body migration to test_plan_quality.py (and any future heading-heavy fixtures); in the other listed files migrate only diff_lines_trailer write_result_env and seed_run_params while keeping plan prose on seed_plan or inline literals
+
+### FINDING_9:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/tests/support/design_wire.py
+- **Concern**: [SCOPE-REDUCTION] `run_params_json` duplicates Piece 2 `tests.support.session.seed_run_params`. Scenario: Piece 2 already writes schema-v3 `run-params.json` with the same override semantics (`indent=2`, trailing newline). A second serializer in `design_wire.py` reintroduces the drift this piece is trying to remove and can diverge on whitespace or default keys.
+- **Proposed resolution**: Drop `run_params_json` from `design_wire.py`. Migrate call sites to `seed_run_params(tmpdir, overrides=...)` (or a one-line re-export alias only if ergonomics require it). Cover defaults/overrides in `test_foundation.py` via `seed_run_params`, not a parallel API.
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: minor
+- **Focus area**: architecture
+- **Location**: python/tests/support/design_wire.py
+- **Concern**: [SCOPE-REDUCTION] run_params_json must share schema and serialization with tests.support.session.seed_run_params. Scenario: Piece 2 already owns schema-v3 defaults and indent=2 dumps in session.py; a second copy in design_wire.py can drift from seed_run_params and from write_run_params_main defaults, breaking the one-file wire-edit goal when run-params fields change
+- **Proposed resolution**: Implement run_params_json by reusing session._RUN_PARAMS_SCHEMA_V3 (or a single shared helper both modules call); keep seed_run_params as the file writer and run_params_json as the string return for inline writes
+
+### FINDING_11:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: minor
+- **Focus area**: risk-integration
+- **Location**: python/tests/design/test_design_lifecycle.py
+- **Concern**: [SCOPE-REDUCTION] Lifecycle migration includes result-env writers beyond the acceptance-critical step3 paths. Scenario: The issue acceptance criteria center on plan headings, diff_lines trailers, and make_design_tmpdir; broad result-env replacement across route/init env files adds multi-allowlist coupling without a stated payoff
+- **Proposed resolution**: Narrow test_design_lifecycle.py migration to plan bodies and run-params.json only; keep route/init/malformed result-env literals inline (as test_design_publish.py already does for invalid cases) and limit write_result_env adoption to ordinary step3/postplan env fixtures
+
+### FINDING_12:
+- **Reviewer(s)**: Cursor-dyn-Wire Fixture Boundary
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/tests/support/session.py:201-213 vs python/tests/support/design_wire.py (planned)
+- **Concern**: [SCOPE-REDUCTION] Planned run_params_json duplicates existing seed_run_params. Scenario: Piece 2 already writes schema-v3 run-params.json with indent=2 and a trailing newline via seed_run_params; a second run_params_json in design_wire.py creates two defaults that can drift on key order whitespace or missing keys
+- **Proposed resolution**: Make run_params_json a thin delegate/re-export of session.seed_run_params (or call it internally); do not duplicate _RUN_PARAMS_SCHEMA_V3
