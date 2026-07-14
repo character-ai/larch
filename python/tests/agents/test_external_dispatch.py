@@ -851,6 +851,21 @@ def test_implement_prompt_omits_absent_architectural_knowledge_and_snapshots_fal
     assert (tmp_path / "step2-architectural-knowledge.env").read_text(encoding="utf-8") == "ARCHITECTURAL_KNOWLEDGE_REQUIRED=false\n"
 
 
+def test_implement_prompt_delimits_completion_retry_feedback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    retry = tmp_path / "completion-retry.md"
+    retry.write_text("Required path: docs/expected.md\n", encoding="utf-8")
+    args = _implement_prompt_args(tmp_path)
+    args.completion_retry_file = str(retry)
+
+    prompt = _ci_launcher._implement_prompt(tool="codex", args=args)
+
+    assert "An independent plan-coverage check found the prior attempt incomplete" in prompt
+    assert '<completion_retry encoding="literal-redacted">' in prompt
+    assert "Required path: docs/expected.md" in prompt
+
+
 def test_write_architectural_knowledge_snapshot_uses_nofollow(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
