@@ -635,9 +635,11 @@ def _stage_round_artifact(*, src: Path, name: str) -> str:
                 errors="ignore",
             ) + f"\n[TRUNCATED: original {len(raw)} bytes]\n"
     if name.startswith("dropped-") or name.endswith(".dropped-slots"):
-        scrubbed, findings = redact.scrub_log_secrets(text)
+        scrub_result = redact.scrub_log_secrets(text)
+        scrubbed = scrub_result.scrubbed
+        findings = scrub_result.findings
         if findings:
-            _, residual = redact.scrub_log_secrets(scrubbed)
+            residual = redact.scrub_log_secrets(scrubbed).findings
             if residual:
                 raise ShipError(f"secret survived scrubbing in round artifact {name}")
         text = scrubbed

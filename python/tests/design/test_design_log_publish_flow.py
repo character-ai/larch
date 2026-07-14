@@ -1317,7 +1317,9 @@ def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(
         dest=dest,
     )
 
-    expected, findings = design_log_publish_flow.redact.scrub_log_secrets(raw)
+    scrub_result = design_log_publish_flow.redact.scrub_log_secrets(raw)
+    expected = scrub_result.scrubbed
+    findings = scrub_result.findings
     if expected and not expected.endswith("\n"):
         expected += "\n"
     assert ok
