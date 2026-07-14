@@ -612,7 +612,7 @@ class TestTokenCapCheck:
 
         result = check_token_budget_cap(cap=cap, step="step", runner=runner)
         assert result.hit is False
-        assert calls == []
+        assert not calls
 
 
 class TestCursorConfigContext:
@@ -956,7 +956,7 @@ class TestRunVendorLaunchOrdering:
             use_config_context=False,
         )
         assert outcome.status == "completed"
-        assert calls == []
+        assert not calls
         assert events[0] == "preflight"
         assert "execute" in events
         assert "promote" in events
