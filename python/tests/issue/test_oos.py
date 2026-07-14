@@ -21,7 +21,7 @@ CLI_PATH = Path(__file__).resolve().parents[2] / "cli.py"
 FIXTURE_FINDINGS = """### FINDING_1: [OUT_OF_SCOPE] Public cleanup
 - **Concern**: Cleanup.
 ### FINDING_2: [OUT_OF_SCOPE] Secret issue
-- **Concern**: focus-area=security secret.
+- **Focus area**: security
 ### FINDING_3: [OUT_OF_SCOPE] Rejected cleanup
 - **Concern**: Do not file.
 Vote tally: YES=0 NO=3 EXON=0 JUDGE_ERROR=0 Result=rejected
@@ -263,10 +263,10 @@ def test_oos_serialize_rejected_security_still_held(tmp_path: Path) -> None:
     counts, output = _serialize_text(
         tmp_path,
         """### FINDING_1: [OUT_OF_SCOPE] Security rejected
-- **Concern**: focus-area=security secret.
+- **Focus area**: security
 Vote tally: YES=0 NO=3 Result=rejected
 ### FINDING_2: [OUT_OF_SCOPE] Security neutral
-- **Concern**: focus-area=security secret.
+- **Focus area**: security
 Vote tally: YES=1 NO=1 Result=neutral
 """,
     )
