@@ -88,7 +88,7 @@ def test_voter_and_decompose_roles() -> None:
     assert dict(plan_voters[0].semantic_labels) == {"codex": "codex-validity", "cursor": "cursor-validity", "claude": "claude"}
     assert dict(plan_voters[1].semantic_labels) == {"codex": "codex-plan-fidelity", "cursor": "cursor-plan-fidelity", "claude": "claude"}
     assert dict(plan_voters[2].semantic_labels) == {"codex": "codex-pragmatism", "cursor": "cursor-pragmatism", "claude": "claude"}
-    assert config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES == {}
+    assert not config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES
 
     review_voters = external_defaults.voter_policies("review.voters")
     assert review_voters[0].primary_tool == "codex"
