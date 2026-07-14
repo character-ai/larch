@@ -1,0 +1,22 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "MODERATE",
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "cursor-grok-4.5-high",
+  "rater_tool": "cursor",
+  "rationale": "Large test-port and harness shrink across four files with exact exit-code and logging contracts; no runtime behavior change.",
+  "round_cap": 2,
+  "schema_version": 1
+}
