@@ -263,14 +263,14 @@ def reconcile_manual_merge_main(argv: list[str] | None = None) -> int:
         if verification_error:
             raise ShipError(verification_error)
     except SystemExit:
-        _emit(key="RECONCILE_STATUS", value="failed")
+        _emit(key=config.RECONCILE_STATUS_KEY, value=config.RECONCILE_STATUS_FAILED)
         _emit(key="ERROR", value="usage")
         return config.EXIT_INTERNAL_ERROR
     except (OSError, TypeError, ValueError, ShipError, json.JSONDecodeError) as exc:
-        _emit(key="RECONCILE_STATUS", value="failed")
+        _emit(key=config.RECONCILE_STATUS_KEY, value=config.RECONCILE_STATUS_FAILED)
         _emit(key="ERROR", value=str(exc).replace("\n", " ")[:200])
         return config.EXIT_INTERNAL_ERROR
-    _emit(key="RECONCILE_STATUS", value="ok")
+    _emit(key=config.RECONCILE_STATUS_KEY, value=config.RECONCILE_STATUS_OK)
     _emit(key="PR_NUMBER", value=args.pr)
     _emit(key="MERGE_RESULT", value=config.MERGE_RESULT_MERGED)
     return config.EXIT_OK

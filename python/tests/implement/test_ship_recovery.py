@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.core import config
 from larch.errors import ShipError
 from larch.git.gh import PullRequest
 from larch.implement import ship_recovery
@@ -45,6 +46,12 @@ def _merged_pr(number: int = 7049) -> PullRequest:
     )
 
 
+def test_reconcile_status_constants_pin_wire_literals() -> None:
+    assert config.RECONCILE_STATUS_KEY == "RECONCILE_STATUS"
+    assert config.RECONCILE_STATUS_OK == "ok"
+    assert config.RECONCILE_STATUS_FAILED == "failed"
+
+
 def test_reconcile_manual_merge_clears_every_layer(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -73,7 +80,7 @@ def test_reconcile_manual_merge_clears_every_layer(
     assert rc == 0
     assert (
         capsys.readouterr().out
-        == "RECONCILE_STATUS=ok\nPR_NUMBER=7049\nMERGE_RESULT=merged\n"
+        == f"{config.RECONCILE_STATUS_KEY}={config.RECONCILE_STATUS_OK}\nPR_NUMBER=7049\nMERGE_RESULT=merged\n"
     )
     for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
         layer = ship_recovery._read_layer(tmpdir=tmp_path, name=name)  # pyright: ignore[reportPrivateUsage]

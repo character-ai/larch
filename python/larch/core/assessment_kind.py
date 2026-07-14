@@ -11,8 +11,7 @@ from larch.core import config
 
 EntryParser = Callable[[str], str]
 
-_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")  # lint-markdown-heading-fence-state: ok fence state is tracked by loop variable before this check
-_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")  # lint-markdown-heading-fence-state: ok fenced-line indices are precomputed via plan_grammar.balanced_fence_line_indices and skipped before this check
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
 _MECHANIZED_RE = re.compile(r"^\s*-\s*Mechanized:\s*(.+?)\s*$")
@@ -35,13 +34,14 @@ def _guideline_body(body: list[str]) -> list[str]:
     return [mechanized] if mechanized else details
 
 
-def _parse_entries(  # noqa: C901 - fence-state tracking and entry assembly each require multiple distinct branches
+def _parse_entries(  # noqa: C901 - per-line heading/fence classification plus entry-body assembly each need multiple branches
     raw_text: str, *, heading_re: re.Pattern[str], preserve_body: bool
 ) -> str:
+    from larch.design import plan_grammar  # noqa: PLC0415 - deferred function-level import keeps larch.core import-time free of larch.design  # lint-layering: ok reuse the balanced fenced-code-block scanner (G-Md-3) instead of re-deriving fence state.
+
     entries: list[list[str]] = []
     heading: str | None = None
     body: list[str] = []
-    fence: tuple[str, int] | None = None
 
     def append_entry() -> None:
         nonlocal heading, body
@@ -59,17 +59,10 @@ def _parse_entries(  # noqa: C901 - fence-state tracking and entry assembly each
         heading = None
         body = []
 
-    for raw_line in raw_text.splitlines():
-        if fence_match := _FENCE_RE.match(raw_line):
-            marker = fence_match.group(1)
-            if fence is None:
-                fence = marker[0], len(marker)
-            elif marker[0] == fence[0] and len(marker) >= fence[1]:
-                fence = None
-            if heading is not None:
-                body.append(raw_line)
-            continue
-        if fence is not None:
+    lines = raw_text.splitlines()
+    fenced_lines = plan_grammar.balanced_fence_line_indices(lines)
+    for index, raw_line in enumerate(lines):
+        if index in fenced_lines or plan_grammar.is_fence_marker(raw_line):
             if heading is not None:
                 body.append(raw_line)
             continue

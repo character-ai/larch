@@ -10,6 +10,7 @@ from larch.git import gh
 from pathlib import Path
 
 from larch.issue import combine_issues
+from larch.core import config
 from larch.core.proc import CommandResult
 
 
@@ -117,6 +118,8 @@ class ApplyRunner:
             return CommandResult(tuple(argv), 0, "https://github.com/o/r/issues/99\n", "", 0.01)
         if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv), 0, "", "", 0.01)
+        if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok post-close state read-back
+            return CommandResult(tuple(argv), 0, json.dumps({"state": "CLOSED"}), "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
 
@@ -818,10 +821,12 @@ def test_close_sources_skips_sources_that_became_busy(monkeypatch, capsys):
 
         def run(self, argv, **_kwargs):
             self.calls.append(list(argv))
-            if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok fixture assertion
+            if argv[:3] == ["gh", "issue", "view"] and "title,state" in argv:  # lint-gh-argv-literal: ok pre-close busy refresh
                 issue = argv[3]
                 title = "[IMPLEMENTING] busy" if issue == "1" else "ready"
                 return CommandResult(tuple(argv), 0, json.dumps({"title": title, "state": "OPEN"}), "", 0.01)
+            if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok post-close state read-back
+                return CommandResult(tuple(argv), 0, json.dumps({"state": "CLOSED"}), "", 0.01)
             if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
                 return CommandResult(tuple(argv), 0, "", "", 0.01)
             return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
@@ -915,6 +920,8 @@ def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, caps
         calls.append(list(argv))
         if argv[:3] == ["gh", "issue", "close"]:  # lint-gh-argv-literal: ok fixture assertion
             return CommandResult(tuple(argv), 0, "", "", 0.01)
+        if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok post-close state read-back
+            return CommandResult(tuple(argv), 0, json.dumps({"state": "CLOSED"}), "", 0.01)
         return CommandResult(tuple(argv), 0, "o/r\n", "", 0.01)
 
     comment = tmp_path / "comment.md"
@@ -930,7 +937,10 @@ def test_close_stale_live_success_with_comment(monkeypatch, tmp_path: Path, caps
     captured = capsys.readouterr()
     assert "CLOSED_ISSUES=1" in captured.out
     assert "PARTIAL=false" in captured.out
-    assert calls == [["gh", "issue", "close", "1", "--repo", "o/r", "--reason", "not planned", "--comment", "Stale discard summary\n"]]  # lint-gh-argv-literal: ok fixture assertion
+    assert calls == [
+        ["gh", "issue", "close", "1", "--repo", "o/r", "--reason", "not planned", "--comment", "Stale discard summary\n"],  # lint-gh-argv-literal: ok fixture assertion
+        ["gh", "issue", "view", "1", "--json", "state", "--repo", "o/r"],  # lint-gh-argv-literal: ok post-close state read-back
+    ]
 
 
 def test_close_stale_skip_path_sets_partial(monkeypatch, capsys):
@@ -938,6 +948,8 @@ def test_close_stale_skip_path_sets_partial(monkeypatch, capsys):
 
     def run(argv, **_kwargs):
         calls.append(list(argv))
+        if argv[:3] == ["gh", "issue", "view"]:  # lint-gh-argv-literal: ok post-close state read-back
+            return CommandResult(tuple(argv), 0, json.dumps({"state": "CLOSED"}), "", 0.01)
         return CommandResult(tuple(argv), 0, "", "", 0.01)
 
     def skip(*, repo, source):
@@ -951,7 +963,10 @@ def test_close_stale_skip_path_sets_partial(monkeypatch, capsys):
     assert "CLOSED_ISSUES=1" in captured.out
     assert "PARTIAL=true" in captured.out
     assert "WARNING=Skipped #1: source issue is not open (CLOSED)" in captured.err
-    assert calls == [["gh", "issue", "close", "2", "--repo", "o/r", "--reason", "completed"]]  # lint-gh-argv-literal: ok fixture assertion
+    assert calls == [
+        ["gh", "issue", "close", "2", "--repo", "o/r", "--reason", "completed"],  # lint-gh-argv-literal: ok fixture assertion
+        ["gh", "issue", "view", "2", "--json", "state", "--repo", "o/r"],  # lint-gh-argv-literal: ok post-close state read-back
+    ]
 
 
 def test_close_stale_warning_redacts_failed_close_stderr(monkeypatch, capsys):
@@ -969,6 +984,33 @@ def test_close_stale_warning_redacts_failed_close_stderr(monkeypatch, capsys):
     assert "ghp_abcdefghijklmnopqrstuvwxyz0123456789" not in captured.err
     assert "CLOSED_ISSUES=0" in captured.out
     assert "PARTIAL=true" in captured.out
+
+
+def test_verified_close_accepts_confirmed_closed_issue(monkeypatch):
+    monkeypatch.setattr(combine_issues.gh, "issue_close", lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01))
+    monkeypatch.setattr(
+        combine_issues.gh,
+        "issue_view_field_read",
+        lambda *_a, **_k: CommandResult(("gh",), 0, json.dumps({"state": "CLOSED"}), "", 0.01),
+    )
+    combined = combine_issues._close_combined_away_issue("5", "o/r", "9")
+    stale = combine_issues._close_stale_issue(issue="5", repo="o/r", reason="completed", comment=None)
+    for res in (combined, stale):
+        assert res.returncode == 0
+
+
+def test_verified_close_downgrades_when_issue_not_confirmed_closed(monkeypatch):
+    monkeypatch.setattr(combine_issues.gh, "issue_close", lambda *_a, **_k: CommandResult(("gh",), 0, "", "", 0.01))
+    monkeypatch.setattr(
+        combine_issues.gh,
+        "issue_view_field_read",
+        lambda *_a, **_k: CommandResult(("gh",), 0, json.dumps({"state": "OPEN"}), "", 0.01),
+    )
+    combined = combine_issues._close_combined_away_issue("5", "o/r", "9")
+    stale = combine_issues._close_stale_issue(issue="5", repo="o/r", reason="completed", comment=None)
+    for res in (combined, stale):
+        assert res.returncode != 0
+        assert config.CLOSE_POSTCONDITION_UNVERIFIED in res.stderr
 
 
 def test_list_open_uses_issue_list_read_and_filters_closed(monkeypatch, capsys):
