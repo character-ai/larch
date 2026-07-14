@@ -43,7 +43,8 @@ def _in_scope(path: str) -> bool:
 
 
 def _split_directive_values(body: str) -> list[str]:
-    primary = body.split("#", 1)[0]
+    # Pylint truncates pragmas at ';' (reason / trailing text) and '#'.
+    primary = body.split("#", 1)[0].split(";", 1)[0]
     return [part.strip() for part in primary.split(",") if part.strip()]
 
 

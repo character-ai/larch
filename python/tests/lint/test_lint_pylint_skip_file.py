@@ -78,6 +78,7 @@ def _invoke_skip_file(
         "# pylint:  skip-file\n",
         "#pylint: skip-file\n",
         "# pylint: skip-file  # deferred\n",
+        "# pylint: skip-file; deferred module debt\n",
         '"""doc"""\n# pylint: skip-file\n',
     ],
 )
@@ -96,6 +97,9 @@ def test_detect_skip_file_variants(text: str) -> None:
         "# pylint: disable = R0801,unused-import\n",
         "# pylint: disable R0801\n",
         "# pylint: disable duplicate-code, too-many-lines\n",
+        "# pylint: disable=R0801; deferred duplicate-code debt\n",
+        "# pylint: disable=unused-import, R0801; reason=keep scanning\n",
+        "# pylint: disable=duplicate-code # trailing hash reason\n",
     ],
 )
 def test_detect_module_level_duplicate_code_disables(text: str) -> None:
