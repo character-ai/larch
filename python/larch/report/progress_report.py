@@ -114,7 +114,11 @@ def _add_round_vendor_cost_row(
         bucket["cache_create_5m"] += _as_int(data.get("cache_create"))
         bucket["output"] += _as_int(data.get("output"))
         return
-    bucket_key = "codex_mini" if vendor == "codex" and model in report_tokens_cost.CODEX_MINI_MODELS else vendor
+    bucket_key = vendor
+    if vendor == "codex" and model in report_tokens_cost.CODEX_MINI_MODELS:
+        bucket_key = "codex_mini"
+    elif vendor == "cursor" and model in report_tokens_cost.CURSOR_GROK_MODELS:
+        bucket_key = "cursor_grok"
     bucket = sums.setdefault(bucket_key, {"input": 0, "cache_read": 0, "cache_create": 0, "output": 0})
     bucket["input"] += _as_int(data.get("input"))
     bucket["cache_read"] += _as_int(data.get("cache_read"))
@@ -135,6 +139,8 @@ def _round_vendor_cost_argv(
             argv.extend(["--codex-mini-input-tokens", str(bucket["input"]), "--codex-mini-cached-input-tokens", str(bucket["cache_read"]), "--codex-mini-output-tokens", str(bucket["output"])])
         elif vendor == "cursor":
             argv.extend(["--cursor-input-tokens", str(bucket["input"]), "--cursor-cache-read-tokens", str(bucket["cache_read"]), "--cursor-output-tokens", str(bucket["output"])])
+        elif vendor == "cursor_grok":
+            argv.extend(["--cursor-grok-input-tokens", str(bucket["input"]), "--cursor-grok-cache-read-tokens", str(bucket["cache_read"]), "--cursor-grok-output-tokens", str(bucket["output"])])
     if claude_sub_by_model:
         argv.extend(report_tokens_cost.claude_sub_argv_from_buckets(by_model=claude_sub_by_model, bucket={}))
     return argv

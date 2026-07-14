@@ -18,7 +18,7 @@ from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.design.design_publish import review_provenance
 from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
-from larch.report.report_tokens_cost import CODEX_MINI_MODELS
+from larch.report.report_tokens_cost import CODEX_MINI_MODELS, CURSOR_GROK_MODELS
 
 
 _VALID_OUTCOMES = frozenset({
@@ -52,6 +52,36 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         [sys.executable, str(root / "python" / "cli.py"), *args],
         capture_output=True, text=True, check=False,
     )
+
+
+def _cursor_buckets_by_model(data: dict[str, object]) -> dict[str, int]:
+    """Split Cursor per-model token buckets into composer and grok lanes.
+
+    Grok-class models (CURSOR_GROK_MODELS) price at grok rates, so they route to
+    U_GROK_* keys and every other model (composer-2.5, unknown, legacy) folds into
+    U_* (composer rates). Mirrors the codex split and /implement's final report,
+    reusing the shared pricer's grok bucketing constant so /design stays in sync
+    (issue #7257). Returns an empty mapping when BUCKETS_cursor_by_model is absent,
+    so the caller keeps the aggregate composer-rate fallback.
+    """
+    cursor_by_model = data.get("BUCKETS_cursor_by_model")
+    if not isinstance(cursor_by_model, dict):
+        return {}
+    cbm: dict[str, object] = cursor_by_model  # type: ignore[assignment]  # isinstance guard yields dict[Unknown]; used as dict[str, object]
+    composer = {"in": 0, "cr": 0, "out": 0}
+    grok = {"in": 0, "cr": 0, "out": 0}
+    for model, raw_cb in cbm.items():
+        if not isinstance(raw_cb, dict):
+            continue
+        cb: dict[str, object] = raw_cb  # type: ignore[assignment]  # isinstance guard yields dict[Unknown]; used as dict[str, object]
+        target = grok if model in CURSOR_GROK_MODELS else composer
+        target["in"] += int(cb.get("input", 0) or 0)  # type: ignore[arg-type]  # dict[str, object].get returns object; int() coerces the bucket count
+        target["cr"] += int(cb.get("cache_read", 0) or 0)  # type: ignore[arg-type]  # dict[str, object].get returns object; int() coerces the bucket count
+        target["out"] += int(cb.get("output", 0) or 0)  # type: ignore[arg-type]  # dict[str, object].get returns object; int() coerces the bucket count
+    return {
+        "U_IN": composer["in"], "U_CR": composer["cr"], "U_OUT": composer["out"],
+        "U_GROK_IN": grok["in"], "U_GROK_CR": grok["cr"], "U_GROK_OUT": grok["out"],
+    }
 
 
 def _read_token_report(design_tmpdir: Path) -> dict[str, int]:
@@ -94,6 +124,9 @@ def _read_token_report(design_tmpdir: Path) -> dict[str, int]:
             target["out"] += int(mb.get("output", 0) or 0)  # type: ignore[arg-type]
         buckets["D_IN"], buckets["D_CR"], buckets["D_OUT"] = main["in"], main["cr"], main["out"]
         buckets["D_MINI_IN"], buckets["D_MINI_CR"], buckets["D_MINI_OUT"] = mini["in"], mini["cr"], mini["out"]
+    # Split cursor by model so grok-class models price at grok rates, not composer
+    # (issue #7257); see _cursor_buckets_by_model.
+    buckets.update(_cursor_buckets_by_model(data))
     return buckets
 
 
@@ -121,6 +154,9 @@ def _build_cost_args(buckets: dict[str, int]) -> list[str]:
         ("U_IN", "--cursor-input-tokens"),
         ("U_CR", "--cursor-cache-read-tokens"),
         ("U_OUT", "--cursor-output-tokens"),
+        ("U_GROK_IN", "--cursor-grok-input-tokens"),
+        ("U_GROK_CR", "--cursor-grok-cache-read-tokens"),
+        ("U_GROK_OUT", "--cursor-grok-output-tokens"),
         ("CS_IN", "--claude-sub-input-tokens"),
         ("CS_CR", "--claude-sub-cache-read-tokens"),
         ("CS_CW5", "--claude-sub-cache-write-5m-tokens"),

@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest  # noqa: TC002
 
+from larch.core import config
 from larch.review import plan_review
 from larch.report import progress_report
 from larch.report import review_phase_detail
@@ -437,6 +438,19 @@ def test_round_vendor_cost_uses_claude_sub_raw_fallback(tmp_path: Path) -> None:
     ledger.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
 
     assert progress_report._round_vendor_cost(token_ledger=ledger, start_s=1782345600, end_s=1782345610) == "$6.00"
+
+
+def test_round_vendor_cost_prices_cursor_grok_by_model(tmp_path: Path) -> None:
+    """Per-round cost prices cursor grok at grok rates, not composer (issue #7257)."""
+    ledger = tmp_path / "larch-tokens.jsonl"
+    rows = [
+        {"type": "vendor", "vendor": "cursor", "input": 1_000_000, "model": config.CURSOR_GROK_4_5_HIGH_MODEL, "ts": "2026-06-25T00:00:05Z"},
+        {"type": "vendor", "vendor": "cursor", "input": 1_000_000, "model": config.CURSOR_DEFAULT_MODEL, "ts": "2026-06-25T00:00:06Z"},
+    ]
+    ledger.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    # Grok input prices at $2.00/M (not composer $0.75/M): grok $2.00 + composer $0.75 = $2.75.
+    assert progress_report._round_vendor_cost(token_ledger=ledger, start_s=1782345600, end_s=1782345610) == "$2.75"
 
 
 def test_fallback_label_remap_annotates_executing_tool(tmp_path: Path) -> None:
