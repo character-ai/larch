@@ -4227,7 +4227,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "close_priors_main",
-    "metric": 13,
+    "metric": 12,
     "added_at": "legacy",
     "history": []
   },
@@ -4331,7 +4331,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "close_priors_main",
-    "metric": 15,
+    "metric": 14,
     "added_at": "legacy",
     "history": []
   },
