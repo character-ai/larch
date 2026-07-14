@@ -18,18 +18,18 @@ Warnings (10):
 
 ## Architectural invariants
 
-The change lifts vendor-launch hook closures into module-level helpers and adjusts only the complexity and monkeypatch baselines, so no absolute invariant is engaged: it introduces no gate-disarm metadata, touches no pause snapshot or resume-guard artifact set, reuses no persisted step result against drifted inputs, changes no run-log flush, commit, or outcome path, drops no reviewer or voter slot, fabricates no machine-parsed agent verdict, and routes no recovery mutation at a merged or closed PR.
+This diff lifts the vendor-launch hook closures in `python/larch/agents/_drafter.py` into module-level helpers, migrates the codex, cursor, and claude drafter and negotiation launchers onto the shared `run_vendor_launch` runner, and adjusts the complexity and monkeypatch-facade-binding baselines, with the latest revision being a pure canonical reorder of `python/complexity-baseline.json` rows that changes no metric value, threshold, or row content. It engages no absolute invariant: it introduces no gate-disarm metadata authored by the gated entity, touches no pause snapshot or resume-guard artifact set, reuses no persisted step result against drifted inputs, alters no run-log flush, commit, or pre-terminal outcome path, drops no reviewer or voter slot, emits no machine-parsed agent verdict without reading its evidence, and routes no recovery mutation at a merged or closed PR.
 
 ## Architectural guidelines
 
-The earlier threshold widening has been fully reverted and no ratchet-baseline deviation remains: no existing complexity-baseline row is raised in this revision, the three removed rows (run_negotiation_round C901 14, launch_codex_exec_main PLR0915 62, run_negotiation_round PLR0915 74) are pure shrinkage from lifting the inlined closures, and every one of the five added PLR0913 rows is a first-run entry (added_at 2026-07-14) for a genuinely new module-level helper (_claude_drafter_execute, _codex_exec_promote, _codex_external_agent_execute, _codex_drafter_run, _negotiation_codex_execute) that this diff introduces, which the ratchet explicitly permits. The four launch_codex_drafter thresholds are untouched in this diff, confirming the revert. The sole type-ignore suppression on _launch_codex_exec_inprocess carries an inline reason, the removed imports (_codex_auth_args, _trust_config_arg) trace to argv-building call sites this change deleted in favor of the vendor descriptor, the retained delegate is deliberately kept and re-exported rather than orphaned, and the monkeypatch-facade-binding additions each carry a reason string while the removals are shrinkage. No sibling consumer is left unswept: the import-isolation test is updated via _MIGRATED_LAUNCHERS to assert _drafter.py now imports _vendor, and a new test_codex_drafter_not_via_inprocess regression guards the migration.
+This diff stays within every guideline. The three removed complexity-baseline rows are pure shrinkage from lifting inlined closures, the five added complexity rows and every added monkeypatch-facade-binding row are first-run entries each carrying a reason string, and no existing threshold is raised, so the ratchet discipline holds. The retained `_launch_codex_exec_inprocess` delegate carries an inline type-ignore reason, the subprocess-via-runner pragmas each state why a file handle is required, the migration sweeps its sibling consumers by updating the import-isolation test through `_MIGRATED_LAUNCHERS` and adding a `test_codex_drafter_not_via_inprocess` regression guard, the new test helpers are typed functions rather than untyped lambdas at parameterized callables, and the latest reorder of `python/complexity-baseline.json` rows changes no metric, threshold, or row content, so no deviation remains.
 
 ## /implement run C7C44BFB-EC13-47CF-92A8-0D802A80A151: pr-created
 
 - **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 01:49:20
-- **Cost**: 💰 TOTAL ~$5.04: Claude/GLM-5.2 token $20.42 (estimated $1.36), Codex-5.6 $0.47, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $3.21  |  Tokens: 66928k
+- **Cost**: 💰 TOTAL ~$5.20: Claude/GLM-5.2 token $22.29 (estimated $1.49), Codex-5.6 $0.47, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $3.24  |  Tokens: 73337k
 - **Cost note**: Token is API-equivalent GLM-5.2 pricing; estimated is plan cost (token ÷ 15).
 - **Issue**: #7030: https://github.com/character-ai/larch/issues/7030
 - **PR**: #7327: https://github.com/character-ai/larch/pull/7327
@@ -38,7 +38,7 @@ The earlier threshold widening has been fully reverted and no ratchet-baseline d
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: N/A
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: code +858/-339, larch-logs +324/-0
+- **Lines (PR diff)**: code +858/-339, larch-logs +336/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 10
