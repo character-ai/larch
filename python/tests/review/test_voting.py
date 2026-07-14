@@ -101,9 +101,6 @@ def test_ballot_blocks_use_canonical_parser_and_exact_item_slices(tmp_path: Path
         "OOS_2": "###\tOOS_2:\ttab heading\n- **Reviewer**: Cursor-Testing\nbody two\n",
     }
 
-    assert voting._ballot_blocks(ballot_text) == expected
-    parsed_ids = [block.item_id for block in voting._parsed_ballot_blocks(ballot_text)]
-    assert parsed_ids == ["FINDING_1", "OOS_2"]
     assert voting.proposer_map_from_ballot(ballot_text) == {
         "FINDING_1": ("Codex-Structure", "- **Reviewer**: Codex-Structure"),
         "OOS_2": ("Cursor-Testing", "- **Reviewer**: Cursor-Testing"),
@@ -117,10 +114,16 @@ def test_ballot_blocks_use_canonical_parser_and_exact_item_slices(tmp_path: Path
     assert (out_dir / "OOS_2.md").read_text(encoding="utf-8") == expected["OOS_2"]
 
 
-def test_ballot_parser_rejects_canonical_whitespace_duplicate_and_missing_proposer() -> None:
+def test_ballot_parser_rejects_canonical_whitespace_duplicate_and_missing_proposer(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     duplicate = "### FINDING_1: one\n### \tFINDING_1: duplicate\n"
-    with pytest.raises(ValueError, match="duplicate ballot heading FINDING_1"):
-        voting._ballot_blocks(duplicate)
+    ballot = tmp_path / "duplicate.md"
+    ballot.write_text(duplicate, encoding="utf-8")
+    with pytest.raises(SystemExit, match="1"):
+        voting.split_ballot(ballot_file=ballot, out_dir=tmp_path / "blocks")
+    assert capsys.readouterr().err == "duplicate ballot heading FINDING_1\n"
 
     missing_proposer = "### \tFINDING_1: one\n- **Concern**: missing reviewer\n"
     with pytest.raises(ValueError, match="proposer map missing item"):
