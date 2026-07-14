@@ -27,7 +27,7 @@ def _prevention_field_failures(text: str) -> list[str]:
         "invariant test, or a hook line—and gives one sentence explaining why it is "
         "insufficient."
     )
-    requirements = (
+    requirements: tuple[tuple[str, str], ...] = (
         (prevention_field_contract, "(C2.14) prevention-field semantics must remain complete"),
         ("Every Lint filing body must include **Host**, **Size budget**, and **Cheaper alternative**.", "(G.3) lint filing bodies must include prevention fields"),
         ("Every Hook-contract filing body must include **Host**, **Size budget**, and **Cheaper alternative**.", "(G.4) hook-contract filing bodies must include prevention fields"),
