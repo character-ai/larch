@@ -14,11 +14,15 @@ import pytest
 
 from larch.core.proc import CommandResult, ProcRunner
 from larch.issue import analyze_bugs
+from larch.lint import lint_agent_tool_contract as latc
 from test_support import RecordingRunner, run_cli
 
 _marker_evidence = analyze_bugs._marker_evidence  # pyright: ignore[reportPrivateUsage]  # direct pure-helper coverage
 _bundle_from_mapping = analyze_bugs._bundle_from_mapping  # pyright: ignore[reportPrivateUsage]  # fixture construction
 _priority_deep_candidates = analyze_bugs._priority_deep_candidates  # pyright: ignore[reportPrivateUsage]  # routing coverage
+_parse_finder_finding = analyze_bugs._parse_finder_finding  # pyright: ignore[reportPrivateUsage]  # strict finder contract coverage
+_parse_finder_row = analyze_bugs._parse_finder_row  # pyright: ignore[reportPrivateUsage]  # strict finder contract coverage
+_parse_refuter_result = analyze_bugs._parse_refuter_result  # pyright: ignore[reportPrivateUsage]  # strict refuter contract coverage
 
 
 EVIDENCE_TOKEN = "token-123"
@@ -1640,3 +1644,538 @@ def test_non_sweep_verbs_do_not_touch_sweep_state(tmp_path: Path, monkeypatch: p
     report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
     assert "Analyze Bugs Report" in report
     assert not state_path.exists()
+
+
+# ---------------------------------------------------------------------------
+# Sweep ingest-finder / ingest-refuter contract tests (issue #7207, piece 2).
+# ---------------------------------------------------------------------------
+
+SWEEP_TIP = "f" * 40
+SWEEP_SHA_A = "a" * 40
+SWEEP_SHA_B = "b" * 40
+SWEEP_SHA_C = "c" * 40
+
+
+def _sweep_selected_manifest(
+    run_dir: Path,
+    *,
+    pinned_tip: str = SWEEP_TIP,
+    shas: tuple[str, ...] = (SWEEP_SHA_A,),
+    pending: tuple[str, ...] = (),
+    skipped: int = 0,
+    coverage_incomplete: bool = False,
+) -> dict[str, object]:
+    return {
+        "pinned_tip": pinned_tip,
+        "selected_count": len(shas),
+        "skipped_count": skipped,
+        "coverage_incomplete": coverage_incomplete,
+        "pending_shas": list(pending),
+        "selected": [
+            {
+                "merge_sha": sha,
+                "base_sha": "0" * 40,
+                "subject": f"merge {sha[:7]}",
+                "diff_size": 1,
+                "is_chronic": False,
+                "chronic_zones": [],
+                "touched_paths": [],
+                "bundle_path": str(run_dir / f"sweep-{sha}-bundle.md"),
+            }
+            for sha in shas
+        ],
+    }
+
+
+def _prepare_sweep_run(
+    run_dir: Path,
+    *,
+    shas: tuple[str, ...] = (SWEEP_SHA_A,),
+    pending: tuple[str, ...] = (),
+    skipped: int = 0,
+    coverage_incomplete: bool = False,
+) -> None:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    _write_json(
+        run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME,
+        _sweep_selected_manifest(
+            run_dir,
+            shas=shas,
+            pending=pending,
+            skipped=skipped,
+            coverage_incomplete=coverage_incomplete,
+        ),
+    )
+
+
+def _finding(**overrides: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "file": "python/larch/issue/mod.py",
+        "symbol": "helper",
+        "description": "wrong dict key",
+        "severity": "high",
+        "confidence": "medium",
+    }
+    base.update(overrides)
+    return base
+
+
+def _finder_jsonl(rows: list[dict[str, object]]) -> str:
+    return "".join(json.dumps(dict(row), sort_keys=True) + "\n" for row in rows)
+
+
+def _parse_kv(stdout: str) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for line in stdout.splitlines():
+        key, sep, value = line.partition("=")
+        if sep:
+            out[key] = value
+    return out
+
+
+def _run_ingest(subphase: str, run_dir: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict[str, str], str]:
+    rc = analyze_bugs.sweep_main([subphase, "--run-dir", str(run_dir)])
+    captured = capsys.readouterr()
+    return rc, _parse_kv(captured.out), captured.err
+
+
+def _refuter_setup(run_dir: Path, *, findings: int = 1) -> None:
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    finding_rows = [_finding(symbol=f"symbol_{i}") for i in range(findings)]
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": finding_rows}]), encoding="utf-8"
+    )
+    analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+
+
+def test_finder_finding_parser_strict() -> None:
+    parsed = _parse_finder_finding(_finding())
+    assert isinstance(parsed, analyze_bugs.SweepFinding)
+    assert parsed.file == "python/larch/issue/mod.py"
+    assert parsed.severity == "high"
+    assert isinstance(_parse_finder_finding(_finding(extra="x")), str)
+    assert isinstance(_parse_finder_finding(_finding(severity="blocker")), str)
+    assert isinstance(_parse_finder_finding(_finding(confidence="maybe")), str)
+    assert isinstance(_parse_finder_finding(_finding(file="/abs/x.py")), str)
+    assert isinstance(_parse_finder_finding(_finding(file="../escape.py")), str)
+    assert isinstance(_parse_finder_finding(_finding(file="")), str)
+    normalized = _parse_finder_finding(_finding(description="  a\x07b  "))
+    assert isinstance(normalized, analyze_bugs.SweepFinding)
+    assert normalized.description == "ab"
+
+
+def test_finder_row_parser_strict() -> None:
+    empty = _parse_finder_row({"merge_sha": SWEEP_SHA_A, "findings": []})
+    assert isinstance(empty, analyze_bugs.SweepFinderRow)
+    assert empty.findings == ()
+    populated = _parse_finder_row({"merge_sha": SWEEP_SHA_A, "findings": [_finding()]})
+    assert isinstance(populated, analyze_bugs.SweepFinderRow)
+    assert len(populated.findings) == 1
+    assert isinstance(_parse_finder_row({"merge_sha": SWEEP_SHA_A}), str)
+    assert isinstance(_parse_finder_row({"merge_sha": "short", "findings": []}), str)
+    assert isinstance(_parse_finder_row({"merge_sha": SWEEP_SHA_A, "findings": {}}), str)
+    over = {"merge_sha": SWEEP_SHA_A, "findings": [_finding() for _ in range(analyze_bugs.SWEEP_FINDINGS_PER_MERGE_CAP + 1)]}
+    assert isinstance(_parse_finder_row(over), str)
+
+
+def test_refuter_result_parser_strict() -> None:
+    valid = _parse_refuter_result({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "survives"})
+    assert isinstance(valid, analyze_bugs.SweepRefutationResult)
+    assert isinstance(_parse_refuter_result({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "nope"}), str)
+    assert isinstance(_parse_refuter_result({"merge_sha": SWEEP_SHA_A, "finding_index": 0}), str)
+    assert isinstance(_parse_refuter_result({"merge_sha": SWEEP_SHA_A, "finding_index": -1, "verdict": "refuted"}), str)
+    assert isinstance(_parse_refuter_result({"merge_sha": SWEEP_SHA_A, "finding_index": True, "verdict": "refuted"}), str)
+    assert isinstance(_parse_refuter_result({"merge_sha": "short", "finding_index": 0, "verdict": "refuted"}), str)
+
+
+def test_ingest_finder_happy_path_writes_deterministic_queue(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl(
+            [{"merge_sha": SWEEP_SHA_A, "findings": [_finding(symbol="first"), _finding(symbol="second", description="d2")]}]
+        ),
+        encoding="utf-8",
+    )
+    payload = analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    assert payload["INGEST_ACCEPTED"] == 1
+    assert payload["REFUTER_QUEUE_COUNT"] == 2
+    assert payload["PINNED_TIP"] == SWEEP_TIP
+    assert str(payload["SELECTED_MERGE_MANIFEST"]).endswith(analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME)
+    queue_lines = (run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME).read_text(encoding="utf-8").splitlines()
+    assert len(queue_lines) == 2
+    rows = [json.loads(line) for line in queue_lines]
+    assert [row["finding_index"] for row in rows] == [0, 1]
+    assert {row["merge_sha"] for row in rows} == {SWEEP_SHA_A}
+    assert set(rows[0]) == {"merge_sha", "finding_index", "file", "symbol", "description", "severity", "confidence"}
+    assert rows[0]["symbol"] == "first"
+
+
+def test_ingest_finder_rejects_invalid_output(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    finder = run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME
+    queue = run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="missing"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    finder.write_text("\n   \n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="empty"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    finder.write_text(json.dumps({"merge_sha": SWEEP_SHA_A, "findings": [], "extra": 1}) + "\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="unexpected or missing"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    finder.write_text(_finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": [_finding(severity="blocker")]}]), encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="severity"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    finder.write_text(_finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": []}, {"merge_sha": SWEEP_SHA_A, "findings": []}]), encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="duplicate"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    finder.write_text(_finder_jsonl([{"merge_sha": SWEEP_SHA_C, "findings": []}]), encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="foreign"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    finder.write_text(_finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": [_finding(file="/abs/x.py")]}]), encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="repository-relative"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A, SWEEP_SHA_B))
+    finder.write_text(_finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": []}]), encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="missing selected"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    assert not queue.exists()
+
+
+def test_ingest_refuter_keeps_survivors_and_writes_validated_artifact(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,), skipped=2, pending=(SWEEP_SHA_B,), coverage_incomplete=True)
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": [_finding(symbol="a"), _finding(symbol="b", description="d2")]}]),
+        encoding="utf-8",
+    )
+    analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    (run_dir / analyze_bugs.SWEEP_REFUTER_RAW_NAME).write_text(
+        "".join(
+            json.dumps(row) + "\n"
+            for row in [
+                {"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "survives"},
+                {"merge_sha": SWEEP_SHA_A, "finding_index": 1, "verdict": "refuted"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    payload = analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    assert payload["CANDIDATE_COUNT"] == 1
+    assert payload["REFUTED_COUNT"] == 1
+    assert payload["REFUTER_QUEUE_COUNT"] == 2
+    assert payload["PINNED_TIP"] == SWEEP_TIP
+    validated = json.loads((run_dir / analyze_bugs.SWEEP_VALIDATED_NAME).read_text(encoding="utf-8"))
+    assert validated["pinned_tip"] == SWEEP_TIP
+    assert validated["selected_count"] == 1
+    assert validated["skipped_count"] == 2
+    assert validated["coverage_incomplete"] is True
+    assert tuple(validated["pending_shas"]) == (SWEEP_SHA_B,)
+    assert len(validated["candidates"]) == 1
+    assert validated["candidates"][0]["symbol"] == "a"
+
+
+def test_ingest_refuter_rejects_invalid_output(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    raw = run_dir / analyze_bugs.SWEEP_REFUTER_RAW_NAME
+    validated = run_dir / analyze_bugs.SWEEP_VALIDATED_NAME
+
+    _refuter_setup(run_dir, findings=1)
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="missing"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    raw.write_text("\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="empty"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    raw.write_text(json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "survives", "reason": "x"}) + "\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="unexpected or missing"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    raw.write_text(json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "maybe"}) + "\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="unknown"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    raw.write_text(
+        "".join(
+            json.dumps(row) + "\n"
+            for row in [
+                {"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "survives"},
+                {"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "refuted"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="duplicate"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    raw.write_text(json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 9, "verdict": "survives"}) + "\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="foreign"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+
+    _refuter_setup(run_dir, findings=2)
+    raw.write_text(json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "survives"}) + "\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="missing 1 queued"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    assert not validated.exists()
+
+
+def test_refuter_queue_order_is_deterministic(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A, SWEEP_SHA_B))
+    # Finder rows deliberately out of manifest order; the queue must follow manifest order.
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl(
+            [
+                {"merge_sha": SWEEP_SHA_B, "findings": [_finding(symbol="b0"), _finding(symbol="b1")]},
+                {"merge_sha": SWEEP_SHA_A, "findings": [_finding(symbol="a0")]},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    rows = [json.loads(line) for line in (run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME).read_text(encoding="utf-8").splitlines()]
+    assert [row["merge_sha"] for row in rows] == [SWEEP_SHA_A, SWEEP_SHA_B, SWEEP_SHA_B]
+    assert [row["finding_index"] for row in rows] == [0, 0, 1]
+
+
+def test_ingest_zero_selected_merges_completes_without_finder_file(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=())
+    payload = analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    assert payload["INGEST_ACCEPTED"] == 0
+    assert payload["REFUTER_QUEUE_COUNT"] == 0
+    queue = run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME
+    assert queue.is_file()
+    assert queue.read_text(encoding="utf-8") == ""
+    rpayload = analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    assert rpayload["CANDIDATE_COUNT"] == 0
+    validated = json.loads((run_dir / analyze_bugs.SWEEP_VALIDATED_NAME).read_text(encoding="utf-8"))
+    assert validated["candidates"] == []
+    assert validated["pinned_tip"] == SWEEP_TIP
+
+
+def test_ingest_empty_findings_for_all_merges_bypasses_refuter_file(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A, SWEEP_SHA_B))
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": []}, {"merge_sha": SWEEP_SHA_B, "findings": []}]),
+        encoding="utf-8",
+    )
+    payload = analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    assert payload["INGEST_ACCEPTED"] == 2
+    assert payload["REFUTER_QUEUE_COUNT"] == 0
+    assert (run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME).read_text(encoding="utf-8") == ""
+    rpayload = analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    assert rpayload["CANDIDATE_COUNT"] == 0
+    assert (run_dir / analyze_bugs.SWEEP_VALIDATED_NAME).is_file()
+
+
+def test_absent_or_empty_raw_files_fail_when_work_dispatched(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="missing"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text("\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="empty"):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": [_finding()]}]), encoding="utf-8"
+    )
+    analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="missing"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    (run_dir / analyze_bugs.SWEEP_REFUTER_RAW_NAME).write_text("\n", encoding="utf-8")
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="empty"):
+        analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+
+
+def test_zero_findings_distinct_from_failed_output(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": []}]), encoding="utf-8"
+    )
+    ok_payload = analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    assert ok_payload["INGEST_ACCEPTED"] == 1
+    assert ok_payload["REFUTER_QUEUE_COUNT"] == 0
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).unlink()
+    with pytest.raises(analyze_bugs.AnalyzeBugsError):
+        analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+
+
+def test_sweep_ingest_failures_leave_durable_state_unchanged(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A, SWEEP_SHA_B))
+    ledger = tmp_path / "ledger.jsonl"
+    state_path = analyze_bugs.sweep_state_path(ledger)
+    analyze_bugs.write_sweep_state(
+        state_path,
+        analyze_bugs.SweepState(
+            last_sweep_sha=SWEEP_TIP,
+            last_sweep_at="2026-01-01T00:00:00Z",
+            schema_version=1,
+            pending_shas=(SWEEP_SHA_B,),
+        ),
+    )
+    before = state_path.read_text(encoding="utf-8")
+    finder_raw = run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME
+    queue_path = run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME
+    validated_path = run_dir / analyze_bugs.SWEEP_VALIDATED_NAME
+    failure_cases: dict[str, str | None] = {
+        "missing": None,
+        "empty": "\n",
+        "foreign": _finder_jsonl([{"merge_sha": SWEEP_SHA_C, "findings": []}]),
+        "malformed": "{not json}\n",
+        "incomplete": _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": []}]),
+        "bad_enum": _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": [_finding(severity="blocker")]}]),
+    }
+    for content in failure_cases.values():
+        if content is None:
+            finder_raw.unlink(missing_ok=True)
+        else:
+            finder_raw.write_text(content, encoding="utf-8")
+        queue_path.unlink(missing_ok=True)
+        validated_path.unlink(missing_ok=True)
+        with pytest.raises(analyze_bugs.AnalyzeBugsError):
+            analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+        assert state_path.read_text(encoding="utf-8") == before
+        assert not queue_path.exists()
+        assert not validated_path.exists()
+
+    # Refuter failures with queued findings present likewise leave durable state untouched.
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    finder_raw.write_text(
+        _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": [_finding()]}]), encoding="utf-8"
+    )
+    analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    refuter_raw = run_dir / analyze_bugs.SWEEP_REFUTER_RAW_NAME
+    for content in (None, "\n", json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 9, "verdict": "survives"}) + "\n"):
+        if content is None:
+            refuter_raw.unlink(missing_ok=True)
+        else:
+            refuter_raw.write_text(content, encoding="utf-8")
+        validated_path.unlink(missing_ok=True)
+        with pytest.raises(analyze_bugs.AnalyzeBugsError):
+            analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+        assert state_path.read_text(encoding="utf-8") == before
+        assert not validated_path.exists()
+
+
+def test_ingest_finder_cli_fence_emits_kvs_and_nonzero_on_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl([{"merge_sha": SWEEP_SHA_A, "findings": [_finding(), _finding(symbol="other")]}]),
+        encoding="utf-8",
+    )
+    rc, kvs, err = _run_ingest("ingest-finder", run_dir, capsys)
+    assert rc == 0
+    assert err == ""
+    assert kvs["INGEST_ACCEPTED"] == "1"
+    assert kvs["REFUTER_QUEUE_COUNT"] == "2"
+    assert kvs["PINNED_TIP"] == SWEEP_TIP
+    assert Path(kvs["REFUTER_QUEUE_PATH"]).is_file()
+    # A failed finder ingest returns non-zero and leaves no queue for the refuter to consume.
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).unlink()
+    queue_path = run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME
+    queue_path.unlink(missing_ok=True)
+    rc2, _kvs2, err2 = _run_ingest("ingest-finder", run_dir, capsys)
+    assert rc2 == 1
+    assert "ERROR:" in err2
+    assert not queue_path.exists()
+    rc3, _kvs3, _err3 = _run_ingest("ingest-refuter", run_dir, capsys)
+    assert rc3 == 1
+
+
+def test_ingest_refuter_cli_fence_emits_kvs_and_nonzero_on_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_dir = tmp_path / "run"
+    _refuter_setup(run_dir, findings=1)
+    (run_dir / analyze_bugs.SWEEP_REFUTER_RAW_NAME).write_text(
+        json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "survives"}) + "\n", encoding="utf-8"
+    )
+    rc, kvs, err = _run_ingest("ingest-refuter", run_dir, capsys)
+    assert rc == 0
+    assert err == ""
+    assert kvs["CANDIDATE_COUNT"] == "1"
+    assert kvs["REFUTED_COUNT"] == "0"
+    assert kvs["PINNED_TIP"] == SWEEP_TIP
+    assert Path(kvs["SWEEP_VALIDATED_PATH"]).is_file()
+    (run_dir / analyze_bugs.SWEEP_REFUTER_RAW_NAME).write_text(
+        json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "bogus"}) + "\n", encoding="utf-8"
+    )
+    rc2, _kvs2, err2 = _run_ingest("ingest-refuter", run_dir, capsys)
+    assert rc2 == 1
+    assert "ERROR:" in err2
+
+
+def test_sweep_golden_transcript_wrong_key_survives(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    _prepare_sweep_run(run_dir, shas=(SWEEP_SHA_A,))
+    # Bundle plants a wrong-consumer-dict-key defect for the finder contract to catch.
+    (run_dir / f"sweep-{SWEEP_SHA_A}-bundle.md").write_text(
+        "# Sweep evidence bundle\n\n"
+        "## First-parent diff\n```diff\n+rename: correct_key\n```\n\n"
+        "## Consumers\n- python/larch/issue/consumer.py:5: value = registry['wrong_key']\n",
+        encoding="utf-8",
+    )
+    (run_dir / analyze_bugs.SWEEP_FINDER_RAW_NAME).write_text(
+        _finder_jsonl(
+            [
+                {
+                    "merge_sha": SWEEP_SHA_A,
+                    "findings": [
+                        _finding(
+                            file="python/larch/issue/consumer.py",
+                            symbol="Consumer.lookup",
+                            description="reads registry['wrong_key'] after the rename to correct_key",
+                        )
+                    ],
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    finder_payload = analyze_bugs.sweep_ingest_finder(run_dir=run_dir)
+    assert finder_payload["REFUTER_QUEUE_COUNT"] == 1
+    assert "wrong_key" in (run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME).read_text(encoding="utf-8")
+    (run_dir / analyze_bugs.SWEEP_REFUTER_RAW_NAME).write_text(
+        json.dumps({"merge_sha": SWEEP_SHA_A, "finding_index": 0, "verdict": "survives"}) + "\n", encoding="utf-8"
+    )
+    refuter_payload = analyze_bugs.sweep_ingest_refuter(run_dir=run_dir)
+    assert refuter_payload["CANDIDATE_COUNT"] == 1
+    validated = json.loads((run_dir / analyze_bugs.SWEEP_VALIDATED_NAME).read_text(encoding="utf-8"))
+    candidate = validated["candidates"][0]
+    assert candidate["file"] == "python/larch/issue/consumer.py"
+    assert candidate["symbol"] == "Consumer.lookup"
+    assert "wrong_key" in candidate["description"]
+
+
+def test_sweep_bug_finder_agent_contract_pinned() -> None:
+    root = Path(__file__).resolve().parents[3]
+    agent_path = root / ".claude" / "agents" / "sweep-bug-finder.md"
+    text = agent_path.read_text(encoding="utf-8")
+    frontmatter = latc.extract_frontmatter(text)
+    assert frontmatter is not None
+    declaration = latc.parse_tools_declaration(frontmatter.text)
+    assert declaration is not None
+    assert declaration.explicit_list
+    assert set(declaration.tools) == {"Read", "Grep", "Glob"}
+    assert "model: sonnet" in frontmatter.text
+    body = frontmatter.body
+    # Strict finder and refuter JSONL schemas are pinned verbatim.
+    assert '"merge_sha"' in body
+    assert '"findings"' in body
+    assert '"finding_index"' in body
+    assert '"verdict"' in body
+    assert '"survives|refuted"' in body
+    assert '"high|medium|low"' in body
+    # Read requirement, adversarial finder language, queue-row-only refuter handoff.
+    assert latc.first_read_intent_line(body, body_start_line=frontmatter.body_start_line) is not None
+    assert "planted" in body.lower()
+    assert "disprove" in body.lower()
+    assert "REFUTER_QUEUE_PATH" in body
+    assert "exactly one" in body
+    # Unreadable-evidence fail-closed fallback and the live lint stays clean.
+    assert latc.has_fail_closed_language(body)
+    assert not latc.scan_file(agent_path, root=root)
