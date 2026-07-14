@@ -75,24 +75,24 @@ Warnings (1):
 
 ## Architectural invariants
 
-The changed code introduces a `kv-codec` ratchet lint, extends `larch.io` with a `DuplicatePolicy` API, migrates ad-hoc `KEY=value` readers in nine Python modules and six shell scripts to `larch_io` helpers, and registers the new lint entry in `cli.py`. None of the changed code touches gate disarming inputs, pause snapshot contents, persisted result identity or validation, run-log flush artifacts, committed run-log field content, outcome label writes, panel slot accounting, agent verdict backing, or PR mutation guards. All nine invariants remain unaffected by this diff.
+The changed code introduces a `kv-codec` ratchet lint, extends `larch.io` with a `DuplicatePolicy` API and `parse_kv` overloads, migrates ad-hoc `KEY=value` readers in ten Python modules and six Bash scripts to `larch_io` helpers, adds `python/kv-codec-baseline.json`, updates `docs/linting.md` and `Makefile`, adds tests, and includes two CI-fix commits: per-line CR filtering in `phase_driver_read_result_env` in `design_terminal.py`, and a monkeypatch target correction in `test_ship.py` from `Path.read_text` to `larch.io._read_utf8`. None of the changed code touches gate disarming inputs, pause snapshot contents, persisted result identity or consumer-side validation, run-log flush artifact sets, committed run-log field content, outcome label writes, panel slot accounting, agent verdict backing, or PR mutation guards. All nine invariants remain unaffected by this diff.
 
 ## Architectural guidelines
 
-All changed code in this diff is consistent with the architectural guidelines.
+All changed code is consistent with the architectural guidelines.
 
-## /implement run A2FC8B56-42EC-4E69-A0E2-D500BB13588B: shipping
+## /implement run A2FC8B56-42EC-4E69-A0E2-D500BB13588B: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 01:10:29
-- **Cost**: 💰 TOTAL ~$30.49: Claude $4.11, Codex-5.6 $17.24, Codex-mini $0.10, Cursor $8.29 (Composer $8.29, Grok $0.00), Claude (subprocess) $0.75  |  Tokens: 40895k
+- **Cost**: 💰 TOTAL ~$34.17: Claude $7.75, Codex-5.6 $17.24, Codex-mini $0.10, Cursor $8.29 (Composer $8.29, Grok $0.00), Claude (subprocess) $0.79  |  Tokens: 48540k
 - **Issue**: #6999: https://github.com/character-ai/larch/issues/6999
+- **PR**: #7344: https://github.com/character-ai/larch/pull/7344
 - **Plan review**: N/A
-- **Plan coverage**: 30/62 firm headings; band: high; disposition: proceed-partial; todos_left: 2; follow-up #7340
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 31/39 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1597/-183, larch-logs +1608/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
