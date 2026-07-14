@@ -107,12 +107,12 @@ def test_ignores_shell_harnesses() -> None:
 def test_main_enforces_new_stale_and_malformed_baselines(tmp_path: Path) -> None:
     source = tmp_path / "scripts" / "reader.sh"
     source.parent.mkdir(parents=True)
-    source.write_text("cut -d= -f2 values.txt\n", encoding="utf-8")
+    _ = source.write_text("cut -d= -f2 values.txt\n", encoding="utf-8")
     (tmp_path / "python" / "larch").mkdir(parents=True)
     (tmp_path / "skills").mkdir()
-    (tmp_path / "python" / "kv-codec-baseline.json").write_text("[]\n", encoding="utf-8")
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "add", "scripts/reader.sh"], cwd=tmp_path, check=True)
+    _ = (tmp_path / "python" / "kv-codec-baseline.json").write_text("[]\n", encoding="utf-8")
+    _ = subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+    _ = subprocess.run(["git", "add", "scripts/reader.sh"], cwd=tmp_path, check=True)
 
     assert lint_kv_codec.main(["--root", str(tmp_path)]) == 1
     assert (
@@ -123,9 +123,9 @@ def test_main_enforces_new_stale_and_malformed_baselines(tmp_path: Path) -> None
     )
     assert lint_kv_codec.main(["--root", str(tmp_path)]) == 0
 
-    source.write_text("printf 'not a reader\\n'\n", encoding="utf-8")
+    _ = source.write_text("printf 'not a reader\\n'\n", encoding="utf-8")
     assert lint_kv_codec.main(["--root", str(tmp_path)]) == 2
 
     baseline = tmp_path / "python" / "kv-codec-baseline.json"
-    baseline.write_text("{not-json}\n", encoding="utf-8")
+    _ = baseline.write_text("{not-json}\n", encoding="utf-8")
     assert lint_kv_codec.main(["--root", str(tmp_path)]) == 2
