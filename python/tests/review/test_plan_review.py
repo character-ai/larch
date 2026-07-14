@@ -26,6 +26,7 @@ from larch.report import progress_report
 import pytest
 from larch.review import voting
 from test_support import ROOT, make_zero_findings_plan_review_fake_cli, run_cli
+from tests.support.review_wire import make_rejected_block
 
 
 def _read_tsv(path: Path) -> dict[str, dict[str, str]]:
@@ -3877,17 +3878,6 @@ def test_tally_plan_review_neutralized_without_sidecar_fails_closed(tmp_path: Pa
     assert "missing proposer map entry" in proc.stderr
 
 
-def _make_rejected_block(item_id: str, location: str, concern: str, title: str) -> str:
-    """A rejected-findings.md block in the tally's emitted shape (issue #4849 tests)."""
-    return (
-        f"### [Plan Review] {item_id}\n\n"
-        f"### {item_id}: {title}\n"
-        f"- **Location**: {location}\n"
-        f"- **Concern**: {concern}\n"
-        f"- **Severity**: major\n\n"
-    )
-
-
 def _emit_rejected(design: Path, *, report_framing: bool = False) -> subprocess.CompletedProcess[str]:
     args = [
         "plan-review",
@@ -3903,8 +3893,8 @@ def _emit_rejected(design: Path, *, report_framing: bool = False) -> subprocess.
 def test_emit_rejected_excludes_already_applied_findings(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    applied = _make_rejected_block("FINDING_1", "alpha.py:10-20", "Off-by-one in loop bound", "Loop bound")
-    fresh = _make_rejected_block("FINDING_3", "beta.py:5", "Missing nil guard", "Nil guard")
+    applied = make_rejected_block("FINDING_1", "Loop bound", location="alpha.py:10-20", concern="Off-by-one in loop bound")
+    fresh = make_rejected_block("FINDING_3", "Nil guard", location="beta.py:5", concern="Missing nil guard")
     body = applied + fresh
     _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
     # Record FINDING_1's dedup key as applied in round 1 (what plan_review_continuation does).
@@ -3924,7 +3914,7 @@ def test_emit_rejected_excludes_already_applied_findings(tmp_path: Path) -> None
 def test_emit_rejected_without_ledger_emits_verbatim(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    body = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    body = make_rejected_block("FINDING_1", "Title A", location="alpha.py:10", concern="Concern A")
     _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
     proc = _emit_rejected(design)
     assert proc.returncode == 0, proc.stderr
@@ -3934,9 +3924,9 @@ def test_emit_rejected_without_ledger_emits_verbatim(tmp_path: Path) -> None:
 def test_emit_rejected_preserves_intervening_oos_block(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    applied = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    applied = make_rejected_block("FINDING_1", "Title A", location="alpha.py:10", concern="Concern A")
     oos = "### OOS_2: preserve\n- **Concern**: unrelated OOS\n"
-    fresh = _make_rejected_block("FINDING_3", "beta.py:20", "Concern B", "Title B")
+    fresh = make_rejected_block("FINDING_3", "Title B", location="beta.py:20", concern="Concern B")
     body = applied + oos + fresh
     _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
     key = plan_review._finding_dedup_key(applied)  # pyright: ignore[reportPrivateUsage]
@@ -3951,7 +3941,7 @@ def test_emit_rejected_preserves_intervening_oos_block(tmp_path: Path) -> None:
 def test_emit_rejected_all_applied_emits_empty(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    block = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    block = make_rejected_block("FINDING_1", "Title A", location="alpha.py:10", concern="Concern A")
     _ = (design / "rejected-findings.md").write_text(block, encoding="utf-8")
     key = plan_review._finding_dedup_key(block)  # pyright: ignore[reportPrivateUsage]
     _ = (design / ".step3-applied-finding-keys.tsv").write_text(f"2\t{key}\n", encoding="utf-8")
@@ -3963,7 +3953,7 @@ def test_emit_rejected_all_applied_emits_empty(tmp_path: Path) -> None:
 def test_emit_rejected_report_framing_wraps_operator_output(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    body = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    body = make_rejected_block("FINDING_1", "Title A", location="alpha.py:10", concern="Concern A")
     _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
 
     proc = _emit_rejected(design, report_framing=True)
@@ -3979,7 +3969,7 @@ def test_emit_rejected_report_framing_wraps_operator_output(tmp_path: Path) -> N
 def test_emit_rejected_report_framing_all_applied_emits_empty(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    block = _make_rejected_block("FINDING_1", "alpha.py:10", "Concern A", "Title A")
+    block = make_rejected_block("FINDING_1", "Title A", location="alpha.py:10", concern="Concern A")
     _ = (design / "rejected-findings.md").write_text(block, encoding="utf-8")
     key = plan_review._finding_dedup_key(block)  # pyright: ignore[reportPrivateUsage]
     _ = (design / ".step3-applied-finding-keys.tsv").write_text(f"1\t{key}\n", encoding="utf-8")
@@ -3998,23 +3988,13 @@ def test_emit_rejected_missing_file_emits_nothing(tmp_path: Path) -> None:
     assert proc.stdout == ""
 
 
-def _make_finding_only_rejected_block(item_id: str, location: str, concern: str, title: str) -> str:
-    """Rejected block without the ``[Plan Review]`` wrapper (marker drift / hand edit)."""
-    return (
-        f"### {item_id}: {title}\n"
-        f"- **Location**: {location}\n"
-        f"- **Concern**: {concern}\n"
-        f"- **Severity**: major\n\n"
-    )
-
-
 def test_emit_rejected_filters_finding_blocks_without_plan_review_markers(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    applied = _make_finding_only_rejected_block(
-        "FINDING_1", "alpha.py:10-20", "Off-by-one in loop bound", "Loop bound"
+    applied = make_rejected_block(
+        "FINDING_1", "Loop bound", location="alpha.py:10-20", concern="Off-by-one in loop bound", plan_review=False
     )
-    fresh = _make_finding_only_rejected_block("FINDING_3", "beta.py:5", "Missing nil guard", "Nil guard")
+    fresh = make_rejected_block("FINDING_3", "Nil guard", location="beta.py:5", concern="Missing nil guard", plan_review=False)
     body = applied + fresh
     _ = (design / "rejected-findings.md").write_text(body, encoding="utf-8")
     applied_key = plan_review._finding_dedup_key(applied)  # pyright: ignore[reportPrivateUsage]
@@ -4043,10 +4023,10 @@ def test_emit_rejected_ledger_without_recognizable_blocks_emits_empty(tmp_path: 
 def test_emit_rejected_drops_already_addressed_tagged_block(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    tagged = _make_rejected_block(
-        "FINDING_1", "alpha.py:10", "[ALREADY_ADDRESSED] plan already covers this", "Already covered"
+    tagged = make_rejected_block(
+        "FINDING_1", "Already covered", location="alpha.py:10", concern="[ALREADY_ADDRESSED] plan already covers this"
     )
-    fresh = _make_rejected_block("FINDING_2", "beta.py:5", "Missing nil guard", "Nil guard")
+    fresh = make_rejected_block("FINDING_2", "Nil guard", location="beta.py:5", concern="Missing nil guard")
     _ = (design / "rejected-findings.md").write_text(tagged + fresh, encoding="utf-8")
 
     # No ledger present: the [ALREADY_ADDRESSED] tag alone suppresses the block.
@@ -4062,8 +4042,8 @@ def test_emit_rejected_drops_already_addressed_from_ledger(tmp_path: Path) -> No
     design.mkdir()
     # A later round re-raises the same concern WITHOUT the tag; the cross-round
     # ledger (written when an earlier round flagged it) still suppresses it.
-    reraised = _make_rejected_block("FINDING_3", "gamma.py:7", "Concern re-raised untagged", "Reraised")
-    fresh = _make_rejected_block("FINDING_4", "delta.py:2", "Genuinely new concern", "New")
+    reraised = make_rejected_block("FINDING_3", "Reraised", location="gamma.py:7", concern="Concern re-raised untagged")
+    fresh = make_rejected_block("FINDING_4", "New", location="delta.py:2", concern="Genuinely new concern")
     _ = (design / "rejected-findings.md").write_text(reraised + fresh, encoding="utf-8")
     key = plan_review._finding_dedup_key(reraised)  # pyright: ignore[reportPrivateUsage]
     _ = (design / ".step3-already-addressed-finding-keys.tsv").write_text(f"{key}\n", encoding="utf-8")
@@ -4077,15 +4057,15 @@ def test_emit_rejected_drops_already_addressed_from_ledger(tmp_path: Path) -> No
 def test_emit_rejected_already_addressed_ledger_extracts_records_and_dedups(tmp_path: Path) -> None:
     design = tmp_path / "design"
     design.mkdir()
-    tagged = _make_rejected_block(
-        "FINDING_1", "alpha.py:10", "[ALREADY_ADDRESSED] plan covers it", "Covered"
+    tagged = make_rejected_block(
+        "FINDING_1", "Covered", location="alpha.py:10", concern="[ALREADY_ADDRESSED] plan covers it"
     )
-    untagged = _make_rejected_block("FINDING_2", "beta.py:5", "Real concern", "Real")
+    untagged = make_rejected_block("FINDING_2", "Real", location="beta.py:5", concern="Real concern")
     _ = (design / "rejected-findings.md").write_text(tagged + untagged, encoding="utf-8")
 
     # The extracted key is the canonical (tag-stripped) concern key, so it matches
     # an untagged re-raise of the same concern in a later round.
-    untagged_same = _make_rejected_block("FINDING_9", "alpha.py:10", "plan covers it", "Covered")
+    untagged_same = make_rejected_block("FINDING_9", "Covered", location="alpha.py:10", concern="plan covers it")
     canonical_key = plan_review._finding_dedup_key(untagged_same)  # pyright: ignore[reportPrivateUsage]
     keys = plan_review._already_addressed_keys_in_rejected(design)  # pyright: ignore[reportPrivateUsage]
     assert keys == [canonical_key]

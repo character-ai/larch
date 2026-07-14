@@ -15,6 +15,7 @@ import pytest
 from larch.review import voting
 from larch.core import config
 from larch.review.review_types import JudgeSeverity, ReviewVote
+from tests.support.review_wire import vote_lines
 
 CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
@@ -51,9 +52,7 @@ def test_normalize_reviewer_basename_strips_path_and_waterfall_suffixes() -> Non
 def test_vote_for_id_last_match_and_exonerate(tmp_path: Path) -> None:
     voter = tmp_path / "voter.txt"
     voter.write_text(
-        "FINDING_1: YES\n"
-        "FINDING_10: YES\n"
-        "finding_1: exonerate -- old token\n",
+        vote_lines({"FINDING_1": "YES", "FINDING_10": "YES"}) + "finding_1: exonerate -- old token\n",
         encoding="utf-8",
     )
     result = run_cli("voting", "vote-for-id", "FINDING_1", str(voter))
