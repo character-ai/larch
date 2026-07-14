@@ -90,6 +90,9 @@ _PRODUCTION_LAUNCHERS = (
     "review_dispatch.py",
 )
 
+# Launchers migrated to the shared vendor descriptor table and run_vendor_launch.
+_MIGRATED_LAUNCHERS = frozenset({"_drafter.py"})
+
 
 def _agent_imports(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -193,7 +196,10 @@ class TestImportIsolation:
     def test_production_launchers_do_not_import_vendor(self) -> None:
         for name in _PRODUCTION_LAUNCHERS:
             imports = _agent_imports(AGENTS_DIR / name)
-            assert "larch.agents._vendor" not in imports, name
+            if name in _MIGRATED_LAUNCHERS:
+                assert "larch.agents._vendor" in imports, f"{name} must import _vendor as a migrated launcher"
+            else:
+                assert "larch.agents._vendor" not in imports, name
 
 
 class TestCodexArgv:

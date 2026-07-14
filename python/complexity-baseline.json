@@ -273,14 +273,6 @@
   },
   {
     "file": "larch/agents/_drafter.py",
-    "code": "C901",
-    "qualified_symbol": "run_negotiation_round",
-    "metric": 14,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/agents/_drafter.py",
     "code": "PLR0911",
     "qualified_symbol": "launch_claude_drafter",
     "metric": 12,
@@ -338,6 +330,46 @@
   {
     "file": "larch/agents/_drafter.py",
     "code": "PLR0913",
+    "qualified_symbol": "_claude_drafter_execute",
+    "metric": 6,
+    "added_at": "2026-07-14",
+    "history": []
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_codex_drafter_run",
+    "metric": 8,
+    "added_at": "2026-07-14",
+    "history": []
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_codex_exec_promote",
+    "metric": 9,
+    "added_at": "2026-07-14",
+    "history": []
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_codex_external_agent_execute",
+    "metric": 8,
+    "added_at": "2026-07-14",
+    "history": []
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_negotiation_codex_execute",
+    "metric": 6,
+    "added_at": "2026-07-14",
+    "history": []
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
     "qualified_symbol": "_write_drafter_status_file",
     "metric": 13,
     "added_at": "legacy",
@@ -378,24 +410,8 @@
   {
     "file": "larch/agents/_drafter.py",
     "code": "PLR0915",
-    "qualified_symbol": "launch_codex_exec_main",
-    "metric": 62,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/agents/_drafter.py",
-    "code": "PLR0915",
     "qualified_symbol": "parse_drafter_output",
     "metric": 102,
-    "added_at": "legacy",
-    "history": []
-  },
-  {
-    "file": "larch/agents/_drafter.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_negotiation_round",
-    "metric": 74,
     "added_at": "legacy",
     "history": []
   },
