@@ -1835,7 +1835,7 @@
     "file": "larch/design/design_publish.py",
     "code": "C901",
     "qualified_symbol": "publish_core",
-    "metric": 52,
+    "metric": 54,
     "added_at": "legacy",
     "history": []
   },
@@ -1851,7 +1851,7 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_core",
-    "metric": 23,
+    "metric": 25,
     "added_at": "legacy",
     "history": []
   },
@@ -1859,7 +1859,7 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0912",
     "qualified_symbol": "publish_core",
-    "metric": 53,
+    "metric": 55,
     "added_at": "legacy",
     "history": []
   },
@@ -1867,7 +1867,7 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0915",
     "qualified_symbol": "publish_core",
-    "metric": 175,
+    "metric": 179,
     "added_at": "legacy",
     "history": []
   },
@@ -2315,7 +2315,7 @@
     "file": "larch/design/design_summary.py",
     "code": "PLR0915",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 94,
+    "metric": 95,
     "added_at": "legacy",
     "history": []
   },
