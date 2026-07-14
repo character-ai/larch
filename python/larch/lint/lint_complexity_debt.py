@@ -44,7 +44,9 @@ def _age_bucket_counts(records: list[Record], today: date) -> tuple[int, int, in
     over_90 = 0
     legacy = 0
     for record in records:
-        added_at = record["added_at"]
+        added_at = record.get("added_at")
+        if added_at is None:
+            raise BaselineError("baseline record is missing required metadata")
         if added_at == "legacy":
             legacy += 1
             continue

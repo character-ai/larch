@@ -704,15 +704,28 @@ def migrate_baseline(path: Path) -> int:
     return migrated_count
 
 
+def _required_metadata(record: Record) -> tuple[str, list[HistoryEntry]]:
+    """Return strict metadata or fail closed when a caller passed a live row."""
+    added_at = record.get("added_at")
+    history = record.get("history")
+    if added_at is None or history is None:
+        raise BaselineError("baseline record is missing required metadata")
+    return added_at, history
+
+
 def _copy_preserved_metadata(*, record: Record, stored: Record) -> Record:
     """Build one live row while retaining metadata only from its stored match."""
+    added_at, stored_history = _required_metadata(stored)
     merged: Record = {
         "file": record["file"],
         "code": record["code"],
         "qualified_symbol": record["qualified_symbol"],
         "metric": record["metric"],
-        "added_at": stored["added_at"],
-        "history": [dict(entry) for entry in stored["history"]],
+        "added_at": added_at,
+        "history": [
+            {"date": entry["date"], "metric": entry["metric"]}
+            for entry in stored_history
+        ],
     }
     if "source_issue" in stored:
         merged["source_issue"] = stored["source_issue"]
@@ -761,7 +774,8 @@ def merge_baseline(
         if live_record["metric"] > stored["metric"]:
             if reason is None:
                 raise BaselineError("--reason is required for a metric increase")
-            next_record["history"].append(
+            _, history = _required_metadata(next_record)
+            history.append(
                 {"date": today.isoformat(), "metric": live_record["metric"]}
             )
             next_record["reason"] = reason
@@ -816,8 +830,8 @@ def history_events(records: list[Record]) -> dict[tuple[str, str], list[HistoryE
     """Return deterministic metric-growth events grouped by file and symbol."""
     grouped: dict[tuple[str, str], list[HistoryEvent]] = {}
     for record in records:
-        history = record["history"]
-        start = 0 if record["added_at"] == "legacy" else 1
+        added_at, history = _required_metadata(record)
+        start = 0 if added_at == "legacy" else 1
         for history_index, entry in enumerate(history[start:], start=start):
             event = HistoryEvent(
                 event_date=date.fromisoformat(entry["date"]),

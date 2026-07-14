@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -885,11 +886,16 @@ def test_write_growth_appends_history_and_preserves_manual_override(
     )
     assert lcb.main(["--root", str(tmp_path), "--write", "--reason", "urgent API"]) == 0
     written = lcb.load_baseline(tmp_path / "python" / "complexity-baseline.json")
-    assert written[0]["added_at"] == "2026-07-12"
-    assert written[0]["history"][-1] == {"date": lcb.utc_today().isoformat(), "metric": 18}
-    assert written[0]["reason"] == "urgent API"
-    assert written[0]["source_issue"] == 7156
-    assert written[0]["operator_override"] == {"reason": "approved exception", "issue": 9001}
+    written_record = written[0]
+    assert written_record.get("added_at") == "2026-07-12"
+    assert written_record.get("history") is not None
+    assert written_record["history"][-1] == {"date": lcb.utc_today().isoformat(), "metric": 18}
+    assert written_record.get("reason") == "urgent API"
+    assert written_record.get("source_issue") == 7156
+    assert written_record.get("operator_override") == {
+        "reason": "approved exception",
+        "issue": 9001,
+    }
     assert capsys.readouterr().err
 
 
@@ -935,10 +941,7 @@ def test_dated_seed_is_not_a_bump_and_equal_dates_are_deterministic() -> None:
             history=[{"date": "2026-07-10", "metric": 11}],
         ),
     ]
-    validated = [
-        lcb._validate_record(record, index=index, source=Path("baseline.json"), strict=True)
-        for index, record in enumerate(records)
-    ]
+    validated: list[Record] = [cast("Record", record) for record in records]
     failures = lcb.repeat_bump_failures(validated)
     assert len(failures) == 1
     assert "[PLR0911] metric 9; 2026-07-10 [PLR0912] metric 11" in failures[0]
@@ -960,18 +963,14 @@ def test_debt_report_has_all_sections_and_cli_registration(
             )
         ],
     )
-    assert lcd.main(["--root", str(tmp_path), "--report"]) == 0
+    assert cli.main(["lint", "complexity-debt", "--root", str(tmp_path), "--report"]) == 0
     report = capsys.readouterr().out
     assert "Total entries: 1" in report
     assert "Age buckets:" in report
     assert "Top 10 by metric:" in report
     assert "Symbols with at least two bumps in the last 30 days:" in report
     assert "Active operator overrides:" in report
-    assert lcd.main(["--root", str(tmp_path)]) == 2
-    assert cli._REGISTRY[("lint", "complexity-debt")] == (  # pylint: disable=protected-access  # dispatcher registration is the contract under test
-        "larch.lint.lint_complexity_debt",
-        "main",
-    )
+    assert cli.main(["lint", "complexity-debt", "--root", str(tmp_path)]) == 2
 
 
 def test_debt_report_golden_output_keeps_long_labels_untruncated() -> None:
