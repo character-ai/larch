@@ -1,0 +1,43 @@
+Reviewing the plan against existing lint patterns and integration paths in the repo.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/cli.py:618-621	Blind list/tuple rule also matches CLI registry keys, not gh argv	The plan flags every ast.List/ast.Tuple whose first ast.Constant is "gh". After repoint, `("gh", "resolve-repo")` and sibling `_REGISTRY` rows remain permanent CLI dispatch keys, not subprocess argv. The testing strategy still expects a zero-finding live scan, so the gate cannot pass without surprise pragmas or rule drift.	Limit violations to gh-argv shapes (for example list literals, or tuple/list nodes that are Call args or assigned to argv-like names), or explicitly exempt `_REGISTRY` dict-key tuples in `python/larch/cli.py`; document whichever permanent carve-out stays.
+1	in_scope	minor	risk-integration	.pre-commit-config.yaml:312-317	Plan relies on convention text instead of an explicit always_run hook field	Failure modes warn about incremental pre-commit missing violations, and the nearest whole-scope AST hooks (`lint-subprocess-via-runner`, `lint-unreachable-branch`) set `always_run: true`. `lint-run-log-walkers` at `.pre-commit-config.yaml:312-317` omits it and only runs when matching paths are staged. A hook copied from that weaker pattern would scan a narrower scope than `py-lint-checks-fast`.	In the `.pre-commit-config.yaml` plan step, require `always_run: true` alongside `pass_filenames: false` and `files: ^python/larch/.*\.py$`.
+1	out_of_scope	minor	architecture	python/larch/lint/lint_subprocess_via_runner.py:233-816	Overlapping gh enforcement remains in subprocess-via-runner after the new lint lands	The existing lint already scans `runner.run(["gh", ...])` with `python/subprocess-via-runner-gh-baseline.json` grandfathering (`lint_subprocess_via_runner.py:729-815`). The plan freezes that surface. Two lints, two pragma families, and baseline warn-vs-hard-fail semantics will coexist indefinitely.	File a follow-up to retire the gh sub-ratchet from `subprocess-via-runner` once `gh-argv-literal` is clean and stable.
+
+## Findings
+
+### 1. Correctness — `python/larch/cli.py:618-621`
+
+The plan’s AST rule is intentionally broad (“every expression context”, list **and** tuple). That matches the adoption goal for call-site argv like `proc.run(["gh", ...])` and `_gh_read(["gh", ...])`, which the narrower subprocess gh scan in `lint_subprocess_via_runner.py:170-182` misses today.
+
+It also matches non-argv registry keys:
+
+```618:621:python/larch/cli.py
+    ("gh", "resolve-repo"): ("larch.git.gh", "resolve_repo_main"),
+    ("gh", "remote-repo"): ("larch.git.gh", "remote_repo_main"),
+    ("gh", "run-logs"): ("larch.git.gh", "run_logs_main"),
+    ("gh", "workflow-path"): ("larch.git.gh", "workflow_path_main"),
+```
+
+Those tuples are CLI namespace keys, not executable argv. They should survive repoint. The plan’s “expect no findings after repoint” check cannot succeed unless the rule or exemptions are adjusted, or four permanent pragmas are added without being planned.
+
+### 2. Risk-integration — `.pre-commit-config.yaml` (planned hook)
+
+Integration coverage is otherwise sound:
+
+- CLI registration is correctly aimed at `python/larch/cli.py` (where `("lint", "subprocess-via-runner")` already lives at line 468).
+- `Makefile:58` `py-lint-checks-fast` is the CI fast-lint path (`python-lint` shard 1 via `Makefile:624`).
+- `Makefile:276-277` `lint-only` → pre-commit is the `lint-local` CI path (`.github/workflows/ci.yaml:137`).
+
+The remaining integration gap is hook trigger semantics. The plan names `pass_filenames: false` and cites the always-run convention, but does not require `always_run: true` in the firm `.pre-commit-config.yaml` edit. Spell it out so the hook cannot be wired like `lint-run-log-walkers` (`.pre-commit-config.yaml:312-317`), which only fires when staged paths match.
+
+### 3. Verified plan strengths (no finding)
+
+- **Detection scope**: list/tuple, first-element `"gh"` literal, every AST context, with `larch/git/` and standard test exemptions, matches the issue anchor and existing `python/larch/**/*.py` lint patterns (`lint_lifecycle_prefix_literal.py:148-161`).
+- **Suppression**: same-line, reason-bearing `# lint-gh-argv-literal: ok <reason>` via tokenized comments matches `lint_guidelines_note_wrapper_bypass.py:58-70`; planned tests cover empty reason, other-line pragma, and pragma-like string content (same pattern as `test_lint_guidelines_note_wrapper_bypass.py:136-148`).
+- **Failure handling**: exit `2` on unreadable/non-UTF-8/parse failures is stricter than today’s gh helper path in `lint_subprocess_via_runner.py:281-288`, which silently returns `[]`.
+- **subprocess-via-runner preservation**: explicitly frozen per plan; overlap is real but intentional for this PR.
+
+### [OUT_OF_SCOPE] Architecture — `python/larch/lint/lint_subprocess_via_runner.py`
+
+After adoption, gh argv will be governed by both the new baseline-free lint and the existing gh sub-ratchet with `subprocess-via-runner-gh-baseline.json`. Retiring the older gh scan is reasonable follow-up work, not required to ship this feature once repoint is complete.
