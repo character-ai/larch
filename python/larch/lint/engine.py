@@ -125,6 +125,7 @@ class LintRule:
     detect: Callable[[SourceFile], object]
     syntax_policy: SyntaxPolicy
     suppression_token: str
+    allow_inline_suppression: bool = True
 
 
 def _is_single_line(value: object) -> bool:
@@ -140,6 +141,8 @@ def _is_single_line(value: object) -> bool:
 def _validate_rule(rule: LintRule) -> None:
     if not _is_single_line(rule.rule_id):
         raise ScanError("lint rule rule_id must be a non-empty single-line string")
+    if type(rule.allow_inline_suppression) is not bool:
+        raise ScanError("lint rule allow_inline_suppression must be a bool")
     if not _is_single_line(rule.suppression_token):
         raise ScanError(
             "lint rule suppression_token must be a non-empty single-line string"
@@ -428,6 +431,45 @@ def render_finding(finding: Finding) -> str:
     return f"{finding.path}:{finding.line}: {finding.rule_id} {finding.message}"
 
 
+def _validated_findings(
+    raw_findings: Sequence[object],
+    *,
+    source: SourceFile,
+    rule: LintRule,
+) -> list[Finding]:
+    return [
+        _validate_finding(item, source=source, rule=rule) for item in raw_findings
+    ]
+
+
+def _apply_inline_suppressions(
+    findings: Sequence[Finding],
+    *,
+    source: SourceFile,
+    rule: LintRule,
+    pragma_re: re.Pattern[str],
+    empty_pragma_re: re.Pattern[str],
+) -> list[Finding]:
+    comments_by_line = _comment_tokens_by_line(source.text)
+    accepted: list[Finding] = []
+    for finding in findings:
+        reason = _suppression_reason(
+            finding.line,
+            comments_by_line=comments_by_line,
+            pragma_re=pragma_re,
+            empty_pragma_re=empty_pragma_re,
+        )
+        if reason is None:
+            accepted.append(finding)
+            continue
+        if reason == "":
+            raise ScanError(
+                f"{source.path}:{finding.line}: suppression pragma "
+                f"{rule.suppression_token!r} requires a non-empty reason"
+            )
+    return accepted
+
+
 def _scan_source(
     source: SourceFile,
     *,
@@ -457,25 +499,18 @@ def _scan_source(
     if not isinstance(raw_findings, list):
         raise ScanError("detector must return a list of Finding")
 
-    comments_by_line = _comment_tokens_by_line(source.text)
-    accepted: list[Finding] = []
-    for item in cast("list[object]", raw_findings):
-        finding = _validate_finding(item, source=source, rule=rule)
-        reason = _suppression_reason(
-            finding.line,
-            comments_by_line=comments_by_line,
-            pragma_re=pragma_re,
-            empty_pragma_re=empty_pragma_re,
-        )
-        if reason is None:
-            accepted.append(finding)
-            continue
-        if reason == "":
-            raise ScanError(
-                f"{source.path}:{finding.line}: suppression pragma "
-                f"{rule.suppression_token!r} requires a non-empty reason"
-            )
-    return accepted
+    validated = _validated_findings(
+        cast("list[object]", raw_findings), source=source, rule=rule
+    )
+    if not rule.allow_inline_suppression:
+        return validated
+    return _apply_inline_suppressions(
+        validated,
+        source=source,
+        rule=rule,
+        pragma_re=pragma_re,
+        empty_pragma_re=empty_pragma_re,
+    )
 
 
 BaselineKind = Literal["generic", "symbol_metric"]

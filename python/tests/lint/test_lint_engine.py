@@ -102,6 +102,7 @@ def _rule(
     syntax_policy: str = "fail",
     rule_id: str = "demo-rule",
     pragma: str = "lint-demo",
+    allow_inline_suppression: bool = True,
 ) -> LintRule:
     def _default_detect(source: SourceFile) -> list[Finding]:
         return [
@@ -119,6 +120,7 @@ def _rule(
         detect=detect or _default_detect,
         syntax_policy=syntax_policy,  # type: ignore[arg-type]
         suppression_token=pragma,
+        allow_inline_suppression=allow_inline_suppression,
     )
 
 
@@ -723,6 +725,44 @@ def test_suppression_ignores_code_strings_and_adjacent_lines(tmp_path: Path) -> 
     assert code == EXIT_FINDINGS
     assert err == ""
     assert out == "a.py:2: demo-rule a\na.py:4: demo-rule b\n"
+
+
+def test_unsuppressible_rule_retains_finding_despite_pragma(tmp_path: Path) -> None:
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"a.py": "x = 1  # lint-demo: ok deliberate\n"},
+        rule=_rule(allow_inline_suppression=False),
+    )
+    assert code == EXIT_FINDINGS
+    assert err == ""
+    assert out == "a.py:1: demo-rule hit\n"
+
+
+def test_ordinary_rule_still_honors_suppression_when_opted_in(tmp_path: Path) -> None:
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"a.py": "x = 1  # lint-demo: ok deliberate\n"},
+        rule=_rule(allow_inline_suppression=True),
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+
+
+def test_allow_inline_suppression_rejects_non_bool(tmp_path: Path) -> None:
+    rule = LintRule(
+        rule_id="demo-rule",
+        description="demo",
+        detect=lambda _source: [],
+        syntax_policy="fail",
+        suppression_token="lint-demo",  # noqa: S106 - pragma name, not a secret
+        allow_inline_suppression=True,
+    )
+    object.__setattr__(rule, "allow_inline_suppression", 1)  # type: ignore[misc]
+    code, out, err = _invoke(rule, tmp_path, _git_ok_runner(tmp_path, []))
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "allow_inline_suppression" in err
 
 
 def test_detector_and_config_validation(tmp_path: Path) -> None:
