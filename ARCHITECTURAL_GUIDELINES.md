@@ -343,3 +343,10 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: gates that land before their producers or author guidance stall valid runs or turn routine changes into failures (#6880, #6882, #6875).
 - Guidance: land a fail-closed gate in the same change or release as every producer that satisfies it, or later, never earlier. Update author guidance in the same change or release as every new ship-blocking contract, or in an earlier change or release, never later. Before a gate reads persisted state, verify every live writer path persists it and test the producer and gate together.
 - Deviate when: a separate migration completes the producer and gate wire-up only when it lands in the same change as the gate or in an earlier same-release change already released before the gate becomes consumer-visible. A gate and its producer in one artifact are already atomic.
+
+## Prevention discipline
+
+### G-Prevent-1: Prevention machinery names its host before it is commissioned
+- Why: prevention work in 2026-07 added standalone machinery that outgrew the fixes it addressed and later produced its own defects (#6873, #6881, #6955).
+- Guidance: before commissioning prevention machinery, name the existing lint rule, module, hook, or harness that will host it, disclose the estimated new non-test lines, and prefer extending that mechanism over a new surface. Name the nearest cheaper alternative, such as an existing rule extension, manifest or table entry, invariant test, or hook line, and explain why it is insufficient.
+- Deviate when: a new module or hook is genuinely necessary because the closest existing host cannot absorb the rule; name that host and the reason, and keep the new surface no larger than the disclosed need.
