@@ -1,0 +1,7 @@
+1	step 8 bash readers and related ship-path readers retain bespoke first/last-wins parsing with potentially divergent cr and empty-value behavior.
+1	widening `emit_kv` without specifying boolean serialization can produce `true`/`false` instead of the lowercase wire values expected by consumers.
+1	active run-context and ship-state readers retain independent last-wins scans, allowlist validation, and fallback behavior outside the unified codec.
+1	replacing existing `first_wins`/`first_match` keyword parameters without compatibility handling can raise `typeerror` for unlisted callers.
+1	generic codec tests do not pin ordered repeated-key behavior at the design-router call sites.
+1	`design_step_log._session_get` remains a duplicate first-match reader outside the migration set.
+2	missing fail-closed `kv get` failure coverage. after the planned replacement, a broken or unavailable python cli can yield no `clone_path`; treating that as no matching registry permits a background bash despite an active same-clone daemon. a missing python or failed `kv get` can bypass the active-bgjob denial when registry entries exist.

@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The reader already uses the codec, and its existing first-match policy is not a required migration regression.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- The plan explicitly preserves non-empty fallback semantics; this duplicates the prior neutral concern.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- These are pre-existing specialized readers outside the approved migration surfaces, not an introduced feature-path regression.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The first-match reader predates this feature and already delegates to the codec; the plan preserves caller-specific policies.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Focused targets and guarded baseline regeneration are proportionate support for the new lint, not a necessary scope reduction.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior out-of-scope duplicate-rejecting handoff-parser observation.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Duplicate of the previously rejected secret-scrub/finalize parser concern.

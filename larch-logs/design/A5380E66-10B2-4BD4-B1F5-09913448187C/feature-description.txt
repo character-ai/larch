@@ -1,0 +1,17 @@
+# contract-unification [FEATURE] One KEY=value env codec + bash funnel
+
+#### Problem
+
+The KEY=value / `export KEY='v'` env grammars have no owner and roughly 20 independent readers that disagree on quoting, `export` handling, CR, and first-vs-last-wins. Python canonical-ish parsers: `io.py read_kv`, `core/env_file.py` (docstring claims "single source of truth"), `state/session_env.parse_allowlisted_env_line`. Ad-hoc re-parsers: `design_core.py:211/215/232` (both first-match and last-match variants), `design_router.py:308`, `design_publish.py:82`, `design_pause.py:50`, `design_summary.py:244`, `design_oos.py:400`, `run_context.py:27`, `ship_state.py:310/414/470`, `preflight.py:255-269`, and verbatim 6-line twins `design_terminal.py:1169` / `clarify.py:830`. Bash side: `grep|cut` and `awk -F=` readers in step scripts (`step-0-bootstrap.sh:208`, `step-6-entry.sh:90`, `sessionstart-health.sh:169`, more), plus two embedded-Python parsers with opposite duplicate-key semantics (`step-5-review.sh:94` first-wins vs `step-8-ship.sh:104` setdefault). `design_step_log.py:25` admits its helper was restructured to "avoid pylint R0801 duplicate-code". On the write side, `_emit_kv` is privately defined 10+ times (`git/push.py:157`, `git/pr.py:388`, `git/pr_body.py:469`, `git/merge.py:585`, `git/git.py:1364`, `implement/ci.py:30`, `state/session_env.py:266`, `state/admission.py:26`, `issue/deps_audit.py:38`, `agents/_types.py`) despite `logging_util.emit_kv`.
+
+#### Goal
+
+One codec in `larch/io.py` with an explicit first/last/all duplicate-key policy parameter and one `emit_kv`; migrate the ad-hoc parsers and emitters; Bash reads go through `cli.py kv get` / the read-result-env verb. Add an adoption-ratchet lint (the #6992 pattern) banning new `split("=", 1)` loops and `awk -F=`/`cut -d=` env parsing outside the owner.
+
+#### Size
+
+~150 lines of parsers collapse to ~20; the grammar's edit fan-out drops from ~20 sites to 1.
+
+#### Dependencies
+
+Land after the bgjob step-adapter issue, which deletes most Bash-side readers.
