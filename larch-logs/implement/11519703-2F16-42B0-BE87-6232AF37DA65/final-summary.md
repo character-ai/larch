@@ -49,6 +49,10 @@ Warnings (11):
   10. The existing `from larch.issue.analyze_issues import ( # noqa: E402` line (unchanged by this diff) has the same omission, but G-Py-11 applies to changed code; the new lines extend the bare-suppress...
   11. No other guidelines are implicated. The removal of `_run_gh_json` in favour of `gh.issue_view_field_read(proc, ...)` is a positive move toward G-Py-7 (typed wrapper over an injected Runner, using t...
 
+## Architectural invariants
+
+The updated diff adds `# noqa: E402 - after sys.path manipulation` comment suffixes to the two new import lines (`from larch.core import proc` and `from larch.git import gh`) atop the previously assessed refactor that replaced the local `_run_gh_json` subprocess wrapper with `gh.issue_view_field_read`. Neither the comment additions nor the underlying refactor touch any gate-disarm logic, pause snapshot contents, persisted-result identity checks, run-log flush paths, committed outcome labels, panel slot accounting, agent verdict production, or pre-merge PR mutation routes. All invariants are satisfied.
+
 ## Architectural guidelines
 
 The changed code is clean against all applicable architectural guidelines.
@@ -59,7 +63,7 @@ The diff removes the local `_run_gh_json` subprocess helper and replaces it with
 
 - **Outcome**: shipping
 - **Duration**: 00:13:05
-- **Cost**: 💰 TOTAL ~$4.82: Claude $2.04, Codex-5.6 $0.00, Codex-mini $0.14, Cursor $2.38 (Composer $1.57, Grok $0.81), Claude (subprocess) $0.26  |  Tokens: 8557k
+- **Cost**: 💰 TOTAL ~$5.22: Claude $2.44, Codex-5.6 $0.00, Codex-mini $0.14, Cursor $2.38 (Composer $1.57, Grok $0.81), Claude (subprocess) $0.26  |  Tokens: 9437k
 - **Issue**: #7007: https://github.com/character-ai/larch/issues/7007
 - **Plan review**: N/A
 - **Plan coverage**: 1/1 firm headings; band: advisory; disposition: none; todos_left: 0
