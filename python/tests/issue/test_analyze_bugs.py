@@ -1647,6 +1647,167 @@ def test_non_sweep_verbs_do_not_touch_sweep_state(tmp_path: Path, monkeypatch: p
 
 
 # ---------------------------------------------------------------------------
+# Sweep report/state integration (issue #7208, piece 3).
+# ---------------------------------------------------------------------------
+
+
+def _write_validated_sweep_artifact(
+    run_dir: Path,
+    *,
+    pending: tuple[str, ...] = (),
+    skipped: int = 0,
+    candidate: bool = True,
+) -> None:
+    selected = _sweep_selected_manifest(
+        run_dir,
+        pending=pending,
+        skipped=skipped,
+        coverage_incomplete=bool(pending),
+    )
+    bundle_path = run_dir / f"sweep-{SWEEP_SHA_A}-bundle.md"
+    bundle_path.write_text("# Sweep evidence\n" + ("x" * 40) + "\n", encoding="utf-8")
+    (run_dir / analyze_bugs.SWEEP_REFUTER_QUEUE_NAME).write_text(
+        json.dumps(
+            {
+                "merge_sha": SWEEP_SHA_A,
+                "finding_index": 0,
+                "file": "python/example.py",
+                "symbol": "example",
+                "description": "wrong field remains in a consumer",
+                "severity": "high",
+                "confidence": "medium",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_json(run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME, selected)
+    _write_json(
+        run_dir / analyze_bugs.SWEEP_VALIDATED_NAME,
+        {
+            "pinned_tip": SWEEP_TIP,
+            "selected_manifest_path": str(run_dir / analyze_bugs.SWEEP_SELECTED_MANIFEST_NAME),
+            "selected_count": 1,
+            "skipped_count": skipped,
+            "pending_shas": list(pending),
+            "coverage_incomplete": bool(pending),
+            "candidates": [
+                {
+                    "merge_sha": SWEEP_SHA_A,
+                    "file": "python/example.py",
+                    "symbol": "example",
+                    "description": "wrong field remains in a consumer",
+                    "severity": "high",
+                    "confidence": "medium",
+                }
+            ]
+            if candidate
+            else [],
+        },
+    )
+
+
+def test_render_report_merges_sweep_and_commits_pending_state_last(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    manifest = _single_manifest(run_dir, mechanical="NOT_FIXED")
+    _write_json(run_dir / "manifest.json", manifest)
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir, pending=(SWEEP_SHA_B,), skipped=1)
+    analyze_bugs.write_sweep_state(
+        analyze_bugs.sweep_state_path(ledger),
+        analyze_bugs.SweepState(SWEEP_SHA_C, "2026-01-01T00:00:00Z", 1, ()),
+    )
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    assert "## Sweep candidates" in report
+    assert "python/example.py" in report
+    assert "Sweep selected merges: 1" in report
+    assert "Sweep skipped merges: 1" in report
+    assert "Sweep pending frontier: 1" in report
+    assert "Sweep coverage incomplete" in report
+    assert "ANALYZE_BUGS_SWEEP_COST_ESTIMATE=$" in report
+    followup = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
+    assert "#1: NOT_FIXED" in followup
+    assert "Sweep candidates:" in followup
+    state = analyze_bugs.load_sweep_state(analyze_bugs.sweep_state_path(ledger))
+    assert state is not None
+    assert state.last_sweep_sha == SWEEP_TIP
+    assert state.pending_shas == (SWEEP_SHA_B,)
+    assert (run_dir / "report.md").is_file()
+    assert (run_dir / "follow-up-issue.md").is_file()
+
+
+def test_sweep_report_failure_leaves_existing_state_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir, pending=(SWEEP_SHA_B,), skipped=1)
+    state_path = analyze_bugs.sweep_state_path(ledger)
+    analyze_bugs.write_sweep_state(
+        state_path,
+        analyze_bugs.SweepState(SWEEP_SHA_C, "2026-01-01T00:00:00Z", 1, ()),
+    )
+    before = state_path.read_text(encoding="utf-8")
+    original_write = analyze_bugs._atomic_write_text  # pyright: ignore[reportPrivateUsage]  # report-write failure seam
+
+    def fail_report(path: Path, text: str, *, mode: int = 0o600) -> None:
+        if path.name == "report.md":
+            raise OSError("simulated report write failure")
+        original_write(path, text, mode=mode)
+
+    monkeypatch.setattr(analyze_bugs, "_atomic_write_text", fail_report)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+
+    with pytest.raises(OSError, match="simulated report"):
+        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+    assert state_path.read_text(encoding="utf-8") == before
+
+
+def test_sweep_only_survivor_creates_followup_body(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    followup = run_dir / "follow-up-issue.md"
+    assert followup.is_file()
+    assert "Sweep candidates:" in followup.read_text(encoding="utf-8")
+    assert f"Follow-up body file: {followup}" in report
+
+
+def test_sweep_report_rejects_stale_tip_or_manifest_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    ledger = tmp_path / "ledger.jsonl"
+    _write_json(run_dir / "manifest.json", _single_manifest(run_dir, mechanical="WONTFIX"))
+    _write_bundle(run_dir / "issue-1-bundle.md")
+    _write_validated_sweep_artifact(run_dir)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_SHA_B + "\n")))
+
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="stale"):
+        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    artifact_path = run_dir / analyze_bugs.SWEEP_VALIDATED_NAME
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    artifact["selected_manifest_path"] = str(tmp_path / "foreign.json")
+    _write_json(artifact_path, artifact)
+    monkeypatch.setattr(analyze_bugs, "_runner", lambda: RecordingRunner(default=_result(SWEEP_TIP + "\n")))
+    with pytest.raises(analyze_bugs.AnalyzeBugsError, match="foreign selected manifest"):
+        analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+
+# ---------------------------------------------------------------------------
 # Sweep ingest-finder / ingest-refuter contract tests (issue #7207, piece 2).
 # ---------------------------------------------------------------------------
 
