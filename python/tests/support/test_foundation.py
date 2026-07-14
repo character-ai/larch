@@ -131,6 +131,9 @@ def test_design_wire_builders_preserve_canonical_fixture_shapes(tmp_path: Path) 
         "mechanical_churn: false\n"
         "diff_lines: 12\n"
     )
+    for path in ("", "\n", "a\nb", "a\rb"):
+        with pytest.raises(ValueError, match="invalid plan section path"):
+            _ = plan_body(sections=[("UPDATED", path)])
 
     spaced = tmp_path / "dir with spaces"
     spaced.mkdir()
@@ -142,10 +145,14 @@ def test_design_wire_builders_preserve_canonical_fixture_shapes(tmp_path: Path) 
     )
     written = write_result_env(env_path, [("INIT_STATUS", "ok"), ("OUTPUT", str(spaced / "β-out.txt"))])
     assert written.read_text(encoding="utf-8") == f"INIT_STATUS=ok\nOUTPUT={spaced / 'β-out.txt'}\n"
+    ordered_rows = [("Z_LAST", "last"), ("A_FIRST", "first")]
+    assert result_env_lines(ordered_rows) == "Z_LAST=last\nA_FIRST=first\n"
+    assert write_result_env(env_path, ordered_rows).read_text(encoding="utf-8") == "Z_LAST=last\nA_FIRST=first\n"
 
     defaults = run_params_json()
     assert defaults == run_params_text()
-    assert defaults == seed_run_params(spaced).read_text(encoding="utf-8")
+    design = make_design_tmpdir(tmp_path, run_params=True)
+    assert defaults == (design / "run-params.json").read_text(encoding="utf-8")
     overridden = run_params_json(overrides={"brainstorm_requested": True, "partition_requested": True})
     assert '"brainstorm_requested": true' in overridden
     assert '"partition_requested": true' in overridden

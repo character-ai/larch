@@ -34,6 +34,12 @@ def _validate_env_value(key: str, value: str) -> None:
         raise ValueError(msg)
 
 
+def _validate_section_path(path: str) -> None:
+    if not path.strip() or "\n" in path or "\r" in path:
+        msg = f"invalid plan section path: {path!r}"
+        raise ValueError(msg)
+
+
 def _as_row_pairs(rows: ResultEnvRows) -> list[tuple[str, str]]:
     if isinstance(rows, Mapping):
         pairs = [(str(key), str(value)) for key, value in rows.items()]
@@ -87,6 +93,7 @@ def plan_body(  # noqa: PLR0913 - plan fixture fields map directly to the wire f
             if kind not in ("NEW", "UPDATED"):
                 msg = f"unsupported plan heading kind: {kind!r}"
                 raise ValueError(msg)
+            _validate_section_path(path)
             chunks.append(f"### {kind}: {path}\n")
         if body:
             chunks.append(body if body.endswith("\n") else f"{body}\n")
