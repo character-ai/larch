@@ -64,18 +64,19 @@ The changed code is clean against all architectural invariants.
 
 The changed code is in full compliance with all applicable architectural guidelines.
 
-## /implement run A69A4500-BE78-4F2D-ABD3-A209969A9471: shipping
+## /implement run A69A4500-BE78-4F2D-ABD3-A209969A9471: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - **Duration**: 00:45:23
-- **Cost**: 💰 TOTAL ~$21.95: Claude $5.20, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 41957k
+- **Cost**: 💰 TOTAL ~$26.34: Claude $9.59, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 50354k
 - **Issue**: #7222: https://github.com/character-ai/larch/issues/7222
+- **PR**: #7251: https://github.com/character-ai/larch/pull/7251
 - **Plan review**: N/A
 - **Plan coverage**: 20/20 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/9 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +146/-490, larch-logs +851/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 8
