@@ -41,6 +41,65 @@ def test_prepare_happy_path_multi_blocker_and_neutralizes_feature(tmp_path: Path
     assert "\u200b### embedded heading" in batch
 
 
+def _write_route_state(design_tmpdir: Path, **values: str) -> None:
+    rows = [f"{key}={value}\n" for key, value in values.items()]
+    (design_tmpdir / decompose.ROUTE_STATE_PATH).write_text("".join(rows), encoding="utf-8")
+
+
+def test_prepare_prefixed_titles_preserve_bracket_and_split_index(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    _write_route_state(d, ISSUE_NUMBER="7277", ISSUE_TITLE="[BUG] when /design splits a feature")
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: blocked-by Piece 1\n",
+        encoding="utf-8",
+    )
+    status, _witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition, issue_number="7277")
+    assert status == "ok"
+    batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+    assert "### [BUG] split-7277-1: Base\n" in batch
+    assert "### [BUG] split-7277-2: API\n" in batch
+
+
+def test_prepare_prefixed_titles_without_bracket_and_without_issue_number(tmp_path: Path) -> None:
+    d = _design_tmp(tmp_path)
+    partition = d / "partition.md"
+    partition.write_text(
+        "## Pieces\n\n"
+        "### Piece 1: Base\n- Scope: base\n- Firm-headings: base/file.py\n- Acceptance: verify base\n- Dependencies: none\n\n"
+        "### Piece 2: API\n- Scope: api\n- Firm-headings: api/file.py\n- Acceptance: verify api\n- Dependencies: none\n",
+        encoding="utf-8",
+    )
+    status, _witness = decompose.prepare_partition_issues(design_tmpdir=d, partition_file=partition)
+    assert status == "ok"
+    batch = (d / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+    # No bracket on original title and no issue number bound: titles pass through unchanged.
+    assert "### Base\n" in batch
+    assert "### API\n" in batch
+    assert "split-" not in batch
+
+
+def test_prefixed_piece_title_does_not_double_apply_bracket_or_token() -> None:
+    # Original title without a bracket: no bracket prefix emitted.
+    assert decompose._prefixed_piece_title(  # pyright: ignore[reportPrivateUsage]
+        original_title="plain title", issue_number="42", piece_number=1, piece_title="Base"
+    ) == "split-42-1: Base"
+    # Original title without a bracket and no issue number: title unchanged.
+    assert decompose._prefixed_piece_title(  # pyright: ignore[reportPrivateUsage]
+        original_title="plain title", issue_number="", piece_number=1, piece_title="Base"
+    ) == "Base"
+    # Piece title that already carries the bracket is not double-prefixed.
+    assert decompose._prefixed_piece_title(  # pyright: ignore[reportPrivateUsage]
+        original_title="[FEATURE] foo", issue_number="9", piece_number=2, piece_title="[FEATURE] API"
+    ) == "[FEATURE] split-9-2: API"
+    # Piece title that already carries the split token is not double-tokened.
+    assert decompose._prefixed_piece_title(  # pyright: ignore[reportPrivateUsage]
+        original_title="[BUG] foo", issue_number="3", piece_number=1, piece_title="split-3-1: Base"
+    ) == "[BUG] split-3-1: Base"
+
+
 def test_prepare_plan_stub_delegates_to_compose_named_block(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
