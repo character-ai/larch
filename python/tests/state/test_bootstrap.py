@@ -1692,7 +1692,7 @@ def test_self_review_and_self_implement_skip_external_tool_health_validation(tmp
         non_interactive=True,
     )
 
-    assert calls == []
+    assert not calls
     assert tail.contract_failure is False
     assert tail.routing["DEGRADED"] == "false"
     assert tail.routing["DEGRADED_PROMPT_REQUIRED"] == "false"
