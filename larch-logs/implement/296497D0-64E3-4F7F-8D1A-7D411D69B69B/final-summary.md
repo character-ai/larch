@@ -65,8 +65,9 @@ codex/apply              │                                     █████
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (1):
+Exec Issues (2):
   1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
+  2. ship route: merge and CI watch skipped — needs user (reason: first-fixer-non-health; pending NEXT_ACTION=ci-fix)
 Warnings (4):
   1. The engine.py and test_lint_engine.py changes are broadly consistent with the guidelines: frozen dataclasses (G-Py-1), larch.io helpers for reads and writes (G-IO-1), symlink and path-traversal rej...
   2. ## Deviation: G-Fix-2
@@ -83,9 +84,9 @@ The changed code contains no architectural guideline deviations.
 
 ## /implement run 296497D0-64E3-4F7F-8D1A-7D411D69B69B: pr-created
 
-- **Outcome**: ✅ DONE
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: first-fixer-non-health; pending: ci-fix)
 - **Duration**: 01:26:24
-- **Cost**: 💰 TOTAL ~$34.05: Claude $22.19, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.41  |  Tokens: 63622k
+- **Cost**: 💰 TOTAL ~$35.29: Claude $23.33, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.51  |  Tokens: 67190k
 - **Issue**: #7020: https://github.com/character-ai/larch/issues/7020
 - **PR**: #7280: https://github.com/character-ai/larch/pull/7280
 - **Plan review**: N/A
@@ -93,9 +94,9 @@ The changed code contains no architectural guideline deviations.
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 11/14 accepted
-- **Lines (PR diff)**: code +1401/-40, larch-logs +1078/-0
+- **Lines (PR diff)**: code +1401/-40, larch-logs +1081/-0
 - **OOS filed**: 0
-- **Exec issues**: 1
+- **Exec issues**: 2
 - **Warnings**: 4
 - **Run logs**: `larch-logs/implement/296497D0-64E3-4F7F-8D1A-7D411D69B69B/`
 - **Main agent model**: claude-sonnet-4-6
