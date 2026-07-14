@@ -1,0 +1,125 @@
+## Plan
+
+Confidence: high.
+
+Introduce frozen dataclasses at each report boundary. Move reusable work from `*_main` wrappers into typed callables. Keep validation, best-effort behavior, side effects, exit codes, stderr, and stdout byte-compatible.
+
+### UPDATED: python/larch/report/progress_file.py
+
+- Add `PersistedRunResult` as a frozen dataclass with named persisted-run fields.
+- Add `resolve_persisted_run()` to resolve the session-owned run ID and repository root as one typed operation.
+- Reuse the existing validation and persisted environment readers.
+- Keep `resolve_persisted_repo_root()` unchanged for out-of-scope callers.
+
+### UPDATED: python/larch/report/statusline_install.py
+
+- Add `StatuslineInstallResult` as a frozen dataclass.
+- Change `install_statusline()` from a boolean return to named outcome fields.
+- Preserve opt-out, unsafe-path, invalid JSON, custom statusline, successful install, notice, and caught-error behavior.
+- Update `install_statusline_main()` to consume the result without changing its exit code or output.
+
+### UPDATED: python/larch/report/tokens.py
+
+- Add frozen `TokenMarkResult`, `BudgetCheckResult`, `ClaudeSourceResult`, and `PrLineCountResult` contracts with specific field types.
+- Add `token_mark()` as the in-process entry point. Make `token_mark_main()` parse argv, delegate, and preserve current error and best-effort write behavior.
+- Return `BudgetCheckResult` from `check_step_token_budget()`. Preserve reset-at-mark logic and fail-soft ledger handling.
+- Return `ClaudeSourceResult` from `token_claude_source()`. Represent available and unavailable outcomes without string-key probing.
+- Return `PrLineCountResult` from `compute_pr_line_counts()`. Preserve invalid PR, invalid repository, `gh` failure, code/log bucketing, and pagination behavior.
+- Adapt all in-module consumers and wrappers to named fields.
+- Emit the same KV keys, capitalization, ordering, values, stderr, and exit codes as today.
+
+### UPDATED: python/larch/report/timing.py
+
+- Add frozen `TimingMarkResult`, `VendorTaskResult`, `RoundResult`, and `TimingReportResult` contracts.
+- Add typed module-level `mark()`, `record_vendor_task()`, `record_round()`, and `render_report()` entry points.
+- Delegate to the existing `TimingLedger` and `TimingReport` classes. Do not change their internals beyond wiring needed by the wrappers.
+- Move CLI-neutral validation and composite outcomes into the typed functions.
+- Keep each `timing_*_main()` responsible for argv parsing and the existing stdout, stderr, exit-code, skipped-ledger, and fail-soft I/O policy.
+- Preserve duplicate-mark suppression, progress breadcrumbs, status normalization, round attempt accounting, report append/output behavior, and unavailable-report text.
+
+### UPDATED: python/larch/report/final_report.py
+
+- Replace mapping-style consumption of `compute_pr_line_counts()` in `_derive_pr_line_counts()` with explicit `PrLineCountResult` field access.
+- Adapt `_merge_line_count_state()` through a narrow typed-to-KV mapping or named-field inputs so it no longer requires the result object to be a `Mapping`.
+- Preserve cached ship PR-state keys, ship-file KV output, and the existing empty fallback when line counts are unavailable.
+- Make no unrelated final-report changes.
+
+### UPDATED: python/tests/report/test_progress_statusline.py
+
+- Test `resolve_persisted_run()` for complete, missing, and invalid persisted state.
+- Assert the persisted-run result is frozen and exposes named fields.
+- Update statusline installation assertions to inspect `StatuslineInstallResult`.
+- Cover successful, disabled, custom-entry, malformed-settings, and unsafe-path outcomes.
+- Retain launcher, settings, notice, and CLI behavior checks.
+
+### UPDATED: python/tests/report/test_tokens.py
+
+- Update mapping-based assertions and monkeypatch fakes to use the new frozen result types.
+- Test named fields and immutability for token marks, budget checks, Claude source resolution, and PR line counts.
+- Cover missing ledgers, mark resets, incomplete or unsafe Claude snapshots, invalid PR inputs, `gh` failure, and code versus `larch-logs/` totals.
+- Verify in-module consumers accept the typed Claude source result.
+- Add wrapper-level compatibility regressions for `token_mark_main()`, `token_check_budget_main()`, `token_claude_source_main()`, and `compute_pr_line_counts_main()`.
+- Assert complete stdout and stderr plus exit codes for successful, skipped-ledger, cap-hit/under-cap, unavailable-source, invalid-input, and each line-count status path, including KV key order.
+
+### UPDATED: python/tests/report/test_report_tokens_cli.py
+
+- Add a narrow compatibility regression for the report-token CLI after the report result contracts become typed.
+- Keep the existing no-results, posting, cache, and failure-path expectations unchanged.
+
+### UPDATED: python/tests/report/test_timing.py
+
+- Add direct tests for all four module-level typed entry points.
+- Assert frozen result fields for recorded, skipped, unavailable, and rendered outcomes.
+- Verify invalid ledgers and arguments retain their library-level failures while CLI wrappers retain current exit and stderr behavior.
+- Verify report stdout, output-file, append-section, empty-ledger, duplicate-mark, vendor status, and round-attempt behavior remains unchanged.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+- Add bounded regression coverage for final-report line-count derivation using available, skipped, and unavailable `PrLineCountResult` values.
+- Verify typed result consumption preserves cached ship PR-state keys, generated line-count KVs, and the empty unavailable fallback.
+
+## Edge cases
+
+- Persisted environment files may be absent, unreadable, incomplete, or contain invalid run IDs and repository paths.
+- Statusline installation may be disabled or blocked by symlinks, malformed JSON, or a non-larch local command.
+- Token ledgers may be absent or malformed. Claude source snapshots may be stale, incomplete, or outside the allowed session directory.
+- PR inputs may be invalid, `gh` may fail, and API rows may be malformed.
+- Final-report line-count derivation must handle available, skipped, and unavailable typed outcomes without mapping access.
+- Timing ledgers may be unavailable or unsafe. Marks may repeat. Vendor timestamps may be reversed. Reports may have no marks.
+
+## Failure modes
+
+- Dict-style consumers can fail after result conversion. Sweep every in-module consumer and the required `final_report.py` call path.
+- Wrapper refactoring can change KV spelling, order, stderr, or exit codes. Pin these contracts in token and timing CLI-wrapper tests.
+- Typed timing wrappers can accidentally convert best-effort telemetry failures into hard failures. Keep policy translation in `*_main`.
+- Result fields can expose partially valid states. Define explicit available, skipped, unavailable, and recorded outcomes.
+
+## Testing strategy
+
+- Run focused tests:
+  - `python3 -m pytest python/tests/report/test_progress_statusline.py`
+  - `python3 -m pytest python/tests/report/test_tokens.py`
+  - `python3 -m pytest python/tests/report/test_report_tokens_cli.py`
+  - `python3 -m pytest python/tests/report/test_timing.py`
+  - `python3 -m pytest python/tests/report/test_final_report.py`
+- Run lint and type checks on the changed Python surfaces.
+- Run `make py-lint`.
+- Run `make py-test`.
+
+## Acceptance
+
+- Run focused tests:
+  - `python3 -m pytest python/tests/report/test_progress_statusline.py`
+  - `python3 -m pytest python/tests/report/test_tokens.py`
+  - `python3 -m pytest python/tests/report/test_report_tokens_cli.py`
+  - `python3 -m pytest python/tests/report/test_timing.py`
+  - `python3 -m pytest python/tests/report/test_final_report.py`
+- Run lint and type checks on the changed Python surfaces.
+- Run `make py-lint`.
+- Run `make py-test`.
+
+review_status: complete
+rounds_completed: 2
+difficulty: MODERATE
+mechanical_churn: false
+diff_lines: 510
