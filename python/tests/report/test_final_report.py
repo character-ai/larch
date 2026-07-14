@@ -50,6 +50,12 @@ def _write_minimal_state(tmp_path: Path) -> None:
     (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
 
 
+def _ok_pr_line_counts(**_kw: object) -> tokens.PrLineCountResult:
+    return tokens.PrLineCountResult(
+        status="ok", code_added=17, code_deleted=3, logs_added=5, logs_deleted=1,
+    )
+
+
 def _stub_cost_and_assessment(monkeypatch: Any) -> None:
     def fake_token_fields(**_kw: object) -> dict[str, object]:
         return {"cost_unavailable": True}
@@ -1644,17 +1650,7 @@ def test_write_final_report_comment_only_preserves_tracked_final_summary(
     )
     marker = "legacy-stale-marker-do-not-touch\n"
     (run_dir / "final-summary.md").write_text(marker, encoding="utf-8")
-    monkeypatch.setattr(
-        final_report.tokens,
-        "compute_pr_line_counts",
-        lambda **_kw: {
-            "LINES_STATUS": "ok",
-            "CODE_ADDED": "17",
-            "CODE_DELETED": "3",
-            "LOGS_ADDED": "5",
-            "LOGS_DELETED": "1",
-        },
-    )
+    monkeypatch.setattr(final_report.tokens, "compute_pr_line_counts", _ok_pr_line_counts)
     _stub_cost_and_assessment(monkeypatch)
 
     rc, url, err = final_report.write_final_report(tmp_path, comment_only=True)
@@ -1696,7 +1692,7 @@ def test_write_final_report_main_upsert_failure_emits_status_failed(
     monkeypatch.setattr(
         final_report.tokens,
         "compute_pr_line_counts",
-        lambda **_kw: {"LINES_STATUS": "unavailable"},
+        lambda **_kw: tokens.PrLineCountResult(status="unavailable", reason="gh-failed"),
     )
 
     def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -1812,17 +1808,7 @@ def test_write_final_report_outcome_matrix(
     if expected == "bailed":
         # Missing token data → Cost: N/A (bash bailed fixture has no token-report).
         (tmp_path / "larch-logs" / "implement" / run_id / "token-report.json").unlink(missing_ok=True)
-    monkeypatch.setattr(
-        final_report.tokens,
-        "compute_pr_line_counts",
-        lambda **_kw: {
-            "LINES_STATUS": "ok",
-            "CODE_ADDED": "17",
-            "CODE_DELETED": "3",
-            "LOGS_ADDED": "5",
-            "LOGS_DELETED": "1",
-        },
-    )
+    monkeypatch.setattr(final_report.tokens, "compute_pr_line_counts", _ok_pr_line_counts)
     monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
 
     rc, url, err = final_report.write_final_report(
@@ -2131,15 +2117,9 @@ def test_write_final_report_line_counts_cache_and_repo_unavailable(
 ) -> None:
     calls: list[object] = []
 
-    def fake_line_counts(**kwargs: object) -> dict[str, str]:
+    def fake_line_counts(**kwargs: object) -> tokens.PrLineCountResult:
         calls.append(kwargs)
-        return {
-            "LINES_STATUS": "ok",
-            "CODE_ADDED": "17",
-            "CODE_DELETED": "3",
-            "LOGS_ADDED": "5",
-            "LOGS_DELETED": "1",
-        }
+        return _ok_pr_line_counts()
 
     monkeypatch.setattr(final_report.tokens, "compute_pr_line_counts", fake_line_counts)
     _stub_cost_and_assessment(monkeypatch)
@@ -2175,13 +2155,13 @@ def test_write_final_report_line_counts_cache_and_repo_unavailable(
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
     assert (rc, err) == (0, "")
     assert "- **Lines (PR diff)**: N/A" in body
-    assert calls == []
+    assert not calls
 
     # Helper failure → N/A
     monkeypatch.setattr(
         final_report.tokens,
         "compute_pr_line_counts",
-        lambda **_kw: {"LINES_STATUS": "unavailable"},
+        lambda **_kw: tokens.PrLineCountResult(status="unavailable", reason="gh-failed"),
     )
     _write_parity_fixture(
         tmp_path,
@@ -2306,17 +2286,7 @@ def test_write_final_report_happy_path_writes_final_summary(
         ),
         finalize="DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n",
     )
-    monkeypatch.setattr(
-        final_report.tokens,
-        "compute_pr_line_counts",
-        lambda **_kw: {
-            "LINES_STATUS": "ok",
-            "CODE_ADDED": "17",
-            "CODE_DELETED": "3",
-            "LOGS_ADDED": "5",
-            "LOGS_DELETED": "1",
-        },
-    )
+    monkeypatch.setattr(final_report.tokens, "compute_pr_line_counts", _ok_pr_line_counts)
     monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_a, **_k: {})
 
     rc, url, err = final_report.write_final_report(tmp_path, skip_tracking_upsert=True)
