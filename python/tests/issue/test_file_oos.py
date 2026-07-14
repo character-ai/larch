@@ -1930,15 +1930,10 @@ def test_disposition_gate_invalid_commit_range_yields_exit_2(
     assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 2
 
 
-def test_disposition_gate_description_prose_focus_area_security_current_classifier(
+def test_disposition_gate_description_prose_focus_area_security_requires_disposition(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Shared is_security_block_text matches bare 'focus-area = security' tokens.
-
-    The former Bash harness expected exit 1 (prose not security-routed). The
-    shared classifier currently treats the token as security, so non_security_oos
-    is 0 and the gate passes. Document actual runtime here.
-    """
+    """Prose-only focus-area mentions are not security-routing metadata."""
     accepted = _disposition_gate_write_oos(
         tmp_path / "false-sec.md",
         "### OOS_1: Doc mention\n"
@@ -1947,8 +1942,8 @@ def test_disposition_gate_description_prose_focus_area_security_current_classifi
     )
     empty = _disposition_gate_write_oos(tmp_path / "empty-urls.md", "")
     _disposition_gate_inline_zero(monkeypatch)
-    assert file_oos.count_non_security((str(accepted),)) == 0
-    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 0
+    assert file_oos.count_non_security((str(accepted),)) == 1
+    assert _disposition_gate_run_main(accepted=accepted, filed=empty) == 1
 
 
 def test_disposition_gate_rejected_oos_markers_in_ndjson_satisfy(
@@ -2225,6 +2220,8 @@ def test_disposition_gate_checkpoint_legacy_finding_disposition_gap_logs_tool_fa
     assert rc == 1
     issues = (disposition_gate_checkpoint_tmpdir / "execution-issues.md").read_text(encoding="utf-8")
     assert "step-8-oos-checkpoint" in issues
+    assert "step-8-oos-checkpoint-validation" not in issues
+    assert "oos-disposition-gate" in issues
     assert "Tool Failures" in issues
     assert (disposition_gate_checkpoint_tmpdir / "oos-disposition-gate.stderr.log").stat().st_size > 0
 

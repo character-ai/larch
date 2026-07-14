@@ -22,7 +22,6 @@ _LEVEL_THREE_HEADING_RE = re.compile(r"^###(?:[ \t]+|$)")
 _FENCE_RE = re.compile(r"^[ \t]{0,3}(`{3,}|~{3,})")
 _INLINE_CODE_RE = re.compile(r"`[^`\n]*`")
 _FENCED_CODE_RE = re.compile(r"(?ms)^[ \t]{0,3}(`{3,}|~{3,}).*?^[ \t]{0,3}\1[ \t]*$")
-_SECURITY_TOKEN_RE = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)
 _SECURITY_HEADER_RE = re.compile(
     r"^###[ \t]+(?:OOS|FINDING)_\d+:\s*(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
     r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
@@ -234,9 +233,6 @@ def parse_findings(
 def is_security_block_text(text: str) -> bool:
     """Return whether a reviewer-item block carries an explicit security tag."""
     text_no_fence = _FENCED_CODE_RE.sub("", text)
-    text_no_backtick = _INLINE_CODE_RE.sub("", text_no_fence)
-    if _SECURITY_TOKEN_RE.search(text_no_backtick):
-        return True
     lines = text_no_fence.splitlines()
     if lines and _SECURITY_HEADER_RE.search(lines[0]):
         return True

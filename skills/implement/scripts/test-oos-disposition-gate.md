@@ -34,7 +34,7 @@ Delegation smoke for `oos-disposition-gate.sh` and `oos-disposition-checkpoint.s
 | legacy trailing-tag FINDING header without disposition fails | `test_disposition_gate_legacy_trailing_tag_finding_without_disposition_fails` |
 | legacy tagged FINDING header with filed URL passes | `test_disposition_gate_legacy_tagged_finding_with_filed_url_passes` |
 | invalid commit-range yields exit 2 | `test_disposition_gate_invalid_commit_range_yields_exit_2` |
-| description prose mentioning focus-area=security still requires disposition | `test_disposition_gate_description_prose_focus_area_security_current_classifier` (documents current shared classifier: token match → non_security=0 / exit 0) |
+| description prose mentioning focus-area=security still requires disposition | `test_disposition_gate_description_prose_focus_area_security_requires_disposition` |
 | rejected OOS markers in ndjson satisfy gate without URLs | `test_disposition_gate_rejected_oos_markers_in_ndjson_satisfy` |
 | filed issue URL only in oos-issues ndjson passes via union | `test_disposition_gate_filed_url_only_in_ndjson_passes_via_union` |
 | two OOS blocks satisfied by two inline-triage lines | `test_disposition_gate_two_oos_satisfied_by_two_inline_triage_lines` |

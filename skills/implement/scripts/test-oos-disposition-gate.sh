@@ -29,19 +29,18 @@ chmod +x "$STUB_BIN/python3"
 assert_delegation() {
   local label="$1" wrapper="$2" cli_path="$3" verb="$4" plugin_root="$5"
   shift 5
-  local out err rc
+  local out_file="$TMP/${label// /_}.stdout" err_file="$TMP/${label// /_}.stderr" rc
   set +e
   if [ -n "$plugin_root" ]; then
-    out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$plugin_root" bash "$wrapper" "$@" 2>"$TMP/err.txt")
+    PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$plugin_root" bash "$wrapper" "$@" >"$out_file" 2>"$err_file"
   else
-    out=$(env -u CLAUDE_PLUGIN_ROOT PATH="$STUB_BIN:$PATH" bash "$wrapper" "$@" 2>"$TMP/err.txt")
+    env -u CLAUDE_PLUGIN_ROOT PATH="$STUB_BIN:$PATH" bash "$wrapper" "$@" >"$out_file" 2>"$err_file"
   fi
   rc=$?
   set -e
-  err=$(cat "$TMP/err.txt")
   [ "$rc" -eq 7 ] || { echo "FAIL: $label exit (want 7 got $rc)" >&2; exit 1; }
-  [ "$out" = "stdout-marker" ] || { echo "FAIL: $label stdout" >&2; exit 1; }
-  [ "$err" = "stderr-marker" ] || { echo "FAIL: $label stderr" >&2; exit 1; }
+  printf 'stdout-marker\n' | cmp -s - "$out_file" || { echo "FAIL: $label stdout" >&2; exit 1; }
+  printf 'stderr-marker\n' | cmp -s - "$err_file" || { echo "FAIL: $label stderr" >&2; exit 1; }
   python3 - "$ARGV_LOG" "$cli_path" "oos" "$verb" "$@" <<'PY'
 import sys
 raw = open(sys.argv[1], "rb").read().split(b"\0")
