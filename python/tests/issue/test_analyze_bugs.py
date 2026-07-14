@@ -1209,6 +1209,16 @@ def _commit_file(repo: Path, relative: str, content: str, message: str, *, when:
     return _git(repo, "rev-parse", "HEAD")
 
 
+def _merge_branch(repo: Path, branch: str, message: str, *, when: int | None = None) -> str:
+    env: dict[str, str] = {}
+    if when is not None:
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(when)) + " +0000"
+        env["GIT_AUTHOR_DATE"] = stamp
+        env["GIT_COMMITTER_DATE"] = stamp
+    _git(repo, "merge", "--no-ff", "-q", "-m", message, branch, env=env or None)
+    return _git(repo, "rev-parse", "HEAD")
+
+
 def _set_origin_main(repo: Path, sha: str | None = None) -> str:
     tip = sha or _git(repo, "rev-parse", "HEAD")
     _git(repo, "update-ref", "refs/remotes/origin/main", tip)
@@ -1346,7 +1356,9 @@ def test_sweep_state_rejects_malformed_schema_and_pending(tmp_path: Path) -> Non
         analyze_bugs.load_sweep_state(path)
 
 
-def test_sweep_enumeration_excludes_flush_release_and_logs_only(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sweep_enumeration_selects_merges_only_and_excludes_flush_release_and_logs_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = _init_sweep_repo(tmp_path)
     monkeypatch.chdir(repo)
     base = _commit_file(repo, "python/larch/issue/a.py", "A = 1\n", "seed", when=1_700_000_000)
@@ -1355,8 +1367,17 @@ def test_sweep_enumeration_excludes_flush_release_and_logs_only(tmp_path: Path, 
     flush = _commit_file(repo, "larch-logs/run/x.md", "log\n", "chore(larch-logs): flush", when=1_700_000_100)
     release = _commit_file(repo, "VERSION", "1.0.0\n", "Release v1.0.0", when=1_700_000_200)
     logs_only = _commit_file(repo, "larch-logs/other.md", "more\n", "docs: logs only", when=1_700_000_300)
-    real_one = _commit_file(repo, "python/larch/issue/a.py", "A = 2\n", "fix: real one", when=1_700_000_400)
-    real_two = _commit_file(repo, "python/larch/core/b.py", "B = 1\n", "fix: real two", when=1_700_000_500)
+    direct = _commit_file(repo, "python/larch/issue/a.py", "A = 2\n", "fix: direct main commit", when=1_700_000_400)
+    _git(repo, "checkout", "-q", "-b", "real-one")
+    _commit_file(repo, "python/larch/issue/a.py", "A = 3\n", "fix: real one", when=1_700_000_500)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "--no-ff", "-q", "-m", "Merge real one", "real-one")
+    real_one = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "real-two")
+    _commit_file(repo, "python/larch/core/b.py", "B = 1\n", "fix: real two", when=1_700_000_600)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "--no-ff", "-q", "-m", "Merge real two", "real-two")
+    real_two = _git(repo, "rev-parse", "HEAD")
     tip = _set_origin_main(repo)
 
     run_dir = tmp_path / "run"
@@ -1386,6 +1407,7 @@ def test_sweep_enumeration_excludes_flush_release_and_logs_only(tmp_path: Path, 
     assert flush not in selected
     assert release not in selected
     assert logs_only not in selected
+    assert direct not in selected
     assert result.skipped_count == 0
 
 
@@ -1393,7 +1415,10 @@ def test_sweep_enumeration_first_run_window_and_empty(tmp_path: Path, monkeypatc
     repo = _init_sweep_repo(tmp_path)
     monkeypatch.chdir(repo)
     old = _commit_file(repo, "python/old.py", "X = 1\n", "old commit", when=1_000_000_000)
-    recent = _commit_file(repo, "python/new.py", "Y = 1\n", "recent commit", when=1_800_000_000)
+    _git(repo, "checkout", "-q", "-b", "recent")
+    _commit_file(repo, "python/new.py", "Y = 1\n", "recent commit", when=1_800_000_000)
+    _git(repo, "checkout", "-q", "main")
+    recent = _merge_branch(repo, "recent", "Merge recent", when=1_800_000_000)
     tip = _set_origin_main(repo)
     run_dir = tmp_path / "run"
     ledger = tmp_path / "ledger.jsonl"
@@ -1531,10 +1556,19 @@ def test_sweep_chronic_priority_cap_and_pending_frontier(tmp_path: Path, monkeyp
     base = _commit_file(repo, "README.md", "root\n", "seed", when=now - 1_000)
     # Non-chronic but large diff.
     big = "Z = '" + ("x" * 4000) + "'\n"
-    non_chronic = _commit_file(repo, "docs/guide.md", big, "docs: large non-chronic", when=now - 300)
+    _git(repo, "checkout", "-q", "-b", "non-chronic")
+    _commit_file(repo, "docs/guide.md", big, "docs: large non-chronic", when=now - 300)
+    _git(repo, "checkout", "-q", "main")
+    non_chronic = _merge_branch(repo, "non-chronic", "Merge non-chronic", when=now - 300)
     # Chronic zone, smaller diff.
-    chronic = _commit_file(repo, "python/larch/issue/shared.py", "SHARED = 1\n", "fix: chronic small", when=now - 200)
-    later = _commit_file(repo, "scripts/tool.sh", "echo hi\n", "scripts: later", when=now - 100)
+    _git(repo, "checkout", "-q", "-b", "chronic")
+    _commit_file(repo, "python/larch/issue/shared.py", "SHARED = 1\n", "fix: chronic small", when=now - 200)
+    _git(repo, "checkout", "-q", "main")
+    chronic = _merge_branch(repo, "chronic", "Merge chronic", when=now - 200)
+    _git(repo, "checkout", "-q", "-b", "later")
+    _commit_file(repo, "scripts/tool.sh", "echo hi\n", "scripts: later", when=now - 100)
+    _git(repo, "checkout", "-q", "main")
+    later = _merge_branch(repo, "later", "Merge later", when=now - 100)
     tip = _set_origin_main(repo)
 
     ledger = tmp_path / "ledger.jsonl"

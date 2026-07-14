@@ -2514,13 +2514,13 @@ def _enumerate_window_rows(runner: Runner, *, tip: str, state: SweepState | None
         since = max(0, now - SWEEP_INITIAL_WINDOW_SECONDS)
         out = _git_required(
             runner,
-            ["git", "log", "--first-parent", f"--since={since}", "--format=%H%x00%s%x00%ct", tip],
+            ["git", "log", "--first-parent", "--merges", f"--since={since}", "--format=%H%x00%s%x00%ct", tip],
             desc="first-run sweep enumeration",
         )
     else:
         out = _git_required(
             runner,
-            ["git", "log", "--first-parent", "--format=%H%x00%s%x00%ct", tip, "--not", state.last_sweep_sha],
+            ["git", "log", "--first-parent", "--merges", "--format=%H%x00%s%x00%ct", tip, "--not", state.last_sweep_sha],
             desc="watermark sweep enumeration",
         )
     rows: list[tuple[str, str, int]] = []
