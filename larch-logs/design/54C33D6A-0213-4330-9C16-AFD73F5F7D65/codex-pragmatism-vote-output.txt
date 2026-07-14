@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The scoped plan replaces the last production raw issue-view caller; sibling production callers are not left by it.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Extending lint into skills is explicitly a non-goal and is not necessary for this feature.
