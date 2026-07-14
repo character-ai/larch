@@ -5,6 +5,7 @@ from __future__ import annotations
 import ast
 import contextlib
 import io
+import json
 import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -126,11 +127,12 @@ def _invoke(
     root: Path,
     runner: RecordingRunner,
     paths: Sequence[str] | None = None,
+    **kwargs: object,
 ) -> tuple[int, str, str]:
     stdout = io.StringIO()
     stderr = io.StringIO()
     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        code = run_rule(rule, root, runner, paths=paths)
+        code = run_rule(rule, root, runner, paths=paths, **kwargs)  # type: ignore[arg-type]
     return code, stdout.getvalue(), stderr.getvalue()
 
 
@@ -190,7 +192,10 @@ def test_rev_parse_nonzero_empty_multiline_and_mismatch(tmp_path: Path) -> None:
         ),
         ([_ok(("git", "rev-parse", "--show-toplevel"), "")], "malformed"),
         ([_ok(("git", "rev-parse", "--show-toplevel"), "/a\n/b\n")], "malformed"),
-        ([_ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path}\0\n")], "malformed"),
+        (
+            [_ok(("git", "rev-parse", "--show-toplevel"), f"{tmp_path}\0\n")],
+            "malformed",
+        ),
         (
             [
                 _ok(
@@ -212,7 +217,9 @@ def test_rev_parse_nonzero_empty_multiline_and_mismatch(tmp_path: Path) -> None:
         ]
 
 
-def test_rev_parse_preserves_significant_trailing_root_whitespace(tmp_path: Path) -> None:
+def test_rev_parse_preserves_significant_trailing_root_whitespace(
+    tmp_path: Path,
+) -> None:
     root = tmp_path / "repo "
     root.mkdir()
     runner = _git_ok_runner(root, [])
@@ -1057,3 +1064,302 @@ def test_final_line_without_newline_still_suppresses(tmp_path: Path) -> None:
     assert code == EXIT_CLEAN
     assert out == ""
     assert err == ""
+
+
+def _baseline_row(
+    path: str,
+    *,
+    line: int = 1,
+    message: str = "hit",
+    reason: str = "accepted",
+) -> dict[str, object]:
+    return {
+        "path": path,
+        "line": line,
+        "rule_id": "demo-rule",
+        "message": message,
+        "reason": reason,
+    }
+
+
+def _write_baseline(path: Path, rows: list[dict[str, object]]) -> None:
+    _ = path.write_text(json.dumps(rows), encoding="utf-8")
+
+
+def test_generic_baseline_match_new_stale_and_strict_stale(tmp_path: Path) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(
+        baseline,
+        [_baseline_row("a.py"), _baseline_row("removed.py", message="old")],
+    )
+    runner = _git_ok_runner(tmp_path, ["a.py"])
+
+    code, out, err = _invoke(_rule(), tmp_path, runner, baseline_path="baseline.json")
+
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == "warning: stale baseline row: removed.py:1: demo-rule old\n"
+
+    strict_runner = _git_ok_runner(tmp_path, ["a.py"])
+    strict_code, strict_out, strict_err = _invoke(
+        _rule(),
+        tmp_path,
+        strict_runner,
+        baseline_path="baseline.json",
+        strict_stale=True,
+    )
+    assert strict_code == EXIT_ERROR
+    assert strict_out == ""
+    assert strict_err == (
+        "warning: stale baseline row: removed.py:1: demo-rule old\n"
+        "strict_stale rejected stale baseline rows\n"
+    )
+
+
+def test_baseline_new_finding_and_reason_do_not_change_generic_identity(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [_baseline_row("a.py", reason="different reason")])
+
+    code, out, err = _invoke(
+        _rule(), tmp_path, _git_ok_runner(tmp_path, ["a.py"]), baseline_path=baseline
+    )
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+
+    _write_baseline(baseline, [_baseline_row("a.py", message="old")])
+    changed_code, changed_out, changed_err = _invoke(
+        _rule(), tmp_path, _git_ok_runner(tmp_path, ["a.py"]), baseline_path=baseline
+    )
+    assert changed_code == EXIT_FINDINGS
+    assert changed_out == "a.py:1: demo-rule hit\n"
+    assert changed_err == "warning: stale baseline row: a.py:1: demo-rule old\n"
+
+
+def test_symbol_metric_baselines_compare_symbols_without_generic_dedupe(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(
+        baseline,
+        [
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": "one",
+                "metric": 1,
+                "reason": "known",
+            },
+            {
+                "path": "a.py",
+                "rule_id": "demo-rule",
+                "qualified_symbol": "two",
+                "metric": 3,
+                "reason": "known",
+            },
+        ],
+    )
+
+    def detect(source: SourceFile) -> list[Finding]:
+        return [
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="same",
+                qualified_symbol="one",
+                metric=2,
+            ),
+            Finding(
+                path=source.path,
+                line=1,
+                rule_id="demo-rule",
+                message="same",
+                qualified_symbol="two",
+                metric=4,
+            ),
+        ]
+
+    code, out, err = _invoke(
+        _rule(detect=detect),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+    )
+    assert code == EXIT_FINDINGS
+    assert out == "a.py:1: demo-rule same\na.py:1: demo-rule same\n"
+    assert err == ""
+
+
+def test_baseline_active_duplicate_identity_fails_but_scan_only_dedupes(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [])
+
+    def duplicate(source: SourceFile) -> list[Finding]:
+        finding = Finding(path=source.path, line=1, rule_id="demo-rule", message="hit")
+        return [finding, finding]
+
+    plain_code, plain_out, plain_err = _invoke(
+        _rule(detect=duplicate), tmp_path, _git_ok_runner(tmp_path, ["a.py"])
+    )
+    assert plain_code == EXIT_FINDINGS
+    assert plain_out == "a.py:1: demo-rule hit\n"
+    assert plain_err == ""
+
+    baseline_code, baseline_out, baseline_err = _invoke(
+        _rule(detect=duplicate),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py"]),
+        baseline_path=baseline,
+    )
+    assert baseline_code == EXIT_ERROR
+    assert baseline_out == ""
+    assert "duplicate live" in baseline_err
+
+
+def test_filtered_baseline_check_ignores_out_of_scope_stale_rows(
+    tmp_path: Path,
+) -> None:
+    _write_files(
+        tmp_path,
+        {"pkg/a.py": "x = 1\n", "other/b.py": "x = 1\n"},
+    )
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(
+        baseline,
+        [_baseline_row("pkg/a.py"), _baseline_row("other/removed.py")],
+    )
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["pkg/a.py", "other/b.py"]),
+        paths=["pkg"],
+        baseline_path=baseline,
+        strict_stale=True,
+    )
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+
+
+def test_write_baseline_preserves_reasons_and_refuses_unexplained_findings(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n", "b.py": "x = 1\n"})
+    baseline = tmp_path / "baseline.json"
+    _write_baseline(baseline, [_baseline_row("a.py", reason="keep this")])
+
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py", "b.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+        initial_reason="new finding",
+    )
+    assert code == EXIT_CLEAN
+    assert out == err == ""
+    assert json.loads(baseline.read_text(encoding="utf-8")) == [
+        _baseline_row("a.py", reason="keep this"),
+        _baseline_row("b.py", reason="new finding"),
+    ]
+
+    before = baseline.read_text(encoding="utf-8")
+    no_reason_code, no_reason_out, no_reason_err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py", "b.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+    )
+    assert no_reason_code == EXIT_CLEAN
+    assert no_reason_out == no_reason_err == ""
+    assert baseline.read_text(encoding="utf-8") == before
+
+    _write_baseline(baseline, [_baseline_row("a.py", reason="keep this")])
+    missing_code, missing_out, missing_err = _invoke(
+        _rule(),
+        tmp_path,
+        _git_ok_runner(tmp_path, ["a.py", "b.py"]),
+        baseline_path=baseline,
+        write_baseline=True,
+    )
+    assert missing_code == EXIT_ERROR
+    assert missing_out == ""
+    assert "no baseline reason" in missing_err
+    assert json.loads(baseline.read_text(encoding="utf-8")) == [
+        _baseline_row("a.py", reason="keep this")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "needle"),
+    [
+        ({"write_baseline": True}, "requires baseline_path"),
+        ({"strict_stale": True}, "requires baseline check mode"),
+        ({"initial_reason": "why"}, "only valid"),
+        (
+            {
+                "baseline_path": "baseline.json",
+                "write_baseline": True,
+                "paths": ["a.py"],
+            },
+            "does not support filtered",
+        ),
+    ],
+)
+def test_baseline_flag_combinations_fail_before_scan(
+    tmp_path: Path, kwargs: dict[str, object], needle: str
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n", "baseline.json": "[]"})
+    supplied_paths = kwargs.pop("paths", None)
+    code, out, err = _invoke(
+        _rule(),
+        tmp_path,
+        RecordingRunner(responses=[]),
+        paths=supplied_paths,  # type: ignore[arg-type]
+        **kwargs,  # type: ignore[arg-type]
+    )
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert needle in err
+
+
+def test_baseline_path_rejects_escape_symlink_parent_and_directory_target(
+    tmp_path: Path,
+) -> None:
+    _write_files(tmp_path, {"a.py": "x = 1\n"})
+    outside = tmp_path.parent / "outside-baselines"
+    outside.mkdir(exist_ok=True)
+    (tmp_path / "linked").symlink_to(outside, target_is_directory=True)
+    (tmp_path / "directory.json").mkdir()
+
+    cases = [
+        ("../outside.json", "must not contain"),
+        ("linked/baseline.json", "symlinked"),
+        ("directory.json", "not a regular file"),
+    ]
+    for baseline_path, needle in cases:
+        code, out, err = _invoke(
+            _rule(),
+            tmp_path,
+            RecordingRunner(
+                responses=[
+                    _ok(
+                        ("git", "rev-parse", "--show-toplevel"),
+                        f"{tmp_path.resolve()}\n",
+                    )
+                ]
+            ),
+            baseline_path=baseline_path,
+        )
+        assert code == EXIT_ERROR
+        assert out == ""
+        assert needle in err
