@@ -65,12 +65,17 @@ codex/apply              │                                     █████
 **Reviewer slot failures**: 0
 
 ## Exec Issues and Warnings
-Exec Issues (0):
+Exec Issues (1):
+  1. ship route: merge and CI watch skipped — needs user (reason: architectural-assessments; pending NEXT_ACTION=assessments)
 Warnings (4):
   1. The engine.py and test_lint_engine.py changes are broadly consistent with the guidelines: frozen dataclasses (G-Py-1), larch.io helpers for reads and writes (G-IO-1), symlink and path-traversal rej...
   2. ## Deviation: G-Fix-2
   3. Two changes in `dispatch_commit_route.py` redirect breadcrumb prints from stdout to stderr in `_step4_noop` and `_checks_commit_route_main_impl`. G-Fix-2 requires that fixes to orchestration machin...
   4. Exception: Adding a reproduction test would require new test coverage for dispatch_commit_route.py, which is outside the plan scope for this issue (plan covers only lint/engine.py and tests/lint/te...
+
+## Architectural invariants
+
+The changed code contains no architectural invariant violations.
 
 ## Architectural guidelines
 
@@ -84,9 +89,9 @@ Exception: Adding a reproduction test would require new test coverage for dispat
 
 ## /implement run 296497D0-64E3-4F7F-8D1A-7D411D69B69B: shipping
 
-- **Outcome**: shipping
+- **Outcome**: ⚠️ NEEDS USER — merge and CI watch skipped (reason: architectural-assessments; pending: assessments)
 - **Duration**: 01:26:24
-- **Cost**: 💰 TOTAL ~$28.03: Claude $16.21, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.37  |  Tokens: 49580k
+- **Cost**: 💰 TOTAL ~$29.10: Claude $17.28, Codex-5.6 $9.21, Codex-mini $0.05, Cursor $2.19 (Composer $2.19, Grok $0.00), Claude (subprocess) $0.37  |  Tokens: 52079k
 - **Issue**: #7020: https://github.com/character-ai/larch/issues/7020
 - **Plan review**: N/A
 - **Plan coverage**: 2/2 firm headings; band: advisory; disposition: none; todos_left: 0
@@ -95,7 +100,7 @@ Exception: Adding a reproduction test would require new test coverage for dispat
 - **Code review**: 11/14 accepted
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 0
+- **Exec issues**: 1
 - **Warnings**: 4
 - **Run logs**: `larch-logs/implement/296497D0-64E3-4F7F-8D1A-7D411D69B69B/`
 - **Main agent model**: claude-sonnet-4-6
