@@ -831,7 +831,7 @@ def launch_codex_drafter(
             return 1
         prompt_text = prompt.read_text(encoding="utf-8", errors="replace")
         launcher_exit = 1
-        with tempfile.TemporaryDirectory(prefix="larch-codex-drafter-home-") as home:
+        with tempfile.TemporaryDirectory(prefix="larch-codex-drafter-home-", dir=tempfile.gettempdir()) as home:
             prep_rc, prep_msg = _prepare_codex_home(Path(home), trusted_instructions_file=str(trusted))
             if prep_rc != 0:
                 reason = prep_msg or f"codex auth setup failed (exit {prep_rc})"

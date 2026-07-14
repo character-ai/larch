@@ -976,7 +976,7 @@ def test_negotiation_codex_quota_not_mirrored_on_success(
     monkeypatch.setattr(_drafter, "_mirror_codex_quota_from_events", lambda **_kw: mirror_calls.append(1))
     rc = agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path)
     assert rc == 0
-    assert mirror_calls == []
+    assert not mirror_calls
 
 
 def test_negotiation_codex_quota_mirrored_on_nonzero(
@@ -1121,7 +1121,7 @@ def test_codex_drafter_not_via_inprocess(
         repo_root=str(repo),
     )
     assert rc == 0
-    assert inprocess_calls == []
+    assert not inprocess_calls
 
 
 def test_claude_drafter_malformed_envelope_is_parse_failure(

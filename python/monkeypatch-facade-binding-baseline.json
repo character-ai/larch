@@ -19,33 +19,6 @@
   },
   {
     "file": "tests/agents/test_agents.py",
-    "qualified_symbol": "test_assessment_codex_grants_only_evidence_dir",
-    "facade_module": "larch.agents._review_launcher",
-    "attribute": "_prepare_codex_home",
-    "defining_module": "larch.agents._run_external",
-    "occurrence": 1,
-    "reason": "Assessment command test patches review launcher bindings to isolate external dependencies."
-  },
-  {
-    "file": "tests/agents/test_agents.py",
-    "qualified_symbol": "test_assessment_codex_grants_only_evidence_dir",
-    "facade_module": "larch.agents._review_launcher",
-    "attribute": "_promote_inner_done",
-    "defining_module": "larch.agents._run_external",
-    "occurrence": 7,
-    "reason": "Assessment command test patches review launcher bindings to isolate external dependencies."
-  },
-  {
-    "file": "tests/agents/test_agents.py",
-    "qualified_symbol": "test_assessment_codex_grants_only_evidence_dir",
-    "facade_module": "larch.agents._review_launcher",
-    "attribute": "_record_usage_from_events",
-    "defining_module": "larch.agents._run_external",
-    "occurrence": 5,
-    "reason": "Assessment command test patches review launcher bindings to isolate external dependencies."
-  },
-  {
-    "file": "tests/agents/test_agents.py",
     "qualified_symbol": "test_check_reviewers_codex_auth_setup_failure",
     "facade_module": "larch.agents._auth",
     "attribute": "_prepare_codex_home",
@@ -322,6 +295,60 @@
     "defining_module": "larch.agents._launch_failure",
     "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_codex_drafter_failure_uses_sidecar_for_stderr_tail",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_codex_drafter_failure_uses_sidecar_for_stderr_tail",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 2,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 2,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_codex_drafter_uses_exact_exec_args_and_cleans_success",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_agents.py",
+    "qualified_symbol": "test_launch_codex_drafter_uses_exact_exec_args_and_cleans_success",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 2,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
   },
   {
     "file": "tests/agents/test_agents.py",
@@ -1006,6 +1033,114 @@
     "defining_module": "larch.implement.checks_run_relevant",
     "occurrence": 2,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_claude_drafter_malformed_envelope_is_parse_failure",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "shutil",
+    "defining_module": "shutil",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_codex_drafter_not_via_inprocess",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 2,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_codex_drafter_not_via_inprocess",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 3,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_codex_exec_events_fallback_before_quota",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_mirror_codex_quota_from_events",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 3,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_codex_exec_events_fallback_before_quota",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_prepare_codex_home",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_codex_exec_events_fallback_before_quota",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_run_external_agent_with_auth_retries",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 2,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_negotiation_codex_invalid_model_no_response_file",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "resolve_model_args",
+    "defining_module": "larch.agents._launch_failure",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_negotiation_codex_quota_mirrored_on_nonzero",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_mirror_codex_quota_from_events",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_negotiation_codex_quota_not_mirrored_on_success",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "_mirror_codex_quota_from_events",
+    "defining_module": "larch.agents._run_external",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_negotiation_cursor_invalid_model_precedes_auth_refusal",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "cursor_auth_preflight",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 2,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_negotiation_cursor_invalid_model_precedes_auth_refusal",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "resolve_model_args",
+    "defining_module": "larch.agents._launch_failure",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
+  },
+  {
+    "file": "tests/agents/test_external_dispatch.py",
+    "qualified_symbol": "test_negotiation_cursor_no_config_context_isolation",
+    "facade_module": "larch.agents._drafter",
+    "attribute": "cursor_auth_preflight",
+    "defining_module": "larch.agents._auth",
+    "occurrence": 1,
+    "reason": "post-vendor-descriptor-migration drafter tests patch bindings imported into larch.agents._drafter (bare-name call sites); defining-module patches would not intercept"
   },
   {
     "file": "tests/agents/test_external_dispatch.py",
@@ -4717,15 +4852,6 @@
   },
   {
     "file": "tests/implement/test_implement_dispatch.py",
-    "qualified_symbol": "test_ship_route_exit_adds_validated_unavailable_detail",
-    "facade_module": "larch.implement.dispatch_ship",
-    "attribute": "validate_materialization",
-    "defining_module": "larch.implement.architectural_assessment",
-    "occurrence": 1,
-    "reason": "test targets the consumer module imported binding, which is the runtime lookup site"
-  },
-  {
-    "file": "tests/implement/test_implement_dispatch.py",
     "qualified_symbol": "test_ship_route_exit_fourth_transient_seeds_stall",
     "facade_module": "larch.implement.dispatch_ship",
     "attribute": "_run_cli_capture",
@@ -6490,15 +6616,6 @@
   },
   {
     "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_guidelines_gate_does_not_stall_on_unavailable_outcome",
-    "facade_module": "larch.implement.ship",
-    "attribute": "load_or_prepare_guidelines_note",
-    "defining_module": "larch.implement.ship_guidelines",
-    "occurrence": 1,
-    "reason": "ship.py binds these note loaders via `from larch.implement.ship_guidelines import ...` and calls them as module globals in the PR gate, so the test must patch the consuming-module facade to feed a controlled note-state outcome (#7022)"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
     "qualified_symbol": "test_guidelines_pin_warning_flushes_before_pr_body",
     "facade_module": "larch.implement.ship",
     "attribute": "load_or_prepare_guidelines_note",
@@ -6667,15 +6784,6 @@
     "defining_module": "larch.report.run_log_flush",
     "occurrence": 12,
     "reason": "grandfathered monkeypatch facade binding pre-ratchet"
-  },
-  {
-    "file": "tests/implement/test_ship.py",
-    "qualified_symbol": "test_invariants_gate_does_not_stall_on_unavailable_outcome",
-    "facade_module": "larch.implement.ship",
-    "attribute": "load_or_prepare_invariants_note",
-    "defining_module": "larch.implement.ship_guidelines",
-    "occurrence": 2,
-    "reason": "ship.py binds these note loaders via `from larch.implement.ship_guidelines import ...` and calls them as module globals in the PR gate, so the test must patch the consuming-module facade to feed a controlled note-state outcome (#7022)"
   },
   {
     "file": "tests/implement/test_ship.py",

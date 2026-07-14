@@ -301,7 +301,7 @@ def test_ingest_launcher_token_sidecar_none_effective_tmpdir_first_call(tmp_path
         implement_tmpdir=None,
         seen=seen,
     )
-    assert [call for call in runner.calls if call[2:4] == ("token", "append-record")] == []
+    assert not [call for call in runner.calls if call[2:4] == ("token", "append-record")]
     assert seen == set()
 
     # Second call: tmpdir now available; append-record must run (not silently missed).
