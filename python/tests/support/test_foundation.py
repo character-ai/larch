@@ -26,6 +26,79 @@ from test_support import (
     write_session_env,
 )
 from tests.support import repo_contract, session
+from tests.support.review_wire import (
+    ballot_snippet,
+    make_finding_block,
+    make_rejected_block,
+    panel_manifest_ndjson,
+    panel_manifest_row,
+    plan_review_slot_line,
+    slot_manifest_ndjson,
+    vote_lines,
+)
+
+
+def test_review_wire_builders_preserve_canonical_fixture_shapes(tmp_path: Path) -> None:
+    finding = make_finding_block(
+        "FINDING_1",
+        "Concern",
+        reviewer=["codex-a", "cursor-b"],
+        concern="The concern.",
+        suggested_revision="Fix it.",
+    )
+
+    assert ballot_snippet(finding, make_finding_block("OOS_1", "Future", reviewer="cursor-c")) == (
+        "### FINDING_1: Concern\n"
+        "- **Reviewer(s)**: codex-a, cursor-b\n"
+        "- **Concern**: The concern.\n"
+        "- **Suggested revision**: Fix it.\n\n"
+        "### OOS_1: Future\n"
+        "- **Reviewer**: cursor-c\n"
+    )
+    assert make_rejected_block("FINDING_2", "Title", location="a.py:2", concern="Fix it.") == (
+        "### [Plan Review] FINDING_2\n\n"
+        "### FINDING_2: Title\n"
+        "- **Location**: a.py:2\n"
+        "- **Concern**: Fix it.\n"
+        "- **Severity**: major\n\n"
+    )
+    assert vote_lines({"FINDING_1": "YES", "OOS_1": "NO"}) == "FINDING_1: YES\nOOS_1: NO\n"
+
+    output = tmp_path / "output with spaces.txt"
+    row = plan_review_slot_line(
+        "codex-arch",
+        "codex",
+        output,
+        prompt_file=tmp_path / "prompt.txt",
+        vendor="codex",
+        resolved_model="model",
+    )
+    expected = (
+        '{"slot":"codex-arch","tool":"codex","output":"'
+        + str(output)
+        + '","prompt_file":"'
+        + str(tmp_path / "prompt.txt")
+        + '","vendor":"codex","resolved_model":"model"}\n'
+    )
+    assert slot_manifest_ndjson([row]) == expected
+    assert panel_manifest_ndjson([panel_manifest_row("codex-arch", "codex", output)]) == (
+        '{"slot":"codex-arch","tool":"codex","output":"' + str(output) + '"}\n'
+    )
+    unusual_row = plan_review_slot_line(
+        "codex-β",
+        "codex",
+        tmp_path / 'output "quoted"\\path.txt',
+        vendor='vendor "β"\\path',
+    )
+    unusual_manifest = slot_manifest_ndjson([unusual_row])
+    assert "\\u03b2" not in unusual_manifest
+    assert json.loads(unusual_manifest) == {
+        "slot": "codex-β",
+        "tool": "codex",
+        "output": str(tmp_path / 'output "quoted"\\path.txt'),
+        "vendor": 'vendor "β"\\path',
+    }
+    assert slot_manifest_ndjson([]) == ""
 
 
 def test_ok_normalizes_arguments_and_preserves_stdout() -> None:

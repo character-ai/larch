@@ -16,6 +16,7 @@ import pytest  # noqa: TC002
 from larch.review import plan_review
 from larch.report import progress_report
 from larch.report import review_phase_detail
+from tests.support.review_wire import panel_manifest_ndjson, panel_manifest_row
 
 
 def test_invoke_renderer_returns_empty_on_wrapper_empty(
@@ -337,10 +338,7 @@ def test_render_implement_review_detail_omits_rejected_oos_audit(
 def _write_slot_manifest(manifest: Path, outputs: list[Path]) -> None:
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(
-        "".join(
-            f'{{"slot":"slot-{idx}","tool":"codex","output":"{output}"}}\n'
-            for idx, output in enumerate(outputs, start=1)
-        ),
+        panel_manifest_ndjson([panel_manifest_row(f"slot-{idx}", "codex", output) for idx, output in enumerate(outputs, start=1)]),
         encoding="utf-8",
     )
 

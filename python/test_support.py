@@ -15,6 +15,7 @@ from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 
 from tests.support.repo_contract import ROOT, repo_root
+from tests.support.review_wire import plan_review_slot_line, slot_manifest_ndjson
 
 CLI = ROOT / "python" / "cli.py"
 
@@ -201,11 +202,16 @@ def make_zero_findings_plan_review_fake_cli(
         if argv[:2] == ["plan-review", "panel-dispatch"]:
             paths_file = design / "plan-review-panel-paths.txt"
             _ = (design / "plan-review-slots.ndjson").write_text(
-                '{"slot":"cursor-plan-arch","tool":"cursor","output":"'
-                + str(reviewer_file)
-                + '","prompt_file":"'
-                + str(design / "cursor-plan-arch.prompt")
-                + '"}\n',
+                slot_manifest_ndjson(
+                    [
+                        plan_review_slot_line(
+                            "cursor-plan-arch",
+                            "cursor",
+                            reviewer_file,
+                            prompt_file=design / "cursor-plan-arch.prompt",
+                        )
+                    ]
+                ),
                 encoding="utf-8",
             )
             _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")

@@ -15,6 +15,7 @@ from larch.review import review_tally
 from larch.review import review_core_body
 import review_test_support as rts
 from larch.review import voting
+from tests.support.review_wire import ballot_snippet, make_finding_block
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -35,16 +36,22 @@ _CODE_REVIEW_CLASSIFICATION_HEADER = (
 
 def _write_classification_ballot(path: Path) -> None:
     _ = path.write_text(
-        """### FINDING_1: In-scope concern
-- **Reviewer(s)**: cursor-a-output.txt, codex-b-output.txt
-- **Concern**: Real issue.
-- **Suggested revision**: Fix it.
-
-### OOS_1: Future concern
-- **Reviewer**: cursor-oos-output.txt
-- **Concern**: Future issue.
-- **Suggested revision**: File it.
-""",
+        ballot_snippet(
+            make_finding_block(
+                "FINDING_1",
+                "In-scope concern",
+                reviewer=["cursor-a-output.txt", "codex-b-output.txt"],
+                concern="Real issue.",
+                suggested_revision="Fix it.",
+            ),
+            make_finding_block(
+                "OOS_1",
+                "Future concern",
+                reviewer="cursor-oos-output.txt",
+                concern="Future issue.",
+                suggested_revision="File it.",
+            ),
+        ),
         encoding="utf-8",
     )
 
@@ -95,21 +102,11 @@ def _prepare_neutralized_ballot(tmp_path: Path, attributed_text: str) -> tuple[P
 
 def _mk_ballot(path: Path) -> None:
     _ = path.write_text(
-        """### FINDING_1: First in-scope finding
-- **Reviewer**: Codex-Structure
-- **Concern**: Concern 1.
-- **Suggested revision**: Revision 1.
-
-### FINDING_2: Second in-scope finding
-- **Reviewer**: Cursor-Security
-- **Concern**: Concern 2.
-- **Suggested revision**: Revision 2.
-
-### FINDING_3: [OUT_OF_SCOPE] OOS observation
-- **Reviewer**: Codex-Plan-fidelity
-- **Concern**: Pre-existing thing.
-- **Suggested revision**: Revision 3.
-""",
+        ballot_snippet(
+            make_finding_block("FINDING_1", "First in-scope finding", reviewer="Codex-Structure", concern="Concern 1.", suggested_revision="Revision 1."),
+            make_finding_block("FINDING_2", "Second in-scope finding", reviewer="Cursor-Security", concern="Concern 2.", suggested_revision="Revision 2."),
+            make_finding_block("FINDING_3", "[OUT_OF_SCOPE] OOS observation", reviewer="Codex-Plan-fidelity", concern="Pre-existing thing.", suggested_revision="Revision 3."),
+        ),
         encoding="utf-8",
     )
 
