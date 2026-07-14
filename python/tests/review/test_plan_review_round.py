@@ -1232,8 +1232,8 @@ def test_execute_round_degraded_empty_collector_records_prune_ledger(tmp_path: P
     assert rc == 0
     assert values["LOOP_STATUS"] == "degraded-empty-collector"
     ledger_lines = (tmp_path / "reviewer-prune-ledger.tsv").read_text(encoding="utf-8").splitlines()
-    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
-    assert ledger_lines[1] == "2\tcursor\tcursor-plan-arch\tCursor-Arch\t0\t0\t0\t0"
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\tobserved"
+    assert ledger_lines[1] == "2\tcursor\tcursor-plan-arch\tCursor-Arch\t0\t0\t0\t0\tfalse"
 
 
 def test_execute_round_writes_reviewer_status_tsv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

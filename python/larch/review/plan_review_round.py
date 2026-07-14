@@ -150,7 +150,8 @@ def _record_plan_review_prune_round(*, design: Path, round_num: int, manifest: P
             round_num=round_num,
             manifest=manifest,
             classification=classification,
-            label_map=label_map
+            label_map=label_map,
+            reviewer_status=design / "plan-review" / f"round-{round_num}" / "reviewer-status.tsv",
         )
     except Exception as exc:  # fail open by contract
         _emit(key="WARN", value=f"plan-review reviewer-prune record failed for round {round_num}: {exc}")

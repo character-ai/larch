@@ -2083,8 +2083,8 @@ def test_reviewer_prune_record_and_filter_round_two(tmp_path: Path) -> None:
         )
         assert result.returncode == 0, result.stderr
     ledger_lines = ledger.read_text(encoding="utf-8").splitlines()
-    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
-    assert ledger_lines[1].endswith("\t0\t0\t0\t0")
+    assert ledger_lines[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count\tobserved"
+    assert ledger_lines[1].endswith("\t0\t0\t0\t0\ttrue")
     out = tmp_path / "filtered.ndjson"
     result = run_review(
         "reviewer-prune",
@@ -2457,6 +2457,58 @@ def test_reviewer_prune_filter_floor_uses_unweighted_accepted_with_high_severity
     assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t4")
     assert "PRUNED_COUNT=1" in result.stdout
     assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+
+
+def test_reviewer_prune_filter_keeps_two_accepted_findings_despite_low_rate(tmp_path: Path) -> None:
+    manifest, ledger = _record_prune_rounds(
+        tmp_path,
+        [["accepted", "accepted", "neutral", "neutral", "neutral"]],
+    )
+
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+
+
+def test_reviewer_prune_filter_keeps_skipped_plan_reviewer_without_observation(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    manifest.write_text(
+        '{"slot":"cursor-plan-arch","tool":"cursor","output":"/tmp/cursor-arch-output.txt"}\n',
+        encoding="utf-8",
+    )
+    label_map = tmp_path / "label-map.tsv"
+    label_map.write_text("cursor-plan-arch\tCursor-Arch\n", encoding="utf-8")
+    reviewer_status = tmp_path / "reviewer-status.tsv"
+    reviewer_status.write_text("slot\tstatus\telapsed\nCursor-Arch\tskipped\t\n", encoding="utf-8")
+    classification = tmp_path / "class.tsv"
+    _write_plan_prune_classification(classification, [])
+    ledger = tmp_path / "ledger.tsv"
+
+    record = run_review(
+        "reviewer-prune",
+        "record",
+        "--ledger",
+        str(ledger),
+        "--round",
+        "1",
+        "--manifest",
+        str(manifest),
+        "--classification",
+        str(classification),
+        "--label-map",
+        str(label_map),
+        "--reviewer-status",
+        str(reviewer_status),
+    )
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
+
+    assert record.returncode == 0, record.stderr
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t0\t0\t0\t0\tfalse")
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
 
 def test_reviewer_prune_filter_accepts_legacy_ledger_rows(tmp_path: Path) -> None:
