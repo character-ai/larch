@@ -303,6 +303,9 @@ def _compose_failure_diag(output: Path, *, sink: str = "", history: str = "", ev
         return
     capped = _truncate_utf8_bytes(text="\n".join(sections) + "\n", cap=_vendor_failure_diag_cap())
     if carrier.is_file() and carrier.stat().st_size > 0:
+        existing = carrier.read_text(encoding="utf-8", errors="replace")
+        if capped.rstrip() in existing:
+            return
         _append(path=carrier, text="\n===== additional failure diagnostics =====\n" + capped)
     else:
         _write(path=carrier, text=capped)

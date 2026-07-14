@@ -14,10 +14,18 @@ import sys
 import tempfile
 from contextlib import suppress
 from pathlib import Path
+from typing import cast
 from larch import io as larch_io
 from larch.core import config
+from larch.report import exec_issue_detail
+from larch.report.run_log_batch import (
+    _EXECUTION_ISSUE_CATEGORIES,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the canonical category set.
+    _normalize_body_for_hash,  # pyright: ignore[reportPrivateUsage]  # shared writer preserves the established hash grammar.
+    _redact_batch_payload,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the existing fail-closed redaction path.
+)
 
 VALIDATION_FAILED_RC = 2
+_WARNINGS_CATEGORY = "Warnings"
 
 
 def emit_kv( *,key: str, value: object) -> None:
@@ -33,33 +41,128 @@ def sha256_file(path: str | Path) -> str:
 
 
 def normalize_body_for_hash(text: str) -> str:
-    lines = text.splitlines()
-    if lines and lines[0].startswith("### "):
-        lines = lines[1:]
-    start = 0
-    while start < len(lines) and not lines[start].strip():
-        start += 1
-    end = len(lines)
-    while end > start and not lines[end - 1].strip():
-        end -= 1
-    return "\n".join(lines[start:end]) + ("\n" if end > start else "")
+    return _normalize_body_for_hash(text)
 
 
-def _sections(text: str) -> list[tuple[str, str]]:
+def _is_fence(line: str) -> bool:
+    candidate = line.lstrip()
+    if candidate.startswith("- "):
+        candidate = candidate[2:].lstrip()
+    return candidate.startswith("```")
+
+
+def execution_issue_sections(text: str) -> list[tuple[str, str]]:
     sections: list[tuple[str, str]] = []
-    current = "Tool Failures"
+    current: str | None = None
     body: list[str] = []
+    in_fence = False
+
+    def append_current() -> None:
+        nonlocal body
+        if current is not None and any(line.strip() for line in body):
+            sections.append((current, "\n".join(body) + "\n"))
+        body = []
+
     for line in text.splitlines():
-        if line.startswith("### "):
-            if body:
-                sections.append((current, "\n".join(body) + "\n"))
-            current = line[4:].strip() or "Tool Failures"
-            body = []
-        else:
-            body.append(line)
-    if body:
-        sections.append((current, "\n".join(body) + "\n"))
-    return [(cat, body) for cat, body in sections if body.strip()]
+        if not in_fence and line.strip() == "---":
+            continue
+        if not in_fence and line.startswith(("### ", "## ")):
+            heading = line.split(" ", 1)[1].strip()
+            if heading in _EXECUTION_ISSUE_CATEGORIES:
+                append_current()
+                current = heading
+                continue
+            append_current()
+            current = _WARNINGS_CATEGORY
+            continue
+        if not in_fence and line.startswith("# ") and line[2:].strip() == "Execution Issues":
+            continue
+        if current is None and line.strip():
+            current = _WARNINGS_CATEGORY
+        body.append(line)
+        if _is_fence(line):
+            in_fence = not in_fence
+    append_current()
+    return sections
+
+
+def _execution_issue_chunks(body: str) -> list[str]:
+    chunks: list[str] = []
+    current: list[str] = []
+    in_fence = False
+    pending_break = False
+    for line in body.splitlines():
+        if not in_fence and not line.strip():
+            pending_break = bool(current)
+            continue
+        is_fence = _is_fence(line)
+        if not in_fence and line.startswith("- ") and current and not is_fence:
+            chunks.append("\n".join(current).strip() + "\n")
+            current = []
+            pending_break = False
+        if pending_break and current:
+            chunks.append("\n".join(current).strip() + "\n")
+            current = []
+        pending_break = False
+        current.append(line)
+        if is_fence:
+            in_fence = not in_fence
+    if current:
+        chunks.append("\n".join(current).strip() + "\n")
+    return chunks
+
+
+def _execution_issue_body_keys(*, category: str, body: str) -> set[str]:
+    return {
+        f"{category}\0{key}"
+        for key in exec_issue_detail.structured_body_dedupe_keys(body, category)
+    }
+
+
+def _existing_execution_issue_keys(batch_text: str) -> set[str]:
+    keys: set[str] = set()
+    for raw in batch_text.splitlines():
+        try:
+            row: object = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        row_dict = cast("dict[str, object]", row)
+        category = row_dict.get("category")
+        body = row_dict.get("body")
+        if isinstance(category, str) and isinstance(body, str):
+            keys.update(_execution_issue_body_keys(category=category, body=body))
+    return keys
+
+
+def execution_issue_records(
+    *,
+    text: str,
+    existing_batch: str,
+    step_label: str,
+    source_label: str,
+    file_sha: str,
+) -> list[str]:
+    records: list[str] = []
+    seen_keys = _existing_execution_issue_keys(existing_batch)
+    for category, section in execution_issue_sections(text):
+        for chunk in _execution_issue_chunks(section):
+            body = _redact_batch_payload(chunk)
+            body_keys = _execution_issue_body_keys(category=category, body=body)
+            if body_keys <= seen_keys:
+                continue
+            norm_sha = hashlib.sha256(normalize_body_for_hash(body).encode()).hexdigest()
+            records.append(json.dumps({
+                "phase": "implement",
+                "step": step_label,
+                "category": category,
+                "source": source_label,
+                "source_sha256": norm_sha or file_sha,
+                "body": body,
+            }, separators=(",", ":"), sort_keys=True))
+            seen_keys.update(body_keys)
+    return records
 
 
 def execution_issues_batch_contains_all_sections( *,input_file: str | Path, batch_path: str | Path) -> bool:
@@ -69,31 +172,28 @@ def execution_issues_batch_contains_all_sections( *,input_file: str | Path, batc
     text = Path(input_file).read_text(encoding="utf-8", errors="replace")
     batch_text = batch.read_text(encoding="utf-8", errors="replace")
     saw = False
-    for _cat, body in _sections(text):
-        norm_sha = hashlib.sha256(normalize_body_for_hash(body).encode()).hexdigest()
-        if f'"source_sha256":"{norm_sha}"' not in batch_text:
-            return False
-        saw = True
+    existing_keys = _existing_execution_issue_keys(batch_text)
+    for category, section in execution_issue_sections(text):
+        for body in _execution_issue_chunks(section):
+            redacted_body = _redact_batch_payload(body)
+            body_keys = _execution_issue_body_keys(category=category, body=redacted_body)
+            norm_sha = hashlib.sha256(normalize_body_for_hash(redacted_body).encode()).hexdigest()
+            if not body_keys <= existing_keys and f'"source_sha256":"{norm_sha}"' not in batch_text:
+                return False
+            saw = True
     return saw
 
 
 def write_execution_issues_records( *,input_file: str | Path, record_file: str | Path, sha: str, batch_path: str | Path | None = None, step_label: str = "18", source_label: str = "execution-issues.md safety-net") -> int:
     source = Path(input_file)
     batch_text = Path(batch_path).read_text(encoding="utf-8", errors="replace") if batch_path and Path(batch_path).is_file() else ""
-    records: list[str] = []
-    for category, body in _sections(source.read_text(encoding="utf-8", errors="replace")):
-        norm = normalize_body_for_hash(body)
-        norm_sha = hashlib.sha256(norm.encode()).hexdigest() if norm else sha
-        if norm_sha and f'"source_sha256":"{norm_sha}"' in batch_text:
-            continue
-        records.append(json.dumps({
-            "phase": "implement",
-            "step": step_label,
-            "category": category,
-            "source": source_label,
-            "source_sha256": norm_sha or sha,
-            "body": body,
-        }, separators=(",", ":")))
+    records = execution_issue_records(
+        text=source.read_text(encoding="utf-8", errors="replace"),
+        existing_batch=batch_text,
+        step_label=step_label,
+        source_label=source_label,
+        file_sha=sha,
+    )
     Path(record_file).write_text("\n".join(records) + ("\n" if records else ""), encoding="utf-8")
     return len(records)
 

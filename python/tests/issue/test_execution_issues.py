@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 
 from larch.issue import execution_issues
+from larch.report import run_log_flush
+from test_support import make_run_context
 
 
 def test_write_execution_issues_records_splits_sections(tmp_path: Path) -> None:
@@ -19,6 +21,45 @@ def test_write_execution_issues_records_splits_sections(tmp_path: Path) -> None:
     text = record_file.read_text(encoding="utf-8")
     assert '"category":"Tool Failures"' in text
     assert '"category":"Warnings"' in text
+
+
+def test_write_execution_issues_records_keeps_fenced_entry_intact(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text(
+        "### Warnings\n\n- **G-Py-11**: bare suppression\n- ```python\n- assert value  # noqa\n- ```\n",
+        encoding="utf-8",
+    )
+    record_file = tmp_path / "records.ndjson"
+
+    count = execution_issues.write_execution_issues_records(
+        input_file=issue_log,
+        record_file=record_file,
+        sha="abc",
+    )
+
+    records = [json.loads(line) for line in record_file.read_text(encoding="utf-8").splitlines()]
+    assert count == 1
+    assert records[0]["body"] == "- **G-Py-11**: bare suppression\n- ```python\n- assert value  # noqa\n- ```\n"
+
+
+def test_write_execution_issues_records_accepts_freeform_warning_heading(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text(
+        "# Execution Issues\n\n## Warnings\n- self-review complete\n\n---\n",
+        encoding="utf-8",
+    )
+    record_file = tmp_path / "records.ndjson"
+
+    count = execution_issues.write_execution_issues_records(
+        input_file=issue_log,
+        record_file=record_file,
+        sha="abc",
+    )
+
+    records = [json.loads(line) for line in record_file.read_text(encoding="utf-8").splitlines()]
+    assert count == 1
+    assert records[0]["category"] == "Warnings"
+    assert records[0]["body"] == "- self-review complete\n"
 
 
 def test_append_execution_issue_idempotent(tmp_path: Path) -> None:
@@ -118,8 +159,8 @@ def test_flush_execution_issues_writes_single_record_with_flush_metadata(
         "step": "7a",
         "category": "Tool Failures",
         "source": "execution-issues.md pre-bump",
-        "source_sha256": hashlib.sha256(b"- tool failed once\n").hexdigest(),
-        "body": "\n- tool failed once\n",
+        "source_sha256": hashlib.sha256(b"- tool failed once").hexdigest(),
+        "body": "- tool failed once\n",
     }
     assert issue_log.read_text(encoding="utf-8") == ""
 
@@ -293,6 +334,39 @@ def test_flush_execution_issues_safety_net_preserves_source_log(tmp_path: Path) 
     assert status in {"ok", "no-records"}
     assert records >= 0
     assert issue_log.read_text(encoding="utf-8") == "### Warnings\n- one\n"
+
+
+def test_safety_net_dedupes_records_written_by_pre_push_flusher(tmp_path: Path) -> None:
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n\n- shared warning\n", encoding="utf-8")
+    log_root = (tmp_path / "larch-logs").resolve()
+    batch_dir = log_root / "implement" / "run-shared"
+    batch_dir.mkdir(parents=True)
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-shared\n", encoding="utf-8")
+
+    ctx = make_run_context(
+        run_id="run-shared",
+        tmpdir=str(tmp_path),
+        manifest_path=str(tmp_path / "manifest.json"),
+        state_file=str(state),
+    )
+    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+    run_log_flush._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
+        ctx=ctx,
+        batch_dir=batch_dir,
+        step_label="pre-push",
+        source_label="test",
+    )
+
+    rc, status, records, _append_log = execution_issues.flush_execution_issues_safety_net(
+        log_root=log_root,
+        run_id="run-shared",
+        issue_log=issue_log,
+    )
+
+    assert (rc, status, records) == (0, "no-records", 0)
+    assert len((batch_dir / "execution-issues.ndjson").read_text(encoding="utf-8").splitlines()) == 1
 
 
 def test_flush_execution_issues_safety_net_append_failure_preserves_source_log(
