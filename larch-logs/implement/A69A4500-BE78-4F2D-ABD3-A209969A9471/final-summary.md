@@ -56,6 +56,10 @@ Warnings (8):
   7. ---
   8. All other guidelines are satisfied. The retirement of `architectural-compliance` is swept consistently across `config.py`, `review_pipeline_shared.py`, `plan_scout.py`, `rendering.py`, `plan_review...
 
+## Architectural invariants
+
+The changed code is clean against all architectural invariants.
+
 ## Architectural guidelines
 
 The changed code is in full compliance with all applicable architectural guidelines.
@@ -64,7 +68,7 @@ The changed code is in full compliance with all applicable architectural guideli
 
 - **Outcome**: shipping
 - **Duration**: 00:45:23
-- **Cost**: 💰 TOTAL ~$21.30: Claude $4.55, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 40754k
+- **Cost**: 💰 TOTAL ~$21.95: Claude $5.20, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 41957k
 - **Issue**: #7222: https://github.com/character-ai/larch/issues/7222
 - **Plan review**: N/A
 - **Plan coverage**: 20/20 firm headings; band: advisory; disposition: none; todos_left: 0
