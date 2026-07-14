@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from collections.abc import Sequence
 
+from larch import io as larch_io
+
 
 def _fail(msg: str) -> int:
     print(f"run-step1-plan-log.sh: {msg}", file=sys.stderr)
@@ -18,20 +20,14 @@ def _fail(msg: str) -> int:
 
 
 def _session_get(*, path: Path, key: str, default: str = "") -> str:
-    if not path.is_file():
-        return default
-    # Read inside the try, scan outside it: narrows the OSError scope and keeps
-    # this helper structurally distinct from design_lifecycle._read_env_value
-    # (avoids pylint R0801 duplicate-code across the two modules).
-    try:
-        text = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return default
-    prefix = f"{key}="
-    for raw in text.splitlines():
-        if raw.startswith(prefix):
-            return raw[len(prefix):] or default
-    return default
+    return larch_io.read_kv(
+        path=path,
+        key=key,
+        default=default,
+        duplicate_policy="first",
+        empty_value_means_default=True,
+        on_error_default=True,
+    )
 
 
 def _resolve_run_id(*, session_env_path: Path, implement_tmpdir: Path, session_id_file: Path) -> str:

@@ -9,7 +9,6 @@ import os
 import platform
 import re
 import shutil
-import shlex
 import signal
 import subprocess
 import sys
@@ -22,6 +21,7 @@ from larch import io as larch_io
 from larch.core import config
 from larch.core.ctx import Ctx
 from larch.core import logging_util
+from larch.core.env_file import read_env_file
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult
@@ -37,7 +37,6 @@ from larch.agents._types import (
     TailReadResult,
     StartupLockState,
     _err,
-    _emit_kv,
     _read_text,
     _write,
     _append,
@@ -609,8 +608,8 @@ def _emit_claude_subprocess_failure_fields(*, output: Path, launcher_exit: int) 
         tool="claude",
         output_file=output,
     )
-    _emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
-    _emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
 
 
 def _record_usage_from_events(*, events: Path, sidecar: Path, label: str, token_record: Path | None = None, model: str = "") -> None:
@@ -993,7 +992,7 @@ def _write_preflight_bundle(
         text=f"TOOL={tool}\nTIMEOUT={timeout}\nCAPTURE_STDOUT=false\nOUTPUT_FILE={output}\nCMD_JSON=[]\n"
     )
     _write(path=output.with_suffix(output.suffix + ".done"), text=f"{launcher_exit}\n")
-    _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
     failure = classify_launch_failure(
         launcher_exit=launcher_exit,
         sidecar=output.with_suffix(output.suffix + ".diag"),
@@ -1001,9 +1000,9 @@ def _write_preflight_bundle(
         tool=tool,
         output_file=output,
     )
-    _emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
-    _emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason or failure_reason)
-    _emit_kv(key="OUTPUT", value=str(output))
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason or failure_reason)
+    logging_util.emit_kv(key="OUTPUT", value=str(output))
 
 
 def _trust_config_arg(workdir: str) -> str:
@@ -1030,29 +1029,8 @@ def _git_toplevel(path: str) -> str | None:
 
 
 def _read_keepalive_clone_path(keepalive: Path) -> str | None:
-    try:
-        text = keepalive.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#") or "=" not in stripped:
-            continue
-        if stripped.startswith("export "):
-            stripped = stripped[len("export ") :].strip()
-        key, value = stripped.split("=", 1)
-        if not re.fullmatch(r"[A-Z_][A-Z0-9_]*", key):
-            continue
-        if key != "CLONE_PATH":
-            continue
-        try:
-            parsed = shlex.split(value, posix=True)
-        except ValueError:
-            parsed = [value]
-        clone_path = parsed[0] if len(parsed) == 1 else value
-        if clone_path.strip():
-            return clone_path.strip()
-    return None
+    clone_path = read_env_file(keepalive).get("CLONE_PATH", "").strip()
+    return clone_path or None
 
 
 def _clone_path_from_session_tmpdir() -> str | None:
@@ -1157,7 +1135,7 @@ def _post_codex_events(*, events: Path, sidecar: Path) -> None:
 
 def _emit_token_record_if_present(token_record: Path) -> None:
     if token_record.is_file():
-        _emit_kv(key="TOKEN_RECORD", value=str(token_record))
+        logging_util.emit_kv(key="TOKEN_RECORD", value=str(token_record))
 
 
 def _record_usage_from_events_and_emit_token(*, events: Path, sidecar: Path, label: str, token_record: Path, model: str = "") -> None:

@@ -3742,10 +3742,12 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
         assert model == "gpt-5.6-terra"
         _ = paths.token_record.write_text(f"TOOL=codex\nMODEL={model}\nTOKEN=1\n", encoding="utf-8")
 
+    real_emit_kv = logging_util.emit_kv
+
     def fake_emit_kv(key: str, value: str | int) -> None:
         if key == "TOKEN_RECORD":
             order.append("token")
-        logging_util.emit_kv(key=key, value=str(value))
+        real_emit_kv(key=key, value=str(value))
 
     def fake_promote(path: Path) -> None:
         order.append("promote")
@@ -3757,8 +3759,8 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
     def fake_emit_result(output: Path, launcher_exit: int, *, tool: str) -> None:  # noqa: ARG001  # pylint: disable=unused-argument
         assert tool == "codex"
         order.append("emit")
-        logging_util.emit_kv(key="LAUNCHER_EXIT", value=str(config.EXIT_TIMEOUT))
-        logging_util.emit_kv(key="OUTPUT", value=str(output))
+        real_emit_kv(key="LAUNCHER_EXIT", value=str(config.EXIT_TIMEOUT))
+        real_emit_kv(key="OUTPUT", value=str(output))
 
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
     monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
@@ -3769,7 +3771,7 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
     monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", fake_mirror)
     monkeypatch.setattr(_ci_launcher, "_record_launch_timing", fake_record_timing)
     monkeypatch.setattr(_run_external, "_record_usage_from_events", fake_record_usage)
-    monkeypatch.setattr(_run_external, "_emit_kv", fake_emit_kv)
+    monkeypatch.setattr(logging_util, "emit_kv", fake_emit_kv)
     monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
     monkeypatch.setattr(_ci_launcher, "_append_ci_failure", fake_append_failure)
     monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", fake_emit_result)
@@ -4269,10 +4271,12 @@ def test_launch_cursor_ci_finalize_order_and_stall_guard(
         order.append("usage")
         _ = paths.token_record.write_text("TOKEN=1\n", encoding="utf-8")
 
+    real_emit_kv = logging_util.emit_kv
+
     def fake_emit_kv(key: str, value: str | int) -> None:
         if key == "TOKEN_RECORD":
             order.append("token")
-        logging_util.emit_kv(key=key, value=str(value))
+        real_emit_kv(key=key, value=str(value))
 
     def fake_promote(path: Path) -> None:
         order.append("promote")
@@ -4297,7 +4301,7 @@ def test_launch_cursor_ci_finalize_order_and_stall_guard(
     monkeypatch.setattr(_ci_launcher, "_append", fake_append)
     monkeypatch.setattr(_ci_launcher, "_record_launch_timing", fake_record_timing)
     monkeypatch.setattr(_ci_launcher, "_record_cursor_usage_from_output", fake_record_usage)
-    monkeypatch.setattr(_run_external, "_emit_kv", fake_emit_kv)
+    monkeypatch.setattr(logging_util, "emit_kv", fake_emit_kv)
     monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
     monkeypatch.setattr(_ci_launcher, "_append_ci_failure", fake_append_failure)
     monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", fake_emit_result)

@@ -22,6 +22,7 @@ from pathlib import Path
 from larch.state import dirty_tree
 from larch.review import findings_ledger
 from larch.git import git
+from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
@@ -44,7 +45,6 @@ from larch.agents._types import (
     LauncherPaths,
     RunExternalAgentResult,
     _err,
-    _emit_kv,
     _write,
     _append,
     _is_positive_int,
@@ -339,12 +339,7 @@ def _review_read_codex_prompt_sentinel(path: str) -> tuple[int, str] | None:
     lines = text[sentinel_idx:].splitlines()
     if not lines or lines[0] != "LARCH_PROMPT_SENTINEL=1":
         return None
-    values: dict[str, str] = {}
-    for line in lines[1:]:
-        if "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        values[key] = value
+    values = larch_io.parse_kv("\n".join(lines[1:]), duplicate_policy="last")
     if (
         values.get("KIND") != "specialist"
         or not values.get("AGENT_FILE")
@@ -906,10 +901,10 @@ def _review_emit_launcher_result(
         tool=tool,
         output_file=output,
     )
-    _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
-    _emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
-    _emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
-    _emit_kv(key="OUTPUT", value=str(output))
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
+    logging_util.emit_kv(key="OUTPUT", value=str(output))
 
 
 def _review_write_preflight_bundle(

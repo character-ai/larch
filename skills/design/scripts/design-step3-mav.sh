@@ -297,7 +297,7 @@ run_post_phase() {
         retally_rc=$?
         set -e
     fi
-    retally_status="$(awk -F= '$1 == "TALLY_PLAN_REVIEW_STATUS" { value=$2 } END { print value }' "$retally_stdout")"
+    retally_status="$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" kv get --file "$retally_stdout" --key TALLY_PLAN_REVIEW_STATUS --match last 2>/dev/null || true)"
     case "$retally_status" in
         ok) ;;
         *) retally_status=tally-error ;;

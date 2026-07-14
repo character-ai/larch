@@ -582,9 +582,6 @@ def _attempt_merge(
 
 
 # CLI entrypoint migrated from merge_cli.py.
-def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key=key, value=str(value))
-
 
 def pr_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py merge pr")
@@ -612,6 +609,6 @@ def pr_main(argv: list[str]) -> int:
         no_logs_commit=True,
     )
     result = merge_pr(runner=proc, ctx=ctx, post_flush=False)
-    _emit_kv(key="MERGE_RESULT", value=result.result)
-    _emit_kv(key="ERROR", value=result.error)
+    logging_util.emit_kv(key="MERGE_RESULT", value=result.result)
+    logging_util.emit_kv(key="ERROR", value=result.error)
     return 0

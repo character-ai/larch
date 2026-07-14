@@ -22,6 +22,7 @@ from typing import Any, cast
 
 from larch import io as larch_io
 from larch.core import config
+from larch.core import logging_util
 from larch.report import design_diagram_log
 from larch.git import gh
 from larch.git import git
@@ -520,8 +521,9 @@ def update_pr_body(
 # ---------------------------------------------------------------------------
 
 
+
 def _emit_kv(*, key: str, value: object) -> None:
-    print(f"{key}={value}")
+    logging_util.emit_kv(key=key, value=str(value))
 
 
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
@@ -1141,12 +1143,12 @@ def slack_issue_announce_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--best-effort", action="store_true")
     args = parser.parse_args(argv)
     if not args.implement_tmpdir:
-        _emit_kv(key="STATUS", value="failed")
-        _emit_kv(key="ERROR", value="--implement-tmpdir is required")
+        logging_util.emit_kv(key="STATUS", value="failed")
+        logging_util.emit_kv(key="ERROR", value="--implement-tmpdir is required")
         return 2
     if not Path(args.implement_tmpdir).is_dir():
-        _emit_kv(key="STATUS", value="failed")
-        _emit_kv(key="ERROR", value="--implement-tmpdir not found")
+        logging_util.emit_kv(key="STATUS", value="failed")
+        logging_util.emit_kv(key="ERROR", value="--implement-tmpdir not found")
         return 2
     result = slack_issue_announce(
         Path(args.implement_tmpdir), best_effort=args.best_effort

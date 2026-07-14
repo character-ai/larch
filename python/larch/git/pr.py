@@ -385,9 +385,6 @@ def create_pr_parity(
 
 
 # CLI entrypoints migrated from pr_cli.py.
-def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key=key, value=str(value))
-
 
 def _parse(
     *, parser: argparse.ArgumentParser, argv: list[str]
@@ -409,10 +406,10 @@ def create_branch_main(argv: list[str]) -> int:
         return 2
     if args.check:
         result = check_branch_state(proc)
-        _emit_kv(key="CURRENT_BRANCH", value=result.current_branch)
-        _emit_kv(key="IS_MAIN", value=str(result.is_main).lower())
-        _emit_kv(key="IS_USER_BRANCH", value=str(result.is_user_branch).lower())
-        _emit_kv(key="USER_PREFIX", value=result.user_prefix)
+        logging_util.emit_kv(key="CURRENT_BRANCH", value=result.current_branch)
+        logging_util.emit_kv(key="IS_MAIN", value=str(result.is_main).lower())
+        logging_util.emit_kv(key="IS_USER_BRANCH", value=str(result.is_user_branch).lower())
+        logging_util.emit_kv(key="USER_PREFIX", value=result.user_prefix)
         return result.exit_code
     if not args.branch:
         print("create-branch.sh: --branch is required", file=sys.stderr)
@@ -424,8 +421,8 @@ def create_branch_main(argv: list[str]) -> int:
         base_ref=args.base_ref,
     )
     if result.exit_code == 0:
-        _emit_kv(key="BRANCH_NAME", value=result.branch_name)
-        _emit_kv(key="ACTION", value=result.action)
+        logging_util.emit_kv(key="BRANCH_NAME", value=result.branch_name)
+        logging_util.emit_kv(key="ACTION", value=result.action)
     else:
         print(f"create-branch.sh: {result.status}: {result.branch}", file=sys.stderr)
     return result.exit_code
@@ -489,19 +486,19 @@ def create_main(argv: list[str]) -> int:
             exit_code=config.EXIT_NEEDS_USER_INPUT,
         )
     except Exception as exc:  # pylint: disable=broad-except
-        _emit_kv(key="PR_STATUS", value="error")
-        _emit_kv(key="PR_NUMBER", value=0)
-        _emit_kv(key="PR_URL", value="")
-        _emit_kv(key="PR_TITLE", value=args.title)
+        logging_util.emit_kv(key="PR_STATUS", value="error")
+        logging_util.emit_kv(key="PR_NUMBER", value=0)
+        logging_util.emit_kv(key="PR_URL", value="")
+        logging_util.emit_kv(key="PR_TITLE", value=args.title)
         print(str(exc), file=sys.stderr)
         return 2
-    _emit_kv(key="PR_NUMBER", value=result.number)
-    _emit_kv(key="PR_URL", value=result.url)
-    _emit_kv(key="PR_TITLE", value=result.title)
-    _emit_kv(key="PR_STATUS", value=result.status)
+    logging_util.emit_kv(key="PR_NUMBER", value=result.number)
+    logging_util.emit_kv(key="PR_URL", value=result.url)
+    logging_util.emit_kv(key="PR_TITLE", value=result.title)
+    logging_util.emit_kv(key="PR_STATUS", value=result.status)
     if needs_scope_disposition:
-        _emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
-        _emit_kv(
+        logging_util.emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
+        logging_util.emit_kv(
             key="NEXT_ACTION", value=config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION
         )
     return result.exit_code
@@ -520,11 +517,11 @@ def body_update_main(argv: list[str]) -> int:
         if repo_err is not None:
             return repo_err
     result = gh.pr_edit_body_file(proc, args.pr, args.body_file, repo=args.repo)
-    _emit_kv(key="UPDATED", value=str(result.updated).lower())
-    _emit_kv(key="ERROR", value=result.error)
+    logging_util.emit_kv(key="UPDATED", value=str(result.updated).lower())
+    logging_util.emit_kv(key="ERROR", value=result.error)
     if result.exit_code == config.EXIT_NEEDS_USER_INPUT:
-        _emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
-        _emit_kv(
+        logging_util.emit_kv(key="needs_user_reason", value=config.NEEDS_USER_SCOPE_DISPOSITION)
+        logging_util.emit_kv(
             key="NEXT_ACTION", value=config.SHIP_ROUTE_ACTION_HALT_SCOPE_DISPOSITION
         )
     return result.exit_code

@@ -33,7 +33,7 @@ fail_usage() {
 read_kv() {
     local key=$1 file=$2
     [ -f "$file" ] || return 0
-    awk -v k="$key" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$file" 2>/dev/null
+    python3 "$PLUGIN_ROOT/python/cli.py" kv get --file "$file" --key "$key" --match first 2>/dev/null || true
 }
 
 IMPLEMENT_TMPDIR=""
@@ -87,7 +87,7 @@ case "$ISSUE" in *[!0-9]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit
 case "$RUN_ID" in *[!A-Za-z0-9._-]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID must match ^[A-Za-z0-9._-]+$"; exit 1 ;; esac
 
 summary="$IMPLEMENT_TMPDIR/summary-metadata.md"
-version="$(python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}' || true)"
+version="$(python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null || true)"
 [ -n "$version" ] || version="unknown"
 
 {
@@ -122,7 +122,7 @@ if python3 "$PLUGIN_ROOT/python/cli.py" tracking-issue "${args[@]}" >"$out_file"
         printf 'ISSUE_NUMBER=%s\nRUN_ID=%s\nADOPTED=%s\n' "$ISSUE" "$RUN_ID" "$_adopted" > "$PARENT_ISSUE"
     fi
     emit_kv POSTED true
-    emit_kv COMMENT_URL "$(awk -F= '$1=="COMMENT_URL"{print substr($0,index($0,"=")+1); exit}' "$out_file")"
+    emit_kv COMMENT_URL "$(python3 "$PLUGIN_ROOT/python/cli.py" kv get --file "$out_file" --key COMMENT_URL --match first 2>/dev/null || true)"
     exit 0
 fi
 

@@ -43,9 +43,6 @@ _LEGACY_DONE_OUTCOME_LINE_RE = re.compile(
 )
 
 
-_emit_kv = pr_body._emit_kv  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-
-
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path=path, key=key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
@@ -1057,9 +1054,9 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        _emit_kv(key="COMMENT_URL", value="")
-        _emit_kv(key="STATUS", value="failed")
-        _emit_kv(key="ERROR", value="usage")
+        logging_util.emit_kv(key="COMMENT_URL", value="")
+        logging_util.emit_kv(key="STATUS", value="failed")
+        logging_util.emit_kv(key="ERROR", value="usage")
         return 2
     # write_final_report must never crash this CLI (#6979): an uncaught composition
     # exception previously escaped as a traceback (rc!=0, no ERROR=) and left the
@@ -1069,10 +1066,10 @@ def write_final_report_main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         rc, url, err = 1, "", f"final report render failed: {exc}"
         logging_util.BreadcrumbWriter().emit(f"final report: {err}", quiet=False)
-    _emit_kv(key="COMMENT_URL", value=url)
-    _emit_kv(key="STATUS", value="ok" if rc == 0 else "failed")
+    logging_util.emit_kv(key="COMMENT_URL", value=url)
+    logging_util.emit_kv(key="STATUS", value="ok" if rc == 0 else "failed")
     if err:
-        _emit_kv(key="ERROR", value=" ".join(err.split())[:500])
+        logging_util.emit_kv(key="ERROR", value=" ".join(err.split())[:500])
     return rc
 
 
@@ -1131,20 +1128,20 @@ def step18b_final_report_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        _emit_kv(key="ERROR", value="usage")
+        logging_util.emit_kv(key="ERROR", value="usage")
         return config.EXIT_USAGE
     explicit = None if args.step17_emitted is None else args.step17_emitted == "true"
     emit_body, wfr_rc, present, snapshot, error = step18b_final_report(
         Path(args.implement_tmpdir),
         step17_emitted=explicit,
     )
-    _emit_kv(key="EMIT_BODY", value=str(emit_body).lower())
-    _emit_kv(key="WFR_RC", value=wfr_rc)
-    _emit_kv(key="STEP17_EMITTED_PRESENT", value=str(present).lower())
-    _emit_kv(key="SNAPSHOT_OK", value=snapshot)
+    logging_util.emit_kv(key="EMIT_BODY", value=str(emit_body).lower())
+    logging_util.emit_kv(key="WFR_RC", value=wfr_rc)
+    logging_util.emit_kv(key="STEP17_EMITTED_PRESENT", value=str(present).lower())
+    logging_util.emit_kv(key="SNAPSHOT_OK", value=snapshot)
     # ERROR=<reason> makes a render failure self-identifying instead of a silent
     # EMIT_BODY=false (#6979). Collapse to one line so the KV stream stays parseable.
-    _emit_kv(key="ERROR", value=" ".join(error.split())[:500])
+    logging_util.emit_kv(key="ERROR", value=" ".join(error.split())[:500])
     if error:
         # Mirror the reason to stderr so step-18.sh's append_failure_best_effort
         # (which captures step18b stderr) records it in execution-issues — the

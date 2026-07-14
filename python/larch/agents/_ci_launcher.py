@@ -32,7 +32,6 @@ from larch.agents._types import (
     CURSOR_PREREAD_FAIL_MSG,
     LauncherPaths,
     _err,
-    _emit_kv,
     _read_text,
     _write,
     _append,
@@ -231,10 +230,10 @@ def _emit_ci_launcher_result(*, output: Path, launcher_exit: int, tool: str, bin
         tool=tool,
         output_file=output,
     )
-    _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
-    _emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
-    _emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
-    _emit_kv(key="OUTPUT", value=str(output))
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_CLASS", value=failure.failure_class)
+    logging_util.emit_kv(key="LAUNCHER_FAILURE_REASON", value=failure.reason)
+    logging_util.emit_kv(key="OUTPUT", value=str(output))
 
 
 def launch_codex_ci_main(argv: list[str] | None = None) -> int:
@@ -694,27 +693,23 @@ def _implement_prompt(*, tool: str, args: argparse.Namespace, codex_session: Pat
 
 
 def _emit_implement_launcher_envelope(*, args: argparse.Namespace, launcher_exit: int, status: str = "") -> None:
-    _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
-    _emit_kv(key="MANIFEST_WRITTEN", value=str(Path(args.manifest_path).is_file() and Path(args.manifest_path).stat().st_size > 0).lower())
-    _emit_kv(key="QA_PENDING_WRITTEN", value=str(Path(args.qa_pending_path).is_file() and Path(args.qa_pending_path).stat().st_size > 0).lower())
-    _emit_kv(key="SCOUT_MANIFEST_WRITTEN", value=str(Path(args.scout_manifest_path).is_file() and Path(args.scout_manifest_path).stat().st_size > 0).lower())
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="MANIFEST_WRITTEN", value=str(Path(args.manifest_path).is_file() and Path(args.manifest_path).stat().st_size > 0).lower())
+    logging_util.emit_kv(key="QA_PENDING_WRITTEN", value=str(Path(args.qa_pending_path).is_file() and Path(args.qa_pending_path).stat().st_size > 0).lower())
+    logging_util.emit_kv(key="SCOUT_MANIFEST_WRITTEN", value=str(Path(args.scout_manifest_path).is_file() and Path(args.scout_manifest_path).stat().st_size > 0).lower())
     if status:
-        _emit_kv(key="STATUS", value=status)
-    _emit_kv(key="TRANSCRIPT", value=args.transcript_path)
-    _emit_kv(key="SIDECAR_LOG", value=args.sidecar_log)
+        logging_util.emit_kv(key="STATUS", value=status)
+    logging_util.emit_kv(key="TRANSCRIPT", value=args.transcript_path)
+    logging_util.emit_kv(key="SIDECAR_LOG", value=args.sidecar_log)
 
 
 def _implement_token_budget_hit(*, args: argparse.Namespace, tool: str, default_kind: str) -> bool:
     cap = args.token_budget_cap or os.environ.get("LARCH_TOKEN_BUDGET_CAP_IMPLEMENT", "")
     if cap and _is_positive_int(cap):
         result = proc.run([sys.executable, str(_PY_CLI), "token", "check-budget", "--cap", cap, "--step", args.timing_task_kind or default_kind], check=False)
-        status = ""
-        total = ""
-        for token in result.stdout.split():
-            if token.startswith("STATUS="):
-                status = token.split("=", 1)[1]
-            elif token.startswith("TOTAL="):
-                total = token.split("=", 1)[1]
+        budget_kv = larch_io.parse_kv("\n".join(result.stdout.split()), duplicate_policy="last")
+        status = budget_kv.get("STATUS", "")
+        total = budget_kv.get("TOTAL", "")
         if status == "cap_hit":
             _err(f"⚠ agent launch-{tool}-implement: step token budget cap of {cap} tokens exceeded ({total} combined vendor tokens); external implementer fan-out skipped")
             _write(path=args.transcript_path, text="STATUS=cap_hit\n")

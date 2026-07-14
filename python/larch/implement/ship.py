@@ -60,6 +60,7 @@ from larch.implement import scope_disposition
 from larch.core import config
 from larch.issue import file_oos
 from larch.state import finalize
+from larch import io as larch_io
 from larch.git import gh
 from larch.git import git
 from larch.core import logging_util
@@ -976,18 +977,12 @@ def _postmerge_main_health_gate(
 
 def _read_main_health_sidecar(ctx: RunContext) -> dict[str, str]:
     path = Path(ctx.tmpdir) / "main-health.env"
-    if not path.is_file() or path.is_symlink():
-        return {}
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return {}
-    data: dict[str, str] = {}
-    for line in lines:
-        key, sep, value = line.partition("=")
-        if sep and "\n" not in value and "\r" not in value:
-            data[key] = value
-    return data
+    return larch_io.read_kvs(
+        path,
+        duplicate_policy="last",
+        reject_symlink=True,
+        on_error_default=True,
+    )
 
 
 def _main_health_repair_covers_active_failure(

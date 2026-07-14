@@ -31,7 +31,6 @@ from larch.agents._types import (
     LauncherPaths,
     DrafterParseResult,
     _err,
-    _emit_kv,
     _write,
     _append,
     _is_positive_int,
@@ -94,7 +93,7 @@ def _negotiation_base(output: Path) -> Path:
 
 
 def _emit_response_file(*, output_path: Path, **_kwargs: object) -> None:
-    _emit_kv(key="RESPONSE_FILE", value=str(output_path))
+    logging_util.emit_kv(key="RESPONSE_FILE", value=str(output_path))
 
 
 def _negotiation_codex_preflight(*, prep_rc: int, prep_msg: str, sidecar: Path, **_kwargs: object) -> bool:
@@ -406,7 +405,7 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
                 use_config_context=False,
             )
             if outcome.status == "preflight_refused":
-                _emit_kv(key="RESPONSE_FILE", value=str(output_path))
+                logging_util.emit_kv(key="RESPONSE_FILE", value=str(output_path))
                 return 2
             if outcome.process_result is not None and outcome.process_result.exit_code != 0:
                 return 2
@@ -441,7 +440,7 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
         use_config_context=False,
     )
     if cursor_outcome.status == "preflight_refused":
-        _emit_kv(key="RESPONSE_FILE", value=str(output_path))
+        logging_util.emit_kv(key="RESPONSE_FILE", value=str(output_path))
         return 3
     if cursor_outcome.process_result is not None and cursor_outcome.process_result.exit_code != 0:
         return 2
@@ -533,8 +532,8 @@ def launch_codex_exec_main(argv: list[str] | None = None) -> int:
             use_config_context=False,
         )
         launcher_exit = outcome.process_result.exit_code if outcome.process_result is not None else 0
-    _emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
-    _emit_kv(key="OUTPUT", value=str(output))
+    logging_util.emit_kv(key="LAUNCHER_EXIT", value=launcher_exit)
+    logging_util.emit_kv(key="OUTPUT", value=str(output))
     return 0
 
 
@@ -969,16 +968,16 @@ def launch_codex_drafter(
             if source.is_file() and source.stat().st_size > 0:
                 write_failed_agent_stderr_tail(source=source, output=output)
             _write(path=paths.done, text=f"{launcher_exit}\n")
-            _emit_kv(key="STATUS", value="ERROR")
-            _emit_kv(key="OUTPUT_FILE", value=str(output))
-            _emit_kv(key="TOKEN_RECORD", value=str(paths.token_record) if paths.token_record.is_file() else "")
+            logging_util.emit_kv(key="STATUS", value="ERROR")
+            logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
+            logging_util.emit_kv(key="TOKEN_RECORD", value=str(paths.token_record) if paths.token_record.is_file() else "")
             return launcher_exit
         if not raw.is_file() or raw.stat().st_size == 0:
             _write(path=paths.failure_diag, text="CODEX_EMPTY_OUTPUT\n")
             _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="CODEX_EMPTY_OUTPUT")
             _write(path=paths.done, text="1\n")
-            _emit_kv(key="STATUS", value="ERROR")
-            _emit_kv(key="OUTPUT_FILE", value=str(output))
+            logging_util.emit_kv(key="STATUS", value="ERROR")
+            logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
             return 1
         try:
             parsed = parse_drafter_output(raw_file=raw, plan_tmp=plan_tmp, summary_tmp=summary_tmp, scout_tmp=scout_candidate)
@@ -986,8 +985,8 @@ def launch_codex_drafter(
             _write(path=paths.failure_diag, text=f"DELIMITER_EXTRACTION_INVALID\n{exc}\n")
             _write_drafter_status_file(output=output, status="ERROR", plan_written=False, plan_lines=0, diff_lines=0, summary_written=False, launched=True, reason="DELIMITER_EXTRACTION_INVALID")
             _write(path=paths.done, text="99\n")
-            _emit_kv(key="STATUS", value="ERROR")
-            _emit_kv(key="OUTPUT_FILE", value=str(output))
+            logging_util.emit_kv(key="STATUS", value="ERROR")
+            logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
             return 99
         scout_written = False
         scout_reason = parsed.scout_fail_reason
@@ -1005,19 +1004,19 @@ def launch_codex_drafter(
                 stale.unlink()
         _write_drafter_status_file(output=output, status="OK", plan_written=True, plan_lines=parsed.plan_lines, diff_lines=parsed.diff_lines, summary_written=parsed.summary_written, scout_written=scout_written, scout_fail_reason=scout_reason if not scout_written else "", dialectic_parsed=parsed.dialectic_parsed, dialectic_raw_pending_written=dialectic_pending_written, dialectic_fail_reason=parsed.dialectic_fail_reason if not parsed.dialectic_parsed else "", launched=True)
         _write(path=paths.done, text="0\n")
-        _emit_kv(key="STATUS", value="OK")
-        _emit_kv(key="OUTPUT_FILE", value=str(output))
+        logging_util.emit_kv(key="STATUS", value="OK")
+        logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
         if paths.token_record.is_file():
-            _emit_kv(key="TOKEN_RECORD", value=str(paths.token_record))
+            logging_util.emit_kv(key="TOKEN_RECORD", value=str(paths.token_record))
         else:
-            _emit_kv(key="TOKEN_RECORD_MISSING", value="true")
-        _emit_kv(key="SCOUT_WRITTEN", value=str(scout_written).lower())
-        _emit_kv(key="DIALECTIC_CANDIDATES_PARSED", value=str(parsed.dialectic_parsed).lower())
-        _emit_kv(key="DIALECTIC_RAW_PENDING_WRITTEN", value=str(dialectic_pending_written).lower())
+            logging_util.emit_kv(key="TOKEN_RECORD_MISSING", value="true")
+        logging_util.emit_kv(key="SCOUT_WRITTEN", value=str(scout_written).lower())
+        logging_util.emit_kv(key="DIALECTIC_CANDIDATES_PARSED", value=str(parsed.dialectic_parsed).lower())
+        logging_util.emit_kv(key="DIALECTIC_RAW_PENDING_WRITTEN", value=str(dialectic_pending_written).lower())
         if parsed.dialectic_fail_reason and not parsed.dialectic_parsed:
-            _emit_kv(key="DIALECTIC_CANDIDATES_FAIL_REASON", value=parsed.dialectic_fail_reason)
+            logging_util.emit_kv(key="DIALECTIC_CANDIDATES_FAIL_REASON", value=parsed.dialectic_fail_reason)
         if scout_reason and not scout_written:
-            _emit_kv(key="SCOUT_FAIL_REASON", value=scout_reason)
+            logging_util.emit_kv(key="SCOUT_FAIL_REASON", value=scout_reason)
         return 0
     finally:
         _write_drafter_dirty_tree_sidecar(output, repo_root=repo, baseline=baseline, launched=launched, tool="codex")
@@ -1189,15 +1188,15 @@ def launch_claude_drafter(
         end = time.time()
         _write_drafter_dirty_tree_sidecar(output, repo_root=repo, baseline=baseline, launched=launched, tool="claude")
         proc.run([sys.executable, str(_PY_CLI), "timing", "record-vendor-task", "--vendor", "claude", "--task-kind", timing_task_kind, "--start-s", str(int(start)), "--end-s", str(int(end)), "--output", str(output), "--exit-code", str(exit_code), "--status", status], check=False)
-        _emit_kv(key="STATUS", value=status)
-        _emit_kv(key="OUTPUT_FILE", value=str(output))
-        _emit_kv(key="ELAPSED", value=int(end - start))
+        logging_util.emit_kv(key="STATUS", value=status)
+        logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
+        logging_util.emit_kv(key="ELAPSED", value=int(end - start))
         status_text = output.read_text(encoding="utf-8", errors="replace") if output.is_file() else ""
         scout_written = "SCOUT_WRITTEN=true" in status_text
-        _emit_kv(key="SCOUT_WRITTEN", value=str(scout_written).lower())
+        logging_util.emit_kv(key="SCOUT_WRITTEN", value=str(scout_written).lower())
         status_text_for_dialectic = output.read_text(encoding="utf-8", errors="replace") if output.is_file() else ""
-        _emit_kv(key="DIALECTIC_CANDIDATES_PARSED", value=str("DIALECTIC_CANDIDATES_PARSED=true" in status_text_for_dialectic).lower())
-        _emit_kv(key="DIALECTIC_RAW_PENDING_WRITTEN", value=str("DIALECTIC_RAW_PENDING_WRITTEN=true" in status_text_for_dialectic).lower())
+        logging_util.emit_kv(key="DIALECTIC_CANDIDATES_PARSED", value=str("DIALECTIC_CANDIDATES_PARSED=true" in status_text_for_dialectic).lower())
+        logging_util.emit_kv(key="DIALECTIC_RAW_PENDING_WRITTEN", value=str("DIALECTIC_RAW_PENDING_WRITTEN=true" in status_text_for_dialectic).lower())
         for pattern in (f"{output.name}.json.*", f"{output.name}.extract.*", "plan.txt.tmp.*", "plan-summary.md.tmp.*", "scout-plan-manifest.json.candidate.*", "scout-plan-manifest.json.filtered.*"):
             for path in (output.parent if pattern.startswith(output.name) else design).glob(pattern):
                 with contextlib.suppress(FileNotFoundError):

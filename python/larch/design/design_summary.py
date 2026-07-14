@@ -330,12 +330,10 @@ def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
     status_file = design_tmpdir / "step2b-drafter-status.txt"
     if not status_file.is_file():
         return "static-only, drafter absent"
-    text = status_file.read_text(encoding="utf-8", errors="replace")
-    values: dict[str, str] = {}
-    for line in text.splitlines():
-        if "=" in line:
-            key, value = line.split("=", 1)
-            values[key] = value
+    values = larch_io.parse_kv(
+        status_file.read_text(encoding="utf-8", errors="replace"),
+        duplicate_policy="last",
+    )
     if values.get("SCOUT_WRITTEN") != "true":
         return f"static-only, drafter {values.get('SCOUT_FAIL_REASON') or 'absent'}"
     try:

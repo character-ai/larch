@@ -82,3 +82,38 @@ def test_invalid_match_exits_2(capsys: pytest.CaptureFixture[str], monkeypatch: 
     assert rc == 2
     assert out == ""
     assert "invalid choice" in err
+
+
+def test_file_last_match_forwards_duplicate_policy(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "values.env"
+    _ = source.write_text("KEY=one\nKEY=two\n", encoding="utf-8")
+
+    rc, out, err = run_get(
+        ["--key", "KEY", "--file", str(source), "--match", "last"],
+        capsys,
+        monkeypatch,
+    )
+
+    assert rc == 0
+    assert out == "two\n"
+    assert err == ""
+
+
+def test_stdin_last_non_empty_forwards_policy(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rc, out, err = run_get(
+        ["--key", "KEY", "--match", "last-non-empty"],
+        capsys,
+        monkeypatch,
+        stdin="KEY=one\nKEY=\n",
+    )
+
+    assert rc == 0
+    assert out == "one\n"
+    assert err == ""

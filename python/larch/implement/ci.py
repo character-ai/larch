@@ -27,9 +27,6 @@ from larch.core import proc
 from larch.core import redact
 
 
-def _emit_kv(*, key: str, value: object) -> None:
-    logging_util.emit_kv(key=key, value=str(value))
-
 
 def _parse(*, parser: argparse.ArgumentParser, argv: list[str], usage_exit: int) -> argparse.Namespace | int:
     try:
@@ -39,10 +36,10 @@ def _parse(*, parser: argparse.ArgumentParser, argv: list[str], usage_exit: int)
 
 
 def _status_error_kv() -> None:
-    _emit_kv(key="CI_STATUS", value="error")
-    _emit_kv(key="BEHIND_COUNT", value=0)
-    _emit_kv(key="FAILED_RUN_ID", value="")
-    _emit_kv(key="CONFLICTED", value="false")
+    logging_util.emit_kv(key="CI_STATUS", value="error")
+    logging_util.emit_kv(key="BEHIND_COUNT", value=0)
+    logging_util.emit_kv(key="FAILED_RUN_ID", value="")
+    logging_util.emit_kv(key="CONFLICTED", value="false")
 
 
 def _usage_error(message: str) -> None:
@@ -69,10 +66,10 @@ def _normalize_base_branch(value: str) -> str:
 
 
 def _emit_main_health(status: main_health.MainHealthStatus) -> None:
-    _emit_kv(key="MAIN_CI_STATUS", value=status.status)
-    _emit_kv(key="MAIN_FAILED_RUN_ID", value=status.failed_run_id)
-    _emit_kv(key="MAIN_HEALTH_HEAD_SHA", value=status.head_sha)
-    _emit_kv(key="MAIN_HEALTH_DETAIL", value=status.detail)
+    logging_util.emit_kv(key="MAIN_CI_STATUS", value=status.status)
+    logging_util.emit_kv(key="MAIN_FAILED_RUN_ID", value=status.failed_run_id)
+    logging_util.emit_kv(key="MAIN_HEALTH_HEAD_SHA", value=status.head_sha)
+    logging_util.emit_kv(key="MAIN_HEALTH_DETAIL", value=status.detail)
 
 
 def main_health_main(argv: list[str]) -> int:
@@ -152,10 +149,10 @@ def status_main(argv: list[str]) -> int:
         base_ref=args.base_ref,
         empty_checks_grace=args.empty_checks_grace,
     )
-    _emit_kv(key="CI_STATUS", value=status.status)
-    _emit_kv(key="BEHIND_COUNT", value=status.behind_count)
-    _emit_kv(key="FAILED_RUN_ID", value=status.failed_run_id or "")
-    _emit_kv(key="CONFLICTED", value=str(status.conflicted).lower())
+    logging_util.emit_kv(key="CI_STATUS", value=status.status)
+    logging_util.emit_kv(key="BEHIND_COUNT", value=status.behind_count)
+    logging_util.emit_kv(key="FAILED_RUN_ID", value=status.failed_run_id or "")
+    logging_util.emit_kv(key="CONFLICTED", value=str(status.conflicted).lower())
     return 0
 
 
@@ -211,8 +208,8 @@ def decide_main(argv: list[str]) -> int:
         rebase_count=args.rebase_count,
         fix_attempts=args.fix_attempts,
     )
-    _emit_kv(key="ACTION", value=decision.action)
-    _emit_kv(key="BAIL_REASON", value=decision.bail_reason or "")
+    logging_util.emit_kv(key="ACTION", value=decision.action)
+    logging_util.emit_kv(key="BAIL_REASON", value=decision.bail_reason or "")
     return 0
 
 
@@ -355,7 +352,7 @@ def wait_main(argv: list[str]) -> int:
 
     for line in _wait_output_lines(status=status, decision=decision, iteration=args.iteration, elapsed=elapsed):
         key, _, value = line.partition("=")
-        _emit_kv(key=key, value=value)
+        logging_util.emit_kv(key=key, value=value)
     return 0
 
 
@@ -410,9 +407,9 @@ def failed_jobs_main(argv: list[str]) -> int:
             print(line)
     fixable = logging_util.sanitize_list(",".join(fixable_tokens))
     unfixable = logging_util.sanitize_list(",".join(unfixable_tokens))
-    _emit_kv(key="FAILED_JOBS_COUNT", value=classified.count)
-    _emit_kv(key="FAILED_JOBS_FIXABLE", value=fixable)
-    _emit_kv(key="FAILED_JOBS_UNFIXABLE", value=unfixable)
+    logging_util.emit_kv(key="FAILED_JOBS_COUNT", value=classified.count)
+    logging_util.emit_kv(key="FAILED_JOBS_FIXABLE", value=fixable)
+    logging_util.emit_kv(key="FAILED_JOBS_UNFIXABLE", value=unfixable)
     return 0
 
 
@@ -758,10 +755,10 @@ def distill_log_main(argv: list[str]) -> int:
     if distill_args is None:
         return _distill_usage(error or "ERROR: invalid ci distill-log arguments")
     outcome = _distill_from_gh(distill_args)
-    _emit_kv(key="STATUS", value=outcome.status)
-    _emit_kv(key="OUTPUT", value=outcome.output)
-    _emit_kv(key="FAILED_JOBS_COUNT", value=outcome.failed_jobs_count)
-    _emit_kv(key="BAIL_CLASS", value=outcome.bail_class)
+    logging_util.emit_kv(key="STATUS", value=outcome.status)
+    logging_util.emit_kv(key="OUTPUT", value=outcome.output)
+    logging_util.emit_kv(key="FAILED_JOBS_COUNT", value=outcome.failed_jobs_count)
+    logging_util.emit_kv(key="BAIL_CLASS", value=outcome.bail_class)
     return outcome.exit_code
 
 
@@ -779,7 +776,7 @@ def behind_count_main(argv: list[str]) -> int:
         base_ref=args.base_ref,
         fetch=not args.no_fetch,
     )
-    _emit_kv(key="BEHIND_COUNT", value=count)
+    logging_util.emit_kv(key="BEHIND_COUNT", value=count)
     return 0
 
 
@@ -791,7 +788,7 @@ def rerun_failed_main(argv: list[str]) -> int:
     if isinstance(args, int):
         return args
     result = ci_monitor.rerun_failed(proc, run_id=args.run_id, repo=args.repo)
-    _emit_kv(key="RERUN_SUBMITTED", value=str(result.submitted).lower())
-    _emit_kv(key="ALREADY_RUNNING", value=str(result.already_running).lower())
-    _emit_kv(key="ERROR", value=result.error or "")
+    logging_util.emit_kv(key="RERUN_SUBMITTED", value=str(result.submitted).lower())
+    logging_util.emit_kv(key="ALREADY_RUNNING", value=str(result.already_running).lower())
+    logging_util.emit_kv(key="ERROR", value=result.error or "")
     return 0

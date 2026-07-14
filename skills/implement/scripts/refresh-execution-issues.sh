@@ -32,11 +32,13 @@ fail_usage() {
 read_kv() {
     local key=$1 file=$2
     [ -f "$file" ] || return 0
-    awk -v k="$key" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$file" 2>/dev/null
+    python3 "$PLUGIN_ROOT/python/cli.py" kv get --file "$file" --key "$key" --match first 2>/dev/null || true
 }
 
 read_plugin_version() {
-    python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null | awk -F= '/^LARCH_PLUGIN_VERSION=/{print $2; exit}'
+    python3 "$PLUGIN_ROOT/python/cli.py" plugin read-version 2>/dev/null \
+        | python3 "$PLUGIN_ROOT/python/cli.py" kv get --key LARCH_PLUGIN_VERSION --match first 2>/dev/null \
+        || true
 }
 
 IMPLEMENT_TMPDIR=""

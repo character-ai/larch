@@ -18,6 +18,7 @@ from pathlib import Path
 
 from larch.core import config
 from larch.git import git
+from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
@@ -36,7 +37,6 @@ from larch.agents._types import (
     WaterfallResult,
     TierAttempt,
     _err,
-    _emit_kv,
     _read_text,
     _write,
     _append,
@@ -450,9 +450,9 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     )
     # Emit STATUS based on exit_code (tracks whether JSON promotion succeeded),
     # but return the subprocess's own returncode so callers that check the
-    _emit_kv(key="STATUS", value="OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
-    _emit_kv(key="OUTPUT_FILE", value=str(output))
-    _emit_kv(key="ELAPSED", value=elapsed)
+    logging_util.emit_kv(key="STATUS", value="OK" if exit_code == 0 else ("TIMEOUT" if exit_code == config.EXIT_TIMEOUT else "ERROR"))
+    logging_util.emit_kv(key="OUTPUT_FILE", value=str(output))
+    logging_util.emit_kv(key="ELAPSED", value=elapsed)
     _emit_claude_subprocess_failure_fields(output=output, launcher_exit=exit_code)
     return exit_code
 
@@ -690,11 +690,8 @@ def ingest_launcher_token_sidecar(
     then calls ``token record-vendor-sidecar`` on every invocation so that
     partial-failure retries still record vendor usage.
     """
-    token_record: str | None = None
-    for line in launcher_stdout.splitlines():
-        if line.startswith("TOKEN_RECORD="):
-            token_record = line.split("=", 1)[1].strip()
-            break
+    token_record_raw = larch_io.kv_value(text=launcher_stdout, key="TOKEN_RECORD", duplicate_policy="first").strip()
+    token_record: str | None = token_record_raw or None
     if not token_record:
         if allow_output_fallback and output is not None:
             fallback = Path(f"{output}.token-record")
