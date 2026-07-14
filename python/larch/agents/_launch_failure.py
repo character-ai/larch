@@ -16,14 +16,13 @@ from larch.core.ctx import Ctx
 from larch.core import logging_util
 from larch.core import proc
 
+from larch.agents import _types
 from larch.agents._types import (
     _PARSE_RE,
     _REFUSAL_RE,
     _QUOTA_RE,
     _CTRL_RE,
     _PY_CLI,
-    CODEX_GATE_SIGNAL_METADATA_NOT_FOUND,
-    CODEX_GATE_SIGNAL_NEWER_REQUIRED,
     LaunchFailure,
     CodexGateDetail,
     TierAttempt,
@@ -59,7 +58,7 @@ def detect_codex_cli_gate(text: str, *, fallback_model: str = "") -> CodexGateDe
     if metadata is None and version is None:
         return None
     diagnostic_model = ""
-    signal = CODEX_GATE_SIGNAL_METADATA_NOT_FOUND if metadata is not None else CODEX_GATE_SIGNAL_NEWER_REQUIRED
+    signal = _types.CODEX_GATE_SIGNAL_METADATA_NOT_FOUND if metadata is not None else _types.CODEX_GATE_SIGNAL_NEWER_REQUIRED
     if metadata is not None:
         diagnostic_model = metadata.group("model")
     elif version is not None:

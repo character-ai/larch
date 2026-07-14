@@ -27,6 +27,7 @@ from larch import io as larch_io
 from larch.core.ctx import Ctx
 from larch.core import logging_util
 
+from larch.agents import _types
 from larch.agents._types import (
     _AUTH_RETRY_RC,
     _PROBE_NO_RETRY_RC,
@@ -36,8 +37,6 @@ from larch.agents._types import (
     AuthVerdict,
     CheckReviewersResult,
     CodexGateDetail,
-    CodexGateSignal,
-    CODEX_GATE_SIGNALS,
     CodexProbeResult,
     DegradedToolsResult,
     _err,
@@ -320,10 +319,10 @@ def _parse_codex_gate_detail(*, payload: object, identity: str) -> CodexGateDeta
         or expected is None
         or model != expected.model
         or message != expected.message
-        or signal not in CODEX_GATE_SIGNALS
+        or signal not in _types.CODEX_GATE_SIGNALS
     ):
         return None
-    return CodexGateDetail(model=str(model), signal=cast("CodexGateSignal", signal), message=str(message))
+    return CodexGateDetail(model=str(model), signal=cast("_types.CodexGateSignal", signal), message=str(message))
 
 
 def _read_codex_gate_detail(*, identity: str, max_age: int) -> CodexGateDetail | None:
