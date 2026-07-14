@@ -9,7 +9,6 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from larch.core import config
 
@@ -26,7 +25,7 @@ class ScrubLogSecretsResult:
     scrubbed: str
     findings: dict[str, int]
 
-    def __iter__(self) -> Iterator[Any]:  # legacy two-value unpacking compatibility
+    def __iter__(self) -> Iterator[str | dict[str, int]]:  # legacy two-value unpacking compatibility
         yield self.scrubbed
         yield self.findings
 
@@ -38,7 +37,7 @@ class ScrubLogDirectoryResult:
     total: int
     files: int
 
-    def __iter__(self) -> Iterator[Any]:  # legacy two-value unpacking compatibility
+    def __iter__(self) -> Iterator[int]:  # legacy two-value unpacking compatibility
         yield self.total
         yield self.files
 
@@ -50,7 +49,7 @@ class ScrubSubmodulePathsResult:
     count: int
     ok: bool
 
-    def __iter__(self) -> Iterator[Any]:  # legacy two-value unpacking compatibility
+    def __iter__(self) -> Iterator[int | bool]:  # legacy two-value unpacking compatibility
         yield self.count
         yield self.ok
 
