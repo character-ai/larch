@@ -49,6 +49,21 @@ def test_architectural_compliance_slug_is_allowed_as_dynamic(mode: str) -> None:
     assert not any("reserved archetype name: architectural-compliance" in w for w in result.warnings)
 
 
+def test_scout_prompt_authorities_do_not_reserve_architectural_compliance() -> None:
+    prompt_files = [
+        plan_scout.PLUGIN_ROOT / "skills/design/scripts/scout-plan-archetypes-prompt.txt",
+        plan_scout.PLUGIN_ROOT / "skills/implement/SKILL.md",
+    ]
+
+    for prompt_file in prompt_files:
+        reserved_slug_lines = [
+            line
+            for line in prompt_file.read_text(encoding="utf-8").splitlines()
+            if "outer wrapper reserves" in line or "avoid static/reserved slugs" in line
+        ]
+        assert all("architectural-compliance" not in line for line in reserved_slug_lines)
+
+
 def test_validate_rejects_unsafe_and_bad_shapes() -> None:
     rows = [
         "not-object",
