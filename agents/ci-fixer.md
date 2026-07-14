@@ -104,9 +104,9 @@ Any hard bail from any phase below must call `python3 "$CLAUDE_PLUGIN_ROOT/pytho
 
 Use `CONFLICT_FILES` from the spawn prompt. If absent or empty, fall back to `git diff --name-only --diff-filter=U`. On each Phase 4 `--continue` exit 1, re-capture `CONFLICT_FILES` from that invocation's stdout; do not reuse a stale list.
 
-For each file in `CONFLICT_FILES`:
+Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git conflict-files` once and parse each block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines. Then for each file in `CONFLICT_FILES`:
 
-1. Run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git conflict-files`. Parse each block of `FILE=<path>`, `STAGE_1=<bool>`, `STAGE_2=<bool>`, `STAGE_3=<bool>` lines.
+1. Look up that path in the conflict-files inventory from the single call above.
 2. **Unsupported conflict types**: if any required stage is missing, or the file is binary, classify as **uncertain**. Do not auto-resolve.
 3. **Generated files**: if auto-generated and both sides are obvious, classify as **trivial** and auto-resolve. When upstream (main) is correct, run `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git checkout-ours <file>`; during rebase this wrapper selects upstream (main). Stage with `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" git stage <file>`. Version files are ordinary conflicts; `/release` owns version bumps.
 4. **Text conflicts with both sides available**: read both sides through wrappers:
@@ -137,16 +137,16 @@ Otherwise, run self-review for non-trivial `ship_pr_pre_push` conflict resolutio
 
 **3b. Trivial gate**: if every conflict was classified and resolved as trivial, skip the rest of Phase 3 and proceed to Phase 4.
 
-**3c. Review context**: for each non-trivial conflicted file, prepare a per-file conflict context block:
+**3c. Review context**: for each non-trivial conflicted file, prepare a per-file conflict context block. Prefer the upstream/feature excerpts already read in Phase 1 — after staging, `git show-stage` may no longer be available for that path.
 
 ```
 ### <file-path>
 **Conflict type**: <text overlap / import reorder / etc.>
 **Upstream (main) version** (relevant section):
-<content from `cli.py git show-stage --stage 2 --file <file>`, focused on the conflicting region>
+<Phase 1 upstream (main) excerpt, or `cli.py git show-stage --stage 2 --file <file>` when still available>
 
 **Feature branch commit version** (relevant section):
-<content from `cli.py git show-stage --stage 3 --file <file>`, focused on the conflicting region>
+<Phase 1 feature branch commit excerpt, or `cli.py git show-stage --stage 3 --file <file>` when still available>
 
 **Proposed resolution**:
 <the resolved content that was staged>

@@ -41,8 +41,8 @@
     "closure_content_estimated_tokens": 48018,
     "closure_estimated_tokens": 48140,
     "closure_lines": 1362,
-    "conditional_content_estimated_tokens": 17807,
-    "conditional_estimated_tokens": 17853,
+    "conditional_content_estimated_tokens": 17846,
+    "conditional_estimated_tokens": 17892,
     "conditional_files": [
       "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
@@ -72,8 +72,8 @@
     "skill_md_lines": 873
   },
   {
-    "closure_content_estimated_tokens": 55271,
-    "closure_estimated_tokens": 55498,
+    "closure_content_estimated_tokens": 55334,
+    "closure_estimated_tokens": 55561,
     "closure_lines": 3010,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,
