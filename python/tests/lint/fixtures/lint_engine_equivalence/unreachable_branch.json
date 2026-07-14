@@ -1,0 +1,21 @@
+{
+  "rule": "lint-unreachable-branch",
+  "cases": [
+    {
+      "label": "repeated-conditional-return",
+      "sources": {
+        "larch/mod.py": "def run(flag: bool, value: int) -> int:\n    if flag:\n        return value\n    if flag:\n        return value\n    return 0\n"
+      },
+      "expected": [
+        {
+          "path": "python/larch/mod.py",
+          "line": 4,
+          "rule_id": "lint-unreachable-branch",
+          "message": "unreachable branch occurrence 1 cond=Name('flag', Load())",
+          "qualified_symbol": "run",
+          "rendered": "python/larch/mod.py:4: lint-unreachable-branch unreachable branch occurrence 1 cond=Name('flag', Load())"
+        }
+      ]
+    }
+  ]
+}
