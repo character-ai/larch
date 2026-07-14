@@ -1,6 +1,8 @@
 # pyright: reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnusedCallResult=false
 """Offline tests for analyze_bugs.py."""
 
+# pyright: reportOperatorIssue=false
+
 from __future__ import annotations
 
 import json
