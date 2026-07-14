@@ -26,7 +26,7 @@
     "cursor_model": {
       "title": "Cursor Model",
       "type": "string",
-      "description": "Default model for Cursor launches (e.g., gpt-5.4-medium). Also accepted via LARCH_CURSOR_MODEL env var. Reviewer-panel rows may override this per slot with auto. When unset, defaults to composer-2.5 (with max-mode engaged via scripts/cursor-wrap-prompt.sh). Set to composer-2 or composer-2-fast to use earlier defaults.",
+      "description": "Default model for Cursor launches (e.g., gpt-5.4-medium). Also accepted via LARCH_CURSOR_MODEL env var. Reviewer-panel rows may override this per slot with auto. When unset, defaults to composer-2.5 (with max-mode engaged via scripts/cursor-wrap-prompt.sh).",
       "sensitive": false
     },
     "codex_model": {

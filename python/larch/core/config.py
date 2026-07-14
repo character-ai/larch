@@ -340,6 +340,10 @@ CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
 CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
+# Effort is embedded in the Cursor grok model id; the CLI has no bare `grok-4.5`
+# and passes no separate effort argv. `cursor-grok-4.5-high` is the valid pin for
+# the MODERATE implement lane. Do not use `-fast` variants; they are pricier.
+CURSOR_GROK_4_5_HIGH_MODEL: Final = "cursor-grok-4.5-high"
 CODER_TOOL_ORDER_BY_DIFFICULTY: Final[dict[str, tuple[str, ...]]] = {
     DIFFICULTY_TIER_TRIVIAL: ("codex", "cursor", "claude"),
     DIFFICULTY_TIER_MODERATE: ("cursor", "codex", "claude"),
@@ -347,7 +351,7 @@ CODER_TOOL_ORDER_BY_DIFFICULTY: Final[dict[str, tuple[str, ...]]] = {
 }
 CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY: Final[dict[str, str]] = {
     DIFFICULTY_TIER_TRIVIAL: CURSOR_DEFAULT_MODEL,
-    DIFFICULTY_TIER_MODERATE: "grok-4.5",
+    DIFFICULTY_TIER_MODERATE: CURSOR_GROK_4_5_HIGH_MODEL,
     DIFFICULTY_TIER_HARD: CURSOR_DEFAULT_MODEL,
 }
 

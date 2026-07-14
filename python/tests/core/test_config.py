@@ -136,5 +136,5 @@ def test_cursor_implement_model_by_difficulty() -> None:
     )
     assert (
         config.CURSOR_IMPLEMENT_MODEL_BY_DIFFICULTY[config.DIFFICULTY_TIER_MODERATE]
-        == "grok-4.5"
+        == "cursor-grok-4.5-high"
     )

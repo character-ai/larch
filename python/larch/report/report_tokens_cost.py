@@ -68,7 +68,7 @@ DEFAULT_RATE_TABLE_PER_M = {
         "cache_read": CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
         "output": CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
     },
-    ("cursor", "grok-4.5"): CURSOR_GROK_4_5_BASE,
+    ("cursor", config.CURSOR_GROK_4_5_HIGH_MODEL): CURSOR_GROK_4_5_BASE,
     ("claude", config.CLAUDE_OPUS_4_8_MODEL): {
         "input": 5.00,
         "cache_read": 0.50,
@@ -119,6 +119,13 @@ DEFAULT_CLAUDE_BLENDED_PER_M = 0.80
 # every other Codex model, including model-less legacy rows, uses the default bucket.
 CODEX_MINI_MODEL = config.CODEX_REVIEW_MODEL_DEFAULT
 CODEX_MINI_MODELS = frozenset({"gpt-5.4-mini", "gpt-5.6-luna"})
+# Cursor model ids that price at the grok rate. The live MODERATE implement pin is
+# config.CURSOR_GROK_4_5_HIGH_MODEL; "grok-4.5" is the legacy label recorded by
+# pre-#7237 committed run logs, kept so those logs still bucket at the grok rate
+# (G-Wire-2: readers stay tolerant of prior shapes). Extend, never replace, when
+# the pin id changes. Membership is exact: near-miss ids like "grok-4.6" price at
+# the composer rate.
+CURSOR_GROK_MODELS = frozenset({config.CURSOR_GROK_4_5_HIGH_MODEL, "grok-4.5"})
 CLAUDE_SUB_MODEL_FLAG_PREFIXES = {
     config.CLAUDE_SONNET_4_6_MODEL: "claude-sub-sonnet",
     config.CLAUDE_HAIKU_4_5_MODEL: "claude-sub-haiku",
@@ -188,7 +195,7 @@ def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str
     codex: Mapping[str, float] = _default_row("codex")
     codex_mini: Mapping[str, float] = rate_row("codex", model=CODEX_MINI_MODEL)
     _surcharge = env_rate(names=config.ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M, default=CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M, environ=env)
-    cursor_grok: Mapping[str, float] = rate_row("cursor", model="grok-4.5")
+    cursor_grok: Mapping[str, float] = rate_row("cursor", model=config.CURSOR_GROK_4_5_HIGH_MODEL)
     return DisplayRates(
         claude_input=env_rate(names=("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), default=claude["input"], environ=env),
         claude_cache_read=env_rate(names=("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), default=claude["cache_read"], environ=env),
@@ -343,7 +350,7 @@ def cursor_argv_from_buckets(*, by_model: object, bucket: Mapping[str, object]) 
         counts = _cursor_bucket_counts(raw_bucket)
         if counts is None:
             raise AssertionError("validated Cursor bucket became invalid")
-        target = grok if model == "grok-4.5" else composer
+        target = grok if model in CURSOR_GROK_MODELS else composer
         for index, count in enumerate(counts):
             target[index] += count
     return [
