@@ -14,13 +14,14 @@ import sys
 import tempfile
 from contextlib import suppress
 from pathlib import Path
+from typing import cast
 from larch import io as larch_io
 from larch.core import config
 from larch.report import exec_issue_detail
 from larch.report.run_log_batch import (
-    _EXECUTION_ISSUE_CATEGORIES,
-    _normalize_body_for_hash,
-    _redact_batch_payload,
+    _EXECUTION_ISSUE_CATEGORIES,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the canonical category set.
+    _normalize_body_for_hash,  # pyright: ignore[reportPrivateUsage]  # shared writer preserves the established hash grammar.
+    _redact_batch_payload,  # pyright: ignore[reportPrivateUsage]  # shared writer uses the existing fail-closed redaction path.
 )
 
 VALIDATION_FAILED_RC = 2
@@ -127,8 +128,9 @@ def _existing_execution_issue_keys(batch_text: str) -> set[str]:
             continue
         if not isinstance(row, dict):
             continue
-        category = row.get("category")
-        body = row.get("body")
+        row_dict = cast("dict[str, object]", row)
+        category = row_dict.get("category")
+        body = row_dict.get("body")
         if isinstance(category, str) and isinstance(body, str):
             keys.update(_execution_issue_body_keys(category=category, body=body))
     return keys
