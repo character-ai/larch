@@ -1,0 +1,78 @@
+### contract-unification G1: Engine unsuppressible-rule mode
+
+Partition piece 1 of 2 split from #7013.
+
+**Scope**: Add `allow_inline_suppression: bool = True` field to `LintRule` in `engine.py`. When `False`, `_scan_source` skips the pragma check so rules that ban specific patterns cannot be bypassed by an inline pragma. Update `_validate_rule` and `_scan_source` to honor the new field. Add tests proving unsuppressible rules retain findings despite a matching reason-bearing pragma, and that ordinary rules still honor suppression.
+
+**Firm headings**: python/larch/lint/engine.py, python/tests/lint/test_lint_engine.py
+
+**Acceptance**:
+
+`python3 -m pytest python/tests/lint/test_lint_engine.py -q` passes, covering the unsuppressible flag on and off.
+
+**Dependencies (from proposal)**: none
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Ban pylint skip-file in runtime modules
+
+​#### Problem
+
+The duplication gates are being dodged exactly where duplication concentrates. `python/larch/issue/_oos.py:3` carries `# pylint: skip-file` (verified), exempting the OOS-parsing hotspot — the module at the center of the FINDING/OOS grammar fan-out — from the R0801 duplicate-code gate CI relies on. `design_step_log.py:25` documents a helper deliberately restructured to "avoid pylint R0801 duplicate-code across the two modules". A gate that can be silently opted out of underreports precisely in the worst files.
+
+​#### Goal
+
+An engine-based lint (per #6988) banning `pylint: skip-file` and blanket per-file R0801 disables in `python/larch/` runtime modules, with a reason-bearing baseline for any grandfathered row and a burndown of `_oos.py`'s entry by paying its lint debt. Complements #6968 (prevention cost gate) by keeping the existing gates airtight while new ones are added.
+
+​#### Size
+
+Small: ~100-150 lines of rule plus tests; closes the gate-evasion channel.
+
+
+### contract-unification G2: Pylint skip-file ban rule and _oos.py burndown
+
+Partition piece 2 of 2 split from #7013.
+
+**Scope**: New `lint_pylint_skip_file.py` using `engine.py` unsuppressible `LintRule`. New `test_lint_pylint_skip_file.py`. New `python/pylint-skip-file-baseline.json` with 16 grandfathered entries. Remove `# pylint: skip-file` from `_oos.py` and fix resulting R0801 violations. Wire into `larch/cli.py`, `Makefile` `py-lint-checks-fast` loop and regen target, and `.pre-commit-config.yaml` hook.
+
+**Firm headings**: python/larch/lint/lint_pylint_skip_file.py, python/tests/lint/test_lint_pylint_skip_file.py, python/pylint-skip-file-baseline.json, python/larch/issue/_oos.py, python/larch/cli.py, Makefile, .pre-commit-config.yaml
+
+**Acceptance**:
+
+`python3 -m pytest python/tests/lint/test_lint_pylint_skip_file.py -q` passes. `python3 python/cli.py lint pylint-skip-file` exits 0. `make py-lint-duplicate-code` passes with `_oos.py` included. `make py-lint-checks-fast` passes.
+
+**Dependencies (from proposal)**: blocked-by Piece 1
+
+```
+<!-- larch:plan:start -->
+## Plan
+
+(needs /design — operator runs `/design` on this filed piece and reaches Gate C approval before `[DESIGNED]` or `/implement`.)
+<!-- larch:plan:end -->
+```
+
+**Original feature context (excerpt)**:
+
+# contract-unification [FEATURE] Ban pylint skip-file in runtime modules
+
+​#### Problem
+
+The duplication gates are being dodged exactly where duplication concentrates. `python/larch/issue/_oos.py:3` carries `# pylint: skip-file` (verified), exempting the OOS-parsing hotspot — the module at the center of the FINDING/OOS grammar fan-out — from the R0801 duplicate-code gate CI relies on. `design_step_log.py:25` documents a helper deliberately restructured to "avoid pylint R0801 duplicate-code across the two modules". A gate that can be silently opted out of underreports precisely in the worst files.
+
+​#### Goal
+
+An engine-based lint (per #6988) banning `pylint: skip-file` and blanket per-file R0801 disables in `python/larch/` runtime modules, with a reason-bearing baseline for any grandfathered row and a burndown of `_oos.py`'s entry by paying its lint debt. Complements #6968 (prevention cost gate) by keeping the existing gates airtight while new ones are added.
+
+​#### Size
+
+Small: ~100-150 lines of rule plus tests; closes the gate-evasion channel.
+
+
