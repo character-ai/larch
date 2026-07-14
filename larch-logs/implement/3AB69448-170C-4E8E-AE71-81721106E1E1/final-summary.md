@@ -9,29 +9,26 @@ Warnings (1):
 
 ## Architectural invariants
 
-I assessed the `/design` Gate C adverse-outcome fix-ladder change set against the architectural invariants. The changed surfaces are: the new plan-revise reviser mode on the Claude implementer (edits only `plan.txt`, no repository writes, no commit) in `agents/claude-implementer.md` and the shared mode-boundary note in `agents/_implementer-base.md`, `agents/codex-implementer.md`, and `agents/cursor-implementer.md`; the two new publish-gate refusals in `python/larch/design/design_publish.py`; the Gate C settle site in `python/larch/design/design_session.py` and `skills/design/scripts/design-step35-settle.sh`; the Step 5c refusal routing in `python/larch/design/design_step5c.py`; the documented-exception parsing and fail-closed persistence in `python/larch/core/architectural_guidelines.py`; and the redacted guideline-exception disclosure in `python/larch/design/design_summary.py`.
-
-The hard publish gates stay fail-closed. An unresolved invariant violation can never be waived (a valid guideline exception explicitly cannot waive it), and the guideline gate opens only on an explicit main-agent-authored decision recorded in durable run state (a validated, non-fenced, exactly-one exception line gated behind the deliberate `--allow-exception` persist path); an unreadable note fails closed. The gate is never disarmed by data authored by the entity under evaluation: the reviser never judges its own revision, and a fresh assessor re-judges the on-disk plan after every plan change, with re-assessment permitted only after a clean Gate C settle. The newly added per-kind tier counters and the persisted guideline note are resume-read state, and they fall inside the include-by-default pause snapshot (they match none of the snapshot exclude names, suffixes, globs, or directories), with a restore regression test added in `python/tests/design/test_design_pause.py`. Persisted assessment verdicts are consumed against the current plan, not a stale one. No architectural invariant is violated by these changes.
+I assessed the full current `/design` Gate C adverse-outcome fix-ladder diff at this HEAD against the architectural invariants, including the incremental generated complexity-baseline update since the prior assessment. The hard publish gates stay fail-closed: an unresolved invariant violation can never be waived, the guideline gate opens only on an explicit main-agent-authored decision recorded in durable run state behind a deliberate persist path, an unreadable note fails closed, the plan reviser never judges its own revision, and a fresh assessor re-judges the on-disk plan after every plan change through the Gate C settle. The new per-kind tier counters and the persisted guideline note are resume-read state that a pause-snapshot restore regression test now covers, and persisted verdicts are consumed against the current plan rather than a stale one. The generated lint-baseline metric bump records legitimate, reviewed growth in already-grandfathered functions and raises no invariant concern. No architectural invariant is violated by these changes.
 
 ## Architectural guidelines
 
-I assessed the same Gate C fix-ladder change set against the architectural guidelines. The parsed exception is carried in a frozen dataclass; the exactly-one active-exception parser is fence-aware and reuses the shared balanced-fence scanner in `python/larch/design/plan_grammar.py` through a documented function-level import that keeps the leaf/domain layering acyclic, with a paired inline reason on the suppression. Validation fails loudly and closed with distinct machine reasons per rejected flag, source, and exception state (empty rationale, wrong author, impossible date, duplicate, and fenced-only notes all reject), and the date check catches only a narrow parse error.
+I assessed the same full diff at this HEAD against the architectural guidelines, including the incremental generated lint-baseline update since the prior assessment. The new documented-exception parsing carries its data in an immutable value type, reuses the shared balanced fenced-code scanner in `python/larch/design/plan_grammar.py` through a documented function-level import that keeps the leaf/domain layering acyclic, and validates loudly and closed with a distinct machine reason per rejected flag, source, and exception state (empty rationale, wrong author, impossible date, duplicate, and fenced-only notes all reject). The exception rationale is redacted through the established outbound path before it reaches the final summary, symlink and regular-file checks run at use time, and the disclosure write is idempotent and gated to approved outcomes. The change is a thorough multi-consumer sweep across the publish emitter, the Step 5c router, the session settle table, the settle wrapper and its docs, the skill references, and all three generated implementer prompts, each backed by added offline tests, with suppressions carrying inline reasons. The two generated ratchet-baseline updates record minimal, reviewed growth through the sanctioned regeneration path, add no new grandfathered rows, and leave both ratchets fully functional. The changed code introduces no meaningful guideline deviation.
 
-Egress is handled correctly: the exception rationale is redacted through the established outbound-redaction path before it reaches the final summary, symlink and regular-file checks run at use time, and the disclosure write is idempotent and gated to approved outcomes. The change is a thorough multi-consumer sweep rather than a one-site edit: the new publish-refuse reasons and settle actions are propagated across the publish emitter (`python/larch/design/design_publish.py`), the Step 5c router (`python/larch/design/design_step5c.py`), the session settle table (`python/larch/design/design_session.py`), the settle wrapper and its docs, the skill references, and all three generated implementer prompts, each backed by added offline tests in `python/tests/`. The two new publish-refuse literals follow the existing inline convention for that wire key, consistent with the surrounding code. The changes adhere to the established patterns and introduce no meaningful guideline deviation.
+## /implement run 3AB69448-170C-4E8E-AE71-81721106E1E1: pr-created
 
-## /implement run 3AB69448-170C-4E8E-AE71-81721106E1E1: shipping
-
-- **Outcome**: shipping
+- **Outcome**: ✅ DONE
 - Force: true
 - **Duration**: 01:38:30
-- **Cost**: 💰 TOTAL ~$44.04: Claude $41.44, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.60  |  Tokens: 66325k
+- **Cost**: 💰 TOTAL ~$50.66: Claude $48.01, Codex-5.6 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $2.65  |  Tokens: 73941k
 - **Issue**: #7214: https://github.com/character-ai/larch/issues/7214
+- **PR**: #7301: https://github.com/character-ai/larch/pull/7301
 - **Plan review**: N/A
 - **Plan coverage**: 22/23 firm headings; band: advisory; disposition: none; todos_left: 0
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: N/A
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +956/-78, larch-logs +369/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
