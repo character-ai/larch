@@ -21,6 +21,8 @@ from larch.core import external_defaults
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import retry
+from larch.design.design_step0_env import ROUTE_STATE_PATH
+from larch.design.design_terminal import phase_driver_read_result_env
 from larch.git import gh
 from larch.issue import issue_wire
 from larch.state import session_env
@@ -33,6 +35,10 @@ PROMPT_PREFIX_LINE_MAX = 8
 MIN_PARTITION_PIECES = 2
 PARTITION_MAP_FIELD_COUNT = 3
 PARTITION_DEP_FIELD_COUNT = 2
+# Matches one or more leading ``[TAG]`` square-bracket prefixes on an issue
+# title (e.g. ``[BUG]``, ``[FEATURE][A]``). Selected characters are restricted
+# so an untrusted GitHub title cannot smuggle arbitrary text into the prefix.
+SQUARE_BRACKET_PREFIX_RE = re.compile(r"^\s*((?:\[[A-Za-z0-9 _.-]+\]\s*)+)")
 
 
 
@@ -92,6 +98,79 @@ def _binary_bool(*, value: str, binary: str) -> bool:
     if value in {"true", "false"}:
         return value == "true"
     return shutil.which(binary) is not None
+
+
+def _route_state_value(design_tmpdir: Path, key: str) -> str:
+    """Read a ``KEY=value`` row from the Step 0 route-state env, or return "".
+
+    The route-state file (written by ``design_step0``) carries the original
+    issue title and number that ``/design`` bound at Step 0; the title is needed
+    to build the split-piece title prefix. Reads go through the shared
+    ``phase_driver_read_result_env`` helper that sibling consumers
+    (``design_step0``, ``clarify``) already use, with a single-key containment,
+    so parsing and value/newline handling stay centralized rather than being
+    re-derived here. Missing/symlink/non-regular files degrade to "" so the
+    caller's title passes through unchanged.
+    """
+    try:
+        pairs = phase_driver_read_result_env(
+            path=design_tmpdir / ROUTE_STATE_PATH,
+            allow_keys=frozenset({key}),
+        )
+    except OSError:
+        return ""
+    for row_key, value in pairs:
+        if row_key == key:
+            return value
+    return ""
+
+
+def _leading_square_bracket_prefix(title: str) -> str:
+    """Return the joined leading ``[TAG]`` token(s) from a title, or "".
+
+    ``"[BUG] foo"`` -> ``"[BUG]"``; ``"[FEATURE][A] x"`` -> ``"[FEATURE][A]"``;
+    ``"foo"`` -> ``""``. Whitespace between tokens is dropped so the caller can
+    re-join with single spaces.
+    """
+    match = SQUARE_BRACKET_PREFIX_RE.match(title or "")
+    if not match:
+        return ""
+    tokens = re.findall(r"\[[A-Za-z0-9 _.-]+\]", match.group(1))
+    return "".join(tokens)
+
+
+def _prefixed_piece_title(
+    *,
+    original_title: str,
+    issue_number: str,
+    piece_number: int,
+    piece_title: str,
+) -> str:
+    """Compose the filed-issue title for a partition piece.
+
+    Preserves any leading square-bracket prefix carried by the original issue
+    title, then appends the ``split-<original-issue-number>-<piece>`` token so
+    every piece shares a common, traceable prefix. If the piece title already
+    starts with the same bracket(s), they are not duplicated. When no issue
+    number is bound, only the preserved bracket (if any) prefixes the title.
+    """
+    bracket = _leading_square_bracket_prefix(original_title)
+    stripped_piece = piece_title
+    if bracket:
+        prefix_with_space = bracket + " "
+        if stripped_piece.startswith(prefix_with_space):
+            stripped_piece = stripped_piece[len(prefix_with_space):]
+        elif stripped_piece.startswith(bracket):
+            stripped_piece = stripped_piece[len(bracket):].lstrip()
+    parts: list[str] = []
+    if bracket:
+        parts.append(bracket)
+    if issue_number.isdigit():
+        token = f"split-{issue_number}-{piece_number}:"
+        if not stripped_piece.startswith(token + " ") and stripped_piece != token:
+            parts.append(token)
+    parts.append(stripped_piece)
+    return " ".join(parts)
 
 
 def _neutralize_markdown_h3_line_starts(text: str) -> str:
@@ -341,13 +420,20 @@ def prepare_partition_issues(
     feat = feat_path.read_text(encoding="utf-8") if feat_path.is_file() else ""
     feat = _neutralize_markdown_h3_line_starts(feat)
     orig = f"#{issue_number}" if issue_number.isdigit() else "(original issue — set ISSUE_NUMBER in session)"
+    original_title = _route_state_value(design_tmpdir, "ISSUE_TITLE")
     lines: list[str] = []
     n = len(pieces)
     for i, (pnum, title, _body) in enumerate(pieces):
         scope = scopes[i]
         firm_text = ", ".join(firm_heading_lines[i])
         acceptance_text = acceptance_lines[i]
-        lines.append(f"### {title}\n")
+        prefixed_title = _prefixed_piece_title(
+            original_title=original_title,
+            issue_number=issue_number,
+            piece_number=pnum,
+            piece_title=title,
+        )
+        lines.append(f"### {prefixed_title}\n")
         body_text = (
             f"Partition piece {pnum} of {n} split from {orig}.\n\n"
             f"**Scope**: {scope or '(see parent partition file)'}\n\n"

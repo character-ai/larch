@@ -3,8 +3,8 @@
     "closure_content_estimated_tokens": 52946,
     "closure_estimated_tokens": 53097,
     "closure_lines": 1716,
-    "conditional_content_estimated_tokens": 18770,
-    "conditional_estimated_tokens": 18839,
+    "conditional_content_estimated_tokens": 18888,
+    "conditional_estimated_tokens": 18958,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
@@ -19,7 +19,7 @@
       "skills/design/references/dialectic-clarifier.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 767,
+    "conditional_lines": 769,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",

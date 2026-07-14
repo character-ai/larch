@@ -52,6 +52,8 @@ Override keeps the existing warning and caller-specific continuation. No Split-p
 
 ## 4. File and annotate
 
+`prepare` writes each piece's filed-issue title with a common, traceable prefix: any leading square-bracket prefix from the original issue title (for example `[BUG]`, `[FEATURE]`) is preserved, followed by `split-<original-issue-number>-<piece-number>`. The original-issue title and number are read from `.design-step0-route-state.env` (bound at Step 0). Do not pass `--title-prefix` to `/larch:issue`; the prefix is already baked into each title in `partition-input.txt`.
+
 On valid Partition acceptance, invoke `/larch:issue` in batch mode with `$DESIGN_TMPDIR/decompose/partition-input.txt` and `--no-dep-llm`. Keep dedup enabled. Pass `--context-file "$DESIGN_TMPDIR/source-env.sh"` to nested issue creation. Supply `--intra-batch-deps-file "$DESIGN_TMPDIR/decompose/partition-deps.tsv"` only when that TSV is non-empty; declared edges are authoritative and independent pieces must remain independent.
 
 Capture stdout and run:

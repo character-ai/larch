@@ -57,6 +57,7 @@ PARSED_ENV_KEYS = (
     "POSITIONAL_VALUE",
 )
 ROUTE_STATE_KEYS = frozenset({"ROUTE", "RESUME_STEP", "HAS_CLARIFY_LABEL", "ISSUE_NUMBER", "ISSUE_TITLE", "REPO", "brainstorm_requested"})
+ROUTE_STATE_PATH = ".design-step0-route-state.env"
 ROUTE_RESULT_KEYS = frozenset({
     "ROUTE",
     "BRAINSTORM_PREFIX",
