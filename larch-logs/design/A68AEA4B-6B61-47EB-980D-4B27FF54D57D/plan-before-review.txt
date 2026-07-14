@@ -1,0 +1,128 @@
+## Approach
+
+Implement the Gate C ladder independently for invariants and guidelines.
+
+Each plan edit must run the existing settle and postplan validation path before a fresh `larch:arch-assessor` spawn. Persist tier counters so pause, resume, and re-entry cannot reset the bounds.
+
+Treat a guideline assessment file as publishable only when it is the canonical clean note or carries a valid, unfenced exception block. Keep the existing fail-closed persistence and publish checks.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+- Describe `MODE=plan-revise` as the second approved Gate C subagent carve-out.
+- Route adverse Gate C outcomes through the reference-owned two-tier ladder.
+- Require the existing cancellation flow when an invariant remains unresolved. Skip Step 5, plan publication, approval, and waiver paths.
+- Require guideline exceptions to appear in the Gate C presentation.
+- Under `--skip-approve`, carry the exception disclosure into the terminal final-summary presentation.
+
+### UPDATED: skills/design/references/approval-gates-gate-c.md
+
+- Replace the current inline invariant remediation loop with independent invariant and guideline ladders.
+- For tier 1, spawn `larch:claude-implementer` with `MODE=plan-revise`, the plan path, the relevant assessor note path, and a narrow instruction to fix only the named `violation` or `deviation`.
+- Parse a plan-revision result contract that distinguishes revised, no-progress, and bail outcomes.
+- After a revision, run the existing settle/postplan pipeline. Re-enter Gate C only after it validates.
+- Spawn a fresh `larch:arch-assessor` after every fix. Never let a fixer judge its own revision.
+- For tier 2, let the main agent read only the relevant plan evidence and assessment:
+  - It must attempt one invariant fix.
+  - It may fix a guideline deviation or decline.
+- If an invariant remains after tier 2, use the existing cancellation terminal flow. Preserve diagnostics and publish nothing.
+- If the main agent declines a guideline fix, append exactly one active `Exception: <rationale> (author: main-agent, date: YYYY-MM-DD)` line and persist with `--allow-exception`.
+- Persist separate per-kind tier counters under `$DESIGN_TMPDIR`. Enforce one tier-1 round and at most one tier-2 round for each kind across re-entry and pause/resume.
+- Present a persisted guideline exception before approval. Include it in the `--skip-approve` terminal-summary path.
+- Keep invariant persistence before guideline persistence and retain all existing accepted-findings audit gates.
+
+### UPDATED: agents/claude-implementer.md
+
+- Add `MODE=plan-revise`.
+- In this mode, read the named plan and assessment evidence, then make only the smallest scoped edit to `plan.txt`.
+- Forbid repository edits, staging, commits, pushes, issue changes, and unrelated design-tmpdir writes.
+- Return a strict result trailer for revised, no-progress, or bail outcomes.
+- Preserve the existing `step8-fix` and `step2-plan` contracts unchanged.
+
+### UPDATED: agents/_implementer-base.md
+
+- Add the shared `plan-revise` trust boundary and scope rules referenced by the Claude implementer.
+- Make repository-edit and manifest rules explicitly mode-specific so plan revision cannot inherit code-implementation side effects.
+- Preserve current Cursor and Codex implementation behavior.
+
+### UPDATED: AGENTS.md
+
+- Register Gate C plan revision through `larch:claude-implementer` as the second operator-approved exception to `/design` inline-only execution.
+- Keep assessment authoring in `larch:arch-assessor`; state that the reviser never judges.
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+- Add `--allow-exception` to guideline `persist-design-assessment`.
+- Reject the flag for invariants, clean persistence, absent or invalid guidelines, and non-file assessment sources.
+- Reject an active `Exception:` line on ordinary guideline persistence. Only the decline re-submission may authorize it.
+- Validate the exception grammar: non-empty rationale, `author: main-agent`, and a real calendar date.
+- Scan Markdown with fenced-code-block state so example `Exception:` lines inside backtick or tilde fences do not count.
+- Expose one shared helper for publish-time exception validation.
+- Preserve no-follow reads, atomic writes, stale-artifact removal, and existing machine result lines.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+- Cover accepted `--allow-exception` persistence with a valid block.
+- Cover missing, malformed, empty-rationale, wrong-author, and impossible-date blocks.
+- Verify first-pass persistence rejects an active exception without the flag.
+- Verify fenced examples neither authorize publication nor trigger the first-pass exception guard.
+- Verify invariants and clean or absent guideline paths reject `--allow-exception`.
+- Update Gate C prompt-contract assertions for the two tiers, fresh reassessment, bounded counters, cancellation, and summary disclosure.
+
+### UPDATED: python/larch/design/design_publish.py
+
+- Read the persisted guideline assessment through the existing safe file boundary.
+- Treat the canonical clean note as publishable.
+- Treat any non-clean guideline note as a deviation and require the shared validated exception helper.
+- Refuse a bare or malformed deviation before plan write, issue mutation, log publication, or rename.
+- Emit a stable refusal reason that routes repair back through Gate C.
+- Preserve missing, symlink, non-regular, absent-guideline, and non-approved-outcome behavior.
+- Keep sibling degraded publish consumers fail-closed through the shared completeness result.
+
+### UPDATED: python/tests/design/test_design_publish.py
+
+- Verify a valid guideline deviation exception passes the publish gate.
+- Verify the same deviation without the exception fails before publication.
+- Cover malformed, fenced-only, wrong-author, and invalid-date exception lines.
+- Assert the dedicated refusal reason and result-env state.
+- Retain existing clean, missing-assessment, `--skip-validate`, and approved-partition coverage.
+
+### UPDATED: python/tests/design/test_design_pause.py
+
+- Extend pause snapshot restoration coverage for the new per-kind tier counters.
+- Restore a persisted guideline exception assessment and verify Gate C resume retains it.
+- Confirm the existing generic snapshot transport preserves these regular top-level artifacts and `.completed/` provenance.
+
+## Edge cases
+
+- Invariants and guidelines may both be adverse. Process them independently in canonical order.
+- A tier-1 no-progress or bail still consumes that kind’s tier-1 round.
+- A failed settle or postplan validation stops before reassessment.
+- Pause or repeated Gate C entry must not reset counters or reuse a verdict from an older plan.
+- An exception-looking line inside a Markdown fence has no authority.
+- A valid exception cannot waive an invariant violation.
+- A bare deviation remains non-publishable after ladder exhaustion.
+
+## Failure modes
+
+1. **A stale assessment approves a revised plan.** Re-run settle/postplan, then spawn a fresh assessor against the current `plan.txt`.
+2. **Re-entry repeats a tier indefinitely.** Persist per-kind counters and fail closed when their bounds are exhausted.
+3. **A prose example bypasses the exception gate.** Use a fence-aware parser at both persistence and publication boundaries.
+
+## Testing strategy
+
+- Run focused architectural-guideline tests:
+  `python3 -m pytest python/tests/core/test_architectural_guidelines.py`
+- Run focused publish and pause tests:
+  `python3 -m pytest python/tests/design/test_design_publish.py python/tests/design/test_design_pause.py`
+- Run `/design` and `/implement` structure checks that cover agent and Gate C prompt contracts.
+- Run changed-file Python lint and generated-prompt checks.
+- Finish with the repository-required `make lint` and `make py-test` validation for the changed surfaces.
+
+difficulty: HARD
+diff_added: 290
+diff_deleted: 70
+mechanical_churn: false
+oversize_override: operator
+diff_lines: 360
