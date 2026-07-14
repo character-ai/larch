@@ -85,11 +85,15 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-pylint-skip-file-baseline regen-layering-baseline regen-skill-closure-baseline regen-unreachable-branch-baseline regen-markdown-heading-fence-state-baseline
+.PHONY: regen-complexity-baseline lint-complexity-debt regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-monkeypatch-facade-binding-baseline regen-env-via-config-constant-baseline regen-lifecycle-prefix-literal-baseline regen-renderer-golden-tests-baseline regen-suppression-reason-baseline regen-pylint-skip-file-baseline regen-layering-baseline regen-skill-closure-baseline regen-unreachable-branch-baseline regen-markdown-heading-fence-state-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
-	$(PYTHON) python/cli.py lint complexity-baseline --write
+	# REASON is required when regeneration adds a row or grows a metric.
+	$(PYTHON) python/cli.py lint complexity-baseline --write $(if $(REASON),--reason "$(REASON)")
+
+lint-complexity-debt:
+	$(PYTHON) python/cli.py lint complexity-debt --report
 
 regen-keyword-only-baseline:
 	# Regenerate python/keyword-only-baseline.json from live AST scan.
