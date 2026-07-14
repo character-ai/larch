@@ -8,7 +8,7 @@ The markdown body is produced by [`python/cli.py render run-summary`](../../../p
 
 ## Implement outcome enum (`--outcome` raw values)
 
-These values are emitted by the shared `python/cli.py stall-recovery normalize-outcome` helper. `write-final-report.sh` consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. The harness `test-write-final-report.sh` is expected to stay aligned with the helper.
+These values are emitted by the shared `python/cli.py stall-recovery normalize-outcome` helper. `python/cli.py final-report write` (via the thin `write-final-report.sh` wrapper) consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. Pytest coverage in `python/tests/report/test_final_report.py` stays aligned with the helper.
 
 1. `stalled`: any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
 2. `forked-dry-run`: `FORKED_TARGET=true`.
@@ -53,18 +53,24 @@ write-final-report.sh --implement-tmpdir PATH [--comment-only] [--print-stdout]
 
 ### `--print-stdout`
 
-When set, the script exports `PRINT_STDOUT=true` and prints the rendered markdown body to FD **3** when FD 3 is available, else to **stdout**. Status KV lines go to FD **4** (quiet session) or **stderr** (non-quiet), via `emit_kv_out`. This is the renderer's print mechanism; top-chat visibility is achieved by the orchestrator emitting the persisted `$IMPLEMENT_TMPDIR/summary-final.md` body verbatim after the Bash call (per `skills/implement/SKILL.md` Step 17 / Step 18 prose). The FD-3-vs-stdout choice is not the primary top-chat visibility channel. The canonical tmpdir basename is `summary-final.md`, distinct from the committed `larch-logs/implement/<RUN_ID>/final-summary.md` run-log artifact.
+When set, the writer prints the rendered markdown body to **stdout** before the
+status KV lines. Top-chat visibility is still owned by the orchestrator, which
+emits the persisted `$IMPLEMENT_TMPDIR/summary-final.md` body verbatim after the
+wrapper returns (per `skills/implement/SKILL.md` Step 17 / Step 18 prose). The
+canonical tmpdir basename is `summary-final.md`, distinct from the committed
+`larch-logs/implement/<RUN_ID>/final-summary.md` run-log artifact.
 
-### Key-value contract (`emit` / `emit_kv_out`)
+### Key-value contract
 
 | Key | Values |
 |-----|--------|
 | `COMMENT_URL` | Upserted comment URL, or empty on skip/failure |
-| `STATUS` | `ok` \| `skipped` \| `failed` |
-| `REASON` | On `skipped`: `issue-not-set` or `repo-unavailable` |
+| `STATUS` | `ok` \| `failed` |
 | `ERROR` | On `failed`: short message |
 
-`STATUS=skipped` when `ISSUE_NUMBER=0` or `REPO_UNAVAILABLE=true`. GitHub upsert failure → `STATUS=failed`, non-zero exit.
+When `ISSUE_NUMBER=0` or `REPO_UNAVAILABLE=true`, tracking upsert is skipped and
+the writer still returns `STATUS=ok` with an empty `COMMENT_URL`. GitHub upsert
+failure → `STATUS=failed`, non-zero exit.
 
 ## `RUN_ID` validation
 
@@ -76,36 +82,28 @@ Still refreshes `summary-final.md` for the upsert but **does not** overwrite `la
 
 ## PR line counts
 
-After `REPO` and `PR_NUMBER` resolve, when `REPO_UNAVAILABLE=true` the script
-skips `python3 python/cli.py token compute-pr-line-counts` entirely and treats line data as
+After `REPO` and `PR_NUMBER` resolve, when `REPO_UNAVAILABLE=true` the writer
+skips `tokens.compute_pr_line_counts` entirely and treats line data as
 unavailable. Otherwise it first reuses cached `LINES_*` values from
-`ship-pr-state.sh` when they match the current `PR_NUMBER`; on cache miss it
-invokes the helper under `set +e`, parses `LINES_STATUS` and the four counter
-keys, appends a cache entry to `ship-pr-state.sh` when writable, and never
-aborts the report on helper failure. This intentionally avoids repeated live
-GitHub file-list calls during `--comment-only` refreshes.
+`ship-pr-state.sh` when they match the current `PR_NUMBER` and
+`LINES_STATUS=ok`. On cache miss it calls the helper in process, merges the
+four counters back into `ship-pr-state.sh` when writable (replacing prior
+`LINES_*` keys), and never aborts the report on helper failure. This avoids
+repeated live GitHub file-list calls during `--comment-only` refreshes.
 
-When `LINES_STATUS=ok` and all four counters are non-empty integers, both
-`run_body_render` branches forward `--code-added`, `--code-deleted`,
-`--logs-added`, and `--logs-deleted` to `python/cli.py render run-summary` using the
-Bash 3.2-safe `${line_args[@]+"${line_args[@]}"}` expansion. Otherwise the
-renderer omits those flags and the bullet shows `N/A`.
-
-`compose_self_fallback` emits `- **Lines (PR diff)**: …` for schema parity
-(`N/A` when counts are unavailable).
+When status is `ok` and all four counters are non-empty integers, the writer
+forwards them into `python/cli.py render run-summary`. Otherwise the renderer
+omits those values and the bullet shows `N/A`.
 
 ## Review phase detail (per-round, issue #3774)
 
-Before composing the note appendix, the script runs
-`python/cli.py progress render-phase-detail`
-with `--rounds-root "$run_dir"`,
-`--findings-file "$run_dir/review-findings-full.jsonl"`,
-`--timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"`, the resolved
-`--token-ledger "$IMPLEMENT_TMPDIR/larch-tokens-<hash>.jsonl"` (globbed; omitted
-when absent), and `--skill implement`, capturing the rendered **Review Phase
-Detail** markdown to a temp file. That file is `cat` into the note block (after
-the existing notes), so the section lands in the `--note-lines-file` appendix that
-`python/cli.py render run-summary` emits after the `<!-- larch:run-summary v=1 -->` sentinel.
+Before writing `summary-final.md`, the writer calls
+`review_phase_detail.render_implement_review_detail` in process (rounds root
+under `larch-logs/implement/<RUN_ID>/`, findings under that run dir, timing and
+token ledgers from the implement tmpdir). The rendered **Review Phase Detail**
+markdown is prefixed ahead of the run-summary body (together with exec-issue and
+architectural detail sections), so it appears before the
+`<!-- larch:run-summary v=1 -->` sentinel.
 
 The section is a per-round table (suggestions made/accepted, OOS proposed/accepted,
 time, cost, reviewers launched), a Total row, optional reviewer timing ASCII
@@ -121,15 +119,16 @@ attributed by token-ledger timestamp window and priced via `python/larch/report/
 The helper is best-effort. For a valid selected rounds root with zero completed
 rounds (for example `--self-review` runs, where Step 5 does no panel review), it
 renders `## Review Phase Detail` plus `No review rounds completed.`. A completed
-`round-meta.json` only outside the selected `--rounds-root` is still not counted
+`round-meta.json` only outside the selected rounds root (for example under the
+live `IMPLEMENT_TMPDIR/round-N/` working dirs, issue #3794) is still not counted
 as a completed round; the final report shows the no-completed-round message for
 that selected valid root. Terminal progress (`python/larch/report/progress_report.py`) skips
 the shared renderer when every discovered round dir under the selected root lacks
 `round-meta.json`, so in-flight-only reviews do not append
-`No review rounds completed.` during live Step 5 or design plan review. A render failure is swallowed
-(`|| : >"$review_detail_file"`) and never blocks the report. `/design`'s plan
-review uses the same shared renderer through its final summary helper; see the
-helper's `.md` for the `/design` contract.
+`No review rounds completed.` during live Step 5 or design plan review. A render
+failure is swallowed and never blocks the report. `/design`'s plan review uses
+the same shared renderer through its final summary helper; see the helper's `.md`
+for the `/design` contract.
 
 ## Token-data-missing primary path
 
@@ -145,3 +144,8 @@ summary in process via `python/cli.py render run-summary` helpers. There is no
 separate Bash self-composed renderer fallback. Tracking-comment failures still
 return `STATUS=failed` after writing `summary-final.md`; repo-unavailable runs
 skip the tracking upsert and return `STATUS=ok` with an empty `COMMENT_URL`.
+
+## Test authority
+
+- **Behavioral authority**: `python/tests/report/test_final_report.py` (`make test-write-final-report` → `write-final-report-py-harness`), covering outcome matrix, comment-only, manifest stamp/failure, cost unavailable variants, force flags, line-count cache, and review-phase injection.
+- **Delegation smoke**: `skills/implement/scripts/test-write-final-report.sh` (`write-final-report-bash-harness`) covers only thin-wrapper plugin-root selection, exact `final-report write` CLI routing, argv forwarding, exit-status forwarding, and stdout/stderr passthrough.

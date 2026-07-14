@@ -992,6 +992,7 @@ test-write-final-report: write-final-report-py-harness write-final-report-bash-h
 write-final-report-py-harness:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/report/test_final_report.py python/tests/git/test_pr_body.py -q -k 'write_final_report or step18b or render_run_summary or post_tracking or generate_code_flow'
 
+# Delegation smoke for write-final-report.sh; behavior lives in write-final-report-py-harness.
 write-final-report-bash-harness:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/implement/scripts/test-write-final-report.sh
 
