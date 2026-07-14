@@ -1,0 +1,53 @@
+{
+  "rule": "lint-unreachable-branch",
+  "cases": [
+    {
+      "label": "repeated-conditional-return",
+      "sources": {
+        "larch/mod.py": "def run(flag: bool, value: int) -> int:\n    if flag:\n        return value\n    if flag:\n        return value\n    return 0\n"
+      },
+      "expected": [
+        {
+          "path": "python/larch/mod.py",
+          "line": 4,
+          "rule_id": "lint-unreachable-branch",
+          "message": "unreachable branch occurrence 1 cond=Name('flag', Load())",
+          "qualified_symbol": "run",
+          "rendered": "python/larch/mod.py:4: lint-unreachable-branch unreachable branch occurrence 1 cond=Name('flag', Load())"
+        }
+      ]
+    },
+    {
+      "label": "multiple-sources-multiple-findings-reversed-expected-order",
+      "sources": {
+        "larch/zeta.py": "def zeta(flag: bool) -> int:\n    if flag:\n        return 1\n    if flag:\n        return 1\n    return 0\n",
+        "larch/alpha.py": "def alpha(flag: bool) -> int:\n    if flag:\n        return 1\n    if flag:\n        return 1\n    return 0\n"
+      },
+      "expected": [
+        {
+          "path": "python/larch/zeta.py",
+          "line": 4,
+          "rule_id": "lint-unreachable-branch",
+          "message": "unreachable branch occurrence 1 cond=Name('flag', Load())",
+          "qualified_symbol": "zeta",
+          "rendered": "python/larch/zeta.py:4: lint-unreachable-branch unreachable branch occurrence 1 cond=Name('flag', Load())"
+        },
+        {
+          "path": "python/larch/alpha.py",
+          "line": 4,
+          "rule_id": "lint-unreachable-branch",
+          "message": "unreachable branch occurrence 1 cond=Name('flag', Load())",
+          "qualified_symbol": "alpha",
+          "rendered": "python/larch/alpha.py:4: lint-unreachable-branch unreachable branch occurrence 1 cond=Name('flag', Load())"
+        }
+      ]
+    },
+    {
+      "label": "no-findings",
+      "sources": {
+        "larch/mod.py": "def run(flag: bool) -> int:\n    if flag:\n        return 1\n    return 0\n"
+      },
+      "expected": []
+    }
+  ]
+}
