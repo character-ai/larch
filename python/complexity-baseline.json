@@ -6741,7 +6741,7 @@
     "file": "tests/skills/_structure_implement_specialized.py",
     "code": "PLR0915",
     "qualified_symbol": "run",
-    "metric": 598
+    "metric": 610
   },
   {
     "file": "tests/skills/_structure_learn_from_bugs_specialized.py",
