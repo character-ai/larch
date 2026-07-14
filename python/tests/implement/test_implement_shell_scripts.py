@@ -1594,10 +1594,10 @@ def test_token_propagation_review_and_fix_step5_default_moderate(tmp_path: Path)
 
     implement_tmpdir = tmp_path / "claude-implement-token-test"
     implement_tmpdir.mkdir()
-    shutil.copy(review_env, implement_tmpdir / "session-env.sh")
+    _ = shutil.copy(review_env, implement_tmpdir / "session-env.sh")
     session_env = implement_tmpdir / "session-env.sh"
     with session_env.open("a", encoding="utf-8") as handle:
-        handle.write("RUN_ID=token-test-run\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n")
+        _ = handle.write("RUN_ID=token-test-run\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n")
     _ = (implement_tmpdir / "plan.txt").write_text("plan\n", encoding="utf-8")
     _ = (implement_tmpdir / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     core_stub = _write_review_core_stub(tmp_path)
@@ -1709,10 +1709,10 @@ def test_token_propagation_difficulty_routing(
     lower = tier.lower()
     case_tmp = tmp_path / f"claude-implement-difficulty-{lower}"
     case_tmp.mkdir()
-    shutil.copy(review_env, case_tmp / "session-env.sh")
+    _ = shutil.copy(review_env, case_tmp / "session-env.sh")
     session_env = case_tmp / "session-env.sh"
     with session_env.open("a", encoding="utf-8") as handle:
-        handle.write(f"RUN_ID=token-test-run-{lower}\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n")
+        _ = handle.write(f"RUN_ID=token-test-run-{lower}\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n")
     _ = (case_tmp / "plan.txt").write_text("plan\n", encoding="utf-8")
     _ = (case_tmp / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     core_stub = _write_review_core_stub(tmp_path)
