@@ -235,7 +235,7 @@ def run_negotiation_round(*, tool: str, prompt_file: str | Path, output: str | P
     cursor_hooks = VendorFamilyHooks(
         preflight=_cursor_preflight,
         execute=_cursor_execute,
-        promote_completion=lambda **_kwargs: _emit_kv(key="RESPONSE_FILE", value=str(output_path)),  # type: ignore[reportUnknownLambdaType]
+        promote_completion=lambda **_kwargs: _emit_kv(key="RESPONSE_FILE", value=str(output_path)),  # type: ignore[reportUnknownLambdaType]  # targets the VendorFamilyHooks.promote_completion Callable[..., Any] seam pyright cannot narrow
     )
     cursor_outcome = run_vendor_launch(
         CURSOR_DESCRIPTOR,
@@ -735,7 +735,7 @@ def _write_dialectic_pending(*, path: Path, payload: str) -> bool:
     return True
 
 
-def _launch_codex_exec_inprocess(*, argv: list[str], stdout_path: Path, stderr_path: Path) -> int:  # type: ignore[reportUnusedFunction]
+def _launch_codex_exec_inprocess(*, argv: list[str], stdout_path: Path, stderr_path: Path) -> int:  # type: ignore[reportUnusedFunction]  # intentionally retained as a thin compatibility delegate re-exported from agents.py
     with stdout_path.open("w", encoding="utf-8") as out, stderr_path.open("w", encoding="utf-8") as err:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             wrapper_rc = launch_codex_exec_main(argv)
