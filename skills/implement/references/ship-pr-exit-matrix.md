@@ -4,15 +4,15 @@
 **Contract**: Python-owned post-driver and OOS-checkpoint routing that emits one `NEXT_ACTION=` token.
 **When to load**: **MANDATORY: READ ENTIRE FILE** at Step 8+ entry, before any Step 8+ orchestrator fence, including `ship route-exit` and `ship pre-driver`.
 
-## Durable handoff sidecars
+## Durable result env
 
-Before each fresh Step 8+ bgjob launch, the wrapper clears stale handoff sidecars, recreates the per-step merge-result env, truncates `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.stdout-capture`, and always writes `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc`. It writes `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` only from current guard or `ship pr` schema JSON. Rc-only setup failures unlink stale `.json`; the SKILL halts Tool Failures before `ship route-exit` and never invents driver JSON. Extraction waits until the guard or driver pipeline closes, so the final JSON line has drained.
+The Step 8 wrapper delegates launch and reattachment to `bgjob adapt`. Its child passes the adapter-provided merge-result env to `ship pr` as `--result-env-path`. The bgjob daemon merges the direct ship outcome KVs with `BGJOB_RC` and `STEP` into `$IMPLEMENT_TMPDIR/bgjob/implement-step8-ship.result.env`; Bash neither captures nor parses ship JSON.
 
 ## `ship route-exit` contract
 
-`python/cli.py ship route-exit` reads the `.rc` and `.json` sidecars, validates required fields, writes `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env`, and emits exactly one `NEXT_ACTION=<token>` on stdout. Its process rc is 0 whenever `NEXT_ACTION` is emitted. It returns non-zero only when no safe `NEXT_ACTION` exists, such as malformed JSON, missing sidecar, missing required field, or handoff write failure. Do not apply the generic `BGJOB_RC=0` success gate here: Step 8 route-exit follows the numeric driver rc in `.step-8-ship-handoff.rc` plus current handoff JSON. `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, `BGJOB_STATUS=DEAD`, missing sidecars, or stale sidecars block route-exit; other non-zero driver rc values such as 3 or 6 are valid route inputs when the sidecars are current. Driver exit 2 (`EXIT_USAGE` / local-harness-confirms-failure) is not a route-exit input: `ship route-exit` fails closed on it, and the recovery is to re-invoke `step-8-ship.sh` through the Step 8 bgjob start/wait pair without `--resume-phase`.
+`python/cli.py ship route-exit` reads the Step 8 bgjob result env, validates required outcome KVs, writes `$IMPLEMENT_TMPDIR/.ship-route-exit-handoff.env`, and emits exactly one `NEXT_ACTION=<token>` on stdout. Its process rc is 0 whenever `NEXT_ACTION` is emitted. It returns non-zero only when no safe `NEXT_ACTION` exists, such as a malformed result env, a missing required field, or a handoff write failure. Do not apply the generic `BGJOB_RC=0` success gate here: Step 8 route-exit follows the numeric driver rc and ship outcome in the result env. `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, `BGJOB_STATUS=DEAD`, or a missing/malformed outcome block route-exit; other non-zero driver rc values such as 3 or 6 are valid route inputs when the outcome is current. Driver exit 2 (`EXIT_USAGE` / local-harness-confirms-failure) has no direct ship outcome, so `ship route-exit` fails closed and recovery re-invokes `step-8-ship.sh` through the Step 8 bgjob start/wait pair without `--resume-phase`.
 
-Required JSON fields:
+Required result-env fields:
 
 | Driver rc | Required fields | Routing |
 | --- | --- | --- |
@@ -65,7 +65,7 @@ The ci-fixer subagent round loop is prose-owned in `skills/implement/SKILL.md`. 
 
 Post-driver Step 8+ continuations cover non-empty `PR_NUMBER`, post-cold-start `PHASE`, OOS checkpoint re-entry, transient retry, conflict resolution, or Exit 3 after PR creation. Invoke only `step-8-ship.sh` through the Step 8 bgjob start/wait pair; do not rerun the pre-driver verb. The wrapper still runs its guard and advisory phantom probe before the driver.
 
-Unexpected turn-end recovery follows the same rule: use `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` for the active driver call; the wrapper rejoins a live identity-valid registry row or clears stale handoff before a fresh start. The Python driver reads persisted `ship-pr-state.sh` and the phase14 flag after conflict-resolution Phase 4. If the pre-driver predicate still matches, re-evaluate it first and run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
+Unexpected turn-end recovery follows the same rule: use `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` for the active driver call; the adapter rejoins a live identity-valid registry row or deliberately replaces a completed result for a reship. The Python driver reads persisted `ship-pr-state.sh` and the phase14 flag after conflict-resolution Phase 4. If the pre-driver predicate still matches, re-evaluate it first and run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
 
 ## Terminal manifest contract
 

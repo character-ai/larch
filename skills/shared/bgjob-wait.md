@@ -66,7 +66,7 @@ After `DONE`, parse all rows and read `$IMPLEMENT_TMPDIR/bgjob/implement-step5-r
 
 ## Step 8 handoff carve-out
 
-Do not apply the generic `BGJOB_RC=0` success gate to `ship route-exit`. Step 8 follows its handoff contract: the child records `STEP8_HANDOFF_RC` in the bgjob result env and writes the route JSON sidecar when schema JSON exists. The orchestrator reads that route data rather than treating `BGJOB_RC=0` alone as success.
+Do not apply the generic `BGJOB_RC=0` success gate to `ship route-exit`. Step 8 reads the direct ship outcome KVs and numeric driver rc from the bgjob result env. The orchestrator validates those route inputs rather than treating `BGJOB_RC=0` alone as success.
 
 ## Parallel external lanes
 

@@ -185,8 +185,6 @@ from larch.implement.dispatch_ship import (
     _SHIP_ROUTE_EXIT_LEDGER_KEYS,
     _classify_ship_needs_user_reason,
     _classify_ship_route_exit,
-    _read_ship_route_exit_code,
-    _read_ship_route_json,
     _ship_route_detail_needs_file,
     _ship_route_exit_fail,
     _ship_route_read_retry_count,

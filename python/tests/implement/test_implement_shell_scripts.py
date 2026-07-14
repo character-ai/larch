@@ -36,29 +36,16 @@ _STEP5_WRAPPERS = (
 )
 
 _STEP8_HELPER_STATIC_PINS: tuple[tuple[str, str, bool], ...] = (
-    ("bgjob start", "static: foreground wrapper starts bgjob", True),
+    ("bgjob adapt", "static: foreground wrapper delegates to bgjob adapter", True),
     ('STEP="implement-step8-ship"', "static: bgjob step slug pinned", True),
     ("--budget-s 21600", "static: bgjob budget pins Step 8 timeout", True),
-    ('--merge-result-env "$MERGE_RESULT_ENV"', "static: bgjob merge-result env passed", True),
-    ('--bgjob-child --merge-result-env "$MERGE_RESULT_ENV"', "static: bgjob child argv passed", True),
-    ("step8_live_registry_exists", "static: live registry rejoin helper present", True),
-    (
-        'bgjob wait --step "$STEP" --tmpdir "$IMPLEMENT_TMPDIR" --max-wait-s 0',
-        "static: live/completed rejoin uses bgjob wait",
-        True,
-    ),
-    ('safe_truncate "$MERGE_RESULT_ENV"', "static: merge-result env recreated before fresh start", True),
-    ('rm -f "$RESULT_ENV"', "static: stale canonical result env removed before fresh start", True),
-    (
-        'rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"',
-        "static: stale handoff sidecars cleared before fresh start",
-        True,
-    ),
-    ("write_merge_result_env", "static: child writes merge-result env", True),
-    ("STEP8_HANDOFF_RC=%s", "static: merge-result env records driver rc sidecar value", True),
-    ("STEP8_HANDOFF_JSON_PRESENT=%s", "static: merge-result env records json presence", True),
-    ('persist_handoff "$rc"', "static: child persists real driver rc before zero exit", True),
-    ("trap 'persist_handoff \"$?\"' EXIT", "static: setup failures still persist handoff through EXIT trap", True),
+    ("--replace-completed-result", "static: reship replaces completed result", True),
+    ('--result-env-path "$MERGE_RESULT_ENV"', "static: child passes direct result env to ship", True),
+    ("bgjob start", "static: direct bgjob start retired", False),
+    ("persist_handoff", "static: sidecar handoff writer retired", False),
+    ("stdout-capture", "static: stdout capture retired", False),
+    ("tee -a", "static: stdout tee retired", False),
+    ("step-8-ship-handoff", "static: rc and JSON sidecars retired", False),
     ('python/cli.py" implement clone-tag', "static: clone-tag CLI invoked", True),
     ("step-8-python-guard.sh", "static: shared python guard invoked", True),
     (
@@ -399,20 +386,12 @@ def test_step8_dynamic_foreground_launcher_fresh_start(tmp_path: Path) -> None:
     impl = _make_step8_impl(tmp_path)
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()
-    capture = tmp_path / "bgjob-start-argv.txt"
-    merge_env = impl / "bgjob" / "implement-step8-ship.merge.env"
-    handoff_rc = impl / ".step-8-ship-handoff.rc"
-    handoff_json = impl / ".step-8-ship-handoff.json"
-    _ = merge_env.write_text("old\n", encoding="utf-8")
-    _ = handoff_rc.write_text("stale\n", encoding="utf-8")
-    _ = handoff_json.write_text('{"outcome":"STALE"}\n', encoding="utf-8")
+    capture = tmp_path / "bgjob-adapt-argv.txt"
     _write_python3_stub(
         stub_bin,
         f"""#!/usr/bin/env bash
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "start" ]; then
+if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "adapt" ]; then
   printf '%s\\n' "$@" > "{capture}"
-  if [ -s "{merge_env}" ]; then printf '%s\\n' merge-not-empty > "{tmp_path}/merge-not-empty.txt"; fi
-  if [ -e "{handoff_rc}" ] || [ -e "{handoff_json}" ]; then printf '%s\\n' stale-handoff > "{tmp_path}/stale-handoff.txt"; fi
   printf '%s\\n' 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=12345'
   exit 0
 fi
@@ -421,177 +400,13 @@ exec "{_REAL_PYTHON}" "$@"
     )
     result = _run_step8(impl, stub_bin)
     argv = capture.read_text(encoding="utf-8")
-    assert result.returncode == 0, "dynamic: foreground launcher exits 0 on bgjob start"
+    assert result.returncode == 0, "dynamic: foreground launcher exits 0 on bgjob adapt"
     assert result.stdout == "BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=12345\n", (
-        "dynamic: foreground launcher stdout is exact bgjob start line"
+        "dynamic: foreground launcher stdout is exact bgjob adapter line"
     )
-    assert "--step\nimplement-step8-ship" in argv, "dynamic: bgjob start step forwarded"
-    assert "--merge-result-env" in argv, "dynamic: bgjob start merge-result env forwarded"
-    assert "--bgjob-child" in argv, "dynamic: bgjob child argv forwarded"
-    assert not (tmp_path / "merge-not-empty.txt").exists(), (
-        "dynamic: merge-result env truncated before bgjob start"
-    )
-    assert not (tmp_path / "stale-handoff.txt").exists(), (
-        "dynamic: stale handoff cleared before bgjob start"
-    )
-
-
-def test_step8_dynamic_live_registry_rejoin(tmp_path: Path) -> None:
-    impl = _make_step8_impl(tmp_path)
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    wait_capture = tmp_path / "bgjob-wait-argv.txt"
-    unexpected = tmp_path / "unexpected-rejoin-start.txt"
-    _write_python3_stub(
-        stub_bin,
-        f"""#!/usr/bin/env bash
-if [ "$#" -eq 0 ]; then
-  cat >/dev/null
-  printf '%s\\n' live
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "wait" ]; then
-  printf '%s\\n' "$@" > "{wait_capture}"
-  printf '%s\\n' 'BGJOB_STATUS=WAIT'
-  printf '%s\\n' 'ELAPSED_S=0'
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "start" ]; then
-  printf '%s\\n' unexpected-start > "{unexpected}"
-  exit 0
-fi
-exec "{_REAL_PYTHON}" "$@"
-""",
-    )
-    result = _run_step8(impl, stub_bin)
-    assert result.returncode == 0, "dynamic: live registry rejoin exits with bgjob wait rc"
-    assert "BGJOB_STATUS=WAIT" in result.stdout, "dynamic: live registry rejoin emits wait envelope"
-    assert "--step\nimplement-step8-ship" in wait_capture.read_text(encoding="utf-8"), (
-        "dynamic: live registry rejoin waits on Step 8 slug"
-    )
-    assert not unexpected.exists(), "dynamic: live registry rejoin refuses second bgjob start"
-
-
-def test_step8_dynamic_dead_live_registry_wait(tmp_path: Path) -> None:
-    impl = _make_step8_impl(tmp_path)
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    wait_capture = tmp_path / "bgjob-dead-wait-argv.txt"
-    unexpected = tmp_path / "unexpected-dead-start.txt"
-    _write_python3_stub(
-        stub_bin,
-        f"""#!/usr/bin/env bash
-if [ "$#" -eq 0 ]; then
-  cat >/dev/null
-  printf '%s\\n' live
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "wait" ]; then
-  printf '%s\\n' "$@" > "{wait_capture}"
-  printf '%s\\n' 'BGJOB_STATUS=DEAD'
-  printf '%s\\n' 'BGJOB_DIAG=daemon-dead'
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "start" ]; then
-  printf '%s\\n' unexpected-start > "{unexpected}"
-  exit 0
-fi
-exec "{_REAL_PYTHON}" "$@"
-""",
-    )
-    result = _run_step8(impl, stub_bin)
-    assert result.returncode == 0, "dynamic: dead live-registry wait still exits cleanly"
-    assert "BGJOB_STATUS=DEAD" in result.stdout, "dynamic: dead wait propagates dead status"
-    assert "--step\nimplement-step8-ship" in wait_capture.read_text(encoding="utf-8"), (
-        "dynamic: dead wait uses Step 8 slug"
-    )
-    assert not unexpected.exists(), "dynamic: dead wait refuses fresh bgjob start"
-
-
-def test_step8_dynamic_timeout_result_env_replay(tmp_path: Path) -> None:
-    impl = _make_step8_impl(tmp_path)
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    wait_capture = tmp_path / "bgjob-timeout-wait-argv.txt"
-    unexpected = tmp_path / "unexpected-timeout-start.txt"
-    result_env = impl / "bgjob" / "implement-step8-ship.result.env"
-    handoff_rc = impl / ".step-8-ship-handoff.rc"
-    _ = result_env.write_text(
-        "BGJOB_RC=timeout\nSTEP=implement-step8-ship\nSTEP8_HANDOFF_RC=3\nSTEP8_HANDOFF_JSON_PRESENT=true\n",
-        encoding="utf-8",
-    )
-    _ = handoff_rc.write_text("3\n", encoding="utf-8")
-    _write_python3_stub(
-        stub_bin,
-        f"""#!/usr/bin/env bash
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "wait" ]; then
-  printf '%s\\n' "$@" > "{wait_capture}"
-  printf '%s\\n' 'BGJOB_STATUS=DONE'
-  printf '%s\\n' 'BGJOB_RC=timeout'
-  printf '%s\\n' 'STEP=implement-step8-ship'
-  printf '%s\\n' 'STEP8_HANDOFF_RC=3'
-  printf '%s\\n' 'STEP8_HANDOFF_JSON_PRESENT=true'
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "start" ]; then
-  printf '%s\\n' unexpected-start > "{unexpected}"
-  exit 0
-fi
-exec "{_REAL_PYTHON}" "$@"
-""",
-    )
-    result = _run_step8(impl, stub_bin)
-    assert result.returncode == 0, "dynamic: timeout result env replays through bgjob wait"
-    assert "BGJOB_STATUS=DONE" in result.stdout, "dynamic: timeout result env replays DONE envelope"
-    assert "BGJOB_RC=timeout" in result.stdout, "dynamic: timeout result env preserves terminal rc"
-    assert "--step\nimplement-step8-ship" in wait_capture.read_text(encoding="utf-8"), (
-        "dynamic: timeout result env replays Step 8 wait"
-    )
-    assert not unexpected.exists(), "dynamic: timeout result env refuses fresh bgjob start"
-
-
-def test_step8_dynamic_missing_merge_sidecar_fresh_start(tmp_path: Path) -> None:
-    impl = _make_step8_impl(tmp_path)
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    start_capture = tmp_path / "bgjob-missing-sidecar-start-argv.txt"
-    unexpected_wait = tmp_path / "unexpected-missing-sidecar-wait.txt"
-    stale_result = tmp_path / "stale-missing-sidecar-result-env.txt"
-    result_env = impl / "bgjob" / "implement-step8-ship.result.env"
-    handoff_rc = impl / ".step-8-ship-handoff.rc"
-    _ = result_env.write_text(
-        "BGJOB_RC=6\nSTEP=implement-step8-ship\nSTEP8_HANDOFF_RC=6\nSTEP8_HANDOFF_JSON_PRESENT=true\n",
-        encoding="utf-8",
-    )
-    handoff_rc.unlink(missing_ok=True)
-    _write_python3_stub(
-        stub_bin,
-        f"""#!/usr/bin/env bash
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "start" ]; then
-  printf '%s\\n' "$@" > "{start_capture}"
-  if [ -e "{result_env}" ]; then printf '%s\\n' stale-result-env > "{stale_result}"; fi
-  printf '%s\\n' 'BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=23456'
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "bgjob" ] && [ "$3" = "wait" ]; then
-  printf '%s\\n' unexpected-wait > "{unexpected_wait}"
-  exit 0
-fi
-exec "{_REAL_PYTHON}" "$@"
-""",
-    )
-    result = _run_step8(impl, stub_bin)
-    assert result.returncode == 0, "dynamic: missing merge sidecar falls through to fresh bgjob start"
-    assert result.stdout == "BGJOB_STATUS=STARTED STEP=implement-step8-ship PGID=23456\n", (
-        "dynamic: missing merge sidecar launches fresh bgjob start"
-    )
-    assert "--step\nimplement-step8-ship" in start_capture.read_text(encoding="utf-8"), (
-        "dynamic: missing merge sidecar fresh start forwards Step 8 slug"
-    )
-    assert not unexpected_wait.exists(), "dynamic: missing merge sidecar does not rejoin via bgjob wait"
-    assert not stale_result.exists(), (
-        "dynamic: missing merge sidecar clears stale result env before fresh start"
-    )
+    assert "--step\nimplement-step8-ship" in argv, "dynamic: bgjob adapter step forwarded"
+    assert "--replace-completed-result" in argv, "dynamic: adapter replaces result for a reship"
+    assert "--bgjob-child" not in argv, "dynamic: adapter owns child control arguments"
 
 
 def test_step8_dynamic_child_guard_phantom_driver_order(tmp_path: Path) -> None:
@@ -630,65 +445,19 @@ exec "{_REAL_PYTHON}" "$@"
         stub_bin,
         args=["--bgjob-child", "--merge-result-env", str(merge_env)],
     )
-    assert result.returncode == 0, "dynamic: child exits 0 after persisting non-zero driver rc"
+    assert result.returncode == 3, "dynamic: child preserves the ship driver's route rc"
     assert order_file.read_text(encoding="utf-8") == "guard\nphantom\ndriver\n", (
         "dynamic: child runs guard then phantom then driver"
     )
     assert "PHANTOM_STATUS=clean" in result.stderr, "dynamic: phantom stdout redirected to stderr"
-    assert '"needs_user_reason":"oos-filing"' in result.stdout, (
-        "dynamic: child captures and forwards driver JSON when invoked directly"
-    )
+    assert '"needs_user_reason":"oos-filing"' in result.stdout, "dynamic: child forwards driver JSON"
     ship_text = ship_argv.read_text(encoding="utf-8")
     assert "--branch" in ship_text, "dynamic: child forwards branch flag"
     assert "test-branch" in ship_text, "dynamic: child forwards branch value"
-    assert (impl / ".step-8-ship-handoff.rc").read_text(encoding="utf-8") == "3\n", (
-        "dynamic: handoff rc stores driver rc 3"
-    )
-    assert '"needs_user_reason":"oos-filing"' in (impl / ".step-8-ship-handoff.json").read_text(
-        encoding="utf-8"
-    ), "dynamic: driver JSON sidecar written after drain"
-    merge_text = merge_env.read_text(encoding="utf-8")
-    assert "STEP8_HANDOFF_RC=3" in merge_text, "dynamic: merge result records driver rc 3"
-    assert "STEP8_HANDOFF_JSON_PRESENT=true" in merge_text, (
-        "dynamic: merge result records json presence"
-    )
-
-
-def test_step8_dynamic_merge_result_write_failure_fail_closed(tmp_path: Path) -> None:
-    impl = _make_step8_impl(tmp_path)
-    stub_bin = tmp_path / "bin"
-    stub_bin.mkdir()
-    merge_env = impl / "bgjob" / "implement-step8-ship.merge.env"
-    merge_env.unlink(missing_ok=True)
-    _write_executable(stub_bin / "mv", "#!/usr/bin/env bash\nexit 1\n")
-    _write_python3_stub(
-        stub_bin,
-        f"""#!/usr/bin/env bash
-if [ "$1" = "{_CLI}" ] && [ "$2" = "implement" ] && [ "$3" = "clone-tag" ]; then
-  printf '%s\\n' 'CLONE_TAG_FULL=stub'
-  printf '%s\\n' 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-stub-'
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "git" ] && [ "$3" = "phantom-probe" ]; then
-  printf '%s\\n' 'PHANTOM_STATUS=clean'
-  exit 0
-fi
-if [ "$1" = "{_CLI}" ] && [ "$2" = "ship" ] && [ "$3" = "pr" ]; then
-  printf '%s\\n' '{{"outcome":"NEEDS_USER_INPUT","needs_user_reason":"oos-filing"}}'
-  exit 3
-fi
-exec "{_REAL_PYTHON}" "$@"
-""",
-    )
-    result = _run_step8(
-        impl,
-        stub_bin,
-        args=["--bgjob-child", "--merge-result-env", str(merge_env)],
-    )
-    assert result.returncode == 2, "dynamic: merge-result write failure fails closed"
-    assert not merge_env.exists() or merge_env.read_text(encoding="utf-8") == "", (
-        "dynamic: merge-result write failure does not publish merge env"
-    )
+    assert "--result-env-path" in ship_text, "dynamic: child forwards direct result env flag"
+    assert str(merge_env) in ship_text, "dynamic: child forwards adapter merge-result env"
+    assert not (impl / ".step-8-ship-handoff.rc").exists(), "dynamic: retired rc sidecar remains absent"
+    assert not (impl / ".step-8-ship-handoff.json").exists(), "dynamic: retired JSON sidecar remains absent"
 
 
 def test_step8_guard_stale_python(tmp_path: Path) -> None:
@@ -730,12 +499,11 @@ exec "{_REAL_PYTHON}" "$@"
     assert result.stdout == "", "guard: new python stdout empty"
 
 
-def test_step8_child_setup_failure_handoff(tmp_path: Path) -> None:
+def test_step8_child_setup_failure_does_not_write_handoff_sidecars(tmp_path: Path) -> None:
     impl = _make_step8_impl(tmp_path)
     stub_bin = tmp_path / "bin"
     stub_bin.mkdir()
     merge_env = impl / "bgjob" / "implement-step8-ship.merge.env"
-    _ = (impl / ".step-8-ship-handoff.json").write_text('{"outcome":"STALE"}\n', encoding="utf-8")
     _ = (impl / "ship-pr-state.sh").write_text(
         "RUN_ID=run-ship-guard\nREPO=owner/repo\n",
         encoding="utf-8",
@@ -753,12 +521,8 @@ exec "{_REAL_PYTHON}" "$@"
         args=["--bgjob-child", "--merge-result-env", str(merge_env)],
     )
     assert result.returncode == 2, "child: require_value setup failure exits 2"
-    assert (impl / ".step-8-ship-handoff.rc").read_text(encoding="utf-8") == "2\n", (
-        "child: setup failure handoff rc written"
-    )
-    assert not (impl / ".step-8-ship-handoff.json").exists(), (
-        "child: setup failure unlinks stale handoff json"
-    )
+    assert not (impl / ".step-8-ship-handoff.rc").exists(), "child: rc sidecar is retired"
+    assert not (impl / ".step-8-ship-handoff.json").exists(), "child: JSON sidecar is retired"
     assert result.stdout == "", "child: setup failure stdout empty"
 
 
@@ -867,7 +631,7 @@ def test_step8_symlinked_bgjob_directory_rejected(tmp_path: Path) -> None:
     _write_python3_stub(stub_bin, f'#!/usr/bin/env bash\nexec "{_REAL_PYTHON}" "$@"\n')
     result = _run_step8(impl, stub_bin)
     assert result.returncode == 2
-    assert "refusing symlinked bgjob directory" in result.stderr
+    assert result.stdout == "BGJOB_ERROR=invalid-input\n"
 
 
 def test_step8_symlinked_result_env_rejected(tmp_path: Path) -> None:
@@ -881,10 +645,10 @@ def test_step8_symlinked_result_env_rejected(tmp_path: Path) -> None:
     _write_python3_stub(stub_bin, f'#!/usr/bin/env bash\nexec "{_REAL_PYTHON}" "$@"\n')
     result = _run_step8(impl, stub_bin)
     assert result.returncode == 2
-    assert "refusing invalid bgjob result env" in result.stderr
+    assert result.stdout == "BGJOB_ERROR=unsafe-path\n"
 
 
-def test_step8_symlinked_merge_result_env_child_rejected(tmp_path: Path) -> None:
+def test_step8_child_passes_merge_result_env_to_ship(tmp_path: Path) -> None:
     impl = _make_step8_impl(tmp_path, "implement-symlink-merge")
     merge_target = tmp_path / "merge-target.env"
     _ = merge_target.write_text("old\n", encoding="utf-8")
@@ -916,8 +680,8 @@ exec "{_REAL_PYTHON}" "$@"
         stub_bin,
         args=["--bgjob-child", "--merge-result-env", str(merge_env)],
     )
-    assert result.returncode == 2
-    assert "refusing symlinked merge-result-env" in result.stderr
+    assert result.returncode == 3
+    assert merge_target.read_text(encoding="utf-8") == "old\n"
 
 
 def _make_step18_plugin(tmp_path: Path) -> Path:
