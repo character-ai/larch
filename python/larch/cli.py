@@ -479,6 +479,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "shared-convention-regex"): ("larch.lint.lint_shared_convention_regex", "main"),
     ("lint", "renderer-golden-tests"): ("larch.lint.lint_renderer_golden_tests", "main"),
     ("lint", "suppression-reason"): ("larch.lint.lint_suppression_reason", "main"),
+    ("lint", "pylint-skip-file"): ("larch.lint.lint_pylint_skip_file", "main"),
     ("lint", "guideline-no-exception"): ("larch.lint.lint_guideline_no_exception", "main"),
     ("lint", "guidelines-note-wrapper-bypass"): ("larch.lint.lint_guidelines_note_wrapper_bypass", "main"),
     ("lint", "layering"): ("larch.lint.lint_layering", "main"),

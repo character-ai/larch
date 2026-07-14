@@ -380,6 +380,14 @@ repos:
         always_run: true
         files: ^(python/.*\.py|python/suppression-reason-baseline\.json)$
 
+      - id: lint-pylint-skip-file
+        name: Lint pylint skip-file and module-level R0801 disables in python/larch/
+        entry: python3 python/cli.py lint pylint-skip-file
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^python/larch/.*\.py$|^python/pylint-skip-file-baseline\.json$
+
       - id: lint-bash32
         name: Lint Bash 3.2 portability of shell scripts
         entry: bash scripts/lint-bash32.sh

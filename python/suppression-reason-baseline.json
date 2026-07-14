@@ -2577,13 +2577,6 @@
   },
   {
     "file": "larch/issue/_oos.py",
-    "suppression_kind": "pylint-skip-file",
-    "text": "pylint: skip-file",
-    "occurrence": 1,
-    "reason": "grandfathered pre-G-Py-11 suppression without inline reason"
-  },
-  {
-    "file": "larch/issue/_oos.py",
     "suppression_kind": "pyright-ignore",
     "text": "pyright: ignore[reportPrivateUsage]",
     "occurrence": 1,

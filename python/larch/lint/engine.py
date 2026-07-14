@@ -125,6 +125,7 @@ class LintRule:
     detect: Callable[[SourceFile], object]
     syntax_policy: SyntaxPolicy
     suppression_token: str
+    allow_inline_suppression: bool = True
 
 
 def _is_single_line(value: object) -> bool:
@@ -137,9 +138,15 @@ def _is_single_line(value: object) -> bool:
     )
 
 
+def _is_exact_bool(value: object) -> bool:
+    return isinstance(value, bool)
+
+
 def _validate_rule(rule: LintRule) -> None:
     if not _is_single_line(rule.rule_id):
         raise ScanError("lint rule rule_id must be a non-empty single-line string")
+    if not _is_exact_bool(rule.allow_inline_suppression):
+        raise ScanError("lint rule allow_inline_suppression must be a bool")
     if not _is_single_line(rule.suppression_token):
         raise ScanError(
             "lint rule suppression_token must be a non-empty single-line string"
@@ -185,8 +192,20 @@ def _validate_repo_root(root: Path, runner: Runner) -> Path:
     return resolved
 
 
-def _discover_tracked_paths(root: Path, runner: Runner) -> list[str]:
-    result = runner.run(("git", "ls-files", "--cached", "-z"), cwd=str(root))
+def _discover_tracked_paths(
+    root: Path,
+    runner: Runner,
+    *,
+    pathspecs: Sequence[str] | None = None,
+) -> list[str]:
+    # Scope ls-files when callers pass pathspecs so sparse checkouts that omit
+    # unrelated trees (for example CI excluding larch-logs/) do not fail
+    # existence checks on out-of-scope cached paths.
+    argv: list[str] = ["git", "ls-files", "--cached", "-z"]
+    if pathspecs is not None:
+        argv.append("--")
+        argv.extend(pathspecs)
+    result = runner.run(tuple(argv), cwd=str(root))
     if result.returncode != 0:
         raise ScanError(f"git ls-files --cached failed: {_bounded_git_detail(result)}")
     seen: set[str] = set()
@@ -428,6 +447,45 @@ def render_finding(finding: Finding) -> str:
     return f"{finding.path}:{finding.line}: {finding.rule_id} {finding.message}"
 
 
+def _validated_findings(
+    raw_findings: Sequence[object],
+    *,
+    source: SourceFile,
+    rule: LintRule,
+) -> list[Finding]:
+    return [
+        _validate_finding(item, source=source, rule=rule) for item in raw_findings
+    ]
+
+
+def _apply_inline_suppressions(
+    findings: Sequence[Finding],
+    *,
+    source: SourceFile,
+    rule: LintRule,
+    pragma_re: re.Pattern[str],
+    empty_pragma_re: re.Pattern[str],
+) -> list[Finding]:
+    comments_by_line = _comment_tokens_by_line(source.text)
+    accepted: list[Finding] = []
+    for finding in findings:
+        reason = _suppression_reason(
+            finding.line,
+            comments_by_line=comments_by_line,
+            pragma_re=pragma_re,
+            empty_pragma_re=empty_pragma_re,
+        )
+        if reason is None:
+            accepted.append(finding)
+            continue
+        if reason == "":
+            raise ScanError(
+                f"{source.path}:{finding.line}: suppression pragma "
+                f"{rule.suppression_token!r} requires a non-empty reason"
+            )
+    return accepted
+
+
 def _scan_source(
     source: SourceFile,
     *,
@@ -457,25 +515,18 @@ def _scan_source(
     if not isinstance(raw_findings, list):
         raise ScanError("detector must return a list of Finding")
 
-    comments_by_line = _comment_tokens_by_line(source.text)
-    accepted: list[Finding] = []
-    for item in cast("list[object]", raw_findings):
-        finding = _validate_finding(item, source=source, rule=rule)
-        reason = _suppression_reason(
-            finding.line,
-            comments_by_line=comments_by_line,
-            pragma_re=pragma_re,
-            empty_pragma_re=empty_pragma_re,
-        )
-        if reason is None:
-            accepted.append(finding)
-            continue
-        if reason == "":
-            raise ScanError(
-                f"{source.path}:{finding.line}: suppression pragma "
-                f"{rule.suppression_token!r} requires a non-empty reason"
-            )
-    return accepted
+    validated = _validated_findings(
+        cast("list[object]", raw_findings), source=source, rule=rule
+    )
+    if not rule.allow_inline_suppression:
+        return validated
+    return _apply_inline_suppressions(
+        validated,
+        source=source,
+        rule=rule,
+        pragma_re=pragma_re,
+        empty_pragma_re=empty_pragma_re,
+    )
 
 
 BaselineKind = Literal["generic", "symbol_metric"]
@@ -879,7 +930,14 @@ def _scan_findings(
     runner: Runner,
     paths: Sequence[str | Path] | None,
 ) -> list[Finding]:
-    tracked = _discover_tracked_paths(root, runner)
+    pathspecs: list[str] | None = None
+    if paths is not None:
+        # Validate selectors before discovery so bad pathspecs fail closed and
+        # git only enumerates in-scope cached paths.
+        pathspecs = [
+            _validate_requested_path(item, root=root)[0] for item in paths
+        ]
+    tracked = _discover_tracked_paths(root, runner, pathspecs=pathspecs)
     selected = _filter_tracked_paths(tracked, root=root, paths=paths)
     pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s+(\S.*)$")
     empty_pragma_re = re.compile(rf"#\s*{re.escape(rule.suppression_token)}:\s*ok\s*$")

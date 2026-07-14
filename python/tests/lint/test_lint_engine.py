@@ -102,6 +102,7 @@ def _rule(
     syntax_policy: str = "fail",
     rule_id: str = "demo-rule",
     pragma: str = "lint-demo",
+    allow_inline_suppression: bool = True,
 ) -> LintRule:
     def _default_detect(source: SourceFile) -> list[Finding]:
         return [
@@ -119,6 +120,7 @@ def _rule(
         detect=detect or _default_detect,
         syntax_policy=syntax_policy,  # type: ignore[arg-type]
         suppression_token=pragma,
+        allow_inline_suppression=allow_inline_suppression,
     )
 
 
@@ -352,7 +354,7 @@ def test_requested_paths_filter_and_unmatched_clean(tmp_path: Path) -> None:
         seen.append(source.path)
         return []
 
-    code, out, err, _ = _run(
+    code, out, err, runner = _run(
         tmp_path,
         files=files,
         tracked=list(files),
@@ -363,6 +365,10 @@ def test_requested_paths_filter_and_unmatched_clean(tmp_path: Path) -> None:
     assert seen == ["pkg/a.py", "pkg/b.py"]
     assert out == ""
     assert err == ""
+    assert runner.calls == [
+        (("git", "rev-parse", "--show-toplevel"), str(tmp_path.resolve())),
+        (("git", "ls-files", "--cached", "-z", "--", "pkg"), str(tmp_path.resolve())),
+    ]
 
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
@@ -485,7 +491,12 @@ def test_source_loading_revalidates_and_converts_oserror(
     _ = outside.write_text("x = 1\n", encoding="utf-8")
     _write_files(tmp_path, {"a.py": "x = 1\n"})
 
-    def swap_after_discovery(_root: Path, _runner: RecordingRunner) -> list[str]:
+    def swap_after_discovery(
+        _root: Path,
+        _runner: RecordingRunner,
+        *,
+        pathspecs: Sequence[str] | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
+    ) -> list[str]:
         source.unlink()
         source.symlink_to(outside)
         return ["a.py"]
@@ -723,6 +734,44 @@ def test_suppression_ignores_code_strings_and_adjacent_lines(tmp_path: Path) -> 
     assert code == EXIT_FINDINGS
     assert err == ""
     assert out == "a.py:2: demo-rule a\na.py:4: demo-rule b\n"
+
+
+def test_unsuppressible_rule_retains_finding_despite_pragma(tmp_path: Path) -> None:
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"a.py": "x = 1  # lint-demo: ok deliberate\n"},
+        rule=_rule(allow_inline_suppression=False),
+    )
+    assert code == EXIT_FINDINGS
+    assert err == ""
+    assert out == "a.py:1: demo-rule hit\n"
+
+
+def test_ordinary_rule_still_honors_suppression_when_opted_in(tmp_path: Path) -> None:
+    code, out, err, _ = _run(
+        tmp_path,
+        files={"a.py": "x = 1  # lint-demo: ok deliberate\n"},
+        rule=_rule(allow_inline_suppression=True),
+    )
+    assert code == EXIT_CLEAN
+    assert out == ""
+    assert err == ""
+
+
+def test_allow_inline_suppression_rejects_non_bool(tmp_path: Path) -> None:
+    rule = LintRule(
+        rule_id="demo-rule",
+        description="demo",
+        detect=lambda _source: [],
+        syntax_policy="fail",
+        suppression_token="lint-demo",  # noqa: S106 - pragma name, not a secret
+        allow_inline_suppression=True,
+    )
+    object.__setattr__(rule, "allow_inline_suppression", 1)  # type: ignore[misc]
+    code, out, err = _invoke(rule, tmp_path, _git_ok_runner(tmp_path, []))
+    assert code == EXIT_ERROR
+    assert out == ""
+    assert "allow_inline_suppression" in err
 
 
 def test_detector_and_config_validation(tmp_path: Path) -> None:
