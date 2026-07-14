@@ -68,7 +68,7 @@ The changed code is in full compliance with all applicable architectural guideli
 
 - **Outcome**: ✅ DONE
 - **Duration**: 00:45:23
-- **Cost**: 💰 TOTAL ~$26.34: Claude $9.59, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 50354k
+- **Cost**: 💰 TOTAL ~$28.42: Claude $11.67, Codex-5.6 $2.39, Codex-mini $1.58, Cursor $12.37 (Composer $8.42, Grok $3.95), Claude (subprocess) $0.41  |  Tokens: 54145k
 - **Issue**: #7222: https://github.com/character-ai/larch/issues/7222
 - **PR**: #7251: https://github.com/character-ai/larch/pull/7251
 - **Plan review**: N/A
@@ -76,7 +76,7 @@ The changed code is in full compliance with all applicable architectural guideli
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/9 accepted
-- **Lines (PR diff)**: code +146/-490, larch-logs +851/-0
+- **Lines (PR diff)**: code +148/-492, larch-logs +857/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 8
