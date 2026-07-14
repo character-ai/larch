@@ -4685,6 +4685,64 @@ def test_checks_repair_loop_main_exhausted_falls_back_to_main_agent(
     assert str(checks_log.resolve()) not in out.split("LINT_FIX_LEDGER_FAILURE_DETAIL_LOG=", maxsplit=1)[1]
 
 
+@pytest.mark.parametrize(
+    ("site", "step", "phase"),
+    [
+        ("step3", "3", "checks"),
+        ("step5", "5", "review"),
+        ("step5-self-review", "5", "review"),
+        ("step5-mav", "5", "review"),
+        ("step6", "6", "checks"),
+    ],
+)
+def test_checks_repair_loop_main_all_tiers_no_delta_escalates_to_main_agent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    site: str,
+    step: str,
+    phase: str,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("initial failure\n", encoding="utf-8")
+    final_failure_log = session / "final.redacted.log"
+    final_failure_log.write_text("pyright failure\n", encoding="utf-8")
+
+    def fake_run_check_fix_loop(**_kwargs: object) -> checks.LoopResult:
+        return checks.LoopResult(
+            status="exhausted",
+            failure_reason="lint-fix-all-tiers-no-useful-delta",
+            final_redacted_checks_log=str(final_failure_log),
+        )
+
+    monkeypatch.setattr(_clf, "run_check_fix_loop", fake_run_check_fix_loop)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        site,
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert "NEXT_ACTION=main-agent-edit" in out
+    assert "LOOP_STATUS=exhausted" in out
+    assert "FAILURE_REASON=lint-fix-all-tiers-no-useful-delta" in out
+    assert "LINT_FIX_LEDGER_READY=true" in out
+    assert f"LINT_FIX_LEDGER_SITE={site}" in out
+    assert "LINT_FIX_LEDGER_TRIGGER=main-agent-required" in out
+    assert f"LINT_FIX_LEDGER_STEP={step}" in out
+    assert f"LINT_FIX_LEDGER_PHASE={phase}" in out
+    assert "LINT_FIX_LEDGER_DISPATCHER=lint-fix-loop" in out
+    assert "LINT_FIX_LEDGER_EXIT_CODE=1" in out
+    assert f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={final_failure_log.resolve()}" in out
+
+
 @pytest.mark.parametrize("final_log", ["", "outside.redacted.log"])
 def test_checks_repair_loop_main_exhausted_invalid_final_log_stalls(
     tmp_path: Path,

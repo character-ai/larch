@@ -54,9 +54,10 @@ For pre-ship sites, these exact terminal reasons are ordinary delegated-waterfal
 
 - `lint-fix-no-selectable-tier`
 - `lint-fix-budget-exhausted`
-- `lint-fix-all-tiers-no-useful-delta`
 
 Require both `FAILURE_REASON` and `LINT_FIX_TIER_LEDGER_PATH` as terminal evidence. Route to the normal stall path. Do not edit inline and do not reinterpret `LOOP_STATUS=exhausted` or `LOOP_STATUS=no-changes-stale` as `NEXT_ACTION=main-agent-edit`. The ship-pr CI sites keep their existing internal lint-fix handoff and are outside this pre-ship remapping.
+
+For `lint-fix-all-tiers-no-useful-delta`, route to `NEXT_ACTION=main-agent-edit`. Require the emitted `LINT_FIX_LEDGER_*` fields and record the escalation before handing the failure to the main agent. The ship-pr CI sites keep their existing internal lint-fix handoff and are outside this pre-ship remapping.
 
 ### `NEXT_ACTION=continue`
 

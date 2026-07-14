@@ -72,11 +72,15 @@ _PRE_SHIP_SITES: Final[frozenset[str]] = frozenset({
     "step5-mav",
     "step6",
 })
+_PRE_SHIP_ALL_TIERS_NO_DELTA_REASON: Final = "lint-fix-all-tiers-no-useful-delta"
 _PRE_SHIP_NON_STRUCTURAL_REASONS: Final[frozenset[str]] = frozenset({
     "lint-fix-no-selectable-tier",
-    "lint-fix-all-tiers-no-useful-delta",
+    _PRE_SHIP_ALL_TIERS_NO_DELTA_REASON,
     "lint-fix-budget-exhausted",
 })
+_PRE_SHIP_STALL_REASONS: Final[frozenset[str]] = (
+    _PRE_SHIP_NON_STRUCTURAL_REASONS - {_PRE_SHIP_ALL_TIERS_NO_DELTA_REASON}
+)
 _TIER_LEDGER_HEADER: Final = (
     "sequence\ttier\toutcome_class\texit_status\telapsed_ms\t"
     "useful_delta\texecution_issue_kind\n"
@@ -291,12 +295,11 @@ def _repair_loop_action(
         return "main-agent-edit"
     if (
         _is_pre_ship_site(lint_site)
-        and loop.failure_reason in _PRE_SHIP_NON_STRUCTURAL_REASONS
+        and loop.failure_reason in _PRE_SHIP_STALL_REASONS
     ):
         return "stall"
-    # Iteration-count exhaustion: populate ledger and fall back to main-agent.
-    # This is distinct from delegated-waterfall exhaustion (failure_reason in
-    # _PRE_SHIP_NON_STRUCTURAL_REASONS), which stalls without escalation.
+    # Exhaustion after every delegated tier made no useful delta, like
+    # iteration-count exhaustion, needs a recorded main-agent escalation.
     if loop.status in {"exhausted", "no-changes-stale"} and _is_pre_ship_site(lint_site):
         # Use the initial checks_log for no-changes-stale, final iteration log for exhausted.
         log_candidate = (
@@ -1602,7 +1605,7 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             reason: str = (
                 "lint-fix-no-selectable-tier"
                 if not attempted_tiers
-                else "lint-fix-all-tiers-no-useful-delta"
+                else _PRE_SHIP_ALL_TIERS_NO_DELTA_REASON
             )
             return _exhausted_outcome(
                 site=site, reason=reason, ledger_path=tier_ledger,
