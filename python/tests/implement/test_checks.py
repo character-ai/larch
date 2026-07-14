@@ -343,6 +343,68 @@ def test_checks_failure_digest_uses_only_redacted_source() -> None:
     assert secret not in digest
 
 
+def test_checks_fixer_evidence_materializes_bounded_redacted_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    source = session / "step6.redacted.log"
+    source.write_text(
+        "=== Running direct relevant make target(s): py-lint ===\n"
+        "ERROR: ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+        encoding="utf-8",
+    )
+
+    rc = checks.checks_fixer_evidence_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "step6",
+        "--round",
+        "1",
+        "--checks-log",
+        str(source),
+    ])
+
+    out = capsys.readouterr().out
+    output = session / "checks-errors-step6-1.md"
+    assert rc == 0
+    assert "CHECKS_FIXER_EVIDENCE_STATUS=ok" in out
+    assert f"CHECKS_FIXER_EVIDENCE_FILE={output}" in out
+    assert output.stat().st_mode & 0o777 == 0o600
+    digest = output.read_text(encoding="utf-8")
+    assert "CHECKS_FAILURE_DIGEST v1" in digest
+    assert "site=step6" in digest
+    assert "ghp_" not in digest
+    assert config.REDACTED_TOKEN in digest
+
+
+@pytest.mark.parametrize(("site", "round_number"), [("../outside", "1"), ("step6", "11")])
+def test_checks_fixer_evidence_rejects_unsafe_output_tokens(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    site: str,
+    round_number: str,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    source = session / "step6.redacted.log"
+    source.write_text("ERROR: failed\n", encoding="utf-8")
+
+    rc = checks.checks_fixer_evidence_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        site,
+        "--round",
+        round_number,
+        "--checks-log",
+        str(source),
+    ])
+
+    assert rc == 2
+    assert "CHECKS_FIXER_EVIDENCE_STATUS=invalid-" in capsys.readouterr().out
+
+
 def test_escalate_mapping() -> None:
     assert checks.escalate("ok").outcome == Outcome.OK
     assert checks.escalate("exhausted").outcome == Outcome.STALLED

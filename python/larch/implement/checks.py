@@ -21,6 +21,7 @@ from larch.implement.checks_run_relevant import (
     validate_tmpdir,
     run_relevant_checks,
     check_contains_pins_main,
+    checks_fixer_evidence_main,
     checks_run_relevant_main,
 )
 
@@ -39,6 +40,7 @@ __all__ = [
     "FixOutcome",
     "LoopResult",
     "check_contains_pins_main",
+    "checks_fixer_evidence_main",
     "checks_lint_fix_main",
     "checks_repair_loop_main",
     "checks_run_relevant_main",
